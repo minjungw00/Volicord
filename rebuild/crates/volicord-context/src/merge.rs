@@ -600,7 +600,7 @@ fn classify_rows(
                 "decisions" | "decision_revisions" => (BundleConflictClass::SemanticDecisionConflict, false,
                     "Choosing a side changes user judgment, rationale, applicability, or Decision history.",
                     Some("Decision meaning is user-owned and cannot be selected by ordering or timestamp.")),
-                "questions" | "question_revisions" | "question_response_sources" => (BundleConflictClass::SameRecordRevision, false,
+                "questions" | "question_revisions" | "question_response_sources" | "question_decision_history_witnesses" => (BundleConflictClass::SameRecordRevision, false,
                     "The same Question history changed differently on both sides.",
                     Some("Question meaning, dependencies, or terminal state require user judgment.")),
                 "tombstones" => (BundleConflictClass::DeleteModifyConflict, false,
@@ -855,6 +855,9 @@ fn row_owner(table: &str, row: &[PortableValue]) -> Result<Option<CanonicalRecor
         "questions" => Some(canonical_record_identity("question", &row[0])),
         "question_revisions" => Some(canonical_record_identity("question", &row[0])),
         "question_response_sources" => Some(canonical_record_identity("question", &row[1])),
+        "question_decision_history_witnesses" => {
+            Some(canonical_record_identity("question", &row[1]))
+        }
         "decisions" => Some(canonical_record_identity("decision", &row[0])),
         "decision_revisions" => Some(canonical_record_identity("decision", &row[0])),
         "context_items" => Some(canonical_record_identity("context_item", &row[0])),
@@ -980,6 +983,11 @@ fn retain_relation_integrity(selected: &mut RowMap) -> Result<(), Error> {
             "question_response_sources" => {
                 active.contains(&canonical_record_identity("question", &row[1]))
                     && active.contains(&canonical_record_identity("source", &row[3]))
+            }
+            "question_decision_history_witnesses" => {
+                record_present(&active, &tombstones, "question", &row[1])
+                    && record_present(&active, &tombstones, "decision", &row[3])
+                    && record_present(&active, &tombstones, "source", &row[5])
             }
             "context_item_sources" => {
                 active.contains(&canonical_record_identity("context_item", &row[1]))
@@ -1171,6 +1179,7 @@ fn row_mentions_losing_decision(
     let table = key.split('|').next().unwrap_or_default();
     match table {
         "decisions" | "decision_revisions" => losing.contains(&value_key(&row[0])),
+        "question_decision_history_witnesses" => losing.contains(&value_key(&row[3])),
         "checkpoint_decisions" => losing.contains(&value_key(&row[2])),
         "review_due" => losing.contains(&value_key(&row[1])),
         "canonical_relations" => {

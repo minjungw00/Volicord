@@ -1,4 +1,5 @@
 use rusqlite::Connection;
+use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
 use volicord_context::{
@@ -133,7 +134,8 @@ fn response(
 fn records_choice_with_exact_revision_and_separate_recommendation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
-    let mut store = store_with_ids(&root.path().join("context.sqlite3"), &[1, 2, 3, 4, 5])?;
+    let database = root.path().join("context.sqlite3");
+    let mut store = store_with_ids(&database, &[1, 2, 3, 4, 5])?;
     let project = store.create_project(operation(1), "Inquiry")?.value;
     let (_, question) = setup_question(&mut store, &project, 2)?;
     let result = store
@@ -167,13 +169,57 @@ fn records_choice_with_exact_revision_and_separate_recommendation(
     );
     assert_eq!(decision.question_revision, 1);
     assert_eq!(store.get_decision(project.id, decision.id)?, decision);
+    let connection = Connection::open(&database)?;
+    let witness: (Vec<u8>, String, Vec<u8>, String, String) = connection.query_row(
+        "SELECT root_decision_id, terminal_outcome, response_source_id,
+                    response_authority, creation_kind
+             FROM question_decision_history_witnesses
+             WHERE project_id = ?1 AND question_id = ?2 AND question_revision = 1",
+        rusqlite::params![
+            project.id.as_bytes().as_slice(),
+            question.id.as_bytes().as_slice()
+        ],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
+    )?;
+    assert_eq!(witness.0, decision.id.as_bytes());
+    assert_eq!(witness.1, "answered");
+    assert_eq!(witness.2, decision.user_turn_source_id.as_bytes());
+    assert_eq!(witness.3, "current_host_user_turn");
+    assert_eq!(witness.4, "explicit_question_response");
+    let witness_columns = connection
+        .prepare("PRAGMA table_info(question_decision_history_witnesses)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(
+        witness_columns,
+        [
+            "project_id",
+            "question_id",
+            "question_revision",
+            "root_decision_id",
+            "terminal_outcome",
+            "response_source_id",
+            "response_authority",
+            "creation_kind",
+            "created_at",
+        ]
+    );
     Ok(())
 }
 
 #[test]
 fn records_explicit_delegation_as_a_decision() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
-    let mut store = store_with_ids(&root.path().join("context.sqlite3"), &[1, 2, 3, 4, 5])?;
+    let database = root.path().join("context.sqlite3");
+    let mut store = store_with_ids(&database, &[1, 2, 3, 4, 5])?;
     let project = store.create_project(operation(10), "Delegation")?.value;
     let (_, question) = setup_question(&mut store, &project, 11)?;
     let result = store.record_question_response(
@@ -192,12 +238,25 @@ fn records_explicit_delegation_as_a_decision() -> Result<(), Box<dyn std::error:
         result.value.question.state,
         QuestionState::Terminal(QuestionTerminalOutcome::Delegated)
     );
+    let decision = result.value.decision.ok_or("expected Decision")?;
     assert_eq!(
-        result.value.decision.ok_or("expected Decision")?.choice,
+        decision.choice,
         DecisionChoice::Delegation {
             delegate_to: "implementation agent".to_owned()
         }
     );
+    let witness: (Vec<u8>, String) = Connection::open(&database)?.query_row(
+        "SELECT root_decision_id, terminal_outcome
+         FROM question_decision_history_witnesses
+         WHERE project_id = ?1 AND question_id = ?2 AND question_revision = 1",
+        rusqlite::params![
+            project.id.as_bytes().as_slice(),
+            question.id.as_bytes().as_slice()
+        ],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(witness.0, decision.id.as_bytes());
+    assert_eq!(witness.1, "delegated");
     Ok(())
 }
 
@@ -230,6 +289,90 @@ fn records_every_non_decision_terminal_outcome_without_a_decision(
             QuestionState::Terminal(outcome)
         );
         assert!(result.value.decision.is_none());
+        let witness_count: i64 = Connection::open(root.path().join("context.sqlite3"))?.query_row(
+            "SELECT count(*) FROM question_decision_history_witnesses",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(witness_count, 0);
+    }
+    Ok(())
+}
+
+#[test]
+fn answered_and_delegated_forgotten_roots_round_trip_with_content_free_history(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        ExplicitQuestionResponse::Choice {
+            alternative_key: "local".to_owned(),
+            user_rationale: Some("Choose the local boundary".to_owned()),
+        },
+        ExplicitQuestionResponse::Delegation {
+            delegate_to: "implementation agent".to_owned(),
+            user_rationale: None,
+        },
+    ];
+    for (index, explicit) in cases.into_iter().enumerate() {
+        let root = tempdir()?;
+        let database = root.path().join("origin.sqlite3");
+        let bundle = root.path().join("bundle.json");
+        let repeated = root.path().join("repeated.json");
+        let mut origin = store_with_ids(&database, &[1, 2, 3, 4, 5])?;
+        let project = origin
+            .create_project(operation(20), "Forgotten root")?
+            .value;
+        let (_, question) = setup_question(&mut origin, &project, 21)?;
+        let response = origin
+            .record_question_response(
+                operation(23),
+                project.id,
+                response(
+                    &question,
+                    UserTurnSource::Create(user_turn(&format!("forget-root-{index}"))),
+                    explicit,
+                ),
+            )?
+            .value;
+        let decision = response.decision.ok_or("Decision missing")?;
+        origin.forget_decision(
+            operation(24),
+            project.id,
+            decision.id,
+            response.user_turn_source.id,
+        )?;
+        origin.export_bundle(project.id, &bundle)?;
+        origin.export_bundle(project.id, &repeated)?;
+        assert_eq!(fs::read(&bundle)?, fs::read(&repeated)?);
+        drop(origin);
+
+        let mut reopened = store_with_ids(&database, &[])?;
+        reopened.export_bundle(project.id, &repeated)?;
+        assert_eq!(fs::read(&bundle)?, fs::read(&repeated)?);
+        let mut imported = store_with_ids(&root.path().join("imported.sqlite3"), &[])?;
+        imported.import_bundle(operation(25), &bundle)?;
+        assert_eq!(
+            imported.get_question(project.id, question.id)?.state,
+            response.question.state
+        );
+        assert!(
+            imported
+                .get_tombstone(
+                    project.id,
+                    volicord_context::CanonicalRecordId::Decision(decision.id),
+                )?
+                .record
+                == volicord_context::CanonicalRecordId::Decision(decision.id)
+        );
+        let witness: (Vec<u8>, String, Vec<u8>) =
+            Connection::open(root.path().join("imported.sqlite3"))?.query_row(
+                "SELECT root_decision_id, terminal_outcome, response_source_id
+                 FROM question_decision_history_witnesses",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+        assert_eq!(witness.0, decision.id.as_bytes());
+        assert_eq!(witness.2, response.user_turn_source.id.as_bytes());
+        assert_eq!(witness.1, if index == 0 { "answered" } else { "delegated" });
     }
     Ok(())
 }
@@ -363,6 +506,10 @@ fn response_transaction_rolls_back_at_every_intermediate_write_boundary(
         ("response", "BEFORE INSERT ON question_response_sources"),
         ("decision", "BEFORE INSERT ON decisions"),
         (
+            "history_witness",
+            "BEFORE INSERT ON question_decision_history_witnesses",
+        ),
+        (
             "question",
             "BEFORE UPDATE ON questions WHEN NEW.terminal_outcome IS NOT NULL",
         ),
@@ -415,6 +562,11 @@ fn response_transaction_rolls_back_at_every_intermediate_write_boundary(
             [],
             |row| row.get(0),
         )?;
+        let witness_count: i64 = connection.query_row(
+            "SELECT count(*) FROM question_decision_history_witnesses",
+            [],
+            |row| row.get(0),
+        )?;
         let response_operation_count: i64 = connection.query_row(
             "SELECT count(*) FROM operations WHERE operation_kind = 'record_question_response'",
             [],
@@ -427,6 +579,7 @@ fn response_transaction_rolls_back_at_every_intermediate_write_boundary(
         )?;
         assert_eq!(decision_count, 0, "fault {name}");
         assert_eq!(response_count, 0, "fault {name}");
+        assert_eq!(witness_count, 0, "fault {name}");
         assert_eq!(response_operation_count, 0, "fault {name}");
         assert_eq!(user_source_count, 0, "fault {name}");
     }
@@ -455,6 +608,12 @@ fn committed_response_replays_after_restart_and_rejects_changed_input(
     let mut reopened = store_with_ids(&path, &[])?;
     let replay = reopened.record_question_response(operation(53), project.id, draft.clone())?;
     assert!(replay.replayed);
+    let witness_count: i64 = Connection::open(&path)?.query_row(
+        "SELECT count(*) FROM question_decision_history_witnesses",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(witness_count, 1);
     assert_eq!(replay.value, committed.value);
     let mut changed = draft;
     changed.assumptions.push("changed input".to_owned());

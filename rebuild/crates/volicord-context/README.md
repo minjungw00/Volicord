@@ -31,7 +31,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 10 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 11 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -71,6 +71,13 @@ owned by `rebuild/docs/design/`.
   This fact survives Source forgetting without retaining the forgotten turn,
   host, session, actor identity, or Source payload; an active Source must still
   independently prove the same Project, Source kind, and user actor.
+  Choice and delegation also create exactly one immutable
+  `question_decision_history_witnesses` row in the same transaction. It records
+  only Project, exact Question revision, original root Decision, answered or
+  delegated outcome, response Source identity, content-free authority/creation
+  provenance, and creation time. It contains no prompt, alternatives,
+  recommendation, choice/delegate value, rationale, Source payload, or content
+  hash. Non-Decision terminal outcomes create no such witness.
 - Context Items preserve one of eight statement roles independently from user,
   observation, agent, or generated-interpretation provenance. Facts require
   repository/command observation; explicit preferences require a current-host
@@ -98,7 +105,10 @@ owned by `rebuild/docs/design/`.
   Project scoping, deletes active and revision content plus content-bearing
   replay input, rewrites owned links, refreshes managed bundles, and leaves
   only Project, record kind, record identity, and forgetting time in the
-  tombstone. Source and Question identities may remain only as tombstoned IDs
+  tombstone. The content-free Question response-history witness survives
+  Decision or Source forgetting so the exact original response role remains
+  verifiable; it is not changed by Decision correction or supersession. Source
+  and Question identities may remain only as tombstoned IDs
   in surviving historical Decision or relation references; Source payload,
   Question prompt/state support, dependencies, Checkpoint links, and other raw
   content do not. Forgetting a Question also clears Question-owned displayed
@@ -122,7 +132,7 @@ owned by `rebuild/docs/design/`.
 ## Portable bundle choices
 
 - The portable representation is kind `volicord-context-bundle`, format
-  version `3`. This is the only readable and writable version. Older or newer
+  version `4`. This is the only readable and writable version. Older or newer
   versions are rejected before mutation; there is no legacy decoder or
   migration path.
 - The payload is compact UTF-8 JSON with one LF terminator, fixed lexicographic
@@ -158,11 +168,15 @@ owned by `rebuild/docs/design/`.
   revisions, correction authorization, directed non-branching supersession,
   terminal outcomes, and review-due state. It requires active authority Sources
   to be user-authored current-host turns, accepts a tombstoned authority Source
-  only with the Decision-owned witness, verifies exact Question presentation
-  and original-response roles, and rejects revision gaps, current-snapshot
-  mismatch, or semantic mutation disguised as correction. The same boundary is
-  reached by import, explicit merged input, generated merge targets, state
-  replacement, and export before mutation or publication.
+  only with a content-free authority witness, requires exactly one
+  Question-specific response-history witness for every active answered or
+  delegated Question, and verifies that its exact root Decision, outcome,
+  response authority, and linear supersession lineage agree. An unrelated
+  Decision tombstone cannot satisfy another Question. The validator also
+  verifies exact Question presentation and rejects revision gaps,
+  current-snapshot mismatch, or semantic mutation disguised as correction. The
+  same boundary is reached by import, explicit merged input, generated merge
+  targets, state replacement, and export before mutation or publication.
 - Publication writes a fixed sibling temporary candidate, syncs it, atomically
   renames it over the final path, and syncs the containing directory. Import
   rejects the temporary name as non-authoritative. A regular orphan candidate

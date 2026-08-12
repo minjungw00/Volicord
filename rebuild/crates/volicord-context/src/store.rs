@@ -26,11 +26,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 
-const REQUIRED_TABLES: [&str; 29] = [
+const REQUIRED_TABLES: [&str; 30] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -43,6 +43,7 @@ const REQUIRED_TABLES: [&str; 29] = [
     "questions",
     "question_revisions",
     "question_response_sources",
+    "question_decision_history_witnesses",
     "decisions",
     "context_items",
     "context_item_sources",
@@ -923,6 +924,26 @@ impl Store {
                 None,
                 now,
             )?;
+            transaction
+                .execute(
+                    "INSERT INTO question_decision_history_witnesses(
+                         project_id, question_id, question_revision, root_decision_id,
+                         terminal_outcome, response_source_id, response_authority,
+                         creation_kind, created_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                               'explicit_question_response', ?8)",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        draft.question_id.as_bytes().as_slice(),
+                        revision_i64(draft.question_revision)?,
+                        decision_id.as_bytes().as_slice(),
+                        outcome.as_str(),
+                        user_turn_source.id.as_bytes().as_slice(),
+                        CURRENT_HOST_USER_AUTHORITY,
+                        now.as_unix_micros(),
+                    ],
+                )
+                .map_err(write_error)?;
             Some(Decision {
                 id: decision_id,
                 project_id,
@@ -4696,6 +4717,20 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE question_decision_history_witnesses(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
+                 root_decision_id BLOB NOT NULL CHECK(length(root_decision_id) = 16),
+                 terminal_outcome TEXT NOT NULL CHECK(terminal_outcome IN ('answered','delegated')),
+                 response_source_id BLOB NOT NULL CHECK(length(response_source_id) = 16),
+                 response_authority TEXT NOT NULL CHECK(response_authority = 'current_host_user_turn'),
+                 creation_kind TEXT NOT NULL CHECK(creation_kind = 'explicit_question_response'),
+                 created_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, question_id, question_revision),
+                 UNIQUE(project_id, root_decision_id),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE decisions(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),

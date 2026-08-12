@@ -91,10 +91,8 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
     }
 
     assert_eq!(observed, required, "catalog invariant inventory changed");
-    assert!(
-        catalog.contains("`question-response-history` is intentionally marked incomplete"),
-        "known response-history coverage gap must remain explicit until fixed"
-    );
+    assert!(catalog.contains("exactly one content-free witness"));
+    assert!(!catalog.contains("bundle-wide forgotten-Decision existence fallback"));
     Ok(())
 }
 

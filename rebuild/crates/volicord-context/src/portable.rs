@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 3;
+pub const BUNDLE_FORMAT_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -187,6 +187,23 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "question_revision",
             "source_id",
             "recorded_at",
+        ],
+        primary_key: &[0, 1, 2],
+        project_column: 0,
+        order_by: "question_id, question_revision",
+    },
+    TableSpec {
+        name: "question_decision_history_witnesses",
+        columns: &[
+            "project_id",
+            "question_id",
+            "question_revision",
+            "root_decision_id",
+            "terminal_outcome",
+            "response_source_id",
+            "response_authority",
+            "creation_kind",
+            "created_at",
         ],
         primary_key: &[0, 1, 2],
         project_column: 0,
@@ -918,6 +935,17 @@ pub(crate) fn validate_portable_canonical_invariants(
                         "Question response references a missing active Source",
                     ));
                 }
+                "question_decision_history_witnesses" => {
+                    if !present("question", &row[1])
+                        || !present("decision", &row[3])
+                        || !present("source", &row[5])
+                    {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Question Decision history witness references no matching active or tombstoned identity",
+                        ));
+                    }
+                }
                 "decisions" => {
                     if !present("question", &row[3]) || !present("source", &row[5]) {
                         return Err(Error::new(
@@ -1078,6 +1106,11 @@ fn validate_decision_semantics(
             ))
         })
         .collect::<Result<BTreeMap<_, _>, Error>>()?;
+    let witnesses = required_table(payload, "question_decision_history_witnesses")?
+        .rows
+        .iter()
+        .map(|row| Ok(((value_key(&row[1]), value_integer(&row[2])?), row)))
+        .collect::<Result<BTreeMap<_, _>, Error>>()?;
     let decisions = required_table(payload, "decisions")?
         .rows
         .iter()
@@ -1166,6 +1199,7 @@ fn validate_decision_semantics(
         &questions,
         &question_revisions,
         &responses,
+        &witnesses,
         &decisions,
         &supersedes,
         tombstones,
@@ -1410,27 +1444,15 @@ fn validate_question_response_roles(
     questions: &BTreeMap<String, &Vec<PortableValue>>,
     question_revisions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
     responses: &BTreeMap<(String, i64), String>,
+    witnesses: &BTreeMap<(String, i64), &Vec<PortableValue>>,
     decisions: &BTreeMap<String, &Vec<PortableValue>>,
     supersedes: &BTreeMap<String, String>,
     tombstones: &BTreeSet<(String, String)>,
 ) -> Result<(), Error> {
-    let mut roots = BTreeMap::<(String, i64), Vec<&Vec<PortableValue>>>::new();
     let mut decisions_by_question = BTreeMap::<(String, i64), Vec<&Vec<PortableValue>>>::new();
-    for (decision_id, row) in decisions {
+    for row in decisions.values() {
         let key = (value_key(&row[3]), value_integer(&row[4])?);
-        decisions_by_question
-            .entry(key.clone())
-            .or_default()
-            .push(row);
-        if !supersedes.contains_key(decision_id) {
-            roots.entry(key).or_default().push(row);
-        }
-    }
-    if roots.values().any(|values| values.len() > 1) {
-        return Err(Error::new(
-            ErrorKind::CorruptState,
-            "a Question revision has unrelated root Decisions",
-        ));
+        decisions_by_question.entry(key).or_default().push(row);
     }
 
     for ((question_id, revision), source_id) in responses {
@@ -1463,12 +1485,22 @@ fn validate_question_response_roles(
         }
     }
 
-    let has_forgotten_decision = tombstones.iter().any(|(kind, _)| kind == "decision");
+    validate_question_decision_history_witnesses(
+        sources,
+        questions,
+        question_revisions,
+        witnesses,
+        decisions,
+        &decisions_by_question,
+        supersedes,
+        tombstones,
+    )?;
+
     for (question_id, question) in questions {
         let revision = value_integer(&question[2])?;
         let key = (question_id.clone(), revision);
         let response = responses.get(&key);
-        let root = roots.get(&key).and_then(|values| values.first()).copied();
+        let witness = witnesses.get(&key).copied();
         let linked_decisions = decisions_by_question
             .get(&key)
             .map(Vec::as_slice)
@@ -1476,67 +1508,152 @@ fn validate_question_response_roles(
         let outcome = optional_text(&question[3])?;
         match outcome {
             None => {
-                if response.is_some() || !linked_decisions.is_empty() {
+                if response.is_some() || witness.is_some() || !linked_decisions.is_empty() {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
-                        "open Question carries a response or Decision",
+                        "open Question carries terminal response history",
                     ));
                 }
             }
-            Some("answered" | "delegated") => {
-                if let Some(root) = root {
-                    if decision_outcome(value_text(&root[7])?) != outcome {
-                        return Err(Error::new(
-                            ErrorKind::CorruptState,
-                            "root Decision choice conflicts with the Question terminal outcome",
-                        ));
-                    }
-                    let root_source = value_key(&root[5]);
-                    if sources.contains_key(&root_source) {
-                        if response != Some(&root_source) {
-                            return Err(Error::new(
-                                ErrorKind::CorruptState,
-                                "root Decision does not match the exact Question response Source",
-                            ));
-                        }
-                    } else if response.is_some() {
-                        return Err(Error::new(
-                            ErrorKind::CorruptState,
-                            "forgotten root Decision Source still has a mismatched response link",
-                        ));
-                    }
-                } else if !linked_decisions.is_empty() {
-                    if !linked_decisions.iter().all(|decision| {
-                        supersedes
-                            .get(&value_key(&decision[0]))
-                            .is_some_and(|older| {
-                                tombstones.contains(&("decision".to_owned(), older.clone()))
-                                    || decisions.contains_key(older)
-                            })
-                    }) {
-                        return Err(Error::new(
-                            ErrorKind::CorruptState,
-                            "Decision lineage has no original response role",
-                        ));
-                    }
-                } else if !has_forgotten_decision {
+            Some(outcome @ ("answered" | "delegated")) => {
+                let witness = witness.ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "answered or delegated Question has no Question-specific Decision history witness",
+                    )
+                })?;
+                if value_text(&witness[4])? != outcome {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
-                        "answered or delegated Question has no Decision history",
+                        "Question Decision history witness conflicts with the terminal outcome",
+                    ));
+                }
+                let witness_source = value_key(&witness[5]);
+                if sources.contains_key(&witness_source) {
+                    if response != Some(&witness_source) {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Question response link does not match its Decision history witness",
+                        ));
+                    }
+                } else if response.is_some() {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "forgotten response Source still has an active Question response link",
                     ));
                 }
             }
             Some(_) => {
-                if !linked_decisions.is_empty() {
+                if witness.is_some() || !linked_decisions.is_empty() {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
-                        "non-Decision terminal outcome is represented by a Decision",
+                        "non-Decision terminal outcome carries Decision response history",
                     ));
                 }
             }
         }
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_question_decision_history_witnesses(
+    sources: &BTreeMap<String, &Vec<PortableValue>>,
+    questions: &BTreeMap<String, &Vec<PortableValue>>,
+    question_revisions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
+    witnesses: &BTreeMap<(String, i64), &Vec<PortableValue>>,
+    decisions: &BTreeMap<String, &Vec<PortableValue>>,
+    decisions_by_question: &BTreeMap<(String, i64), Vec<&Vec<PortableValue>>>,
+    supersedes: &BTreeMap<String, String>,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    let mut witnessed_roots = BTreeSet::new();
+    for (key, witness) in witnesses {
+        if let Some(question) = questions.get(&key.0) {
+            if value_integer(&question[2])? != key.1
+                || !question_revisions.contains_key(key)
+                || !matches!(optional_text(&question[3])?, Some("answered" | "delegated"))
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Question Decision history witness does not name an active Decision-terminal Question revision",
+                ));
+            }
+        }
+        let root_id = value_key(&witness[3]);
+        if !witnessed_roots.insert(root_id.clone()) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "one root Decision has duplicate Question history witnesses",
+            ));
+        }
+        let outcome = value_text(&witness[4])?;
+        if !matches!(outcome, "answered" | "delegated")
+            || value_text(&witness[6])? != CURRENT_HOST_USER_AUTHORITY
+            || value_text(&witness[7])? != "explicit_question_response"
+        {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question Decision history witness has invalid content-free provenance",
+            ));
+        }
+        validate_authority_source(&witness[5], sources, tombstones)?;
+        if supersedes.contains_key(&root_id) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question Decision history witness does not identify the original root Decision",
+            ));
+        }
+
+        if let Some(root) = decisions.get(&root_id) {
+            if value_key(&root[3]) != key.0
+                || value_integer(&root[4])? != key.1
+                || value_key(&root[5]) != value_key(&witness[5])
+                || decision_outcome(value_text(&root[7])?) != Some(outcome)
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "active root Decision does not match its Question history witness",
+                ));
+            }
+        } else if !tombstones.contains(&("decision".to_owned(), root_id.clone())) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question Decision history witness has no exact active or forgotten root Decision",
+            ));
+        }
+
+        for decision in decisions_by_question
+            .get(key)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+        {
+            if !decision_lineage_reaches_root(&value_key(&decision[0]), &root_id, supersedes) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Question Decision lineage is not rooted in its response-history witness",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn decision_lineage_reaches_root(
+    decision_id: &str,
+    root_id: &str,
+    supersedes: &BTreeMap<String, String>,
+) -> bool {
+    let mut current = decision_id;
+    loop {
+        if current == root_id {
+            return true;
+        }
+        let Some(previous) = supersedes.get(current) else {
+            return false;
+        };
+        current = previous;
+    }
 }
 
 fn validate_sanitized_question_presentation(
@@ -1985,6 +2102,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 3);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 4);
     }
 }

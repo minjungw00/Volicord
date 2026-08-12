@@ -196,6 +196,19 @@ fn remove_review_due(document: &mut Value) {
     table_mut(document, "review_due")["rows"] = Value::Array(Vec::new());
 }
 
+fn push_tombstone(document: &mut Value, record_kind: &str, record_id: Value) {
+    let project_id = table(document, "projects")["rows"][0][0].clone();
+    table_mut(document, "tombstones")["rows"]
+        .as_array_mut()
+        .unwrap_or_else(|| panic!("tombstone rows missing"))
+        .push(serde_json::json!([
+            project_id,
+            {"type": "text", "value": record_kind},
+            record_id,
+            {"type": "integer", "value": 1_790_000_000_000_000_i64}
+        ]));
+}
+
 fn set_cell(document: &mut Value, table_name: &str, row: usize, name: &str, value: Value) {
     let target = table_mut(document, table_name);
     let index = column(target, name);
@@ -412,6 +425,18 @@ fn valid_direct_decision_lineages_pass_every_portable_forgetting_boundary(
 
     let lineage = root.path().join("valid-lineage.json");
     origin.export_bundle(fixture.project_id, &lineage)?;
+    let lineage_document = read_json(&lineage)?;
+    let original_witness =
+        table(&lineage_document, "question_decision_history_witnesses")["rows"][0].clone();
+    let witness_table = table(&lineage_document, "question_decision_history_witnesses");
+    assert_eq!(
+        original_witness[column(witness_table, "root_decision_id")]["value"],
+        fixture.decision_id.to_string()
+    );
+    assert_eq!(
+        original_witness[column(witness_table, "terminal_outcome")]["value"],
+        "answered"
+    );
     let mut imported = store(&root.path().join("valid-lineage-import.sqlite3"), &[])?;
     imported.import_bundle(operation(84), &lineage)?;
     assert_eq!(
@@ -437,6 +462,13 @@ fn valid_direct_decision_lineages_pass_every_portable_forgetting_boundary(
     )?;
     let source_forgotten = root.path().join("valid-source-forgotten.json");
     origin.export_bundle(fixture.project_id, &source_forgotten)?;
+    assert_eq!(
+        table(
+            &read_json(&source_forgotten)?,
+            "question_decision_history_witnesses"
+        )["rows"][0],
+        original_witness
+    );
     let mut source_import = store(&root.path().join("source-forgotten-import.sqlite3"), &[])?;
     source_import.import_bundle(operation(86), &source_forgotten)?;
     assert_eq!(
@@ -456,6 +488,13 @@ fn valid_direct_decision_lineages_pass_every_portable_forgetting_boundary(
     )?;
     let question_forgotten = root.path().join("valid-question-forgotten.json");
     origin.export_bundle(fixture.project_id, &question_forgotten)?;
+    assert_eq!(
+        table(
+            &read_json(&question_forgotten)?,
+            "question_decision_history_witnesses"
+        )["rows"][0],
+        original_witness
+    );
     let mut question_import = store(&root.path().join("question-forgotten-import.sqlite3"), &[])?;
     question_import.import_bundle(operation(88), &question_forgotten)?;
     assert!(question_import
@@ -466,6 +505,41 @@ fn valid_direct_decision_lineages_pass_every_portable_forgetting_boundary(
         .get_decision_lifecycle(fixture.project_id, superseding.id)?
         .review_due
         .is_some());
+
+    origin.forget_decision(
+        operation(89),
+        fixture.project_id,
+        fixture.decision_id,
+        forgetting_authority.id,
+    )?;
+    let root_forgotten = root.path().join("valid-root-forgotten-lineage.json");
+    origin.export_bundle(fixture.project_id, &root_forgotten)?;
+    assert_eq!(
+        table(
+            &read_json(&root_forgotten)?,
+            "question_decision_history_witnesses"
+        )["rows"][0],
+        original_witness
+    );
+    let mut root_import = store(&root.path().join("root-forgotten-import.sqlite3"), &[])?;
+    root_import.import_bundle(operation(90), &root_forgotten)?;
+    assert_eq!(
+        root_import
+            .get_decision(fixture.project_id, superseding.id)?
+            .choice,
+        DecisionChoice::Delegation {
+            delegate_to: "implementation owner".to_owned()
+        }
+    );
+    assert_eq!(
+        root_import
+            .get_tombstone(
+                fixture.project_id,
+                volicord_context::CanonicalRecordId::Decision(fixture.decision_id),
+            )?
+            .record,
+        volicord_context::CanonicalRecordId::Decision(fixture.decision_id)
+    );
     Ok(())
 }
 
@@ -727,6 +801,170 @@ fn portable_rejects_question_outcome_and_response_link_mismatch(
         missing_link,
         95,
     )
+}
+
+#[test]
+fn portable_requires_question_specific_history_despite_unrelated_decision_tombstones(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+
+    let mut missing = read_json(&fixture.active_bundle)?;
+    table_mut(&mut missing, "question_decision_history_witnesses")["rows"] =
+        Value::Array(Vec::new());
+    assert_clean_import_rejected(
+        root.path(),
+        &fixture,
+        "missing-history-witness",
+        missing,
+        121,
+    )?;
+
+    for (offset, outcome) in ["answered", "delegated"].into_iter().enumerate() {
+        let mut unrelated = read_json(&fixture.active_bundle)?;
+        set_cell(
+            &mut unrelated,
+            "questions",
+            0,
+            "terminal_outcome",
+            serde_json::json!({"type": "text", "value": outcome}),
+        );
+        for table_name in [
+            "question_response_sources",
+            "question_decision_history_witnesses",
+            "decisions",
+            "decision_revisions",
+        ] {
+            table_mut(&mut unrelated, table_name)["rows"] = Value::Array(Vec::new());
+        }
+        push_tombstone(&mut unrelated, "decision", portable_id(0x70 + offset as u8));
+        assert_clean_import_rejected(
+            root.path(),
+            &fixture,
+            &format!("unrelated-tombstone-{outcome}"),
+            unrelated,
+            122 + offset as u8,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn portable_rejects_mismatched_question_history_witness_fields(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let cases: Vec<(&str, Value)> = vec![
+        (
+            "wrong-question",
+            serde_json::json!({"type": "bytes", "value": "70".repeat(16)}),
+        ),
+        (
+            "wrong-revision",
+            serde_json::json!({"type": "integer", "value": 99}),
+        ),
+        (
+            "wrong-outcome",
+            serde_json::json!({"type": "text", "value": "delegated"}),
+        ),
+        (
+            "missing-authority",
+            serde_json::json!({"type": "text", "value": "unknown"}),
+        ),
+    ];
+    for (offset, (label, value)) in cases.into_iter().enumerate() {
+        let mut document = read_json(&fixture.active_bundle)?;
+        let column_name = match label {
+            "wrong-question" => "question_id",
+            "wrong-revision" => "question_revision",
+            "wrong-outcome" => "terminal_outcome",
+            "missing-authority" => "response_authority",
+            _ => return Err("unexpected witness mutation".into()),
+        };
+        set_cell(
+            &mut document,
+            "question_decision_history_witnesses",
+            0,
+            column_name,
+            value,
+        );
+        assert_clean_import_rejected(root.path(), &fixture, label, document, 124 + offset as u8)?;
+    }
+
+    let mut wrong_root = read_json(&fixture.active_bundle)?;
+    let unrelated_root = portable_id(0x74);
+    set_cell(
+        &mut wrong_root,
+        "question_decision_history_witnesses",
+        0,
+        "root_decision_id",
+        unrelated_root.clone(),
+    );
+    push_tombstone(&mut wrong_root, "decision", unrelated_root);
+    assert_clean_import_rejected(root.path(), &fixture, "wrong-root", wrong_root, 128)?;
+
+    let mut missing_root = read_json(&fixture.active_bundle)?;
+    table_mut(&mut missing_root, "decisions")["rows"] = Value::Array(Vec::new());
+    table_mut(&mut missing_root, "decision_revisions")["rows"] = Value::Array(Vec::new());
+    assert_clean_import_rejected(root.path(), &fixture, "missing-root", missing_root, 135)?;
+
+    let mut unrelated_root_tombstone = read_json(&fixture.active_bundle)?;
+    table_mut(&mut unrelated_root_tombstone, "decisions")["rows"] = Value::Array(Vec::new());
+    table_mut(&mut unrelated_root_tombstone, "decision_revisions")["rows"] =
+        Value::Array(Vec::new());
+    push_tombstone(&mut unrelated_root_tombstone, "decision", portable_id(0x75));
+    assert_clean_import_rejected(
+        root.path(),
+        &fixture,
+        "unrelated-root-tombstone",
+        unrelated_root_tombstone,
+        136,
+    )?;
+
+    let mut wrong_source = read_json(&fixture.active_bundle)?;
+    copy_cell(
+        &mut wrong_source,
+        "sources",
+        0,
+        "id",
+        "question_decision_history_witnesses",
+        0,
+        "response_source_id",
+    );
+    assert_clean_import_rejected(
+        root.path(),
+        &fixture,
+        "wrong-response-source",
+        wrong_source,
+        129,
+    )?;
+
+    let mut duplicate = read_json(&fixture.active_bundle)?;
+    let duplicated = table(&duplicate, "question_decision_history_witnesses")["rows"][0].clone();
+    table_mut(&mut duplicate, "question_decision_history_witnesses")["rows"]
+        .as_array_mut()
+        .ok_or("witness rows missing")?
+        .push(duplicated);
+    assert_clean_import_rejected(root.path(), &fixture, "duplicate-witness", duplicate, 130)?;
+
+    for (operation_byte, outcome) in [
+        (131, Value::Null),
+        (
+            132,
+            serde_json::json!({"type": "text", "value": "resolved_by_research"}),
+        ),
+    ] {
+        let mut document = read_json(&fixture.active_bundle)?;
+        set_cell(&mut document, "questions", 0, "terminal_outcome", outcome);
+        assert_clean_import_rejected(
+            root.path(),
+            &fixture,
+            &format!("witness-on-non-decision-{operation_byte}"),
+            document,
+            operation_byte,
+        )?;
+    }
+    Ok(())
 }
 
 #[test]
@@ -1192,6 +1430,19 @@ fn assert_explicit_merge_rejected(
 }
 
 #[test]
+fn explicit_merged_rejects_missing_question_history_before_mutation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let mut document = read_json(&fixture.active_bundle)?;
+    table_mut(&mut document, "question_decision_history_witnesses")["rows"] =
+        Value::Array(Vec::new());
+    let invalid = root.path().join("missing-history-explicit.json");
+    write_recomputed(&invalid, document)?;
+    assert_explicit_merge_rejected(root.path(), &fixture, &invalid, false, false, 133)
+}
+
+#[test]
 fn explicit_merged_rejects_forgotten_question_presentation_before_mutation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
@@ -1313,6 +1564,35 @@ fn export_rejects_internal_non_user_decision_authority_without_republication(
             .export_bundle(fixture.project_id, &previous)
             .err()
             .ok_or("internally forged Decision authority was exported")?
+            .kind(),
+        ErrorKind::CorruptState
+    );
+    assert_eq!(fs::read(&previous)?, previous_bytes);
+    Ok(())
+}
+
+#[test]
+fn export_rejects_internal_missing_question_history_without_republication(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let database = root.path().join("export-missing-history.sqlite3");
+    let mut value = store(&database, &[])?;
+    value.import_bundle(operation(134), &fixture.active_bundle)?;
+    let previous = root.path().join("previous-history.json");
+    value.export_bundle(fixture.project_id, &previous)?;
+    let previous_bytes = fs::read(&previous)?;
+    drop(value);
+    Connection::open(&database)?.execute(
+        "DELETE FROM question_decision_history_witnesses WHERE project_id = ?1",
+        [fixture.project_id.as_bytes().as_slice()],
+    )?;
+    let mut reopened = store(&database, &[])?;
+    assert_eq!(
+        reopened
+            .export_bundle(fixture.project_id, &previous)
+            .err()
+            .ok_or("inconsistent Question history was exported")?
             .kind(),
         ErrorKind::CorruptState
     );
