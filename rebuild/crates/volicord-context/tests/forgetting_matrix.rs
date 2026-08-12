@@ -9,10 +9,11 @@ use volicord_context::{
     CorrectionKind, DecisionChoice, DecisionCorrectionDraft, DecisionSupersessionDraft,
     DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse, FixedClock, MergeResolution,
     MergeResolutionMode, OperationId, Principal, PrincipalKind, QuestionAlternative,
-    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft, SourceDraft,
-    SourcePayload, SourceRelationKind, StatementProvenanceRole, Store, TimestampMicros,
-    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
-    VerificationFact, VerificationState, WorkState,
+    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
+    QuestionTerminalOutcome, SourceDraft, SourcePayload, SourceRelationKind,
+    StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact, UserAcceptanceState,
+    UserReviewFact, UserReviewState, UserTurnSource, VerificationFact, VerificationState,
+    WorkState,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -1074,5 +1075,222 @@ fn question_only_forgetting_purges_owned_decision_presentation(
     let repeat_bundle = root.path().join("question-copy-repeat.json");
     reopened.export_bundle(fixture.project.id, &repeat_bundle)?;
     assert_eq!(fs::read(&managed_bundle)?, fs::read(&repeat_bundle)?);
+    Ok(())
+}
+
+#[test]
+fn incoming_forgetting_sanitizes_every_supported_local_record_closure(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut origin = store(
+        &root.path().join("matrix-origin.sqlite3"),
+        &[1, 2, 3, 4, 5, 6, 7, 8, 9],
+    )?;
+    let fixture = create_fixture(&mut origin)?;
+    let base_bundle = root.path().join("matrix-base.json");
+    origin.export_bundle(fixture.project.id, &base_bundle)?;
+    let scenarios = [
+        (
+            "source",
+            CanonicalRecordId::Source(fixture.source.id),
+            "SOURCE-SECRET-7f91",
+            Some(131_u8),
+        ),
+        (
+            "question",
+            CanonicalRecordId::Question(fixture.dependent_question.id),
+            "Retained dependent question",
+            Some(132_u8),
+        ),
+        (
+            "decision",
+            CanonicalRecordId::Decision(fixture.decision.id),
+            "DECISION-SECRET-2bd4",
+            Some(133_u8),
+        ),
+        (
+            "context-item",
+            CanonicalRecordId::ContextItem(fixture.context_item.id),
+            "CONTEXT-SECRET-53c8",
+            Some(134_u8),
+        ),
+        (
+            "checkpoint",
+            CanonicalRecordId::Checkpoint(fixture.checkpoint.id),
+            "CHECKPOINT-SECRET-e5a2",
+            None,
+        ),
+    ];
+
+    for (index, (label, record, secret, local_operation)) in scenarios.into_iter().enumerate() {
+        let local_database = root.path().join(format!("{label}-local.sqlite3"));
+        let local_bundle = root.path().join(format!("{label}-managed.json"));
+        let incoming_database = root.path().join(format!("{label}-incoming.sqlite3"));
+        let incoming_bundle = root.path().join(format!("{label}-incoming.json"));
+        let mut local = clone_from(&local_database, &base_bundle, 140 + index as u8)?;
+        match record {
+            CanonicalRecordId::Source(source_id) => {
+                local.relate_sources(
+                    operation(local_operation.ok_or("Source operation missing")?),
+                    fixture.project.id,
+                    1,
+                    source_id,
+                    SourceRelationKind::DerivedFrom,
+                    fixture.other_authorization.id,
+                )?;
+            }
+            CanonicalRecordId::Question(question_id) => {
+                local.record_question_response(
+                    operation(local_operation.ok_or("Question operation missing")?),
+                    fixture.project.id,
+                    QuestionResponseDraft {
+                        expected_project_revision: 1,
+                        question_id,
+                        question_revision: 1,
+                        user_turn_source: UserTurnSource::Existing(fixture.authorization.id),
+                        displayed_alternative_keys: vec!["continue".to_owned()],
+                        displayed_recommendation_key: None,
+                        response: ExplicitQuestionResponse::Terminal {
+                            outcome: QuestionTerminalOutcome::Deferred,
+                        },
+                        applicability: ApplicabilityScope::default(),
+                        assumptions: vec![],
+                        revisit_triggers: vec![],
+                    },
+                )?;
+            }
+            CanonicalRecordId::Decision(decision_id) => {
+                local.correct_decision(
+                    operation(local_operation.ok_or("Decision operation missing")?),
+                    fixture.project.id,
+                    decision_id,
+                    DecisionCorrectionDraft {
+                        expected_revision: 1,
+                        corrected_user_rationale: Some(
+                            "DECISION-SECRET-2bd4  rationale".to_owned(),
+                        ),
+                        kind: CorrectionKind::Formatting,
+                        user_authorization_source_id: fixture.authorization.id,
+                    },
+                )?;
+            }
+            CanonicalRecordId::ContextItem(item_id) => {
+                local.correct_context_item(
+                    operation(local_operation.ok_or("Context Item operation missing")?),
+                    fixture.project.id,
+                    item_id,
+                    ContextItemCorrectionDraft {
+                        expected_revision: 1,
+                        corrected_statement: "CONTEXT-SECRET-53c8  statement".to_owned(),
+                        kind: CorrectionKind::Formatting,
+                        user_authorization_source_id: fixture.authorization.id,
+                    },
+                )?;
+            }
+            CanonicalRecordId::Checkpoint(_) => {}
+            CanonicalRecordId::Project(_) => return Err("Project is not forgettable".into()),
+        }
+        local.export_bundle(fixture.project.id, &local_bundle)?;
+
+        let mut incoming = clone_from(&incoming_database, &base_bundle, 150 + index as u8)?;
+        match record {
+            CanonicalRecordId::Source(id) => {
+                incoming.forget_source(
+                    operation(160 + index as u8),
+                    fixture.project.id,
+                    id,
+                    fixture.authorization.id,
+                )?;
+            }
+            CanonicalRecordId::Question(id) => {
+                incoming.forget_question(
+                    operation(160 + index as u8),
+                    fixture.project.id,
+                    id,
+                    fixture.authorization.id,
+                )?;
+            }
+            CanonicalRecordId::Decision(id) => {
+                incoming.forget_decision(
+                    operation(160 + index as u8),
+                    fixture.project.id,
+                    id,
+                    fixture.authorization.id,
+                )?;
+            }
+            CanonicalRecordId::ContextItem(id) => {
+                incoming.forget_context_item(
+                    operation(160 + index as u8),
+                    fixture.project.id,
+                    id,
+                    fixture.authorization.id,
+                )?;
+            }
+            CanonicalRecordId::Checkpoint(id) => {
+                incoming.forget_checkpoint(
+                    operation(160 + index as u8),
+                    fixture.project.id,
+                    id,
+                    fixture.authorization.id,
+                )?;
+            }
+            CanonicalRecordId::Project(_) => return Err("Project is not forgettable".into()),
+        }
+        incoming.export_bundle(fixture.project.id, &incoming_bundle)?;
+        let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+        let resolution = comparison
+            .requires_user_resolution()
+            .then_some(MergeResolution {
+                conflict_set_identity: comparison.conflict_set_identity,
+                conflict_revision: 1,
+                user_turn_source_id: fixture.authorization.id,
+                mode: MergeResolutionMode::ChooseIncoming,
+            });
+        let merge_operation = operation(170 + index as u8);
+        local.merge_bundle(
+            merge_operation,
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            resolution,
+        )?;
+        assert_eq!(
+            local.get_tombstone(fixture.project.id, record)?.record,
+            record
+        );
+        let connection = Connection::open(&local_database)?;
+        let sanitation_state: String = connection.query_row(
+            "SELECT sanitation_state FROM merge_sanitation WHERE operation_id = ?1",
+            [merge_operation.as_bytes().as_slice()],
+            |row| row.get(0),
+        )?;
+        assert_eq!(sanitation_state, "complete");
+        let merge_basis: Vec<u8> = connection.query_row(
+            "SELECT input_basis FROM operations WHERE operation_id = ?1",
+            [merge_operation.as_bytes().as_slice()],
+            |row| row.get(0),
+        )?;
+        assert!(merge_basis.is_empty());
+        if let Some(value) = local_operation {
+            let local_basis: Vec<u8> = connection.query_row(
+                "SELECT input_basis FROM operations WHERE operation_id = ?1",
+                [operation(value).as_bytes().as_slice()],
+                |row| row.get(0),
+            )?;
+            assert!(local_basis.is_empty());
+        }
+        drop(connection);
+        drop(local);
+        for path in [&local_database, &local_bundle] {
+            let bytes = fs::read(path)?;
+            assert!(
+                !bytes
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes()),
+                "{label} merge-selected forgetting left content in {}",
+                path.display()
+            );
+        }
+    }
     Ok(())
 }

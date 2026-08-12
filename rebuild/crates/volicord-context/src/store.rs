@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
-const REQUIRED_TABLES: [&str; 28] = [
+const REQUIRED_TABLES: [&str; 29] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -57,6 +57,7 @@ const REQUIRED_TABLES: [&str; 28] = [
     "managed_bundle_paths",
     "bundle_lineage",
     "merge_events",
+    "merge_sanitation",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -2018,7 +2019,7 @@ pub(crate) fn sanitize_forgotten_dependencies(
     Ok(())
 }
 
-fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
+pub(crate) fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
     let (busy, _, _): (i64, i64, i64) = connection
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -4806,6 +4807,14 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  affected_identities BLOB NOT NULL,
                  branch_history_basis TEXT,
                  committed_at INTEGER NOT NULL,
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE merge_sanitation(
+                 operation_id BLOB PRIMARY KEY NOT NULL CHECK(length(operation_id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 sanitation_state TEXT NOT NULL CHECK(sanitation_state IN ('pending','complete')),
+                 updated_at INTEGER NOT NULL,
+                 FOREIGN KEY(operation_id) REFERENCES operations(operation_id) ON DELETE CASCADE,
                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE checkpoints(

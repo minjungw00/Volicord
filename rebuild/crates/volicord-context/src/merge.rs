@@ -3,7 +3,8 @@ use crate::portable::{
     value_text, Lineage, Payload, PortableTable, PortableValue, SemanticState, TABLES,
 };
 use crate::{
-    Availability, Error, ErrorKind, OperationId, OperationResult, ProjectId, SourceId, Store,
+    Availability, CanonicalRecordId, CanonicalRecordKind, CheckpointId, ContextItemId, DecisionId,
+    Error, ErrorKind, OperationId, OperationResult, ProjectId, QuestionId, SourceId, Store,
 };
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 use std::collections::{BTreeMap, BTreeSet};
@@ -190,6 +191,13 @@ impl Store {
             &incoming_binding,
             resolution.as_ref(),
         )?;
+        if merge_replay_input_was_sanitized(&self.connection, operation_id)? {
+            finish_merge_sanitation(self, operation_id, incoming.project_id)?;
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                "merge replay input was erased after canonical forgetting; the prior canonical mutation was not repeated and managed sanitation is complete",
+            ));
+        }
         if let Some(value) = load_replayed_merge(&self.connection, operation_id, &request_basis)? {
             return Ok(OperationResult {
                 value,
@@ -297,8 +305,14 @@ impl Store {
         let resolution_source = resolution.as_ref().map(|value| value.user_turn_source_id);
         let classes = sorted_classes(&compared.comparison);
         let affected = affected_identities(&compared.comparison);
-        let operation_dependencies =
+        let newly_forgotten = target
+            .as_ref()
+            .map(|value| newly_forgotten_records(&compared.local, value))
+            .transpose()?
+            .unwrap_or_default();
+        let mut operation_dependencies =
             crate::portable::payload_dependencies(target.as_ref().unwrap_or(&compared.local))?;
+        operation_dependencies.extend(newly_forgotten.iter().copied());
         let now = self.clock.now()?;
         let transaction = self
             .connection
@@ -342,6 +356,35 @@ impl Store {
             now,
             &operation_dependencies,
         )?;
+        for record in &newly_forgotten {
+            crate::store::sanitize_forgotten_dependencies(&transaction, project_id, *record, now)?;
+        }
+        if !newly_forgotten.is_empty() {
+            transaction
+                .execute(
+                    "UPDATE merge_events
+                     SET conflict_set_id = result_history_basis,
+                         common_base_basis = NULL,
+                         local_history_basis = result_history_basis,
+                         incoming_history_basis = result_history_basis,
+                         branch_history_basis = NULL
+                     WHERE operation_id = ?1",
+                    [operation_id.as_bytes().as_slice()],
+                )
+                .map_err(storage_write)?;
+            transaction
+                .execute(
+                    "INSERT INTO merge_sanitation(
+                         operation_id, project_id, sanitation_state, updated_at
+                     ) VALUES (?1, ?2, 'pending', ?3)",
+                    params![
+                        operation_id.as_bytes().as_slice(),
+                        project_id.as_bytes().as_slice(),
+                        now.as_unix_micros(),
+                    ],
+                )
+                .map_err(storage_write)?;
+        }
         transaction
             .execute(
                 "DELETE FROM bundle_lineage WHERE project_id = ?1",
@@ -349,6 +392,9 @@ impl Store {
             )
             .map_err(storage_write)?;
         transaction.commit().map_err(storage_commit)?;
+        if !newly_forgotten.is_empty() {
+            finish_merge_sanitation(self, operation_id, project_id)?;
+        }
         Ok(OperationResult {
             value: BundleMerge {
                 project_id,
@@ -1433,6 +1479,158 @@ fn load_replayed_merge(
         affected_identities: decode_strings(&row.9)?,
         branch_history_basis: row.10,
     }))
+}
+
+fn merge_replay_input_was_sanitized(
+    connection: &rusqlite::Connection,
+    operation_id: OperationId,
+) -> Result<bool, Error> {
+    let state: Option<(String, String)> = connection
+        .query_row(
+            "SELECT operation_kind, replay_state FROM operations WHERE operation_id = ?1",
+            [operation_id.as_bytes().as_slice()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(storage_read)?;
+    Ok(
+        matches!(state, Some((kind, replay_state)) if kind == "merge_bundle" && replay_state == "forgotten_dependency"),
+    )
+}
+
+fn finish_merge_sanitation(
+    store: &mut Store,
+    operation_id: OperationId,
+    project_id: ProjectId,
+) -> Result<(), Error> {
+    let state: Option<(Vec<u8>, String)> = store
+        .connection
+        .query_row(
+            "SELECT project_id, sanitation_state FROM merge_sanitation WHERE operation_id = ?1",
+            [operation_id.as_bytes().as_slice()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(storage_read)?;
+    let Some((stored_project, state)) = state else {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "sanitized merge operation is missing durable sanitation state",
+        ));
+    };
+    if ProjectId::from_slice(&stored_project)? != project_id {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "merge sanitation state belongs to a different Project",
+        ));
+    }
+    if state == "complete" {
+        return Ok(());
+    }
+    if state != "pending" {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "merge sanitation state is invalid",
+        ));
+    }
+    crate::store::sanitize_deleted_content(&store.connection).map_err(|error| {
+        Error::with_source(
+            ErrorKind::RepairRequired,
+            "merge committed, but managed SQLite deletion hygiene is incomplete",
+            error,
+        )
+    })?;
+    crate::portable::refresh_managed_bundles(store, project_id).map_err(|error| {
+        Error::with_source(
+            ErrorKind::RepairRequired,
+            "merge committed, but a managed portable bundle requires sanitation",
+            error,
+        )
+    })?;
+    store
+        .connection
+        .execute(
+            "UPDATE merge_sanitation
+             SET sanitation_state = 'complete', updated_at = ?2
+             WHERE operation_id = ?1 AND sanitation_state = 'pending'",
+            params![
+                operation_id.as_bytes().as_slice(),
+                store.clock.now()?.as_unix_micros(),
+            ],
+        )
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::RepairRequired,
+                "merge sanitation completed but its durable state could not be recorded",
+                error,
+            )
+        })
+        .and_then(|count| {
+            if count == 1 {
+                Ok(())
+            } else {
+                Err(Error::new(
+                    ErrorKind::RepairRequired,
+                    "merge sanitation state changed unexpectedly",
+                ))
+            }
+        })
+}
+
+fn newly_forgotten_records(
+    local: &Payload,
+    target: &Payload,
+) -> Result<Vec<CanonicalRecordId>, Error> {
+    let mut active = BTreeSet::new();
+    for table in &local.tables {
+        let kind = match table.name.as_str() {
+            "sources" => CanonicalRecordKind::Source,
+            "questions" => CanonicalRecordKind::Question,
+            "decisions" => CanonicalRecordKind::Decision,
+            "context_items" => CanonicalRecordKind::ContextItem,
+            "checkpoints" => CanonicalRecordKind::Checkpoint,
+            _ => continue,
+        };
+        for row in &table.rows {
+            active.insert((kind, value_bytes(&row[0])?));
+        }
+    }
+    let tombstones = target
+        .tables
+        .iter()
+        .find(|table| table.name == "tombstones")
+        .ok_or_else(|| Error::new(ErrorKind::CorruptState, "target tombstone table is missing"))?;
+    let mut forgotten = Vec::new();
+    for row in &tombstones.rows {
+        let kind = CanonicalRecordKind::parse(value_text(&row[1])?).ok_or_else(|| {
+            Error::new(ErrorKind::CorruptState, "target tombstone kind is invalid")
+        })?;
+        let id = value_bytes(&row[2])?;
+        if active.contains(&(kind, id.clone())) {
+            forgotten.push(record_id(kind, &id)?);
+        }
+    }
+    forgotten.sort_by_key(|record| (record.kind(), record.as_bytes()));
+    Ok(forgotten)
+}
+
+fn record_id(kind: CanonicalRecordKind, bytes: &[u8]) -> Result<CanonicalRecordId, Error> {
+    Ok(match kind {
+        CanonicalRecordKind::Project => CanonicalRecordId::Project(ProjectId::from_slice(bytes)?),
+        CanonicalRecordKind::Source => CanonicalRecordId::Source(SourceId::from_slice(bytes)?),
+        CanonicalRecordKind::Question => {
+            CanonicalRecordId::Question(QuestionId::from_slice(bytes)?)
+        }
+        CanonicalRecordKind::Decision => {
+            CanonicalRecordId::Decision(DecisionId::from_slice(bytes)?)
+        }
+        CanonicalRecordKind::ContextItem => {
+            CanonicalRecordId::ContextItem(ContextItemId::from_slice(bytes)?)
+        }
+        CanonicalRecordKind::Checkpoint => {
+            CanonicalRecordId::Checkpoint(CheckpointId::from_slice(bytes)?)
+        }
+    })
 }
 
 fn merge_view(

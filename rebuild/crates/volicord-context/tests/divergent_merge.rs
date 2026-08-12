@@ -1159,3 +1159,211 @@ fn one_sided_correction_is_bounded_automatic_but_question_state_is_user_owned(
     }));
     Ok(())
 }
+
+#[test]
+fn merge_selected_forgetting_requires_and_recovers_managed_sanitation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const SECRET: &str = "base  rationale";
+    let root = tempdir()?;
+    let mut origin = store(&root.path().join("origin.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+
+    let local_database = root.path().join("local.sqlite3");
+    let local_bundle = root.path().join("local-managed.json");
+    let local_temporary = root.path().join(".local-managed.json.volicord-context.tmp");
+    let mut local = clone_from(&local_database, &base_bundle, &[], 40)?;
+    local.correct_decision(
+        operation(41),
+        base.project.id,
+        base.decision.id,
+        DecisionCorrectionDraft {
+            expected_revision: 1,
+            corrected_user_rationale: Some(SECRET.to_owned()),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    local.export_bundle(base.project.id, &local_bundle)?;
+
+    let mut incoming = clone_from(&root.path().join("incoming.sqlite3"), &base_bundle, &[], 42)?;
+    incoming.forget_decision(
+        operation(43),
+        base.project.id,
+        base.decision.id,
+        base.authorization.id,
+    )?;
+    let incoming_bundle = root.path().join("incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    let resolution = MergeResolution {
+        conflict_set_identity: comparison.conflict_set_identity,
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseIncoming,
+    };
+
+    let interrupted_database = root.path().join("interrupted-before-commit.sqlite3");
+    let mut interrupted = clone_from(&interrupted_database, &base_bundle, &[], 46)?;
+    interrupted.correct_decision(
+        operation(47),
+        base.project.id,
+        base.decision.id,
+        DecisionCorrectionDraft {
+            expected_revision: 1,
+            corrected_user_rationale: Some(SECRET.to_owned()),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let interrupted_comparison =
+        interrupted.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    drop(interrupted);
+    let connection = Connection::open(&interrupted_database)?;
+    connection.execute_batch(
+        "CREATE TRIGGER interrupt_forgetting_merge BEFORE INSERT ON tombstones
+         BEGIN SELECT RAISE(ABORT, 'interrupt before canonical merge commit'); END;",
+    )?;
+    drop(connection);
+    let mut interrupted = store(&interrupted_database, &[])?;
+    let interrupted_error = interrupted
+        .merge_bundle(
+            operation(48),
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            Some(MergeResolution {
+                conflict_set_identity: interrupted_comparison.conflict_set_identity,
+                conflict_revision: 1,
+                user_turn_source_id: base.authorization.id,
+                mode: MergeResolutionMode::ChooseIncoming,
+            }),
+        )
+        .err()
+        .ok_or("interruption before merge commit succeeded")?;
+    assert_eq!(interrupted_error.kind(), ErrorKind::TransactionFailure);
+    assert_eq!(
+        interrupted
+            .get_decision(base.project.id, base.decision.id)?
+            .user_rationale
+            .as_deref(),
+        Some(SECRET)
+    );
+    assert!(interrupted
+        .get_tombstone(
+            base.project.id,
+            CanonicalRecordId::Decision(base.decision.id)
+        )
+        .is_err());
+
+    fs::create_dir(&local_temporary)?;
+    let error = local
+        .merge_bundle(
+            operation(44),
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            Some(resolution.clone()),
+        )
+        .err()
+        .ok_or("post-commit sanitation obstruction reported merge success")?;
+    assert_eq!(error.kind(), ErrorKind::RepairRequired);
+    assert!(local
+        .get_decision(base.project.id, base.decision.id)
+        .is_err());
+    assert_eq!(
+        local
+            .get_tombstone(
+                base.project.id,
+                CanonicalRecordId::Decision(base.decision.id)
+            )?
+            .record,
+        CanonicalRecordId::Decision(base.decision.id)
+    );
+    let connection = Connection::open(&local_database)?;
+    let pending: String = connection.query_row(
+        "SELECT sanitation_state FROM merge_sanitation WHERE operation_id = ?1",
+        [operation(44).as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(pending, "pending");
+    let operation_basis: Vec<u8> = connection.query_row(
+        "SELECT input_basis FROM operations WHERE operation_id = ?1",
+        [operation(44).as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    assert!(operation_basis.is_empty());
+    let merge_bases: (String, String, String) = connection.query_row(
+        "SELECT local_history_basis, incoming_history_basis, result_history_basis
+         FROM merge_events WHERE operation_id = ?1",
+        [operation(44).as_bytes().as_slice()],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    assert_eq!(merge_bases.0, merge_bases.2);
+    assert_eq!(merge_bases.1, merge_bases.2);
+    drop(connection);
+    assert!(fs::read(&local_bundle)?
+        .windows(SECRET.len())
+        .any(|window| window == SECRET.as_bytes()));
+
+    fs::remove_dir(&local_temporary)?;
+    let replay_error = local
+        .merge_bundle(
+            operation(44),
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            Some(resolution),
+        )
+        .err()
+        .ok_or("sanitized merge replay reported unsafe success")?;
+    assert_eq!(replay_error.kind(), ErrorKind::NotFound);
+    let changed_error = local
+        .merge_bundle(
+            operation(44),
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            None,
+        )
+        .err()
+        .ok_or("changed sanitized merge replay input succeeded")?;
+    assert_eq!(changed_error.kind(), ErrorKind::NotFound);
+    drop(local);
+
+    let complete: String = Connection::open(&local_database)?.query_row(
+        "SELECT sanitation_state FROM merge_sanitation WHERE operation_id = ?1",
+        [operation(44).as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(complete, "complete");
+    for path in [
+        local_database.clone(),
+        root.path().join("local.sqlite3-wal"),
+        root.path().join("local.sqlite3-shm"),
+        local_bundle.clone(),
+        local_temporary.clone(),
+    ] {
+        if path.is_file() {
+            let bytes = fs::read(&path)?;
+            assert!(
+                !bytes
+                    .windows(SECRET.len())
+                    .any(|window| window == SECRET.as_bytes()),
+                "merge-selected forgotten content remains in {}",
+                path.display()
+            );
+        }
+    }
+
+    let mut imported = store(&root.path().join("imported.sqlite3"), &[])?;
+    imported.import_bundle(operation(45), &local_bundle)?;
+    assert!(imported
+        .get_decision(base.project.id, base.decision.id)
+        .is_err());
+    let imported_bundle = root.path().join("imported.json");
+    imported.export_bundle(base.project.id, &imported_bundle)?;
+    assert_eq!(fs::read(&local_bundle)?, fs::read(&imported_bundle)?);
+    Ok(())
+}

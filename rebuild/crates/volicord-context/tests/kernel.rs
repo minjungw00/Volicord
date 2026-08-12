@@ -89,6 +89,19 @@ fn creates_schema_with_required_durability_profile() -> Result<(), Box<dyn std::
         dependency_columns,
         vec!["operation_id", "project_id", "owner_kind", "owner_id"]
     );
+    let sanitation_columns: Vec<String> = connection
+        .prepare("PRAGMA table_info(merge_sanitation)")?
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    assert_eq!(
+        sanitation_columns,
+        vec![
+            "operation_id",
+            "project_id",
+            "sanitation_state",
+            "updated_at"
+        ]
+    );
     Ok(())
 }
 

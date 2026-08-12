@@ -24,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 8 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 9 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -172,13 +172,19 @@ owned by `rebuild/docs/design/`.
   bundle, or retain the local context with an inspectable incoming branch
   basis. No timestamp, last-writer, access-frequency, path-similarity, or model
   recommendation fallback exists.
-- One merge replaces the selected Project-scoped portable state and records a
-  content-free operational provenance row in the same immediate transaction.
-  The row retains bundle/history identities, classes, affected identities,
-  resolution Source, branch basis, and result basis without becoming a seventh
-  canonical entity. The same operation/input replays; changed resolution input
-  conflicts. Transaction interruption exposes only the prior or committed
-  state.
+- One merge replaces the selected Project-scoped portable state and records its
+  bounded operational provenance in the same immediate transaction. When that
+  target newly forgets a locally active identity, the transaction invokes the
+  same dependency and copied-content sanitation used by direct forgetting,
+  erases the merge input and any pre-merge history verifier, and durably marks
+  managed sanitation `pending`. Only after WAL checkpoint/truncation, database
+  compaction, temporary-candidate cleanup, and refresh of every registered
+  bundle does it mark sanitation `complete` and return initial success. A
+  post-commit failure returns `RepairRequired`; replay completes the pending
+  sanitation without repeating canonical mutation. Once the forgotten input is
+  erased, replay and changed-input reuse are both rejected with `NotFound`
+  because equality can no longer be verified safely. Merges that select no new
+  forgetting retain normal same-input replay and changed-input conflict.
 
 ## Deterministic canonical read basis
 
