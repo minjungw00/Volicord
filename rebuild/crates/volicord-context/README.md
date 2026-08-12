@@ -160,6 +160,26 @@ owned by `rebuild/docs/design/`.
   conflicts. Transaction interruption exposes only the prior or committed
   state.
 
+## Deterministic canonical read basis
+
+- `read_canonical_basis` is a read-only, provider- and analyzer-independent
+  input contract for later Recall. It returns Project identity, active and
+  terminal Questions, active and superseded Decisions with applicability,
+  assumptions, contradictions and review-due state, Context Items, the latest
+  Checkpoint and optional history, Sources with snapshot/availability/freshness,
+  revision and canonical relations, tombstones, and merge/branch provenance.
+- Canonical entity collections use typed identity bytes as their total order.
+  Checkpoint chronology uses durable UTC microseconds with identity as the
+  tie-breaker. Relations, tombstones, revisions, and merge bases use explicit
+  tuple ordering. No local path, locale, timezone rendering, filesystem or map
+  enumeration, process observation, access frequency, retrieval score, or model
+  output participates.
+- The basis contains no natural-language brief, ranking, budget, automatic
+  session trigger, Candidate view, or user/agent projection. It remains usable
+  after restart, source loss, portable import, another-path binding, merge, and
+  branch resolution without Repository Intelligence, a provider, or Derived
+  State.
+
 ## Dependency review
 
 The production dependency set has four direct crates:
