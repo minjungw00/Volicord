@@ -24,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 4 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 5 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -89,19 +89,59 @@ owned by `rebuild/docs/design/`.
   provide no field for full prompts, full tool arguments, entire Source bodies,
   unlimited command streams, or secret-bearing environments.
 
-Portable bundle encoding is not implemented in this slice. The reserved later
-boundary is kind `volicord-context-bundle`, format version `1`, using
-deterministic UTF-8 JSON plus a corruption-detection checksum as accepted by the
-workstream.
+## Portable bundle choices
+
+- The portable representation is kind `volicord-context-bundle`, format
+  version `1`. This is the only readable and writable version. Older or newer
+  versions are rejected before mutation; there is no legacy decoder or
+  migration path.
+- The payload is compact UTF-8 JSON with one LF terminator, fixed lexicographic
+  object-key order, stable table/row/column ordering, and hexadecimal typed
+  identities/bytes. It contains no per-export current timestamp. SHA-256 covers
+  the canonical payload only for corruption detection; the format has no
+  signature, encryption, compression, or remote synchronization behavior.
+- A Project-scoped semantic allowlist carries Project and Source manifest data,
+  Questions, Decisions, Context Items, Checkpoints, revision snapshots,
+  relations, review state, supersession, and minimal tombstones. This mapping is
+  independent from the runtime database file and excludes schema metadata,
+  operation replay rows, local bindings, managed output paths, journals,
+  Candidates, Derived State, indexes, caches, layouts, previews, raw tool
+  traffic, full transcripts, and raw Source bodies.
+- The lineage object records a SHA-256 history basis for the exact Project
+  semantic state and uses that same state as the current common-base basis. It
+  is sufficient to compare a later divergent export without implementing the
+  V04 merge or conflict-resolution policy here.
+- Repository-bound Source manifest entries import with `unavailable` local
+  availability. Canonical records and historical Source identity remain
+  readable without a repository, and an explicit later bind can establish a
+  different local absolute path without changing portable bytes.
+- Import verifies kind/version, checksum, Project scope, exact table contract,
+  duplicate keys, lineage, relation endpoints, local equality, and conflict
+  possibility before commit. It inserts exact identities in one immediate
+  transaction, reports already-present state, records a content-free replay
+  basis, and rejects divergent merge rather than choosing a winner.
+- Publication writes a fixed sibling temporary candidate, syncs it, atomically
+  renames it over the final path, and syncs the containing directory. Import
+  rejects the temporary name as non-authoritative. A regular orphan candidate
+  is cleaned on the next export; an unexpected directory or other obstruction
+  fails without replacing the prior final bundle.
+- Successfully published paths are local managed state and never enter bundle
+  bytes. User-authorized forgetting republishes those current managed bundles
+  after SQLite deletion hygiene, removing forgotten raw content from both
+  managed representations while retaining only the minimal tombstone. If a
+  local obstruction prevents that post-commit refresh, forgetting reports
+  `RepairRequired` explicitly rather than claiming complete managed cleanup.
 
 ## Dependency review
 
-The production dependency set has two direct crates:
+The production dependency set has four direct crates:
 
 | Dependency | Selection and purpose | Rust/Linux evidence | License and behavior |
 |---|---|---|---|
 | `rusqlite 0.32.1` with `bundled` | Maintained synchronous SQLite API and a pinned bundled SQLite build, avoiding a runtime service or system-library version dependency. | Edition 2021 source and its locked dependency graph have declared minimum Rust versions no newer than 1.65 where specified; it builds on Linux under the workspace's Rust 1.85 contract. | MIT. No network client, telemetry, async runtime, or external-service behavior. Bundled SQLite is public domain. |
 | `getrandom 0.3.4` with `std` | Fills exactly 16 bytes from the OS for each production identity; no general RNG hierarchy is introduced. | Declares Rust 1.63 and has a native Linux backend. | MIT OR Apache-2.0. No telemetry or external-service behavior. |
+| `serde 1.0.228` with `derive` | Defines the private, typed portable envelope and payload mapping. | Supports the workspace Rust version and is exercised on Linux by deterministic round-trip tests. | MIT OR Apache-2.0. No I/O, network, telemetry, or runtime service behavior. |
+| `serde_json 1.0.150` | Emits and validates the deterministic UTF-8 JSON representation; ordering comes from fixed structs and ordered arrays rather than hash maps. | Supports the workspace Rust version and is exercised by byte-identity and corruption tests. | MIT OR Apache-2.0. No network, telemetry, signature, encryption, or compression behavior. |
 
 The locked normal/build transitive shape is small and local:
 
@@ -117,6 +157,9 @@ rusqlite
 ├── hashlink → hashbrown → ahash → (cfg-if, once_cell, zerocopy)
 ├── libsqlite3-sys → build-only (cc, pkg-config, vcpkg)
 └── smallvec
+
+serde → serde_core, optional derive macros
+serde_json → serde_core, itoa, memchr, zmij
 ```
 
 `cc` uses the build-only `find-msvc-tools` and `shlex` crates, and `ahash` uses

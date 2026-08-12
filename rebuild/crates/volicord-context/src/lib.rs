@@ -8,6 +8,7 @@
 mod error;
 mod identity;
 mod model;
+mod portable;
 mod store;
 mod time;
 
@@ -29,6 +30,9 @@ pub use model::{
     SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, Tombstone,
     UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
     VerificationFact, VerificationState, WorkState,
+};
+pub use portable::{
+    BundleExport, BundleImport, BundleImportStatus, BUNDLE_FORMAT_VERSION, BUNDLE_KIND,
 };
 pub use store::{Store, SCHEMA_KIND, SCHEMA_VERSION};
 pub use time::{Clock, FixedClock, SystemClock, TimestampMicros};

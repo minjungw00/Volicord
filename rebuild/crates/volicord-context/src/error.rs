@@ -12,6 +12,7 @@ pub enum ErrorKind {
     DomainConflict,
     UnsupportedVersion,
     CorruptState,
+    IntegrityFailure,
     StorageUnavailable,
     TransactionFailure,
     IndeterminateOutcome,

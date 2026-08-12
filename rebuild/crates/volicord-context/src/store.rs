@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
-const REQUIRED_TABLES: [&str; 24] = [
+const REQUIRED_TABLES: [&str; 25] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -53,6 +53,7 @@ const REQUIRED_TABLES: [&str; 24] = [
     "canonical_relations",
     "review_due",
     "tombstones",
+    "managed_bundle_paths",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -1879,6 +1880,16 @@ fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
         .map_err(write_error)
 }
 
+fn refresh_bundles_after_forgetting(store: &Store, project_id: ProjectId) -> Result<(), Error> {
+    crate::portable::refresh_managed_bundles(store, project_id).map_err(|error| {
+        Error::with_source(
+            ErrorKind::RepairRequired,
+            "canonical forgetting committed, but a managed portable bundle requires refresh",
+            error,
+        )
+    })
+}
+
 impl Store {
     pub fn correct_context_item(
         &mut self,
@@ -2085,6 +2096,7 @@ impl Store {
     ) -> Result<OperationResult<Decision>, Error> {
         validate_string_list("Decision assumptions", &draft.assumptions)?;
         validate_string_list("Decision revisit triggers", &draft.revisit_triggers)?;
+        validate_portable_paths("Decision applicability path", &draft.applicability.paths)?;
         validate_optional_nonempty("user rationale", draft.user_rationale.as_deref())?;
         let choice_basis = match &draft.choice {
             DecisionChoice::Alternative { alternative_key } => {
@@ -2563,6 +2575,7 @@ impl Store {
             let tombstone = load_tombstone(&transaction, project_id, record)?;
             transaction.commit().map_err(commit_error)?;
             sanitize_deleted_content(connection)?;
+            refresh_bundles_after_forgetting(self, project_id)?;
             return Ok(OperationResult {
                 value: forget_result(tombstone),
                 replayed: true,
@@ -2659,6 +2672,7 @@ impl Store {
         )?;
         transaction.commit().map_err(commit_error)?;
         sanitize_deleted_content(connection)?;
+        refresh_bundles_after_forgetting(self, project_id)?;
         let tombstone = Tombstone {
             project_id,
             record,
@@ -2682,6 +2696,10 @@ fn validate_context_item_draft(draft: &ContextItemDraft) -> Result<(), Error> {
     }
     ensure_unique_ids("Context Item Source basis", &draft.source_basis)?;
     validate_string_list(
+        "Context Item applicability path",
+        &draft.applicability.paths,
+    )?;
+    validate_portable_paths(
         "Context Item applicability path",
         &draft.applicability.paths,
     )?;
@@ -2924,6 +2942,7 @@ fn validate_checkpoint_draft(draft: &CheckpointDraft) -> Result<(), Error> {
     )?;
     ensure_unique_ids("Checkpoint applied Decisions", &draft.applied_decisions)?;
     validate_string_list("Checkpoint changed path", &draft.changed_paths)?;
+    validate_portable_paths("Checkpoint changed path", &draft.changed_paths)?;
     validate_string_list("Checkpoint known limit", &draft.known_limits)?;
     validate_string_list("Checkpoint non-goal", &draft.non_goals)?;
     for verification in &draft.verification {
@@ -3435,6 +3454,7 @@ fn validate_response_draft(draft: &QuestionResponseDraft) -> Result<(), Error> {
         &draft.displayed_alternative_keys,
     )?;
     validate_string_list("Decision applicability path", &draft.applicability.paths)?;
+    validate_portable_paths("Decision applicability path", &draft.applicability.paths)?;
     validate_string_list(
         "Decision applicability component",
         &draft.applicability.components,
@@ -4392,6 +4412,12 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  forgotten_at INTEGER NOT NULL,
                  PRIMARY KEY(project_id, record_kind, record_id)
              ) WITHOUT ROWID;
+             CREATE TABLE managed_bundle_paths(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 absolute_path TEXT NOT NULL CHECK(length(absolute_path) > 0),
+                 PRIMARY KEY(project_id, absolute_path),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
              CREATE TABLE checkpoints(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
@@ -5190,6 +5216,28 @@ fn validate_source_draft(draft: &SourceDraft) -> Result<(), Error> {
         if let Some(value) = value {
             validate_nonempty(label, value)?;
         }
+    }
+    let portable_locator = match &draft.payload {
+        SourcePayload::File { locator, .. }
+        | SourcePayload::Symbol { locator, .. }
+        | SourcePayload::AdoptedArtifact { locator, .. } => Some(locator.as_str()),
+        _ => None,
+    };
+    if portable_locator.is_some_and(|locator| Path::new(locator).is_absolute()) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "portable Source locator must not be a local absolute path",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_portable_paths(label: &str, values: &[String]) -> Result<(), Error> {
+    if values.iter().any(|value| Path::new(value).is_absolute()) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("{label} must not contain a local absolute path"),
+        ));
     }
     Ok(())
 }
