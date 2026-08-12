@@ -5,6 +5,7 @@
 //! Decisions, Context Items, source-grounded Checkpoints, and replay-safe
 //! SQLite operations at a caller-supplied path.
 
+mod canonical_state;
 mod error;
 mod identity;
 mod merge;

@@ -671,7 +671,7 @@ pub(crate) fn validate_bundle(bytes: &[u8]) -> Result<ValidatedBundle, Error> {
         ));
     }
     let project_id = parse_project_id(&envelope.payload.project_id)?;
-    validate_tables(&envelope.payload, project_id)?;
+    crate::canonical_state::validate_payload(&envelope.payload, project_id)?;
     let state = SemanticState {
         project_id: envelope.payload.project_id.clone(),
         tables: envelope.payload.tables.clone(),
@@ -792,7 +792,10 @@ pub(crate) fn export_table(
     })
 }
 
-pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Result<(), Error> {
+pub(crate) fn validate_portable_canonical_invariants(
+    payload: &Payload,
+    project_id: ProjectId,
+) -> Result<(), Error> {
     if payload.tables.len() != TABLES.len() {
         return Err(Error::new(
             ErrorKind::CorruptState,

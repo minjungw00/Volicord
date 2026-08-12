@@ -21,6 +21,13 @@ owned by `rebuild/docs/design/`.
 - Every canonical mutation takes a caller-supplied `OperationId`, acquires an
   immediate transaction, and commits one domain operation. Writers are
   serialized by the mutable store handle and SQLite's writer transaction.
+- `canonical_state` is the single complete-Project semantic validation owner.
+  Direct commands validate their resulting Project view after recording the
+  operation and before transaction commit. Production export, decoded bundle
+  admission, generated merge targets, Project-state replacement, and explicit
+  merged input all use the same boundary; transition preconditions and local
+  operation/binding invariants remain separately named responsibilities. The
+  maintained mapping is in `INVARIANTS.md`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.

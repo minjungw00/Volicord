@@ -1,6 +1,6 @@
 use crate::portable::{
-    bundle_bytes, insert_row, sha256_hex, validate_bundle, validate_tables, value_bytes, value_key,
-    value_text, Lineage, Payload, PortableTable, PortableValue, SemanticState, TABLES,
+    bundle_bytes, insert_row, sha256_hex, validate_bundle, value_bytes, value_key, value_text,
+    Lineage, Payload, PortableTable, PortableValue, SemanticState, TABLES,
 };
 use crate::{
     Availability, CanonicalRecordId, CanonicalRecordKind, CheckpointId, ContextItemId, DecisionId,
@@ -242,7 +242,7 @@ impl Store {
                     Error::new(ErrorKind::InvalidInput, "explicit merged bundle is missing")
                 })?;
                 ensure_project(validated.project_id, compared.comparison.project_id)?;
-                validate_tables(&validated.payload, validated.project_id)?;
+                crate::canonical_state::validate_payload(&validated.payload, validated.project_id)?;
                 (validated.payload, BundleMergeStatus::Resolved, None)
             }
             Some(MergeResolutionMode::ContextBranch) => (
@@ -1118,7 +1118,7 @@ fn build_target(compared: &ComparedState, choice: SideChoice) -> Result<Payload,
         },
         tables,
     };
-    validate_tables(&payload, compared.comparison.project_id)?;
+    crate::canonical_state::validate_payload(&payload, compared.comparison.project_id)?;
     Ok(payload)
 }
 
@@ -1190,7 +1190,7 @@ fn replace_project_state(
     project_id: ProjectId,
     target: &Payload,
 ) -> Result<(), Error> {
-    validate_tables(target, project_id)?;
+    crate::canonical_state::validate_payload(target, project_id)?;
     for spec in TABLES.iter().rev() {
         if spec.name == "projects" {
             continue;

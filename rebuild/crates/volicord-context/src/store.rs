@@ -5276,6 +5276,7 @@ pub(crate) fn record_operation(
             )
             .map_err(write_error)?;
     }
+    crate::canonical_state::validate_project_state(transaction, project_id)?;
     Ok(())
 }
 

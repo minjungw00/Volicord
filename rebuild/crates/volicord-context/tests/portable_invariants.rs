@@ -1319,3 +1319,40 @@ fn export_rejects_internal_non_user_decision_authority_without_republication(
     assert_eq!(fs::read(&previous)?, previous_bytes);
     Ok(())
 }
+
+#[test]
+fn direct_command_postcondition_rejects_inconsistent_full_state(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let database = root.path().join("direct-postcondition.sqlite3");
+    let mut value = store(&database, &[])?;
+    value.import_bundle(operation(109), &fixture.active_bundle)?;
+    drop(value);
+    Connection::open(&database)?.execute(
+        "UPDATE sources SET actor_kind = 'agent' WHERE project_id = ?1 AND id = ?2",
+        rusqlite::params![
+            fixture.project_id.as_bytes().as_slice(),
+            fixture.authorization_id.as_bytes().as_slice()
+        ],
+    )?;
+
+    let mut reopened = store(&database, &[])?;
+    assert_eq!(
+        reopened
+            .rename_project(operation(110), fixture.project_id, 1, "must roll back")
+            .err()
+            .ok_or("direct command committed an inconsistent Project")?
+            .kind(),
+        ErrorKind::CorruptState
+    );
+    assert_eq!(reopened.get_project(fixture.project_id)?.revision, 1);
+    assert_eq!(
+        operation_state(&database)?
+            .iter()
+            .filter(|row| row.1 == "rename_project")
+            .count(),
+        0
+    );
+    Ok(())
+}
