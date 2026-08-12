@@ -2,16 +2,16 @@ use crate::identity::{IdGenerator, SystemIdGenerator};
 use crate::model::{
     AgentRecommendation, ApplicabilityScope, Availability, CanonicalInvalidation,
     CanonicalRecordId, CanonicalRecordKind, CanonicalRelation, CanonicalRelationKind, Checkpoint,
-    CheckpointDraft, CheckpointKind, CommandOutcome, CommandTermination, ContextItem,
-    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, Decision,
-    DecisionChoice, DecisionCorrectionDraft, DecisionLifecycle, DecisionSupersessionDraft,
-    ExplicitQuestionResponse, ForgetResult, LocalBinding, OperationResult, Principal,
-    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
-    QuestionReference, QuestionResponseDraft, QuestionResponseResult, QuestionState,
-    QuestionTerminalOutcome, ReviewDue, ReviewDueDraft, ReviewDueKind, Source, SourceDraft,
-    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, Tombstone,
-    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
-    VerificationFact, VerificationState, WorkState,
+    CheckpointDraft, CheckpointKind, ContextItem, ContextItemCorrectionDraft, ContextItemDraft,
+    ContextItemRole, CorrectionKind, Decision, DecisionChoice, DecisionCorrectionDraft,
+    DecisionLifecycle, DecisionSupersessionDraft, ExplicitQuestionResponse, ForgetResult,
+    LocalBinding, OperationResult, Principal, PrincipalKind, Project, Question,
+    QuestionAlternative, QuestionDependency, QuestionDraft, QuestionReference,
+    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome,
+    ReviewDue, ReviewDueDraft, ReviewDueKind, Source, SourceDraft, SourcePayload, SourceRelation,
+    SourceRelationKind, StatementProvenanceRole, Tombstone, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState, WorkState,
 };
 use crate::time::{Clock, SystemClock, TimestampMicros};
 use crate::{
@@ -1183,12 +1183,7 @@ impl Store {
                         "verification Source belongs to a different Project",
                     ));
                 }
-                if !matches!(source.payload, SourcePayload::CommandExecution { .. }) {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "executed verification requires a command-execution Source",
-                    ));
-                }
+                crate::canonical_state::validate_executed_verification_source(&source)?;
             }
         }
         for source_id in [draft.user_review.source_id, draft.user_acceptance.source_id]
@@ -1196,7 +1191,13 @@ impl Store {
             .flatten()
         {
             let source = load_source(&transaction, source_id)?;
-            ensure_user_turn_source(&source, project_id)?;
+            if source.project_id != project_id {
+                return Err(Error::new(
+                    ErrorKind::WrongProject,
+                    "Checkpoint user Source belongs to a different Project",
+                ));
+            }
+            crate::canonical_state::validate_current_host_user_source(&source)?;
         }
 
         let checkpoint_id = CheckpointId::from_bytes(ids.next_id()?);
@@ -3037,32 +3038,7 @@ impl Store {
 }
 
 fn validate_context_item_draft(draft: &ContextItemDraft) -> Result<(), Error> {
-    validate_nonempty("Context Item statement", &draft.statement)?;
-    validate_nonempty("Context Item author identity", &draft.author.identity)?;
-    if draft.source_basis.is_empty() {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "Context Item requires an explicit Source basis",
-        ));
-    }
-    ensure_unique_ids("Context Item Source basis", &draft.source_basis)?;
-    validate_string_list(
-        "Context Item applicability path",
-        &draft.applicability.paths,
-    )?;
-    validate_portable_paths(
-        "Context Item applicability path",
-        &draft.applicability.paths,
-    )?;
-    validate_string_list(
-        "Context Item applicability component",
-        &draft.applicability.components,
-    )?;
-    validate_string_list(
-        "Context Item applicability work context",
-        &draft.applicability.work_contexts,
-    )?;
-    Ok(())
+    crate::canonical_state::validate_context_item_draft(draft)
 }
 
 fn load_context_sources(
@@ -3085,90 +3061,7 @@ fn load_context_sources(
 }
 
 fn validate_context_provenance(draft: &ContextItemDraft, sources: &[Source]) -> Result<(), Error> {
-    let has_user_turn = sources.iter().any(|source| {
-        source.actor.kind == PrincipalKind::User
-            && matches!(source.payload, SourcePayload::CurrentHostUserTurn { .. })
-    });
-    let has_observation = sources.iter().any(|source| {
-        matches!(
-            source.actor.kind,
-            PrincipalKind::Repository | PrincipalKind::Command
-        ) || matches!(
-            source.payload,
-            SourcePayload::RepositorySnapshot { .. }
-                | SourcePayload::RepositoryCommit { .. }
-                | SourcePayload::File { .. }
-                | SourcePayload::Symbol { .. }
-                | SourcePayload::CommandExecution { .. }
-        )
-    });
-    let has_generated = sources.iter().any(|source| {
-        matches!(
-            source.actor.kind,
-            PrincipalKind::Agent | PrincipalKind::Provider | PrincipalKind::Generator
-        )
-    });
-    match draft.provenance_role {
-        StatementProvenanceRole::UserStatement => {
-            if draft.author.kind != PrincipalKind::User || !has_user_turn {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "user-authored Context Item requires user provenance and a current-host user-turn Source",
-                ));
-            }
-        }
-        StatementProvenanceRole::Observed => {
-            if !has_observation
-                || matches!(
-                    draft.author.kind,
-                    PrincipalKind::Provider | PrincipalKind::Generator
-                )
-            {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "observed Context Item requires repository or command observation provenance",
-                ));
-            }
-        }
-        StatementProvenanceRole::AgentStatement => {
-            if draft.author.kind != PrincipalKind::Agent {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "agent-authored Context Item requires an agent author",
-                ));
-            }
-        }
-        StatementProvenanceRole::GeneratedInterpretation => {
-            if !has_generated
-                || !matches!(
-                    draft.author.kind,
-                    PrincipalKind::Agent | PrincipalKind::Provider | PrincipalKind::Generator
-                )
-            {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "generated interpretation requires agent, provider, or generator provenance",
-                ));
-            }
-        }
-    }
-    if draft.role == ContextItemRole::Fact
-        && draft.provenance_role != StatementProvenanceRole::Observed
-    {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "only observed provenance may be recorded with the fact role",
-        ));
-    }
-    if draft.role == ContextItemRole::Preference
-        && (draft.provenance_role != StatementProvenanceRole::UserStatement || !has_user_turn)
-    {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "explicit preference requires a current-host user-turn Source",
-        ));
-    }
-    Ok(())
+    crate::canonical_state::validate_context_provenance(draft, sources)
 }
 
 fn context_item_basis(project_id: ProjectId, draft: &ContextItemDraft) -> Vec<u8> {
@@ -3276,128 +3169,7 @@ fn load_context_item(
 }
 
 fn validate_checkpoint_draft(draft: &CheckpointDraft) -> Result<(), Error> {
-    validate_nonempty("Checkpoint goal", &draft.goal)?;
-    validate_nonempty("Checkpoint next step", &draft.next_step)?;
-    validate_optional_nonempty("Checkpoint state change", draft.state_change.as_deref())?;
-    validate_optional_nonempty("Checkpoint handoff target", draft.handoff_to.as_deref())?;
-    if draft.source_basis.is_empty() {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "Checkpoint requires an explicit supporting Source basis",
-        ));
-    }
-    ensure_unique_ids("Checkpoint Source basis", &draft.source_basis)?;
-    ensure_unique_ids(
-        "Checkpoint changed Source basis",
-        &draft.changed_source_basis,
-    )?;
-    ensure_unique_ids("Checkpoint applied Decisions", &draft.applied_decisions)?;
-    validate_string_list("Checkpoint changed path", &draft.changed_paths)?;
-    validate_portable_paths("Checkpoint changed path", &draft.changed_paths)?;
-    validate_string_list("Checkpoint known limit", &draft.known_limits)?;
-    validate_string_list("Checkpoint non-goal", &draft.non_goals)?;
-    for verification in &draft.verification {
-        match verification.state {
-            VerificationState::NotRun => {
-                if verification.source_id.is_some() || verification.outcome.is_some() {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "not-run verification cannot claim a Source or outcome",
-                    ));
-                }
-            }
-            VerificationState::Partial | VerificationState::Passed | VerificationState::Failed => {
-                if verification.source_id.is_none() {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "executed verification requires an explicit Source",
-                    ));
-                }
-                validate_nonempty(
-                    "verification outcome",
-                    verification.outcome.as_deref().unwrap_or_default(),
-                )?;
-            }
-        }
-    }
-    match draft.user_review.state {
-        UserReviewState::NotRequested | UserReviewState::Pending => {
-            if draft.user_review.source_id.is_some() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "unobserved user review state cannot claim a user Source",
-                ));
-            }
-        }
-        UserReviewState::Reviewed => {
-            if draft.user_review.source_id.is_none() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "reviewed state requires an explicit current-host user-turn Source",
-                ));
-            }
-        }
-    }
-    match draft.user_acceptance.state {
-        UserAcceptanceState::NotRequested | UserAcceptanceState::Pending => {
-            if draft.user_acceptance.source_id.is_some() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "unobserved user acceptance state cannot claim a user Source",
-                ));
-            }
-        }
-        UserAcceptanceState::Accepted | UserAcceptanceState::Rejected => {
-            if draft.user_acceptance.source_id.is_none() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "accepted or rejected state requires an explicit current-host user-turn Source",
-                ));
-            }
-        }
-    }
-    let completion_basis = draft.state_change.is_some()
-        || !draft.changed_source_basis.is_empty()
-        || !draft.changed_paths.is_empty()
-        || !draft.applied_decisions.is_empty()
-        || draft
-            .verification
-            .iter()
-            .any(|fact| fact.state != VerificationState::NotRun)
-        || !draft.known_limits.is_empty();
-    match draft.kind {
-        CheckpointKind::Completion => {
-            if draft.work_state != WorkState::Completed || !completion_basis {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "completion Checkpoint requires completed work and an explicit meaningful basis",
-                ));
-            }
-            if draft.handoff_to.is_some() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "completion Checkpoint cannot claim a handoff target",
-                ));
-            }
-        }
-        CheckpointKind::Pause => {
-            if draft.work_state != WorkState::Paused || draft.handoff_to.is_some() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "pause Checkpoint requires paused work and no handoff target",
-                ));
-            }
-        }
-        CheckpointKind::Handoff => {
-            if draft.handoff_to.is_none() {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "handoff Checkpoint requires an explicit handoff target",
-                ));
-            }
-        }
-    }
-    Ok(())
+    crate::canonical_state::validate_checkpoint_draft(draft)
 }
 
 fn checkpoint_basis(project_id: ProjectId, draft: &CheckpointDraft) -> Vec<u8> {
@@ -4385,7 +4157,7 @@ fn encode_strings(values: &[String]) -> Vec<u8> {
     bytes
 }
 
-fn decode_strings(bytes: &[u8]) -> Result<Vec<String>, Error> {
+pub(crate) fn decode_strings(bytes: &[u8]) -> Result<Vec<String>, Error> {
     let mut cursor = BlobCursor::new(bytes);
     let count = cursor.count()?;
     let mut values = Vec::with_capacity(count);
@@ -5686,83 +5458,19 @@ fn decode_payload(
     exit_code: Option<i32>,
     termination: Option<String>,
 ) -> Result<SourcePayload, Error> {
-    let missing = || {
-        Error::new(
-            ErrorKind::CorruptState,
-            format!("stored {kind} Source payload is incomplete"),
-        )
-    };
-    match kind {
-        "repository_snapshot" => Ok(SourcePayload::RepositorySnapshot {
-            revision: snapshot_basis.ok_or_else(missing)?,
-        }),
-        "repository_commit" => Ok(SourcePayload::RepositoryCommit {
-            commit: snapshot_basis.ok_or_else(missing)?,
-        }),
-        "file" => Ok(SourcePayload::File {
-            locator: locator.ok_or_else(missing)?,
-            snapshot: snapshot_basis.ok_or_else(missing)?,
-        }),
-        "symbol" => Ok(SourcePayload::Symbol {
-            locator: locator.ok_or_else(missing)?,
-            snapshot: snapshot_basis.ok_or_else(missing)?,
-        }),
-        "command_execution" => Ok(SourcePayload::CommandExecution {
-            command_label: locator.ok_or_else(missing)?,
-            outcome: CommandOutcome {
-                exit_code,
-                termination: CommandTermination::parse(&termination.ok_or_else(missing)?)
-                    .ok_or_else(missing)?,
-            },
-        }),
-        "current_host_user_turn" => Ok(SourcePayload::CurrentHostUserTurn {
-            host: detail_one.ok_or_else(missing)?,
-            session: detail_two.ok_or_else(missing)?,
-            turn: locator.ok_or_else(missing)?,
-        }),
-        "url" => Ok(SourcePayload::Url {
-            url: locator.ok_or_else(missing)?,
-        }),
-        "adopted_artifact" => Ok(SourcePayload::AdoptedArtifact {
-            locator: locator.ok_or_else(missing)?,
-            revision: snapshot_basis.ok_or_else(missing)?,
-        }),
-        _ => Err(Error::new(
-            ErrorKind::CorruptState,
-            format!("stored Source kind {kind:?} is invalid"),
-        )),
-    }
+    crate::canonical_state::decode_source_payload(
+        kind,
+        locator,
+        snapshot_basis,
+        detail_one,
+        detail_two,
+        exit_code,
+        termination,
+    )
 }
 
 fn validate_source_draft(draft: &SourceDraft) -> Result<(), Error> {
-    validate_nonempty("Source actor identity", &draft.actor.identity)?;
-    if let Some(observer) = &draft.observer {
-        validate_nonempty("Source observer identity", &observer.identity)?;
-    }
-    let encoded = EncodedSource::from_payload(&draft.payload);
-    for (label, value) in [
-        ("Source locator", encoded.locator),
-        ("Source snapshot basis", encoded.snapshot_basis),
-        ("Source host", encoded.detail_one),
-        ("Source session", encoded.detail_two),
-    ] {
-        if let Some(value) = value {
-            validate_nonempty(label, value)?;
-        }
-    }
-    let portable_locator = match &draft.payload {
-        SourcePayload::File { locator, .. }
-        | SourcePayload::Symbol { locator, .. }
-        | SourcePayload::AdoptedArtifact { locator, .. } => Some(locator.as_str()),
-        _ => None,
-    };
-    if portable_locator.is_some_and(|locator| Path::new(locator).is_absolute()) {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "portable Source locator must not be a local absolute path",
-        ));
-    }
-    Ok(())
+    crate::canonical_state::validate_source_draft(draft)
 }
 
 fn validate_portable_paths(label: &str, values: &[String]) -> Result<(), Error> {

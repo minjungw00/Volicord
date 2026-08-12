@@ -280,6 +280,7 @@
         "question-decision-history-witness",
         "canonical-invariant-catalog",
         "portable-mutation-matrix",
+        "canonical-semantic-parity-matrix",
         "lifecycle-metamorphic-matrix"
       ],
       "expected_relations": [
@@ -296,6 +297,7 @@
         "question-decision-history-witness|roots|exact-question-revision",
         "canonical-invariant-catalog|maps_to|production-owner-and-executable-evidence",
         "portable-mutation-matrix|crosses|import-and-explicit-merged",
+        "canonical-semantic-parity-matrix|rejects_before_mutation|source-context-item-and-checkpoint",
         "lifecycle-metamorphic-matrix|preserves|semantic-read-and-deterministic-export"
       ],
       "expected_unsupported": [
@@ -304,7 +306,7 @@
         "signature, encryption, compression and legacy format decoding",
         "unmanaged external copies, backups and filesystem snapshots"
       ],
-      "content_sha256": "e395a3a8128bd1f0393c2228d4453426a223ca1a035f58b7dc11de0878c87e90",
+      "content_sha256": "877f4b47058d41b788c7484a748021e66458f5c5fa9e4ee942cefb07d42875a7",
       "origin": "Self-authored deterministic fixture for V04.",
       "license": "CC0-1.0"
     },

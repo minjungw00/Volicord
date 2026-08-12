@@ -127,7 +127,10 @@
     "invalid_active_question_empty_presentation",
     "valid_forgotten_question_without_active_decision",
     "invalid_internal_state_not_exported",
-    "valid_direct_forget_export_import_merge_and_read_unchanged"
+    "valid_direct_forget_export_import_merge_and_read_unchanged",
+    "source_typed_payload_semantic_mutations",
+    "context_role_provenance_revision_mutations",
+    "checkpoint_state_source_semantic_mutations"
   ],
   "invariant_parity_scenarios": [
     "catalog_semantic_owner_and_test_anchors",
@@ -159,7 +162,10 @@
     "mutation_import_no_partial_state",
     "mutation_explicit_merge_no_partial_state",
     "generated_target_and_replacement_validation",
-    "isolated_export_inconsistent_state_refusal"
+    "isolated_export_inconsistent_state_refusal",
+    "affected_semantics_import_no_partial_state",
+    "affected_semantics_explicit_merge_no_partial_state",
+    "affected_semantics_direct_and_export_rejection"
   ],
   "metamorphic_scenarios": [
     "direct_command_export_import",

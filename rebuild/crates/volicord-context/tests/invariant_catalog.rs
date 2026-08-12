@@ -103,6 +103,9 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
     assert!(!catalog.contains("bundle-wide forgotten-Decision existence fallback"));
     assert!(tests
         .contains("fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary("));
+    assert!(tests.contains(
+        "fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary("
+    ));
     for mutation in [
         "witness-removal",
         "unrelated-decision-tombstone",
@@ -125,6 +128,26 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
         "local-binding-in-portable-state",
     ] {
         assert!(tests.contains(mutation), "missing mutation case {mutation}");
+    }
+    for mutation in [
+        "source-incomplete-payload",
+        "source-impossible-fields",
+        "source-absolute-locator",
+        "context-fact-reclassification",
+        "context-preference-without-user-turn",
+        "context-current-revision",
+        "context-semantic-correction",
+        "checkpoint-kind-work-state",
+        "checkpoint-meaningful-basis",
+        "checkpoint-unobserved-verification-claim",
+        "checkpoint-verification-source-kind",
+        "checkpoint-review-authority",
+        "checkpoint-acceptance-source",
+    ] {
+        assert!(
+            tests.contains(mutation),
+            "missing semantic mutation {mutation}"
+        );
     }
     Ok(())
 }

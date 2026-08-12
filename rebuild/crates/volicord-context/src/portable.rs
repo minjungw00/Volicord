@@ -1043,7 +1043,10 @@ pub(crate) fn validate_portable_canonical_invariants(
     Ok(())
 }
 
-fn required_table<'a>(payload: &'a Payload, name: &str) -> Result<&'a PortableTable, Error> {
+pub(crate) fn required_table<'a>(
+    payload: &'a Payload,
+    name: &str,
+) -> Result<&'a PortableTable, Error> {
     payload
         .tables
         .iter()
@@ -1056,7 +1059,7 @@ fn required_table<'a>(payload: &'a Payload, name: &str) -> Result<&'a PortableTa
         })
 }
 
-fn value_integer(value: &PortableValue) -> Result<i64, Error> {
+pub(crate) fn value_integer(value: &PortableValue) -> Result<i64, Error> {
     match value {
         PortableValue::Integer(value) => Ok(*value),
         _ => Err(Error::new(
@@ -1066,7 +1069,7 @@ fn value_integer(value: &PortableValue) -> Result<i64, Error> {
     }
 }
 
-fn optional_text(value: &PortableValue) -> Result<Option<&str>, Error> {
+pub(crate) fn optional_text(value: &PortableValue) -> Result<Option<&str>, Error> {
     match value {
         PortableValue::Null => Ok(None),
         PortableValue::Text(value) => Ok(Some(value)),

@@ -130,6 +130,9 @@ PORTABLE_INVARIANT_TESTS = {
     "valid_forgotten_question_without_active_decision": "forgotten_question_without_active_decision_does_not_require_review_due",
     "invalid_internal_state_not_exported": "export_rejects_internal_forgotten_question_state_missing_review_due",
     "valid_direct_forget_export_import_merge_and_read_unchanged": "direct_question_forgetting_bundle_imports_with_sanitized_dependents",
+    "source_typed_payload_semantic_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "context_role_provenance_revision_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "checkpoint_state_source_semantic_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
 }
 
 INVARIANT_PARITY_TESTS = {
@@ -163,6 +166,9 @@ INVARIANT_PARITY_TESTS = {
     "mutation_explicit_merge_no_partial_state": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
     "generated_target_and_replacement_validation": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
     "isolated_export_inconsistent_state_refusal": "export_rejects_internal_missing_question_history_without_republication",
+    "affected_semantics_import_no_partial_state": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "affected_semantics_explicit_merge_no_partial_state": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "affected_semantics_direct_and_export_rejection": "affected_semantic_corruption_blocks_direct_commit_and_production_export",
 }
 
 METAMORPHIC_TESTS = {

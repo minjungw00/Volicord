@@ -5,12 +5,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use volicord_context::{
-    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadOptions, DecisionChoice,
-    DecisionCorrectionDraft, DecisionSupersessionDraft, DeterministicIdGenerator, ErrorKind,
-    ExplicitQuestionResponse, FixedClock, MergeResolution, MergeResolutionMode, OperationId,
-    Principal, PrincipalKind, ProjectId, QuestionAlternative, QuestionDraft, QuestionId,
-    QuestionResponseDraft, SourceDraft, SourceId, SourcePayload, Store, TimestampMicros,
-    UserTurnSource,
+    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadOptions, CheckpointDraft,
+    CheckpointKind, CommandOutcome, CommandTermination, ContextItemCorrectionDraft,
+    ContextItemDraft, ContextItemRole, CorrectionKind, DecisionChoice, DecisionCorrectionDraft,
+    DecisionSupersessionDraft, DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse,
+    FixedClock, MergeResolution, MergeResolutionMode, OperationId, Principal, PrincipalKind,
+    ProjectId, QuestionAlternative, QuestionDraft, QuestionId, QuestionResponseDraft, SourceDraft,
+    SourceId, SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState, WorkState,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -46,6 +49,7 @@ struct Fixture {
     project_id: ProjectId,
     question_id: QuestionId,
     decision_id: volicord_context::DecisionId,
+    file_source_id: SourceId,
     authorization_id: SourceId,
     active_bundle: PathBuf,
     forgotten_bundle: PathBuf,
@@ -142,10 +146,113 @@ fn fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> {
         project_id: project.id,
         question_id: question.id,
         decision_id: decision.id,
+        file_source_id: source.id,
         authorization_id: authorization.id,
         active_bundle,
         forgotten_bundle,
     })
+}
+
+fn semantic_fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> {
+    let mut fixture = fixture(root)?;
+    let database = root.join("semantic-origin.sqlite3");
+    let active_bundle = root.join("semantic-active.json");
+    let mut value = store(&database, &[0x60, 0x61, 0x62])?;
+    value.import_bundle(operation(150), &fixture.active_bundle)?;
+    let command = value
+        .record_source(
+            operation(151),
+            fixture.project_id,
+            SourceDraft {
+                expected_project_revision: 1,
+                payload: SourcePayload::CommandExecution {
+                    command_label: "cargo test -p volicord-context".to_owned(),
+                    outcome: CommandOutcome {
+                        exit_code: Some(0),
+                        termination: CommandTermination::Exited,
+                    },
+                },
+                actor: Principal {
+                    kind: PrincipalKind::Command,
+                    identity: "test-observer".to_owned(),
+                },
+                observer: Some(Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".to_owned(),
+                }),
+                availability: Availability::Available,
+            },
+        )?
+        .value;
+    let context = value
+        .record_context_item(
+            operation(152),
+            fixture.project_id,
+            ContextItemDraft {
+                expected_project_revision: 1,
+                role: ContextItemRole::Fact,
+                statement: "portable semantic fact".to_owned(),
+                provenance_role: StatementProvenanceRole::Observed,
+                author: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "fact-observer".to_owned(),
+                },
+                source_basis: vec![fixture.file_source_id],
+                applicability: ApplicabilityScope {
+                    paths: vec!["rebuild/".to_owned()],
+                    components: vec!["context".to_owned()],
+                    work_contexts: vec!["semantic admission".to_owned()],
+                },
+            },
+        )?
+        .value;
+    value.correct_context_item(
+        operation(153),
+        fixture.project_id,
+        context.id,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: "portable-semantic fact".to_owned(),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: fixture.authorization_id,
+        },
+    )?;
+    value.record_checkpoint(
+        operation(154),
+        fixture.project_id,
+        CheckpointDraft {
+            expected_project_revision: 1,
+            kind: CheckpointKind::Completion,
+            goal: "Close portable semantic parity".to_owned(),
+            work_state: WorkState::Completed,
+            state_change: Some("Central admission validates typed semantics".to_owned()),
+            source_basis: vec![fixture.file_source_id],
+            changed_source_basis: vec![fixture.file_source_id],
+            changed_paths: vec!["rebuild/crates/volicord-context".to_owned()],
+            applied_decisions: vec![],
+            verification: vec![VerificationFact {
+                state: VerificationState::Passed,
+                source_id: Some(command.id),
+                outcome: Some("volicord-context tests passed".to_owned()),
+            }],
+            user_review: UserReviewFact {
+                state: UserReviewState::Reviewed,
+                source_id: Some(fixture.authorization_id),
+            },
+            user_acceptance: UserAcceptanceFact {
+                state: UserAcceptanceState::Accepted,
+                source_id: Some(fixture.authorization_id),
+            },
+            known_limits: vec!["Independent final audit remains".to_owned()],
+            non_goals: vec!["No format-version change".to_owned()],
+            open_questions: vec![],
+            next_step: "Run focused validation".to_owned(),
+            handoff_to: None,
+        },
+    )?;
+    value.export_bundle(fixture.project_id, &active_bundle)?;
+    fixture.active_bundle = active_bundle;
+    Ok(fixture)
 }
 
 fn read_json(path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
@@ -213,6 +320,28 @@ fn set_cell(document: &mut Value, table_name: &str, row: usize, name: &str, valu
     let target = table_mut(document, table_name);
     let index = column(target, name);
     target["rows"][row][index] = value;
+}
+
+fn row_with_text(document: &Value, table_name: &str, name: &str, value: &str) -> usize {
+    let target = table(document, table_name);
+    let index = column(target, name);
+    target["rows"]
+        .as_array()
+        .and_then(|rows| rows.iter().position(|row| row[index]["value"] == value))
+        .unwrap_or_else(|| panic!("missing {table_name} row with {name}={value}"))
+}
+
+fn portable_strings(values: &[&str]) -> Value {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&(values.len() as u64).to_be_bytes());
+    for value in values {
+        bytes.extend_from_slice(&(value.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(value.as_bytes());
+    }
+    serde_json::json!({
+        "type": "bytes",
+        "value": bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+    })
 }
 
 fn copy_cell(
@@ -1683,6 +1812,337 @@ fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary(
 }
 
 #[test]
+fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = semantic_fixture(root.path())?;
+    let active = read_json(&fixture.active_bundle)?;
+    let file_row = row_with_text(&active, "sources", "source_kind", "file");
+    let command_row = row_with_text(&active, "sources", "source_kind", "command_execution");
+    let mut cases = Vec::<(&str, Value)>::new();
+
+    let mut source_kind = active.clone();
+    set_cell(
+        &mut source_kind,
+        "sources",
+        command_row,
+        "source_kind",
+        serde_json::json!({"type": "text", "value": "invented_source"}),
+    );
+    cases.push(("source-kind", source_kind));
+
+    let mut source_payload = active.clone();
+    set_cell(
+        &mut source_payload,
+        "sources",
+        file_row,
+        "snapshot_basis",
+        Value::Null,
+    );
+    cases.push(("source-incomplete-payload", source_payload));
+
+    let mut source_combination = active.clone();
+    set_cell(
+        &mut source_combination,
+        "sources",
+        command_row,
+        "snapshot_basis",
+        serde_json::json!({"type": "text", "value": "impossible"}),
+    );
+    cases.push(("source-impossible-fields", source_combination));
+
+    let mut source_actor = active.clone();
+    set_cell(
+        &mut source_actor,
+        "sources",
+        command_row,
+        "actor_kind",
+        serde_json::json!({"type": "text", "value": "unknown_actor"}),
+    );
+    cases.push(("source-actor-kind", source_actor));
+
+    let mut source_observer = active.clone();
+    set_cell(
+        &mut source_observer,
+        "sources",
+        file_row,
+        "observer_kind",
+        serde_json::json!({"type": "text", "value": "agent"}),
+    );
+    cases.push(("source-observer-pair", source_observer));
+
+    let mut source_availability = active.clone();
+    set_cell(
+        &mut source_availability,
+        "sources",
+        command_row,
+        "availability",
+        serde_json::json!({"type": "text", "value": "reachable"}),
+    );
+    cases.push(("source-availability", source_availability));
+
+    let mut source_absolute = active.clone();
+    set_cell(
+        &mut source_absolute,
+        "sources",
+        file_row,
+        "locator",
+        serde_json::json!({"type": "text", "value": "/tmp/local-only.rs"}),
+    );
+    cases.push(("source-absolute-locator", source_absolute));
+
+    let mut context_role = active.clone();
+    for table_name in ["context_items", "context_item_revisions"] {
+        let row_count = table(&context_role, table_name)["rows"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or_default();
+        for row in 0..row_count {
+            set_cell(
+                &mut context_role,
+                table_name,
+                row,
+                "provenance_role",
+                serde_json::json!({"type": "text", "value": "generated_interpretation"}),
+            );
+            set_cell(
+                &mut context_role,
+                table_name,
+                row,
+                "author_kind",
+                serde_json::json!({"type": "text", "value": "generator"}),
+            );
+        }
+    }
+    cases.push(("context-fact-reclassification", context_role));
+
+    let mut context_preference = active.clone();
+    for table_name in ["context_items", "context_item_revisions"] {
+        let row_count = table(&context_preference, table_name)["rows"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or_default();
+        for row in 0..row_count {
+            for (name, value) in [
+                ("role", "preference"),
+                ("provenance_role", "user_statement"),
+                ("author_kind", "user"),
+            ] {
+                set_cell(
+                    &mut context_preference,
+                    table_name,
+                    row,
+                    name,
+                    serde_json::json!({"type": "text", "value": value}),
+                );
+            }
+        }
+    }
+    cases.push(("context-preference-without-user-turn", context_preference));
+
+    let mut context_links = active.clone();
+    table_mut(&mut context_links, "context_item_sources")["rows"] = Value::Array(Vec::new());
+    cases.push(("context-current-source-links", context_links));
+
+    let mut context_current = active.clone();
+    set_cell(
+        &mut context_current,
+        "context_items",
+        0,
+        "statement",
+        serde_json::json!({"type": "text", "value": "current row diverged"}),
+    );
+    cases.push(("context-current-revision", context_current));
+
+    let mut context_correction = active.clone();
+    set_cell(
+        &mut context_correction,
+        "context_item_revisions",
+        1,
+        "statement",
+        serde_json::json!({"type": "text", "value": "semantic meaning changed"}),
+    );
+    set_cell(
+        &mut context_correction,
+        "context_items",
+        0,
+        "statement",
+        serde_json::json!({"type": "text", "value": "semantic meaning changed"}),
+    );
+    cases.push(("context-semantic-correction", context_correction));
+
+    let mut context_authority = active.clone();
+    set_cell(
+        &mut context_authority,
+        "context_item_revisions",
+        1,
+        "authorization_source_id",
+        serde_json::json!({"type": "bytes", "value": fixture.file_source_id.to_string()}),
+    );
+    cases.push(("context-correction-authority", context_authority));
+
+    let mut context_path = active.clone();
+    set_cell(
+        &mut context_path,
+        "context_items",
+        0,
+        "applicability_paths",
+        portable_strings(&["/tmp/local-context"]),
+    );
+    for row in 0..2 {
+        set_cell(
+            &mut context_path,
+            "context_item_revisions",
+            row,
+            "applicability_paths",
+            portable_strings(&["/tmp/local-context"]),
+        );
+    }
+    cases.push(("context-absolute-applicability", context_path));
+
+    let mut checkpoint_kind = active.clone();
+    set_cell(
+        &mut checkpoint_kind,
+        "checkpoints",
+        0,
+        "checkpoint_kind",
+        serde_json::json!({"type": "text", "value": "pause"}),
+    );
+    cases.push(("checkpoint-kind-work-state", checkpoint_kind));
+
+    let mut checkpoint_basis = active.clone();
+    set_cell(
+        &mut checkpoint_basis,
+        "checkpoints",
+        0,
+        "state_change",
+        Value::Null,
+    );
+    set_cell(
+        &mut checkpoint_basis,
+        "checkpoints",
+        0,
+        "changed_paths",
+        portable_strings(&[]),
+    );
+    set_cell(
+        &mut checkpoint_basis,
+        "checkpoints",
+        0,
+        "known_limits",
+        portable_strings(&[]),
+    );
+    table_mut(&mut checkpoint_basis, "checkpoint_source_relations")["rows"]
+        .as_array_mut()
+        .ok_or("Checkpoint Source rows missing")?
+        .retain(|row| {
+            row[column(
+                table(&active, "checkpoint_source_relations"),
+                "relation_kind",
+            )]["value"]
+                != "changed_basis"
+        });
+    for (name, value) in [
+        (
+            "verification_state",
+            serde_json::json!({"type": "text", "value": "not_run"}),
+        ),
+        ("source_id", Value::Null),
+        ("outcome", Value::Null),
+    ] {
+        set_cell(
+            &mut checkpoint_basis,
+            "checkpoint_verifications",
+            0,
+            name,
+            value,
+        );
+    }
+    cases.push(("checkpoint-meaningful-basis", checkpoint_basis));
+
+    let mut checkpoint_not_run = active.clone();
+    set_cell(
+        &mut checkpoint_not_run,
+        "checkpoint_verifications",
+        0,
+        "verification_state",
+        serde_json::json!({"type": "text", "value": "not_run"}),
+    );
+    cases.push((
+        "checkpoint-unobserved-verification-claim",
+        checkpoint_not_run,
+    ));
+
+    let mut checkpoint_verification_source = active.clone();
+    set_cell(
+        &mut checkpoint_verification_source,
+        "checkpoint_verifications",
+        0,
+        "source_id",
+        serde_json::json!({"type": "bytes", "value": fixture.file_source_id.to_string()}),
+    );
+    cases.push((
+        "checkpoint-verification-source-kind",
+        checkpoint_verification_source,
+    ));
+
+    let mut checkpoint_review = active.clone();
+    set_cell(
+        &mut checkpoint_review,
+        "checkpoints",
+        0,
+        "user_review_source_id",
+        serde_json::json!({"type": "bytes", "value": fixture.file_source_id.to_string()}),
+    );
+    cases.push(("checkpoint-review-authority", checkpoint_review));
+
+    let mut checkpoint_pending = active.clone();
+    set_cell(
+        &mut checkpoint_pending,
+        "checkpoints",
+        0,
+        "user_review",
+        serde_json::json!({"type": "text", "value": "pending"}),
+    );
+    cases.push(("checkpoint-unobserved-review-claim", checkpoint_pending));
+
+    let mut checkpoint_acceptance = active.clone();
+    set_cell(
+        &mut checkpoint_acceptance,
+        "checkpoints",
+        0,
+        "user_acceptance_source_id",
+        Value::Null,
+    );
+    cases.push(("checkpoint-acceptance-source", checkpoint_acceptance));
+
+    let mut checkpoint_path = active.clone();
+    set_cell(
+        &mut checkpoint_path,
+        "checkpoints",
+        0,
+        "changed_paths",
+        portable_strings(&["/tmp/local-checkpoint"]),
+    );
+    cases.push(("checkpoint-absolute-path", checkpoint_path));
+
+    let mut checkpoint_relation = active.clone();
+    set_cell(
+        &mut checkpoint_relation,
+        "checkpoint_source_relations",
+        0,
+        "relation_kind",
+        serde_json::json!({"type": "text", "value": "claimed_by"}),
+    );
+    cases.push(("checkpoint-source-relation-kind", checkpoint_relation));
+
+    for (label, document) in cases {
+        assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn explicit_merged_rejects_missing_question_history_before_mutation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
@@ -1887,5 +2347,70 @@ fn direct_command_postcondition_rejects_inconsistent_full_state(
             .count(),
         0
     );
+    Ok(())
+}
+
+#[test]
+fn affected_semantic_corruption_blocks_direct_commit_and_production_export(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = semantic_fixture(root.path())?;
+    let cases = [
+        (
+            "source",
+            "UPDATE sources SET source_kind = 'invented_source' WHERE source_kind = 'command_execution'",
+        ),
+        (
+            "context",
+            "UPDATE context_items SET provenance_role = 'generated_interpretation', author_kind = 'generator';
+             UPDATE context_item_revisions SET provenance_role = 'generated_interpretation', author_kind = 'generator'",
+        ),
+        (
+            "checkpoint",
+            "UPDATE checkpoints SET work_state = 'paused' WHERE checkpoint_kind = 'completion'",
+        ),
+    ];
+    for (offset, (label, mutation)) in cases.into_iter().enumerate() {
+        let database = root.path().join(format!("{label}-internal.sqlite3"));
+        let managed = root.path().join(format!("{label}-managed.json"));
+        let mut value = store(&database, &[])?;
+        value.import_bundle(operation(180 + offset as u8), &fixture.active_bundle)?;
+        value.export_bundle(fixture.project_id, &managed)?;
+        let before = fs::read(&managed)?;
+        drop(value);
+        Connection::open(&database)?.execute_batch(mutation)?;
+
+        let mut reopened = store(&database, &[])?;
+        assert_eq!(
+            reopened
+                .export_bundle(fixture.project_id, &managed)
+                .err()
+                .ok_or("production export admitted corrupt canonical semantics")?
+                .kind(),
+            ErrorKind::CorruptState
+        );
+        assert_eq!(fs::read(&managed)?, before);
+        assert_eq!(
+            reopened
+                .rename_project(
+                    operation(190 + offset as u8),
+                    fixture.project_id,
+                    1,
+                    format!("blocked-{label}"),
+                )
+                .err()
+                .ok_or("direct transaction committed over corrupt canonical semantics")?
+                .kind(),
+            ErrorKind::CorruptState
+        );
+        assert_eq!(reopened.get_project(fixture.project_id)?.revision, 1);
+        assert_eq!(
+            operation_state(&database)?
+                .iter()
+                .filter(|row| row.1 == "rename_project")
+                .count(),
+            0
+        );
+    }
     Ok(())
 }
