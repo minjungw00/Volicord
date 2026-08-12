@@ -1,8 +1,9 @@
 //! Synchronous Canonical Context Kernel.
 //!
-//! The crate currently owns only the first durable responsibility boundary:
-//! stable Projects, local clone bindings, typed Sources, explicit relations,
-//! and replay-safe SQLite operations at a caller-supplied path.
+//! The crate owns the durable Canonical Context responsibility boundary:
+//! stable Projects, typed Sources and relations, Questions and explicit user
+//! Decisions, Context Items, source-grounded Checkpoints, and replay-safe
+//! SQLite operations at a caller-supplied path.
 
 mod error;
 mod identity;
@@ -12,15 +13,19 @@ mod time;
 
 pub use error::{Error, ErrorKind};
 pub use identity::{
-    DecisionId, DeterministicIdGenerator, IdGenerator, LocalBindingId, OperationId, ProjectId,
-    QuestionId, SourceId, SystemIdGenerator,
+    CheckpointId, ContextItemId, DecisionId, DeterministicIdGenerator, IdGenerator, LocalBindingId,
+    OperationId, ProjectId, QuestionId, SourceId, SystemIdGenerator,
 };
 pub use model::{
-    AgentRecommendation, ApplicabilityScope, Availability, CommandOutcome, CommandTermination,
-    Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding, OperationResult, Principal,
-    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
-    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source,
-    SourceDraft, SourcePayload, SourceRelation, SourceRelationKind, UserTurnSource,
+    AgentRecommendation, ApplicabilityScope, Availability, Checkpoint, CheckpointDraft,
+    CheckpointKind, CommandOutcome, CommandTermination, ContextItem, ContextItemDraft,
+    ContextItemRole, Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding,
+    OperationResult, Principal, PrincipalKind, Project, Question, QuestionAlternative,
+    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
+    QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source, SourceDraft,
+    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState, WorkState,
 };
 pub use store::{Store, SCHEMA_KIND, SCHEMA_VERSION};
 pub use time::{Clock, FixedClock, SystemClock, TimestampMicros};

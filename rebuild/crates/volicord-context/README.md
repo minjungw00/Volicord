@@ -4,7 +4,8 @@ This crate is the synchronous Canonical Context Kernel. Its current production
 scope is deliberately narrow: an explicit-path SQLite store can create and
 reopen stable Projects, maintain local clone bindings, record typed Sources and
 provenance, persist explicit Source relations, and durably record Questions and
-atomic explicit user Decisions. This file records concrete
+atomic explicit user Decisions, typed Context Items, and source-grounded
+Checkpoints. This file records concrete
 Phase 4 implementation choices; the product and architecture meaning remains
 owned by `rebuild/docs/design/`.
 
@@ -22,7 +23,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 2 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 3 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -51,6 +52,15 @@ owned by `rebuild/docs/design/`.
   validates a current-host user-turn Source, records the exact revision link,
   creates a Decision when required, transitions the Question, and records the
   operation outcome. Recommendation and user choice remain separate fields.
+- Context Items preserve one of eight statement roles independently from user,
+  observation, agent, or generated-interpretation provenance. Facts require
+  repository/command observation; explicit preferences require a current-host
+  user-turn Source; generated interpretations cannot be relabeled as facts.
+- Checkpoints accept only caller-supplied supporting, changed, Decision,
+  Question, and command-verification bases. Completion, pause, and handoff are
+  meaningful boundaries, while work, automated verification, user review, and
+  user acceptance remain separately represented and source-linked as needed.
+  The kernel performs no repository or dirty-worktree observation.
 - Source payloads cover repository snapshots and commits, files, symbols,
   bounded command outcomes, current-host user turns, URLs, and adopted
   artifacts. They preserve typed actor and optional observer provenance, but

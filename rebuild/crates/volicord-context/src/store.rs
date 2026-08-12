@@ -1,14 +1,19 @@
 use crate::identity::{IdGenerator, SystemIdGenerator};
 use crate::model::{
-    AgentRecommendation, ApplicabilityScope, Availability, CommandOutcome, CommandTermination,
-    Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding, OperationResult, Principal,
-    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
-    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source,
-    SourceDraft, SourcePayload, SourceRelation, SourceRelationKind, UserTurnSource,
+    AgentRecommendation, ApplicabilityScope, Availability, Checkpoint, CheckpointDraft,
+    CheckpointKind, CommandOutcome, CommandTermination, ContextItem, ContextItemDraft,
+    ContextItemRole, Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding,
+    OperationResult, Principal, PrincipalKind, Project, Question, QuestionAlternative,
+    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
+    QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source, SourceDraft,
+    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState, WorkState,
 };
 use crate::time::{Clock, SystemClock, TimestampMicros};
 use crate::{
-    DecisionId, Error, ErrorKind, LocalBindingId, OperationId, ProjectId, QuestionId, SourceId,
+    CheckpointId, ContextItemId, DecisionId, Error, ErrorKind, LocalBindingId, OperationId,
+    ProjectId, QuestionId, SourceId,
 };
 use rusqlite::{
     params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
@@ -18,9 +23,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
-const REQUIRED_TABLES: [&str; 12] = [
+const REQUIRED_TABLES: [&str; 19] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -33,6 +38,13 @@ const REQUIRED_TABLES: [&str; 12] = [
     "question_revisions",
     "question_response_sources",
     "decisions",
+    "context_items",
+    "context_item_sources",
+    "checkpoints",
+    "checkpoint_source_relations",
+    "checkpoint_decisions",
+    "checkpoint_questions",
+    "checkpoint_verifications",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -931,6 +943,993 @@ impl Store {
     ) -> Result<Decision, Error> {
         load_decision(&self.connection, project_id, decision_id)
     }
+
+    pub fn record_context_item(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: ContextItemDraft,
+    ) -> Result<OperationResult<ContextItem>, Error> {
+        validate_context_item_draft(&draft)?;
+        let basis = context_item_basis(project_id, &draft);
+        let (connection, ids, clock) = (&mut self.connection, &mut self.ids, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "record_context_item", &basis)?;
+            let item = load_context_item(
+                &transaction,
+                project_id,
+                ContextItemId::from_slice(&operation.result_id)?,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value: item,
+                replayed: true,
+            });
+        }
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        let sources = load_context_sources(&transaction, project_id, &draft.source_basis)?;
+        validate_context_provenance(&draft, &sources)?;
+        let item_id = ContextItemId::from_bytes(ids.next_id()?);
+        let now = clock.now()?;
+        transaction
+            .execute(
+                "INSERT INTO context_items(
+                     id, project_id, revision, role, statement, provenance_role,
+                     author_kind, author_identity, applicability_paths,
+                     applicability_components, applicability_work_contexts, recorded_at
+                 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    item_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    draft.role.as_str(),
+                    draft.statement,
+                    draft.provenance_role.as_str(),
+                    draft.author.kind.as_str(),
+                    draft.author.identity,
+                    encode_strings(&draft.applicability.paths),
+                    encode_strings(&draft.applicability.components),
+                    encode_strings(&draft.applicability.work_contexts),
+                    now.as_unix_micros(),
+                ],
+            )
+            .map_err(|error| {
+                insert_identity_error(error, "Context Item identity already exists")
+            })?;
+        for (position, source_id) in draft.source_basis.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO context_item_sources(
+                         project_id, context_item_id, source_id, position
+                     ) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        item_id.as_bytes().as_slice(),
+                        source_id.as_bytes().as_slice(),
+                        position_i64(position)?,
+                    ],
+                )
+                .map_err(write_error)?;
+        }
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "record_context_item",
+            &basis,
+            "context_item",
+            item_id.as_bytes(),
+            1,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: ContextItem {
+                id: item_id,
+                project_id,
+                revision: 1,
+                role: draft.role,
+                statement: draft.statement,
+                provenance_role: draft.provenance_role,
+                author: draft.author,
+                source_basis: draft.source_basis,
+                applicability: draft.applicability,
+                recorded_at: now,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn get_context_item(
+        &self,
+        project_id: ProjectId,
+        item_id: ContextItemId,
+    ) -> Result<ContextItem, Error> {
+        load_context_item(&self.connection, project_id, item_id)
+    }
+
+    pub fn record_checkpoint(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: CheckpointDraft,
+    ) -> Result<OperationResult<Checkpoint>, Error> {
+        validate_checkpoint_draft(&draft)?;
+        let basis = checkpoint_basis(project_id, &draft);
+        let (connection, ids, clock) = (&mut self.connection, &mut self.ids, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "record_checkpoint", &basis)?;
+            let checkpoint = load_checkpoint(
+                &transaction,
+                project_id,
+                CheckpointId::from_slice(&operation.result_id)?,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value: checkpoint,
+                replayed: true,
+            });
+        }
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        for source_id in draft
+            .source_basis
+            .iter()
+            .chain(draft.changed_source_basis.iter())
+        {
+            ensure_source_project(&transaction, *source_id, project_id)?;
+        }
+        for decision_id in &draft.applied_decisions {
+            load_decision(&transaction, project_id, *decision_id)?;
+        }
+        for question in &draft.open_questions {
+            load_question(&transaction, project_id, question.question_id)?;
+            ensure_question_revision_exists(&transaction, question.question_id, question.revision)?;
+        }
+        for verification in &draft.verification {
+            if let Some(source_id) = verification.source_id {
+                let source = load_source(&transaction, source_id)?;
+                if source.project_id != project_id {
+                    return Err(Error::new(
+                        ErrorKind::WrongProject,
+                        "verification Source belongs to a different Project",
+                    ));
+                }
+                if !matches!(source.payload, SourcePayload::CommandExecution { .. }) {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "executed verification requires a command-execution Source",
+                    ));
+                }
+            }
+        }
+        for source_id in [draft.user_review.source_id, draft.user_acceptance.source_id]
+            .into_iter()
+            .flatten()
+        {
+            let source = load_source(&transaction, source_id)?;
+            ensure_user_turn_source(&source, project_id)?;
+        }
+
+        let checkpoint_id = CheckpointId::from_bytes(ids.next_id()?);
+        let now = clock.now()?;
+        transaction
+            .execute(
+                "INSERT INTO checkpoints(
+                     id, project_id, revision, checkpoint_kind, goal, work_state, state_change,
+                     changed_paths, user_review, user_review_source_id, user_acceptance,
+                     user_acceptance_source_id, known_limits, non_goals, next_step,
+                     handoff_to, recorded_at
+                 ) VALUES (
+                     ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+                 )",
+                params![
+                    checkpoint_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    draft.kind.as_str(),
+                    draft.goal,
+                    draft.work_state.as_str(),
+                    draft.state_change,
+                    encode_strings(&draft.changed_paths),
+                    draft.user_review.state.as_str(),
+                    draft
+                        .user_review
+                        .source_id
+                        .map(|source_id| source_id.as_bytes().to_vec()),
+                    draft.user_acceptance.state.as_str(),
+                    draft
+                        .user_acceptance
+                        .source_id
+                        .map(|source_id| source_id.as_bytes().to_vec()),
+                    encode_strings(&draft.known_limits),
+                    encode_strings(&draft.non_goals),
+                    draft.next_step,
+                    draft.handoff_to,
+                    now.as_unix_micros(),
+                ],
+            )
+            .map_err(|error| insert_identity_error(error, "Checkpoint identity already exists"))?;
+        insert_checkpoint_sources(
+            &transaction,
+            project_id,
+            checkpoint_id,
+            "supported_by",
+            &draft.source_basis,
+        )?;
+        insert_checkpoint_sources(
+            &transaction,
+            project_id,
+            checkpoint_id,
+            "changed_basis",
+            &draft.changed_source_basis,
+        )?;
+        for (position, decision_id) in draft.applied_decisions.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO checkpoint_decisions(
+                         project_id, checkpoint_id, decision_id, position
+                     ) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        checkpoint_id.as_bytes().as_slice(),
+                        decision_id.as_bytes().as_slice(),
+                        position_i64(position)?,
+                    ],
+                )
+                .map_err(write_error)?;
+        }
+        for (position, question) in draft.open_questions.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO checkpoint_questions(
+                         project_id, checkpoint_id, question_id, question_revision, position
+                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        checkpoint_id.as_bytes().as_slice(),
+                        question.question_id.as_bytes().as_slice(),
+                        revision_i64(question.revision)?,
+                        position_i64(position)?,
+                    ],
+                )
+                .map_err(write_error)?;
+        }
+        for (position, verification) in draft.verification.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO checkpoint_verifications(
+                         project_id, checkpoint_id, position, verification_state, source_id, outcome
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        checkpoint_id.as_bytes().as_slice(),
+                        position_i64(position)?,
+                        verification.state.as_str(),
+                        verification
+                            .source_id
+                            .map(|source_id| source_id.as_bytes().to_vec()),
+                        verification.outcome,
+                    ],
+                )
+                .map_err(write_error)?;
+        }
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "record_checkpoint",
+            &basis,
+            "checkpoint",
+            checkpoint_id.as_bytes(),
+            1,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: Checkpoint {
+                id: checkpoint_id,
+                project_id,
+                revision: 1,
+                kind: draft.kind,
+                goal: draft.goal,
+                work_state: draft.work_state,
+                state_change: draft.state_change,
+                source_basis: draft.source_basis,
+                changed_source_basis: draft.changed_source_basis,
+                changed_paths: draft.changed_paths,
+                applied_decisions: draft.applied_decisions,
+                verification: draft.verification,
+                user_review: draft.user_review,
+                user_acceptance: draft.user_acceptance,
+                known_limits: draft.known_limits,
+                non_goals: draft.non_goals,
+                open_questions: draft.open_questions,
+                next_step: draft.next_step,
+                handoff_to: draft.handoff_to,
+                recorded_at: now,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn get_checkpoint(
+        &self,
+        project_id: ProjectId,
+        checkpoint_id: CheckpointId,
+    ) -> Result<Checkpoint, Error> {
+        load_checkpoint(&self.connection, project_id, checkpoint_id)
+    }
+}
+
+fn validate_context_item_draft(draft: &ContextItemDraft) -> Result<(), Error> {
+    validate_nonempty("Context Item statement", &draft.statement)?;
+    validate_nonempty("Context Item author identity", &draft.author.identity)?;
+    if draft.source_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Context Item requires an explicit Source basis",
+        ));
+    }
+    ensure_unique_ids("Context Item Source basis", &draft.source_basis)?;
+    validate_string_list(
+        "Context Item applicability path",
+        &draft.applicability.paths,
+    )?;
+    validate_string_list(
+        "Context Item applicability component",
+        &draft.applicability.components,
+    )?;
+    validate_string_list(
+        "Context Item applicability work context",
+        &draft.applicability.work_contexts,
+    )?;
+    Ok(())
+}
+
+fn load_context_sources(
+    connection: &Connection,
+    project_id: ProjectId,
+    source_ids: &[SourceId],
+) -> Result<Vec<Source>, Error> {
+    let mut sources = Vec::with_capacity(source_ids.len());
+    for source_id in source_ids {
+        let source = load_source(connection, *source_id)?;
+        if source.project_id != project_id {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "Context Item Source belongs to a different Project",
+            ));
+        }
+        sources.push(source);
+    }
+    Ok(sources)
+}
+
+fn validate_context_provenance(draft: &ContextItemDraft, sources: &[Source]) -> Result<(), Error> {
+    let has_user_turn = sources.iter().any(|source| {
+        source.actor.kind == PrincipalKind::User
+            && matches!(source.payload, SourcePayload::CurrentHostUserTurn { .. })
+    });
+    let has_observation = sources.iter().any(|source| {
+        matches!(
+            source.actor.kind,
+            PrincipalKind::Repository | PrincipalKind::Command
+        ) || matches!(
+            source.payload,
+            SourcePayload::RepositorySnapshot { .. }
+                | SourcePayload::RepositoryCommit { .. }
+                | SourcePayload::File { .. }
+                | SourcePayload::Symbol { .. }
+                | SourcePayload::CommandExecution { .. }
+        )
+    });
+    let has_generated = sources.iter().any(|source| {
+        matches!(
+            source.actor.kind,
+            PrincipalKind::Agent | PrincipalKind::Provider | PrincipalKind::Generator
+        )
+    });
+    match draft.provenance_role {
+        StatementProvenanceRole::UserStatement => {
+            if draft.author.kind != PrincipalKind::User || !has_user_turn {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "user-authored Context Item requires user provenance and a current-host user-turn Source",
+                ));
+            }
+        }
+        StatementProvenanceRole::Observed => {
+            if !has_observation
+                || matches!(
+                    draft.author.kind,
+                    PrincipalKind::Provider | PrincipalKind::Generator
+                )
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "observed Context Item requires repository or command observation provenance",
+                ));
+            }
+        }
+        StatementProvenanceRole::AgentStatement => {
+            if draft.author.kind != PrincipalKind::Agent {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "agent-authored Context Item requires an agent author",
+                ));
+            }
+        }
+        StatementProvenanceRole::GeneratedInterpretation => {
+            if !has_generated
+                || !matches!(
+                    draft.author.kind,
+                    PrincipalKind::Agent | PrincipalKind::Provider | PrincipalKind::Generator
+                )
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "generated interpretation requires agent, provider, or generator provenance",
+                ));
+            }
+        }
+    }
+    if draft.role == ContextItemRole::Fact
+        && draft.provenance_role != StatementProvenanceRole::Observed
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "only observed provenance may be recorded with the fact role",
+        ));
+    }
+    if draft.role == ContextItemRole::Preference
+        && (draft.provenance_role != StatementProvenanceRole::UserStatement || !has_user_turn)
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "explicit preference requires a current-host user-turn Source",
+        ));
+    }
+    Ok(())
+}
+
+fn context_item_basis(project_id: ProjectId, draft: &ContextItemDraft) -> Vec<u8> {
+    Basis::new("record_context_item")
+        .bytes(project_id.as_bytes())
+        .number(draft.expected_project_revision)
+        .string(draft.role.as_str())
+        .string(&draft.statement)
+        .string(draft.provenance_role.as_str())
+        .string(draft.author.kind.as_str())
+        .string(&draft.author.identity)
+        .bytes(&encode_source_ids(&draft.source_basis))
+        .bytes(&encode_strings(&draft.applicability.paths))
+        .bytes(&encode_strings(&draft.applicability.components))
+        .bytes(&encode_strings(&draft.applicability.work_contexts))
+        .finish()
+}
+
+fn load_context_item(
+    connection: &Connection,
+    project_id: ProjectId,
+    item_id: ContextItemId,
+) -> Result<ContextItem, Error> {
+    type ContextItemRow = (
+        Vec<u8>,
+        i64,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+    );
+    let row: ContextItemRow = connection
+        .query_row(
+            "SELECT project_id, revision, role, statement, provenance_role, author_kind,
+                    author_identity, applicability_paths, applicability_components,
+                    applicability_work_contexts, recorded_at
+             FROM context_items WHERE id = ?1",
+            [item_id.as_bytes().as_slice()],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Context Item was not found"))?;
+    let owner = ProjectId::from_slice(&row.0)?;
+    if owner != project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "Context Item belongs to a different Project",
+        ));
+    }
+    let mut statement = connection
+        .prepare(
+            "SELECT source_id FROM context_item_sources
+             WHERE context_item_id = ?1 ORDER BY position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([item_id.as_bytes().as_slice()], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .map_err(read_error)?;
+    let mut source_basis = Vec::new();
+    for source_id in rows {
+        source_basis.push(SourceId::from_slice(&source_id.map_err(read_error)?)?);
+    }
+    Ok(ContextItem {
+        id: item_id,
+        project_id,
+        revision: stored_revision(row.1)?,
+        role: ContextItemRole::parse(&row.2).ok_or_else(|| invalid_stored("Context Item role"))?,
+        statement: row.3,
+        provenance_role: StatementProvenanceRole::parse(&row.4)
+            .ok_or_else(|| invalid_stored("Context Item provenance role"))?,
+        author: Principal {
+            kind: parse_principal_kind(&row.5)?,
+            identity: row.6,
+        },
+        source_basis,
+        applicability: ApplicabilityScope {
+            paths: decode_strings(&row.7)?,
+            components: decode_strings(&row.8)?,
+            work_contexts: decode_strings(&row.9)?,
+        },
+        recorded_at: TimestampMicros::from_unix_micros(row.10),
+    })
+}
+
+fn validate_checkpoint_draft(draft: &CheckpointDraft) -> Result<(), Error> {
+    validate_nonempty("Checkpoint goal", &draft.goal)?;
+    validate_nonempty("Checkpoint next step", &draft.next_step)?;
+    validate_optional_nonempty("Checkpoint state change", draft.state_change.as_deref())?;
+    validate_optional_nonempty("Checkpoint handoff target", draft.handoff_to.as_deref())?;
+    if draft.source_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Checkpoint requires an explicit supporting Source basis",
+        ));
+    }
+    ensure_unique_ids("Checkpoint Source basis", &draft.source_basis)?;
+    ensure_unique_ids(
+        "Checkpoint changed Source basis",
+        &draft.changed_source_basis,
+    )?;
+    ensure_unique_ids("Checkpoint applied Decisions", &draft.applied_decisions)?;
+    validate_string_list("Checkpoint changed path", &draft.changed_paths)?;
+    validate_string_list("Checkpoint known limit", &draft.known_limits)?;
+    validate_string_list("Checkpoint non-goal", &draft.non_goals)?;
+    for verification in &draft.verification {
+        match verification.state {
+            VerificationState::NotRun => {
+                if verification.source_id.is_some() || verification.outcome.is_some() {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "not-run verification cannot claim a Source or outcome",
+                    ));
+                }
+            }
+            VerificationState::Partial | VerificationState::Passed | VerificationState::Failed => {
+                if verification.source_id.is_none() {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "executed verification requires an explicit Source",
+                    ));
+                }
+                validate_nonempty(
+                    "verification outcome",
+                    verification.outcome.as_deref().unwrap_or_default(),
+                )?;
+            }
+        }
+    }
+    match draft.user_review.state {
+        UserReviewState::NotRequested | UserReviewState::Pending => {
+            if draft.user_review.source_id.is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "unobserved user review state cannot claim a user Source",
+                ));
+            }
+        }
+        UserReviewState::Reviewed => {
+            if draft.user_review.source_id.is_none() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "reviewed state requires an explicit current-host user-turn Source",
+                ));
+            }
+        }
+    }
+    match draft.user_acceptance.state {
+        UserAcceptanceState::NotRequested | UserAcceptanceState::Pending => {
+            if draft.user_acceptance.source_id.is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "unobserved user acceptance state cannot claim a user Source",
+                ));
+            }
+        }
+        UserAcceptanceState::Accepted | UserAcceptanceState::Rejected => {
+            if draft.user_acceptance.source_id.is_none() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "accepted or rejected state requires an explicit current-host user-turn Source",
+                ));
+            }
+        }
+    }
+    let completion_basis = draft.state_change.is_some()
+        || !draft.changed_source_basis.is_empty()
+        || !draft.changed_paths.is_empty()
+        || !draft.applied_decisions.is_empty()
+        || draft
+            .verification
+            .iter()
+            .any(|fact| fact.state != VerificationState::NotRun)
+        || !draft.known_limits.is_empty();
+    match draft.kind {
+        CheckpointKind::Completion => {
+            if draft.work_state != WorkState::Completed || !completion_basis {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "completion Checkpoint requires completed work and an explicit meaningful basis",
+                ));
+            }
+            if draft.handoff_to.is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "completion Checkpoint cannot claim a handoff target",
+                ));
+            }
+        }
+        CheckpointKind::Pause => {
+            if draft.work_state != WorkState::Paused || draft.handoff_to.is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "pause Checkpoint requires paused work and no handoff target",
+                ));
+            }
+        }
+        CheckpointKind::Handoff => {
+            if draft.handoff_to.is_none() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "handoff Checkpoint requires an explicit handoff target",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn checkpoint_basis(project_id: ProjectId, draft: &CheckpointDraft) -> Vec<u8> {
+    let mut basis = Basis::new("record_checkpoint")
+        .bytes(project_id.as_bytes())
+        .number(draft.expected_project_revision)
+        .string(draft.kind.as_str())
+        .string(&draft.goal)
+        .string(draft.work_state.as_str())
+        .optional_string(draft.state_change.as_deref())
+        .bytes(&encode_source_ids(&draft.source_basis))
+        .bytes(&encode_source_ids(&draft.changed_source_basis))
+        .bytes(&encode_strings(&draft.changed_paths));
+    for decision_id in &draft.applied_decisions {
+        basis = basis.bytes(decision_id.as_bytes());
+    }
+    basis = basis.string("decisions_end");
+    for verification in &draft.verification {
+        basis = basis.string(verification.state.as_str());
+        basis = match verification.source_id {
+            Some(source_id) => basis.string("some").bytes(source_id.as_bytes()),
+            None => basis.string("none"),
+        };
+        basis = basis.optional_string(verification.outcome.as_deref());
+    }
+    basis = basis
+        .string("verification_end")
+        .string(draft.user_review.state.as_str());
+    basis = match draft.user_review.source_id {
+        Some(source_id) => basis.string("some").bytes(source_id.as_bytes()),
+        None => basis.string("none"),
+    };
+    basis = basis.string(draft.user_acceptance.state.as_str());
+    basis = match draft.user_acceptance.source_id {
+        Some(source_id) => basis.string("some").bytes(source_id.as_bytes()),
+        None => basis.string("none"),
+    };
+    basis = basis
+        .bytes(&encode_strings(&draft.known_limits))
+        .bytes(&encode_strings(&draft.non_goals));
+    for question in &draft.open_questions {
+        basis = basis
+            .bytes(question.question_id.as_bytes())
+            .number(question.revision);
+    }
+    basis
+        .string("questions_end")
+        .string(&draft.next_step)
+        .optional_string(draft.handoff_to.as_deref())
+        .finish()
+}
+
+fn insert_checkpoint_sources(
+    transaction: &Transaction<'_>,
+    project_id: ProjectId,
+    checkpoint_id: CheckpointId,
+    relation_kind: &str,
+    source_ids: &[SourceId],
+) -> Result<(), Error> {
+    for (position, source_id) in source_ids.iter().enumerate() {
+        transaction
+            .execute(
+                "INSERT INTO checkpoint_source_relations(
+                     project_id, checkpoint_id, relation_kind, source_id, position
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    checkpoint_id.as_bytes().as_slice(),
+                    relation_kind,
+                    source_id.as_bytes().as_slice(),
+                    position_i64(position)?,
+                ],
+            )
+            .map_err(write_error)?;
+    }
+    Ok(())
+}
+
+fn load_checkpoint(
+    connection: &Connection,
+    project_id: ProjectId,
+    checkpoint_id: CheckpointId,
+) -> Result<Checkpoint, Error> {
+    type CheckpointRow = (
+        Vec<u8>,
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+        Vec<u8>,
+        String,
+        Option<Vec<u8>>,
+        String,
+        Option<Vec<u8>>,
+        Vec<u8>,
+        Vec<u8>,
+        String,
+        Option<String>,
+        i64,
+    );
+    let row: CheckpointRow = connection
+        .query_row(
+            "SELECT project_id, revision, checkpoint_kind, goal, work_state, state_change,
+                    changed_paths, user_review, user_review_source_id, user_acceptance,
+                    user_acceptance_source_id, known_limits, non_goals, next_step,
+                    handoff_to, recorded_at
+             FROM checkpoints WHERE id = ?1",
+            [checkpoint_id.as_bytes().as_slice()],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                    row.get(12)?,
+                    row.get(13)?,
+                    row.get(14)?,
+                    row.get(15)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Checkpoint was not found"))?;
+    let owner = ProjectId::from_slice(&row.0)?;
+    if owner != project_id {
+        return Err(Error::new(
+            ErrorKind::WrongProject,
+            "Checkpoint belongs to a different Project",
+        ));
+    }
+    let source_basis = load_checkpoint_source_ids(connection, checkpoint_id, "supported_by")?;
+    let changed_source_basis =
+        load_checkpoint_source_ids(connection, checkpoint_id, "changed_basis")?;
+    let applied_decisions = load_checkpoint_decision_ids(connection, checkpoint_id)?;
+    let open_questions = load_checkpoint_question_refs(connection, checkpoint_id)?;
+    let verification = load_checkpoint_verification(connection, checkpoint_id)?;
+    Ok(Checkpoint {
+        id: checkpoint_id,
+        project_id,
+        revision: stored_revision(row.1)?,
+        kind: CheckpointKind::parse(&row.2).ok_or_else(|| invalid_stored("Checkpoint kind"))?,
+        goal: row.3,
+        work_state: WorkState::parse(&row.4)
+            .ok_or_else(|| invalid_stored("Checkpoint work state"))?,
+        state_change: row.5,
+        source_basis,
+        changed_source_basis,
+        changed_paths: decode_strings(&row.6)?,
+        applied_decisions,
+        verification,
+        user_review: UserReviewFact {
+            state: UserReviewState::parse(&row.7)
+                .ok_or_else(|| invalid_stored("Checkpoint user review state"))?,
+            source_id: row.8.as_deref().map(SourceId::from_slice).transpose()?,
+        },
+        user_acceptance: UserAcceptanceFact {
+            state: UserAcceptanceState::parse(&row.9)
+                .ok_or_else(|| invalid_stored("Checkpoint user acceptance state"))?,
+            source_id: row.10.as_deref().map(SourceId::from_slice).transpose()?,
+        },
+        known_limits: decode_strings(&row.11)?,
+        non_goals: decode_strings(&row.12)?,
+        open_questions,
+        next_step: row.13,
+        handoff_to: row.14,
+        recorded_at: TimestampMicros::from_unix_micros(row.15),
+    })
+}
+
+fn load_checkpoint_source_ids(
+    connection: &Connection,
+    checkpoint_id: CheckpointId,
+    relation_kind: &str,
+) -> Result<Vec<SourceId>, Error> {
+    let mut statement = connection
+        .prepare(
+            "SELECT source_id FROM checkpoint_source_relations
+             WHERE checkpoint_id = ?1 AND relation_kind = ?2 ORDER BY position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map(
+            params![checkpoint_id.as_bytes().as_slice(), relation_kind],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for value in rows {
+        values.push(SourceId::from_slice(&value.map_err(read_error)?)?);
+    }
+    Ok(values)
+}
+
+fn load_checkpoint_decision_ids(
+    connection: &Connection,
+    checkpoint_id: CheckpointId,
+) -> Result<Vec<DecisionId>, Error> {
+    let mut statement = connection
+        .prepare(
+            "SELECT decision_id FROM checkpoint_decisions
+             WHERE checkpoint_id = ?1 ORDER BY position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([checkpoint_id.as_bytes().as_slice()], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for value in rows {
+        values.push(DecisionId::from_slice(&value.map_err(read_error)?)?);
+    }
+    Ok(values)
+}
+
+fn load_checkpoint_question_refs(
+    connection: &Connection,
+    checkpoint_id: CheckpointId,
+) -> Result<Vec<QuestionReference>, Error> {
+    let mut statement = connection
+        .prepare(
+            "SELECT question_id, question_revision FROM checkpoint_questions
+             WHERE checkpoint_id = ?1 ORDER BY position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([checkpoint_id.as_bytes().as_slice()], |row| {
+            Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for value in rows {
+        let (question_id, revision) = value.map_err(read_error)?;
+        values.push(QuestionReference {
+            question_id: QuestionId::from_slice(&question_id)?,
+            revision: stored_revision(revision)?,
+        });
+    }
+    Ok(values)
+}
+
+fn load_checkpoint_verification(
+    connection: &Connection,
+    checkpoint_id: CheckpointId,
+) -> Result<Vec<VerificationFact>, Error> {
+    let mut statement = connection
+        .prepare(
+            "SELECT verification_state, source_id, outcome FROM checkpoint_verifications
+             WHERE checkpoint_id = ?1 ORDER BY position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([checkpoint_id.as_bytes().as_slice()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<Vec<u8>>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for value in rows {
+        let (state, source_id, outcome) = value.map_err(read_error)?;
+        values.push(VerificationFact {
+            state: VerificationState::parse(&state)
+                .ok_or_else(|| invalid_stored("Checkpoint verification state"))?,
+            source_id: source_id
+                .map(|value| SourceId::from_slice(&value))
+                .transpose()?,
+            outcome,
+        });
+    }
+    Ok(values)
+}
+
+fn ensure_unique_ids<T: Copy + Ord>(label: &str, values: &[T]) -> Result<(), Error> {
+    let mut unique = BTreeSet::new();
+    if values.iter().any(|value| !unique.insert(*value)) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("{label} must not contain duplicates"),
+        ));
+    }
+    Ok(())
+}
+
+fn position_i64(position: usize) -> Result<i64, Error> {
+    i64::try_from(position).map_err(|_| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            "ordered canonical relation position is outside the supported range",
+        )
+    })
+}
+
+fn invalid_stored(label: &str) -> Error {
+    Error::new(
+        ErrorKind::CorruptState,
+        format!("stored {label} is invalid"),
+    )
 }
 
 struct EncodedQuestion {
@@ -1883,6 +2882,109 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, user_turn_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
              );
+             CREATE TABLE context_items(
+                 id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision = 1),
+                 role TEXT NOT NULL CHECK(role IN (
+                     'goal','fact','assumption','constraint','preference','risk','learning','known_limit'
+                 )),
+                 statement TEXT NOT NULL CHECK(length(statement) > 0),
+                 provenance_role TEXT NOT NULL CHECK(provenance_role IN (
+                     'user_statement','observed','agent_statement','generated_interpretation'
+                 )),
+                 author_kind TEXT NOT NULL,
+                 author_identity TEXT NOT NULL CHECK(length(author_identity) > 0),
+                 applicability_paths BLOB NOT NULL,
+                 applicability_components BLOB NOT NULL,
+                 applicability_work_contexts BLOB NOT NULL,
+                 recorded_at INTEGER NOT NULL,
+                 UNIQUE(project_id, id),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             );
+             CREATE TABLE context_item_sources(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 context_item_id BLOB NOT NULL CHECK(length(context_item_id) = 16),
+                 source_id BLOB NOT NULL CHECK(length(source_id) = 16),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 PRIMARY KEY(context_item_id, position),
+                 UNIQUE(context_item_id, source_id),
+                 FOREIGN KEY(project_id, context_item_id) REFERENCES context_items(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE checkpoints(
+                 id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision = 1),
+                 checkpoint_kind TEXT NOT NULL CHECK(checkpoint_kind IN ('completion','pause','handoff')),
+                 goal TEXT NOT NULL CHECK(length(goal) > 0),
+                 work_state TEXT NOT NULL CHECK(work_state IN (
+                     'in_progress','paused','completed','abandoned','superseded'
+                 )),
+                 state_change TEXT,
+                 changed_paths BLOB NOT NULL,
+                 user_review TEXT NOT NULL CHECK(user_review IN ('not_requested','pending','reviewed')),
+                 user_review_source_id BLOB CHECK(user_review_source_id IS NULL OR length(user_review_source_id) = 16),
+                 user_acceptance TEXT NOT NULL CHECK(user_acceptance IN (
+                     'not_requested','pending','accepted','rejected'
+                 )),
+                 user_acceptance_source_id BLOB CHECK(user_acceptance_source_id IS NULL OR length(user_acceptance_source_id) = 16),
+                 known_limits BLOB NOT NULL,
+                 non_goals BLOB NOT NULL,
+                 next_step TEXT NOT NULL CHECK(length(next_step) > 0),
+                 handoff_to TEXT,
+                 recorded_at INTEGER NOT NULL,
+                 UNIQUE(project_id, id),
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, user_review_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, user_acceptance_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             );
+             CREATE TABLE checkpoint_source_relations(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 checkpoint_id BLOB NOT NULL CHECK(length(checkpoint_id) = 16),
+                 relation_kind TEXT NOT NULL CHECK(relation_kind IN ('supported_by','changed_basis')),
+                 source_id BLOB NOT NULL CHECK(length(source_id) = 16),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 PRIMARY KEY(checkpoint_id, relation_kind, position),
+                 UNIQUE(checkpoint_id, relation_kind, source_id),
+                 FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE checkpoint_decisions(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 checkpoint_id BLOB NOT NULL CHECK(length(checkpoint_id) = 16),
+                 decision_id BLOB NOT NULL CHECK(length(decision_id) = 16),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 PRIMARY KEY(checkpoint_id, position),
+                 UNIQUE(checkpoint_id, decision_id),
+                 FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, decision_id) REFERENCES decisions(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE checkpoint_questions(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 checkpoint_id BLOB NOT NULL CHECK(length(checkpoint_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 PRIMARY KEY(checkpoint_id, position),
+                 UNIQUE(checkpoint_id, question_id, question_revision),
+                 FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE checkpoint_verifications(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 checkpoint_id BLOB NOT NULL CHECK(length(checkpoint_id) = 16),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 verification_state TEXT NOT NULL CHECK(verification_state IN (
+                     'not_run','partial','passed','failed'
+                 )),
+                 source_id BLOB CHECK(source_id IS NULL OR length(source_id) = 16),
+                 outcome TEXT,
+                 PRIMARY KEY(checkpoint_id, position),
+                 FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
              CREATE TABLE operations(
                  operation_id BLOB PRIMARY KEY NOT NULL CHECK(length(operation_id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
@@ -2118,6 +3220,8 @@ fn ensure_replay_input(
         "relate_sources" => "source_relation",
         "create_question" => "question",
         "record_question_response" => "question_response",
+        "record_context_item" => "context_item",
+        "record_checkpoint" => "checkpoint",
         _ => {
             return Err(Error::new(
                 ErrorKind::RepairRequired,

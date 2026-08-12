@@ -1,4 +1,7 @@
-use crate::{DecisionId, LocalBindingId, ProjectId, QuestionId, SourceId, TimestampMicros};
+use crate::{
+    CheckpointId, ContextItemId, DecisionId, LocalBindingId, ProjectId, QuestionId, SourceId,
+    TimestampMicros,
+};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -400,4 +403,311 @@ pub struct QuestionResponseResult {
     pub question: Question,
     pub user_turn_source: Source,
     pub decision: Option<Decision>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContextItemRole {
+    Goal,
+    Fact,
+    Assumption,
+    Constraint,
+    Preference,
+    Risk,
+    Learning,
+    KnownLimit,
+}
+
+impl ContextItemRole {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Goal => "goal",
+            Self::Fact => "fact",
+            Self::Assumption => "assumption",
+            Self::Constraint => "constraint",
+            Self::Preference => "preference",
+            Self::Risk => "risk",
+            Self::Learning => "learning",
+            Self::KnownLimit => "known_limit",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "goal" => Some(Self::Goal),
+            "fact" => Some(Self::Fact),
+            "assumption" => Some(Self::Assumption),
+            "constraint" => Some(Self::Constraint),
+            "preference" => Some(Self::Preference),
+            "risk" => Some(Self::Risk),
+            "learning" => Some(Self::Learning),
+            "known_limit" => Some(Self::KnownLimit),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StatementProvenanceRole {
+    UserStatement,
+    Observed,
+    AgentStatement,
+    GeneratedInterpretation,
+}
+
+impl StatementProvenanceRole {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::UserStatement => "user_statement",
+            Self::Observed => "observed",
+            Self::AgentStatement => "agent_statement",
+            Self::GeneratedInterpretation => "generated_interpretation",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "user_statement" => Some(Self::UserStatement),
+            "observed" => Some(Self::Observed),
+            "agent_statement" => Some(Self::AgentStatement),
+            "generated_interpretation" => Some(Self::GeneratedInterpretation),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContextItemDraft {
+    pub expected_project_revision: u64,
+    pub role: ContextItemRole,
+    pub statement: String,
+    pub provenance_role: StatementProvenanceRole,
+    pub author: Principal,
+    pub source_basis: Vec<SourceId>,
+    pub applicability: ApplicabilityScope,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContextItem {
+    pub id: ContextItemId,
+    pub project_id: ProjectId,
+    pub revision: u64,
+    pub role: ContextItemRole,
+    pub statement: String,
+    pub provenance_role: StatementProvenanceRole,
+    pub author: Principal,
+    pub source_basis: Vec<SourceId>,
+    pub applicability: ApplicabilityScope,
+    pub recorded_at: TimestampMicros,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CheckpointKind {
+    Completion,
+    Pause,
+    Handoff,
+}
+
+impl CheckpointKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Completion => "completion",
+            Self::Pause => "pause",
+            Self::Handoff => "handoff",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "completion" => Some(Self::Completion),
+            "pause" => Some(Self::Pause),
+            "handoff" => Some(Self::Handoff),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkState {
+    InProgress,
+    Paused,
+    Completed,
+    Abandoned,
+    Superseded,
+}
+
+impl WorkState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::InProgress => "in_progress",
+            Self::Paused => "paused",
+            Self::Completed => "completed",
+            Self::Abandoned => "abandoned",
+            Self::Superseded => "superseded",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "in_progress" => Some(Self::InProgress),
+            "paused" => Some(Self::Paused),
+            "completed" => Some(Self::Completed),
+            "abandoned" => Some(Self::Abandoned),
+            "superseded" => Some(Self::Superseded),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VerificationState {
+    NotRun,
+    Partial,
+    Passed,
+    Failed,
+}
+
+impl VerificationState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRun => "not_run",
+            Self::Partial => "partial",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "not_run" => Some(Self::NotRun),
+            "partial" => Some(Self::Partial),
+            "passed" => Some(Self::Passed),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserReviewState {
+    NotRequested,
+    Pending,
+    Reviewed,
+}
+
+impl UserReviewState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequested => "not_requested",
+            Self::Pending => "pending",
+            Self::Reviewed => "reviewed",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "not_requested" => Some(Self::NotRequested),
+            "pending" => Some(Self::Pending),
+            "reviewed" => Some(Self::Reviewed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserAcceptanceState {
+    NotRequested,
+    Pending,
+    Accepted,
+    Rejected,
+}
+
+impl UserAcceptanceState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequested => "not_requested",
+            Self::Pending => "pending",
+            Self::Accepted => "accepted",
+            Self::Rejected => "rejected",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "not_requested" => Some(Self::NotRequested),
+            "pending" => Some(Self::Pending),
+            "accepted" => Some(Self::Accepted),
+            "rejected" => Some(Self::Rejected),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerificationFact {
+    pub state: VerificationState,
+    pub source_id: Option<SourceId>,
+    pub outcome: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserReviewFact {
+    pub state: UserReviewState,
+    pub source_id: Option<SourceId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserAcceptanceFact {
+    pub state: UserAcceptanceState,
+    pub source_id: Option<SourceId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QuestionReference {
+    pub question_id: QuestionId,
+    pub revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckpointDraft {
+    pub expected_project_revision: u64,
+    pub kind: CheckpointKind,
+    pub goal: String,
+    pub work_state: WorkState,
+    pub state_change: Option<String>,
+    pub source_basis: Vec<SourceId>,
+    pub changed_source_basis: Vec<SourceId>,
+    pub changed_paths: Vec<String>,
+    pub applied_decisions: Vec<DecisionId>,
+    pub verification: Vec<VerificationFact>,
+    pub user_review: UserReviewFact,
+    pub user_acceptance: UserAcceptanceFact,
+    pub known_limits: Vec<String>,
+    pub non_goals: Vec<String>,
+    pub open_questions: Vec<QuestionReference>,
+    pub next_step: String,
+    pub handoff_to: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Checkpoint {
+    pub id: CheckpointId,
+    pub project_id: ProjectId,
+    pub revision: u64,
+    pub kind: CheckpointKind,
+    pub goal: String,
+    pub work_state: WorkState,
+    pub state_change: Option<String>,
+    pub source_basis: Vec<SourceId>,
+    pub changed_source_basis: Vec<SourceId>,
+    pub changed_paths: Vec<String>,
+    pub applied_decisions: Vec<DecisionId>,
+    pub verification: Vec<VerificationFact>,
+    pub user_review: UserReviewFact,
+    pub user_acceptance: UserAcceptanceFact,
+    pub known_limits: Vec<String>,
+    pub non_goals: Vec<String>,
+    pub open_questions: Vec<QuestionReference>,
+    pub next_step: String,
+    pub handoff_to: Option<String>,
+    pub recorded_at: TimestampMicros,
 }
