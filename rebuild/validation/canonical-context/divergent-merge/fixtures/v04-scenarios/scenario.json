@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "validation_id": "V04",
+  "project_identity": "11111111111111111111111111111111",
+  "common_base": {
+    "required": true,
+    "authority": "explicit_history_basis",
+    "rejected_inference": [
+      "export_timestamp",
+      "filename",
+      "path",
+      "import_order"
+    ]
+  },
+  "result_classes": [
+    "independent_additions",
+    "same_record_revision",
+    "semantic_decision_conflict",
+    "delete_modify_conflict",
+    "source_binding_conflict",
+    "common_base_unavailable"
+  ],
+  "semantic_scenarios": [
+    "trustworthy_common_base",
+    "independent_additions",
+    "compatible_non_semantic_correction",
+    "same_record_semantic_conflict",
+    "question_state_conflict",
+    "semantic_decision_conflict",
+    "delete_modify",
+    "supersede_supersede",
+    "source_binding_conflict",
+    "common_base_unavailable",
+    "source_repository_unavailable"
+  ],
+  "resolution_modes": [
+    "choose_local",
+    "choose_incoming",
+    "explicit_merged",
+    "context_branch"
+  ],
+  "resolution_requirements": [
+    "exact_current_host_user_turn_source",
+    "exact_conflict_set_identity",
+    "exact_conflict_revision"
+  ],
+  "post_merge_assertions": [
+    "merge_provenance",
+    "deterministic_export_import",
+    "deterministic_canonical_read_basis",
+    "deletion_propagation",
+    "format_version_rejection",
+    "operation_replay",
+    "changed_replay_rejection"
+  ],
+  "recovery_scenarios": [
+    "canonical_termination_before_commit",
+    "canonical_termination_after_commit_before_response",
+    "bundle_publication_interruption",
+    "import_interruption_before_mutation",
+    "merge_interruption",
+    "forgetting_failure",
+    "committed_state_reopen",
+    "operation_duplicate_prevention",
+    "managed_sensitive_residue_absence",
+    "bundle_local_absolute_path_absence",
+    "bundle_candidate_absence",
+    "bundle_derived_state_absence"
+  ],
+  "external_semantic_authority": false
+}

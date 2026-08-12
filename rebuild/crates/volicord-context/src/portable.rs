@@ -805,6 +805,12 @@ pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Resul
             "bundle must contain exactly its declared Project identity",
         ));
     }
+    if active.iter().any(|record| tombstones.contains(record)) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "bundle contains both active canonical content and a tombstone for one record",
+        ));
+    }
     let relation_table = payload
         .tables
         .iter()

@@ -258,6 +258,34 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "v04-divergent-merge",
+      "validation_id": "V04",
+      "path": "rebuild/validation/canonical-context/divergent-merge/fixtures/v04-scenarios",
+      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, deterministic read/export, forgetting propagation, operation replay, and Phase 4 recovery boundaries.",
+      "expected_entities": [
+        "trustworthy-common-base",
+        "local-history",
+        "incoming-history",
+        "exact-user-turn-resolution-source",
+        "merge-provenance",
+        "context-branch"
+      ],
+      "expected_relations": [
+        "local-history|diverges_from|trustworthy-common-base",
+        "incoming-history|diverges_from|trustworthy-common-base",
+        "merge-provenance|resolved_by|exact-user-turn-resolution-source",
+        "context-branch|retains_basis|incoming-history"
+      ],
+      "expected_unsupported": [
+        "network synchronization and live collaboration",
+        "conflict UI, Recall prose, relevance ranking, Candidate and Derived State semantics",
+        "signature, encryption, compression and legacy format decoding"
+      ],
+      "content_sha256": "323542cfeaeb955d3dfdd3e2cf9769e44e1cf976aedc667ec05b670b4003225c",
+      "origin": "Self-authored deterministic fixture for V04.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v05-inquiry-scenario",
       "validation_id": "V05",
       "path": "rebuild/validation/inquiry/frontier-resume/fixtures",

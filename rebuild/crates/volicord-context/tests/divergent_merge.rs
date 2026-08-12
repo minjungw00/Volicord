@@ -4,7 +4,8 @@ use std::path::Path;
 use tempfile::tempdir;
 use volicord_context::{
     AgentRecommendation, ApplicabilityScope, Availability, BundleConflictClass, BundleMergeStatus,
-    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, DecisionChoice,
+    CanonicalReadOptions, CanonicalRecordId, ContextItemCorrectionDraft, ContextItemDraft,
+    ContextItemRole, CorrectionKind, DecisionChoice, DecisionCorrectionDraft,
     DecisionSupersessionDraft, DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse,
     FixedClock, MergeResolution, MergeResolutionMode, OperationId, Principal, PrincipalKind,
     QuestionAlternative, QuestionDraft, QuestionResponseDraft, SourceBindingCandidate, SourceDraft,
@@ -593,7 +594,8 @@ fn delete_modify_binding_and_unavailable_base_are_never_automatic(
         repository_identity: "incoming-repository".to_owned(),
         source_basis: vec![base.repository.id],
     };
-    let comparison = local.compare_bundle(Some(&base_bundle), &incoming_bundle, Some(binding))?;
+    let comparison =
+        local.compare_bundle(Some(&base_bundle), &incoming_bundle, Some(binding.clone()))?;
     for class in [
         BundleConflictClass::DeleteModifyConflict,
         BundleConflictClass::SourceBindingConflict,
@@ -607,6 +609,273 @@ fn delete_modify_binding_and_unavailable_base_are_never_automatic(
     assert!(unavailable.conflicts.iter().any(|value| value.class
         == BundleConflictClass::CommonBaseUnavailable
         && !value.automatic_resolution_allowed));
+    let deletion_resolution = MergeResolution {
+        conflict_set_identity: comparison.conflict_set_identity,
+        conflict_revision: 1,
+        user_turn_source_id: base.authorization.id,
+        mode: MergeResolutionMode::ChooseLocal,
+    };
+    local.merge_bundle(
+        operation(33),
+        Some(&base_bundle),
+        &incoming_bundle,
+        Some(binding),
+        Some(deletion_resolution.clone()),
+    )?;
+    assert!(
+        local
+            .merge_bundle(
+                operation(33),
+                Some(&base_bundle),
+                &incoming_bundle,
+                Some(SourceBindingCandidate {
+                    repository_identity: "incoming-repository".to_owned(),
+                    source_basis: vec![base.repository.id],
+                }),
+                Some(deletion_resolution),
+            )?
+            .replayed
+    );
+    let deletion_bundle = root.path().join("deletion-result.json");
+    local.export_bundle(base.project.id, &deletion_bundle)?;
+    let deletion_bytes = fs::read(&deletion_bundle)?;
+    assert!(
+        !deletion_bytes
+            .windows("base  fact".len())
+            .any(|window| window == b"base  fact"),
+        "choosing the deletion side retained incoming modified content"
+    );
+    assert!(local
+        .get_context_item(base.project.id, base.item.id)
+        .is_err());
+    assert_eq!(
+        local
+            .get_tombstone(
+                base.project.id,
+                CanonicalRecordId::ContextItem(base.item.id)
+            )?
+            .record,
+        CanonicalRecordId::ContextItem(base.item.id)
+    );
+
+    let mut imported = store(&root.path().join("deletion-import.sqlite3"), &[])?;
+    imported.import_bundle(operation(34), &deletion_bundle)?;
+    let imported_basis =
+        imported.read_canonical_basis(base.project.id, CanonicalReadOptions::default())?;
+    assert!(!imported_basis
+        .context_items
+        .iter()
+        .any(|value| value.id == base.item.id));
+    assert!(imported_basis.forgotten.iter().any(|value| {
+        value.record_identity == base.item.id.to_string()
+            && value.record_kind == volicord_context::CanonicalRecordKind::ContextItem
+    }));
+
+    let mut choose_modified = clone_from(
+        &root.path().join("context-choose-modified.sqlite3"),
+        &base_bundle,
+        &[],
+        35,
+    )?;
+    choose_modified.forget_context_item(
+        operation(36),
+        base.project.id,
+        base.item.id,
+        base.authorization.id,
+    )?;
+    let modified_comparison =
+        choose_modified.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    choose_modified.merge_bundle(
+        operation(37),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(MergeResolution {
+            conflict_set_identity: modified_comparison.conflict_set_identity,
+            conflict_revision: 1,
+            user_turn_source_id: base.authorization.id,
+            mode: MergeResolutionMode::ChooseIncoming,
+        }),
+    )?;
+    assert_eq!(
+        choose_modified
+            .get_context_item(base.project.id, base.item.id)?
+            .statement,
+        "base  fact"
+    );
+    assert!(choose_modified
+        .get_tombstone(
+            base.project.id,
+            CanonicalRecordId::ContextItem(base.item.id)
+        )
+        .is_err());
+    Ok(())
+}
+
+#[test]
+fn decision_delete_modify_selects_one_complete_closure_and_rolls_back_atomically(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const MODIFIED_RATIONALE: &str = "base  rationale";
+    let root = tempdir()?;
+    let mut origin = store(
+        &root.path().join("decision-origin.sqlite3"),
+        &[1, 2, 3, 4, 5, 6],
+    )?;
+    let base = create_base(&mut origin)?;
+    let base_bundle = root.path().join("decision-base.json");
+    origin.export_bundle(base.project.id, &base_bundle)?;
+
+    let mut incoming = clone_from(
+        &root.path().join("decision-incoming.sqlite3"),
+        &base_bundle,
+        &[],
+        80,
+    )?;
+    incoming.correct_decision(
+        operation(81),
+        base.project.id,
+        base.decision.id,
+        DecisionCorrectionDraft {
+            expected_revision: 1,
+            corrected_user_rationale: Some(MODIFIED_RATIONALE.to_owned()),
+            kind: CorrectionKind::Formatting,
+            user_authorization_source_id: base.authorization.id,
+        },
+    )?;
+    let incoming_bundle = root.path().join("decision-incoming.json");
+    incoming.export_bundle(base.project.id, &incoming_bundle)?;
+
+    let mut choose_forgotten = clone_from(
+        &root.path().join("decision-choose-forgotten.sqlite3"),
+        &base_bundle,
+        &[],
+        82,
+    )?;
+    choose_forgotten.forget_decision(
+        operation(83),
+        base.project.id,
+        base.decision.id,
+        base.authorization.id,
+    )?;
+    let forgotten_comparison =
+        choose_forgotten.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    assert!(forgotten_comparison.conflicts.iter().any(|value| {
+        value.class == BundleConflictClass::DeleteModifyConflict
+            && !value.automatic_resolution_allowed
+    }));
+    choose_forgotten.merge_bundle(
+        operation(84),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(MergeResolution {
+            conflict_set_identity: forgotten_comparison.conflict_set_identity,
+            conflict_revision: 1,
+            user_turn_source_id: base.authorization.id,
+            mode: MergeResolutionMode::ChooseLocal,
+        }),
+    )?;
+    assert!(choose_forgotten
+        .get_decision(base.project.id, base.decision.id)
+        .is_err());
+    assert_eq!(
+        choose_forgotten
+            .get_tombstone(
+                base.project.id,
+                CanonicalRecordId::Decision(base.decision.id)
+            )?
+            .record,
+        CanonicalRecordId::Decision(base.decision.id)
+    );
+    let forgotten_bundle = root.path().join("decision-forgotten.json");
+    choose_forgotten.export_bundle(base.project.id, &forgotten_bundle)?;
+    let forgotten_bytes = fs::read(&forgotten_bundle)?;
+    assert!(!forgotten_bytes
+        .windows(MODIFIED_RATIONALE.len())
+        .any(|window| window == MODIFIED_RATIONALE.as_bytes()));
+
+    let mut choose_modified = clone_from(
+        &root.path().join("decision-choose-modified.sqlite3"),
+        &base_bundle,
+        &[],
+        85,
+    )?;
+    choose_modified.forget_decision(
+        operation(86),
+        base.project.id,
+        base.decision.id,
+        base.authorization.id,
+    )?;
+    let modified_comparison =
+        choose_modified.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    choose_modified.merge_bundle(
+        operation(87),
+        Some(&base_bundle),
+        &incoming_bundle,
+        None,
+        Some(MergeResolution {
+            conflict_set_identity: modified_comparison.conflict_set_identity,
+            conflict_revision: 1,
+            user_turn_source_id: base.authorization.id,
+            mode: MergeResolutionMode::ChooseIncoming,
+        }),
+    )?;
+    let selected = choose_modified.get_decision(base.project.id, base.decision.id)?;
+    assert_eq!(selected.revision, 2);
+    assert_eq!(selected.user_rationale.as_deref(), Some(MODIFIED_RATIONALE));
+    assert!(choose_modified
+        .get_tombstone(
+            base.project.id,
+            CanonicalRecordId::Decision(base.decision.id)
+        )
+        .is_err());
+
+    let interrupted_path = root.path().join("decision-interrupted.sqlite3");
+    let mut interrupted = clone_from(&interrupted_path, &base_bundle, &[], 88)?;
+    interrupted.forget_decision(
+        operation(89),
+        base.project.id,
+        base.decision.id,
+        base.authorization.id,
+    )?;
+    let interrupted_comparison =
+        interrupted.compare_bundle(Some(&base_bundle), &incoming_bundle, None)?;
+    drop(interrupted);
+    let connection = Connection::open(&interrupted_path)?;
+    connection.execute_batch(
+        "CREATE TRIGGER interrupt_decision_restore BEFORE INSERT ON decisions
+         BEGIN SELECT RAISE(ABORT, 'interrupted Decision closure restore'); END;",
+    )?;
+    drop(connection);
+    let mut interrupted = store(&interrupted_path, &[])?;
+    let error = interrupted
+        .merge_bundle(
+            operation(90),
+            Some(&base_bundle),
+            &incoming_bundle,
+            None,
+            Some(MergeResolution {
+                conflict_set_identity: interrupted_comparison.conflict_set_identity,
+                conflict_revision: 1,
+                user_turn_source_id: base.authorization.id,
+                mode: MergeResolutionMode::ChooseIncoming,
+            }),
+        )
+        .err()
+        .ok_or("interrupted Decision closure merge succeeded")?;
+    assert_eq!(error.kind(), ErrorKind::TransactionFailure);
+    assert!(interrupted
+        .get_decision(base.project.id, base.decision.id)
+        .is_err());
+    assert_eq!(
+        interrupted
+            .get_tombstone(
+                base.project.id,
+                CanonicalRecordId::Decision(base.decision.id)
+            )?
+            .record,
+        CanonicalRecordId::Decision(base.decision.id)
+    );
     Ok(())
 }
 

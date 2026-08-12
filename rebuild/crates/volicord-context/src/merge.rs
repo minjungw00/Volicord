@@ -142,6 +142,14 @@ pub struct BundleMerge {
 
 type RowMap = BTreeMap<String, Vec<PortableValue>>;
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CanonicalRecordIdentity {
+    kind: String,
+    identity: String,
+}
+
+type RecordClosureMap = BTreeMap<CanonicalRecordIdentity, RowMap>;
+
 struct ComparedState {
     comparison: BundleComparison,
     base: Option<Payload>,
@@ -766,6 +774,184 @@ fn rows(payload: &Payload) -> RowMap {
     values
 }
 
+fn canonical_record_identity(kind: &str, identity: &PortableValue) -> CanonicalRecordIdentity {
+    CanonicalRecordIdentity {
+        kind: kind.to_owned(),
+        identity: value_key(identity),
+    }
+}
+
+fn row_owner(table: &str, row: &[PortableValue]) -> Result<Option<CanonicalRecordIdentity>, Error> {
+    let owner = match table {
+        "projects" => Some(canonical_record_identity("project", &row[0])),
+        "project_revisions" => Some(canonical_record_identity("project", &row[0])),
+        "sources" => Some(canonical_record_identity("source", &row[0])),
+        "source_relations" => Some(canonical_record_identity("source", &row[1])),
+        "questions" => Some(canonical_record_identity("question", &row[0])),
+        "question_revisions" => Some(canonical_record_identity("question", &row[0])),
+        "question_response_sources" => Some(canonical_record_identity("question", &row[1])),
+        "decisions" => Some(canonical_record_identity("decision", &row[0])),
+        "decision_revisions" => Some(canonical_record_identity("decision", &row[0])),
+        "context_items" => Some(canonical_record_identity("context_item", &row[0])),
+        "context_item_sources" => Some(canonical_record_identity("context_item", &row[1])),
+        "context_item_revisions" => Some(canonical_record_identity("context_item", &row[0])),
+        "checkpoints" => Some(canonical_record_identity("checkpoint", &row[0])),
+        "checkpoint_source_relations"
+        | "checkpoint_decisions"
+        | "checkpoint_questions"
+        | "checkpoint_verifications" => Some(canonical_record_identity("checkpoint", &row[1])),
+        "canonical_relations" => Some(canonical_record_identity(value_text(&row[1])?, &row[2])),
+        "review_due" => Some(canonical_record_identity("decision", &row[1])),
+        "tombstones" => Some(canonical_record_identity(value_text(&row[1])?, &row[2])),
+        "merge_events" => None,
+        _ => {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                format!("portable table {table} has no canonical closure ownership"),
+            ))
+        }
+    };
+    Ok(owner)
+}
+
+fn record_closures(payload: &Payload) -> Result<RecordClosureMap, Error> {
+    let mut closures = RecordClosureMap::new();
+    for (spec, table) in TABLES.iter().zip(&payload.tables) {
+        for row in &table.rows {
+            let Some(owner) = row_owner(spec.name, row)? else {
+                continue;
+            };
+            let key = spec
+                .primary_key
+                .iter()
+                .map(|index| value_key(&row[*index]))
+                .collect::<Vec<_>>()
+                .join("|");
+            closures
+                .entry(owner)
+                .or_default()
+                .insert(format!("{}|{key}", spec.name), row.clone());
+        }
+    }
+    Ok(closures)
+}
+
+fn choose_record_closure<'a>(
+    base: Option<&'a RowMap>,
+    local: Option<&'a RowMap>,
+    incoming: Option<&'a RowMap>,
+    choice: SideChoice,
+) -> Option<&'a RowMap> {
+    if local == incoming {
+        local
+    } else if local == base {
+        incoming
+    } else if incoming == base {
+        local
+    } else {
+        match choice {
+            SideChoice::Local => local,
+            SideChoice::Incoming => incoming,
+        }
+    }
+}
+
+fn selected_record_states(
+    selected: &RowMap,
+) -> Result<
+    (
+        BTreeSet<CanonicalRecordIdentity>,
+        BTreeSet<CanonicalRecordIdentity>,
+    ),
+    Error,
+> {
+    let mut active = BTreeSet::new();
+    let mut tombstones = BTreeSet::new();
+    for (key, row) in selected {
+        let table = key.split('|').next().unwrap_or_default();
+        let kind = match table {
+            "projects" => Some("project"),
+            "sources" => Some("source"),
+            "questions" => Some("question"),
+            "decisions" => Some("decision"),
+            "context_items" => Some("context_item"),
+            "checkpoints" => Some("checkpoint"),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            active.insert(canonical_record_identity(kind, &row[0]));
+        } else if table == "tombstones" {
+            tombstones.insert(canonical_record_identity(value_text(&row[1])?, &row[2]));
+        }
+    }
+    if active.iter().any(|record| tombstones.contains(record)) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "merged canonical state contains both active content and a tombstone",
+        ));
+    }
+    Ok((active, tombstones))
+}
+
+fn record_present(
+    active: &BTreeSet<CanonicalRecordIdentity>,
+    tombstones: &BTreeSet<CanonicalRecordIdentity>,
+    kind: &str,
+    identity: &PortableValue,
+) -> bool {
+    let record = canonical_record_identity(kind, identity);
+    active.contains(&record) || tombstones.contains(&record)
+}
+
+fn retain_relation_integrity(selected: &mut RowMap) -> Result<(), Error> {
+    let (active, tombstones) = selected_record_states(selected)?;
+    selected.retain(|key, row| {
+        let table = key.split('|').next().unwrap_or_default();
+        match table {
+            "source_relations" => {
+                active.contains(&canonical_record_identity("source", &row[1]))
+                    && active.contains(&canonical_record_identity("source", &row[3]))
+            }
+            "question_response_sources" => {
+                active.contains(&canonical_record_identity("question", &row[1]))
+                    && active.contains(&canonical_record_identity("source", &row[3]))
+            }
+            "context_item_sources" => {
+                active.contains(&canonical_record_identity("context_item", &row[1]))
+                    && active.contains(&canonical_record_identity("source", &row[2]))
+            }
+            "checkpoint_source_relations" => {
+                active.contains(&canonical_record_identity("checkpoint", &row[1]))
+                    && active.contains(&canonical_record_identity("source", &row[3]))
+            }
+            "checkpoint_decisions" => {
+                active.contains(&canonical_record_identity("checkpoint", &row[1]))
+                    && active.contains(&canonical_record_identity("decision", &row[2]))
+            }
+            "checkpoint_questions" => {
+                active.contains(&canonical_record_identity("checkpoint", &row[1]))
+                    && active.contains(&canonical_record_identity("question", &row[2]))
+            }
+            "checkpoint_verifications" => {
+                active.contains(&canonical_record_identity("checkpoint", &row[1]))
+                    && (matches!(row[4], PortableValue::Null)
+                        || active.contains(&canonical_record_identity("source", &row[4])))
+            }
+            "canonical_relations" => {
+                let from = value_text(&row[1])
+                    .ok()
+                    .is_some_and(|kind| record_present(&active, &tombstones, kind, &row[2]));
+                let to = value_text(&row[4])
+                    .ok()
+                    .is_some_and(|kind| record_present(&active, &tombstones, kind, &row[5]));
+                from && to
+            }
+            _ => true,
+        }
+    });
+    selected_record_states(selected).map(|_| ())
+}
+
 #[derive(Clone, Copy)]
 enum SideChoice {
     Local,
@@ -782,6 +968,21 @@ fn build_target(compared: &ComparedState, choice: SideChoice) -> Result<Payload,
     let base_rows = rows(base);
     let local_rows = rows(&compared.local);
     let incoming_rows = rows(&compared.incoming);
+    let base_closures = record_closures(base)?;
+    let local_closures = record_closures(&compared.local)?;
+    let incoming_closures = record_closures(&compared.incoming)?;
+    let record_identities = base_closures
+        .keys()
+        .chain(local_closures.keys())
+        .chain(incoming_closures.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let closure_row_keys = base_closures
+        .values()
+        .chain(local_closures.values())
+        .chain(incoming_closures.values())
+        .flat_map(|closure| closure.keys().cloned())
+        .collect::<BTreeSet<_>>();
     let keys = base_rows
         .keys()
         .chain(local_rows.keys())
@@ -790,6 +991,9 @@ fn build_target(compared: &ComparedState, choice: SideChoice) -> Result<Payload,
         .collect::<BTreeSet<_>>();
     let mut selected = BTreeMap::new();
     for key in keys {
+        if closure_row_keys.contains(&key) {
+            continue;
+        }
         let b = base_rows.get(&key);
         let l = local_rows.get(&key);
         let i = incoming_rows.get(&key);
@@ -809,8 +1013,19 @@ fn build_target(compared: &ComparedState, choice: SideChoice) -> Result<Payload,
             selected.insert(key, value.clone());
         }
     }
+    for record in record_identities {
+        if let Some(closure) = choose_record_closure(
+            base_closures.get(&record),
+            local_closures.get(&record),
+            incoming_closures.get(&record),
+            choice,
+        ) {
+            selected.extend(closure.clone());
+        }
+    }
     let losing_decisions = losing_decision_ids(base, &compared.local, &compared.incoming, choice)?;
     selected.retain(|key, row| !row_mentions_losing_decision(key, row, &losing_decisions));
+    retain_relation_integrity(&mut selected)?;
     let mut tables = Vec::with_capacity(TABLES.len());
     for spec in TABLES {
         let prefix = format!("{}|", spec.name);
