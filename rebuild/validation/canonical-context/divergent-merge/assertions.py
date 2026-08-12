@@ -26,11 +26,18 @@ SEMANTIC_TESTS = {
     "semantic_decision_conflict": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
     "context_item_delete_modify_choose_forgotten": "delete_modify_binding_and_unavailable_base_are_never_automatic",
     "context_item_delete_modify_choose_modified": "delete_modify_binding_and_unavailable_base_are_never_automatic",
+    "source_local_modify_incoming_forget": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "question_local_modify_incoming_forget": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "decision_local_modify_incoming_forget": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "context_item_local_modify_incoming_forget": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "checkpoint_incoming_forget": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
     "decision_delete_modify_choose_forgotten": "decision_delete_modify_selects_one_complete_closure_and_rolls_back_atomically",
     "decision_delete_modify_choose_modified": "decision_delete_modify_selects_one_complete_closure_and_rolls_back_atomically",
     "source_forgetting_modify": "source_question_and_checkpoint_forgetting_propagate_through_merge",
     "question_forgetting_modify": "source_question_and_checkpoint_forgetting_propagate_through_merge",
     "checkpoint_forgetting_modify": "source_question_and_checkpoint_forgetting_propagate_through_merge",
+    "supersede_decision_source_forgetting": "supersession_source_payload_is_purged_by_source_only_forgetting",
+    "question_only_forgetting_surviving_decision": "question_only_forgetting_purges_owned_decision_presentation",
     "supersede_supersede": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
     "source_binding_conflict": "delete_modify_binding_and_unavailable_base_are_never_automatic",
     "common_base_unavailable": "delete_modify_binding_and_unavailable_base_are_never_automatic",
@@ -59,6 +66,12 @@ POST_MERGE_TESTS = {
     "bundle_format_interaction": "corruption_and_newer_version_fail_before_any_mutation",
     "operation_replay": "verified_base_auto_merges_independent_additions_and_replays",
     "changed_replay_rejection": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
+    "operation_dependency_cleanup": "supersession_source_payload_is_purged_by_source_only_forgetting",
+    "copied_question_content_absence": "question_only_forgetting_purges_owned_decision_presentation",
+    "managed_bundle_refresh": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
+    "database_wal_temp_residue_absence": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
+    "sanitation_failure_not_success": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
+    "sanitation_recovery_replay": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
 }
 
 RECOVERY_TESTS = {
@@ -67,10 +80,13 @@ RECOVERY_TESTS = {
     "bundle_publication_interruption": "process_faults_preserve_published_bundle_and_prior_import_state",
     "import_interruption_before_mutation": "process_faults_preserve_published_bundle_and_prior_import_state",
     "merge_interruption": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
+    "merge_forgetting_interruption_before_commit": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
+    "merge_forgetting_interruption_after_commit": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
     "forgetting_failure": "new_forgetting_kinds_roll_back_their_complete_closure_and_retry_safely",
     "committed_state_reopen": "explicit_path_survives_process_reopen_without_cwd_or_runtime_home_discovery",
     "operation_duplicate_prevention": "operation_replay_preserves_prior_result_and_detects_mismatch_and_stale_basis",
     "managed_sensitive_residue_absence": "every_content_bearing_kind_forgets_to_one_minimal_portable_tombstone",
+    "managed_merge_residue_absence": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
     "bundle_local_absolute_path_absence": "repeated_export_is_identical_and_excludes_local_and_noncanonical_classes",
     "bundle_candidate_absence": "repeated_export_is_identical_and_excludes_local_and_noncanonical_classes",
     "bundle_derived_state_absence": "repeated_export_is_identical_and_excludes_local_and_noncanonical_classes",
@@ -78,6 +94,7 @@ RECOVERY_TESTS = {
 
 TEST_TARGETS = (
     "canonical_read",
+    "context_checkpoint",
     "divergent_merge",
     "forgetting_matrix",
     "inquiry",
@@ -172,6 +189,7 @@ def main() -> int:
     }
     missing = sorted(name for name in mapped_tests if f"{name}: test" not in catalog)
     require(not missing, f"mapped production Rust tests are missing: {missing}")
+    production_tests = sum(line.endswith(": test") for line in catalog.splitlines())
 
     run([*cargo, *targets, "--", "--test-threads=1"])
     summary = {
@@ -184,6 +202,7 @@ def main() -> int:
             | RECOVERY_TESTS
         ),
         "production_test_targets": list(TEST_TARGETS),
+        "production_tests": production_tests,
         "status": "passed",
         "validation_id": "V04",
     }

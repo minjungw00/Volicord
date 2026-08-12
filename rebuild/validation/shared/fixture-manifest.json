@@ -261,27 +261,36 @@
       "id": "v04-divergent-merge",
       "validation_id": "V04",
       "path": "rebuild/validation/canonical-context/divergent-merge/fixtures/v04-scenarios",
-      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, deterministic read/export, forgetting propagation, operation replay, and Phase 4 recovery boundaries.",
+      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, systematic operation dependencies, copied Question-content removal, symmetric merge-selected forgetting, managed sanitation, deterministic read/export, and Phase 4 recovery boundaries.",
       "expected_entities": [
         "trustworthy-common-base",
         "local-history",
         "incoming-history",
         "exact-user-turn-resolution-source",
         "merge-provenance",
-        "context-branch"
+        "context-branch",
+        "operation-dependency",
+        "forgotten-replay-state",
+        "merge-sanitation-pending",
+        "merge-sanitation-complete",
+        "surviving-decision-review-due"
       ],
       "expected_relations": [
         "local-history|diverges_from|trustworthy-common-base",
         "incoming-history|diverges_from|trustworthy-common-base",
         "merge-provenance|resolved_by|exact-user-turn-resolution-source",
-        "context-branch|retains_basis|incoming-history"
+        "context-branch|retains_basis|incoming-history",
+        "operation-dependency|owns_content|canonical-record",
+        "merge-sanitation-pending|recovers_to|merge-sanitation-complete",
+        "surviving-decision-review-due|lost_basis|forgotten-question"
       ],
       "expected_unsupported": [
         "network synchronization and live collaboration",
         "conflict UI, Recall prose, relevance ranking, Candidate and Derived State semantics",
-        "signature, encryption, compression and legacy format decoding"
+        "signature, encryption, compression and legacy format decoding",
+        "unmanaged external copies, backups and filesystem snapshots"
       ],
-      "content_sha256": "94c8f809d506e2ae8676d33ce3babb890cb3f21bbc5028fee6cc5851838b860f",
+      "content_sha256": "d69107ca3cd06c81f8a9d8b68495a571eda5ac2c82089ee8493f488f00f655b7",
       "origin": "Self-authored deterministic fixture for V04.",
       "license": "CC0-1.0"
     },
