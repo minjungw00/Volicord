@@ -297,6 +297,8 @@ impl Store {
         let resolution_source = resolution.as_ref().map(|value| value.user_turn_source_id);
         let classes = sorted_classes(&compared.comparison);
         let affected = affected_identities(&compared.comparison);
+        let operation_dependencies =
+            crate::portable::payload_dependencies(target.as_ref().unwrap_or(&compared.local))?;
         let now = self.clock.now()?;
         let transaction = self
             .connection
@@ -328,11 +330,18 @@ impl Store {
                 now.as_unix_micros(),
             ],
         ).map_err(storage_write)?;
-        transaction.execute(
-            "INSERT INTO operations(operation_id, project_id, operation_kind, input_basis, outcome, result_kind, result_id, result_revision, committed_at)
-             VALUES (?1, ?2, 'merge_bundle', ?3, 'committed', 'bundle_merge', ?2, 1, ?4)",
-            params![operation_id.as_bytes().as_slice(), project_id.as_bytes().as_slice(), request_basis, now.as_unix_micros()],
-        ).map_err(storage_write)?;
+        crate::store::record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "merge_bundle",
+            &request_basis,
+            "bundle_merge",
+            project_id.as_bytes(),
+            1,
+            now,
+            &operation_dependencies,
+        )?;
         transaction
             .execute(
                 "DELETE FROM bundle_lineage WHERE project_id = ?1",
@@ -1371,17 +1380,23 @@ fn load_replayed_merge(
     operation_id: OperationId,
     expected_basis: &[u8],
 ) -> Result<Option<BundleMerge>, Error> {
-    let operation: Option<(String, Vec<u8>)> = connection
+    let operation: Option<(String, Vec<u8>, String)> = connection
         .query_row(
-            "SELECT operation_kind, input_basis FROM operations WHERE operation_id = ?1",
+            "SELECT operation_kind, input_basis, replay_state FROM operations WHERE operation_id = ?1",
             [operation_id.as_bytes().as_slice()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()
         .map_err(storage_read)?;
-    let Some((kind, basis)) = operation else {
+    let Some((kind, basis, replay_state)) = operation else {
         return Ok(None);
     };
+    if replay_state == "forgotten_dependency" {
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            "merge replay input depended on forgotten canonical content",
+        ));
+    }
     if kind != "merge_bundle" || basis != expected_basis {
         return Err(Error::new(
             ErrorKind::DomainConflict,

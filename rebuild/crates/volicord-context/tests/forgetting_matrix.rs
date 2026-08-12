@@ -925,3 +925,154 @@ fn new_forgetting_kinds_roll_back_their_complete_closure_and_retry_safely(
     );
     Ok(())
 }
+
+#[test]
+fn supersession_source_payload_is_purged_by_source_only_forgetting(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const SECRET: &str = "SUPERSESSION-SOURCE-LEAK-6f3d";
+    let root = tempdir()?;
+    let database = root.path().join("supersession-source.sqlite3");
+    let managed_bundle = root.path().join("supersession-source.json");
+    let mut value = store(&database, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])?;
+    let fixture = create_fixture(&mut value)?;
+    let supersession_draft = DecisionSupersessionDraft {
+        expected_project_revision: 1,
+        previous_decision_id: fixture.decision.id,
+        user_turn_source: UserTurnSource::Create(user_turn(SECRET)),
+        choice: DecisionChoice::Alternative {
+            alternative_key: "local".to_owned(),
+        },
+        user_rationale: Some("independent user rationale".to_owned()),
+        applicability: ApplicabilityScope::default(),
+        assumptions: vec![],
+        revisit_triggers: vec![],
+    };
+    let supersession = value
+        .supersede_decision(
+            operation(90),
+            fixture.project.id,
+            supersession_draft.clone(),
+        )?
+        .value;
+    let missing_dependencies: i64 = Connection::open(&database)?.query_row(
+        "SELECT COUNT(*) FROM operations AS operation
+         WHERE replay_state = 'available' AND NOT EXISTS (
+             SELECT 1 FROM operation_dependencies AS dependency
+             WHERE dependency.operation_id = operation.operation_id
+         )",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(missing_dependencies, 0);
+    value.export_bundle(fixture.project.id, &managed_bundle)?;
+    value.forget_source(
+        operation(91),
+        fixture.project.id,
+        supersession.user_turn_source_id,
+        fixture.authorization.id,
+    )?;
+    assert_kind(
+        value
+            .supersede_decision(operation(90), fixture.project.id, supersession_draft)
+            .err()
+            .ok_or("forgotten Source replay reported success")?,
+        ErrorKind::NotFound,
+    );
+    let operation_state: (Vec<u8>, String) = Connection::open(&database)?.query_row(
+        "SELECT input_basis, replay_state FROM operations WHERE operation_id = ?1",
+        [operation(90).as_bytes().as_slice()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert!(operation_state.0.is_empty());
+    assert_eq!(operation_state.1, "forgotten_dependency");
+    drop(value);
+
+    for entry in fs::read_dir(root.path())? {
+        let path = entry?.path();
+        if path.is_file() {
+            let bytes = fs::read(&path)?;
+            assert!(
+                !bytes
+                    .windows(SECRET.len())
+                    .any(|window| window == SECRET.as_bytes()),
+                "forgotten supersession Source remains in {}",
+                path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn question_only_forgetting_purges_owned_decision_presentation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const ALTERNATIVE_SECRET: &str = "QUESTION-ALTERNATIVE-SECRET-91ac";
+    const RECOMMENDATION_SECRET: &str = "QUESTION-RECOMMENDATION-SECRET-91ac";
+    let root = tempdir()?;
+    let database = root.path().join("question-copy.sqlite3");
+    let managed_bundle = root.path().join("question-copy.json");
+    let mut value = store(&database, &[1, 2, 3, 4, 5, 6, 7, 8, 9])?;
+    let fixture = create_fixture(&mut value)?;
+    value.export_bundle(fixture.project.id, &managed_bundle)?;
+    value.forget_question(
+        operation(92),
+        fixture.project.id,
+        fixture.question.id,
+        fixture.authorization.id,
+    )?;
+    let decision = value.get_decision(fixture.project.id, fixture.decision.id)?;
+    assert_eq!(decision.choice, fixture.decision.choice);
+    assert_eq!(decision.user_rationale, fixture.decision.user_rationale);
+    assert_eq!(decision.applicability, fixture.decision.applicability);
+    assert_eq!(
+        decision.user_turn_source_id,
+        fixture.decision.user_turn_source_id
+    );
+    assert!(decision.displayed_alternatives.is_empty());
+    assert_eq!(decision.displayed_recommendation.alternative_key, None);
+    assert!(decision.displayed_recommendation.rationale.is_empty());
+    assert!(decision.displayed_recommendation.source_basis.is_empty());
+    assert!(value
+        .get_decision_lifecycle(fixture.project.id, fixture.decision.id)?
+        .review_due
+        .is_some());
+    let revision_copy_count: i64 = Connection::open(&database)?.query_row(
+        "SELECT COUNT(*) FROM decision_revisions
+         WHERE decision_id = ?1 AND (
+             length(displayed_alternatives) != 8 OR recommendation_key IS NOT NULL OR
+             recommendation_rationale != '' OR length(recommendation_sources) != 8
+         )",
+        [fixture.decision.id.as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(revision_copy_count, 0);
+    drop(value);
+
+    for entry in fs::read_dir(root.path())? {
+        let path = entry?.path();
+        if path.is_file() {
+            let bytes = fs::read(&path)?;
+            for secret in [ALTERNATIVE_SECRET, RECOMMENDATION_SECRET] {
+                assert!(
+                    !bytes
+                        .windows(secret.len())
+                        .any(|window| window == secret.as_bytes()),
+                    "forgotten Question presentation remains in {}",
+                    path.display()
+                );
+            }
+        }
+    }
+    let mut reopened = store(&database, &[])?;
+    let reopened_decision = reopened.get_decision(fixture.project.id, fixture.decision.id)?;
+    assert!(reopened_decision.displayed_alternatives.is_empty());
+    let clean_database = root.path().join("question-copy-import.sqlite3");
+    let mut imported = store(&clean_database, &[])?;
+    imported.import_bundle(operation(93), &managed_bundle)?;
+    let imported_decision = imported.get_decision(fixture.project.id, fixture.decision.id)?;
+    assert_eq!(imported_decision, reopened_decision);
+    let repeat_bundle = root.path().join("question-copy-repeat.json");
+    reopened.export_bundle(fixture.project.id, &repeat_bundle)?;
+    assert_eq!(fs::read(&managed_bundle)?, fs::read(&repeat_bundle)?);
+    Ok(())
+}

@@ -1,4 +1,7 @@
-use crate::{Error, ErrorKind, OperationId, OperationResult, ProjectId, Store};
+use crate::{
+    CanonicalRecordId, CheckpointId, ContextItemId, DecisionId, Error, ErrorKind, OperationId,
+    OperationResult, ProjectId, QuestionId, SourceId, Store,
+};
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{params, params_from_iter, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -485,11 +488,14 @@ impl Store {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(storage_write)?;
-        if let Some((kind, basis, result_id, result_revision)) = transaction.query_row(
-            "SELECT operation_kind, input_basis, result_id, result_revision FROM operations WHERE operation_id = ?1",
+        if let Some((kind, basis, replay_state, result_id, result_revision)) = transaction.query_row(
+            "SELECT operation_kind, input_basis, replay_state, result_id, result_revision FROM operations WHERE operation_id = ?1",
             [operation_id.as_bytes().as_slice()],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?, row.get::<_, Vec<u8>>(2)?, row.get::<_, i64>(3)?)),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?, row.get::<_, String>(2)?, row.get::<_, Vec<u8>>(3)?, row.get::<_, i64>(4)?)),
         ).optional().map_err(storage_read)? {
+            if replay_state == "forgotten_dependency" {
+                return Err(Error::new(ErrorKind::NotFound, "import replay input depended on forgotten canonical content"));
+            }
             if kind != "import_bundle" || basis != checksum.as_bytes() || result_id != project_id.as_bytes() || !(result_revision == 0 || result_revision == 1) {
                 return Err(Error::new(ErrorKind::DomainConflict, "OperationId was already committed with different bundle input"));
             }
@@ -540,11 +546,23 @@ impl Store {
             params![project_id.as_bytes().as_slice(), history_basis],
         ).map_err(storage_write)?;
         let now = clock.now()?;
-        transaction.execute(
-            "INSERT INTO operations(operation_id, project_id, operation_kind, input_basis, outcome, result_kind, result_id, result_revision, committed_at)
-             VALUES (?1, ?2, 'import_bundle', ?3, 'committed', 'bundle_import', ?2, ?4, ?5)",
-            params![operation_id.as_bytes().as_slice(), project_id.as_bytes().as_slice(), checksum.as_bytes(), if status == BundleImportStatus::Imported { 0_i64 } else { 1_i64 }, now.as_unix_micros()],
-        ).map_err(storage_write)?;
+        let dependencies = payload_dependencies(&validated.payload)?;
+        crate::store::record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "import_bundle",
+            checksum.as_bytes(),
+            "bundle_import",
+            project_id.as_bytes(),
+            if status == BundleImportStatus::Imported {
+                0
+            } else {
+                1
+            },
+            now,
+            &dependencies,
+        )?;
         transaction.commit().map_err(storage_commit)?;
         Ok(OperationResult {
             value: BundleImport {
@@ -556,6 +574,31 @@ impl Store {
             replayed: false,
         })
     }
+}
+
+pub(crate) fn payload_dependencies(payload: &Payload) -> Result<Vec<CanonicalRecordId>, Error> {
+    let mut dependencies = Vec::new();
+    for table in &payload.tables {
+        for row in &table.rows {
+            let Some(value) = row.first() else {
+                continue;
+            };
+            let bytes = value_bytes(value)?;
+            let dependency = match table.name.as_str() {
+                "projects" => CanonicalRecordId::Project(ProjectId::from_slice(&bytes)?),
+                "sources" => CanonicalRecordId::Source(SourceId::from_slice(&bytes)?),
+                "questions" => CanonicalRecordId::Question(QuestionId::from_slice(&bytes)?),
+                "decisions" => CanonicalRecordId::Decision(DecisionId::from_slice(&bytes)?),
+                "context_items" => {
+                    CanonicalRecordId::ContextItem(ContextItemId::from_slice(&bytes)?)
+                }
+                "checkpoints" => CanonicalRecordId::Checkpoint(CheckpointId::from_slice(&bytes)?),
+                _ => continue,
+            };
+            dependencies.push(dependency);
+        }
+    }
+    Ok(dependencies)
 }
 
 pub(crate) fn refresh_managed_bundles(store: &Store, project_id: ProjectId) -> Result<(), Error> {

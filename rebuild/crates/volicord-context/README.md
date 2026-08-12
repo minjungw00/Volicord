@@ -24,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 7 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 8 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -40,10 +40,16 @@ owned by `rebuild/docs/design/`.
   Timestamps do not generate identity, order conflicting writes, or choose a
   winner.
 - Operation rows preserve the exact bounded input basis, committed outcome,
-  result kind, result identity, result revision, Project, and commit time. The
-  same operation and input replays its immutable prior result; different input
-  conflicts. Preconditions produce typed stale-basis errors. The kernel does
-  not retry a canonical write under another identity.
+  result kind, result identity, result revision, Project, and commit time. A
+  schema-backed dependency relation records every canonical identity whose
+  content is embedded in each input basis, including import and merge bundle
+  bases. The same available operation and input replays its immutable prior
+  result; different input conflicts. Forgetting any dependency replaces the
+  whole input basis with a content-free state, removes its dependency rows,
+  retains operation/result identity for duplicate prevention, and makes replay
+  deterministically return `NotFound` rather than reconstructing content or
+  reporting success. Preconditions produce typed stale-basis errors. The kernel
+  does not retry a canonical write under another identity.
 - Question identity is independent of its prompt basis. Revision-one Question
   content is immutable and includes exact Source/dependency basis, displayed
   alternatives, agent recommendation, trade-offs, uncertainty, material scope,
@@ -83,7 +89,12 @@ owned by `rebuild/docs/design/`.
   tombstone. Source and Question identities may remain only as tombstoned IDs
   in surviving historical Decision or relation references; Source payload,
   Question prompt/state support, dependencies, Checkpoint links, and other raw
-  content do not. Each operation returns the same narrow invalidation result
+  content do not. Forgetting a Question also clears Question-owned displayed
+  alternatives and recommendation fields from surviving Decisions and every
+  immutable Decision revision while preserving the user's choice, rationale,
+  applicability, provenance, and tombstoned Question identity; the Decision is
+  marked review due because its presentation basis is no longer interpretable.
+  Each operation returns the same narrow invalidation result
   for later Candidate/Derived owners.
 - On supported Linux SQLite, forgetting commits with `secure_delete=ON`, then
   checkpoints/truncates WAL, vacuums the database, and checkpoints again. Tests
@@ -126,8 +137,10 @@ owned by `rebuild/docs/design/`.
 - Import verifies kind/version, checksum, Project scope, exact table contract,
   duplicate keys, lineage, relation endpoints, local equality, and conflict
   possibility before commit. It inserts exact identities in one immediate
-  transaction, reports already-present state, records a content-free replay
-  basis, and rejects divergent merge rather than choosing a winner.
+  transaction, reports already-present state, records the checksum as a bounded
+  replay basis with dependencies on every imported canonical content identity,
+  and rejects divergent merge rather than choosing a winner. Forgetting any of
+  those identities removes the checksum basis before managed deletion hygiene.
 - Publication writes a fixed sibling temporary candidate, syncs it, atomically
   renames it over the final path, and syncs the containing directory. Import
   rejects the temporary name as non-authoritative. A regular orphan candidate

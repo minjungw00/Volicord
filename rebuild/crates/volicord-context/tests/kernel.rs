@@ -62,6 +62,33 @@ fn creates_schema_with_required_durability_profile() -> Result<(), Box<dyn std::
     assert_eq!(version, SCHEMA_VERSION.to_string());
     assert!(journal.eq_ignore_ascii_case("wal"));
     assert_eq!(synchronous, 2);
+    let operation_columns: Vec<String> = connection
+        .prepare("PRAGMA table_info(operations)")?
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    assert_eq!(
+        operation_columns,
+        vec![
+            "operation_id",
+            "project_id",
+            "operation_kind",
+            "input_basis",
+            "replay_state",
+            "outcome",
+            "result_kind",
+            "result_id",
+            "result_revision",
+            "committed_at",
+        ]
+    );
+    let dependency_columns: Vec<String> = connection
+        .prepare("PRAGMA table_info(operation_dependencies)")?
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    assert_eq!(
+        dependency_columns,
+        vec!["operation_id", "project_id", "owner_kind", "owner_id"]
+    );
     Ok(())
 }
 

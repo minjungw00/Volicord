@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
-const REQUIRED_TABLES: [&str; 27] = [
+const REQUIRED_TABLES: [&str; 28] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -37,6 +37,7 @@ const REQUIRED_TABLES: [&str; 27] = [
     "sources",
     "source_relations",
     "operations",
+    "operation_dependencies",
     "questions",
     "question_revisions",
     "question_response_sources",
@@ -196,6 +197,7 @@ impl Store {
             project_id.as_bytes(),
             1,
             now,
+            &[CanonicalRecordId::Project(project_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -284,6 +286,7 @@ impl Store {
             project_id.as_bytes(),
             revision,
             now,
+            &[CanonicalRecordId::Project(project_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -439,6 +442,7 @@ impl Store {
             binding_id.as_bytes(),
             revision,
             now,
+            &[CanonicalRecordId::Project(project_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -523,6 +527,7 @@ impl Store {
             source_id.as_bytes(),
             1,
             now,
+            &[CanonicalRecordId::Source(source_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -614,6 +619,10 @@ impl Store {
             from_source_id.as_bytes(),
             0,
             now,
+            &[
+                CanonicalRecordId::Source(from_source_id),
+                CanonicalRecordId::Source(to_source_id),
+            ],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -721,6 +730,7 @@ impl Store {
             question_id.as_bytes(),
             1,
             now,
+            &[CanonicalRecordId::Question(question_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -942,6 +952,13 @@ impl Store {
             )
             .map_err(write_error)
             .and_then(|count| ensure_single_updated(count, "Question changed concurrently"))?;
+        let mut operation_dependencies = vec![
+            CanonicalRecordId::Question(draft.question_id),
+            CanonicalRecordId::Source(user_turn_source.id),
+        ];
+        if let Some(value) = &decision {
+            operation_dependencies.push(CanonicalRecordId::Decision(value.id));
+        }
         record_operation(
             &transaction,
             operation_id,
@@ -952,6 +969,7 @@ impl Store {
             draft.question_id.as_bytes(),
             draft.question_revision,
             now,
+            &operation_dependencies,
         )?;
         transaction.commit().map_err(commit_error)?;
 
@@ -1064,6 +1082,7 @@ impl Store {
             item_id.as_bytes(),
             1,
             now,
+            &[CanonicalRecordId::ContextItem(item_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -1267,6 +1286,7 @@ impl Store {
             checkpoint_id.as_bytes(),
             1,
             now,
+            &[CanonicalRecordId::Checkpoint(checkpoint_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -1891,6 +1911,113 @@ fn forget_result(tombstone: Tombstone) -> ForgetResult {
     }
 }
 
+pub(crate) fn sanitize_forgotten_dependencies(
+    connection: &Connection,
+    project_id: ProjectId,
+    record: CanonicalRecordId,
+    forgotten_at: TimestampMicros,
+) -> Result<(), Error> {
+    connection
+        .execute(
+            "UPDATE operations
+             SET input_basis = X'', replay_state = 'forgotten_dependency'
+             WHERE project_id = ?1 AND operation_id IN (
+                 SELECT operation_id FROM operation_dependencies
+                 WHERE project_id = ?1 AND owner_kind = ?2 AND owner_id = ?3
+             )",
+            params![
+                project_id.as_bytes().as_slice(),
+                record.kind().as_str(),
+                record.as_bytes().as_slice(),
+            ],
+        )
+        .map_err(write_error)?;
+    connection
+        .execute(
+            "DELETE FROM operation_dependencies
+             WHERE operation_id IN (
+                 SELECT operation_id FROM operations
+                 WHERE project_id = ?1 AND replay_state = 'forgotten_dependency'
+             )",
+            [project_id.as_bytes().as_slice()],
+        )
+        .map_err(write_error)?;
+
+    if let CanonicalRecordId::Question(question_id) = record {
+        let empty_alternatives = encode_alternatives(&[]);
+        let empty_sources = encode_source_ids(&[]);
+        connection
+            .execute(
+                "UPDATE decisions
+                 SET displayed_alternatives = ?3, recommendation_key = NULL,
+                     recommendation_rationale = '', recommendation_sources = ?4
+                 WHERE project_id = ?1 AND question_id = ?2",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    question_id.as_bytes().as_slice(),
+                    empty_alternatives,
+                    empty_sources,
+                ],
+            )
+            .map_err(write_error)?;
+        connection
+            .execute(
+                "UPDATE decision_revisions
+                 SET displayed_alternatives = ?3, recommendation_key = NULL,
+                     recommendation_rationale = '', recommendation_sources = ?4
+                 WHERE project_id = ?1 AND question_id = ?2",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    question_id.as_bytes().as_slice(),
+                    empty_alternatives,
+                    empty_sources,
+                ],
+            )
+            .map_err(write_error)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id FROM decisions WHERE project_id = ?1 AND question_id = ?2 ORDER BY id",
+            )
+            .map_err(read_error)?;
+        let rows = statement
+            .query_map(
+                params![
+                    project_id.as_bytes().as_slice(),
+                    question_id.as_bytes().as_slice()
+                ],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .map_err(read_error)?;
+        let mut decision_ids = Vec::new();
+        for row in rows {
+            decision_ids.push(DecisionId::from_slice(&row.map_err(read_error)?)?);
+        }
+        drop(statement);
+        for decision_id in decision_ids {
+            connection
+                .execute(
+                    "INSERT INTO review_due(
+                         project_id, decision_id, review_kind, explanation, source_basis, marked_at
+                     ) VALUES (?1, ?2, 'source_freshness_changed',
+                         'Question presentation basis was forgotten', ?3, ?4)
+                     ON CONFLICT(project_id, decision_id) DO UPDATE SET
+                         review_kind = excluded.review_kind,
+                         explanation = excluded.explanation,
+                         source_basis = excluded.source_basis,
+                         marked_at = excluded.marked_at",
+                    params![
+                        project_id.as_bytes().as_slice(),
+                        decision_id.as_bytes().as_slice(),
+                        encode_source_ids(&[]),
+                        forgotten_at.as_unix_micros(),
+                    ],
+                )
+                .map_err(write_error)?;
+        }
+    }
+    Ok(())
+}
+
 fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
     let (busy, _, _): (i64, i64, i64) = connection
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
@@ -2004,6 +2131,10 @@ impl Store {
             item_id.as_bytes(),
             revision,
             now,
+            &[
+                CanonicalRecordId::ContextItem(item_id),
+                CanonicalRecordId::Source(draft.user_authorization_source_id),
+            ],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -2108,6 +2239,10 @@ impl Store {
             decision_id.as_bytes(),
             revision,
             now,
+            &[
+                CanonicalRecordId::Decision(decision_id),
+                CanonicalRecordId::Source(draft.user_authorization_source_id),
+            ],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -2291,6 +2426,12 @@ impl Store {
             decision_id.as_bytes(),
             1,
             now,
+            &[
+                CanonicalRecordId::Decision(decision_id),
+                CanonicalRecordId::Decision(draft.previous_decision_id),
+                CanonicalRecordId::Source(user_turn_source.id),
+                CanonicalRecordId::Question(previous.question_id),
+            ],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -2359,6 +2500,7 @@ impl Store {
             &left.as_bytes(),
             0,
             now,
+            &[left, right],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -2421,6 +2563,7 @@ impl Store {
             decision_id.as_bytes(),
             0,
             now,
+            &[CanonicalRecordId::Decision(decision_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         Ok(OperationResult {
@@ -2664,12 +2807,9 @@ impl Store {
             "INSERT INTO tombstones(project_id, record_kind, record_id, forgotten_at) VALUES (?1, ?2, ?3, ?4)",
             params![project_id.as_bytes().as_slice(), record.kind().as_str(), record.as_bytes().as_slice(), now.as_unix_micros()],
         ).map_err(write_error)?;
+        sanitize_forgotten_dependencies(&transaction, project_id, record, now)?;
         match record {
             CanonicalRecordId::Source(source_id) => {
-                transaction.execute(
-                    "DELETE FROM operations WHERE project_id = ?1 AND (result_id = ?2 OR (operation_kind = 'record_question_response' AND result_id IN (SELECT question_id FROM question_response_sources WHERE project_id = ?1 AND source_id = ?2)))",
-                    params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
-                ).map_err(write_error)?;
                 transaction.execute(
                     "DELETE FROM source_relations WHERE project_id = ?1 AND (from_source_id = ?2 OR to_source_id = ?2)",
                     params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
@@ -2717,15 +2857,6 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::Question(question_id) => {
-                transaction
-                    .execute(
-                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
-                        params![
-                            project_id.as_bytes().as_slice(),
-                            question_id.as_bytes().as_slice()
-                        ],
-                    )
-                    .map_err(write_error)?;
                 remove_question_dependencies(&transaction, project_id, question_id)?;
                 transaction.execute(
                     "DELETE FROM checkpoint_questions WHERE project_id = ?1 AND question_id = ?2",
@@ -2758,15 +2889,6 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::ContextItem(item_id) => {
-                transaction
-                    .execute(
-                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
-                        params![
-                            project_id.as_bytes().as_slice(),
-                            item_id.as_bytes().as_slice()
-                        ],
-                    )
-                    .map_err(write_error)?;
                 transaction.execute("DELETE FROM context_item_sources WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction.execute("DELETE FROM context_item_revisions WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction
@@ -2783,8 +2905,6 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::Decision(decision_id) => {
-                let decision = load_decision(&transaction, project_id, decision_id)?;
-                transaction.execute("DELETE FROM operations WHERE project_id = ?1 AND (result_id = ?2 OR (operation_kind = 'record_question_response' AND result_id = ?3))", params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice(), decision.question_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction.execute("DELETE FROM checkpoint_decisions WHERE project_id = ?1 AND decision_id = ?2", params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction
                     .execute(
@@ -2818,15 +2938,6 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::Checkpoint(checkpoint_id) => {
-                transaction
-                    .execute(
-                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
-                        params![
-                            project_id.as_bytes().as_slice(),
-                            checkpoint_id.as_bytes().as_slice()
-                        ],
-                    )
-                    .map_err(write_error)?;
                 transaction.execute(
                     "DELETE FROM checkpoint_verifications WHERE project_id = ?1 AND checkpoint_id = ?2",
                     params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
@@ -2873,6 +2984,7 @@ impl Store {
             &record.as_bytes(),
             0,
             now,
+            &[CanonicalRecordId::Source(user_authorization_source_id)],
         )?;
         transaction.commit().map_err(commit_error)?;
         sanitize_deleted_content(connection)?;
@@ -4774,11 +4886,23 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
                  operation_kind TEXT NOT NULL,
                  input_basis BLOB NOT NULL,
+                 replay_state TEXT NOT NULL CHECK(replay_state IN ('available','forgotten_dependency')),
                  outcome TEXT NOT NULL CHECK(outcome = 'committed'),
                  result_kind TEXT NOT NULL,
                  result_id BLOB NOT NULL CHECK(length(result_id) = 16),
                  result_revision INTEGER NOT NULL CHECK(result_revision >= 0),
                  committed_at INTEGER NOT NULL,
+                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE operation_dependencies(
+                 operation_id BLOB NOT NULL CHECK(length(operation_id) = 16),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 owner_kind TEXT NOT NULL CHECK(owner_kind IN (
+                     'project','source','question','decision','context_item','checkpoint'
+                 )),
+                 owner_id BLOB NOT NULL CHECK(length(owner_id) = 16),
+                 PRIMARY KEY(operation_id, owner_kind, owner_id),
+                 FOREIGN KEY(operation_id) REFERENCES operations(operation_id) ON DELETE CASCADE,
                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              ) WITHOUT ROWID;",
         )
@@ -4939,6 +5063,7 @@ fn begin_write(connection: &mut Connection) -> Result<Transaction<'_>, Error> {
 struct StoredOperation {
     kind: String,
     input_basis: Vec<u8>,
+    replay_state: String,
     result_kind: String,
     result_id: Vec<u8>,
     result_revision: u64,
@@ -4950,7 +5075,7 @@ fn load_operation(
 ) -> Result<Option<StoredOperation>, Error> {
     let row = connection
         .query_row(
-            "SELECT operation_kind, input_basis, outcome, result_kind, result_id, result_revision
+            "SELECT operation_kind, input_basis, replay_state, outcome, result_kind, result_id, result_revision
              FROM operations WHERE operation_id = ?1",
             [operation_id.as_bytes().as_slice()],
             |row| {
@@ -4959,15 +5084,16 @@ fn load_operation(
                     row.get::<_, Vec<u8>>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
-                    row.get::<_, Vec<u8>>(4)?,
-                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                    row.get::<_, i64>(6)?,
                 ))
             },
         )
         .optional()
         .map_err(read_error)?;
     row.map(
-        |(kind, input_basis, outcome, result_kind, result_id, result_revision)| {
+        |(kind, input_basis, replay_state, outcome, result_kind, result_id, result_revision)| {
             if outcome != "committed" || result_revision < 0 {
                 return Err(Error::new(
                     ErrorKind::RepairRequired,
@@ -4977,6 +5103,7 @@ fn load_operation(
             Ok(StoredOperation {
                 kind,
                 input_basis,
+                replay_state,
                 result_kind,
                 result_id,
                 result_revision: result_revision as u64,
@@ -4991,6 +5118,18 @@ fn ensure_replay_input(
     expected_kind: &str,
     expected_basis: &[u8],
 ) -> Result<(), Error> {
+    if operation.replay_state == "forgotten_dependency" {
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            "operation replay input depended on forgotten canonical content",
+        ));
+    }
+    if operation.replay_state != "available" {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "stored operation replay state is invalid",
+        ));
+    }
     if operation.kind != expected_kind || operation.input_basis != expected_basis {
         return Err(Error::new(
             ErrorKind::DomainConflict,
@@ -5028,7 +5167,7 @@ fn ensure_replay_input(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_operation(
+pub(crate) fn record_operation(
     transaction: &Transaction<'_>,
     operation_id: OperationId,
     project_id: ProjectId,
@@ -5038,13 +5177,20 @@ fn record_operation(
     result_id: &[u8; 16],
     result_revision: u64,
     committed_at: TimestampMicros,
+    dependencies: &[CanonicalRecordId],
 ) -> Result<(), Error> {
+    if dependencies.is_empty() {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "content-bearing operation omitted canonical dependency registration",
+        ));
+    }
     transaction
         .execute(
             "INSERT INTO operations(
-                 operation_id, project_id, operation_kind, input_basis, outcome,
+                 operation_id, project_id, operation_kind, input_basis, replay_state, outcome,
                  result_kind, result_id, result_revision, committed_at
-             ) VALUES (?1, ?2, ?3, ?4, 'committed', ?5, ?6, ?7, ?8)",
+             ) VALUES (?1, ?2, ?3, ?4, 'available', 'committed', ?5, ?6, ?7, ?8)",
             params![
                 operation_id.as_bytes().as_slice(),
                 project_id.as_bytes().as_slice(),
@@ -5057,6 +5203,26 @@ fn record_operation(
             ],
         )
         .map_err(write_error)?;
+    let mut unique = BTreeSet::new();
+    for dependency in dependencies {
+        let key = (dependency.kind().as_str(), dependency.as_bytes());
+        if !unique.insert(key) {
+            continue;
+        }
+        transaction
+            .execute(
+                "INSERT INTO operation_dependencies(
+                     operation_id, project_id, owner_kind, owner_id
+                 ) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    operation_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    dependency.kind().as_str(),
+                    dependency.as_bytes().as_slice(),
+                ],
+            )
+            .map_err(write_error)?;
+    }
     Ok(())
 }
 
@@ -5723,7 +5889,8 @@ fn sqlite_code(error: &rusqlite::Error) -> Option<rusqlite::ErrorCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::Store;
+    use super::{begin_write, record_operation, Store};
+    use crate::{ErrorKind, OperationId, TimestampMicros};
 
     #[test]
     fn every_store_connection_has_the_verified_durability_profile(
@@ -5746,6 +5913,40 @@ mod tests {
         assert!(journal.eq_ignore_ascii_case("wal"));
         assert_eq!(synchronous, 2);
         assert_eq!(secure_delete, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn content_bearing_operation_cannot_omit_dependency_registration(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let mut store = Store::open(root.path().join("context.sqlite3"))?;
+        let project = store
+            .create_project(OperationId::from_bytes([1; 16]), "Dependency guard")?
+            .value;
+        let transaction = begin_write(&mut store.connection)?;
+        let error = record_operation(
+            &transaction,
+            OperationId::from_bytes([2; 16]),
+            project.id,
+            "new_content_operation",
+            b"content-bearing-basis",
+            "project",
+            project.id.as_bytes(),
+            1,
+            TimestampMicros::from_unix_micros(1),
+            &[],
+        )
+        .err()
+        .ok_or("operation without dependencies was accepted")?;
+        assert_eq!(error.kind(), ErrorKind::RepairRequired);
+        let count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM operations WHERE operation_id = ?1",
+            [OperationId::from_bytes([2; 16]).as_bytes().as_slice()],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count, 0);
+        transaction.rollback()?;
         Ok(())
     }
 }
