@@ -261,7 +261,7 @@
       "id": "v04-divergent-merge",
       "validation_id": "V04",
       "path": "rebuild/validation/canonical-context/divergent-merge/fixtures/v04-scenarios",
-      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, systematic operation dependencies, forgotten-Question portable semantic validation, copied Question-content removal, symmetric merge-selected forgetting, managed sanitation, deterministic read/export, and Phase 4 recovery boundaries.",
+      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, systematic operation dependencies, direct-write-equivalent portable Decision authority and Question-linkage validation, copied Question-content removal, symmetric merge-selected forgetting, managed sanitation, deterministic read/export, and Phase 4 recovery boundaries.",
       "expected_entities": [
         "trustworthy-common-base",
         "local-history",
@@ -274,7 +274,9 @@
         "merge-sanitation-pending",
         "merge-sanitation-complete",
         "surviving-decision-review-due",
-        "forgotten-question-portable-invariant"
+        "forgotten-question-portable-invariant",
+        "decision-authority-witness",
+        "decision-semantic-index"
       ],
       "expected_relations": [
         "local-history|diverges_from|trustworthy-common-base",
@@ -284,7 +286,9 @@
         "operation-dependency|owns_content|canonical-record",
         "merge-sanitation-pending|recovers_to|merge-sanitation-complete",
         "surviving-decision-review-due|lost_basis|forgotten-question",
-        "forgotten-question-portable-invariant|rejects_before_mutation|import-and-explicit-merge"
+        "forgotten-question-portable-invariant|rejects_before_mutation|import-and-explicit-merge",
+        "decision-authority-witness|survives_without_payload|forgotten-source",
+        "decision-semantic-index|validates_before_mutation|portable-admission-and-export"
       ],
       "expected_unsupported": [
         "network synchronization and live collaboration",
@@ -292,7 +296,7 @@
         "signature, encryption, compression and legacy format decoding",
         "unmanaged external copies, backups and filesystem snapshots"
       ],
-      "content_sha256": "3ce89d4e7ba8682ddf0b2256861555af3b1483bd15d2a47a234f67356571f3a8",
+      "content_sha256": "8398219bcd24cfcf453de79bb8ee689bb1e95ccdfa33fa0db6214a43d7843410",
       "origin": "Self-authored deterministic fixture for V04.",
       "license": "CC0-1.0"
     },
