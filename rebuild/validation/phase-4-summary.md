@@ -76,6 +76,24 @@ and explicit another-path binding work after clean import without rewriting hist
 basis. Unsupported schema or bundle versions fail before mutation; there is no legacy decoder,
 migration, importer, or dual-runtime path.
 
+One portable table validator owns the forgotten-Question dependent invariant. It semantically
+decodes Decision alternatives and recommendation Source collections for active Decisions and
+every Decision revision. A tombstoned Question cannot retain any Question-owned Decision
+presentation, and every surviving active Decision that references it must have `review_due`;
+tombstoned Decisions, absent active Decisions, and active Questions do not acquire that
+requirement. Independently owned Decision choice, user rationale, applicability, assumptions,
+revisit triggers, and provenance remain valid.
+
+`validate_bundle` reaches this validator after format, version, checksum, and table decoding and
+before lineage use. Ordinary import and `ExplicitMerged` validate submitted bundles before any
+transaction or state replacement, generated merge targets validate the complete selected tables,
+state replacement validates its target, and production export validates generated bundle bytes
+before atomic publication. Import and explicit merge do not carry separate copies of this rule or
+sanitize invalid input. Checksummed, lineage-consistent payloads with active-row presentation,
+revision-only presentation, or missing `review_due` return semantic `CorruptState` while checksum,
+unsupported-version, and malformed-table failures remain distinct. Rejection preserves canonical
+state, operations, lineage, local binding, managed bundle bytes, and reopened deterministic state.
+
 ## Merge sanitation and deletion propagation
 
 Three-way comparison requires an explicit trustworthy base and preserves all six conflict
@@ -99,10 +117,13 @@ deterministic bytes.
 
 V04 is `passed`. Its self-authored fixture hash matches the shared manifest. The Python harness
 owns only fixture-to-test orchestration and invokes Rust production behavior; it does not contain a
-second merge or forgetting implementation. Two consecutive audit runs each reported 60 mapped
-assertions, 11 production integration-test targets, 56 passing integration tests, the same fixture
-hash, and no failure. The maintained report shape and every referenced raw artifact were verified.
-Its claims remain bounded to the observed local single-writer, managed-storage scenarios.
+second merge or forgetting implementation. Two consecutive audit runs each reported 72 mapped
+assertions, 12 production integration-test targets, 64 passing integration tests, the same fixture
+hash, and no failure. Valid sanitized import, active-row and revision-only violations, missing
+`review_due`, explicit merged input against both active and already-forgotten local Questions,
+recomputed checksum/history basis, and no-partial-mutation behavior are mapped to production Rust
+tests. The maintained report shape and every referenced raw artifact were verified. Its claims
+remain bounded to the observed local single-writer, managed-storage scenarios.
 
 `read_canonical_basis` is deterministic, read-only, and independent of Repository Intelligence,
 providers, MCP, CLI, viewer, renderer, Product Repository availability, local paths, locale,
@@ -120,12 +141,12 @@ success, and repeated operation identity prevents duplicate mutation.
 
 The nested workspace contains only `volicord-context`, all packages are under `rebuild/`, and
 `rebuild/Cargo.lock` is tracked. The production dependency graph is synchronous and local:
-`getrandom`, bundled `rusqlite`, `serde`, and `serde_json`; `tempfile` is test-only. Manifest,
-lockfile, metadata, dependency-tree, license, and source scans show no legacy Volicord crate,
-async runtime, network synchronization, second storage backend, speculative service hierarchy,
-legacy Runtime Home/schema access, compatibility alias, or parallel production path. Durable
-production transitions contain no `panic!`, `unwrap`, or `expect` state enforcement. No runtime
-database, journal, bundle, Source copy, generated index, or log is tracked.
+`getrandom`, bundled `rusqlite`, `serde`, and `serde_json`; `sha2` and `tempfile` are test-only.
+Manifest, lockfile, metadata, dependency-tree, license, and source scans show no legacy Volicord
+crate, async runtime, network synchronization, second storage backend, speculative service
+hierarchy, legacy Runtime Home/schema access, compatibility alias, or parallel production path.
+Durable production transitions contain no `panic!`, `unwrap`, or `expect` state enforcement. No
+runtime database, journal, bundle, Source copy, generated index, or log is tracked.
 
 ## Remaining known limits and Decision triggers
 
@@ -152,8 +173,10 @@ none was met here.
 
 `ready`. The complete Phase 4 implementation and maintained evidence satisfy the Canonical Context
 Kernel gate without an unresolved production defect, unregistered current operation dependency,
-surviving Question-owned copy, merge sanitation gap, V04 overclaim, dependency concern, or active
-Decision revisit trigger. This conclusion does not complete Phase 5 or any later validation.
+surviving or portable-reintroduced Question-owned copy, missing required review state, merge
+sanitation gap, V04 overclaim, dependency concern, or active Decision revisit trigger. This
+conclusion does not complete Phase 5 or any later validation. The required post-commit exact final
+aggregate is not part of this pre-commit evidence and is not claimed as completed here.
 
 ## Maintained source, test, report, and validation references
 
@@ -181,6 +204,7 @@ Decision revisit trigger. This conclusion does not complete Phase 5 or any later
   `rebuild/crates/volicord-context/tests/kernel.rs`,
   `rebuild/crates/volicord-context/tests/lifecycle.rs`,
   `rebuild/crates/volicord-context/tests/portable_bundle.rs`,
+  `rebuild/crates/volicord-context/tests/portable_invariants.rs`,
   `rebuild/crates/volicord-context/tests/portable_process.rs`,
   `rebuild/crates/volicord-context/tests/process_reopen.rs`, and
   `rebuild/crates/volicord-context/tests/transaction_process.rs`
