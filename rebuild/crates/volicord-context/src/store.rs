@@ -26,7 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
+
+pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 
 const REQUIRED_TABLES: [&str; 29] = [
     "metadata",
@@ -868,13 +870,13 @@ impl Store {
                 .execute(
                     "INSERT INTO decisions(
                          id, project_id, revision, question_id, question_revision, user_turn_source_id,
-                         choice_kind, choice_value, user_rationale, displayed_alternatives,
+                         user_authority, choice_kind, choice_value, user_rationale, displayed_alternatives,
                          recommendation_key, recommendation_rationale, recommendation_sources,
                          applicability_paths, applicability_components, applicability_work_contexts,
                          assumptions, revisit_triggers, recorded_at
                      ) VALUES (
-                         ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                         ?13, ?14, ?15, ?16, ?17, ?18
+                         ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                         ?14, ?15, ?16, ?17, ?18, ?19
                      )",
                     params![
                         decision_id.as_bytes().as_slice(),
@@ -882,6 +884,7 @@ impl Store {
                         draft.question_id.as_bytes().as_slice(),
                         revision_i64(draft.question_revision)?,
                         user_turn_source.id.as_bytes().as_slice(),
+                        CURRENT_HOST_USER_AUTHORITY,
                         choice_kind,
                         choice_value,
                         rationale,
@@ -1420,13 +1423,13 @@ fn insert_decision_revision(
         .execute(
             "INSERT INTO decision_revisions(
              decision_id, revision, project_id, question_id, question_revision,
-             user_turn_source_id, choice_kind, choice_value, user_rationale,
+             user_turn_source_id, user_authority, choice_kind, choice_value, user_rationale,
              displayed_alternatives, recommendation_key, recommendation_rationale,
              recommendation_sources, applicability_paths, applicability_components,
              applicability_work_contexts, assumptions, revisit_triggers, correction_kind,
-             authorization_source_id, recorded_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                   ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+             authorization_source_id, authorization_authority, recorded_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                   ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 decision_id.as_bytes().as_slice(),
                 revision_i64(revision)?,
@@ -1434,6 +1437,7 @@ fn insert_decision_revision(
                 question_id.as_bytes().as_slice(),
                 revision_i64(question_revision)?,
                 user_turn_source_id.as_bytes().as_slice(),
+                CURRENT_HOST_USER_AUTHORITY,
                 choice_kind,
                 choice_value,
                 user_rationale,
@@ -1448,6 +1452,7 @@ fn insert_decision_revision(
                 encode_strings(revisit_triggers),
                 correction_kind.map(CorrectionKind::as_str),
                 authorization_source_id.map(|value| value.as_bytes().to_vec()),
+                authorization_source_id.map(|_| CURRENT_HOST_USER_AUTHORITY),
                 recorded_at.as_unix_micros(),
             ],
         )
@@ -1613,18 +1618,25 @@ fn ensure_meaning_preserving(before: &str, after: &str, kind: CorrectionKind) ->
             "correction must change presentation",
         ));
     }
-    let accepted = match kind {
-        CorrectionKind::Formatting => compact_alphanumeric(before) == compact_alphanumeric(after),
-        CorrectionKind::Typography => edit_distance_with_limit(before, after, 2),
-        CorrectionKind::Expression => sorted_words(before) == sorted_words(after),
-    };
-    if !accepted {
+    if !meaning_preserving_correction(before, after, kind.as_str()) {
         return Err(Error::new(
             ErrorKind::DomainConflict,
             "correction changes semantic tokens; create a superseding record instead",
         ));
     }
     Ok(())
+}
+
+pub(crate) fn meaning_preserving_correction(before: &str, after: &str, kind: &str) -> bool {
+    if before == after {
+        return false;
+    }
+    match kind {
+        "formatting" => compact_alphanumeric(before) == compact_alphanumeric(after),
+        "typography" => edit_distance_with_limit(before, after, 2),
+        "expression" => sorted_words(before) == sorted_words(after),
+        _ => false,
+    }
 }
 
 fn compact_alphanumeric(value: &str) -> String {
@@ -2319,11 +2331,11 @@ impl Store {
             ));
         }
         if let DecisionChoice::Alternative { alternative_key } = &draft.choice {
-            if !previous
-                .displayed_alternatives
-                .iter()
-                .any(|alternative| alternative.key == *alternative_key)
-            {
+            if !decision_choice_is_valid(
+                "alternative",
+                alternative_key,
+                &previous.displayed_alternatives,
+            ) {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "superseding Decision alternative was not displayed for the Question",
@@ -2364,18 +2376,19 @@ impl Store {
             .execute(
                 "INSERT INTO decisions(
                      id, project_id, revision, question_id, question_revision, user_turn_source_id,
-                     choice_kind, choice_value, user_rationale, displayed_alternatives,
+                     user_authority, choice_kind, choice_value, user_rationale, displayed_alternatives,
                      recommendation_key, recommendation_rationale, recommendation_sources,
                      applicability_paths, applicability_components, applicability_work_contexts,
                      assumptions, revisit_triggers, recorded_at
-                 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                           ?13, ?14, ?15, ?16, ?17, ?18)",
+                ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                           ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     decision_id.as_bytes().as_slice(),
                     project_id.as_bytes().as_slice(),
                     previous.question_id.as_bytes().as_slice(),
                     revision_i64(previous.question_revision)?,
                     user_turn_source.id.as_bytes().as_slice(),
+                    CURRENT_HOST_USER_AUTHORITY,
                     choice_kind,
                     choice_value,
                     draft.user_rationale,
@@ -4062,11 +4075,7 @@ fn interpret_explicit_response<'a>(
             alternative_key,
             user_rationale,
         } => {
-            if !question
-                .alternatives
-                .iter()
-                .any(|alternative| alternative.key == *alternative_key)
-            {
+            if !decision_choice_is_valid("alternative", alternative_key, &question.alternatives) {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "explicit choice does not name one displayed alternative",
@@ -4083,21 +4092,27 @@ fn interpret_explicit_response<'a>(
         ExplicitQuestionResponse::Delegation {
             delegate_to,
             user_rationale,
-        } => Ok((
-            QuestionTerminalOutcome::Delegated,
-            Some(DecisionChoice::Delegation {
-                delegate_to: delegate_to.clone(),
-            }),
-            user_rationale.as_deref(),
-        )),
+        } => {
+            if !decision_choice_is_valid("delegation", delegate_to, &question.alternatives) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "delegation target must be explicit",
+                ));
+            }
+            Ok((
+                QuestionTerminalOutcome::Delegated,
+                Some(DecisionChoice::Delegation {
+                    delegate_to: delegate_to.clone(),
+                }),
+                user_rationale.as_deref(),
+            ))
+        }
         ExplicitQuestionResponse::Terminal { outcome } => Ok((*outcome, None, None)),
     }
 }
 
 fn ensure_user_turn_draft(draft: &SourceDraft) -> Result<(), Error> {
-    if draft.actor.kind != PrincipalKind::User
-        || !matches!(draft.payload, SourcePayload::CurrentHostUserTurn { .. })
-    {
+    if !is_current_host_user_authority(draft.payload.kind(), draft.actor.kind.as_str()) {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "Question response requires a current-host user-turn Source authored by the user",
@@ -4113,15 +4128,39 @@ fn ensure_user_turn_source(source: &Source, project_id: ProjectId) -> Result<(),
             "Question response Source belongs to a different Project",
         ));
     }
-    if source.actor.kind != PrincipalKind::User
-        || !matches!(source.payload, SourcePayload::CurrentHostUserTurn { .. })
-    {
+    if !is_current_host_user_authority(source.payload.kind(), source.actor.kind.as_str()) {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "Question response requires a current-host user-turn Source authored by the user",
         ));
     }
     Ok(())
+}
+
+pub(crate) fn is_current_host_user_authority(source_kind: &str, actor_kind: &str) -> bool {
+    source_kind == CURRENT_HOST_USER_AUTHORITY && actor_kind == PrincipalKind::User.as_str()
+}
+
+pub(crate) fn decision_choice_is_valid(
+    choice_kind: &str,
+    choice_value: &str,
+    alternatives: &[QuestionAlternative],
+) -> bool {
+    match choice_kind {
+        "alternative" => alternatives
+            .iter()
+            .any(|alternative| alternative.key == choice_value),
+        "delegation" => !choice_value.is_empty(),
+        _ => false,
+    }
+}
+
+pub(crate) fn decision_outcome(choice_kind: &str) -> Option<&'static str> {
+    match choice_kind {
+        "alternative" => Some("answered"),
+        "delegation" => Some("delegated"),
+        _ => None,
+    }
 }
 
 fn insert_source(
@@ -4665,6 +4704,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  question_id BLOB NOT NULL CHECK(length(question_id) = 16),
                  question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
                  user_turn_source_id BLOB NOT NULL CHECK(length(user_turn_source_id) = 16),
+                 user_authority TEXT NOT NULL CHECK(user_authority = 'current_host_user_turn'),
                  choice_kind TEXT NOT NULL CHECK(choice_kind IN ('alternative','delegation')),
                  choice_value TEXT NOT NULL CHECK(length(choice_value) > 0),
                  user_rationale TEXT,
@@ -4736,6 +4776,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  question_id BLOB NOT NULL CHECK(length(question_id) = 16),
                  question_revision INTEGER NOT NULL,
                  user_turn_source_id BLOB NOT NULL CHECK(length(user_turn_source_id) = 16),
+                 user_authority TEXT NOT NULL CHECK(user_authority = 'current_host_user_turn'),
                  choice_kind TEXT NOT NULL,
                  choice_value TEXT NOT NULL,
                  user_rationale TEXT,
@@ -4750,6 +4791,9 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  revisit_triggers BLOB NOT NULL,
                  correction_kind TEXT,
                  authorization_source_id BLOB,
+                 authorization_authority TEXT CHECK(
+                     authorization_authority IS NULL OR authorization_authority = 'current_host_user_turn'
+                 ),
                  recorded_at INTEGER NOT NULL,
                  PRIMARY KEY(decision_id, revision)
              ) WITHOUT ROWID;

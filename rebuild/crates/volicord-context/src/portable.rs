@@ -1,4 +1,7 @@
-use crate::store::{decode_alternatives, decode_source_ids};
+use crate::store::{
+    decision_choice_is_valid, decision_outcome, decode_alternatives, decode_source_ids,
+    is_current_host_user_authority, meaning_preserving_correction, CURRENT_HOST_USER_AUTHORITY,
+};
 use crate::{
     CanonicalRecordId, CheckpointId, ContextItemId, DecisionId, Error, ErrorKind, OperationId,
     OperationResult, ProjectId, QuestionId, SourceId, Store,
@@ -6,13 +9,13 @@ use crate::{
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{params, params_from_iter, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 2;
+pub const BUNDLE_FORMAT_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -198,6 +201,7 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "question_id",
             "question_revision",
             "user_turn_source_id",
+            "user_authority",
             "choice_kind",
             "choice_value",
             "user_rationale",
@@ -225,6 +229,7 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "question_id",
             "question_revision",
             "user_turn_source_id",
+            "user_authority",
             "choice_kind",
             "choice_value",
             "user_rationale",
@@ -239,6 +244,7 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "revisit_triggers",
             "correction_kind",
             "authorization_source_id",
+            "authorization_authority",
             "recorded_at",
         ],
         primary_key: &[0, 1],
@@ -1002,62 +1008,529 @@ pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Resul
             }
         }
     }
-    validate_forgotten_question_dependents(payload, &tombstones)?;
+    validate_decision_semantics(payload, &tombstones)?;
     Ok(())
 }
 
-fn validate_forgotten_question_dependents(
+fn required_table<'a>(payload: &'a Payload, name: &str) -> Result<&'a PortableTable, Error> {
+    payload
+        .tables
+        .iter()
+        .find(|table| table.name == name)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                format!("bundle {name} table is missing"),
+            )
+        })
+}
+
+fn value_integer(value: &PortableValue) -> Result<i64, Error> {
+    match value {
+        PortableValue::Integer(value) => Ok(*value),
+        _ => Err(Error::new(
+            ErrorKind::CorruptState,
+            "bundle value is not an integer",
+        )),
+    }
+}
+
+fn optional_text(value: &PortableValue) -> Result<Option<&str>, Error> {
+    match value {
+        PortableValue::Null => Ok(None),
+        PortableValue::Text(value) => Ok(Some(value)),
+        _ => Err(Error::new(
+            ErrorKind::CorruptState,
+            "bundle optional value is neither null nor text",
+        )),
+    }
+}
+
+fn validate_decision_semantics(
     payload: &Payload,
     tombstones: &BTreeSet<(String, String)>,
 ) -> Result<(), Error> {
-    let forgotten_questions = tombstones
+    let sources = required_table(payload, "sources")?
+        .rows
         .iter()
-        .filter(|(kind, _)| kind == "question")
-        .map(|(_, identity)| identity.clone())
-        .collect::<BTreeSet<_>>();
-    if forgotten_questions.is_empty() {
-        return Ok(());
+        .map(|row| (value_key(&row[0]), row))
+        .collect::<BTreeMap<_, _>>();
+    let questions = required_table(payload, "questions")?
+        .rows
+        .iter()
+        .map(|row| (value_key(&row[0]), row))
+        .collect::<BTreeMap<_, _>>();
+    let question_revisions = required_table(payload, "question_revisions")?
+        .rows
+        .iter()
+        .map(|row| Ok(((value_key(&row[0]), value_integer(&row[1])?), row)))
+        .collect::<Result<BTreeMap<_, _>, Error>>()?;
+    let responses = required_table(payload, "question_response_sources")?
+        .rows
+        .iter()
+        .map(|row| {
+            Ok((
+                (value_key(&row[1]), value_integer(&row[2])?),
+                value_key(&row[3]),
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>, Error>>()?;
+    let decisions = required_table(payload, "decisions")?
+        .rows
+        .iter()
+        .map(|row| (value_key(&row[0]), row))
+        .collect::<BTreeMap<_, _>>();
+    let mut revisions = BTreeMap::<String, BTreeMap<i64, &Vec<PortableValue>>>::new();
+    for row in &required_table(payload, "decision_revisions")?.rows {
+        revisions
+            .entry(value_key(&row[0]))
+            .or_default()
+            .insert(value_integer(&row[1])?, row);
     }
-
-    let review_due = payload
-        .tables
-        .iter()
-        .find(|table| table.name == "review_due")
-        .ok_or_else(|| Error::new(ErrorKind::CorruptState, "bundle review table is missing"))?
+    let review_due = required_table(payload, "review_due")?
         .rows
         .iter()
         .map(|row| value_key(&row[1]))
         .collect::<BTreeSet<_>>();
-    let decisions = payload
-        .tables
-        .iter()
-        .find(|table| table.name == "decisions")
-        .ok_or_else(|| Error::new(ErrorKind::CorruptState, "bundle Decision table is missing"))?;
-    for row in &decisions.rows {
-        if forgotten_questions.contains(&value_key(&row[3])) {
-            validate_sanitized_question_presentation(row, "Decision")?;
-            if !review_due.contains(&value_key(&row[0])) {
+
+    let mut supersedes = BTreeMap::<String, String>::new();
+    let mut superseded_by = BTreeMap::<String, String>::new();
+    for row in &required_table(payload, "canonical_relations")?.rows {
+        if value_text(&row[1])? != "decision"
+            || value_text(&row[3])? != "supersedes"
+            || value_text(&row[4])? != "decision"
+        {
+            continue;
+        }
+        let newer = value_key(&row[2]);
+        let older = value_key(&row[5]);
+        if newer == older
+            || supersedes.insert(newer.clone(), older.clone()).is_some()
+            || superseded_by.insert(older, newer).is_some()
+        {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Decision supersession must be directed and non-branching",
+            ));
+        }
+    }
+    validate_acyclic_supersession(&supersedes)?;
+
+    for (decision_id, row) in &decisions {
+        validate_decision_authority(row, &sources, tombstones)?;
+        validate_decision_revision_history(
+            decision_id,
+            row,
+            revisions.get(decision_id),
+            &sources,
+            tombstones,
+        )?;
+        validate_decision_question_basis(
+            row,
+            &questions,
+            &question_revisions,
+            &review_due,
+            tombstones,
+            "Decision",
+        )?;
+        if let Some(history) = revisions.get(decision_id) {
+            for revision in history.values() {
+                validate_decision_question_basis(
+                    revision,
+                    &questions,
+                    &question_revisions,
+                    &review_due,
+                    tombstones,
+                    "Decision revision",
+                )?;
+            }
+        }
+    }
+
+    for (newer, older) in &supersedes {
+        if let (Some(newer), Some(older)) = (decisions.get(newer), decisions.get(older)) {
+            if newer[3] != older[3] || newer[4] != older[4] {
                 return Err(Error::new(
                     ErrorKind::CorruptState,
-                    "active Decision referencing a forgotten Question is missing review_due",
+                    "one Decision supersession lineage changes Question identity or revision",
                 ));
             }
         }
     }
 
-    let revisions = payload
-        .tables
-        .iter()
-        .find(|table| table.name == "decision_revisions")
-        .ok_or_else(|| {
+    validate_question_response_roles(
+        &sources,
+        &questions,
+        &question_revisions,
+        &responses,
+        &decisions,
+        &supersedes,
+        tombstones,
+    )
+}
+
+fn validate_acyclic_supersession(supersedes: &BTreeMap<String, String>) -> Result<(), Error> {
+    for start in supersedes.keys() {
+        let mut visited = BTreeSet::new();
+        let mut current = start;
+        while let Some(next) = supersedes.get(current) {
+            if !visited.insert(current.clone()) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision supersession contains a cycle",
+                ));
+            }
+            current = next;
+        }
+    }
+    Ok(())
+}
+
+fn validate_decision_authority(
+    row: &[PortableValue],
+    sources: &BTreeMap<String, &Vec<PortableValue>>,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    if value_text(&row[6])? != CURRENT_HOST_USER_AUTHORITY {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Decision lacks its current-host user authority witness",
+        ));
+    }
+    validate_authority_source(&row[5], sources, tombstones)
+}
+
+fn validate_authority_source(
+    source_id: &PortableValue,
+    sources: &BTreeMap<String, &Vec<PortableValue>>,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    let identity = value_key(source_id);
+    if let Some(source) = sources.get(&identity) {
+        if !is_current_host_user_authority(value_text(&source[3])?, value_text(&source[10])?) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Decision authority Source is not a user-authored current-host turn",
+            ));
+        }
+        return Ok(());
+    }
+    if tombstones.contains(&("source".to_owned(), identity)) {
+        return Ok(());
+    }
+    Err(Error::new(
+        ErrorKind::CorruptState,
+        "Decision authority references no active or forgotten Source",
+    ))
+}
+
+fn validate_decision_revision_history(
+    decision_id: &str,
+    active: &[PortableValue],
+    revisions: Option<&BTreeMap<i64, &Vec<PortableValue>>>,
+    sources: &BTreeMap<String, &Vec<PortableValue>>,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    let current = value_integer(&active[2])?;
+    let revisions = revisions.ok_or_else(|| {
+        Error::new(
+            ErrorKind::CorruptState,
+            "active Decision has no revision history",
+        )
+    })?;
+    if current < 1 || revisions.len() != usize::try_from(current).unwrap_or(usize::MAX) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Decision revision history contains a gap",
+        ));
+    }
+    for expected in 1..=current {
+        if !revisions.contains_key(&expected) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Decision revision history contains a gap",
+            ));
+        }
+    }
+    let current_row = revisions.get(&current).ok_or_else(|| {
+        Error::new(
+            ErrorKind::CorruptState,
+            "Decision current revision snapshot is missing",
+        )
+    })?;
+    if active[3..=18] != current_row[3..=18] {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Decision current row differs from its current revision snapshot",
+        ));
+    }
+
+    let mut previous: Option<&&Vec<PortableValue>> = None;
+    for revision_number in 1..=current {
+        let row = revisions.get(&revision_number).ok_or_else(|| {
             Error::new(
                 ErrorKind::CorruptState,
-                "bundle Decision revision table is missing",
+                "Decision revision snapshot is missing",
             )
         })?;
-    for row in &revisions.rows {
-        if forgotten_questions.contains(&value_key(&row[3])) {
-            validate_sanitized_question_presentation(row, "Decision revision")?;
+        if value_key(&row[0]) != decision_id {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Decision revision identity differs from its active Decision",
+            ));
+        }
+        validate_decision_authority(row, sources, tombstones)?;
+        if revision_number == 1 {
+            if !matches!(row[19], PortableValue::Null)
+                || !matches!(row[20], PortableValue::Null)
+                || !matches!(row[21], PortableValue::Null)
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "initial Decision revision carries correction authorization",
+                ));
+            }
+        } else {
+            let kind = value_text(&row[19])?;
+            let authorization = match &row[20] {
+                PortableValue::Bytes(_) => &row[20],
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Decision correction lacks an authorization Source",
+                    ))
+                }
+            };
+            if value_text(&row[21])? != CURRENT_HOST_USER_AUTHORITY {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision correction lacks its user authority witness",
+                ));
+            }
+            validate_authority_source(authorization, sources, tombstones)?;
+            let prior = previous.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision correction basis is missing",
+                )
+            })?;
+            for index in (3..=8).chain(10..=18) {
+                if prior[index] != row[index] {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Decision correction changes a semantic field",
+                    ));
+                }
+            }
+            let before = optional_text(&prior[9])?;
+            let after = optional_text(&row[9])?;
+            if !matches!((before, after), (Some(before), Some(after)) if meaning_preserving_correction(before, after, kind))
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision correction is not a permitted presentation-only change",
+                ));
+            }
+        }
+        previous = Some(row);
+    }
+    Ok(())
+}
+
+fn validate_decision_question_basis(
+    row: &[PortableValue],
+    questions: &BTreeMap<String, &Vec<PortableValue>>,
+    question_revisions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
+    review_due: &BTreeSet<String>,
+    tombstones: &BTreeSet<(String, String)>,
+    owner: &str,
+) -> Result<(), Error> {
+    let question_id = value_key(&row[3]);
+    let question_revision = value_integer(&row[4])?;
+    if questions.contains_key(&question_id) {
+        let revision = question_revisions
+            .get(&(question_id, question_revision))
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    format!("{owner} references a nonexistent Question revision"),
+                )
+            })?;
+        let displayed = decode_alternatives(&value_bytes(&row[10])?)?;
+        let alternatives = decode_alternatives(&value_bytes(&revision[6])?)?;
+        let displayed_sources = decode_source_ids(&value_bytes(&row[13])?)?;
+        let recommendation_sources = decode_source_ids(&value_bytes(&revision[9])?)?;
+        if displayed != alternatives
+            || optional_text(&row[11])? != optional_text(&revision[7])?
+            || value_text(&row[12])? != value_text(&revision[8])?
+            || displayed_sources != recommendation_sources
+        {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                format!("{owner} presentation differs from its exact Question revision"),
+            ));
+        }
+        if !decision_choice_is_valid(value_text(&row[7])?, value_text(&row[8])?, &alternatives) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                format!("{owner} choice is invalid for its Question revision"),
+            ));
+        }
+    } else if tombstones.contains(&("question".to_owned(), question_id)) {
+        validate_sanitized_question_presentation(row, owner)?;
+        if owner == "Decision" && !review_due.contains(&value_key(&row[0])) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "active Decision referencing a forgotten Question is missing review_due",
+            ));
+        }
+        if !matches!(value_text(&row[7])?, "alternative" | "delegation")
+            || value_text(&row[8])?.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                format!("{owner} retains an invalid independently owned choice"),
+            ));
+        }
+    } else {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            format!("{owner} references no active or forgotten Question"),
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_question_response_roles(
+    sources: &BTreeMap<String, &Vec<PortableValue>>,
+    questions: &BTreeMap<String, &Vec<PortableValue>>,
+    question_revisions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
+    responses: &BTreeMap<(String, i64), String>,
+    decisions: &BTreeMap<String, &Vec<PortableValue>>,
+    supersedes: &BTreeMap<String, String>,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    let mut roots = BTreeMap::<(String, i64), Vec<&Vec<PortableValue>>>::new();
+    let mut decisions_by_question = BTreeMap::<(String, i64), Vec<&Vec<PortableValue>>>::new();
+    for (decision_id, row) in decisions {
+        let key = (value_key(&row[3]), value_integer(&row[4])?);
+        decisions_by_question
+            .entry(key.clone())
+            .or_default()
+            .push(row);
+        if !supersedes.contains_key(decision_id) {
+            roots.entry(key).or_default().push(row);
+        }
+    }
+    if roots.values().any(|values| values.len() > 1) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "a Question revision has unrelated root Decisions",
+        ));
+    }
+
+    for ((question_id, revision), source_id) in responses {
+        let question = questions.get(question_id).ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Question response link has no active Question",
+            )
+        })?;
+        if value_integer(&question[2])? != *revision
+            || !question_revisions.contains_key(&(question_id.clone(), *revision))
+            || matches!(question[3], PortableValue::Null)
+        {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question response link does not name the active terminal revision",
+            ));
+        }
+        let source = sources.get(source_id).ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Question response link has no active Source",
+            )
+        })?;
+        if !is_current_host_user_authority(value_text(&source[3])?, value_text(&source[10])?) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question response link is not a user-authored current-host turn",
+            ));
+        }
+    }
+
+    let has_forgotten_decision = tombstones.iter().any(|(kind, _)| kind == "decision");
+    for (question_id, question) in questions {
+        let revision = value_integer(&question[2])?;
+        let key = (question_id.clone(), revision);
+        let response = responses.get(&key);
+        let root = roots.get(&key).and_then(|values| values.first()).copied();
+        let linked_decisions = decisions_by_question
+            .get(&key)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let outcome = optional_text(&question[3])?;
+        match outcome {
+            None => {
+                if response.is_some() || !linked_decisions.is_empty() {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "open Question carries a response or Decision",
+                    ));
+                }
+            }
+            Some("answered" | "delegated") => {
+                if let Some(root) = root {
+                    if decision_outcome(value_text(&root[7])?) != outcome {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "root Decision choice conflicts with the Question terminal outcome",
+                        ));
+                    }
+                    let root_source = value_key(&root[5]);
+                    if sources.contains_key(&root_source) {
+                        if response != Some(&root_source) {
+                            return Err(Error::new(
+                                ErrorKind::CorruptState,
+                                "root Decision does not match the exact Question response Source",
+                            ));
+                        }
+                    } else if response.is_some() {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "forgotten root Decision Source still has a mismatched response link",
+                        ));
+                    }
+                } else if !linked_decisions.is_empty() {
+                    if !linked_decisions.iter().all(|decision| {
+                        supersedes
+                            .get(&value_key(&decision[0]))
+                            .is_some_and(|older| {
+                                tombstones.contains(&("decision".to_owned(), older.clone()))
+                                    || decisions.contains_key(older)
+                            })
+                    }) {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Decision lineage has no original response role",
+                        ));
+                    }
+                } else if !has_forgotten_decision {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "answered or delegated Question has no Decision history",
+                    ));
+                }
+            }
+            Some(_) => {
+                if !linked_decisions.is_empty() {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "non-Decision terminal outcome is represented by a Decision",
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -1067,10 +1540,10 @@ fn validate_sanitized_question_presentation(
     row: &[PortableValue],
     owner: &str,
 ) -> Result<(), Error> {
-    let alternatives = decode_alternatives(&value_bytes(&row[9])?)?;
-    let recommendation_sources = decode_source_ids(&value_bytes(&row[12])?)?;
-    let recommendation_key_is_absent = matches!(row[10], PortableValue::Null);
-    let recommendation_rationale_is_empty = value_text(&row[11])?.is_empty();
+    let alternatives = decode_alternatives(&value_bytes(&row[10])?)?;
+    let recommendation_sources = decode_source_ids(&value_bytes(&row[13])?)?;
+    let recommendation_key_is_absent = matches!(row[11], PortableValue::Null);
+    let recommendation_rationale_is_empty = value_text(&row[12])?.is_empty();
     if !alternatives.is_empty()
         || !recommendation_key_is_absent
         || !recommendation_rationale_is_empty
@@ -1509,6 +1982,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 2);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 3);
     }
 }
