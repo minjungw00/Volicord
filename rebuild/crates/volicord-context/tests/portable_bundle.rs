@@ -490,21 +490,21 @@ fn malformed_relation_and_interrupted_import_roll_back_fully(
     drop(connection);
     let mut source = test_store(&source_path, &[])?;
     let malformed = root.path().join("malformed.json");
-    source.export_bundle(fixture.project.id, &malformed)?;
-    let mut destination = test_store(&root.path().join("malformed-destination.sqlite3"), &[])?;
     assert_eq!(
-        destination
-            .import_bundle(operation(50), &malformed)
+        source
+            .export_bundle(fixture.project.id, &malformed)
             .err()
-            .ok_or("expected malformed relation")?
+            .ok_or("expected malformed export rejection")?
             .kind(),
         ErrorKind::CorruptState
     );
+    assert!(!malformed.exists());
+    let destination = test_store(&root.path().join("malformed-destination.sqlite3"), &[])?;
     assert_eq!(
         destination
             .get_project(fixture.project.id)
             .err()
-            .ok_or("malformed import mutated")?
+            .ok_or("malformed export mutated destination")?
             .kind(),
         ErrorKind::NotFound
     );

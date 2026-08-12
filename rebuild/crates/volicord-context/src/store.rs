@@ -4346,7 +4346,7 @@ fn encode_source_ids(values: &[SourceId]) -> Vec<u8> {
     bytes
 }
 
-fn decode_source_ids(bytes: &[u8]) -> Result<Vec<SourceId>, Error> {
+pub(crate) fn decode_source_ids(bytes: &[u8]) -> Result<Vec<SourceId>, Error> {
     let mut cursor = BlobCursor::new(bytes);
     let count = cursor.count()?;
     let mut values = Vec::with_capacity(count);
@@ -4456,7 +4456,7 @@ fn encode_alternatives(values: &[QuestionAlternative]) -> Vec<u8> {
     bytes
 }
 
-fn decode_alternatives(bytes: &[u8]) -> Result<Vec<QuestionAlternative>, Error> {
+pub(crate) fn decode_alternatives(bytes: &[u8]) -> Result<Vec<QuestionAlternative>, Error> {
     let mut cursor = BlobCursor::new(bytes);
     let count = cursor.count()?;
     let mut values = Vec::with_capacity(count);

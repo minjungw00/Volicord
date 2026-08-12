@@ -1,3 +1,4 @@
+use crate::store::{decode_alternatives, decode_source_ids};
 use crate::{
     CanonicalRecordId, CheckpointId, ContextItemId, DecisionId, Error, ErrorKind, OperationId,
     OperationResult, ProjectId, QuestionId, SourceId, Store,
@@ -741,6 +742,7 @@ pub(crate) fn bundle_bytes(
     };
     let mut bytes = serde_json::to_vec(&envelope).map_err(json_error)?;
     bytes.push(b'\n');
+    validate_bundle(&bytes)?;
     Ok((bytes, checksum, history_basis))
 }
 
@@ -999,6 +1001,85 @@ pub(crate) fn validate_tables(payload: &Payload, project_id: ProjectId) -> Resul
                 ));
             }
         }
+    }
+    validate_forgotten_question_dependents(payload, &tombstones)?;
+    Ok(())
+}
+
+fn validate_forgotten_question_dependents(
+    payload: &Payload,
+    tombstones: &BTreeSet<(String, String)>,
+) -> Result<(), Error> {
+    let forgotten_questions = tombstones
+        .iter()
+        .filter(|(kind, _)| kind == "question")
+        .map(|(_, identity)| identity.clone())
+        .collect::<BTreeSet<_>>();
+    if forgotten_questions.is_empty() {
+        return Ok(());
+    }
+
+    let review_due = payload
+        .tables
+        .iter()
+        .find(|table| table.name == "review_due")
+        .ok_or_else(|| Error::new(ErrorKind::CorruptState, "bundle review table is missing"))?
+        .rows
+        .iter()
+        .map(|row| value_key(&row[1]))
+        .collect::<BTreeSet<_>>();
+    let decisions = payload
+        .tables
+        .iter()
+        .find(|table| table.name == "decisions")
+        .ok_or_else(|| Error::new(ErrorKind::CorruptState, "bundle Decision table is missing"))?;
+    for row in &decisions.rows {
+        if forgotten_questions.contains(&value_key(&row[3])) {
+            validate_sanitized_question_presentation(row, "Decision")?;
+            if !review_due.contains(&value_key(&row[0])) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "active Decision referencing a forgotten Question is missing review_due",
+                ));
+            }
+        }
+    }
+
+    let revisions = payload
+        .tables
+        .iter()
+        .find(|table| table.name == "decision_revisions")
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "bundle Decision revision table is missing",
+            )
+        })?;
+    for row in &revisions.rows {
+        if forgotten_questions.contains(&value_key(&row[3])) {
+            validate_sanitized_question_presentation(row, "Decision revision")?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_sanitized_question_presentation(
+    row: &[PortableValue],
+    owner: &str,
+) -> Result<(), Error> {
+    let alternatives = decode_alternatives(&value_bytes(&row[9])?)?;
+    let recommendation_sources = decode_source_ids(&value_bytes(&row[12])?)?;
+    let recommendation_key_is_absent = matches!(row[10], PortableValue::Null);
+    let recommendation_rationale_is_empty = value_text(&row[11])?.is_empty();
+    if !alternatives.is_empty()
+        || !recommendation_key_is_absent
+        || !recommendation_rationale_is_empty
+        || !recommendation_sources.is_empty()
+    {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            format!("{owner} retains presentation owned by a forgotten Question"),
+        ));
     }
     Ok(())
 }
