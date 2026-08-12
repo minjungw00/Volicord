@@ -1,14 +1,17 @@
 use crate::identity::{IdGenerator, SystemIdGenerator};
 use crate::model::{
-    AgentRecommendation, ApplicabilityScope, Availability, Checkpoint, CheckpointDraft,
-    CheckpointKind, CommandOutcome, CommandTermination, ContextItem, ContextItemDraft,
-    ContextItemRole, Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding,
-    OperationResult, Principal, PrincipalKind, Project, Question, QuestionAlternative,
-    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
-    QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source, SourceDraft,
-    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    AgentRecommendation, ApplicabilityScope, Availability, CanonicalInvalidation,
+    CanonicalRecordId, CanonicalRecordKind, CanonicalRelation, CanonicalRelationKind, Checkpoint,
+    CheckpointDraft, CheckpointKind, CommandOutcome, CommandTermination, ContextItem,
+    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, Decision,
+    DecisionChoice, DecisionCorrectionDraft, DecisionLifecycle, DecisionSupersessionDraft,
+    ExplicitQuestionResponse, ForgetResult, LocalBinding, OperationResult, Principal,
+    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
+    QuestionReference, QuestionResponseDraft, QuestionResponseResult, QuestionState,
+    QuestionTerminalOutcome, ReviewDue, ReviewDueDraft, ReviewDueKind, Source, SourceDraft,
+    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, Tombstone,
+    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
+    VerificationFact, VerificationState, WorkState,
 };
 use crate::time::{Clock, SystemClock, TimestampMicros};
 use crate::{
@@ -23,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
-const REQUIRED_TABLES: [&str; 19] = [
+const REQUIRED_TABLES: [&str; 24] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -45,6 +48,11 @@ const REQUIRED_TABLES: [&str; 19] = [
     "checkpoint_decisions",
     "checkpoint_questions",
     "checkpoint_verifications",
+    "context_item_revisions",
+    "decision_revisions",
+    "canonical_relations",
+    "review_due",
+    "tombstones",
 ];
 
 /// One synchronous connection to an explicit Canonical Context store path.
@@ -53,9 +61,9 @@ const REQUIRED_TABLES: [&str; 19] = [
 /// transaction. SQLite therefore serializes writers both within this handle
 /// and across handles without an implicit retry under a new operation ID.
 pub struct Store {
-    connection: Connection,
-    ids: Box<dyn IdGenerator>,
-    clock: Box<dyn Clock>,
+    pub(crate) connection: Connection,
+    pub(crate) ids: Box<dyn IdGenerator>,
+    pub(crate) clock: Box<dyn Clock>,
     path: PathBuf,
 }
 
@@ -845,13 +853,13 @@ impl Store {
             transaction
                 .execute(
                     "INSERT INTO decisions(
-                         id, project_id, question_id, question_revision, user_turn_source_id,
+                         id, project_id, revision, question_id, question_revision, user_turn_source_id,
                          choice_kind, choice_value, user_rationale, displayed_alternatives,
                          recommendation_key, recommendation_rationale, recommendation_sources,
                          applicability_paths, applicability_components, applicability_work_contexts,
                          assumptions, revisit_triggers, recorded_at
                      ) VALUES (
-                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                         ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                          ?13, ?14, ?15, ?16, ?17, ?18
                      )",
                     params![
@@ -878,9 +886,30 @@ impl Store {
                 .map_err(|error| {
                     insert_identity_error(error, "Decision identity already exists")
                 })?;
+            insert_decision_revision(
+                &transaction,
+                decision_id,
+                project_id,
+                1,
+                draft.question_id,
+                draft.question_revision,
+                user_turn_source.id,
+                choice_kind,
+                choice_value,
+                rationale,
+                &question.alternatives,
+                &question.recommendation,
+                &draft.applicability,
+                &draft.assumptions,
+                &draft.revisit_triggers,
+                None,
+                None,
+                now,
+            )?;
             Some(Decision {
                 id: decision_id,
                 project_id,
+                revision: 1,
                 question_id: draft.question_id,
                 question_revision: draft.question_revision,
                 user_turn_source_id: user_turn_source.id,
@@ -1012,6 +1041,16 @@ impl Store {
                 )
                 .map_err(write_error)?;
         }
+        insert_context_item_revision(
+            &transaction,
+            item_id,
+            project_id,
+            1,
+            &draft,
+            None,
+            None,
+            now,
+        )?;
         record_operation(
             &transaction,
             operation_id,
@@ -1260,6 +1299,1375 @@ impl Store {
         checkpoint_id: CheckpointId,
     ) -> Result<Checkpoint, Error> {
         load_checkpoint(&self.connection, project_id, checkpoint_id)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_context_item_revision(
+    connection: &Connection,
+    item_id: ContextItemId,
+    project_id: ProjectId,
+    revision: u64,
+    draft: &ContextItemDraft,
+    correction_kind: Option<CorrectionKind>,
+    authorization_source_id: Option<SourceId>,
+    recorded_at: TimestampMicros,
+) -> Result<(), Error> {
+    let item = ContextItem {
+        id: item_id,
+        project_id,
+        revision,
+        role: draft.role,
+        statement: draft.statement.clone(),
+        provenance_role: draft.provenance_role,
+        author: draft.author.clone(),
+        source_basis: draft.source_basis.clone(),
+        applicability: draft.applicability.clone(),
+        recorded_at,
+    };
+    insert_context_item_snapshot(
+        connection,
+        &item,
+        correction_kind,
+        authorization_source_id,
+        recorded_at,
+    )
+}
+
+fn insert_context_item_snapshot(
+    connection: &Connection,
+    item: &ContextItem,
+    correction_kind: Option<CorrectionKind>,
+    authorization_source_id: Option<SourceId>,
+    recorded_at: TimestampMicros,
+) -> Result<(), Error> {
+    connection
+        .execute(
+            "INSERT INTO context_item_revisions(
+             context_item_id, revision, project_id, role, statement, provenance_role,
+             author_kind, author_identity, source_basis, applicability_paths,
+             applicability_components, applicability_work_contexts, correction_kind,
+             authorization_source_id, recorded_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                item.id.as_bytes().as_slice(),
+                revision_i64(item.revision)?,
+                item.project_id.as_bytes().as_slice(),
+                item.role.as_str(),
+                item.statement,
+                item.provenance_role.as_str(),
+                item.author.kind.as_str(),
+                item.author.identity,
+                encode_source_ids(&item.source_basis),
+                encode_strings(&item.applicability.paths),
+                encode_strings(&item.applicability.components),
+                encode_strings(&item.applicability.work_contexts),
+                correction_kind.map(CorrectionKind::as_str),
+                authorization_source_id.map(|value| value.as_bytes().to_vec()),
+                recorded_at.as_unix_micros(),
+            ],
+        )
+        .map_err(write_error)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_decision_revision(
+    connection: &Connection,
+    decision_id: DecisionId,
+    project_id: ProjectId,
+    revision: u64,
+    question_id: QuestionId,
+    question_revision: u64,
+    user_turn_source_id: SourceId,
+    choice_kind: &str,
+    choice_value: &str,
+    user_rationale: Option<&str>,
+    displayed_alternatives: &[QuestionAlternative],
+    recommendation: &AgentRecommendation,
+    applicability: &ApplicabilityScope,
+    assumptions: &[String],
+    revisit_triggers: &[String],
+    correction_kind: Option<CorrectionKind>,
+    authorization_source_id: Option<SourceId>,
+    recorded_at: TimestampMicros,
+) -> Result<(), Error> {
+    connection
+        .execute(
+            "INSERT INTO decision_revisions(
+             decision_id, revision, project_id, question_id, question_revision,
+             user_turn_source_id, choice_kind, choice_value, user_rationale,
+             displayed_alternatives, recommendation_key, recommendation_rationale,
+             recommendation_sources, applicability_paths, applicability_components,
+             applicability_work_contexts, assumptions, revisit_triggers, correction_kind,
+             authorization_source_id, recorded_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                   ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+            params![
+                decision_id.as_bytes().as_slice(),
+                revision_i64(revision)?,
+                project_id.as_bytes().as_slice(),
+                question_id.as_bytes().as_slice(),
+                revision_i64(question_revision)?,
+                user_turn_source_id.as_bytes().as_slice(),
+                choice_kind,
+                choice_value,
+                user_rationale,
+                encode_alternatives(displayed_alternatives),
+                recommendation.alternative_key,
+                recommendation.rationale,
+                encode_source_ids(&recommendation.source_basis),
+                encode_strings(&applicability.paths),
+                encode_strings(&applicability.components),
+                encode_strings(&applicability.work_contexts),
+                encode_strings(assumptions),
+                encode_strings(revisit_triggers),
+                correction_kind.map(CorrectionKind::as_str),
+                authorization_source_id.map(|value| value.as_bytes().to_vec()),
+                recorded_at.as_unix_micros(),
+            ],
+        )
+        .map_err(write_error)?;
+    Ok(())
+}
+
+fn insert_decision_snapshot(
+    connection: &Connection,
+    decision: &Decision,
+    correction_kind: Option<CorrectionKind>,
+    authorization_source_id: Option<SourceId>,
+    recorded_at: TimestampMicros,
+) -> Result<(), Error> {
+    let (choice_kind, choice_value) = decision_choice_parts(&decision.choice);
+    insert_decision_revision(
+        connection,
+        decision.id,
+        decision.project_id,
+        decision.revision,
+        decision.question_id,
+        decision.question_revision,
+        decision.user_turn_source_id,
+        choice_kind,
+        choice_value,
+        decision.user_rationale.as_deref(),
+        &decision.displayed_alternatives,
+        &decision.displayed_recommendation,
+        &decision.applicability,
+        &decision.assumptions,
+        &decision.revisit_triggers,
+        correction_kind,
+        authorization_source_id,
+        recorded_at,
+    )
+}
+
+fn decision_choice_parts(choice: &DecisionChoice) -> (&str, &str) {
+    match choice {
+        DecisionChoice::Alternative { alternative_key } => ("alternative", alternative_key),
+        DecisionChoice::Delegation { delegate_to } => ("delegation", delegate_to),
+    }
+}
+
+fn load_context_item_revision(
+    connection: &Connection,
+    project_id: ProjectId,
+    item_id: ContextItemId,
+    revision: u64,
+) -> Result<ContextItem, Error> {
+    type Row = (
+        String,
+        String,
+        String,
+        String,
+        String,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+    );
+    let row: Row = connection.query_row(
+        "SELECT role, statement, provenance_role, author_kind, author_identity, source_basis,
+                applicability_paths, applicability_components, applicability_work_contexts, recorded_at
+         FROM context_item_revisions WHERE project_id = ?1 AND context_item_id = ?2 AND revision = ?3",
+        params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice(), revision_i64(revision)?],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?)),
+    ).optional().map_err(read_error)?.ok_or_else(|| Error::new(ErrorKind::NotFound, "Context Item revision was not found"))?;
+    Ok(ContextItem {
+        id: item_id,
+        project_id,
+        revision,
+        role: ContextItemRole::parse(&row.0).ok_or_else(|| invalid_stored("Context Item role"))?,
+        statement: row.1,
+        provenance_role: StatementProvenanceRole::parse(&row.2)
+            .ok_or_else(|| invalid_stored("Context Item provenance role"))?,
+        author: Principal {
+            kind: PrincipalKind::parse(&row.3)
+                .ok_or_else(|| invalid_stored("Context Item author kind"))?,
+            identity: row.4,
+        },
+        source_basis: decode_source_ids(&row.5)?,
+        applicability: ApplicabilityScope {
+            paths: decode_strings(&row.6)?,
+            components: decode_strings(&row.7)?,
+            work_contexts: decode_strings(&row.8)?,
+        },
+        recorded_at: TimestampMicros::from_unix_micros(row.9),
+    })
+}
+
+fn load_decision_revision(
+    connection: &Connection,
+    project_id: ProjectId,
+    decision_id: DecisionId,
+    revision: u64,
+) -> Result<Decision, Error> {
+    type Row = (
+        Vec<u8>,
+        i64,
+        Vec<u8>,
+        String,
+        String,
+        Option<String>,
+        Vec<u8>,
+        Option<String>,
+        String,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+    );
+    let row: Row = connection.query_row(
+        "SELECT question_id, question_revision, user_turn_source_id, choice_kind, choice_value,
+                user_rationale, displayed_alternatives, recommendation_key, recommendation_rationale,
+                recommendation_sources, applicability_paths, applicability_components,
+                applicability_work_contexts, assumptions, revisit_triggers, recorded_at
+         FROM decision_revisions WHERE project_id = ?1 AND decision_id = ?2 AND revision = ?3",
+        params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice(), revision_i64(revision)?],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?, row.get(15)?)),
+    ).optional().map_err(read_error)?.ok_or_else(|| Error::new(ErrorKind::NotFound, "Decision revision was not found"))?;
+    let choice = match row.3.as_str() {
+        "alternative" => DecisionChoice::Alternative {
+            alternative_key: row.4,
+        },
+        "delegation" => DecisionChoice::Delegation { delegate_to: row.4 },
+        _ => return Err(invalid_stored("Decision choice")),
+    };
+    Ok(Decision {
+        id: decision_id,
+        project_id,
+        revision,
+        question_id: QuestionId::from_slice(&row.0)?,
+        question_revision: stored_revision(row.1)?,
+        user_turn_source_id: SourceId::from_slice(&row.2)?,
+        choice,
+        user_rationale: row.5,
+        displayed_alternatives: decode_alternatives(&row.6)?,
+        displayed_recommendation: AgentRecommendation {
+            alternative_key: row.7,
+            rationale: row.8,
+            source_basis: decode_source_ids(&row.9)?,
+        },
+        applicability: ApplicabilityScope {
+            paths: decode_strings(&row.10)?,
+            components: decode_strings(&row.11)?,
+            work_contexts: decode_strings(&row.12)?,
+        },
+        assumptions: decode_strings(&row.13)?,
+        revisit_triggers: decode_strings(&row.14)?,
+        recorded_at: TimestampMicros::from_unix_micros(row.15),
+    })
+}
+
+fn ensure_meaning_preserving(before: &str, after: &str, kind: CorrectionKind) -> Result<(), Error> {
+    if before == after {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "correction must change presentation",
+        ));
+    }
+    let accepted = match kind {
+        CorrectionKind::Formatting => compact_alphanumeric(before) == compact_alphanumeric(after),
+        CorrectionKind::Typography => edit_distance_with_limit(before, after, 2),
+        CorrectionKind::Expression => sorted_words(before) == sorted_words(after),
+    };
+    if !accepted {
+        return Err(Error::new(
+            ErrorKind::DomainConflict,
+            "correction changes semantic tokens; create a superseding record instead",
+        ));
+    }
+    Ok(())
+}
+
+fn compact_alphanumeric(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn sorted_words(value: &str) -> Vec<String> {
+    let mut words: Vec<String> = value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    words.sort();
+    words
+}
+
+fn edit_distance_with_limit(left: &str, right: &str, limit: usize) -> bool {
+    let left: Vec<char> = left.chars().collect();
+    let right: Vec<char> = right.chars().collect();
+    if left.len().abs_diff(right.len()) > limit {
+        return false;
+    }
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    for (left_index, left_character) in left.iter().enumerate() {
+        let mut current = vec![left_index + 1];
+        for (right_index, right_character) in right.iter().enumerate() {
+            current.push(
+                (previous[right_index + 1] + 1)
+                    .min(current[right_index] + 1)
+                    .min(previous[right_index] + usize::from(left_character != right_character)),
+            );
+        }
+        previous = current;
+    }
+    previous[right.len()] <= limit
+}
+
+fn insert_canonical_relation(
+    connection: &Connection,
+    project_id: ProjectId,
+    from: CanonicalRecordId,
+    kind: CanonicalRelationKind,
+    to: CanonicalRecordId,
+    recorded_at: TimestampMicros,
+) -> Result<(), Error> {
+    connection.execute(
+        "INSERT INTO canonical_relations(project_id, from_kind, from_id, relation_kind, to_kind, to_id, recorded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![project_id.as_bytes().as_slice(), from.kind().as_str(), from.as_bytes().as_slice(),
+            kind.as_str(), to.kind().as_str(), to.as_bytes().as_slice(), recorded_at.as_unix_micros()],
+    ).map_err(|error| insert_identity_error(error, "canonical relation already exists"))?;
+    Ok(())
+}
+
+fn load_canonical_relation(
+    connection: &Connection,
+    project_id: ProjectId,
+    from: CanonicalRecordId,
+    kind: CanonicalRelationKind,
+    to: CanonicalRecordId,
+) -> Result<CanonicalRelation, Error> {
+    let recorded_at: i64 = connection.query_row(
+        "SELECT recorded_at FROM canonical_relations WHERE project_id = ?1 AND from_kind = ?2 AND from_id = ?3 AND relation_kind = ?4 AND to_kind = ?5 AND to_id = ?6",
+        params![project_id.as_bytes().as_slice(), from.kind().as_str(), from.as_bytes().as_slice(), kind.as_str(), to.kind().as_str(), to.as_bytes().as_slice()],
+        |row| row.get(0),
+    ).optional().map_err(read_error)?.ok_or_else(|| Error::new(ErrorKind::NotFound, "canonical relation was not found"))?;
+    Ok(CanonicalRelation {
+        project_id,
+        from,
+        kind,
+        to,
+        recorded_at: TimestampMicros::from_unix_micros(recorded_at),
+    })
+}
+
+fn canonical_record_id(kind: &str, bytes: &[u8]) -> Result<CanonicalRecordId, Error> {
+    match CanonicalRecordKind::parse(kind).ok_or_else(|| invalid_stored("canonical record kind"))? {
+        CanonicalRecordKind::Project => {
+            Ok(CanonicalRecordId::Project(ProjectId::from_slice(bytes)?))
+        }
+        CanonicalRecordKind::Source => Ok(CanonicalRecordId::Source(SourceId::from_slice(bytes)?)),
+        CanonicalRecordKind::Question => {
+            Ok(CanonicalRecordId::Question(QuestionId::from_slice(bytes)?))
+        }
+        CanonicalRecordKind::Decision => {
+            Ok(CanonicalRecordId::Decision(DecisionId::from_slice(bytes)?))
+        }
+        CanonicalRecordKind::ContextItem => Ok(CanonicalRecordId::ContextItem(
+            ContextItemId::from_slice(bytes)?,
+        )),
+        CanonicalRecordKind::Checkpoint => Ok(CanonicalRecordId::Checkpoint(
+            CheckpointId::from_slice(bytes)?,
+        )),
+    }
+}
+
+fn superseded_by(
+    connection: &Connection,
+    project_id: ProjectId,
+    decision_id: DecisionId,
+) -> Result<Option<DecisionId>, Error> {
+    let bytes: Option<Vec<u8>> = connection.query_row(
+        "SELECT from_id FROM canonical_relations WHERE project_id = ?1 AND from_kind = 'decision' AND relation_kind = 'supersedes' AND to_kind = 'decision' AND to_id = ?2 ORDER BY from_id LIMIT 1",
+        params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice()], |row| row.get(0),
+    ).optional().map_err(read_error)?;
+    bytes
+        .map(|value| DecisionId::from_slice(&value))
+        .transpose()
+}
+
+fn load_contradictions(
+    connection: &Connection,
+    project_id: ProjectId,
+    record: CanonicalRecordId,
+) -> Result<Vec<CanonicalRecordId>, Error> {
+    let mut statement = connection.prepare(
+        "SELECT to_kind, to_id FROM canonical_relations WHERE project_id = ?1 AND from_kind = ?2 AND from_id = ?3 AND relation_kind = 'contradicts'
+         UNION SELECT from_kind, from_id FROM canonical_relations WHERE project_id = ?1 AND to_kind = ?2 AND to_id = ?3 AND relation_kind = 'contradicts'
+         ORDER BY 1, 2",
+    ).map_err(read_error)?;
+    let rows = statement
+        .query_map(
+            params![
+                project_id.as_bytes().as_slice(),
+                record.kind().as_str(),
+                record.as_bytes().as_slice()
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for row in rows {
+        let (kind, bytes) = row.map_err(read_error)?;
+        values.push(canonical_record_id(&kind, &bytes)?);
+    }
+    Ok(values)
+}
+
+fn load_review_due(
+    connection: &Connection,
+    project_id: ProjectId,
+    decision_id: DecisionId,
+) -> Result<ReviewDue, Error> {
+    load_review_due_optional(connection, project_id, decision_id)?.ok_or_else(|| {
+        Error::new(
+            ErrorKind::NotFound,
+            "Decision review-due state was not found",
+        )
+    })
+}
+
+fn load_review_due_optional(
+    connection: &Connection,
+    project_id: ProjectId,
+    decision_id: DecisionId,
+) -> Result<Option<ReviewDue>, Error> {
+    type Row = (String, String, Vec<u8>, i64);
+    let row: Option<Row> = connection.query_row(
+        "SELECT review_kind, explanation, source_basis, marked_at FROM review_due WHERE project_id = ?1 AND decision_id = ?2",
+        params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice()],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    ).optional().map_err(read_error)?;
+    row.map(|row| {
+        Ok(ReviewDue {
+            project_id,
+            decision_id,
+            kind: ReviewDueKind::parse(&row.0).ok_or_else(|| invalid_stored("review-due kind"))?,
+            explanation: row.1,
+            source_basis: decode_source_ids(&row.2)?,
+            marked_at: TimestampMicros::from_unix_micros(row.3),
+        })
+    })
+    .transpose()
+}
+
+fn ensure_record_exists(
+    connection: &Connection,
+    project_id: ProjectId,
+    record: CanonicalRecordId,
+) -> Result<(), Error> {
+    match record {
+        CanonicalRecordId::Project(value) => load_project(connection, value).and_then(|project| {
+            if project.id == project_id {
+                Ok(())
+            } else {
+                Err(Error::new(
+                    ErrorKind::WrongProject,
+                    "Project identity differs from scope",
+                ))
+            }
+        }),
+        CanonicalRecordId::Source(value) => ensure_source_project(connection, value, project_id),
+        CanonicalRecordId::Question(value) => {
+            load_question(connection, project_id, value).map(|_| ())
+        }
+        CanonicalRecordId::Decision(value) => {
+            load_decision(connection, project_id, value).map(|_| ())
+        }
+        CanonicalRecordId::ContextItem(value) => {
+            load_context_item(connection, project_id, value).map(|_| ())
+        }
+        CanonicalRecordId::Checkpoint(value) => {
+            load_checkpoint(connection, project_id, value).map(|_| ())
+        }
+    }
+}
+
+fn ensure_record_has_source_basis(
+    connection: &Connection,
+    project_id: ProjectId,
+    record: CanonicalRecordId,
+) -> Result<(), Error> {
+    let has_basis = match record {
+        CanonicalRecordId::ContextItem(value) => !load_context_item(connection, project_id, value)?
+            .source_basis
+            .is_empty(),
+        CanonicalRecordId::Decision(value) => {
+            let decision = load_decision(connection, project_id, value)?;
+            load_source(connection, decision.user_turn_source_id)?.project_id == project_id
+        }
+        _ => false,
+    };
+    if !has_basis {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "contradiction sides must preserve supporting Sources",
+        ));
+    }
+    Ok(())
+}
+
+fn load_tombstone(
+    connection: &Connection,
+    project_id: ProjectId,
+    record: CanonicalRecordId,
+) -> Result<Tombstone, Error> {
+    let forgotten_at: i64 = connection.query_row(
+        "SELECT forgotten_at FROM tombstones WHERE project_id = ?1 AND record_kind = ?2 AND record_id = ?3",
+        params![project_id.as_bytes().as_slice(), record.kind().as_str(), record.as_bytes().as_slice()], |row| row.get(0),
+    ).optional().map_err(read_error)?.ok_or_else(|| Error::new(ErrorKind::NotFound, "tombstone was not found"))?;
+    Ok(Tombstone {
+        project_id,
+        record,
+        forgotten_at: TimestampMicros::from_unix_micros(forgotten_at),
+    })
+}
+
+fn forget_result(tombstone: Tombstone) -> ForgetResult {
+    ForgetResult {
+        invalidation: CanonicalInvalidation {
+            project_id: tombstone.project_id,
+            record: tombstone.record,
+        },
+        tombstone,
+    }
+}
+
+fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
+    let (busy, _, _): (i64, i64, i64) = connection
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(write_error)?;
+    if busy != 0 {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "forgotten content committed but WAL truncation is busy",
+        ));
+    }
+    connection
+        .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(write_error)
+}
+
+impl Store {
+    pub fn correct_context_item(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        item_id: ContextItemId,
+        draft: ContextItemCorrectionDraft,
+    ) -> Result<OperationResult<ContextItem>, Error> {
+        validate_nonempty(
+            "corrected Context Item statement",
+            &draft.corrected_statement,
+        )?;
+        let basis = Basis::new("correct_context_item")
+            .bytes(project_id.as_bytes())
+            .bytes(item_id.as_bytes())
+            .number(draft.expected_revision)
+            .string(&draft.corrected_statement)
+            .string(draft.kind.as_str())
+            .bytes(draft.user_authorization_source_id.as_bytes())
+            .finish();
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "correct_context_item", &basis)?;
+            let value = load_context_item_revision(
+                &transaction,
+                project_id,
+                item_id,
+                operation.result_revision,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+        let current = load_context_item(&transaction, project_id, item_id)?;
+        ensure_revision(draft.expected_revision, current.revision, "Context Item")?;
+        ensure_user_turn_source(
+            &load_source(&transaction, draft.user_authorization_source_id)?,
+            project_id,
+        )?;
+        ensure_meaning_preserving(&current.statement, &draft.corrected_statement, draft.kind)?;
+        let revision = current.revision.checked_add(1).ok_or_else(|| {
+            Error::new(
+                ErrorKind::RepairRequired,
+                "Context Item revision is exhausted",
+            )
+        })?;
+        let now = clock.now()?;
+        transaction
+            .execute(
+                "UPDATE context_items SET statement = ?2, revision = ?3
+                 WHERE id = ?1 AND project_id = ?4 AND revision = ?5",
+                params![
+                    item_id.as_bytes().as_slice(),
+                    draft.corrected_statement,
+                    revision_i64(revision)?,
+                    project_id.as_bytes().as_slice(),
+                    revision_i64(draft.expected_revision)?,
+                ],
+            )
+            .map_err(write_error)
+            .and_then(|count| ensure_single_updated(count, "Context Item changed concurrently"))?;
+        let corrected = ContextItem {
+            revision,
+            statement: draft.corrected_statement,
+            ..current
+        };
+        insert_context_item_snapshot(
+            &transaction,
+            &corrected,
+            Some(draft.kind),
+            Some(draft.user_authorization_source_id),
+            now,
+        )?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "correct_context_item",
+            &basis,
+            "context_item",
+            item_id.as_bytes(),
+            revision,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: corrected,
+            replayed: false,
+        })
+    }
+
+    pub fn correct_decision(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        decision_id: DecisionId,
+        draft: DecisionCorrectionDraft,
+    ) -> Result<OperationResult<Decision>, Error> {
+        validate_optional_nonempty(
+            "corrected user rationale",
+            draft.corrected_user_rationale.as_deref(),
+        )?;
+        let basis = Basis::new("correct_decision")
+            .bytes(project_id.as_bytes())
+            .bytes(decision_id.as_bytes())
+            .number(draft.expected_revision)
+            .optional_string(draft.corrected_user_rationale.as_deref())
+            .string(draft.kind.as_str())
+            .bytes(draft.user_authorization_source_id.as_bytes())
+            .finish();
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "correct_decision", &basis)?;
+            let value = load_decision_revision(
+                &transaction,
+                project_id,
+                decision_id,
+                operation.result_revision,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+        let current = load_decision(&transaction, project_id, decision_id)?;
+        ensure_revision(draft.expected_revision, current.revision, "Decision")?;
+        ensure_user_turn_source(
+            &load_source(&transaction, draft.user_authorization_source_id)?,
+            project_id,
+        )?;
+        match (&current.user_rationale, &draft.corrected_user_rationale) {
+            (Some(before), Some(after)) => ensure_meaning_preserving(before, after, draft.kind)?,
+            (None, None) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Decision correction must change the non-semantic rationale presentation",
+                ));
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::DomainConflict,
+                    "adding or removing Decision rationale is semantic; supersede the Decision",
+                ));
+            }
+        }
+        let revision = current.revision.checked_add(1).ok_or_else(|| {
+            Error::new(ErrorKind::RepairRequired, "Decision revision is exhausted")
+        })?;
+        let now = clock.now()?;
+        transaction
+            .execute(
+                "UPDATE decisions SET user_rationale = ?2, revision = ?3
+                 WHERE id = ?1 AND project_id = ?4 AND revision = ?5",
+                params![
+                    decision_id.as_bytes().as_slice(),
+                    draft.corrected_user_rationale,
+                    revision_i64(revision)?,
+                    project_id.as_bytes().as_slice(),
+                    revision_i64(draft.expected_revision)?,
+                ],
+            )
+            .map_err(write_error)
+            .and_then(|count| ensure_single_updated(count, "Decision changed concurrently"))?;
+        let corrected = Decision {
+            revision,
+            user_rationale: draft.corrected_user_rationale,
+            ..current
+        };
+        insert_decision_snapshot(
+            &transaction,
+            &corrected,
+            Some(draft.kind),
+            Some(draft.user_authorization_source_id),
+            now,
+        )?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "correct_decision",
+            &basis,
+            "decision",
+            decision_id.as_bytes(),
+            revision,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: corrected,
+            replayed: false,
+        })
+    }
+
+    pub fn supersede_decision(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: DecisionSupersessionDraft,
+    ) -> Result<OperationResult<Decision>, Error> {
+        validate_string_list("Decision assumptions", &draft.assumptions)?;
+        validate_string_list("Decision revisit triggers", &draft.revisit_triggers)?;
+        validate_optional_nonempty("user rationale", draft.user_rationale.as_deref())?;
+        let choice_basis = match &draft.choice {
+            DecisionChoice::Alternative { alternative_key } => {
+                validate_nonempty("Decision alternative", alternative_key)?;
+                format!("alternative:{alternative_key}")
+            }
+            DecisionChoice::Delegation { delegate_to } => {
+                validate_nonempty("Decision delegate", delegate_to)?;
+                format!("delegation:{delegate_to}")
+            }
+        };
+        let source_basis = match &draft.user_turn_source {
+            UserTurnSource::Existing(value) => {
+                Basis::new("existing").bytes(value.as_bytes()).finish()
+            }
+            UserTurnSource::Create(value) => {
+                let encoded = EncodedSource::from_payload(&value.payload);
+                source_basis(project_id, value, &encoded)
+            }
+        };
+        let basis = Basis::new("supersede_decision")
+            .bytes(project_id.as_bytes())
+            .number(draft.expected_project_revision)
+            .bytes(draft.previous_decision_id.as_bytes())
+            .bytes(&source_basis)
+            .string(&choice_basis)
+            .optional_string(draft.user_rationale.as_deref())
+            .bytes(&encode_strings(&draft.applicability.paths))
+            .bytes(&encode_strings(&draft.applicability.components))
+            .bytes(&encode_strings(&draft.applicability.work_contexts))
+            .bytes(&encode_strings(&draft.assumptions))
+            .bytes(&encode_strings(&draft.revisit_triggers))
+            .finish();
+        let (connection, ids, clock) = (&mut self.connection, &mut self.ids, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "supersede_decision", &basis)?;
+            let value = load_decision(
+                &transaction,
+                project_id,
+                DecisionId::from_slice(&operation.result_id)?,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        let previous = load_decision(&transaction, project_id, draft.previous_decision_id)?;
+        if superseded_by(&transaction, project_id, draft.previous_decision_id)?.is_some() {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "only the current Decision can be superseded",
+            ));
+        }
+        if let DecisionChoice::Alternative { alternative_key } = &draft.choice {
+            if !previous
+                .displayed_alternatives
+                .iter()
+                .any(|alternative| alternative.key == *alternative_key)
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "superseding Decision alternative was not displayed for the Question",
+                ));
+            }
+        }
+        let now = clock.now()?;
+        let user_turn_source = match &draft.user_turn_source {
+            UserTurnSource::Existing(source_id) => {
+                let source = load_source(&transaction, *source_id)?;
+                ensure_user_turn_source(&source, project_id)?;
+                source
+            }
+            UserTurnSource::Create(source_draft) => {
+                ensure_revision(
+                    source_draft.expected_project_revision,
+                    project.revision,
+                    "Project",
+                )?;
+                validate_source_draft(source_draft)?;
+                ensure_user_turn_draft(source_draft)?;
+                let source_id = SourceId::from_bytes(ids.next_id()?);
+                insert_source(&transaction, source_id, project_id, source_draft, now)?;
+                Source {
+                    id: source_id,
+                    project_id,
+                    payload: source_draft.payload.clone(),
+                    actor: source_draft.actor.clone(),
+                    observer: source_draft.observer.clone(),
+                    availability: source_draft.availability,
+                    recorded_at: now,
+                }
+            }
+        };
+        let decision_id = DecisionId::from_bytes(ids.next_id()?);
+        let (choice_kind, choice_value) = decision_choice_parts(&draft.choice);
+        transaction
+            .execute(
+                "INSERT INTO decisions(
+                     id, project_id, revision, question_id, question_revision, user_turn_source_id,
+                     choice_kind, choice_value, user_rationale, displayed_alternatives,
+                     recommendation_key, recommendation_rationale, recommendation_sources,
+                     applicability_paths, applicability_components, applicability_work_contexts,
+                     assumptions, revisit_triggers, recorded_at
+                 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                           ?13, ?14, ?15, ?16, ?17, ?18)",
+                params![
+                    decision_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    previous.question_id.as_bytes().as_slice(),
+                    revision_i64(previous.question_revision)?,
+                    user_turn_source.id.as_bytes().as_slice(),
+                    choice_kind,
+                    choice_value,
+                    draft.user_rationale,
+                    encode_alternatives(&previous.displayed_alternatives),
+                    previous.displayed_recommendation.alternative_key,
+                    previous.displayed_recommendation.rationale,
+                    encode_source_ids(&previous.displayed_recommendation.source_basis),
+                    encode_strings(&draft.applicability.paths),
+                    encode_strings(&draft.applicability.components),
+                    encode_strings(&draft.applicability.work_contexts),
+                    encode_strings(&draft.assumptions),
+                    encode_strings(&draft.revisit_triggers),
+                    now.as_unix_micros(),
+                ],
+            )
+            .map_err(|error| insert_identity_error(error, "Decision identity already exists"))?;
+        let decision = Decision {
+            id: decision_id,
+            project_id,
+            revision: 1,
+            question_id: previous.question_id,
+            question_revision: previous.question_revision,
+            user_turn_source_id: user_turn_source.id,
+            choice: draft.choice,
+            user_rationale: draft.user_rationale,
+            displayed_alternatives: previous.displayed_alternatives,
+            displayed_recommendation: previous.displayed_recommendation,
+            applicability: draft.applicability,
+            assumptions: draft.assumptions,
+            revisit_triggers: draft.revisit_triggers,
+            recorded_at: now,
+        };
+        insert_decision_snapshot(&transaction, &decision, None, None, now)?;
+        insert_canonical_relation(
+            &transaction,
+            project_id,
+            CanonicalRecordId::Decision(decision_id),
+            CanonicalRelationKind::Supersedes,
+            CanonicalRecordId::Decision(draft.previous_decision_id),
+            now,
+        )?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "supersede_decision",
+            &basis,
+            "decision",
+            decision_id.as_bytes(),
+            1,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: decision,
+            replayed: false,
+        })
+    }
+
+    pub fn record_contradiction(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        left: CanonicalRecordId,
+        right: CanonicalRecordId,
+    ) -> Result<OperationResult<CanonicalRelation>, Error> {
+        if left == right {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "a record cannot contradict itself",
+            ));
+        }
+        let basis = Basis::new("record_contradiction")
+            .bytes(project_id.as_bytes())
+            .string(left.kind().as_str())
+            .bytes(&left.as_bytes())
+            .string(right.kind().as_str())
+            .bytes(&right.as_bytes())
+            .finish();
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "record_contradiction", &basis)?;
+            let value = load_canonical_relation(
+                &transaction,
+                project_id,
+                left,
+                CanonicalRelationKind::Contradicts,
+                right,
+            )?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+        ensure_record_exists(&transaction, project_id, left)?;
+        ensure_record_exists(&transaction, project_id, right)?;
+        ensure_record_has_source_basis(&transaction, project_id, left)?;
+        ensure_record_has_source_basis(&transaction, project_id, right)?;
+        let now = clock.now()?;
+        insert_canonical_relation(
+            &transaction,
+            project_id,
+            left,
+            CanonicalRelationKind::Contradicts,
+            right,
+            now,
+        )?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "record_contradiction",
+            &basis,
+            "canonical_relation",
+            &left.as_bytes(),
+            0,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: CanonicalRelation {
+                project_id,
+                from: left,
+                kind: CanonicalRelationKind::Contradicts,
+                to: right,
+                recorded_at: now,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn mark_decision_review_due(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        decision_id: DecisionId,
+        draft: ReviewDueDraft,
+    ) -> Result<OperationResult<ReviewDue>, Error> {
+        validate_nonempty("review-due explanation", &draft.explanation)?;
+        ensure_unique_ids("review-due Source", &draft.source_basis)?;
+        let basis = Basis::new("mark_decision_review_due")
+            .bytes(project_id.as_bytes())
+            .bytes(decision_id.as_bytes())
+            .string(draft.kind.as_str())
+            .string(&draft.explanation)
+            .bytes(&encode_source_ids(&draft.source_basis))
+            .finish();
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "mark_decision_review_due", &basis)?;
+            let value = load_review_due(&transaction, project_id, decision_id)?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value,
+                replayed: true,
+            });
+        }
+        load_decision(&transaction, project_id, decision_id)?;
+        for source_id in &draft.source_basis {
+            ensure_source_project(&transaction, *source_id, project_id)?;
+        }
+        let now = clock.now()?;
+        transaction.execute(
+            "INSERT INTO review_due(project_id, decision_id, review_kind, explanation, source_basis, marked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice(),
+                draft.kind.as_str(), draft.explanation, encode_source_ids(&draft.source_basis), now.as_unix_micros()],
+        ).map_err(|error| insert_identity_error(error, "Decision is already marked review due"))?;
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "mark_decision_review_due",
+            &basis,
+            "review_due",
+            decision_id.as_bytes(),
+            0,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        Ok(OperationResult {
+            value: ReviewDue {
+                project_id,
+                decision_id,
+                kind: draft.kind,
+                explanation: draft.explanation,
+                source_basis: draft.source_basis,
+                marked_at: now,
+            },
+            replayed: false,
+        })
+    }
+
+    pub fn get_decision_history(
+        &self,
+        project_id: ProjectId,
+        question_id: QuestionId,
+    ) -> Result<Vec<Decision>, Error> {
+        let mut statement = self.connection.prepare(
+            "SELECT id FROM decisions WHERE project_id = ?1 AND question_id = ?2 ORDER BY recorded_at, id",
+        ).map_err(read_error)?;
+        let rows = statement
+            .query_map(
+                params![
+                    project_id.as_bytes().as_slice(),
+                    question_id.as_bytes().as_slice()
+                ],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .map_err(read_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(load_decision(
+                &self.connection,
+                project_id,
+                DecisionId::from_slice(&row.map_err(read_error)?)?,
+            )?);
+        }
+        Ok(values)
+    }
+
+    pub fn get_current_decision(
+        &self,
+        project_id: ProjectId,
+        question_id: QuestionId,
+    ) -> Result<DecisionLifecycle, Error> {
+        let history = self.get_decision_history(project_id, question_id)?;
+        let mut current = Vec::new();
+        for decision in history {
+            if superseded_by(&self.connection, project_id, decision.id)?.is_none() {
+                current.push(decision);
+            }
+        }
+        if current.len() != 1 {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Question does not have exactly one deterministic current Decision",
+            ));
+        }
+        self.get_decision_lifecycle(project_id, current.remove(0).id)
+    }
+
+    pub fn get_decision_lifecycle(
+        &self,
+        project_id: ProjectId,
+        decision_id: DecisionId,
+    ) -> Result<DecisionLifecycle, Error> {
+        let decision = load_decision(&self.connection, project_id, decision_id)?;
+        let superseded_by = superseded_by(&self.connection, project_id, decision_id)?;
+        let contradictions = load_contradictions(
+            &self.connection,
+            project_id,
+            CanonicalRecordId::Decision(decision_id),
+        )?;
+        let review_due = load_review_due_optional(&self.connection, project_id, decision_id)?;
+        Ok(DecisionLifecycle {
+            decision,
+            superseded_by,
+            contradictions,
+            review_due,
+        })
+    }
+
+    pub fn get_canonical_relation(
+        &self,
+        project_id: ProjectId,
+        from: CanonicalRecordId,
+        kind: CanonicalRelationKind,
+        to: CanonicalRecordId,
+    ) -> Result<CanonicalRelation, Error> {
+        load_canonical_relation(&self.connection, project_id, from, kind, to)
+    }
+
+    pub fn get_tombstone(
+        &self,
+        project_id: ProjectId,
+        record: CanonicalRecordId,
+    ) -> Result<Tombstone, Error> {
+        load_tombstone(&self.connection, project_id, record)
+    }
+
+    pub fn get_context_item_history(
+        &self,
+        project_id: ProjectId,
+        item_id: ContextItemId,
+    ) -> Result<Vec<ContextItem>, Error> {
+        let mut statement = self.connection.prepare(
+            "SELECT revision FROM context_item_revisions WHERE project_id = ?1 AND context_item_id = ?2 ORDER BY revision",
+        ).map_err(read_error)?;
+        let rows = statement
+            .query_map(
+                params![
+                    project_id.as_bytes().as_slice(),
+                    item_id.as_bytes().as_slice()
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(read_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(load_context_item_revision(
+                &self.connection,
+                project_id,
+                item_id,
+                stored_revision(row.map_err(read_error)?)?,
+            )?);
+        }
+        Ok(values)
+    }
+
+    pub fn forget_context_item(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        item_id: ContextItemId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        self.forget_record(
+            operation_id,
+            project_id,
+            CanonicalRecordId::ContextItem(item_id),
+            user_authorization_source_id,
+        )
+    }
+
+    pub fn forget_decision(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        decision_id: DecisionId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        self.forget_record(
+            operation_id,
+            project_id,
+            CanonicalRecordId::Decision(decision_id),
+            user_authorization_source_id,
+        )
+    }
+
+    fn forget_record(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        record: CanonicalRecordId,
+        user_authorization_source_id: SourceId,
+    ) -> Result<OperationResult<ForgetResult>, Error> {
+        let basis = Basis::new("forget_canonical_record")
+            .bytes(project_id.as_bytes())
+            .string(record.kind().as_str())
+            .bytes(&record.as_bytes())
+            .bytes(user_authorization_source_id.as_bytes())
+            .finish();
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "forget_canonical_record", &basis)?;
+            let tombstone = load_tombstone(&transaction, project_id, record)?;
+            transaction.commit().map_err(commit_error)?;
+            sanitize_deleted_content(connection)?;
+            return Ok(OperationResult {
+                value: forget_result(tombstone),
+                replayed: true,
+            });
+        }
+        ensure_record_exists(&transaction, project_id, record)?;
+        ensure_user_turn_source(
+            &load_source(&transaction, user_authorization_source_id)?,
+            project_id,
+        )?;
+        let now = clock.now()?;
+        transaction.execute(
+            "INSERT INTO tombstones(project_id, record_kind, record_id, forgotten_at) VALUES (?1, ?2, ?3, ?4)",
+            params![project_id.as_bytes().as_slice(), record.kind().as_str(), record.as_bytes().as_slice(), now.as_unix_micros()],
+        ).map_err(write_error)?;
+        match record {
+            CanonicalRecordId::ContextItem(item_id) => {
+                transaction
+                    .execute(
+                        "DELETE FROM operations WHERE project_id = ?1 AND result_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            item_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction.execute("DELETE FROM context_item_sources WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
+                transaction.execute("DELETE FROM context_item_revisions WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM context_items WHERE project_id = ?1 AND id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            item_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)
+                    .and_then(|count| {
+                        ensure_single_updated(count, "Context Item changed concurrently")
+                    })?;
+            }
+            CanonicalRecordId::Decision(decision_id) => {
+                let decision = load_decision(&transaction, project_id, decision_id)?;
+                transaction.execute("DELETE FROM operations WHERE project_id = ?1 AND (result_id = ?2 OR (operation_kind = 'record_question_response' AND result_id = ?3))", params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice(), decision.question_id.as_bytes().as_slice()]).map_err(write_error)?;
+                transaction.execute("DELETE FROM checkpoint_decisions WHERE project_id = ?1 AND decision_id = ?2", params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice()]).map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM review_due WHERE project_id = ?1 AND decision_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            decision_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM decision_revisions WHERE project_id = ?1 AND decision_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            decision_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "DELETE FROM decisions WHERE project_id = ?1 AND id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            decision_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)
+                    .and_then(|count| {
+                        ensure_single_updated(count, "Decision changed concurrently")
+                    })?;
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "forgetting this canonical record kind is not implemented",
+                ))
+            }
+        }
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "forget_canonical_record",
+            &basis,
+            "tombstone",
+            &record.as_bytes(),
+            0,
+            now,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        sanitize_deleted_content(connection)?;
+        let tombstone = Tombstone {
+            project_id,
+            record,
+            forgotten_at: now,
+        };
+        Ok(OperationResult {
+            value: forget_result(tombstone),
+            replayed: false,
+        })
     }
 }
 
@@ -2446,7 +3854,8 @@ fn load_question_response(
     let user_turn_source = load_source(connection, SourceId::from_slice(&source_bytes)?)?;
     let decision_id: Option<Vec<u8>> = connection
         .query_row(
-            "SELECT id FROM decisions WHERE question_id = ?1 AND question_revision = ?2",
+            "SELECT id FROM decisions WHERE question_id = ?1 AND question_revision = ?2
+             ORDER BY recorded_at, id LIMIT 1",
             params![
                 question_id.as_bytes().as_slice(),
                 revision_i64(question_revision)?
@@ -2472,6 +3881,7 @@ fn load_decision(
 ) -> Result<Decision, Error> {
     type DecisionRow = (
         Vec<u8>,
+        i64,
         Vec<u8>,
         i64,
         Vec<u8>,
@@ -2491,7 +3901,7 @@ fn load_decision(
     );
     let row: DecisionRow = connection
         .query_row(
-            "SELECT project_id, question_id, question_revision, user_turn_source_id,
+            "SELECT project_id, revision, question_id, question_revision, user_turn_source_id,
                     choice_kind, choice_value, user_rationale, displayed_alternatives,
                     recommendation_key, recommendation_rationale, recommendation_sources,
                     applicability_paths, applicability_components, applicability_work_contexts,
@@ -2517,6 +3927,7 @@ fn load_decision(
                     row.get(14)?,
                     row.get(15)?,
                     row.get(16)?,
+                    row.get(17)?,
                 ))
             },
         )
@@ -2530,11 +3941,11 @@ fn load_decision(
             "Decision belongs to a different Project",
         ));
     }
-    let choice = match row.4.as_str() {
+    let choice = match row.5.as_str() {
         "alternative" => DecisionChoice::Alternative {
-            alternative_key: row.5,
+            alternative_key: row.6,
         },
-        "delegation" => DecisionChoice::Delegation { delegate_to: row.5 },
+        "delegation" => DecisionChoice::Delegation { delegate_to: row.6 },
         _ => {
             return Err(Error::new(
                 ErrorKind::CorruptState,
@@ -2545,25 +3956,26 @@ fn load_decision(
     Ok(Decision {
         id: decision_id,
         project_id,
-        question_id: QuestionId::from_slice(&row.1)?,
-        question_revision: stored_revision(row.2)?,
-        user_turn_source_id: SourceId::from_slice(&row.3)?,
+        revision: stored_revision(row.1)?,
+        question_id: QuestionId::from_slice(&row.2)?,
+        question_revision: stored_revision(row.3)?,
+        user_turn_source_id: SourceId::from_slice(&row.4)?,
         choice,
-        user_rationale: row.6,
-        displayed_alternatives: decode_alternatives(&row.7)?,
+        user_rationale: row.7,
+        displayed_alternatives: decode_alternatives(&row.8)?,
         displayed_recommendation: AgentRecommendation {
-            alternative_key: row.8,
-            rationale: row.9,
-            source_basis: decode_source_ids(&row.10)?,
+            alternative_key: row.9,
+            rationale: row.10,
+            source_basis: decode_source_ids(&row.11)?,
         },
         applicability: ApplicabilityScope {
-            paths: decode_strings(&row.11)?,
-            components: decode_strings(&row.12)?,
-            work_contexts: decode_strings(&row.13)?,
+            paths: decode_strings(&row.12)?,
+            components: decode_strings(&row.13)?,
+            work_contexts: decode_strings(&row.14)?,
         },
-        assumptions: decode_strings(&row.14)?,
-        revisit_triggers: decode_strings(&row.15)?,
-        recorded_at: TimestampMicros::from_unix_micros(row.16),
+        assumptions: decode_strings(&row.15)?,
+        revisit_triggers: decode_strings(&row.16)?,
+        recorded_at: TimestampMicros::from_unix_micros(row.17),
     })
 }
 
@@ -2860,6 +4272,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
              CREATE TABLE decisions(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
                  question_id BLOB NOT NULL CHECK(length(question_id) = 16),
                  question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
                  user_turn_source_id BLOB NOT NULL CHECK(length(user_turn_source_id) = 16),
@@ -2877,7 +4290,6 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  revisit_triggers BLOB NOT NULL,
                  recorded_at INTEGER NOT NULL,
                  UNIQUE(project_id, id),
-                 UNIQUE(question_id, question_revision),
                  FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, user_turn_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
@@ -2885,7 +4297,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
              CREATE TABLE context_items(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
-                 revision INTEGER NOT NULL CHECK(revision = 1),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
                  role TEXT NOT NULL CHECK(role IN (
                      'goal','fact','assumption','constraint','preference','risk','learning','known_limit'
                  )),
@@ -2911,6 +4323,74 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  UNIQUE(context_item_id, source_id),
                  FOREIGN KEY(project_id, context_item_id) REFERENCES context_items(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE context_item_revisions(
+                 context_item_id BLOB NOT NULL CHECK(length(context_item_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 role TEXT NOT NULL,
+                 statement TEXT NOT NULL CHECK(length(statement) > 0),
+                 provenance_role TEXT NOT NULL,
+                 author_kind TEXT NOT NULL,
+                 author_identity TEXT NOT NULL,
+                 source_basis BLOB NOT NULL,
+                 applicability_paths BLOB NOT NULL,
+                 applicability_components BLOB NOT NULL,
+                 applicability_work_contexts BLOB NOT NULL,
+                 correction_kind TEXT,
+                 authorization_source_id BLOB,
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(context_item_id, revision)
+             ) WITHOUT ROWID;
+             CREATE TABLE decision_revisions(
+                 decision_id BLOB NOT NULL CHECK(length(decision_id) = 16),
+                 revision INTEGER NOT NULL CHECK(revision >= 1),
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL,
+                 user_turn_source_id BLOB NOT NULL CHECK(length(user_turn_source_id) = 16),
+                 choice_kind TEXT NOT NULL,
+                 choice_value TEXT NOT NULL,
+                 user_rationale TEXT,
+                 displayed_alternatives BLOB NOT NULL,
+                 recommendation_key TEXT,
+                 recommendation_rationale TEXT NOT NULL,
+                 recommendation_sources BLOB NOT NULL,
+                 applicability_paths BLOB NOT NULL,
+                 applicability_components BLOB NOT NULL,
+                 applicability_work_contexts BLOB NOT NULL,
+                 assumptions BLOB NOT NULL,
+                 revisit_triggers BLOB NOT NULL,
+                 correction_kind TEXT,
+                 authorization_source_id BLOB,
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(decision_id, revision)
+             ) WITHOUT ROWID;
+             CREATE TABLE canonical_relations(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 from_kind TEXT NOT NULL,
+                 from_id BLOB NOT NULL CHECK(length(from_id) = 16),
+                 relation_kind TEXT NOT NULL CHECK(relation_kind IN ('supersedes','contradicts')),
+                 to_kind TEXT NOT NULL,
+                 to_id BLOB NOT NULL CHECK(length(to_id) = 16),
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, from_kind, from_id, relation_kind, to_kind, to_id)
+             ) WITHOUT ROWID;
+             CREATE TABLE review_due(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 decision_id BLOB NOT NULL CHECK(length(decision_id) = 16),
+                 review_kind TEXT NOT NULL,
+                 explanation TEXT NOT NULL CHECK(length(explanation) > 0),
+                 source_basis BLOB NOT NULL,
+                 marked_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, decision_id)
+             ) WITHOUT ROWID;
+             CREATE TABLE tombstones(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 record_kind TEXT NOT NULL,
+                 record_id BLOB NOT NULL CHECK(length(record_id) = 16),
+                 forgotten_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, record_kind, record_id)
              ) WITHOUT ROWID;
              CREATE TABLE checkpoints(
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
@@ -3222,6 +4702,11 @@ fn ensure_replay_input(
         "record_question_response" => "question_response",
         "record_context_item" => "context_item",
         "record_checkpoint" => "checkpoint",
+        "correct_context_item" => "context_item",
+        "correct_decision" | "supersede_decision" => "decision",
+        "record_contradiction" => "canonical_relation",
+        "mark_decision_review_due" => "review_due",
+        "forget_canonical_record" => "tombstone",
         _ => {
             return Err(Error::new(
                 ErrorKind::RepairRequired,

@@ -350,6 +350,7 @@ pub enum DecisionChoice {
 pub struct Decision {
     pub id: DecisionId,
     pub project_id: ProjectId,
+    pub revision: u64,
     pub question_id: QuestionId,
     pub question_revision: u64,
     pub user_turn_source_id: SourceId,
@@ -498,6 +499,220 @@ pub struct ContextItem {
     pub source_basis: Vec<SourceId>,
     pub applicability: ApplicabilityScope,
     pub recorded_at: TimestampMicros,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CorrectionKind {
+    Typography,
+    Formatting,
+    Expression,
+}
+
+impl CorrectionKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Typography => "typography",
+            Self::Formatting => "formatting",
+            Self::Expression => "expression",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContextItemCorrectionDraft {
+    pub expected_revision: u64,
+    pub corrected_statement: String,
+    pub kind: CorrectionKind,
+    pub user_authorization_source_id: SourceId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DecisionCorrectionDraft {
+    pub expected_revision: u64,
+    pub corrected_user_rationale: Option<String>,
+    pub kind: CorrectionKind,
+    pub user_authorization_source_id: SourceId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DecisionSupersessionDraft {
+    pub expected_project_revision: u64,
+    pub previous_decision_id: DecisionId,
+    pub user_turn_source: UserTurnSource,
+    pub choice: DecisionChoice,
+    pub user_rationale: Option<String>,
+    pub applicability: ApplicabilityScope,
+    pub assumptions: Vec<String>,
+    pub revisit_triggers: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum CanonicalRecordKind {
+    Project,
+    Source,
+    Question,
+    Decision,
+    ContextItem,
+    Checkpoint,
+}
+
+impl CanonicalRecordKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Source => "source",
+            Self::Question => "question",
+            Self::Decision => "decision",
+            Self::ContextItem => "context_item",
+            Self::Checkpoint => "checkpoint",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "project" => Some(Self::Project),
+            "source" => Some(Self::Source),
+            "question" => Some(Self::Question),
+            "decision" => Some(Self::Decision),
+            "context_item" => Some(Self::ContextItem),
+            "checkpoint" => Some(Self::Checkpoint),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CanonicalRecordId {
+    Project(ProjectId),
+    Source(SourceId),
+    Question(QuestionId),
+    Decision(DecisionId),
+    ContextItem(ContextItemId),
+    Checkpoint(CheckpointId),
+}
+
+impl CanonicalRecordId {
+    pub const fn kind(self) -> CanonicalRecordKind {
+        match self {
+            Self::Project(_) => CanonicalRecordKind::Project,
+            Self::Source(_) => CanonicalRecordKind::Source,
+            Self::Question(_) => CanonicalRecordKind::Question,
+            Self::Decision(_) => CanonicalRecordKind::Decision,
+            Self::ContextItem(_) => CanonicalRecordKind::ContextItem,
+            Self::Checkpoint(_) => CanonicalRecordKind::Checkpoint,
+        }
+    }
+
+    pub const fn as_bytes(self) -> [u8; 16] {
+        match self {
+            Self::Project(value) => *value.as_bytes(),
+            Self::Source(value) => *value.as_bytes(),
+            Self::Question(value) => *value.as_bytes(),
+            Self::Decision(value) => *value.as_bytes(),
+            Self::ContextItem(value) => *value.as_bytes(),
+            Self::Checkpoint(value) => *value.as_bytes(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CanonicalRelationKind {
+    Supersedes,
+    Contradicts,
+}
+
+impl CanonicalRelationKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Supersedes => "supersedes",
+            Self::Contradicts => "contradicts",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CanonicalRelation {
+    pub project_id: ProjectId,
+    pub from: CanonicalRecordId,
+    pub kind: CanonicalRelationKind,
+    pub to: CanonicalRecordId,
+    pub recorded_at: TimestampMicros,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewDueKind {
+    ScopeChanged,
+    AssumptionChanged,
+    SourceFreshnessChanged,
+    RevisitTriggerMet,
+    ObservedConsequenceChanged,
+}
+
+impl ReviewDueKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ScopeChanged => "scope_changed",
+            Self::AssumptionChanged => "assumption_changed",
+            Self::SourceFreshnessChanged => "source_freshness_changed",
+            Self::RevisitTriggerMet => "revisit_trigger_met",
+            Self::ObservedConsequenceChanged => "observed_consequence_changed",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "scope_changed" => Some(Self::ScopeChanged),
+            "assumption_changed" => Some(Self::AssumptionChanged),
+            "source_freshness_changed" => Some(Self::SourceFreshnessChanged),
+            "revisit_trigger_met" => Some(Self::RevisitTriggerMet),
+            "observed_consequence_changed" => Some(Self::ObservedConsequenceChanged),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewDue {
+    pub project_id: ProjectId,
+    pub decision_id: DecisionId,
+    pub kind: ReviewDueKind,
+    pub explanation: String,
+    pub source_basis: Vec<SourceId>,
+    pub marked_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewDueDraft {
+    pub kind: ReviewDueKind,
+    pub explanation: String,
+    pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DecisionLifecycle {
+    pub decision: Decision,
+    pub superseded_by: Option<DecisionId>,
+    pub contradictions: Vec<CanonicalRecordId>,
+    pub review_due: Option<ReviewDue>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Tombstone {
+    pub project_id: ProjectId,
+    pub record: CanonicalRecordId,
+    pub forgotten_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CanonicalInvalidation {
+    pub project_id: ProjectId,
+    pub record: CanonicalRecordId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgetResult {
+    pub tombstone: Tombstone,
+    pub invalidation: CanonicalInvalidation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

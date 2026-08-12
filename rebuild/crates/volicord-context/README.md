@@ -5,7 +5,8 @@ scope is deliberately narrow: an explicit-path SQLite store can create and
 reopen stable Projects, maintain local clone bindings, record typed Sources and
 provenance, persist explicit Source relations, and durably record Questions and
 atomic explicit user Decisions, typed Context Items, and source-grounded
-Checkpoints. This file records concrete
+Checkpoints, lifecycle revisions, supersession, contradiction, review-due state,
+and user-authorized forgetting. This file records concrete
 Phase 4 implementation choices; the product and architecture meaning remains
 owned by `rebuild/docs/design/`.
 
@@ -23,7 +24,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 3 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 4 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -61,6 +62,27 @@ owned by `rebuild/docs/design/`.
   meaningful boundaries, while work, automated verification, user review, and
   user acceptance remain separately represented and source-linked as needed.
   The kernel performs no repository or dirty-worktree observation.
+- Context Item and Decision corrections append immutable revision snapshots
+  under the same identity. Their typed inputs expose only non-semantic text,
+  and bounded formatting/typography/token checks reject semantic replacement.
+  Decision choice, delegation, Question linkage, applicability, assumptions,
+  and revisit triggers have no in-place correction path.
+- A changed Decision is a new identity with a directed `supersedes` relation.
+  History order and the single unsuperseded current selection use stable
+  database ordering rather than timestamps as conflict authority.
+- Contradiction retains both records and their Source basis without selecting a
+  winner. Review-due state records the changed basis while leaving the Decision
+  readable and valid pending explicit review.
+- Forgetting currently accepts Context Items and Decisions, requires a current
+  host user-turn Source, deletes active content, revision content, and
+  content-bearing replay input, and leaves only Project, record kind, record
+  identity, and forgetting time in the tombstone. It returns a narrow
+  invalidation result for later Candidate/Derived owners.
+- On supported Linux SQLite, forgetting commits with `secure_delete=ON`, then
+  checkpoints/truncates WAL, vacuums the database, and checkpoints again. Tests
+  scan the managed database, WAL/SHM, and sibling files for the forgotten bytes
+  after reopen. This managed guarantee does not cover user copies, filesystem
+  snapshots, cloud/provider retention, backups, or other clones.
 - Source payloads cover repository snapshots and commits, files, symbols,
   bounded command outcomes, current-host user turns, URLs, and adopted
   artifacts. They preserve typed actor and optional observer provenance, but

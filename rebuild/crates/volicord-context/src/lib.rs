@@ -17,15 +17,18 @@ pub use identity::{
     OperationId, ProjectId, QuestionId, SourceId, SystemIdGenerator,
 };
 pub use model::{
-    AgentRecommendation, ApplicabilityScope, Availability, Checkpoint, CheckpointDraft,
-    CheckpointKind, CommandOutcome, CommandTermination, ContextItem, ContextItemDraft,
-    ContextItemRole, Decision, DecisionChoice, ExplicitQuestionResponse, LocalBinding,
-    OperationResult, Principal, PrincipalKind, Project, Question, QuestionAlternative,
-    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
-    QuestionResponseResult, QuestionState, QuestionTerminalOutcome, Source, SourceDraft,
-    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    AgentRecommendation, ApplicabilityScope, Availability, CanonicalInvalidation,
+    CanonicalRecordId, CanonicalRecordKind, CanonicalRelation, CanonicalRelationKind, Checkpoint,
+    CheckpointDraft, CheckpointKind, CommandOutcome, CommandTermination, ContextItem,
+    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, Decision,
+    DecisionChoice, DecisionCorrectionDraft, DecisionLifecycle, DecisionSupersessionDraft,
+    ExplicitQuestionResponse, ForgetResult, LocalBinding, OperationResult, Principal,
+    PrincipalKind, Project, Question, QuestionAlternative, QuestionDependency, QuestionDraft,
+    QuestionReference, QuestionResponseDraft, QuestionResponseResult, QuestionState,
+    QuestionTerminalOutcome, ReviewDue, ReviewDueDraft, ReviewDueKind, Source, SourceDraft,
+    SourcePayload, SourceRelation, SourceRelationKind, StatementProvenanceRole, Tombstone,
+    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
+    VerificationFact, VerificationState, WorkState,
 };
 pub use store::{Store, SCHEMA_KIND, SCHEMA_VERSION};
 pub use time::{Clock, FixedClock, SystemClock, TimestampMicros};
