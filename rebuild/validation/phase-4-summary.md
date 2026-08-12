@@ -15,9 +15,11 @@
 - **Question and Decision:** Questions preserve exact revision, Source/dependency basis,
   alternatives, recommendation, material scope, and terminal state. An explicit current-host
   response atomically creates or validates its user-turn Source, records a Decision when required,
-  and transitions the Question. Decision choice/delegation, user rationale, applicability,
-  assumptions, revisit triggers, provenance, correction history, and supersession remain distinct
-  from the agent recommendation.
+  and transitions the exact Question revision that supplied its displayed choices and
+  recommendation. The response Source, response link, terminal outcome, Decision choice or
+  delegation, user rationale, applicability, assumptions, revisit triggers, provenance,
+  correction history, and supersession remain mutually consistent and distinct from the agent
+  recommendation.
 - **Context Item and Checkpoint:** All eight Context Item roles preserve typed provenance and Source
   basis. Checkpoints preserve meaningful completion, pause, or handoff state with independent work,
   verification, user-review, and user-acceptance facts. Both kinds support user-authorized
@@ -76,23 +78,31 @@ and explicit another-path binding work after clean import without rewriting hist
 basis. Unsupported schema or bundle versions fail before mutation; there is no legacy decoder,
 migration, importer, or dual-runtime path.
 
-One portable table validator owns the forgotten-Question dependent invariant. It semantically
-decodes Decision alternatives and recommendation Source collections for active Decisions and
-every Decision revision. A tombstoned Question cannot retain any Question-owned Decision
-presentation, and every surviving active Decision that references it must have `review_due`;
-tombstoned Decisions, absent active Decisions, and active Questions do not acquire that
-requirement. Independently owned Decision choice, user rationale, applicability, assumptions,
-revisit triggers, and provenance remain valid.
+One portable table validator owns the complete Decision semantic boundary. It requires active
+Decision provenance to be a same-Project current-host user-turn Source whose actor is `user`, or a
+minimal tombstone paired with the Decision's preserved current-host-user authority witness. It
+also enforces the exact Question revision and presentation used for the response, response-Source
+and response-link roles, terminal outcome/Decision agreement, choice or delegation validity,
+revision sequence and current-row agreement, meaning-preserving correction, and same-Question,
+same-revision, acyclic, non-branching supersession. Direct writes and portable validation use the
+same pure authority, choice, outcome, and correction predicates.
+
+The validator semantically decodes Decision alternatives and recommendation Source collections
+for active Decisions and every Decision revision. A tombstoned Question cannot retain any
+Question-owned Decision presentation, and every surviving active Decision that references it must
+have `review_due`; tombstoned Decisions, absent active Decisions, and active Questions do not
+acquire that requirement. Independently owned Decision choice, user rationale, applicability,
+assumptions, revisit triggers, user-turn provenance, and minimal authority witness remain valid.
 
 `validate_bundle` reaches this validator after format, version, checksum, and table decoding and
 before lineage use. Ordinary import and `ExplicitMerged` validate submitted bundles before any
 transaction or state replacement, generated merge targets validate the complete selected tables,
 state replacement validates its target, and production export validates generated bundle bytes
-before atomic publication. Import and explicit merge do not carry separate copies of this rule or
-sanitize invalid input. Checksummed, lineage-consistent payloads with active-row presentation,
-revision-only presentation, or missing `review_due` return semantic `CorruptState` while checksum,
-unsupported-version, and malformed-table failures remain distinct. Rejection preserves canonical
-state, operations, lineage, local binding, managed bundle bytes, and reopened deterministic state.
+before atomic publication. Import and explicit merge do not carry reduced copies of these rules or
+sanitize invalid input. Checksummed, lineage-consistent semantic violations return `CorruptState`
+except for an independently invalid Project reference, while checksum, unsupported-version, and
+malformed-table failures remain distinct. Rejection preserves canonical state, operation replay,
+lineage, local binding, managed bundle bytes, and reopened deterministic state.
 
 ## Merge sanitation and deletion propagation
 
@@ -117,13 +127,21 @@ deterministic bytes.
 
 V04 is `passed`. Its self-authored fixture hash matches the shared manifest. The Python harness
 owns only fixture-to-test orchestration and invokes Rust production behavior; it does not contain a
-second merge or forgetting implementation. Two consecutive audit runs each reported 72 mapped
-assertions, 12 production integration-test targets, 64 passing integration tests, the same fixture
-hash, and no failure. Valid sanitized import, active-row and revision-only violations, missing
+second merge, forgetting, or Decision semantic implementation. Two consecutive audit runs each
+reported 97 mapped assertions, 12 production integration-test targets, 77 passing integration
+tests, the same fixture hash, and no failure. Valid sanitized import, active-row and revision-only
+violations, missing
 `review_due`, explicit merged input against both active and already-forgotten local Questions,
 recomputed checksum/history basis, and no-partial-mutation behavior are mapped to production Rust
 tests. The maintained report shape and every referenced raw artifact were verified. Its claims
 remain bounded to the observed local single-writer, managed-storage scenarios.
+
+An independent final-validation probe constructed 31 distinct invalid portable Decision states,
+recomputed checksum and lineage for each, and rejected every state through both ordinary import and
+`ExplicitMerged` for semantic reasons. Five valid controls survived import, reopen, deterministic
+read, export, and re-import. Three independently corrupted local Decision states were rejected by
+export without replacing an existing managed bundle. Rejected operations preserved canonical
+basis, replay behavior, binding, lineage, managed bytes, and close/reopen/export observations.
 
 `read_canonical_basis` is deterministic, read-only, and independent of Repository Intelligence,
 providers, MCP, CLI, viewer, renderer, Product Repository availability, local paths, locale,
@@ -131,11 +149,11 @@ timezone, access frequency, ranking, and model output. It remains usable after r
 loss, export/import, another-path binding, merge, branch resolution, and forgetting. It is an input
 basis for later Recall work, not a claim that user-facing Recall is complete.
 
-Rust unit, integration, lifecycle, inquiry, portability, merge, canonical-read, process-reopen, and
-transaction/process tests cover the production-relevant V03 and V05 persistence, provenance,
-atomic response, deterministic ordering, restart, rollback, hard-termination, and replay
-semantics. Only committed canonical state survives; failed writes leave no partial canonical
-success, and repeated operation identity prevents duplicate mutation.
+Five Rust unit tests and 77 integration tests across lifecycle, inquiry, portability, merge,
+canonical read, process reopen, and transaction/process targets cover the production-relevant V03
+and V05 persistence, provenance, atomic response, deterministic ordering, restart, rollback,
+hard-termination, and replay semantics. Only committed canonical state survives; failed writes
+leave no partial canonical success, and repeated operation identity prevents duplicate mutation.
 
 ## Dependency and legacy boundary
 
