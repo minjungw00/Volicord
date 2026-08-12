@@ -132,12 +132,60 @@ PORTABLE_INVARIANT_TESTS = {
     "valid_direct_forget_export_import_merge_and_read_unchanged": "direct_question_forgetting_bundle_imports_with_sanitized_dependents",
 }
 
+INVARIANT_PARITY_TESTS = {
+    "catalog_semantic_owner_and_test_anchors": "invariant_catalog_rows_have_semantic_owners_and_executable_anchors",
+    "catalog_central_admission_paths": "every_full_state_admission_path_names_the_central_boundary",
+    "command_full_validation_export_import_equivalence": "command_generated_state_round_trips_with_semantic_and_deterministic_equivalence",
+    "witness_removal_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "unrelated_decision_tombstone_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "wrong_witness_question_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "wrong_witness_revision_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "wrong_witness_outcome_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "wrong_root_decision_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "duplicate_root_witness_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "missing_active_root_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "forgotten_root_without_matching_tombstone_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "unrelated_response_source_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "non_user_response_authority_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "supersession_branch_mutation": "portable_rejects_branching_and_cyclic_decision_supersession",
+    "supersession_cycle_mutation": "portable_rejects_branching_and_cyclic_decision_supersession",
+    "terminal_without_role_history_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "role_history_on_open_question_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "role_history_on_non_decision_question_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "tombstone_plus_content_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "decision_authority_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "question_revision_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "decision_alternative_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "decision_correction_semantic_mutation": "portable_rejects_current_snapshot_mismatch_and_semantic_correction",
+    "operation_dependency_removal_after_forgetting": "supersession_source_payload_is_purged_by_source_only_forgetting",
+    "local_binding_in_portable_bytes_mutation": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "mutation_import_no_partial_state": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "mutation_explicit_merge_no_partial_state": "canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary",
+    "generated_target_and_replacement_validation": "semantic_decision_conflict_requires_exact_user_resolution_and_supports_branch",
+    "isolated_export_inconsistent_state_refusal": "export_rejects_internal_missing_question_history_without_republication",
+}
+
+METAMORPHIC_TESTS = {
+    "direct_command_export_import": "command_generated_state_round_trips_with_semantic_and_deterministic_equivalence",
+    "decision_forget_export_import": "valid_direct_decision_lineages_pass_every_portable_forgetting_boundary",
+    "source_forget_export_import": "valid_direct_decision_lineages_pass_every_portable_forgetting_boundary",
+    "question_forget_export_import": "valid_direct_decision_lineages_pass_every_portable_forgetting_boundary",
+    "local_forgetting_incoming_content": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "local_content_incoming_forgetting": "incoming_forgetting_sanitizes_every_supported_local_record_closure",
+    "merge_export_import_deterministic_read": "merge_and_branch_basis_remain_ordered_and_portable_without_sources",
+    "replay_after_forgetting": "supersession_source_payload_is_purged_by_source_only_forgetting",
+    "restart_after_direct_and_portable_operations": "explicit_path_survives_process_reopen_without_cwd_or_runtime_home_discovery",
+    "restart_after_forgetting": "valid_direct_decision_lineages_pass_every_portable_forgetting_boundary",
+    "restart_after_merge_and_recovery": "merge_selected_forgetting_requires_and_recovers_managed_sanitation",
+}
+
 TEST_TARGETS = (
     "canonical_read",
     "context_checkpoint",
     "divergent_merge",
     "forgetting_matrix",
     "inquiry",
+    "invariant_catalog",
     "kernel",
     "lifecycle",
     "portable_bundle",
@@ -205,6 +253,16 @@ def main() -> int:
         PORTABLE_INVARIANT_TESTS,
         "portable_invariant_scenarios",
     )
+    require_scenarios(
+        scenario.get("invariant_parity_scenarios"),
+        INVARIANT_PARITY_TESTS,
+        "invariant_parity_scenarios",
+    )
+    require_scenarios(
+        scenario.get("metamorphic_scenarios"),
+        METAMORPHIC_TESTS,
+        "metamorphic_scenarios",
+    )
 
     entry = next(
         (item for item in manifest.get("fixtures", []) if item.get("id") == "v04-divergent-merge"),
@@ -233,6 +291,8 @@ def main() -> int:
         *POST_MERGE_TESTS.values(),
         *RECOVERY_TESTS.values(),
         *PORTABLE_INVARIANT_TESTS.values(),
+        *INVARIANT_PARITY_TESTS.values(),
+        *METAMORPHIC_TESTS.values(),
     }
     missing = sorted(name for name in mapped_tests if f"{name}: test" not in catalog)
     require(not missing, f"mapped production Rust tests are missing: {missing}")
@@ -248,6 +308,8 @@ def main() -> int:
             | POST_MERGE_TESTS
             | RECOVERY_TESTS
             | PORTABLE_INVARIANT_TESTS
+            | INVARIANT_PARITY_TESTS
+            | METAMORPHIC_TESTS
         ),
         "production_test_targets": list(TEST_TARGETS),
         "production_tests": production_tests,

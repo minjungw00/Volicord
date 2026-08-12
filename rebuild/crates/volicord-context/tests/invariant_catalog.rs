@@ -75,6 +75,10 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
             "{identifier} has no production owner"
         );
         assert!(
+            !columns[3].is_empty(),
+            "{identifier} has no direct-command or construction owner"
+        );
+        assert!(
             columns[5].contains("state")
                 || columns[5].contains("group")
                 || columns[5].contains("invariant"),
@@ -88,11 +92,40 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
                 "{identifier} references missing {kind} Rust test {anchor}"
             );
         }
+        assert!(
+            !columns[6].is_empty() && !columns[7].is_empty(),
+            "{identifier} does not state portable or forgetting applicability"
+        );
     }
 
     assert_eq!(observed, required, "catalog invariant inventory changed");
     assert!(catalog.contains("exactly one content-free witness"));
     assert!(!catalog.contains("bundle-wide forgotten-Decision existence fallback"));
+    assert!(tests
+        .contains("fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary("));
+    for mutation in [
+        "witness-removal",
+        "unrelated-decision-tombstone",
+        "wrong-witness-question",
+        "wrong-witness-revision",
+        "wrong-witness-outcome",
+        "wrong-root-decision",
+        "duplicate-root-witness",
+        "missing-active-root",
+        "forgotten-root-without-matching-tombstone",
+        "unrelated-response-source",
+        "non-user-response-authority",
+        "terminal-without-role-history",
+        "role-on-open-question",
+        "role-on-non-decision-question",
+        "tombstone-plus-active-content",
+        "decision-authority",
+        "decision-question-revision",
+        "decision-alternative",
+        "local-binding-in-portable-state",
+    ] {
+        assert!(tests.contains(mutation), "missing mutation case {mutation}");
+    }
     Ok(())
 }
 

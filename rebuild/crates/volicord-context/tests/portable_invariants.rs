@@ -378,6 +378,74 @@ fn assert_clean_import_rejected(
     Ok(())
 }
 
+fn assert_portable_write_boundaries_reject(
+    root: &Path,
+    fixture: &Fixture,
+    label: &str,
+    document: Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let case_root = root.join(label);
+    fs::create_dir(&case_root)?;
+    let bundle = case_root.join("mutated.json");
+    write_recomputed(&bundle, document)?;
+
+    assert_import_rejected_without_mutation(&case_root, fixture, &bundle, 200)?;
+    assert_explicit_merge_rejected(&case_root, fixture, &bundle, false, false, 201)?;
+    Ok(())
+}
+
+#[test]
+fn command_generated_state_round_trips_with_semantic_and_deterministic_equivalence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let first_database = root.path().join("equivalence-first.sqlite3");
+    let first_export = root.path().join("equivalence-first.json");
+    let after_binding = root.path().join("equivalence-after-binding.json");
+    let clone = root.path().join("equivalence-clone");
+    fs::create_dir(&clone)?;
+
+    let mut first = store(&first_database, &[220])?;
+    first.import_bundle(operation(210), &fixture.active_bundle)?;
+    let expected =
+        first.read_canonical_basis(fixture.project_id, CanonicalReadOptions::default())?;
+    first.export_bundle(fixture.project_id, &first_export)?;
+    first.bind_clone(
+        operation(211),
+        fixture.project_id,
+        None,
+        &clone,
+        Availability::Available,
+    )?;
+    first.export_bundle(fixture.project_id, &after_binding)?;
+    assert_eq!(fs::read(&first_export)?, fs::read(&after_binding)?);
+    drop(first);
+
+    let reopened = store(&first_database, &[])?;
+    assert_eq!(
+        reopened.read_canonical_basis(fixture.project_id, CanonicalReadOptions::default())?,
+        expected
+    );
+    assert_eq!(
+        reopened
+            .get_local_binding(fixture.project_id)?
+            .absolute_path,
+        clone
+    );
+
+    let second_export = root.path().join("equivalence-second.json");
+    let mut second = store(&root.path().join("equivalence-second.sqlite3"), &[])?;
+    second.import_bundle(operation(212), &first_export)?;
+    assert_eq!(
+        second.read_canonical_basis(fixture.project_id, CanonicalReadOptions::default())?,
+        expected
+    );
+    assert!(second.get_local_binding(fixture.project_id).is_err());
+    second.export_bundle(fixture.project_id, &second_export)?;
+    assert_eq!(fs::read(&first_export)?, fs::read(&second_export)?);
+    Ok(())
+}
+
 #[test]
 fn valid_direct_decision_lineages_pass_every_portable_forgetting_boundary(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1103,12 +1171,11 @@ fn portable_rejects_branching_and_cyclic_decision_supersession(
         .as_array_mut()
         .ok_or("relation rows missing")?
         .push(branch_relation);
-    assert_clean_import_rejected(
+    assert_portable_write_boundaries_reject(
         root.path(),
         &fixture,
         "branching-supersession",
         branching,
-        102,
     )?;
 
     let mut cyclic = read_json(&valid)?;
@@ -1123,7 +1190,7 @@ fn portable_rejects_branching_and_cyclic_decision_supersession(
         .as_array_mut()
         .ok_or("relation rows missing")?
         .push(reverse);
-    assert_clean_import_rejected(root.path(), &fixture, "cyclic-supersession", cyclic, 103)
+    assert_portable_write_boundaries_reject(root.path(), &fixture, "cyclic-supersession", cyclic)
 }
 
 #[test]
@@ -1178,7 +1245,7 @@ fn portable_rejects_current_snapshot_mismatch_and_semantic_correction(
         .ok_or("applicability blob missing")?
         .replace("72656275696c642f", "72656275696c782f");
     first[applicability_index]["value"] = Value::String(encoded);
-    assert_clean_import_rejected(root.path(), &fixture, "semantic-correction", mutation, 107)
+    assert_portable_write_boundaries_reject(root.path(), &fixture, "semantic-correction", mutation)
 }
 
 #[test]
@@ -1426,6 +1493,192 @@ fn assert_explicit_merge_rejected(
         reopened.get_local_binding(fixture.project_id)?,
         before_binding
     );
+    Ok(())
+}
+
+#[test]
+fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = fixture(root.path())?;
+    let active = read_json(&fixture.active_bundle)?;
+    let mut cases = Vec::<(&str, Value)>::new();
+
+    let mut witness_removed = active.clone();
+    table_mut(&mut witness_removed, "question_decision_history_witnesses")["rows"] =
+        Value::Array(Vec::new());
+    cases.push(("witness-removal", witness_removed));
+
+    let mut unrelated_tombstone = active.clone();
+    for name in [
+        "question_response_sources",
+        "question_decision_history_witnesses",
+        "decisions",
+        "decision_revisions",
+    ] {
+        table_mut(&mut unrelated_tombstone, name)["rows"] = Value::Array(Vec::new());
+    }
+    push_tombstone(&mut unrelated_tombstone, "decision", portable_id(0x70));
+    cases.push(("unrelated-decision-tombstone", unrelated_tombstone));
+
+    for (label, column_name, value) in [
+        ("wrong-witness-question", "question_id", portable_id(0x71)),
+        (
+            "wrong-witness-revision",
+            "question_revision",
+            serde_json::json!({"type": "integer", "value": 99}),
+        ),
+        (
+            "wrong-witness-outcome",
+            "terminal_outcome",
+            serde_json::json!({"type": "text", "value": "delegated"}),
+        ),
+    ] {
+        let mut document = active.clone();
+        set_cell(
+            &mut document,
+            "question_decision_history_witnesses",
+            0,
+            column_name,
+            value,
+        );
+        cases.push((label, document));
+    }
+
+    let mut wrong_root = active.clone();
+    set_cell(
+        &mut wrong_root,
+        "question_decision_history_witnesses",
+        0,
+        "root_decision_id",
+        portable_id(0x72),
+    );
+    push_tombstone(&mut wrong_root, "decision", portable_id(0x72));
+    cases.push(("wrong-root-decision", wrong_root));
+
+    let mut duplicate = active.clone();
+    let witness = table(&duplicate, "question_decision_history_witnesses")["rows"][0].clone();
+    table_mut(&mut duplicate, "question_decision_history_witnesses")["rows"]
+        .as_array_mut()
+        .ok_or("witness rows missing")?
+        .push(witness);
+    cases.push(("duplicate-root-witness", duplicate));
+
+    let mut missing_root = active.clone();
+    for name in ["decisions", "decision_revisions"] {
+        table_mut(&mut missing_root, name)["rows"] = Value::Array(Vec::new());
+    }
+    cases.push(("missing-active-root", missing_root));
+
+    let mut forgotten_without_root_tombstone = active.clone();
+    for name in ["decisions", "decision_revisions"] {
+        table_mut(&mut forgotten_without_root_tombstone, name)["rows"] = Value::Array(Vec::new());
+    }
+    push_tombstone(
+        &mut forgotten_without_root_tombstone,
+        "decision",
+        portable_id(0x73),
+    );
+    cases.push((
+        "forgotten-root-without-matching-tombstone",
+        forgotten_without_root_tombstone,
+    ));
+
+    let mut unrelated_response_source = active.clone();
+    copy_cell(
+        &mut unrelated_response_source,
+        "sources",
+        0,
+        "id",
+        "question_decision_history_witnesses",
+        0,
+        "response_source_id",
+    );
+    cases.push(("unrelated-response-source", unrelated_response_source));
+
+    let mut non_user_response_authority = active.clone();
+    set_cell(
+        &mut non_user_response_authority,
+        "question_decision_history_witnesses",
+        0,
+        "response_authority",
+        serde_json::json!({"type": "text", "value": "agent_turn"}),
+    );
+    cases.push(("non-user-response-authority", non_user_response_authority));
+
+    let mut terminal_without_role = active.clone();
+    table_mut(
+        &mut terminal_without_role,
+        "question_decision_history_witnesses",
+    )["rows"] = Value::Array(Vec::new());
+    cases.push(("terminal-without-role-history", terminal_without_role));
+
+    for (label, outcome) in [
+        ("role-on-open-question", Value::Null),
+        (
+            "role-on-non-decision-question",
+            serde_json::json!({"type": "text", "value": "resolved_by_research"}),
+        ),
+    ] {
+        let mut document = active.clone();
+        set_cell(&mut document, "questions", 0, "terminal_outcome", outcome);
+        cases.push((label, document));
+    }
+
+    let mut active_and_tombstoned = active.clone();
+    push_tombstone(&mut active_and_tombstoned, "decision", portable_id(5));
+    cases.push(("tombstone-plus-active-content", active_and_tombstoned));
+
+    let mut decision_authority = active.clone();
+    for name in ["decisions", "decision_revisions"] {
+        set_cell(
+            &mut decision_authority,
+            name,
+            0,
+            "user_authority",
+            serde_json::json!({"type": "text", "value": "agent_turn"}),
+        );
+    }
+    cases.push(("decision-authority", decision_authority));
+
+    let mut question_revision = active.clone();
+    for name in ["decisions", "decision_revisions"] {
+        set_cell(
+            &mut question_revision,
+            name,
+            0,
+            "question_revision",
+            serde_json::json!({"type": "integer", "value": 99}),
+        );
+    }
+    cases.push(("decision-question-revision", question_revision));
+
+    let mut decision_alternative = active.clone();
+    for name in ["decisions", "decision_revisions"] {
+        set_cell(
+            &mut decision_alternative,
+            name,
+            0,
+            "choice_value",
+            serde_json::json!({"type": "text", "value": "not-displayed"}),
+        );
+    }
+    cases.push(("decision-alternative", decision_alternative));
+
+    let mut local_binding = active;
+    local_binding["payload"]["tables"]
+        .as_array_mut()
+        .ok_or("portable tables missing")?
+        .push(serde_json::json!({
+            "columns": ["project_id", "clone_path"],
+            "name": "local_bindings",
+            "rows": [[portable_id(1), {"type": "text", "value": "/local/clone"}]]
+        }));
+    cases.push(("local-binding-in-portable-state", local_binding));
+
+    for (label, document) in cases {
+        assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+    }
     Ok(())
 }
 
