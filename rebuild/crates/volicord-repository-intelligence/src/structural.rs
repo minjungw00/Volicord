@@ -92,6 +92,16 @@ fn analyze_repository_inner(
 ) -> Result<(RepositorySnapshot, AnalysisSnapshot), StructuralAnalysisError> {
     let root = request.inventory.root.to_path_buf();
     let previous = request.previous;
+    let canonical_grounding = request.inventory.canonical_grounding.clone();
+    if let Some(previous) = previous {
+        canonical_grounding
+            .validate_analysis_snapshot(previous)
+            .map_err(|error| {
+                StructuralAnalysisError::new(format!(
+                    "previous Analysis Snapshot has invalid canonical grounding: {error}"
+                ))
+            })?;
+    }
     let (repository, mut analysis) =
         inventory_repository(request.inventory).map_err(StructuralAnalysisError::inventory)?;
     let current_files = structural_source_files(&analysis.inventory.entries);
@@ -309,7 +319,7 @@ fn analyze_repository_inner(
                 result,
                 repository.identity,
                 final_identity,
-                analysis.repository_source,
+                analysis.repository_source.clone(),
                 analysis.generated_at_unix_micros,
             ));
         }
@@ -334,6 +344,14 @@ fn analyze_repository_inner(
     analysis.invalidations = invalidations;
     analysis.refresh = refresh;
     analysis.format_version = ANALYSIS_SNAPSHOT_FORMAT_VERSION;
+    canonical_grounding
+        .validate_repository_snapshot(&repository)
+        .and_then(|()| canonical_grounding.validate_analysis_snapshot(&analysis))
+        .map_err(|error| {
+            StructuralAnalysisError::new(format!(
+                "produced analysis has invalid canonical grounding: {error}"
+            ))
+        })?;
     Ok((repository, analysis))
 }
 
@@ -1392,7 +1410,7 @@ fn materialize_file(
             DraftTarget::Unresolved(display) => unresolved_target(&display, &parsed.language),
         };
         let range = source_range(
-            source,
+            source.clone(),
             repository_snapshot,
             &parsed.area,
             relation.start,
@@ -1432,7 +1450,7 @@ fn materialize_file(
         .filter_map(|entity| {
             let identity = identities.get(&entity.key)?.clone();
             let range = source_range(
-                source,
+                source.clone(),
                 repository_snapshot,
                 &parsed.area,
                 entity.start,
@@ -1464,7 +1482,7 @@ fn materialize_file(
                 language: parsed.language.clone(),
                 area: parsed.area.clone(),
                 kind: entity.kind,
-                source,
+                source: source.clone(),
                 source_range: Some(range),
                 display_name: Some(entity.name),
                 qualified_name: Some(entity.qualified_name),
@@ -1472,7 +1490,7 @@ fn materialize_file(
                 uncertainty: Uncertainty::none(),
                 freshness: freshness.clone(),
                 extensions: vec![extension],
-                canonical_links: vec![crate::CanonicalReference::Source(source)],
+                canonical_links: vec![crate::CanonicalReference::Source(source.clone())],
             };
             Some(StructuralFact {
                 entity: code_entity,
@@ -1487,7 +1505,7 @@ fn materialize_file(
                         analysis_snapshot,
                         adapter: Some(parsed.adapter.clone()),
                         analyzer: Some(parsed.analyzer.clone()),
-                        source_basis: vec![source],
+                        source_basis: vec![source.clone()],
                         observed_or_generated_at_unix_micros: generated_at,
                     },
                 },
@@ -1742,7 +1760,7 @@ fn structural_analysis_identity(
         StructuralAnalysisError::new(format!("analysis basis serialization failed: {error}"))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.structural_analysis_snapshot.v3",
+        b"volicord.structural_analysis_snapshot.v4",
         repository_snapshot.as_bytes(),
         &bytes,
     ]))
@@ -2363,12 +2381,16 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../validation/repository-intelligence/polyglot-structural/fixtures/polyglot");
-        let request = InventoryRequest::new(
-            &root,
+        let grounding = crate::canonical::test_repository_grounding(
             ProjectId::from_bytes([0x31; 16]),
             SourceId::from_bytes([0x32; 16]),
+        )?;
+        let request = InventoryRequest::new(
+            &root,
+            &grounding,
+            SourceId::from_bytes([0x32; 16]),
             1_725_000_000_000_000,
-        );
+        )?;
         let (_, analysis) = analyze_repository_inner(
             StructuralAnalysisRequest::new(request),
             &BTreeSet::from([Language::TypeScript]),
@@ -2390,10 +2412,10 @@ mod tests {
 
         let retry_request = InventoryRequest::new(
             &root,
-            ProjectId::from_bytes([0x31; 16]),
+            &grounding,
             SourceId::from_bytes([0x32; 16]),
             1_725_000_000_000_000,
-        );
+        )?;
         let (_, retried) = analyze_repository_inner(
             StructuralAnalysisRequest::new(retry_request).with_previous(&analysis),
             &BTreeSet::new(),

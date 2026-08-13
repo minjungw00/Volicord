@@ -7,7 +7,9 @@ use crate::{
 pub fn grounded_explanation_basis(
     analysis: &AnalysisSnapshot,
     current_repository_snapshot: RepositorySnapshotId,
-) -> GroundedExplanationBasis {
+    canonical_grounding: &crate::CanonicalGrounding,
+) -> Result<GroundedExplanationBasis, crate::CanonicalGroundingError> {
+    canonical_grounding.validate_analysis_snapshot(analysis)?;
     let current = analysis.repository_snapshot == current_repository_snapshot;
     let freshness = if current {
         analysis.freshness.clone()
@@ -26,7 +28,7 @@ pub fn grounded_explanation_basis(
         evidence.push(GroundingEvidence {
             identity: format!("inventory:{}", entry.area.path),
             statement_class: GroundingStatementClass::RepositoryObservation,
-            source: analysis.repository_source,
+            source: analysis.repository_source.clone(),
             source_range: None,
             capability: Capability::Inventory,
             provenance_class: ProvenanceClass::RepositoryObservation,
@@ -34,7 +36,7 @@ pub fn grounded_explanation_basis(
             diagnostics: entry.diagnostic_ids.clone(),
             uncertainty: Uncertainty::none(),
             canonical_links: vec![crate::CanonicalReference::Source(
-                analysis.repository_source,
+                analysis.repository_source.clone(),
             )],
         });
     }
@@ -42,7 +44,7 @@ pub fn grounded_explanation_basis(
         evidence.push(GroundingEvidence {
             identity: fact.entity.identity.clone(),
             statement_class: GroundingStatementClass::StructuralFact,
-            source: fact.entity.source,
+            source: fact.entity.source.clone(),
             source_range: fact.entity.source_range.clone(),
             capability: Capability::Structural,
             provenance_class: ProvenanceClass::StructuralFact,
@@ -61,7 +63,10 @@ pub fn grounded_explanation_basis(
             .structural_facts
             .iter()
             .find(|fact| fact.entity.identity == result.relation.source_entity)
-            .map_or(analysis.repository_source, |fact| fact.entity.source);
+            .map_or_else(
+                || analysis.repository_source.clone(),
+                |fact| fact.entity.source.clone(),
+            );
         let canonical_links = analysis
             .structural_facts
             .iter()
@@ -91,8 +96,8 @@ pub fn grounded_explanation_basis(
             source: interpretation
                 .source_basis
                 .first()
-                .copied()
-                .unwrap_or(analysis.repository_source),
+                .cloned()
+                .unwrap_or_else(|| analysis.repository_source.clone()),
             source_range: None,
             capability: Capability::AgentAssisted,
             provenance_class: ProvenanceClass::AgentInterpretation,
@@ -102,7 +107,7 @@ pub fn grounded_explanation_basis(
             canonical_links: interpretation
                 .source_basis
                 .iter()
-                .copied()
+                .cloned()
                 .map(crate::CanonicalReference::Source)
                 .collect(),
         });
@@ -144,7 +149,7 @@ pub fn grounded_explanation_basis(
         evidence.push(GroundingEvidence {
             identity: "analysis:no-evidence".to_owned(),
             statement_class: GroundingStatementClass::RepositoryObservation,
-            source: analysis.repository_source,
+            source: analysis.repository_source.clone(),
             source_range: None,
             capability: Capability::Inventory,
             provenance_class: ProvenanceClass::RepositoryObservation,
@@ -157,7 +162,7 @@ pub fn grounded_explanation_basis(
             canonical_links: Vec::new(),
         });
     }
-    GroundedExplanationBasis {
+    Ok(GroundedExplanationBasis {
         analysis_snapshot: analysis.identity,
         repository_snapshot: analysis.repository_snapshot,
         evidence,
@@ -165,5 +170,5 @@ pub fn grounded_explanation_basis(
         coverage: analysis.capabilities.clone(),
         freshness,
         background_source_transmitted: false,
-    }
+    })
 }

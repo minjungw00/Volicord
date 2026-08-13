@@ -1,13 +1,15 @@
 use crate::model::{
     AdapterIdentity, AnalysisDiagnostic, AnalysisSnapshot, AreaId, AreaKind, CandidateKind,
-    CanonicalProjectRef, CanonicalSourceRef, Capability, CapabilityReport, CapabilityState,
-    Coverage, DiagnosticSeverity, Ecosystem, EcosystemObservation, EcosystemObservationKind,
-    EntryKind, EvidenceCandidate, FreshnessBasis, FreshnessState, GitObservation,
-    InventoryClassification, InventoryEntry, InventorySnapshot, Language, ObservationBasis,
-    ProvenanceClass, RepositorySnapshot, Uncertainty, UncertaintyLevel,
+    CanonicalProjectRef, CanonicalSourceBasis, CanonicalSourceRef, Capability, CapabilityReport,
+    CapabilityState, Coverage, DiagnosticSeverity, Ecosystem, EcosystemObservation,
+    EcosystemObservationKind, EntryKind, EvidenceCandidate, FreshnessBasis, FreshnessState,
+    GitObservation, InventoryClassification, InventoryEntry, InventorySnapshot, Language,
+    ObservationBasis, ProvenanceClass, RepositorySnapshot, Uncertainty, UncertaintyLevel,
     ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
 };
-use crate::{AnalysisSnapshotId, RepositorySnapshotId};
+use crate::{
+    AnalysisSnapshotId, CanonicalGrounding, CanonicalGroundingError, RepositorySnapshotId,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error as StdError;
@@ -15,7 +17,7 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use volicord_context::{ProjectId, SourceId};
+use volicord_context::SourceId;
 
 const INVENTORY_ADAPTER_NAME: &str = "volicord-filesystem-inventory";
 const INVENTORY_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -23,27 +25,31 @@ const INVENTORY_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Clone, Debug)]
 pub struct InventoryRequest<'a> {
     pub root: &'a Path,
-    pub project_id: ProjectId,
-    pub repository_source_id: SourceId,
     pub observed_at_unix_micros: i64,
     /// Slash-separated repository-relative paths. A directory excludes its subtree.
     pub excluded_paths: Vec<String>,
+    pub(crate) canonical_grounding: CanonicalGrounding,
+    project: CanonicalProjectRef,
+    repository_source: CanonicalSourceRef,
 }
 
 impl<'a> InventoryRequest<'a> {
     pub fn new(
         root: &'a Path,
-        project_id: ProjectId,
+        canonical_grounding: &CanonicalGrounding,
         repository_source_id: SourceId,
         observed_at_unix_micros: i64,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, CanonicalGroundingError> {
+        let repository_source =
+            canonical_grounding.repository_source_reference(repository_source_id)?;
+        Ok(Self {
             root,
-            project_id,
-            repository_source_id,
             observed_at_unix_micros,
             excluded_paths: Vec::new(),
-        }
+            canonical_grounding: canonical_grounding.clone(),
+            project: canonical_grounding.project_reference(),
+            repository_source,
+        })
     }
 }
 
@@ -121,8 +127,8 @@ pub fn inventory_repository(
     let git = observe_git(request.root);
     let content_fingerprint = inventory_fingerprint(&state.entries);
     let repository_identity = repository_snapshot_identity(
-        request.project_id,
-        request.repository_source_id,
+        request.project,
+        &request.repository_source,
         &content_fingerprint,
         git.as_ref(),
     );
@@ -134,8 +140,8 @@ pub fn inventory_repository(
     let repository_snapshot = RepositorySnapshot {
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
         identity: repository_identity,
-        project: CanonicalProjectRef(request.project_id),
-        repository_source: CanonicalSourceRef(request.repository_source_id),
+        project: request.project,
+        repository_source: request.repository_source.clone(),
         source_boundary: ".".to_owned(),
         observation_basis,
         included_areas,
@@ -185,8 +191,8 @@ pub fn inventory_repository(
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
         identity: analysis_identity,
         repository_snapshot: repository_identity,
-        project: CanonicalProjectRef(request.project_id),
-        repository_source: CanonicalSourceRef(request.repository_source_id),
+        project: request.project,
+        repository_source: request.repository_source,
         inventory,
         capabilities,
         diagnostics: state.diagnostics,
@@ -1167,8 +1173,8 @@ fn inventory_fingerprint(entries: &[InventoryEntry]) -> String {
 }
 
 fn repository_snapshot_identity(
-    project_id: ProjectId,
-    repository_source_id: SourceId,
+    project: CanonicalProjectRef,
+    repository_source: &CanonicalSourceRef,
     content_fingerprint: &str,
     git: Option<&GitObservation>,
 ) -> RepositorySnapshotId {
@@ -1176,10 +1182,16 @@ fn repository_snapshot_identity(
     let git_reference = git
         .and_then(|observation| observation.reference.as_deref())
         .unwrap_or("");
+    let (basis_kind, basis_value) = match repository_source.basis() {
+        CanonicalSourceBasis::Snapshot(value) => (b"snapshot".as_slice(), value.as_bytes()),
+        CanonicalSourceBasis::NotApplicable => (b"not_applicable".as_slice(), b"".as_slice()),
+    };
     RepositorySnapshotId::digest(&[
-        b"volicord.repository_snapshot.v1",
-        project_id.as_bytes(),
-        repository_source_id.as_bytes(),
+        b"volicord.repository_snapshot.v2",
+        project.identity().as_bytes(),
+        repository_source.identity().as_bytes(),
+        basis_kind,
+        basis_value,
         b".",
         content_fingerprint.as_bytes(),
         git_head.as_bytes(),
@@ -1225,7 +1237,7 @@ fn analysis_snapshot_identity(
         InventoryError::new(format!("diagnostic serialization failed: {error}"))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.analysis_snapshot.v1",
+        b"volicord.analysis_snapshot.v2",
         repository_snapshot.as_bytes(),
         &inventory_bytes,
         &capability_bytes,

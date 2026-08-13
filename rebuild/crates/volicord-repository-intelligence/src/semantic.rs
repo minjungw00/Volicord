@@ -136,6 +136,7 @@ fn analyze_repository_semantics_inner(
     let selected_languages = request.selected_languages.clone();
     let unavailable_languages = request.unavailable_languages.clone();
     let canonical_links = request.canonical_links.clone();
+    let canonical_grounding = request.structural.inventory.canonical_grounding.clone();
     let (repository, mut analysis) =
         analyze_repository(request.structural).map_err(SemanticAnalysisError::structural)?;
     let facts = analysis.structural_facts.clone();
@@ -276,7 +277,7 @@ fn analyze_repository_semantics_inner(
         diagnostics.extend(language_diagnostics);
     }
 
-    apply_canonical_links(&mut analysis, canonical_links)?;
+    apply_canonical_links(&mut analysis, canonical_links, &canonical_grounding)?;
     analysis.semantic_results = results;
     analysis.semantic_bases = bases;
     analysis.semantic_refresh = refresh;
@@ -297,6 +298,14 @@ fn analyze_repository_semantics_inner(
     analysis.format_version = ANALYSIS_SNAPSHOT_FORMAT_VERSION;
     let identity = semantic_snapshot_identity(&analysis)?;
     rebind_analysis_snapshot(&mut analysis, identity);
+    canonical_grounding
+        .validate_repository_snapshot(&repository)
+        .and_then(|()| canonical_grounding.validate_analysis_snapshot(&analysis))
+        .map_err(|error| {
+            SemanticAnalysisError::new(format!(
+                "produced analysis has invalid canonical grounding: {error}"
+            ))
+        })?;
     Ok((repository, analysis))
 }
 
@@ -789,7 +798,7 @@ fn make_result(
                 analysis_snapshot: analysis.identity,
                 adapter: Some(adapter),
                 analyzer: Some(analyzer),
-                source_basis: vec![source.source],
+                source_basis: vec![source.source.clone()],
                 observed_or_generated_at_unix_micros: analysis.generated_at_unix_micros,
             },
         },
@@ -931,8 +940,16 @@ fn update_ecosystem_capability(
 fn apply_canonical_links(
     analysis: &mut AnalysisSnapshot,
     links: Vec<(CanonicalLinkSelector, CanonicalReference)>,
+    canonical_grounding: &crate::CanonicalGrounding,
 ) -> Result<(), SemanticAnalysisError> {
     for (selector, target) in links {
+        canonical_grounding
+            .validate_reference(&target)
+            .map_err(|error| {
+                SemanticAnalysisError::new(format!(
+                    "canonical link target is not grounded: {error}"
+                ))
+            })?;
         let Some(entity) = analysis.structural_facts.iter_mut().find(|fact| {
             fact.entity.language == selector.language
                 && fact.entity.area.path == selector.locator
@@ -991,7 +1008,7 @@ fn semantic_snapshot_identity(
         ))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.semantic_analysis_snapshot.v3",
+        b"volicord.semantic_analysis_snapshot.v4",
         analysis.repository_snapshot.as_bytes(),
         &bytes,
     ]))
@@ -1005,7 +1022,7 @@ fn rebind_analysis_snapshot(analysis: &mut AnalysisSnapshot, identity: AnalysisS
             (
                 fact.entity.identity.clone(),
                 digest_string(&[
-                    b"volicord.semantic_snapshot_entity.v3",
+                    b"volicord.semantic_snapshot_entity.v4",
                     identity.as_bytes(),
                     fact.entity.identity.as_bytes(),
                 ]),
@@ -1021,7 +1038,7 @@ fn rebind_analysis_snapshot(analysis: &mut AnalysisSnapshot, identity: AnalysisS
         fact.provenance.analysis.analysis_snapshot = identity;
         for relation in &mut fact.relations {
             relation.identity = digest_string(&[
-                b"volicord.semantic_snapshot_structural_relation.v3",
+                b"volicord.semantic_snapshot_structural_relation.v4",
                 identity.as_bytes(),
                 relation.identity.as_bytes(),
             ]);
@@ -1035,7 +1052,7 @@ fn rebind_analysis_snapshot(analysis: &mut AnalysisSnapshot, identity: AnalysisS
     }
     for result in &mut analysis.semantic_results {
         result.relation.identity = digest_string(&[
-            b"volicord.semantic_snapshot_relation.v3",
+            b"volicord.semantic_snapshot_relation.v4",
             identity.as_bytes(),
             result.relation.identity.as_bytes(),
         ]);
@@ -1197,12 +1214,16 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../validation/repository-intelligence/polyglot-structural/fixtures/rust");
-        let inventory = InventoryRequest::new(
-            &root,
+        let grounding = crate::canonical::test_repository_grounding(
             ProjectId::from_bytes([0x91; 16]),
             SourceId::from_bytes([0x92; 16]),
+        )?;
+        let inventory = InventoryRequest::new(
+            &root,
+            &grounding,
+            SourceId::from_bytes([0x92; 16]),
             1_725_000_000_000_000,
-        );
+        )?;
         let request = SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(inventory));
         let (_, analysis) = analyze_repository_semantics_inner(
             request,

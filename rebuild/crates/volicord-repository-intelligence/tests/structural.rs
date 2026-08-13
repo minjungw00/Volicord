@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
-use volicord_context::{ProjectId, SourceId};
 use volicord_repository_intelligence::{
     analyze_repository, canonical_json, search_local, Capability, CapabilityState, CodeEntityKind,
     CoordinateConvention, FreshnessState, InvalidationCategory, InventoryRequest, Language,
@@ -36,13 +35,14 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn inventory(root: &Path) -> InventoryRequest<'_> {
-    InventoryRequest::new(
+fn inventory(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
+    let canonical = support::repository_grounding(0x51, 0x52)?;
+    Ok(InventoryRequest::new(
         root,
-        ProjectId::from_bytes([0x51; 16]),
-        SourceId::from_bytes([0x52; 16]),
+        &canonical.grounding,
+        canonical.source_id,
         OBSERVED_AT,
-    )
+    )?)
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn all_seven_adapters_satisfy_maintained_entities_ranges_and_relations(
     {
         let root = repository_root().join(&fixture.path);
         let (repository, analysis) =
-            analyze_repository(StructuralAnalysisRequest::new(inventory(&root)))?;
+            analyze_repository(StructuralAnalysisRequest::new(inventory(&root)?))?;
         for expected in fixture.expected_entities {
             let parts = expected.split('|').collect::<Vec<_>>();
             assert_eq!(parts.len(), 5, "invalid expected entity: {expected}");
@@ -136,13 +136,13 @@ fn same_snapshot_facts_and_serialization_are_deterministic() -> Result<(), Box<d
     copy_tree(&fixture("polyglot"), second_binding.path())?;
     let (_, first) = analyze_repository(StructuralAnalysisRequest::new(inventory(
         first_binding.path(),
-    )))?;
+    )?))?;
     let (_, repeated) = analyze_repository(StructuralAnalysisRequest::new(inventory(
         first_binding.path(),
-    )))?;
+    )?))?;
     let (_, rebound) = analyze_repository(StructuralAnalysisRequest::new(inventory(
         second_binding.path(),
-    )))?;
+    )?))?;
     assert_eq!(first.identity, repeated.identity);
     assert_eq!(first.identity, rebound.identity);
     assert_eq!(first.structural_facts, repeated.structural_facts);
@@ -158,13 +158,13 @@ fn changed_file_and_declared_dependent_reparse_without_whole_repository(
     let temporary = tempfile::tempdir()?;
     copy_tree(&fixture("typescript"), temporary.path())?;
     let (_, before) =
-        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())))?;
+        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())?))?;
     fs::write(
         temporary.path().join("src/suffix.ts"),
         "export const suffix = \"!\";\n",
     )?;
     let (repository, refreshed) = analyze_repository(
-        StructuralAnalysisRequest::new(inventory(temporary.path())).with_previous(&before),
+        StructuralAnalysisRequest::new(inventory(temporary.path())?).with_previous(&before),
     )?;
     assert_eq!(refreshed.refresh.parsed_file_count, 2);
     assert_eq!(refreshed.refresh.reused_file_count, 1);
@@ -190,7 +190,7 @@ fn changed_file_and_declared_dependent_reparse_without_whole_repository(
     }));
 
     let (_, full) =
-        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())))?;
+        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())?))?;
     assert_eq!(refreshed.identity, full.identity);
     let refreshed_by_id = refreshed
         .structural_facts
@@ -221,13 +221,13 @@ fn manifest_change_uses_explicit_build_context_invalidation() -> Result<(), Box<
     let temporary = tempfile::tempdir()?;
     copy_tree(&fixture("typescript"), temporary.path())?;
     let (_, before) =
-        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())))?;
+        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())?))?;
     let package = temporary.path().join("package.json");
     let mut content = fs::read_to_string(&package)?;
     content.push('\n');
     fs::write(package, content)?;
     let (_, refreshed) = analyze_repository(
-        StructuralAnalysisRequest::new(inventory(temporary.path())).with_previous(&before),
+        StructuralAnalysisRequest::new(inventory(temporary.path())?).with_previous(&before),
     )?;
     assert_eq!(refreshed.refresh.reused_file_count, 0);
     assert_eq!(refreshed.refresh.parsed_file_count, 3);
@@ -247,8 +247,15 @@ fn search_is_source_grounded_and_stale_ranges_are_not_current_navigation(
 ) -> Result<(), Box<dyn Error>> {
     let root = fixture("rust");
     let (repository, analysis) =
-        analyze_repository(StructuralAnalysisRequest::new(inventory(&root)))?;
-    let current = search_local(&analysis, "Greeter.greet", repository.identity, 10);
+        analyze_repository(StructuralAnalysisRequest::new(inventory(&root)?))?;
+    let grounding = support::repository_grounding(0x51, 0x52)?.grounding;
+    let current = search_local(
+        &analysis,
+        "Greeter.greet",
+        repository.identity,
+        10,
+        &grounding,
+    )?;
     assert!(current.iter().any(|hit| {
         hit.result_kind == SearchResultKind::Entity
             && hit.capability == Capability::Structural
@@ -260,8 +267,14 @@ fn search_is_source_grounded_and_stale_ranges_are_not_current_navigation(
     }));
     let other_root = fixture("python");
     let (other_repository, _) =
-        analyze_repository(StructuralAnalysisRequest::new(inventory(&other_root)))?;
-    let stale = search_local(&analysis, "Greeter.greet", other_repository.identity, 10);
+        analyze_repository(StructuralAnalysisRequest::new(inventory(&other_root)?))?;
+    let stale = search_local(
+        &analysis,
+        "Greeter.greet",
+        other_repository.identity,
+        10,
+        &grounding,
+    )?;
     assert!(stale.iter().any(|hit| {
         hit.freshness.state == FreshnessState::Stale
             && hit.freshness.compared_repository_snapshot == Some(other_repository.identity)
@@ -275,7 +288,7 @@ fn search_is_source_grounded_and_stale_ranges_are_not_current_navigation(
 fn out_of_set_language_keeps_inventory_fallback_without_structural_facts(
 ) -> Result<(), Box<dyn Error>> {
     let root = fixture("out_of_set");
-    let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory(&root)))?;
+    let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory(&root)?))?;
     assert!(analysis.inventory.languages.contains(&Language::Go));
     assert!(analysis.structural_facts.is_empty());
     let structural = analysis.capabilities.iter().find(|report| {
@@ -348,3 +361,4 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+mod support;

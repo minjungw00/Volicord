@@ -4,19 +4,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use volicord_context::{
-    ApplicabilityScope, Availability, CanonicalReadOptions, CheckpointId,
-    ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole, CorrectionKind, DecisionId,
-    DeterministicIdGenerator, FixedClock, OperationId, Principal, PrincipalKind, ProjectId,
-    SourceDraft, SourceId, SourcePayload, StatementProvenanceRole, Store, TimestampMicros,
+    ApplicabilityScope, Availability, CanonicalReadOptions, ContextItemCorrectionDraft,
+    ContextItemDraft, ContextItemRole, CorrectionKind, DeterministicIdGenerator, FixedClock,
+    OperationId, Principal, PrincipalKind, SourceDraft, SourcePayload, StatementProvenanceRole,
+    Store, TimestampMicros,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, canonical_json, grounded_explanation_basis, search_local,
-    AgentInterpretation, CanonicalCheckpointRef, CanonicalContextItemRef, CanonicalDecisionRef,
-    CanonicalLinkSelector, CanonicalReference, CanonicalSourceRef, Capability, CapabilityState,
-    CoordinateConvention, FreshnessState, GroundingStatementClass, InventoryRequest, Language,
-    ProvenanceClass, RelationTarget, SearchResultKind, SemanticAnalysisRequest,
-    SemanticRelationKind, StructuralAnalysisRequest, Uncertainty, UncertaintyLevel,
-    ANALYSIS_SNAPSHOT_FORMAT_VERSION,
+    AgentInterpretation, CanonicalGrounding, CanonicalLinkSelector, CanonicalReference, Capability,
+    CapabilityState, CoordinateConvention, FreshnessState, GroundingStatementClass,
+    InventoryRequest, Language, ProvenanceClass, RelationTarget, SearchResultKind,
+    SemanticAnalysisRequest, SemanticRelationKind, StructuralAnalysisRequest, Uncertainty,
+    UncertaintyLevel, ANALYSIS_SNAPSHOT_FORMAT_VERSION,
 };
 
 const OBSERVED_AT: i64 = 1_725_000_000_000_000;
@@ -31,13 +30,14 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn inventory(root: &Path) -> InventoryRequest<'_> {
-    InventoryRequest::new(
+fn inventory(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
+    let canonical = support::repository_grounding(0x71, 0x72)?;
+    Ok(InventoryRequest::new(
         root,
-        ProjectId::from_bytes([0x71; 16]),
-        SourceId::from_bytes([0x72; 16]),
+        &canonical.grounding,
+        canonical.source_id,
         OBSERVED_AT,
-    )
+    )?)
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
     ] {
         let root = fixture(fixture_name);
         let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-            StructuralAnalysisRequest::new(inventory(&root)),
+            StructuralAnalysisRequest::new(inventory(&root)?),
         ))?;
         assert_eq!(analysis.format_version, ANALYSIS_SNAPSHOT_FORMAT_VERSION);
         let report = analysis.capabilities.iter().find(|report| {
@@ -139,7 +139,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
 fn unavailable_or_failed_adapter_cannot_publish_semantic_facts() -> Result<(), Box<dyn Error>> {
     let root = fixture("rust");
     let (_, analysis) = analyze_repository_semantics(
-        SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(inventory(&root)))
+        SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(inventory(&root)?))
             .with_unavailable_language(Language::Rust, "adapter disabled for this analysis"),
     )?;
     assert!(analysis.semantic_results.is_empty());
@@ -181,7 +181,7 @@ fn broken_dependency_is_partial_without_erasing_usable_remainder() -> Result<(),
         let source = temporary.path().join(locator);
         fs::write(&source, format!("{marker}{}", fs::read_to_string(&source)?))?;
         let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-            StructuralAnalysisRequest::new(inventory(temporary.path())),
+            StructuralAnalysisRequest::new(inventory(temporary.path())?),
         ))?;
         let semantic = analysis.capabilities.iter().find(|report| {
             report.language == Some(language.clone()) && report.capability == Capability::Semantic
@@ -205,7 +205,8 @@ fn broken_dependency_is_partial_without_erasing_usable_remainder() -> Result<(),
         assert!(!analysis.inventory.entries.is_empty(), "{fixture_name}");
         assert!(!analysis.structural_facts.is_empty(), "{fixture_name}");
         assert!(!analysis.semantic_results.is_empty(), "{fixture_name}");
-        let hits = search_local(&analysis, "missing", repository.identity, 20);
+        let grounding = support::repository_grounding(0x71, 0x72)?.grounding;
+        let hits = search_local(&analysis, "missing", repository.identity, 20, &grounding)?;
         assert!(
             hits.iter().any(|hit| {
                 hit.result_kind == SearchResultKind::SemanticRelation
@@ -238,7 +239,7 @@ class Greeter implements Named {
 "#,
     )?;
     let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(temporary.path())),
+        StructuralAnalysisRequest::new(inventory(temporary.path())?),
     ))?;
     let overloads = analysis
         .structural_facts
@@ -288,13 +289,13 @@ class Greeter implements Named {
 fn restart_cache_rebuild_and_refresh_are_deterministic() -> Result<(), Box<dyn Error>> {
     let root = fixture("typescript");
     let (_, first) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(&root)),
+        StructuralAnalysisRequest::new(inventory(&root)?),
     ))?;
     let (_, restarted) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(&root)),
+        StructuralAnalysisRequest::new(inventory(&root)?),
     ))?;
     let (_, refreshed) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(&root)).with_previous(&first),
+        StructuralAnalysisRequest::new(inventory(&root)?).with_previous(&first),
     ))?;
     assert_eq!(first.identity, restarted.identity);
     assert_eq!(first.identity, refreshed.identity);
@@ -326,9 +327,8 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
             project.id,
             SourceDraft {
                 expected_project_revision: 1,
-                payload: SourcePayload::File {
-                    locator: "src/index.ts".to_owned(),
-                    snapshot: "fixture-snapshot".to_owned(),
+                payload: SourcePayload::RepositorySnapshot {
+                    revision: "fixture-snapshot".to_owned(),
                 },
                 actor: Principal {
                     kind: PrincipalKind::Repository,
@@ -391,27 +391,23 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
         )?
         .value;
     assert_eq!(corrected.revision, 2);
-    let before = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let before = store.read_canonical_basis(
+        project.id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+    let grounding = CanonicalGrounding::from_read_basis(&before)?;
 
     let root = fixture("typescript");
-    let request_inventory = InventoryRequest::new(&root, project.id, source.id, OBSERVED_AT);
+    let request_inventory = InventoryRequest::new(&root, &grounding, source.id, OBSERVED_AT)?;
     let (repository, mut analysis) = analyze_repository_semantics(
         SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(request_inventory))
             .with_canonical_link(
                 CanonicalLinkSelector::new(Language::TypeScript, "src/index.ts", "Greeter.greet"),
-                CanonicalReference::Decision(CanonicalDecisionRef(DecisionId::from_bytes(
-                    [0x73; 16],
-                ))),
-            )
-            .with_canonical_link(
-                CanonicalLinkSelector::new(Language::TypeScript, "src/index.ts", "Greeter.greet"),
-                CanonicalReference::ContextItem(CanonicalContextItemRef(context.id)),
-            )
-            .with_canonical_link(
-                CanonicalLinkSelector::new(Language::TypeScript, "src/index.ts", "Greeter.greet"),
-                CanonicalReference::Checkpoint(CanonicalCheckpointRef(CheckpointId::from_bytes(
-                    [0x75; 16],
-                ))),
+                CanonicalReference::ContextItem(
+                    grounding.context_item_reference(context.id, context.revision)?,
+                ),
             ),
     )?;
     let after = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
@@ -422,10 +418,10 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
     let (_, rebuilt) = analyze_repository_semantics(SemanticAnalysisRequest::new(
         StructuralAnalysisRequest::new(InventoryRequest::new(
             &root,
-            project.id,
+            &grounding,
             source.id,
             OBSERVED_AT,
-        )),
+        )?),
     ))?;
     fs::write(&derived, canonical_json(&rebuilt)?)?;
     assert_eq!(
@@ -439,7 +435,7 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
         agent: "codex".to_owned(),
         host: "codex".to_owned(),
         session: "semantic-test".to_owned(),
-        source_basis: vec![CanonicalSourceRef(source.id)],
+        source_basis: vec![grounding.source_reference(source.id)?],
         analysis_basis: vec![analysis.identity.to_string()],
         text: "Greeter may be affected; this remains an interpretation.".to_owned(),
         generated_at_unix_micros: OBSERVED_AT,
@@ -455,9 +451,9 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
         .iter()
         .find(|fact| fact.entity.qualified_name.as_deref() == Some("Greeter.greet"))
         .ok_or("Greeter.greet missing")?;
-    assert_eq!(greeter.entity.canonical_links.len(), 4);
+    assert_eq!(greeter.entity.canonical_links.len(), 2);
 
-    let basis = grounded_explanation_basis(&analysis, repository.identity);
+    let basis = grounded_explanation_basis(&analysis, repository.identity, &grounding)?;
     assert!(!basis.background_source_transmitted);
     assert!(basis
         .evidence
@@ -478,17 +474,17 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
         evidence
             .canonical_links
             .iter()
-            .any(|link| matches!(link, CanonicalReference::Decision(_)))
+            .any(|link| matches!(link, CanonicalReference::ContextItem(_)))
     }));
 
-    let semantic_hits = search_local(&analysis, "overrides", repository.identity, 20);
+    let semantic_hits = search_local(&analysis, "overrides", repository.identity, 20, &grounding)?;
     assert!(semantic_hits.iter().any(|hit| {
         hit.result_kind == SearchResultKind::SemanticRelation
             && hit.provenance_class == ProvenanceClass::SemanticResult
             && hit.navigation_is_current
     }));
     let other = volicord_repository_intelligence::RepositorySnapshotId::from_hex(&"ab".repeat(32))?;
-    let stale = grounded_explanation_basis(&analysis, other);
+    let stale = grounded_explanation_basis(&analysis, other, &grounding)?;
     assert_eq!(stale.freshness.state, FreshnessState::Stale);
     assert!(stale
         .evidence
@@ -529,3 +525,4 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+mod support;

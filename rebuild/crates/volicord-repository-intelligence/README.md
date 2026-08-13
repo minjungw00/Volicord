@@ -30,14 +30,17 @@ relations, resolves overloads only when scope and arity identify one target,
 and preserves unresolved targets, incomplete-build diagnostics, and usable
 remainder. It has a separate adapter/analyzer identity and `semantic_result`
 provenance from Tree-sitter structural facts. The current Analysis Snapshot
-writer is format version 3 and remains deterministically rebuildable.
+writer is format version 4 and remains deterministically rebuildable.
 
-Grounded explanation input exposes repository observations, structural facts,
-semantic results, agent interpretations, capability coverage, gaps, freshness,
-uncertainty, and typed read-only links to canonical Source, Decision, Context
-Item, and Checkpoint identities. Analysis and refresh cannot open or mutate the
-Canonical Context store. Local search covers structural and semantic evidence
-without collapsing provenance.
+`CanonicalGrounding` derives an immutable identity-and-basis index from
+Canonical Context's `CanonicalReadBasis`. Repository Sources must exist in the
+same Project before a Repository Snapshot is constructed. Persisted Source
+links carry their canonical snapshot basis or explicit `not_applicable` state;
+Decision, Context Item, and Checkpoint links carry their exact revision.
+Grounded explanation and local search validate the complete Analysis Snapshot
+before copying any link. Analysis and refresh cannot open or mutate the
+Canonical Context store, and a later correction or supersession does not
+retarget an older Analysis Snapshot.
 
 The crate still has no external provider, child-process analyzer, CLI, MCP
 surface, or canonical write path. Parser/analyzer failure is a bounded failed

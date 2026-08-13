@@ -10,10 +10,12 @@ pub fn search_local(
     query: &str,
     current_repository_snapshot: RepositorySnapshotId,
     limit: usize,
-) -> Vec<SearchHit> {
+    canonical_grounding: &crate::CanonicalGrounding,
+) -> Result<Vec<SearchHit>, crate::CanonicalGroundingError> {
+    canonical_grounding.validate_analysis_snapshot(analysis)?;
     let query = query.trim().to_lowercase();
     if query.is_empty() || limit == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut scored = Vec::new();
     let current = analysis.repository_snapshot == current_repository_snapshot;
@@ -44,7 +46,7 @@ pub fn search_local(
                 SearchHit {
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
-                    source: analysis.repository_source,
+                    source: analysis.repository_source.clone(),
                     source_range: None,
                     result_kind: SearchResultKind::Inventory,
                     matched_text: entry.area.path.clone(),
@@ -74,7 +76,7 @@ pub fn search_local(
                 SearchHit {
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
-                    source: entity.source,
+                    source: entity.source.clone(),
                     source_range: entity.source_range.clone(),
                     result_kind: SearchResultKind::Entity,
                     matched_text: entity
@@ -124,7 +126,7 @@ pub fn search_local(
                     SearchHit {
                         analysis_snapshot: analysis.identity,
                         repository_snapshot: analysis.repository_snapshot,
-                        source: entity.source,
+                        source: entity.source.clone(),
                         source_range: relation.supporting_range.clone(),
                         result_kind: SearchResultKind::Relation,
                         matched_text: format!(
@@ -188,7 +190,10 @@ pub fn search_local(
                 SearchHit {
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
-                    source: source.map_or(analysis.repository_source, |entity| entity.source),
+                    source: source.map_or_else(
+                        || analysis.repository_source.clone(),
+                        |entity| entity.source.clone(),
+                    ),
                     source_range: relation.supporting_range.clone(),
                     result_kind: SearchResultKind::SemanticRelation,
                     matched_text: format!(
@@ -219,11 +224,11 @@ pub fn search_local(
     }
 
     scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
-    scored
+    Ok(scored
         .into_iter()
         .take(limit)
         .map(|(_, _, hit)| hit)
-        .collect()
+        .collect())
 }
 
 fn capability_coverage(

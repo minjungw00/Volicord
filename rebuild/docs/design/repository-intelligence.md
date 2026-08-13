@@ -323,7 +323,8 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
 
 이 책임은 semantic resolution, compiler/LSP child process, provider annotation 또는
 canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural과
-semantic basis, invalidation과 refresh metadata가 포함된 format version 3만 생성하며 이 derived
+semantic basis, invalidation, refresh metadata와 Project-scoped canonical target basis가 포함된
+format version 4만 생성하며 이 derived
 format은 source basis에서 rebuild하는 책임을 가진다. Maintained V01 report는 이 Production
 boundary에서 seven-language structural gate를 passed로 판정하며 large-repository scaling과
 complete macro/generated coverage는 주장하지 않는다.

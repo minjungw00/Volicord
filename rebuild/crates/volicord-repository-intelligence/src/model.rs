@@ -1,21 +1,178 @@
 use crate::identity::decode_hex;
 use crate::{AnalysisSnapshotId, RepositorySnapshotId};
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use volicord_context::{CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId};
 
 pub const ANALYSIS_SNAPSHOT_KIND: &str = "volicord.repository_analysis";
-pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 3;
+pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 4;
 
-macro_rules! canonical_reference {
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CanonicalProjectRef {
+    identity: ProjectId,
+}
+
+impl Serialize for CanonicalProjectRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("CanonicalProjectRef", 1)?;
+        state.serialize_field("identity", &self.identity.to_string())?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalProjectRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            identity: String,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let identity = decode_hex::<16>(&wire.identity).map_err(serde::de::Error::custom)?;
+        Ok(Self::new(ProjectId::from_bytes(identity)))
+    }
+}
+
+impl CanonicalProjectRef {
+    pub(crate) const fn new(identity: ProjectId) -> Self {
+        Self { identity }
+    }
+
+    pub const fn identity(self) -> ProjectId {
+        self.identity
+    }
+}
+
+impl fmt::Display for CanonicalProjectRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.identity, formatter)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum CanonicalSourceBasis {
+    Snapshot(String),
+    NotApplicable,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CanonicalSourceRef {
+    project: ProjectId,
+    identity: SourceId,
+    basis: CanonicalSourceBasis,
+}
+
+impl Serialize for CanonicalSourceRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("CanonicalSourceRef", 3)?;
+        state.serialize_field("project", &self.project.to_string())?;
+        state.serialize_field("identity", &self.identity.to_string())?;
+        state.serialize_field("basis", &self.basis)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalSourceRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            project: String,
+            identity: String,
+            basis: CanonicalSourceBasis,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let project = decode_hex::<16>(&wire.project).map_err(serde::de::Error::custom)?;
+        let identity = decode_hex::<16>(&wire.identity).map_err(serde::de::Error::custom)?;
+        Ok(Self::new(
+            ProjectId::from_bytes(project),
+            SourceId::from_bytes(identity),
+            wire.basis,
+        ))
+    }
+}
+
+impl CanonicalSourceRef {
+    pub(crate) fn new(project: ProjectId, identity: SourceId, basis: CanonicalSourceBasis) -> Self {
+        Self {
+            project,
+            identity,
+            basis,
+        }
+    }
+
+    pub const fn project(&self) -> ProjectId {
+        self.project
+    }
+
+    pub const fn identity(&self) -> SourceId {
+        self.identity
+    }
+
+    pub const fn basis(&self) -> &CanonicalSourceBasis {
+        &self.basis
+    }
+}
+
+impl fmt::Display for CanonicalSourceRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}:{}", self.project, self.identity)
+    }
+}
+
+macro_rules! revisioned_canonical_reference {
     ($name:ident, $inner:ty) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-        pub struct $name(pub $inner);
+        pub struct $name {
+            project: ProjectId,
+            identity: $inner,
+            revision: u64,
+        }
+
+        impl $name {
+            pub(crate) const fn new(project: ProjectId, identity: $inner, revision: u64) -> Self {
+                Self {
+                    project,
+                    identity,
+                    revision,
+                }
+            }
+
+            pub const fn project(self) -> ProjectId {
+                self.project
+            }
+
+            pub const fn identity(self) -> $inner {
+                self.identity
+            }
+
+            pub const fn revision(self) -> u64 {
+                self.revision
+            }
+        }
 
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(&self.0, formatter)
+                write!(
+                    formatter,
+                    "{}:{}@{}",
+                    self.project, self.identity, self.revision
+                )
             }
         }
 
@@ -24,7 +181,11 @@ macro_rules! canonical_reference {
             where
                 S: Serializer,
             {
-                serializer.collect_str(self)
+                let mut state = serializer.serialize_struct(stringify!($name), 3)?;
+                state.serialize_field("project", &self.project.to_string())?;
+                state.serialize_field("identity", &self.identity.to_string())?;
+                state.serialize_field("revision", &self.revision)?;
+                state.end()
             }
         }
 
@@ -33,22 +194,33 @@ macro_rules! canonical_reference {
             where
                 D: Deserializer<'de>,
             {
-                let value = String::deserialize(deserializer)?;
-                let bytes = decode_hex::<16>(&value).map_err(serde::de::Error::custom)?;
-                Ok(Self(<$inner>::from_bytes(bytes)))
+                #[derive(Deserialize)]
+                struct Wire {
+                    project: String,
+                    identity: String,
+                    revision: u64,
+                }
+
+                let wire = Wire::deserialize(deserializer)?;
+                let project = decode_hex::<16>(&wire.project).map_err(serde::de::Error::custom)?;
+                let identity =
+                    decode_hex::<16>(&wire.identity).map_err(serde::de::Error::custom)?;
+                Ok(Self::new(
+                    ProjectId::from_bytes(project),
+                    <$inner>::from_bytes(identity),
+                    wire.revision,
+                ))
             }
         }
     };
 }
 
-canonical_reference!(CanonicalProjectRef, ProjectId);
-canonical_reference!(CanonicalSourceRef, SourceId);
-canonical_reference!(CanonicalDecisionRef, DecisionId);
-canonical_reference!(CanonicalContextItemRef, ContextItemId);
-canonical_reference!(CanonicalCheckpointRef, CheckpointId);
+revisioned_canonical_reference!(CanonicalDecisionRef, DecisionId);
+revisioned_canonical_reference!(CanonicalContextItemRef, ContextItemId);
+revisioned_canonical_reference!(CanonicalCheckpointRef, CheckpointId);
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind", content = "identity")]
+#[serde(rename_all = "snake_case", tag = "kind", content = "target")]
 pub enum CanonicalReference {
     Source(CanonicalSourceRef),
     Decision(CanonicalDecisionRef),
@@ -83,7 +255,7 @@ pub struct GitObservation {
     pub reference: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AnalysisSnapshot {
     pub format_kind: String,
     pub format_version: u32,
@@ -106,6 +278,73 @@ pub struct AnalysisSnapshot {
     pub semantic_refresh: SemanticRefresh,
     pub generated_at_unix_micros: i64,
     pub freshness: FreshnessBasis,
+}
+
+#[derive(Deserialize)]
+struct AnalysisSnapshotWire {
+    format_kind: String,
+    format_version: u32,
+    identity: AnalysisSnapshotId,
+    repository_snapshot: RepositorySnapshotId,
+    project: CanonicalProjectRef,
+    repository_source: CanonicalSourceRef,
+    inventory: InventorySnapshot,
+    capabilities: Vec<CapabilityReport>,
+    diagnostics: Vec<AnalysisDiagnostic>,
+    structural_facts: Vec<StructuralFact>,
+    semantic_results: Vec<SemanticAnalysisResult>,
+    semantic_annotations: Vec<SemanticAnnotation>,
+    agent_interpretations: Vec<AgentInterpretation>,
+    structural_bases: Vec<FileAnalysisBasis>,
+    semantic_bases: Vec<FileAnalysisBasis>,
+    invalidations: Vec<InvalidationRecord>,
+    refresh: StructuralRefresh,
+    semantic_refresh: SemanticRefresh,
+    generated_at_unix_micros: i64,
+    freshness: FreshnessBasis,
+}
+
+impl<'de> Deserialize<'de> for AnalysisSnapshot {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = AnalysisSnapshotWire::deserialize(deserializer)?;
+        if wire.format_kind != ANALYSIS_SNAPSHOT_KIND {
+            return Err(serde::de::Error::custom(format!(
+                "unsupported Analysis Snapshot format kind: {}",
+                wire.format_kind
+            )));
+        }
+        if wire.format_version != ANALYSIS_SNAPSHOT_FORMAT_VERSION {
+            return Err(serde::de::Error::custom(format!(
+                "unsupported Analysis Snapshot format version: {}; current version is {}",
+                wire.format_version, ANALYSIS_SNAPSHOT_FORMAT_VERSION
+            )));
+        }
+        Ok(Self {
+            format_kind: wire.format_kind,
+            format_version: wire.format_version,
+            identity: wire.identity,
+            repository_snapshot: wire.repository_snapshot,
+            project: wire.project,
+            repository_source: wire.repository_source,
+            inventory: wire.inventory,
+            capabilities: wire.capabilities,
+            diagnostics: wire.diagnostics,
+            structural_facts: wire.structural_facts,
+            semantic_results: wire.semantic_results,
+            semantic_annotations: wire.semantic_annotations,
+            agent_interpretations: wire.agent_interpretations,
+            structural_bases: wire.structural_bases,
+            semantic_bases: wire.semantic_bases,
+            invalidations: wire.invalidations,
+            refresh: wire.refresh,
+            semantic_refresh: wire.semantic_refresh,
+            generated_at_unix_micros: wire.generated_at_unix_micros,
+            freshness: wire.freshness,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -780,14 +1019,18 @@ pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Er
 
 #[cfg(test)]
 mod tests {
-    use super::{CanonicalProjectRef, CanonicalSourceRef};
+    use super::{CanonicalProjectRef, CanonicalSourceBasis, CanonicalSourceRef};
     use volicord_context::{ProjectId, SourceId};
 
     #[test]
     fn canonical_references_round_trip_as_typed_hex() -> Result<(), serde_json::Error> {
-        let project = CanonicalProjectRef(ProjectId::from_bytes([0x12; 16]));
-        let source = CanonicalSourceRef(SourceId::from_bytes([0x34; 16]));
-        let encoded = serde_json::to_string(&(project, source))?;
+        let project = CanonicalProjectRef::new(ProjectId::from_bytes([0x12; 16]));
+        let source = CanonicalSourceRef::new(
+            project.identity(),
+            SourceId::from_bytes([0x34; 16]),
+            CanonicalSourceBasis::Snapshot("snapshot-1".to_owned()),
+        );
+        let encoded = serde_json::to_string(&(project, source.clone()))?;
         let decoded: (CanonicalProjectRef, CanonicalSourceRef) = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, (project, source));
         Ok(())

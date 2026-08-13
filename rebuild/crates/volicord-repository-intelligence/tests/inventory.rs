@@ -4,13 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use volicord_context::{
     Availability, CanonicalReadOptions, DeterministicIdGenerator, FixedClock, OperationId,
-    Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload, Store,
-    TimestampMicros,
+    Principal, PrincipalKind, SourceDraft, SourcePayload, Store, TimestampMicros,
 };
 use volicord_repository_intelligence::{
-    analyze_repository, canonical_json, inventory_repository, Capability, CapabilityState,
-    EcosystemObservationKind, InventoryClassification, InventoryRequest, Language, ProvenanceClass,
-    SemanticAnalysisResult, StructuralAnalysisRequest, StructuralFact,
+    analyze_repository, canonical_json, inventory_repository, CanonicalGrounding, Capability,
+    CapabilityState, EcosystemObservationKind, InventoryClassification, InventoryRequest, Language,
+    ProvenanceClass, SemanticAnalysisResult, StructuralAnalysisRequest, StructuralFact,
 };
 
 const OBSERVED_AT: i64 = 1_725_000_000_000_000;
@@ -21,13 +20,14 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn request(root: &Path) -> InventoryRequest<'_> {
-    InventoryRequest::new(
+fn request(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
+    let canonical = support::repository_grounding(0x11, 0x22)?;
+    Ok(InventoryRequest::new(
         root,
-        ProjectId::from_bytes([0x11; 16]),
-        SourceId::from_bytes([0x22; 16]),
+        &canonical.grounding,
+        canonical.source_id,
         OBSERVED_AT,
-    )
+    )?)
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn maintained_fixtures_recognize_all_seven_gate_languages() -> Result<(), Box<dy
     ];
 
     for (name, expected_language) in matrix {
-        let (repository, analysis) = inventory_repository(request(&fixture(name)))?;
+        let (repository, analysis) = inventory_repository(request(&fixture(name))?)?;
         assert_eq!(analysis.repository_snapshot, repository.identity);
         assert!(analysis.inventory.languages.contains(&expected_language));
         let structural = analysis
@@ -74,7 +74,7 @@ fn maintained_fixtures_recognize_all_seven_gate_languages() -> Result<(), Box<dy
 
 #[test]
 fn out_of_set_text_language_keeps_inventory_with_honest_fallback() -> Result<(), Box<dyn Error>> {
-    let (_, analysis) = inventory_repository(request(&fixture("out_of_set")))?;
+    let (_, analysis) = inventory_repository(request(&fixture("out_of_set"))?)?;
     assert!(analysis.inventory.languages.contains(&Language::Go));
 
     let inventory = capability(&analysis, &Language::Go, Capability::Inventory)?;
@@ -102,10 +102,10 @@ fn snapshot_identity_and_serialization_are_path_independent_and_repeatable(
     copy_tree(&fixture("polyglot"), first_binding.path())?;
     copy_tree(&fixture("polyglot"), second_binding.path())?;
 
-    let (first_repository, first_analysis) = inventory_repository(request(first_binding.path()))?;
+    let (first_repository, first_analysis) = inventory_repository(request(first_binding.path())?)?;
     let (repeated_repository, repeated_analysis) =
-        inventory_repository(request(first_binding.path()))?;
-    let (other_repository, other_analysis) = inventory_repository(request(second_binding.path()))?;
+        inventory_repository(request(first_binding.path())?)?;
+    let (other_repository, other_analysis) = inventory_repository(request(second_binding.path())?)?;
 
     assert_eq!(first_repository.identity, repeated_repository.identity);
     assert_eq!(first_repository.identity, other_repository.identity);
@@ -128,7 +128,7 @@ fn snapshot_identity_and_serialization_are_path_independent_and_repeatable(
         "def format_greeting(name):\n    return name.upper()\n",
     )?;
     let (changed_repository, changed_analysis) =
-        inventory_repository(request(first_binding.path()))?;
+        inventory_repository(request(first_binding.path())?)?;
     assert_ne!(first_repository.identity, changed_repository.identity);
     assert_ne!(first_analysis.identity, changed_analysis.identity);
     Ok(())
@@ -155,7 +155,7 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
         "not inventoried\n",
     )?;
 
-    let mut inventory_request = request(repository.path());
+    let mut inventory_request = request(repository.path())?;
     inventory_request.excluded_paths = vec!["private".to_owned()];
     let (snapshot, analysis) = inventory_repository(inventory_request)?;
 
@@ -186,7 +186,7 @@ fn unavailable_entry_does_not_erase_successful_inventory() -> Result<(), Box<dyn
     fs::write(repository.path().join("main.rs"), "fn main() {}\n")?;
     symlink("missing-target", repository.path().join("broken-link"))?;
 
-    let (snapshot, analysis) = inventory_repository(request(repository.path()))?;
+    let (snapshot, analysis) = inventory_repository(request(repository.path())?)?;
     assert!(analysis
         .inventory
         .entries
@@ -240,10 +240,11 @@ fn repository_analysis_has_no_canonical_mutation_authority() -> Result<(), Box<d
         )?
         .value;
     let before = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let grounding = CanonicalGrounding::from_read_basis(&before)?;
 
     let rust_fixture = fixture("rust");
     let inventory_request =
-        InventoryRequest::new(&rust_fixture, project.id, source.id, OBSERVED_AT);
+        InventoryRequest::new(&rust_fixture, &grounding, source.id, OBSERVED_AT)?;
     let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory_request))?;
     let after = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
 
@@ -252,8 +253,8 @@ fn repository_analysis_has_no_canonical_mutation_authority() -> Result<(), Box<d
     assert!(after.active_decisions.is_empty());
     assert!(after.context_items.is_empty());
     assert!(after.latest_checkpoint.is_none());
-    assert_eq!(analysis.project.0, project.id);
-    assert_eq!(analysis.repository_source.0, source.id);
+    assert_eq!(analysis.project.identity(), project.id);
+    assert_eq!(analysis.repository_source.identity(), source.id);
     Ok(())
 }
 
@@ -315,3 +316,4 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+mod support;
