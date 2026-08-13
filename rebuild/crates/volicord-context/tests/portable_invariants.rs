@@ -14,7 +14,7 @@ use volicord_context::{
     ProjectId, QuestionAlternative, QuestionDraft, QuestionId, QuestionResponseDraft, SourceDraft,
     SourceId, SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact,
     UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    VerificationState, WorkState, BUNDLE_FORMAT_VERSION,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -586,6 +586,50 @@ fn write_recomputed(path: &Path, mut document: Value) -> Result<(), Box<dyn std:
     Ok(())
 }
 
+fn assert_recomputed_portable_preconditions(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let document: Value = serde_json::from_slice(&fs::read(path)?)?;
+    assert_eq!(document["format_version"], BUNDLE_FORMAT_VERSION);
+    for portable_table in document["payload"]["tables"]
+        .as_array()
+        .ok_or("portable tables are not an array")?
+    {
+        for row in portable_table["rows"]
+            .as_array()
+            .ok_or("portable rows are not an array")?
+        {
+            for cell in row.as_array().ok_or("portable row is not an array")? {
+                let value_type = cell["type"]
+                    .as_str()
+                    .ok_or("portable value has no tagged type")?;
+                match value_type {
+                    "null" => assert_eq!(cell, &portable_null()),
+                    "integer" => assert!(cell["value"].is_i64() || cell["value"].is_u64()),
+                    "text" | "bytes" => assert!(cell["value"].is_string()),
+                    other => panic!("portable value has unknown tag {other}"),
+                }
+            }
+        }
+    }
+    let semantic_state = serde_json::json!({
+        "project_id": document["payload"]["project_id"].clone(),
+        "tables": document["payload"]["tables"].clone(),
+    });
+    let history_basis = sha256_hex(&serde_json::to_vec(&semantic_state)?);
+    assert_eq!(
+        document["payload"]["lineage"]["history_basis"],
+        history_basis
+    );
+    assert_eq!(
+        document["payload"]["lineage"]["common_base_basis"],
+        history_basis
+    );
+    assert_eq!(
+        document["checksum"],
+        sha256_hex(&serde_json::to_vec(&document["payload"])?),
+    );
+    Ok(())
+}
+
 type OperationState = (Vec<u8>, String, Vec<u8>, String, String, Vec<u8>, i64, i64);
 type LineageState = (Vec<u8>, String);
 
@@ -719,10 +763,68 @@ fn assert_portable_write_boundaries_reject(
     fs::create_dir(&case_root)?;
     let bundle = case_root.join("mutated.json");
     write_recomputed(&bundle, document)?;
+    assert_recomputed_portable_preconditions(&bundle)?;
 
     assert_import_rejected_without_mutation(&case_root, fixture, &bundle, 200)?;
     assert_explicit_merge_rejected(&case_root, fixture, &bundle, false, false, 201)?;
     Ok(())
+}
+
+fn assert_semantic_write_boundaries_reject(
+    root: &Path,
+    fixture: &Fixture,
+    label: &str,
+    document: Value,
+    expected_message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let semantic_root = root.join(format!("{label}-semantic-boundary"));
+    fs::create_dir(&semantic_root)?;
+    let bundle = semantic_root.join("mutated.json");
+    write_recomputed(&bundle, document.clone())?;
+    assert_recomputed_portable_preconditions(&bundle)?;
+
+    let mut clean = store(&semantic_root.join("clean-import.sqlite3"), &[])?;
+    let import_error = clean
+        .import_bundle(operation(202), &bundle)
+        .err()
+        .ok_or("semantic mutation imported")?;
+    assert_eq!(import_error.kind(), ErrorKind::CorruptState);
+    assert!(
+        import_error.to_string().contains(expected_message),
+        "{label} stopped outside its intended semantic invariant: {import_error}"
+    );
+
+    let mut explicit = store(&semantic_root.join("explicit-merge.sqlite3"), &[])?;
+    explicit.import_bundle(operation(203), &fixture.active_bundle)?;
+    let explicit_error = explicit
+        .merge_bundle(
+            operation(204),
+            Some(&fixture.active_bundle),
+            &fixture.active_bundle,
+            None,
+            Some(MergeResolution {
+                conflict_set_identity: "semantic-mutation-oracle".to_owned(),
+                conflict_revision: 1,
+                user_turn_source_id: fixture.authorization_id,
+                mode: MergeResolutionMode::ExplicitMerged {
+                    bundle_path: bundle,
+                },
+            }),
+        )
+        .err()
+        .ok_or("semantic mutation passed ExplicitMerged")?;
+    assert_eq!(explicit_error.kind(), ErrorKind::CorruptState);
+    assert!(
+        explicit_error.to_string().contains(expected_message),
+        "{label} ExplicitMerged stopped outside its intended semantic invariant: {explicit_error}"
+    );
+
+    assert_portable_write_boundaries_reject(
+        root,
+        fixture,
+        &format!("{label}-no-partial-mutation"),
+        document,
+    )
 }
 
 #[test]
@@ -1347,7 +1449,7 @@ fn portable_rejects_mismatched_question_history_witness_fields(
     assert_clean_import_rejected(root.path(), &fixture, "duplicate-witness", duplicate, 130)?;
 
     for (operation_byte, outcome) in [
-        (131, Value::Null),
+        (131, portable_null()),
         (
             132,
             serde_json::json!({"type": "text", "value": "resolved_by_research"}),
@@ -1355,13 +1457,23 @@ fn portable_rejects_mismatched_question_history_witness_fields(
     ] {
         let mut document = read_json(&fixture.active_bundle)?;
         set_cell(&mut document, "questions", 0, "terminal_outcome", outcome);
-        assert_clean_import_rejected(
-            root.path(),
-            &fixture,
-            &format!("witness-on-non-decision-{operation_byte}"),
-            document,
-            operation_byte,
-        )?;
+        if operation_byte == 131 {
+            assert_semantic_write_boundaries_reject(
+                root.path(),
+                &fixture,
+                "witness-on-open-question",
+                document,
+                "Question response link does not name the active terminal revision",
+            )?;
+        } else {
+            assert_clean_import_rejected(
+                root.path(),
+                &fixture,
+                &format!("witness-on-non-decision-{operation_byte}"),
+                document,
+                operation_byte,
+            )?;
+        }
     }
     Ok(())
 }
@@ -1945,7 +2057,7 @@ fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary(
     cases.push(("terminal-without-role-history", terminal_without_role));
 
     for (label, outcome) in [
-        ("role-on-open-question", Value::Null),
+        ("role-on-open-question", portable_null()),
         (
             "role-on-non-decision-question",
             serde_json::json!({"type": "text", "value": "resolved_by_research"}),
@@ -2008,7 +2120,17 @@ fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary(
     cases.push(("local-binding-in-portable-state", local_binding));
 
     for (label, document) in cases {
-        assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+        if label == "role-on-open-question" {
+            assert_semantic_write_boundaries_reject(
+                root.path(),
+                &fixture,
+                label,
+                document,
+                "Question response link does not name the active terminal revision",
+            )?;
+        } else {
+            assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+        }
     }
     Ok(())
 }
@@ -2039,7 +2161,7 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
         "sources",
         file_row,
         "snapshot_basis",
-        Value::Null,
+        portable_null(),
     );
     cases.push(("source-incomplete-payload", source_payload));
 
@@ -2218,7 +2340,7 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
         "checkpoints",
         0,
         "state_change",
-        Value::Null,
+        portable_null(),
     );
     set_cell(
         &mut checkpoint_basis,
@@ -2249,8 +2371,8 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
             "verification_state",
             serde_json::json!({"type": "text", "value": "not_run"}),
         ),
-        ("source_id", Value::Null),
-        ("outcome", Value::Null),
+        ("source_id", portable_null()),
+        ("outcome", portable_null()),
     ] {
         set_cell(
             &mut checkpoint_basis,
@@ -2314,7 +2436,7 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
         "checkpoints",
         0,
         "user_acceptance_source_id",
-        Value::Null,
+        portable_null(),
     );
     cases.push(("checkpoint-acceptance-source", checkpoint_acceptance));
 
@@ -2339,7 +2461,29 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
     cases.push(("checkpoint-source-relation-kind", checkpoint_relation));
 
     for (label, document) in cases {
-        assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+        let semantic_message = match label {
+            "source-incomplete-payload" => Some(
+                "stored file Source payload is incomplete or inconsistent",
+            ),
+            "checkpoint-meaningful-basis" => Some(
+                "Checkpoint canonical semantics are invalid: completion Checkpoint requires completed work and an explicit meaningful basis",
+            ),
+            "checkpoint-acceptance-source" => Some(
+                "Checkpoint canonical semantics are invalid: accepted or rejected state requires an explicit current-host user-turn Source",
+            ),
+            _ => None,
+        };
+        if let Some(expected) = semantic_message {
+            assert_semantic_write_boundaries_reject(
+                root.path(),
+                &fixture,
+                label,
+                document,
+                expected,
+            )?;
+        } else {
+            assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
+        }
     }
     Ok(())
 }

@@ -133,6 +133,18 @@ PORTABLE_INVARIANT_TESTS = {
     "source_typed_payload_semantic_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
     "context_role_provenance_revision_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
     "checkpoint_state_source_semantic_mutations": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "typed_portable_null_reaches_question_semantics": "portable_rejects_mismatched_question_history_witness_fields",
+    "typed_portable_null_reaches_source_semantics": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "typed_portable_null_reaches_checkpoint_semantics": "source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary",
+    "checkpoint_unrelated_source_tombstone_rejected": "unrelated_source_tombstone_does_not_authorize_missing_checkpoint_sources",
+    "checkpoint_direct_forgetting_exact_witnesses": "direct_checkpoint_source_forgetting_is_exact_portable_and_deterministic",
+    "checkpoint_wrong_owner_source_use_position_rejected": "malformed_checkpoint_forgotten_source_witnesses_reject_every_portable_write_boundary",
+    "checkpoint_multiple_dimensions_and_sources": "direct_checkpoint_source_forgetting_is_exact_portable_and_deterministic",
+    "checkpoint_valid_explicit_merge": "generated_and_explicit_merges_preserve_valid_checkpoint_source_witnesses",
+    "checkpoint_forged_explicit_merge_rejected": "malformed_checkpoint_forgotten_source_witnesses_reject_every_portable_write_boundary",
+    "checkpoint_generated_merge_source_forgetting": "generated_and_explicit_merges_preserve_valid_checkpoint_source_witnesses",
+    "checkpoint_rejection_no_partial_mutation": "malformed_checkpoint_forgotten_source_witnesses_reject_every_portable_write_boundary",
+    "checkpoint_deterministic_export_reopen": "direct_checkpoint_source_forgetting_is_exact_portable_and_deterministic",
 }
 
 INVARIANT_PARITY_TESTS = {

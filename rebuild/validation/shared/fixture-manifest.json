@@ -261,7 +261,7 @@
       "id": "v04-divergent-merge",
       "validation_id": "V04",
       "path": "rebuild/validation/canonical-context/divergent-merge/fixtures/v04-scenarios",
-      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, systematic operation dependencies, centralized full-state validation, Question-specific Decision-history witnesses, deterministic invariant mutations, lifecycle metamorphisms, copied Question-content removal, symmetric merge-selected forgetting, managed sanitation, deterministic read/export, and Phase 4 recovery boundaries.",
+      "purpose": "Exercise production Rust common-base comparison, bounded automatic merge, user-owned conflict resolution, systematic operation dependencies, centralized full-state validation, Question-specific Decision-history and Checkpoint-specific forgotten-Source witnesses, typed deterministic invariant mutations, lifecycle metamorphisms, copied Question-content removal, symmetric merge-selected forgetting, managed sanitation, deterministic read/export, and Phase 4 recovery boundaries.",
       "expected_entities": [
         "trustworthy-common-base",
         "local-history",
@@ -281,6 +281,7 @@
         "canonical-invariant-catalog",
         "portable-mutation-matrix",
         "canonical-semantic-parity-matrix",
+        "checkpoint-forgotten-source-witness",
         "lifecycle-metamorphic-matrix"
       ],
       "expected_relations": [
@@ -298,6 +299,7 @@
         "canonical-invariant-catalog|maps_to|production-owner-and-executable-evidence",
         "portable-mutation-matrix|crosses|import-and-explicit-merged",
         "canonical-semantic-parity-matrix|rejects_before_mutation|source-context-item-and-checkpoint",
+        "checkpoint-forgotten-source-witness|binds|checkpoint-source-use-and-position",
         "lifecycle-metamorphic-matrix|preserves|semantic-read-and-deterministic-export"
       ],
       "expected_unsupported": [
@@ -306,7 +308,7 @@
         "signature, encryption, compression and legacy format decoding",
         "unmanaged external copies, backups and filesystem snapshots"
       ],
-      "content_sha256": "877f4b47058d41b788c7484a748021e66458f5c5fa9e4ee942cefb07d42875a7",
+      "content_sha256": "f55de3e0df56d2383a3cc39872fdc16d6fec5d7cbe3774b797bd2cee327866eb",
       "origin": "Self-authored deterministic fixture for V04.",
       "license": "CC0-1.0"
     },

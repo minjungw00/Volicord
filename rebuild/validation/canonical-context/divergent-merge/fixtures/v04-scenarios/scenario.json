@@ -130,7 +130,19 @@
     "valid_direct_forget_export_import_merge_and_read_unchanged",
     "source_typed_payload_semantic_mutations",
     "context_role_provenance_revision_mutations",
-    "checkpoint_state_source_semantic_mutations"
+    "checkpoint_state_source_semantic_mutations",
+    "typed_portable_null_reaches_question_semantics",
+    "typed_portable_null_reaches_source_semantics",
+    "typed_portable_null_reaches_checkpoint_semantics",
+    "checkpoint_unrelated_source_tombstone_rejected",
+    "checkpoint_direct_forgetting_exact_witnesses",
+    "checkpoint_wrong_owner_source_use_position_rejected",
+    "checkpoint_multiple_dimensions_and_sources",
+    "checkpoint_valid_explicit_merge",
+    "checkpoint_forged_explicit_merge_rejected",
+    "checkpoint_generated_merge_source_forgetting",
+    "checkpoint_rejection_no_partial_mutation",
+    "checkpoint_deterministic_export_reopen"
   ],
   "invariant_parity_scenarios": [
     "catalog_semantic_owner_and_test_anchors",
