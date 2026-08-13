@@ -57,6 +57,7 @@ inquiry/phase-6-acceptance/
 wave-1-summary.md
 phase-4-summary.md
 phase-5-summary.md
+phase-6-summary.md
 ```
 
 The shared fixture manifest is the single fixture catalog. Each capability
