@@ -8,12 +8,12 @@ use volicord_context::{
     CheckpointDraft, CheckpointKind, ContextItemCorrectionDraft, ContextItemDraft, ContextItemRole,
     CorrectionKind, DecisionChoice, DecisionCorrectionDraft, DecisionSupersessionDraft,
     DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse, FixedClock, MergeResolution,
-    MergeResolutionMode, OperationId, Principal, PrincipalKind, QuestionAlternative,
-    QuestionDependency, QuestionDraft, QuestionReference, QuestionResponseDraft,
-    QuestionTerminalOutcome, SourceDraft, SourcePayload, SourceRelationKind,
-    StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact, UserAcceptanceState,
-    UserReviewFact, UserReviewState, UserTurnSource, VerificationFact, VerificationState,
-    WorkState,
+    MergeResolutionMode, NonUserQuestionOutcome, OperationId, Principal, PrincipalKind,
+    QuestionAlternative, QuestionDependency, QuestionDispositionDraft, QuestionDraft,
+    QuestionReference, QuestionResponseDraft, QuestionTerminalOutcome, SourceDraft, SourcePayload,
+    SourceRelationKind, StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState, WorkState,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -119,6 +119,16 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
                 trade_offs: vec!["QUESTION-TRADEOFF-SECRET-91ac".to_owned()],
                 uncertainty: vec!["QUESTION-UNCERTAINTY-SECRET-91ac".to_owned()],
                 material_scope: vec!["storage".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "storage selection is required".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["storage work".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -132,7 +142,12 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
                 source_basis: vec![authorization.id],
                 dependencies: vec![QuestionDependency {
                     question_id: question.id,
-                    required_revision: Some(1),
+                    required_revision: 1,
+                    required_outcome: QuestionTerminalOutcome::Answered,
+                    required_source_basis: vec![],
+                    blocked_outcomes: vec![],
+                    superseding_outcomes: vec![],
+                    assessment_source_basis: vec![authorization.id],
                 }],
                 alternatives: vec![QuestionAlternative {
                     key: "continue".to_owned(),
@@ -147,6 +162,16 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
                 trade_offs: vec![],
                 uncertainty: vec![],
                 material_scope: vec!["dependent".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 1,
+                why_it_matters_now: "the dependency gates continued work".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["dependent work".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -713,22 +738,19 @@ fn source_question_and_checkpoint_forgetting_propagate_through_merge(
         &base_bundle,
         112,
     )?;
-    question_incoming.record_question_response(
+    question_incoming.dispose_question(
         operation(113),
         fixture.project.id,
-        QuestionResponseDraft {
+        QuestionDispositionDraft {
             expected_project_revision: 1,
             question_id: fixture.dependent_question.id,
             question_revision: 1,
-            user_turn_source: UserTurnSource::Existing(fixture.authorization.id),
-            displayed_alternative_keys: vec!["continue".to_owned()],
-            displayed_recommendation_key: None,
-            response: ExplicitQuestionResponse::Terminal {
-                outcome: volicord_context::QuestionTerminalOutcome::Deferred,
-            },
-            applicability: ApplicabilityScope::default(),
-            assumptions: vec![],
-            revisit_triggers: vec![],
+            outcome: NonUserQuestionOutcome::Deferred,
+            source_basis: vec![fixture.authorization.id],
+            reason: "defer the dependent branch".to_owned(),
+            replacement_question_id: None,
+            revisit_basis: vec!["after dependency review".to_owned()],
+            actor: principal(PrincipalKind::Agent, "inquiry"),
         },
     )?;
     let question_incoming_bundle = root.path().join("question-incoming.json");
@@ -1140,22 +1162,19 @@ fn incoming_forgetting_sanitizes_every_supported_local_record_closure(
                 )?;
             }
             CanonicalRecordId::Question(question_id) => {
-                local.record_question_response(
+                local.dispose_question(
                     operation(local_operation.ok_or("Question operation missing")?),
                     fixture.project.id,
-                    QuestionResponseDraft {
+                    QuestionDispositionDraft {
                         expected_project_revision: 1,
                         question_id,
                         question_revision: 1,
-                        user_turn_source: UserTurnSource::Existing(fixture.authorization.id),
-                        displayed_alternative_keys: vec!["continue".to_owned()],
-                        displayed_recommendation_key: None,
-                        response: ExplicitQuestionResponse::Terminal {
-                            outcome: QuestionTerminalOutcome::Deferred,
-                        },
-                        applicability: ApplicabilityScope::default(),
-                        assumptions: vec![],
-                        revisit_triggers: vec![],
+                        outcome: NonUserQuestionOutcome::Deferred,
+                        source_basis: vec![fixture.authorization.id],
+                        reason: "defer before forgetting".to_owned(),
+                        replacement_question_id: None,
+                        revisit_basis: vec!["after review".to_owned()],
+                        actor: principal(PrincipalKind::Agent, "inquiry"),
                     },
                 )?;
             }

@@ -5,13 +5,14 @@ use crate::model::{
     CheckpointDraft, CheckpointKind, ContextItem, ContextItemCorrectionDraft, ContextItemDraft,
     ContextItemRole, CorrectionKind, Decision, DecisionChoice, DecisionCorrectionDraft,
     DecisionLifecycle, DecisionSupersessionDraft, ExplicitQuestionResponse, ForgetResult,
-    LocalBinding, OperationResult, Principal, PrincipalKind, Project, Question,
-    QuestionAlternative, QuestionDependency, QuestionDraft, QuestionReference,
-    QuestionResponseDraft, QuestionResponseResult, QuestionState, QuestionTerminalOutcome,
-    ReviewDue, ReviewDueDraft, ReviewDueKind, Source, SourceDraft, SourcePayload, SourceRelation,
-    SourceRelationKind, StatementProvenanceRole, Tombstone, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    LocalBinding, NonUserQuestionOutcome, OperationResult, Principal, PrincipalKind, Project,
+    Question, QuestionAlternative, QuestionDependency, QuestionDispositionDraft, QuestionDraft,
+    QuestionEstablishedFact, QuestionEvidenceFreshness, QuestionMateriality, QuestionReference,
+    QuestionResearchState, QuestionResponseDraft, QuestionResponseResult, QuestionState,
+    QuestionTerminalDisposition, QuestionTerminalOutcome, ReviewDue, ReviewDueDraft, ReviewDueKind,
+    Source, SourceDraft, SourcePayload, SourceRelation, SourceRelationKind,
+    StatementProvenanceRole, Tombstone, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
+    UserReviewState, UserTurnSource, VerificationFact, VerificationState, WorkState,
 };
 use crate::time::{Clock, SystemClock, TimestampMicros};
 use crate::{
@@ -26,11 +27,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 
-const REQUIRED_TABLES: [&str; 31] = [
+const REQUIRED_TABLES: [&str; 32] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -44,6 +45,7 @@ const REQUIRED_TABLES: [&str; 31] = [
     "question_revisions",
     "question_response_sources",
     "question_decision_history_witnesses",
+    "question_terminal_dispositions",
     "decisions",
     "context_items",
     "context_item_sources",
@@ -689,24 +691,40 @@ impl Store {
             .source_basis
             .iter()
             .chain(draft.recommendation.source_basis.iter())
+            .chain(
+                draft
+                    .established_facts
+                    .iter()
+                    .flat_map(|fact| fact.source_basis.iter()),
+            )
+            .chain(
+                draft
+                    .dependencies
+                    .iter()
+                    .flat_map(|dependency| dependency.required_source_basis.iter()),
+            )
+            .chain(
+                draft
+                    .dependencies
+                    .iter()
+                    .flat_map(|dependency| dependency.assessment_source_basis.iter()),
+            )
         {
             ensure_source_project(&transaction, *source_id, project_id)?;
         }
         for dependency in &draft.dependencies {
             let dependency_question =
                 load_question(&transaction, project_id, dependency.question_id)?;
-            if let Some(required_revision) = dependency.required_revision {
-                ensure_question_revision_exists(
-                    &transaction,
-                    dependency.question_id,
-                    required_revision,
-                )?;
-                if required_revision > dependency_question.revision {
-                    return Err(Error::new(
-                        ErrorKind::StaleBasis,
-                        "Question dependency revision is not current or historical",
-                    ));
-                }
+            ensure_question_revision_exists(
+                &transaction,
+                dependency.question_id,
+                dependency.required_revision,
+            )?;
+            if dependency.required_revision > dependency_question.revision {
+                return Err(Error::new(
+                    ErrorKind::StaleBasis,
+                    "Question dependency revision is not current or historical",
+                ));
             }
         }
 
@@ -751,7 +769,17 @@ impl Store {
                 trade_offs: draft.trade_offs,
                 uncertainty: draft.uncertainty,
                 material_scope: draft.material_scope,
+                materiality: draft.materiality,
+                presentation_order: draft.presentation_order,
+                why_it_matters_now: draft.why_it_matters_now,
+                established_facts: draft.established_facts,
+                assumptions: draft.assumptions,
+                known_limits: draft.known_limits,
+                what_the_answer_unlocks: draft.what_the_answer_unlocks,
+                allowed_non_choice_dispositions: draft.allowed_non_choice_dispositions,
+                research_state: draft.research_state,
                 state: QuestionState::Open,
+                terminal_disposition: None,
                 created_at: now,
                 updated_at: now,
             },
@@ -964,6 +992,32 @@ impl Store {
         } else {
             None
         };
+        let terminal_disposition = QuestionTerminalDisposition {
+            outcome,
+            source_basis: vec![user_turn_source.id],
+            reason: match outcome {
+                QuestionTerminalOutcome::Answered => "explicit current-host user choice",
+                QuestionTerminalOutcome::Delegated => "explicit current-host user delegation",
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "user response cannot create a non-user Question disposition",
+                    ));
+                }
+            }
+            .to_owned(),
+            replacement_question_id: None,
+            revisit_basis: draft.revisit_triggers.clone(),
+            actor: user_turn_source.actor.clone(),
+            recorded_at: now,
+        };
+        insert_question_terminal_disposition(
+            &transaction,
+            project_id,
+            draft.question_id,
+            draft.question_revision,
+            &terminal_disposition,
+        )?;
         transaction
             .execute(
                 "UPDATE questions SET terminal_outcome = ?3, updated_at = ?4
@@ -1001,6 +1055,7 @@ impl Store {
 
         let mut terminal_question = question;
         terminal_question.state = QuestionState::Terminal(outcome);
+        terminal_question.terminal_disposition = Some(terminal_disposition);
         terminal_question.updated_at = now;
         Ok(OperationResult {
             value: QuestionResponseResult {
@@ -1008,6 +1063,125 @@ impl Store {
                 user_turn_source,
                 decision,
             },
+            replayed: false,
+        })
+    }
+
+    /// Applies a non-user terminal disposition without creating a user-turn
+    /// Source or Decision. Choice and delegation are intentionally excluded.
+    pub fn dispose_question(
+        &mut self,
+        operation_id: OperationId,
+        project_id: ProjectId,
+        draft: QuestionDispositionDraft,
+    ) -> Result<OperationResult<Question>, Error> {
+        validate_question_disposition_draft(&draft)?;
+        let basis = question_disposition_basis(project_id, &draft);
+        let (connection, clock) = (&mut self.connection, &mut self.clock);
+        let transaction = begin_write(connection)?;
+        if let Some(operation) = load_operation(&transaction, operation_id)? {
+            ensure_replay_input(&operation, "dispose_question", &basis)?;
+            let question = load_question(&transaction, project_id, draft.question_id)?;
+            transaction.commit().map_err(commit_error)?;
+            return Ok(OperationResult {
+                value: question,
+                replayed: true,
+            });
+        }
+
+        let project = load_project(&transaction, project_id)?;
+        ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        let mut question = load_question(&transaction, project_id, draft.question_id)?;
+        ensure_revision(draft.question_revision, question.revision, "Question")?;
+        if question.state != QuestionState::Open {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Question is already terminal",
+            ));
+        }
+        if !question
+            .allowed_non_choice_dispositions
+            .contains(&draft.outcome)
+        {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Question revision does not allow the requested non-choice disposition",
+            ));
+        }
+        for source_id in &draft.source_basis {
+            ensure_source_project(&transaction, *source_id, project_id)?;
+        }
+        if let Some(replacement) = draft.replacement_question_id {
+            let _ = load_question(&transaction, project_id, replacement)?;
+            if replacement == draft.question_id {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Question cannot replace itself",
+                ));
+            }
+        }
+
+        let now = clock.now()?;
+        let outcome = draft.outcome.terminal_outcome();
+        let disposition = QuestionTerminalDisposition {
+            outcome,
+            source_basis: draft.source_basis.clone(),
+            reason: draft.reason.clone(),
+            replacement_question_id: draft.replacement_question_id,
+            revisit_basis: draft.revisit_basis.clone(),
+            actor: draft.actor.clone(),
+            recorded_at: now,
+        };
+        insert_question_terminal_disposition(
+            &transaction,
+            project_id,
+            draft.question_id,
+            draft.question_revision,
+            &disposition,
+        )?;
+        transaction
+            .execute(
+                "UPDATE questions SET terminal_outcome = ?3, updated_at = ?4
+                 WHERE id = ?1 AND project_id = ?2 AND revision = ?5 AND terminal_outcome IS NULL",
+                params![
+                    draft.question_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    outcome.as_str(),
+                    now.as_unix_micros(),
+                    revision_i64(draft.question_revision)?,
+                ],
+            )
+            .map_err(write_error)
+            .and_then(|count| ensure_single_updated(count, "Question changed concurrently"))?;
+        let mut dependencies = vec![CanonicalRecordId::Question(draft.question_id)];
+        dependencies.extend(
+            draft
+                .source_basis
+                .iter()
+                .copied()
+                .map(CanonicalRecordId::Source),
+        );
+        if let Some(replacement) = draft.replacement_question_id {
+            dependencies.push(CanonicalRecordId::Question(replacement));
+        }
+        record_operation(
+            &transaction,
+            operation_id,
+            project_id,
+            "dispose_question",
+            &basis,
+            "question_disposition",
+            draft.question_id.as_bytes(),
+            draft.question_revision,
+            now,
+            &dependencies,
+        )?;
+        transaction.commit().map_err(commit_error)?;
+        question.state = QuestionState::Terminal(outcome);
+        question.terminal_disposition = Some(disposition);
+        question.updated_at = now;
+        Ok(OperationResult {
+            value: question,
             replayed: false,
         })
     }
@@ -2964,6 +3138,10 @@ impl Store {
                     "DELETE FROM question_response_sources WHERE project_id = ?1 AND question_id = ?2",
                     params![project_id.as_bytes().as_slice(), question_id.as_bytes().as_slice()],
                 ).map_err(write_error)?;
+                transaction.execute(
+                    "DELETE FROM question_terminal_dispositions WHERE project_id = ?1 AND question_id = ?2",
+                    params![project_id.as_bytes().as_slice(), question_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
                 transaction
                     .execute(
                         "DELETE FROM question_revisions WHERE project_id = ?1 AND question_id = ?2",
@@ -3556,6 +3734,11 @@ struct EncodedQuestion {
     trade_offs: Vec<u8>,
     uncertainty: Vec<u8>,
     material_scope: Vec<u8>,
+    established_facts: Vec<u8>,
+    assumptions: Vec<u8>,
+    known_limits: Vec<u8>,
+    answer_unlocks: Vec<u8>,
+    allowed_dispositions: Vec<u8>,
 }
 
 impl EncodedQuestion {
@@ -3568,6 +3751,11 @@ impl EncodedQuestion {
             trade_offs: encode_strings(&draft.trade_offs),
             uncertainty: encode_strings(&draft.uncertainty),
             material_scope: encode_strings(&draft.material_scope),
+            established_facts: encode_established_facts(&draft.established_facts),
+            assumptions: encode_strings(&draft.assumptions),
+            known_limits: encode_strings(&draft.known_limits),
+            answer_unlocks: encode_strings(&draft.what_the_answer_unlocks),
+            allowed_dispositions: encode_non_user_outcomes(&draft.allowed_non_choice_dispositions),
         })
     }
 }
@@ -3602,6 +3790,19 @@ fn validate_question_draft(draft: &QuestionDraft) -> Result<(), Error> {
             "Question requires a material scope",
         ));
     }
+    if draft.materiality != QuestionMateriality::Material {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "only a currently material Question may enter Canonical Context",
+        ));
+    }
+    validate_nonempty("why the Question matters now", &draft.why_it_matters_now)?;
+    if draft.allowed_non_choice_dispositions.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Question requires at least one allowed non-choice disposition",
+        ));
+    }
     let mut keys = BTreeSet::new();
     for alternative in &draft.alternatives {
         validate_nonempty("Question alternative key", &alternative.key)?;
@@ -3625,12 +3826,77 @@ fn validate_question_draft(draft: &QuestionDraft) -> Result<(), Error> {
     validate_string_list("Question trade-off", &draft.trade_offs)?;
     validate_string_list("Question uncertainty", &draft.uncertainty)?;
     validate_string_list("Question material scope", &draft.material_scope)?;
+    validate_string_list("Question assumption", &draft.assumptions)?;
+    validate_string_list("Question known limit", &draft.known_limits)?;
+    validate_string_list("Question answer unlock", &draft.what_the_answer_unlocks)?;
+    for fact in &draft.established_facts {
+        validate_nonempty("established fact", &fact.statement)?;
+        if fact.source_basis.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "established fact requires a Source basis",
+            ));
+        }
+        validate_optional_nonempty("established fact capability", fact.capability.as_deref())?;
+    }
+    let mut dispositions = BTreeSet::new();
+    for disposition in &draft.allowed_non_choice_dispositions {
+        if !dispositions.insert(disposition.as_str()) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "allowed non-choice dispositions must be unique",
+            ));
+        }
+    }
     let mut dependencies = BTreeSet::new();
     for dependency in &draft.dependencies {
         if !dependencies.insert((dependency.question_id, dependency.required_revision)) {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "Question dependencies must be unique",
+            ));
+        }
+        if dependency.required_revision == 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Question dependency revision must be explicit",
+            ));
+        }
+        if dependency.assessment_source_basis.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Question dependency requires an assessment Source basis",
+            ));
+        }
+        if dependency
+            .blocked_outcomes
+            .contains(&dependency.required_outcome)
+            || dependency
+                .superseding_outcomes
+                .contains(&dependency.required_outcome)
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "required dependency outcome cannot also block or supersede the branch",
+            ));
+        }
+        let blocked = dependency
+            .blocked_outcomes
+            .iter()
+            .map(|outcome| outcome.as_str())
+            .collect::<BTreeSet<_>>();
+        let superseding = dependency
+            .superseding_outcomes
+            .iter()
+            .map(|outcome| outcome.as_str())
+            .collect::<BTreeSet<_>>();
+        if blocked.len() != dependency.blocked_outcomes.len()
+            || superseding.len() != dependency.superseding_outcomes.len()
+            || !blocked.is_disjoint(&superseding)
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "blocked and superseding dependency outcomes must be unique and disjoint",
             ));
         }
     }
@@ -3669,17 +3935,39 @@ fn validate_response_draft(draft: &QuestionResponseDraft) -> Result<(), Error> {
             validate_nonempty("delegation target", delegate_to)?;
             validate_optional_nonempty("user rationale", user_rationale.as_deref())?;
         }
-        ExplicitQuestionResponse::Terminal { outcome } => {
-            if matches!(
-                outcome,
-                QuestionTerminalOutcome::Answered | QuestionTerminalOutcome::Delegated
-            ) {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "answered and delegated outcomes require an explicit choice or delegation",
-                ));
-            }
-        }
+    }
+    Ok(())
+}
+
+fn validate_question_disposition_draft(draft: &QuestionDispositionDraft) -> Result<(), Error> {
+    validate_nonempty("Question disposition reason", &draft.reason)?;
+    validate_nonempty("Question disposition actor identity", &draft.actor.identity)?;
+    validate_string_list("Question disposition revisit basis", &draft.revisit_basis)?;
+    if draft.source_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "non-user Question disposition requires a Source basis",
+        ));
+    }
+    if draft.actor.kind == PrincipalKind::User {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "non-user Question disposition cannot claim user provenance",
+        ));
+    }
+    if draft.outcome == NonUserQuestionOutcome::Superseded
+        && draft.replacement_question_id.is_none()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "superseded Question disposition requires a replacement Question",
+        ));
+    }
+    if draft.outcome == NonUserQuestionOutcome::Deferred && draft.revisit_basis.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "deferred Question disposition requires a revisit basis",
+        ));
     }
     Ok(())
 }
@@ -3716,6 +4004,15 @@ fn question_basis(
         .bytes(&encoded.trade_offs)
         .bytes(&encoded.uncertainty)
         .bytes(&encoded.material_scope)
+        .string(draft.materiality.as_str())
+        .number(draft.presentation_order)
+        .string(&draft.why_it_matters_now)
+        .bytes(&encoded.established_facts)
+        .bytes(&encoded.assumptions)
+        .bytes(&encoded.known_limits)
+        .bytes(&encoded.answer_unlocks)
+        .bytes(&encoded.allowed_dispositions)
+        .string(draft.research_state.as_str())
         .finish()
 }
 
@@ -3753,9 +4050,6 @@ fn response_basis(project_id: ProjectId, draft: &QuestionResponseDraft) -> Resul
             .string("delegation")
             .string(delegate_to)
             .optional_string(user_rationale.as_deref()),
-        ExplicitQuestionResponse::Terminal { outcome } => {
-            basis.string("terminal").string(outcome.as_str())
-        }
     };
     Ok(basis
         .bytes(&encode_strings(&draft.applicability.paths))
@@ -3764,6 +4058,63 @@ fn response_basis(project_id: ProjectId, draft: &QuestionResponseDraft) -> Resul
         .bytes(&encode_strings(&draft.assumptions))
         .bytes(&encode_strings(&draft.revisit_triggers))
         .finish())
+}
+
+fn question_disposition_basis(project_id: ProjectId, draft: &QuestionDispositionDraft) -> Vec<u8> {
+    Basis::new("dispose_question")
+        .bytes(project_id.as_bytes())
+        .number(draft.expected_project_revision)
+        .bytes(draft.question_id.as_bytes())
+        .number(draft.question_revision)
+        .string(draft.outcome.as_str())
+        .bytes(&encode_source_ids(&draft.source_basis))
+        .string(&draft.reason)
+        .optional_bytes(
+            draft
+                .replacement_question_id
+                .as_ref()
+                .map(QuestionId::as_bytes)
+                .map(<[u8; 16]>::as_slice),
+        )
+        .bytes(&encode_strings(&draft.revisit_basis))
+        .string(draft.actor.kind.as_str())
+        .string(&draft.actor.identity)
+        .finish()
+}
+
+fn insert_question_terminal_disposition(
+    transaction: &Transaction<'_>,
+    project_id: ProjectId,
+    question_id: QuestionId,
+    question_revision: u64,
+    disposition: &QuestionTerminalDisposition,
+) -> Result<(), Error> {
+    transaction
+        .execute(
+            "INSERT INTO question_terminal_dispositions(
+                 project_id, question_id, question_revision, outcome, source_basis, reason,
+                 replacement_question_id, revisit_basis, actor_kind, actor_identity, recorded_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                project_id.as_bytes().as_slice(),
+                question_id.as_bytes().as_slice(),
+                revision_i64(question_revision)?,
+                disposition.outcome.as_str(),
+                encode_source_ids(&disposition.source_basis),
+                disposition.reason,
+                disposition
+                    .replacement_question_id
+                    .as_ref()
+                    .map(QuestionId::as_bytes)
+                    .map(<[u8; 16]>::as_slice),
+                encode_strings(&disposition.revisit_basis),
+                disposition.actor.kind.as_str(),
+                disposition.actor.identity,
+                disposition.recorded_at.as_unix_micros(),
+            ],
+        )
+        .map_err(write_error)?;
+    Ok(())
 }
 
 fn insert_question_revision(
@@ -3779,8 +4130,11 @@ fn insert_question_revision(
             "INSERT INTO question_revisions(
                  question_id, revision, project_id, prompt_basis, source_basis, dependencies,
                  alternatives, recommendation_key, recommendation_rationale,
-                 recommendation_sources, trade_offs, uncertainty, material_scope, recorded_at
-             ) VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 recommendation_sources, trade_offs, uncertainty, material_scope, materiality,
+                 presentation_order, why_it_matters_now, established_facts, assumptions,
+                 known_limits, answer_unlocks, allowed_dispositions, research_state, recorded_at
+             ) VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                       ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 question_id.as_bytes().as_slice(),
                 project_id.as_bytes().as_slice(),
@@ -3794,6 +4148,15 @@ fn insert_question_revision(
                 encoded.trade_offs,
                 encoded.uncertainty,
                 encoded.material_scope,
+                draft.materiality.as_str(),
+                revision_i64(draft.presentation_order)?,
+                draft.why_it_matters_now,
+                encoded.established_facts,
+                encoded.assumptions,
+                encoded.known_limits,
+                encoded.answer_unlocks,
+                encoded.allowed_dispositions,
+                draft.research_state.as_str(),
                 now.as_unix_micros(),
             ],
         )
@@ -3836,7 +4199,9 @@ fn load_question(
         .query_row(
             "SELECT prompt_basis, source_basis, dependencies, alternatives,
                     recommendation_key, recommendation_rationale, recommendation_sources,
-                    trade_offs, uncertainty, material_scope
+                    trade_offs, uncertainty, material_scope, materiality, presentation_order,
+                    why_it_matters_now, established_facts, assumptions, known_limits,
+                    answer_unlocks, allowed_dispositions, research_state
              FROM question_revisions WHERE question_id = ?1 AND revision = ?2",
             params![question_id.as_bytes().as_slice(), revision_i64(revision)?],
             |row| {
@@ -3851,6 +4216,15 @@ fn load_question(
                     row.get::<_, Vec<u8>>(7)?,
                     row.get::<_, Vec<u8>>(8)?,
                     row.get::<_, Vec<u8>>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, i64>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, Vec<u8>>(13)?,
+                    row.get::<_, Vec<u8>>(14)?,
+                    row.get::<_, Vec<u8>>(15)?,
+                    row.get::<_, Vec<u8>>(16)?,
+                    row.get::<_, Vec<u8>>(17)?,
+                    row.get::<_, String>(18)?,
                 ))
             },
         )
@@ -3873,6 +4247,67 @@ fn load_question(
             })?)
         }
     };
+    let terminal_disposition = connection
+        .query_row(
+            "SELECT outcome, source_basis, reason, replacement_question_id, revisit_basis,
+                    actor_kind, actor_identity, recorded_at
+             FROM question_terminal_dispositions
+             WHERE project_id = ?1 AND question_id = ?2 AND question_revision = ?3",
+            params![
+                project_id.as_bytes().as_slice(),
+                question_id.as_bytes().as_slice(),
+                revision_i64(revision)?,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<Vec<u8>>>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(read_error)?
+        .map(|value| {
+            Ok(QuestionTerminalDisposition {
+                outcome: QuestionTerminalOutcome::parse(&value.0).ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "stored Question disposition is invalid",
+                    )
+                })?,
+                source_basis: decode_source_ids(&value.1)?,
+                reason: value.2,
+                replacement_question_id: value
+                    .3
+                    .as_deref()
+                    .map(QuestionId::from_slice)
+                    .transpose()?,
+                revisit_basis: decode_strings(&value.4)?,
+                actor: Principal {
+                    kind: PrincipalKind::parse(&value.5).ok_or_else(|| {
+                        Error::new(
+                            ErrorKind::CorruptState,
+                            "stored Question disposition actor is invalid",
+                        )
+                    })?,
+                    identity: value.6,
+                },
+                recorded_at: TimestampMicros::from_unix_micros(value.7),
+            })
+        })
+        .transpose()?;
+    if matches!(state, QuestionState::Terminal(_)) != terminal_disposition.is_some() {
+        return Err(Error::new(
+            ErrorKind::RepairRequired,
+            "Question terminal state and disposition basis are inconsistent",
+        ));
+    }
     Ok(Question {
         id: question_id,
         project_id,
@@ -3889,7 +4324,27 @@ fn load_question(
         trade_offs: decode_strings(&row.7)?,
         uncertainty: decode_strings(&row.8)?,
         material_scope: decode_strings(&row.9)?,
+        materiality: QuestionMateriality::parse(&row.10).ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "stored Question materiality is invalid",
+            )
+        })?,
+        presentation_order: stored_revision(row.11)?,
+        why_it_matters_now: row.12,
+        established_facts: decode_established_facts(&row.13)?,
+        assumptions: decode_strings(&row.14)?,
+        known_limits: decode_strings(&row.15)?,
+        what_the_answer_unlocks: decode_strings(&row.16)?,
+        allowed_non_choice_dispositions: decode_non_user_outcomes(&row.17)?,
+        research_state: QuestionResearchState::parse(&row.18).ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "stored Question research state is invalid",
+            )
+        })?,
         state,
+        terminal_disposition,
         created_at: TimestampMicros::from_unix_micros(current.3),
         updated_at: TimestampMicros::from_unix_micros(current.4),
     })
@@ -3966,7 +4421,6 @@ fn interpret_explicit_response<'a>(
                 user_rationale.as_deref(),
             ))
         }
-        ExplicitQuestionResponse::Terminal { outcome } => Ok((*outcome, None, None)),
     }
 }
 
@@ -4260,13 +4714,21 @@ fn encode_dependencies(values: &[QuestionDependency]) -> Vec<u8> {
     push_u64(&mut bytes, values.len() as u64);
     for value in values {
         bytes.extend_from_slice(value.question_id.as_bytes());
-        match value.required_revision {
-            Some(revision) => {
-                bytes.push(1);
-                push_u64(&mut bytes, revision);
-            }
-            None => bytes.push(0),
-        }
+        push_u64(&mut bytes, value.required_revision);
+        push_bytes(&mut bytes, value.required_outcome.as_str().as_bytes());
+        push_bytes(&mut bytes, &encode_source_ids(&value.required_source_basis));
+        push_bytes(
+            &mut bytes,
+            &encode_terminal_outcomes(&value.blocked_outcomes),
+        );
+        push_bytes(
+            &mut bytes,
+            &encode_terminal_outcomes(&value.superseding_outcomes),
+        );
+        push_bytes(
+            &mut bytes,
+            &encode_source_ids(&value.assessment_source_basis),
+        );
     }
     bytes
 }
@@ -4277,14 +4739,106 @@ fn decode_dependencies(bytes: &[u8]) -> Result<Vec<QuestionDependency>, Error> {
     let mut values = Vec::with_capacity(count);
     for _ in 0..count {
         let question_id = QuestionId::from_slice(cursor.fixed(16)?)?;
-        let required_revision = match cursor.byte()? {
-            0 => None,
-            1 => Some(cursor.u64()?),
-            _ => return Err(malformed_blob()),
-        };
+        let required_revision = cursor.u64()?;
+        let required_outcome = QuestionTerminalOutcome::parse(
+            std::str::from_utf8(cursor.bytes()?).map_err(|_| malformed_blob())?,
+        )
+        .ok_or_else(malformed_blob)?;
+        let required_source_basis = decode_source_ids(cursor.bytes()?)?;
+        let blocked_outcomes = decode_terminal_outcomes(cursor.bytes()?)?;
+        let superseding_outcomes = decode_terminal_outcomes(cursor.bytes()?)?;
+        let assessment_source_basis = decode_source_ids(cursor.bytes()?)?;
         values.push(QuestionDependency {
             question_id,
             required_revision,
+            required_outcome,
+            required_source_basis,
+            blocked_outcomes,
+            superseding_outcomes,
+            assessment_source_basis,
+        });
+    }
+    cursor.finish()?;
+    Ok(values)
+}
+
+fn encode_terminal_outcomes(values: &[QuestionTerminalOutcome]) -> Vec<u8> {
+    encode_strings(
+        &values
+            .iter()
+            .map(|value| value.as_str().to_owned())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn decode_terminal_outcomes(bytes: &[u8]) -> Result<Vec<QuestionTerminalOutcome>, Error> {
+    decode_strings(bytes)?
+        .into_iter()
+        .map(|value| QuestionTerminalOutcome::parse(&value).ok_or_else(malformed_blob))
+        .collect()
+}
+
+fn encode_non_user_outcomes(values: &[NonUserQuestionOutcome]) -> Vec<u8> {
+    encode_strings(
+        &values
+            .iter()
+            .map(|value| value.as_str().to_owned())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn decode_non_user_outcomes(bytes: &[u8]) -> Result<Vec<NonUserQuestionOutcome>, Error> {
+    decode_strings(bytes)?
+        .into_iter()
+        .map(|value| NonUserQuestionOutcome::parse(&value).ok_or_else(malformed_blob))
+        .collect()
+}
+
+fn encode_established_facts(values: &[QuestionEstablishedFact]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, values.len() as u64);
+    for value in values {
+        push_bytes(&mut bytes, value.statement.as_bytes());
+        push_bytes(&mut bytes, &encode_source_ids(&value.source_basis));
+        match &value.capability {
+            Some(capability) => {
+                bytes.push(1);
+                push_bytes(&mut bytes, capability.as_bytes());
+            }
+            None => bytes.push(0),
+        }
+        push_bytes(&mut bytes, value.freshness.as_str().as_bytes());
+    }
+    bytes
+}
+
+fn decode_established_facts(bytes: &[u8]) -> Result<Vec<QuestionEstablishedFact>, Error> {
+    let mut cursor = BlobCursor::new(bytes);
+    let count = cursor.count()?;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        let statement = std::str::from_utf8(cursor.bytes()?)
+            .map_err(|_| malformed_blob())?
+            .to_owned();
+        let source_basis = decode_source_ids(cursor.bytes()?)?;
+        let capability = match cursor.byte()? {
+            0 => None,
+            1 => Some(
+                std::str::from_utf8(cursor.bytes()?)
+                    .map_err(|_| malformed_blob())?
+                    .to_owned(),
+            ),
+            _ => return Err(malformed_blob()),
+        };
+        let freshness = QuestionEvidenceFreshness::parse(
+            std::str::from_utf8(cursor.bytes()?).map_err(|_| malformed_blob())?,
+        )
+        .ok_or_else(malformed_blob)?;
+        values.push(QuestionEstablishedFact {
+            statement,
+            source_basis,
+            capability,
+            freshness,
         });
     }
     cursor.finish()?;
@@ -4541,6 +5095,15 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  trade_offs BLOB NOT NULL,
                  uncertainty BLOB NOT NULL,
                  material_scope BLOB NOT NULL,
+                 materiality TEXT NOT NULL CHECK(materiality IN ('material','not_material')),
+                 presentation_order INTEGER NOT NULL CHECK(presentation_order >= 0),
+                 why_it_matters_now TEXT NOT NULL CHECK(length(why_it_matters_now) > 0),
+                 established_facts BLOB NOT NULL,
+                 assumptions BLOB NOT NULL,
+                 known_limits BLOB NOT NULL,
+                 answer_unlocks BLOB NOT NULL,
+                 allowed_dispositions BLOB NOT NULL,
+                 research_state TEXT NOT NULL CHECK(research_state IN ('ready_to_ask','research_required')),
                  recorded_at INTEGER NOT NULL,
                  PRIMARY KEY(question_id, revision),
                  FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT
@@ -4555,6 +5118,29 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE question_terminal_dispositions(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 question_id BLOB NOT NULL CHECK(length(question_id) = 16),
+                 question_revision INTEGER NOT NULL CHECK(question_revision >= 1),
+                 outcome TEXT NOT NULL CHECK(outcome IN (
+                     'answered','delegated','resolved_by_research','requires_prototype',
+                     'deferred','out_of_scope','superseded'
+                 )),
+                 source_basis BLOB NOT NULL,
+                 reason TEXT NOT NULL CHECK(length(reason) > 0),
+                 replacement_question_id BLOB CHECK(
+                     replacement_question_id IS NULL OR length(replacement_question_id) = 16
+                 ),
+                 revisit_basis BLOB NOT NULL,
+                 actor_kind TEXT NOT NULL CHECK(actor_kind IN (
+                     'user','agent','repository','command','provider','generator','importer'
+                 )),
+                 actor_identity TEXT NOT NULL CHECK(length(actor_identity) > 0),
+                 recorded_at INTEGER NOT NULL,
+                 PRIMARY KEY(project_id, question_id, question_revision),
+                 FOREIGN KEY(project_id, question_id) REFERENCES questions(project_id, id) ON DELETE RESTRICT,
+                 FOREIGN KEY(question_id, question_revision) REFERENCES question_revisions(question_id, revision) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE question_decision_history_witnesses(
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
@@ -5080,6 +5666,7 @@ fn ensure_replay_input(
         "relate_sources" => "source_relation",
         "create_question" => "question",
         "record_question_response" => "question_response",
+        "dispose_question" => "question_disposition",
         "record_context_item" => "context_item",
         "record_checkpoint" => "checkpoint",
         "correct_context_item" => "context_item",
@@ -5627,6 +6214,13 @@ impl Basis {
     fn optional_string(self, value: Option<&str>) -> Self {
         match value {
             Some(value) => self.string("some").string(value),
+            None => self.string("none"),
+        }
+    }
+
+    fn optional_bytes(self, value: Option<&[u8]>) -> Self {
+        match value {
+            Some(value) => self.string("some").bytes(value),
             None => self.string("none"),
         }
     }

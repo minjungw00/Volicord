@@ -129,6 +129,16 @@ fn populate(store: &mut Store) -> Result<Fixture, Box<dyn std::error::Error>> {
                 trade_offs: vec!["No ranking".to_owned()],
                 uncertainty: vec![],
                 material_scope: vec!["canonical read".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "the canonical read contract depends on this choice".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["canonical read ordering".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;

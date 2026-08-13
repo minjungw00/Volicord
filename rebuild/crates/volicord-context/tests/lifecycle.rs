@@ -119,6 +119,16 @@ fn create_decision(
                 trade_offs: vec!["availability".to_owned()],
                 uncertainty: vec![],
                 material_scope: vec!["storage".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "storage authority is unresolved".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["storage implementation".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;

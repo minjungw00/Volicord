@@ -279,6 +279,15 @@ fn question_draft(source_id: volicord_context::SourceId, prompt: &str) -> Questi
         trade_offs: vec!["time".to_owned()],
         uncertainty: vec!["future changes".to_owned()],
         material_scope: vec!["checkpoint tests".to_owned()],
+        materiality: volicord_context::QuestionMateriality::Material,
+        presentation_order: 0,
+        why_it_matters_now: "checkpoint work depends on this choice".to_owned(),
+        established_facts: vec![],
+        assumptions: vec![],
+        known_limits: vec![],
+        what_the_answer_unlocks: vec!["checkpoint progress".to_owned()],
+        allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL.to_vec(),
+        research_state: volicord_context::QuestionResearchState::ReadyToAsk,
     }
 }
 

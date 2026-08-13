@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 5;
+pub const BUNDLE_FORMAT_VERSION: u32 = 6;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -173,6 +173,15 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "trade_offs",
             "uncertainty",
             "material_scope",
+            "materiality",
+            "presentation_order",
+            "why_it_matters_now",
+            "established_facts",
+            "assumptions",
+            "known_limits",
+            "answer_unlocks",
+            "allowed_dispositions",
+            "research_state",
             "recorded_at",
         ],
         primary_key: &[0, 1],
@@ -186,6 +195,25 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "question_id",
             "question_revision",
             "source_id",
+            "recorded_at",
+        ],
+        primary_key: &[0, 1, 2],
+        project_column: 0,
+        order_by: "question_id, question_revision",
+    },
+    TableSpec {
+        name: "question_terminal_dispositions",
+        columns: &[
+            "project_id",
+            "question_id",
+            "question_revision",
+            "outcome",
+            "source_basis",
+            "reason",
+            "replacement_question_id",
+            "revisit_basis",
+            "actor_kind",
+            "actor_identity",
             "recorded_at",
         ],
         primary_key: &[0, 1, 2],
@@ -920,6 +948,7 @@ pub(crate) fn validate_portable_canonical_invariants(
                 "source_relations" => Some(("source", 1)),
                 "question_revisions" => Some(("question", 0)),
                 "question_response_sources" => Some(("question", 1)),
+                "question_terminal_dispositions" => Some(("question", 1)),
                 "decision_revisions" => Some(("decision", 0)),
                 "context_item_sources" => Some(("context_item", 1)),
                 "context_item_revisions" => Some(("context_item", 0)),
@@ -948,6 +977,22 @@ pub(crate) fn validate_portable_canonical_invariants(
                         ErrorKind::CorruptState,
                         "Question response references a missing active Source",
                     ));
+                }
+                "question_terminal_dispositions" => {
+                    for source_id in decode_source_ids(&value_bytes(&row[4])?)? {
+                        if !present("source", &PortableValue::Bytes(source_id.to_string())) {
+                            return Err(Error::new(
+                                ErrorKind::CorruptState,
+                                "Question terminal disposition references a missing Source",
+                            ));
+                        }
+                    }
+                    if !matches!(row[6], PortableValue::Null) && !present("question", &row[6]) {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Question terminal disposition references a missing replacement Question",
+                        ));
+                    }
                 }
                 "question_decision_history_witnesses" => {
                     if !present("question", &row[1])
@@ -1128,6 +1173,11 @@ fn validate_decision_semantics(
         .iter()
         .map(|row| Ok(((value_key(&row[1]), value_integer(&row[2])?), row)))
         .collect::<Result<BTreeMap<_, _>, Error>>()?;
+    let dispositions = required_table(payload, "question_terminal_dispositions")?
+        .rows
+        .iter()
+        .map(|row| Ok(((value_key(&row[1]), value_integer(&row[2])?), row)))
+        .collect::<Result<BTreeMap<_, _>, Error>>()?;
     let decisions = required_table(payload, "decisions")?
         .rows
         .iter()
@@ -1217,6 +1267,7 @@ fn validate_decision_semantics(
         &question_revisions,
         &responses,
         &witnesses,
+        &dispositions,
         &decisions,
         &supersedes,
         tombstones,
@@ -1462,6 +1513,7 @@ fn validate_question_response_roles(
     question_revisions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
     responses: &BTreeMap<(String, i64), String>,
     witnesses: &BTreeMap<(String, i64), &Vec<PortableValue>>,
+    dispositions: &BTreeMap<(String, i64), &Vec<PortableValue>>,
     decisions: &BTreeMap<String, &Vec<PortableValue>>,
     supersedes: &BTreeMap<String, String>,
     tombstones: &BTreeSet<(String, String)>,
@@ -1518,6 +1570,7 @@ fn validate_question_response_roles(
         let key = (question_id.clone(), revision);
         let response = responses.get(&key);
         let witness = witnesses.get(&key).copied();
+        let disposition = dispositions.get(&key).copied();
         let linked_decisions = decisions_by_question
             .get(&key)
             .map(Vec::as_slice)
@@ -1525,7 +1578,11 @@ fn validate_question_response_roles(
         let outcome = optional_text(&question[3])?;
         match outcome {
             None => {
-                if response.is_some() || witness.is_some() || !linked_decisions.is_empty() {
+                if response.is_some()
+                    || witness.is_some()
+                    || disposition.is_some()
+                    || !linked_decisions.is_empty()
+                {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
                         "open Question carries terminal response history",
@@ -1533,6 +1590,19 @@ fn validate_question_response_roles(
                 }
             }
             Some(outcome @ ("answered" | "delegated")) => {
+                let disposition = disposition.ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "answered or delegated Question has no terminal disposition basis",
+                    )
+                })?;
+                if value_text(&disposition[3])? != outcome || value_text(&disposition[8])? != "user"
+                {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "user Question terminal disposition has invalid outcome or actor",
+                    ));
+                }
                 let witness = witness.ok_or_else(|| {
                     Error::new(
                         ErrorKind::CorruptState,
@@ -1560,7 +1630,20 @@ fn validate_question_response_roles(
                     ));
                 }
             }
-            Some(_) => {
+            Some(outcome) => {
+                let disposition = disposition.ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "non-user terminal Question has no disposition basis",
+                    )
+                })?;
+                if value_text(&disposition[3])? != outcome || value_text(&disposition[8])? == "user"
+                {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "non-user Question disposition has invalid outcome or user provenance",
+                    ));
+                }
                 if witness.is_some() || !linked_decisions.is_empty() {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
@@ -1568,6 +1651,14 @@ fn validate_question_response_roles(
                     ));
                 }
             }
+        }
+    }
+    for key in dispositions.keys() {
+        if !questions.contains_key(&key.0) {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Question terminal disposition has no active Question",
+            ));
         }
     }
     Ok(())
@@ -2119,6 +2210,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 5);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 6);
     }
 }

@@ -134,6 +134,17 @@ fn populate(
                 trade_offs: vec!["size".to_owned()],
                 uncertainty: vec![],
                 material_scope: vec!["bundle".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "the portable representation requires a format choice"
+                    .to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["portable publication".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;

@@ -2,6 +2,7 @@ use crate::{
     CheckpointId, ContextItemId, DecisionId, LocalBindingId, ProjectId, QuestionId, SourceId,
     TimestampMicros,
 };
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,7 +34,7 @@ impl Availability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PrincipalKind {
     User,
     Agent,
@@ -71,7 +72,7 @@ impl PrincipalKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Principal {
     pub kind: PrincipalKind,
     pub identity: String,
@@ -238,20 +239,108 @@ pub struct OperationResult<T> {
     pub replayed: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct QuestionDependency {
     pub question_id: QuestionId,
-    pub required_revision: Option<u64>,
+    pub required_revision: u64,
+    pub required_outcome: QuestionTerminalOutcome,
+    pub required_source_basis: Vec<SourceId>,
+    pub blocked_outcomes: Vec<QuestionTerminalOutcome>,
+    pub superseding_outcomes: Vec<QuestionTerminalOutcome>,
+    pub assessment_source_basis: Vec<SourceId>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum QuestionMateriality {
+    Material,
+    NotMaterial,
+}
+
+impl QuestionMateriality {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Material => "material",
+            Self::NotMaterial => "not_material",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "material" => Some(Self::Material),
+            "not_material" => Some(Self::NotMaterial),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum QuestionEvidenceFreshness {
+    Current,
+    Stale,
+    Unavailable,
+    Unknown,
+}
+
+impl QuestionEvidenceFreshness {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Current => "current",
+            Self::Stale => "stale",
+            Self::Unavailable => "unavailable",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "current" => Some(Self::Current),
+            "stale" => Some(Self::Stale),
+            "unavailable" => Some(Self::Unavailable),
+            "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct QuestionEstablishedFact {
+    pub statement: String,
+    pub source_basis: Vec<SourceId>,
+    pub capability: Option<String>,
+    pub freshness: QuestionEvidenceFreshness,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum QuestionResearchState {
+    ReadyToAsk,
+    ResearchRequired,
+}
+
+impl QuestionResearchState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadyToAsk => "ready_to_ask",
+            Self::ResearchRequired => "research_required",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "ready_to_ask" => Some(Self::ReadyToAsk),
+            "research_required" => Some(Self::ResearchRequired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct QuestionAlternative {
     pub key: String,
     pub label: String,
     pub consequence: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentRecommendation {
     pub alternative_key: Option<String>,
     pub rationale: String,
@@ -269,9 +358,18 @@ pub struct QuestionDraft {
     pub trade_offs: Vec<String>,
     pub uncertainty: Vec<String>,
     pub material_scope: Vec<String>,
+    pub materiality: QuestionMateriality,
+    pub presentation_order: u64,
+    pub why_it_matters_now: String,
+    pub established_facts: Vec<QuestionEstablishedFact>,
+    pub assumptions: Vec<String>,
+    pub known_limits: Vec<String>,
+    pub what_the_answer_unlocks: Vec<String>,
+    pub allowed_non_choice_dispositions: Vec<NonUserQuestionOutcome>,
+    pub research_state: QuestionResearchState,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum QuestionTerminalOutcome {
     Answered,
     Delegated,
@@ -309,6 +407,61 @@ impl QuestionTerminalOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum NonUserQuestionOutcome {
+    ResolvedByResearch,
+    RequiresPrototype,
+    Deferred,
+    OutOfScope,
+    Superseded,
+}
+
+impl NonUserQuestionOutcome {
+    pub const ALL: [Self; 5] = [
+        Self::ResolvedByResearch,
+        Self::RequiresPrototype,
+        Self::Deferred,
+        Self::OutOfScope,
+        Self::Superseded,
+    ];
+
+    pub const fn terminal_outcome(self) -> QuestionTerminalOutcome {
+        match self {
+            Self::ResolvedByResearch => QuestionTerminalOutcome::ResolvedByResearch,
+            Self::RequiresPrototype => QuestionTerminalOutcome::RequiresPrototype,
+            Self::Deferred => QuestionTerminalOutcome::Deferred,
+            Self::OutOfScope => QuestionTerminalOutcome::OutOfScope,
+            Self::Superseded => QuestionTerminalOutcome::Superseded,
+        }
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        self.terminal_outcome().as_str()
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "resolved_by_research" => Some(Self::ResolvedByResearch),
+            "requires_prototype" => Some(Self::RequiresPrototype),
+            "deferred" => Some(Self::Deferred),
+            "out_of_scope" => Some(Self::OutOfScope),
+            "superseded" => Some(Self::Superseded),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionTerminalDisposition {
+    pub outcome: QuestionTerminalOutcome,
+    pub source_basis: Vec<SourceId>,
+    pub reason: String,
+    pub replacement_question_id: Option<QuestionId>,
+    pub revisit_basis: Vec<String>,
+    pub actor: Principal,
+    pub recorded_at: TimestampMicros,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum QuestionState {
     Open,
@@ -328,7 +481,17 @@ pub struct Question {
     pub trade_offs: Vec<String>,
     pub uncertainty: Vec<String>,
     pub material_scope: Vec<String>,
+    pub materiality: QuestionMateriality,
+    pub presentation_order: u64,
+    pub why_it_matters_now: String,
+    pub established_facts: Vec<QuestionEstablishedFact>,
+    pub assumptions: Vec<String>,
+    pub known_limits: Vec<String>,
+    pub what_the_answer_unlocks: Vec<String>,
+    pub allowed_non_choice_dispositions: Vec<NonUserQuestionOutcome>,
+    pub research_state: QuestionResearchState,
     pub state: QuestionState,
+    pub terminal_disposition: Option<QuestionTerminalDisposition>,
     pub created_at: TimestampMicros,
     pub updated_at: TimestampMicros,
 }
@@ -380,9 +543,6 @@ pub enum ExplicitQuestionResponse {
         delegate_to: String,
         user_rationale: Option<String>,
     },
-    Terminal {
-        outcome: QuestionTerminalOutcome,
-    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -404,6 +564,19 @@ pub struct QuestionResponseResult {
     pub question: Question,
     pub user_turn_source: Source,
     pub decision: Option<Decision>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionDispositionDraft {
+    pub expected_project_revision: u64,
+    pub question_id: QuestionId,
+    pub question_revision: u64,
+    pub outcome: NonUserQuestionOutcome,
+    pub source_basis: Vec<SourceId>,
+    pub reason: String,
+    pub replacement_question_id: Option<QuestionId>,
+    pub revisit_basis: Vec<String>,
+    pub actor: Principal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

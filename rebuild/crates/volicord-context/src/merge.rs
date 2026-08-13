@@ -600,7 +600,7 @@ fn classify_rows(
                 "decisions" | "decision_revisions" => (BundleConflictClass::SemanticDecisionConflict, false,
                     "Choosing a side changes user judgment, rationale, applicability, or Decision history.",
                     Some("Decision meaning is user-owned and cannot be selected by ordering or timestamp.")),
-                "questions" | "question_revisions" | "question_response_sources" | "question_decision_history_witnesses" => (BundleConflictClass::SameRecordRevision, false,
+                "questions" | "question_revisions" | "question_response_sources" | "question_terminal_dispositions" | "question_decision_history_witnesses" => (BundleConflictClass::SameRecordRevision, false,
                     "The same Question history changed differently on both sides.",
                     Some("Question meaning, dependencies, or terminal state require user judgment.")),
                 "tombstones" => (BundleConflictClass::DeleteModifyConflict, false,
@@ -855,6 +855,7 @@ fn row_owner(table: &str, row: &[PortableValue]) -> Result<Option<CanonicalRecor
         "questions" => Some(canonical_record_identity("question", &row[0])),
         "question_revisions" => Some(canonical_record_identity("question", &row[0])),
         "question_response_sources" => Some(canonical_record_identity("question", &row[1])),
+        "question_terminal_dispositions" => Some(canonical_record_identity("question", &row[1])),
         "question_decision_history_witnesses" => {
             Some(canonical_record_identity("question", &row[1]))
         }
@@ -1102,6 +1103,15 @@ fn retain_relation_integrity(selected: &mut RowMap) -> Result<(), Error> {
             "question_response_sources" => {
                 active.contains(&canonical_record_identity("question", &row[1]))
                     && active.contains(&canonical_record_identity("source", &row[3]))
+            }
+            "question_terminal_dispositions" => {
+                active.contains(&canonical_record_identity("question", &row[1]))
+                    && match &row[6] {
+                        PortableValue::Null => true,
+                        replacement => {
+                            record_present(&active, &tombstones, "question", replacement)
+                        }
+                    }
             }
             "question_decision_history_witnesses" => {
                 record_present(&active, &tombstones, "question", &row[1])

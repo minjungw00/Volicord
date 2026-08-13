@@ -618,6 +618,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-inquiry"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "volicord-context",
+ "volicord-repository-intelligence",
+]
+
+[[package]]
 name = "volicord-repository-intelligence"
 version = "0.1.0"
 dependencies = [

@@ -7,7 +7,7 @@ provenance, persist explicit Source relations, and durably record Questions and
 atomic explicit user Decisions, typed Context Items, and source-grounded
 Checkpoints, lifecycle revisions, supersession, contradiction, review-due state,
 and user-authorized forgetting. This file records concrete
-Phase 4 implementation choices; the product and architecture meaning remains
+canonical implementation choices; the product and architecture meaning remains
 owned by `rebuild/docs/design/`.
 
 ## Runtime and persistence choices
@@ -31,7 +31,7 @@ owned by `rebuild/docs/design/`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
   behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 11 }`. An existing
+- Schema metadata is `{ kind = "volicord-context", version = 13 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
@@ -58,11 +58,13 @@ owned by `rebuild/docs/design/`.
   reporting success. Preconditions produce typed stale-basis errors. The kernel
   does not retry a canonical write under another identity.
 - Question identity is independent of its prompt basis. Revision-one Question
-  content is immutable and includes exact Source/dependency basis, displayed
-  alternatives, agent recommendation, trade-offs, uncertainty, material scope,
-  and one of the accepted terminal outcomes.
-- A Question response operation accepts only an already explicit alternative,
-  delegation, or non-Decision terminal outcome. It atomically creates or
+  content is immutable and includes exact Source/dependency outcome and
+  revision basis, stable presentation order, established facts, assumptions,
+  displayed alternatives, agent recommendation, trade-offs, uncertainty,
+  material scope, research state, allowed non-choice dispositions, and the
+  basis of an accepted terminal outcome.
+- A Question response operation accepts only an already explicit alternative
+  or delegation. It atomically creates or
   validates a current-host user-turn Source, records the exact revision link,
   creates a Decision when required, transitions the Question, and records the
   operation outcome. Recommendation and user choice remain separate fields.
@@ -77,7 +79,11 @@ owned by `rebuild/docs/design/`.
   delegated outcome, response Source identity, content-free authority/creation
   provenance, and creation time. It contains no prompt, alternatives,
   recommendation, choice/delegate value, rationale, Source payload, or content
-  hash. Non-Decision terminal outcomes create no such witness.
+  hash. The separate `dispose_question` transition owns
+  `resolved_by_research`, `requires_prototype`, `deferred`, `out_of_scope`, and
+  `superseded`, requires explicit non-user actor/reason/Source and
+  replacement/revisit basis where applicable, and creates neither a user-turn
+  response link nor a Decision or response-history witness.
 - Context Items preserve one of eight statement roles independently from user,
   observation, agent, or generated-interpretation provenance. Facts require
   repository/command observation; explicit preferences require a current-host
@@ -132,7 +138,7 @@ owned by `rebuild/docs/design/`.
 ## Portable bundle choices
 
 - The portable representation is kind `volicord-context-bundle`, format
-  version `4`. This is the only readable and writable version. Older or newer
+  version `6`. This is the only readable and writable version. Older or newer
   versions are rejected before mutation; there is no legacy decoder or
   migration path.
 - The payload is compact UTF-8 JSON with one LF terminator, fixed lexicographic

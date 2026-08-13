@@ -1,10 +1,11 @@
 use crate::{Error, ErrorKind};
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt;
 
 macro_rules! opaque_id {
     ($name:ident) => {
-        #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(Clone, Copy, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         pub struct $name([u8; 16]);
 
         impl $name {

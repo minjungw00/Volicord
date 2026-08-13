@@ -4,10 +4,11 @@ use std::path::Path;
 use tempfile::tempdir;
 use volicord_context::{
     AgentRecommendation, ApplicabilityScope, Availability, DecisionChoice,
-    DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse, FixedClock, OperationId,
-    Principal, PrincipalKind, Project, Question, QuestionAlternative, QuestionDraft,
-    QuestionResponseDraft, QuestionState, QuestionTerminalOutcome, Source, SourceDraft,
-    SourcePayload, Store, TimestampMicros, UserTurnSource,
+    DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse, FixedClock,
+    NonUserQuestionOutcome, OperationId, Principal, PrincipalKind, Project, Question,
+    QuestionAlternative, QuestionDispositionDraft, QuestionDraft, QuestionResponseDraft,
+    QuestionState, QuestionTerminalOutcome, Source, SourceDraft, SourcePayload, Store,
+    TimestampMicros, UserTurnSource,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -97,6 +98,17 @@ fn setup_question(
                 trade_offs: vec!["Capability versus disclosure".to_owned()],
                 uncertainty: vec!["Future provider availability".to_owned()],
                 material_scope: vec!["canonical storage".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "canonical storage cannot proceed without this choice"
+                    .to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["canonical storage".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -264,37 +276,86 @@ fn records_explicit_delegation_as_a_decision() -> Result<(), Box<dyn std::error:
 fn records_every_non_decision_terminal_outcome_without_a_decision(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let outcomes = [
-        QuestionTerminalOutcome::ResolvedByResearch,
-        QuestionTerminalOutcome::RequiresPrototype,
-        QuestionTerminalOutcome::Deferred,
-        QuestionTerminalOutcome::OutOfScope,
-        QuestionTerminalOutcome::Superseded,
+        NonUserQuestionOutcome::ResolvedByResearch,
+        NonUserQuestionOutcome::RequiresPrototype,
+        NonUserQuestionOutcome::Deferred,
+        NonUserQuestionOutcome::OutOfScope,
+        NonUserQuestionOutcome::Superseded,
     ];
     for (index, outcome) in outcomes.into_iter().enumerate() {
         let root = tempdir()?;
-        let mut store = store_with_ids(&root.path().join("context.sqlite3"), &[1, 2, 3, 4])?;
+        let mut store = store_with_ids(&root.path().join("context.sqlite3"), &[1, 2, 3, 4, 5])?;
         let project = store.create_project(operation(20), "Terminal")?.value;
-        let (_, question) = setup_question(&mut store, &project, 21)?;
-        let result = store.record_question_response(
-            operation(23),
+        let (basis, question) = setup_question(&mut store, &project, 21)?;
+        let replacement = if outcome == NonUserQuestionOutcome::Superseded {
+            Some(setup_question(&mut store, &project, 24)?.1.id)
+        } else {
+            None
+        };
+        let result = store.dispose_question(
+            operation(30),
             project.id,
-            response(
-                &question,
-                UserTurnSource::Create(user_turn(&format!("turn-{index}"))),
-                ExplicitQuestionResponse::Terminal { outcome },
-            ),
+            QuestionDispositionDraft {
+                expected_project_revision: 1,
+                question_id: question.id,
+                question_revision: question.revision,
+                outcome,
+                source_basis: vec![basis.id],
+                reason: format!("bounded non-user disposition {index}"),
+                replacement_question_id: replacement,
+                revisit_basis: if outcome == NonUserQuestionOutcome::Deferred {
+                    vec!["when the source basis changes".to_owned()]
+                } else {
+                    vec![]
+                },
+                actor: principal(PrincipalKind::Agent, "inquiry"),
+            },
         )?;
         assert_eq!(
-            result.value.question.state,
-            QuestionState::Terminal(outcome)
+            result.value.state,
+            QuestionState::Terminal(outcome.terminal_outcome())
         );
-        assert!(result.value.decision.is_none());
-        let witness_count: i64 = Connection::open(root.path().join("context.sqlite3"))?.query_row(
+        assert_eq!(
+            result
+                .value
+                .terminal_disposition
+                .as_ref()
+                .map(|value| value.actor.kind),
+            Some(PrincipalKind::Agent)
+        );
+        let connection = Connection::open(root.path().join("context.sqlite3"))?;
+        let witness_count: i64 = connection.query_row(
             "SELECT count(*) FROM question_decision_history_witnesses",
             [],
             |row| row.get(0),
         )?;
         assert_eq!(witness_count, 0);
+        let decision_count: i64 =
+            connection.query_row("SELECT count(*) FROM decisions", [], |row| row.get(0))?;
+        let response_count: i64 = connection.query_row(
+            "SELECT count(*) FROM question_response_sources",
+            [],
+            |row| row.get(0),
+        )?;
+        let disposition_count: i64 = connection.query_row(
+            "SELECT count(*) FROM question_terminal_dispositions",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(decision_count, 0);
+        assert_eq!(response_count, 0);
+        assert_eq!(disposition_count, 1);
+
+        let bundle = root.path().join("non-user-disposition.json");
+        store.export_bundle(project.id, &bundle)?;
+        let mut imported = store_with_ids(&root.path().join("imported.sqlite3"), &[])?;
+        imported.import_bundle(operation(31), &bundle)?;
+        let imported_question = imported.get_question(project.id, question.id)?;
+        assert_eq!(imported_question.state, result.value.state);
+        assert_eq!(
+            imported_question.terminal_disposition,
+            result.value.terminal_disposition
+        );
     }
     Ok(())
 }

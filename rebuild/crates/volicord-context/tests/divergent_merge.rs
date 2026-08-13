@@ -7,9 +7,10 @@ use volicord_context::{
     CanonicalReadOptions, CanonicalRecordId, ContextItemCorrectionDraft, ContextItemDraft,
     ContextItemRole, CorrectionKind, DecisionChoice, DecisionCorrectionDraft,
     DecisionSupersessionDraft, DeterministicIdGenerator, ErrorKind, ExplicitQuestionResponse,
-    FixedClock, MergeResolution, MergeResolutionMode, OperationId, Principal, PrincipalKind,
-    QuestionAlternative, QuestionDraft, QuestionResponseDraft, SourceBindingCandidate, SourceDraft,
-    SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserTurnSource,
+    FixedClock, MergeResolution, MergeResolutionMode, NonUserQuestionOutcome, OperationId,
+    Principal, PrincipalKind, QuestionAlternative, QuestionDispositionDraft, QuestionDraft,
+    QuestionResponseDraft, SourceBindingCandidate, SourceDraft, SourcePayload,
+    StatementProvenanceRole, Store, TimestampMicros, UserTurnSource,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -129,6 +130,16 @@ fn create_base(store: &mut Store) -> Result<Base, Box<dyn std::error::Error>> {
                 trade_offs: vec!["compatibility".to_owned()],
                 uncertainty: vec![],
                 material_scope: vec!["merge".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "merge behavior depends on this choice".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["merge resolution".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -1092,6 +1103,16 @@ fn one_sided_correction_is_bounded_automatic_but_question_state_is_user_owned(
                 trade_offs: vec![],
                 uncertainty: vec!["Needs judgment".to_owned()],
                 material_scope: vec!["question".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "the unresolved branch remains blocked".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["later resolution".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -1103,22 +1124,22 @@ fn one_sided_correction_is_bounded_automatic_but_question_state_is_user_owned(
         &[],
         73,
     )?;
-    question_local.record_question_response(
+    question_local.dispose_question(
         operation(74),
         project.id,
-        QuestionResponseDraft {
+        QuestionDispositionDraft {
             expected_project_revision: 1,
             question_id: question.id,
             question_revision: 1,
-            user_turn_source: UserTurnSource::Existing(source.id),
-            displayed_alternative_keys: vec!["later".to_owned()],
-            displayed_recommendation_key: None,
-            response: ExplicitQuestionResponse::Terminal {
-                outcome: volicord_context::QuestionTerminalOutcome::Deferred,
+            outcome: NonUserQuestionOutcome::Deferred,
+            source_basis: vec![source.id],
+            reason: "defer local branch".to_owned(),
+            replacement_question_id: None,
+            revisit_basis: vec!["after evidence refresh".to_owned()],
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "inquiry".to_owned(),
             },
-            applicability: ApplicabilityScope::default(),
-            assumptions: vec![],
-            revisit_triggers: vec![],
         },
     )?;
     let mut question_incoming = clone_from(
@@ -1127,22 +1148,22 @@ fn one_sided_correction_is_bounded_automatic_but_question_state_is_user_owned(
         &[],
         75,
     )?;
-    question_incoming.record_question_response(
+    question_incoming.dispose_question(
         operation(76),
         project.id,
-        QuestionResponseDraft {
+        QuestionDispositionDraft {
             expected_project_revision: 1,
             question_id: question.id,
             question_revision: 1,
-            user_turn_source: UserTurnSource::Existing(source.id),
-            displayed_alternative_keys: vec!["later".to_owned()],
-            displayed_recommendation_key: None,
-            response: ExplicitQuestionResponse::Terminal {
-                outcome: volicord_context::QuestionTerminalOutcome::OutOfScope,
+            outcome: NonUserQuestionOutcome::OutOfScope,
+            source_basis: vec![source.id],
+            reason: "exclude incoming branch".to_owned(),
+            replacement_question_id: None,
+            revisit_basis: vec![],
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "inquiry".to_owned(),
             },
-            applicability: ApplicabilityScope::default(),
-            assumptions: vec![],
-            revisit_triggers: vec![],
         },
     )?;
     let question_bundle = root.path().join("question-incoming.json");

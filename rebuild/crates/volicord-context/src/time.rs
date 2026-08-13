@@ -1,8 +1,9 @@
 use crate::{Error, ErrorKind};
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Persisted UTC time at fixed microsecond precision.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct TimestampMicros(i64);
 
 impl TimestampMicros {

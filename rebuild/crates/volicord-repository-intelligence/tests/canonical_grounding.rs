@@ -140,6 +140,17 @@ fn canonical_fixture() -> Result<(tempfile::TempDir, CanonicalFixture), Box<dyn 
                 trade_offs: vec!["References carry more metadata".to_owned()],
                 uncertainty: vec![],
                 material_scope: vec!["repository analysis".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "analysis grounding requires stable historical meaning"
+                    .to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["grounded analysis".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;

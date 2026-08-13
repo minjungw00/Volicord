@@ -7,6 +7,7 @@ const REQUIRED_INVARIANTS: &[&str] = &[
     "source-provenance",
     "user-decision-authority",
     "exact-question-revision",
+    "question-inquiry-basis",
     "question-response-history",
     "decision-supersession-lineage",
     "decision-correction-semantics",

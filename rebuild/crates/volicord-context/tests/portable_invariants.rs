@@ -108,6 +108,16 @@ fn fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> {
                 trade_offs: vec![],
                 uncertainty: vec![],
                 material_scope: vec!["portable context".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "portable validation requires a boundary".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["portable admission".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
@@ -1117,6 +1127,16 @@ fn direct_decision_admission_rejects_the_same_representative_semantics(
                 trade_offs: vec![],
                 uncertainty: vec![],
                 material_scope: vec!["portable Decision".to_owned()],
+                materiality: volicord_context::QuestionMateriality::Material,
+                presentation_order: 0,
+                why_it_matters_now: "portable parity requires a boundary".to_owned(),
+                established_facts: vec![],
+                assumptions: vec![],
+                known_limits: vec![],
+                what_the_answer_unlocks: vec!["portable parity".to_owned()],
+                allowed_non_choice_dispositions: volicord_context::NonUserQuestionOutcome::ALL
+                    .to_vec(),
+                research_state: volicord_context::QuestionResearchState::ReadyToAsk,
             },
         )?
         .value;
