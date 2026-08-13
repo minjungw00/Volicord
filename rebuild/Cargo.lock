@@ -630,6 +630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-projections"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "volicord-context",
+ "volicord-inquiry",
+ "volicord-repository-intelligence",
+]
+
+[[package]]
 name = "volicord-repository-intelligence"
 version = "0.1.0"
 dependencies = [
