@@ -6,12 +6,20 @@
 
 mod cli;
 mod error;
+mod guarded;
 mod layout;
 mod model;
 mod operations;
 
 pub use cli::{run_cli, CliExit};
 pub use error::Error;
+pub use guarded::{
+    BackgroundProviderDispatcher, ConfirmationDecision, ConfirmationRejection,
+    ConfirmationRequestId, ConfirmationResponse, ConfirmationResponseId, DispatchExpectation,
+    DispatchObservation, GuardedEffectCandidate, GuardedEffectCategory, GuardedEffectDispatcher,
+    GuardedEffectDraft, GuardedOperationId, GuardedOperationOutcome, GuardedOperationResult,
+    GuardedRisk, GuardedStore, RequestingProvenance,
+};
 pub use layout::RuntimeLayout;
 pub use model::{
     AnalysisOutcome, BindingOutcome, CanonicalMutationOutcome, ChildProcessOutcome, HealthIssue,

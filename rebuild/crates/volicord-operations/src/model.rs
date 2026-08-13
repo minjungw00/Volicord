@@ -133,6 +133,7 @@ pub struct HealthReport {
     pub canonical_available: bool,
     pub candidate_available: bool,
     pub privacy_available: bool,
+    pub guarded_available: bool,
     pub repository_available: Option<bool>,
     pub issues: Vec<HealthIssue>,
 }

@@ -23,8 +23,8 @@ impl RuntimeLayout {
         Ok(Self { root })
     }
 
-    /// Selects only the replacement runtime. The legacy `VOLICORD_HOME`
-    /// variable is intentionally never read.
+    /// Selects only the current product runtime. No legacy runtime variable
+    /// or schema is inspected.
     pub fn from_environment() -> Result<Self, Error> {
         if let Some(root) = env::var_os(RUNTIME_ENV) {
             return Self::new(PathBuf::from(root));
@@ -48,6 +48,9 @@ impl RuntimeLayout {
     }
     pub fn privacy_store(&self) -> PathBuf {
         self.root.join("privacy.sqlite3")
+    }
+    pub fn guarded_store(&self) -> PathBuf {
+        self.root.join("guarded.sqlite3")
     }
     pub fn derived_dir(&self) -> PathBuf {
         self.root.join("derived")

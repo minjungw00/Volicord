@@ -4,6 +4,11 @@ use crate::{
     PartialOutcome, ProgressState, ProjectInitialization, PublicationOutcome, RepairKind,
     RepairOutcome, RuntimeLayout,
 };
+use crate::{
+    ConfirmationDecision, ConfirmationRequestId, ConfirmationResponse, DispatchExpectation,
+    GuardedEffectCandidate, GuardedEffectDispatcher, GuardedEffectDraft, GuardedOperationResult,
+    GuardedStore,
+};
 use sha2::{Digest, Sha256};
 use std::{
     ffi::{OsStr, OsString},
@@ -14,13 +19,13 @@ use std::{
 };
 use volicord_context::{
     Availability, CanonicalReadBasis, CanonicalReadOptions, CanonicalRecordId, CheckpointDraft,
-    Clock, ContextItemCorrectionDraft, ContextItemId, DecisionCorrectionDraft, DecisionId,
-    DecisionSupersessionDraft, OperationId, Principal, PrincipalKind, ProjectId, SourceDraft,
-    SourceId, SourcePayload, Store, SystemClock, TimestampMicros,
+    Clock, ContextItemCorrectionDraft, ContextItemId, DecisionChoice, DecisionCorrectionDraft,
+    DecisionId, DecisionSupersessionDraft, OperationId, Principal, PrincipalKind, ProjectId,
+    SourceDraft, SourceId, SourcePayload, Store, SystemClock, TimestampMicros, UserTurnSource,
 };
 use volicord_inquiry::{
-    compute_frontier, ApplicabilityQuery, CandidateReadBasis, CandidateStore, FrontierRead,
-    InquiryScope,
+    compute_frontier, record_response_batch, ApplicabilityQuery, BatchResponseItem,
+    BatchResponseResult, CandidateReadBasis, CandidateStore, FrontierRead, InquiryScope,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, GitWorktreeLayout,
@@ -66,6 +71,7 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("cannot initialize Candidate store", error))?;
         PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot initialize privacy store", error))?;
+        GuardedStore::open(self.layout.guarded_store())?;
         Ok(())
     }
 
@@ -138,9 +144,11 @@ impl LocalOperations {
         let canonical = Store::open(self.layout.canonical_store());
         let candidates = CandidateStore::open(self.layout.candidate_store());
         let privacy = PrivacyStore::open(self.layout.privacy_store());
+        let guarded = GuardedStore::open(self.layout.guarded_store());
         let canonical_available = canonical.is_ok();
         let candidate_available = candidates.is_ok();
         let privacy_available = privacy.is_ok();
+        let guarded_available = guarded.is_ok();
         if let Err(error) = &canonical {
             issues.push(HealthIssue {
                 kind: classify_context_error(error.kind()),
@@ -159,6 +167,13 @@ impl LocalOperations {
             issues.push(HealthIssue {
                 kind: HealthIssueKind::Failed,
                 scope: "privacy".into(),
+                detail: error.to_string(),
+            });
+        }
+        if let Err(error) = &guarded {
+            issues.push(HealthIssue {
+                kind: HealthIssueKind::Failed,
+                scope: "guarded_operations".into(),
                 detail: error.to_string(),
             });
         }
@@ -202,6 +217,7 @@ impl LocalOperations {
             canonical_available,
             candidate_available,
             privacy_available,
+            guarded_available,
             repository_available,
             issues,
         }
@@ -565,6 +581,15 @@ impl LocalOperations {
         ))
     }
 
+    pub fn record_inquiry_responses(
+        &self,
+        project_id: ProjectId,
+        responses: Vec<BatchResponseItem>,
+    ) -> Result<BatchResponseResult, Error> {
+        let mut canonical = self.open_canonical()?;
+        Ok(record_response_batch(&mut canonical, project_id, responses))
+    }
+
     pub fn record_user_source(
         &self,
         project_id: ProjectId,
@@ -572,36 +597,87 @@ impl LocalOperations {
         session: String,
         turn: String,
     ) -> Result<CanonicalMutationOutcome, Error> {
-        let mut canonical = self.open_canonical()?;
-        let project = canonical
-            .get_project(project_id)
-            .map_err(|error| Error::with_source("cannot read Project", error))?;
-        let result = canonical
-            .record_source(
-                new_operation_id()?,
-                project_id,
-                SourceDraft {
-                    expected_project_revision: project.revision,
-                    payload: SourcePayload::CurrentHostUserTurn {
-                        host,
-                        session,
-                        turn,
-                    },
-                    actor: Principal {
-                        kind: PrincipalKind::User,
-                        identity: "current-host-user".into(),
-                    },
-                    observer: None,
-                    availability: Availability::Available,
-                },
-            )
-            .map_err(|error| Error::with_source("cannot record current-host user Source", error))?;
+        let source = self.create_user_source(project_id, host, session, turn)?;
         Ok(CanonicalMutationOutcome {
             record_kind: "source".into(),
-            identity: result.value.id.to_string(),
+            identity: source.id.to_string(),
             revision: Some(1),
-            replayed: result.replayed,
+            replayed: false,
         })
+    }
+
+    pub fn create_guarded_request(
+        &self,
+        draft: GuardedEffectDraft,
+    ) -> Result<GuardedEffectCandidate, Error> {
+        self.initialize_runtime()?;
+        GuardedStore::open(self.layout.guarded_store())?.create_request(draft, now_micros()?)
+    }
+
+    pub fn revise_guarded_request(
+        &self,
+        request: ConfirmationRequestId,
+        expected_revision: u64,
+        draft: GuardedEffectDraft,
+    ) -> Result<GuardedEffectCandidate, Error> {
+        GuardedStore::open(self.layout.guarded_store())?.revise_request(
+            request,
+            expected_revision,
+            draft,
+            now_micros()?,
+        )
+    }
+
+    pub fn guarded_request(
+        &self,
+        request: ConfirmationRequestId,
+    ) -> Result<GuardedEffectCandidate, Error> {
+        GuardedStore::open(self.layout.guarded_store())?.current_request(request)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_cli_confirmation(
+        &self,
+        request_identity: ConfirmationRequestId,
+        request_revision: u64,
+        effect_fingerprint: &str,
+        decision: ConfirmationDecision,
+        host: String,
+        session: String,
+        user_turn: String,
+    ) -> Result<ConfirmationResponse, Error> {
+        let mut guarded = GuardedStore::open(self.layout.guarded_store())?;
+        let request = guarded.current_request(request_identity)?;
+        if request.request_revision != request_revision
+            || request.effect_fingerprint != effect_fingerprint
+        {
+            return Err(Error::new(
+                "CLI confirmation does not match the current logical request identity, revision, and fingerprint",
+            ));
+        }
+        let source = self.create_user_source(request.project_id, host, session, user_turn)?;
+        let response =
+            ConfirmationResponse::exact_for(&request, decision, source.id, now_micros()?)?;
+        guarded.record_response(response)
+    }
+
+    pub fn dispatch_guarded(
+        &self,
+        request_identity: ConfirmationRequestId,
+        request_revision: u64,
+        expectation: &DispatchExpectation,
+        dispatcher: &mut dyn GuardedEffectDispatcher,
+    ) -> Result<GuardedOperationResult, Error> {
+        let request = self.guarded_request(request_identity)?;
+        let canonical = self.canonical_basis(request.project_id)?;
+        GuardedStore::open(self.layout.guarded_store())?.dispatch(
+            request_identity,
+            request_revision,
+            expectation,
+            &canonical,
+            now_micros()?,
+            dispatcher,
+        )
     }
 
     pub fn correct_context_item(
@@ -655,6 +731,36 @@ impl LocalOperations {
             revision: Some(result.value.revision),
             replayed: result.replayed,
         })
+    }
+
+    pub fn supersede_decision_choice(
+        &self,
+        project_id: ProjectId,
+        previous_decision_id: DecisionId,
+        user_source_id: SourceId,
+        alternative_key: String,
+        user_rationale: Option<String>,
+    ) -> Result<CanonicalMutationOutcome, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let previous = canonical
+            .active_decisions
+            .iter()
+            .chain(canonical.superseded_decisions.iter())
+            .find(|lifecycle| lifecycle.decision.id == previous_decision_id)
+            .ok_or_else(|| Error::new("previous Decision was not found"))?;
+        self.supersede_decision(
+            project_id,
+            DecisionSupersessionDraft {
+                expected_project_revision: canonical.project.revision,
+                previous_decision_id,
+                user_turn_source: UserTurnSource::Existing(user_source_id),
+                choice: DecisionChoice::Alternative { alternative_key },
+                user_rationale,
+                applicability: previous.decision.applicability.clone(),
+                assumptions: previous.decision.assumptions.clone(),
+                revisit_triggers: previous.decision.revisit_triggers.clone(),
+            },
+        )
     }
 
     pub fn forget_record(
@@ -717,6 +823,40 @@ impl LocalOperations {
     fn open_canonical(&self) -> Result<Store, Error> {
         Store::open(self.layout.canonical_store())
             .map_err(|error| Error::with_source("cannot open canonical store", error))
+    }
+
+    fn create_user_source(
+        &self,
+        project_id: ProjectId,
+        host: String,
+        session: String,
+        turn: String,
+    ) -> Result<volicord_context::Source, Error> {
+        let mut canonical = self.open_canonical()?;
+        let project = canonical
+            .get_project(project_id)
+            .map_err(|error| Error::with_source("cannot read Project", error))?;
+        canonical
+            .record_source(
+                new_operation_id()?,
+                project_id,
+                SourceDraft {
+                    expected_project_revision: project.revision,
+                    payload: SourcePayload::CurrentHostUserTurn {
+                        host,
+                        session,
+                        turn,
+                    },
+                    actor: Principal {
+                        kind: PrincipalKind::User,
+                        identity: "current-host-user".into(),
+                    },
+                    observer: None,
+                    availability: Availability::Available,
+                },
+            )
+            .map(|result| result.value)
+            .map_err(|error| Error::with_source("cannot record current-host user Source", error))
     }
 
     fn store_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {

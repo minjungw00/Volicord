@@ -160,3 +160,112 @@ fn cli_reports_distinct_unsupported_repair_and_reindex_results(
     assert_eq!(reindex["kind"], "derivedrebuild");
     Ok(())
 }
+
+#[test]
+fn cli_guarded_fallback_preserves_request_revision_fingerprint_and_source_linkage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository)?;
+    let runtime_text = runtime.to_str().ok_or("runtime path")?;
+    let repository_text = repository.to_str().ok_or("repository path")?;
+    let mut output = Vec::new();
+    let mut error = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "project",
+                "init",
+                "Fixture",
+                "--repository",
+                repository_text,
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS
+    );
+    let initialized: Value = serde_json::from_slice(&output)?;
+    let project = initialized["project_id"]
+        .as_str()
+        .ok_or("missing project")?
+        .to_owned();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros();
+    let expiration = (now + 60_000_000).to_string();
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "guarded",
+                "request",
+                &project,
+                "external-publication",
+                "publish",
+                "registry.example/release",
+                "publish release",
+                "external users can observe it",
+                &expiration,
+                "artifact:release",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let request: Value = serde_json::from_slice(&output)?;
+    let identity = request["confirmation_request_identity"]
+        .as_str()
+        .ok_or("missing request ID")?
+        .to_owned();
+    let revision = request["request_revision"]
+        .as_u64()
+        .ok_or("missing revision")?
+        .to_string();
+    let fingerprint = request["effect_fingerprint"]
+        .as_str()
+        .ok_or("missing fingerprint")?
+        .to_owned();
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "guarded",
+                "confirm",
+                &identity,
+                &revision,
+                &fingerprint,
+                "codex",
+                "session-42",
+                "I confirm this exact effect",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let confirmation: Value = serde_json::from_slice(&output)?;
+    assert_eq!(confirmation["confirmation_request_identity"], identity);
+    assert_eq!(
+        confirmation["request_revision"],
+        request["request_revision"]
+    );
+    assert_eq!(confirmation["effect_fingerprint"], fingerprint);
+    assert!(confirmation["user_response_source_id"].as_str().is_some());
+    Ok(())
+}

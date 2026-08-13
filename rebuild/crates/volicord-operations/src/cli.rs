@@ -1,6 +1,7 @@
 use crate::{
     operations::{parse_identity, select_document},
-    Error, LocalOperations, RuntimeLayout,
+    ConfirmationDecision, ConfirmationRequestId, Error, GuardedEffectCategory, GuardedEffectDraft,
+    GuardedRisk, LocalOperations, RequestingProvenance, RuntimeLayout,
 };
 use serde_json::{json, Value};
 use std::{
@@ -20,6 +21,7 @@ use volicord_privacy::{
 };
 use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
+    RequestedDestination,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,6 +86,7 @@ fn execute(mut args: Vec<OsString>, stdout: &mut dyn Write) -> Result<(), Error>
         "documents" => documents(&operations, &mut cursor)?,
         "inquiry" => inquiry(&operations, &mut cursor)?,
         "checkpoint" => checkpoint(&operations, &mut cursor)?,
+        "guarded" => guarded(&operations, &mut cursor)?,
         "help" | "--help" | "-h" => json!({"usage": USAGE}),
         _ => return Err(usage("unknown command")),
     };
@@ -94,7 +97,7 @@ fn execute(mut args: Vec<OsString>, stdout: &mut dyn Write) -> Result<(), Error>
     Ok(())
 }
 
-const USAGE: &str = "volicord [--runtime ABSOLUTE_PATH] <project|health|analyze|rebuild|reindex|repair|portable|canonical|candidates|privacy|recall|documents|inquiry|checkpoint> ...";
+const USAGE: &str = "volicord [--runtime ABSOLUTE_PATH] <project|health|analyze|rebuild|reindex|repair|portable|canonical|candidates|privacy|recall|documents|inquiry|checkpoint|guarded> ...";
 
 fn usage(detail: &str) -> Error {
     Error::new(format!("usage: {USAGE}\n{detail}"))
@@ -146,7 +149,7 @@ fn health(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Er
     Ok(json!({
         "operation":"health", "state":debug_name(report.state), "runtime_root":report.runtime_root,
         "canonical_available":report.canonical_available, "candidate_available":report.candidate_available,
-        "privacy_available":report.privacy_available, "repository_available":report.repository_available,
+        "privacy_available":report.privacy_available, "guarded_available":report.guarded_available, "repository_available":report.repository_available,
         "issues":report.issues.into_iter().map(|issue| json!({"kind":debug_name(issue.kind),"scope":issue.scope,"detail":issue.detail})).collect::<Vec<_>>()
     }))
 }
@@ -286,6 +289,24 @@ fn canonical(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
                 )?,
             )
         }
+        "supersede-decision" => {
+            let project = project_id(&cursor.next("Project ID")?)?;
+            let previous =
+                DecisionId::from_bytes(parse_identity(&cursor.next("previous Decision ID")?)?);
+            let source = source_id(&cursor.next("current-host user Source ID")?)?;
+            let alternative = cursor.next("displayed alternative key")?;
+            let rationale = cursor.optional();
+            mutation_json(
+                "supersede_decision",
+                operations.supersede_decision_choice(
+                    project,
+                    previous,
+                    source,
+                    alternative,
+                    rationale,
+                )?,
+            )
+        }
         "forget" => {
             let project = project_id(&cursor.next("Project ID")?)?;
             let kind = cursor.next("record kind")?;
@@ -305,7 +326,7 @@ fn canonical(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
             )
         }
         _ => Err(usage(
-            "canonical requires inspect, user-source, correct-context, correct-decision, or forget",
+            "canonical requires inspect, user-source, correct-context, correct-decision, supersede-decision, or forget",
         )),
     }
 }
@@ -415,6 +436,15 @@ fn documents(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
         return Err(usage("documents requires preview or export"));
     };
     let language = cursor.optional().unwrap_or_else(|| "en".into());
+    let requested_destinations = destination
+        .as_ref()
+        .map(|path| RequestedDestination {
+            document_kind: kind,
+            output_format: format,
+            path: path.display().to_string(),
+        })
+        .into_iter()
+        .collect();
     let request = DocumentRequest {
         requested_language: language,
         fixed_locale: FixedLocale::English,
@@ -424,7 +454,7 @@ fn documents(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
             agent: None,
             model: None,
         },
-        requested_destinations: Vec::new(),
+        requested_destinations,
     };
     let set = operations.documents(project, &request)?;
     let document = select_document(&set, kind);
@@ -518,6 +548,106 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
     mutation_json("checkpoint_record", result)
 }
 
+fn guarded(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
+    match cursor.next("guarded command")?.as_str() {
+        "request" => {
+            let project = project_id(&cursor.next("Project ID")?)?;
+            let category = guarded_category(&cursor.next("risk category")?)?;
+            let exact_action = cursor.next("exact action")?;
+            let target = cursor.next("exact target")?;
+            let expected_effect = cursor.next("expected effect")?;
+            let concrete_consequence = cursor.next("concrete risk")?;
+            let expires_at = number(&cursor.next("expiration Unix microseconds")?)?;
+            let expires_at = i64::try_from(expires_at)
+                .map(volicord_context::TimestampMicros::from_unix_micros)
+                .map_err(|_| Error::new("expiration exceeds the supported timestamp range"))?;
+            let scope = cursor.remaining();
+            if scope.is_empty() {
+                return Err(usage("guarded request requires at least one bounded scope"));
+            }
+            let candidate = operations.create_guarded_request(GuardedEffectDraft {
+                project_id: project,
+                exact_action,
+                target,
+                expected_effect,
+                risk: GuardedRisk {
+                    category,
+                    concrete_consequence,
+                },
+                scope,
+                expires_at,
+                requesting_provenance: RequestingProvenance {
+                    actor: Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: "volicord-cli".into(),
+                    },
+                    host: Some("cli".into()),
+                    session: Some("cli".into()),
+                    basis: vec!["explicit CLI Guarded Effect Candidate".into()],
+                },
+            })?;
+            Ok(guarded_request_json("guarded_request", &candidate))
+        }
+        "show" => {
+            let request = confirmation_request_id(&cursor.next("confirmation request ID")?)?;
+            let candidate = operations.guarded_request(request)?;
+            Ok(guarded_request_json("guarded_show", &candidate))
+        }
+        "confirm" | "deny" => {
+            let decision_text = cursor.previous().unwrap_or_default();
+            let request = confirmation_request_id(&cursor.next("confirmation request ID")?)?;
+            let revision = number(&cursor.next("request revision")?)?;
+            let fingerprint = cursor.next("effect fingerprint")?;
+            let host = cursor.next("current host")?;
+            let session = cursor.next("current session")?;
+            let turn = cursor.next("explicit user response")?;
+            let decision = if decision_text == "confirm" {
+                ConfirmationDecision::Confirmed
+            } else {
+                ConfirmationDecision::Denied
+            };
+            let response = operations.record_cli_confirmation(
+                request,
+                revision,
+                &fingerprint,
+                decision,
+                host,
+                session,
+                turn,
+            )?;
+            Ok(json!({
+                "operation":format!("guarded_{decision_text}"),
+                "confirmation_request_identity":response.confirmation_request_identity.to_string(),
+                "request_revision":response.request_revision,
+                "effect_fingerprint":response.effect_fingerprint,
+                "decision":debug_name(response.decision),
+                "user_response_source_id":response.user_response_source_id.to_string(),
+                "confirmation_response_identity":response.confirmation_response_identity.to_string()
+            }))
+        }
+        _ => Err(usage("guarded requires request, show, confirm, or deny")),
+    }
+}
+
+fn guarded_request_json(operation: &str, candidate: &crate::GuardedEffectCandidate) -> Value {
+    json!({
+        "operation":operation,
+        "confirmation_request_identity":candidate.confirmation_request_identity.to_string(),
+        "request_revision":candidate.request_revision,
+        "project_id":candidate.project_id.to_string(),
+        "exact_action":candidate.exact_action,
+        "target":candidate.target,
+        "expected_effect":candidate.expected_effect,
+        "risk_category":debug_name(candidate.risk.category),
+        "risk_consequence":candidate.risk.concrete_consequence,
+        "scope":candidate.scope,
+        "expiration_unix_micros":candidate.expires_at.as_unix_micros(),
+        "requesting_actor":format!("{:?}:{}", candidate.requesting_provenance.actor.kind, candidate.requesting_provenance.actor.identity),
+        "requesting_provenance":candidate.requesting_provenance.basis,
+        "effect_fingerprint":candidate.effect_fingerprint
+    })
+}
+
 fn mutation_json(operation: &str, value: crate::CanonicalMutationOutcome) -> Result<Value, Error> {
     Ok(
         json!({"operation":operation,"record_kind":value.record_kind,"identity":value.identity,"revision":value.revision,"replayed":value.replayed}),
@@ -539,6 +669,9 @@ fn privacy_intent(source: SourceId, basis: &str) -> ProviderIntentProvenance {
 
 fn project_id(value: &str) -> Result<ProjectId, Error> {
     Ok(ProjectId::from_bytes(parse_identity(value)?))
+}
+fn confirmation_request_id(value: &str) -> Result<ConfirmationRequestId, Error> {
+    Ok(ConfirmationRequestId::from_bytes(parse_identity(value)?))
 }
 fn source_id(value: &str) -> Result<SourceId, Error> {
     Ok(SourceId::from_bytes(parse_identity(value)?))
@@ -577,6 +710,24 @@ fn output_format(value: &str) -> Result<OutputFormat, Error> {
         "markdown" => Ok(OutputFormat::Markdown),
         "html" => Ok(OutputFormat::Html),
         _ => Err(usage("output format must be markdown or html")),
+    }
+}
+fn guarded_category(value: &str) -> Result<GuardedEffectCategory, Error> {
+    match value {
+        "destructive-delete" => Ok(GuardedEffectCategory::DestructiveFileOrDataDeletion),
+        "migration" => Ok(GuardedEffectCategory::IrreversibleOrLargeScaleMigration),
+        "external-publication" => Ok(GuardedEffectCategory::ExternalDeploymentOrPublicPublication),
+        "cost" => Ok(GuardedEffectCategory::PaymentOrContinuingCost),
+        "credential" => Ok(GuardedEffectCategory::SecretOrCredentialAccessOrChange),
+        "external-source-transmission" => {
+            Ok(GuardedEffectCategory::PersonalDataOrSourceCodeExternalTransmission)
+        }
+        "external-message" => Ok(GuardedEffectCategory::ExternalMessageEmailOrIssue),
+        "production-data" => Ok(GuardedEffectCategory::ProductionDataChange),
+        "security-setting" => {
+            Ok(GuardedEffectCategory::PermissionAuthenticationOrSecuritySettingChange)
+        }
+        _ => Err(usage("unknown Guarded risk category")),
     }
 }
 fn debug_name(value: impl std::fmt::Debug) -> String {
