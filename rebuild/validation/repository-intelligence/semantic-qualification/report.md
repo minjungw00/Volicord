@@ -2,7 +2,12 @@
 
 ## Status
 
-Passed for selecting three Production source-semantic adapters. This qualification does not claim V02 complete before the Production adapters and their degradation contracts pass focused tests.
+Passed at the Production Repository Intelligence subsystem boundary for
+Java/Maven, TypeScript/Node, and Rust/Cargo. The three local source-semantic
+adapters and their provenance, range, deterministic rebuild, same-name/overload,
+unavailable/failed, and broken-build degradation contracts pass maintained
+Production Rust tests. This status is bounded to source-local evidence and does
+not claim compiler/LSP completeness or real-repository performance.
 
 ## Goal
 
@@ -14,7 +19,15 @@ Q2 retains the seven structural languages and requires at least three semantic e
 
 ## Input repositories and revisions
 
-The authority was Git `85530cb1` (`feat: add polyglot structural analysis`). The probe reuses the maintained Java/Maven, TypeScript/Node, and Rust/Cargo V01 fixture directories and the shared manifest records their self-authored CC0-1.0 origin and content hashes. Java and TypeScript contain interface and implementation methods with the same name; Rust contains trait and explicit trait-implementation methods with the same name.
+Qualification began from `85530cb1` (`feat: add polyglot structural analysis`)
+and selected the adapters in `f81343da`; Production behavior is implemented by
+`5ab7d529`. Final evaluation reuses the maintained Java/Maven,
+TypeScript/Node, and Rust/Cargo V01 fixture directories, whose self-authored
+CC0-1.0 origin and hashes are recorded in the shared manifest. Java and
+TypeScript contain interface and implementation methods with the same name;
+Rust contains trait and explicit trait-implementation methods with the same
+name. A separate Java overload case distinguishes one- and two-argument local
+targets.
 
 ## Environment and tool versions
 
@@ -35,6 +48,7 @@ Java/Maven, TypeScript/Node, and Rust/Cargo were selected because all three have
 rebuild/scripts/validate focused semantic-qualification -- python3 rebuild/validation/repository-intelligence/semantic-qualification/assertions.py
 rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
 rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/semantic-qualification/report.md
+rebuild/scripts/validate focused phase5-maintained-acceptance -- rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py
 ```
 
 The disposable probe emits deterministic normalized JSON, checks distinct same-name declaration identities, validates all five required relation kinds and zero-based UTF-8 source ranges, repeats the same snapshot, and injects an unresolved dependency marker per ecosystem to assert `partial` plus usable remainder.
@@ -44,6 +58,16 @@ The disposable probe emits deterministic normalized JSON, checks distinct same-n
 All three ecosystems produced `defines`, `references`, `type_of`, `implements`, and `overrides` relations with source ranges and `semantic_result` provenance. Same-name interface/trait and implementation methods retained separate source-bound identities. Repeated runs produced byte-identical canonical output. Each injected missing dependency produced `partial` with an explicit unresolved diagnostic while retaining the independently valid relation set.
 
 Local manifest/module evidence was sufficient for the maintained intra-repository relations: Maven package paths, TypeScript relative ES-module paths and `tsconfig.json`, and Cargo workspace/module/explicit trait-impl structure. The selected source index does not claim downloaded dependency bodies, generated sources, macro expansion, reflection, runtime dispatch, or compiler-exact generic/trait/type-level evaluation.
+
+Production final evaluation publishes `defines`, `references`, `resolves_to`,
+`type_of`, `implements`, and `overrides` with semantic analyzer provenance and
+snapshot-bound half-open zero-based UTF-8 ranges in all three ecosystems.
+Missing local imports are exercised independently in Java, TypeScript, and
+Rust: each result is `partial`, carries an unresolved-dependency diagnostic,
+and retains structural facts plus usable semantic relations. Disabled and
+injected-failed adapters publish no semantic fact for the affected language.
+Same-snapshot rebuild is byte-deterministic, and grounded search/explanation
+keeps structural facts, semantic results, and agent interpretations separate.
 
 ## Coverage and failures
 
@@ -59,12 +83,18 @@ The probe reads only local maintained fixtures. It performs no network access, s
 
 ## Acceptance results
 
-- Pass: three realistic typed ecosystems normalize all required relation families with source ranges.
+- Pass: three Production typed ecosystems normalize all required relation
+  families with source ranges.
 - Pass: same-name interface/trait and implementation targets remain distinct.
-- Pass: broken/missing dependency evidence is partial with diagnostics and usable remainder rather than empty success.
+- Pass: broken/missing dependency behavior is partial with diagnostics and
+  usable remainder rather than empty success in each selected ecosystem.
 - Pass: setup is reproducible, offline, local, and practical for the supported Linux path using already-linked grammar dependencies.
-- Pass: the selected Production path requires no child process, so V10 is not triggered or claimed complete.
-- Not claimed: compiler-complete overload/generic/type inference, external dependency bodies, runtime behavior, real-repository accuracy, or V02 completion before Production validation.
+- Pass: unavailable or failed semantic adapters preserve structural results and
+  publish no affected-language semantic fact.
+- Pass: the selected Production path requires no child process, so V10 is not
+  triggered or claimed complete.
+- Not claimed: compiler-complete overload/generic/type inference, external
+  dependency bodies, runtime behavior, or real-repository accuracy.
 
 ## Known limits
 
@@ -72,7 +102,12 @@ The fixtures are small and self-authored. The disposable probe asserts the norma
 
 ## Recommended implementation choice
 
-Add one in-process Production semantic common core with Java/Maven, TypeScript/Node, and Rust/Cargo adapters on the existing Tree-sitter structural results. Derive deterministic symbol identities from language, qualified name, declared arity/type basis, locator, and snapshot; keep source ranges and semantic analyzer identity separate from structural provenance; resolve only unambiguous local targets; and preserve unresolved targets and diagnostics. Rebuild from source rather than introduce a second persistent authority.
+Retain the current in-process semantic common core with Java/Maven,
+TypeScript/Node, and Rust/Cargo adapters on qualified structural results. Keep
+deterministic source-bound symbol identity, separate semantic provenance,
+unambiguous local-only resolution, unresolved diagnostics, and rebuildable
+Derived State. Future compiler/LSP adapters require separate evidence and must
+not become a parallel Production authority.
 
 ## Rejected alternatives and reasons
 
@@ -88,8 +123,18 @@ Not triggered. The three selected ecosystems fit the common semantic envelope wi
 
 ## Follow-up work
 
-Implement the three adapters, semantic capability/degradation reports, current Analysis Snapshot writer update, deterministic rebuild/freshness, semantic search, grounded explanation basis, and read-only canonical identity linkage. Add focused unavailable/failure, broken-build, provenance, no-mutation, and architecture-contract validation.
+- Exercise larger and externally dependent projects under V11 before making
+  accuracy, scale, or packaging claims beyond the maintained Linux fixtures.
+- Evaluate a compiler/LSP path only after its child-process and distribution
+  boundary passes V10.
+- Preserve the documented source-only limits until new bounded evidence supports
+  a wider semantic claim.
 
 ## Artifacts
 
-Maintained artifacts are this report, `assertions.py`, the three V02 entries in the shared fixture manifest, and the reused V01 fixture sources. Raw probe output and runner results remain under ignored `rebuild/.local/validation/`.
+Maintained artifacts are this report, the reference-only qualification
+`assertions.py`, the three V02 entries in the shared fixture manifest, the
+reused V01 fixture sources, the Production Rust semantic tests, and
+`rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py`.
+Raw probe output and runner results remain under ignored
+`rebuild/.local/validation/`.

@@ -2,10 +2,13 @@
 
 ## Status
 
-Partial. The experiment supports a common normalized model and a hybrid
-language-adapter boundary across all seven gate languages, but it does not
-select or qualify production parser libraries. The disposable lexical parser
-is fixture-sufficient evidence, not production structural capability.
+Passed at the Production Repository Intelligence subsystem boundary. The
+original disposable experiment remains reference-only, while the maintained
+Production Rust implementation now satisfies the V01 pass conditions for all
+seven gate languages, source ranges, same-snapshot identity and serialization,
+bounded changed-file refresh, dependency/build-context invalidation, and
+language-scoped failure isolation. This status does not claim large-repository
+scaling, unmeasured performance, or complete macro/generated/dynamic behavior.
 
 ## Goal
 
@@ -28,9 +31,12 @@ No accepted product decision is changed by this report.
 
 ## Input repositories and revisions
 
-Repository baseline was `85d3f1c3c5690b5ac11a67f082bf4035bbcf3fc0` plus
-the maintained experiment inputs in this commit. The fixture manifest is the
-content authority:
+The original experiment baseline was
+`85d3f1c3c5690b5ac11a67f082bf4035bbcf3fc0`. Final evaluation uses the
+Production implementation introduced by `d5902c0b`, qualified by `fbcc7c93`,
+and completed structurally by `85530cb1`; semantic additions through
+`5ab7d529` do not replace its structural provenance. The fixture manifest is
+the content authority:
 
 - Java: `5b3579bc2a073420d519528b89d39de143b1253ea843504ca1ada6d7ed36246f`
 - Python: `7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867`
@@ -79,6 +85,7 @@ rebuild/scripts/validate focused v01-fixture-manifest -- rebuild/scripts/check-f
 rebuild/scripts/validate focused v01-assertions -- rebuild/validation/repository-intelligence/polyglot-structural/assertions.py
 rebuild/scripts/validate focused v01-candidate-probes -- rebuild/validation/repository-intelligence/polyglot-structural/prototype.py probe-candidates --output rebuild/.local/v01/candidate-probes.json
 rebuild/scripts/validate focused v01-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/polyglot-structural/report.md
+rebuild/scripts/validate focused phase5-maintained-acceptance -- rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py
 ```
 
 The assertion program runs common and hybrid analysis twice, injects a
@@ -105,6 +112,17 @@ and stable IDs derived from fixture, path, kind, and qualified name.
   Unaffected fixture graphs and unaffected Python entity IDs were unchanged.
 - The Go fixture reported inventory `available` and structural `unavailable`.
 - No agent interpretation was emitted by the prototype.
+
+The final Production evaluation maps 22 Phase 5 requirements to 24 Rust tests.
+It executes all seven official structural fixtures, the polyglot fixture, and
+the out-of-set text fallback through `volicord-repository-intelligence`.
+Production results preserve parser-owned half-open zero-based UTF-8 ranges,
+structural provenance, explicit diagnostics, capability coverage, and current
+snapshot binding. The TypeScript incremental case reparses the changed file
+and its declared dependent while reusing one unaffected file; a manifest
+change reparses the three affected language files with `build_context`
+invalidations. Injected TypeScript adapter failure in the polyglot fixture
+preserves Java and Python facts and the TypeScript inventory.
 
 These precision and recall values describe only the small maintained fixtures;
 they are not estimates for real repositories.
@@ -154,22 +172,25 @@ outputs kept under ignored local validation state.
 
 ## Acceptance results
 
-- Pass: all seven gate languages yielded the maintained declarations and
-  ranges through the common adapter contract.
+- Pass: all seven gate languages yield maintained declarations and ranges
+  through the Production Tree-sitter adapter contract.
 - Pass: inventory, parser-confirmed, unsupported, partial, failed, and empty
   interpretation classes are distinguishable.
-- Pass: entity identity and serialization were stable for the same snapshot.
+- Pass: Production entity/relation identity and canonical serialization are
+  stable for the same snapshot and independent of local binding paths.
 - Pass: package/module/file hierarchy and all required relation kinds were
   representable without filling language-inapplicable concepts.
 - Pass: every single-language gate fixture detected a test.
 - Pass: malformed-source partial parsing retained a declaration.
-- Pass: one analyzer failure preserved all unaffected fixture results.
-- Pass: the changed-file rerun avoided all 34 unaffected files.
+- Pass: one Production adapter failure preserves unaffected languages and
+  analyzer-independent inventory.
+- Pass: Production changed-file refresh avoids unconditional parsing of an
+  unaffected file and visibly invalidates declared dependency/build-context
+  scope.
+- Pass: out-of-set Go remains inventory-available with structural capability
+  reported as unsupported.
 - Pass with measurement limits: elapsed time, output bytes, and process peak
-  memory were observed on the fixture set.
-- Partial: production-grade parser accuracy, macro/generated-code behavior,
-  and direct-parser output normalization were not established with the tools
-  available in this environment.
+  memory were observed only on the small qualification fixtures.
 
 ## Known limits
 
@@ -180,8 +201,8 @@ outputs kept under ignored local validation state.
   proves runtime behavior.
 - Source range checks validate maintained declaration starts and containment,
   not token-perfect end columns for every grammar.
-- The cache demonstrates unaffected-file reuse, not transitive dependency
-  invalidation.
+- Production demonstrates direct declared-dependency and conservative
+  language build-context invalidation, not a complete transitive build graph.
 - No macro expansion, build graph, generated source, semantic relation, or
   external package resolution is provided.
 - Missing Java and JavaScript/TypeScript tools prevented local native/direct
@@ -189,17 +210,12 @@ outputs kept under ignored local validation state.
 
 ## Recommended implementation choice
 
-Use a small common structural envelope with stable source-bound entities,
-typed relations, per-file snapshot identity, fact provenance, capability state,
-unsupported/failure details, and language-specific extension properties. Put a
-strict adapter boundary between that envelope and each parser or compiler
-source. Adapters own grammar-specific normalization and may choose a common
-incremental parser, a native source, or both per language.
-
-This is a hybrid boundary recommendation, not a parser-library decision. Keep
-inventory independent of structural adapters so missing or failed analyzers do
-not disable repository registration or other languages. Keep compiler/build
-semantic information outside parser-confirmed syntax facts for V02.
+Retain the current small common structural envelope and seven narrow local
+Tree-sitter adapters. Keep analyzer-independent inventory, per-file content and
+adapter bases, explicit dependency/build-context invalidation, stable
+snapshot-bound identity, and source-grounded search. Future compiler or indexer
+inputs must remain separate semantic provenance rather than replacing parser
+facts.
 
 ## Rejected alternatives and reasons
 
@@ -233,14 +249,12 @@ question is opened.
 
 ## Follow-up work
 
-- Evaluate production incremental parser libraries and language grammars with
-  dependency/license review and broader real-repository fixtures.
-- Add call-relation precision expectations and token-exact end-range checks.
-- Define dependency-aware invalidation after the production snapshot model is
-  selected.
-- Run V02 separately for semantic sources and at least three ecosystems.
-- Do not extend this experiment into V03, V05, or production Repository
-  Intelligence code.
+- Exercise real and larger repositories under V11 before making scale or
+  population-accuracy claims.
+- Extend macro/generated/build-selected coverage only with new bounded adapter
+  evidence and explicit diagnostics.
+- Keep call-relation precision, transitive dependency completeness, and
+  performance ceilings as measured follow-up work rather than inferred claims.
 
 ## Artifacts
 
@@ -248,6 +262,11 @@ Maintained inputs are under
 `rebuild/validation/repository-intelligence/polyglot-structural/`, with the
 shared manifest at `rebuild/validation/shared/fixture-manifest.json`. Raw
 artifacts remain ignored:
+
+- Production Phase 5 acceptance orchestration:
+  `rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py`;
+- Production Rust evidence: the library, inventory, structural, and semantic
+  test targets under `rebuild/crates/volicord-repository-intelligence/`;
 
 - `rebuild/.local/v01/assertions-rgvpwjfl/summary.json`, SHA-256
   `2d9e81519ff2beda27c5119e34dcd7360d06d771f26ca2456f1534e2bcf77810`;

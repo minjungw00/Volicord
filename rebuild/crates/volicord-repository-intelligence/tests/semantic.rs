@@ -156,36 +156,65 @@ fn unavailable_or_failed_adapter_cannot_publish_semantic_facts() -> Result<(), B
 
 #[test]
 fn broken_dependency_is_partial_without_erasing_usable_remainder() -> Result<(), Box<dyn Error>> {
-    let temporary = tempdir()?;
-    copy_tree(&fixture("typescript"), temporary.path())?;
-    let index = temporary.path().join("src/index.ts");
-    let text = fs::read_to_string(&index)?.replace("./suffix.js", "./missing.js");
-    fs::write(index, text)?;
-    let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(temporary.path())),
-    ))?;
-    let semantic = analysis.capabilities.iter().find(|report| {
-        report.language == Some(Language::TypeScript) && report.capability == Capability::Semantic
-    });
-    assert!(semantic.is_some_and(|report| {
-        report.state == CapabilityState::Partial
-            && report.coverage.covered_relation_count > 0
-            && report.usable_remainder.is_some()
-            && !report.diagnostics.is_empty()
-    }));
-    assert!(analysis
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == "semantic.unresolved_dependency"));
-    assert!(!analysis.inventory.entries.is_empty());
-    assert!(!analysis.structural_facts.is_empty());
-    assert!(!analysis.semantic_results.is_empty());
-    let hits = search_local(&analysis, "missing", repository.identity, 20);
-    assert!(hits.iter().any(|hit| {
-        hit.result_kind == SearchResultKind::SemanticRelation
-            && hit.capability == Capability::Semantic
-            && hit.provenance_class == ProvenanceClass::SemanticResult
-    }));
+    for (fixture_name, language, locator, marker) in [
+        (
+            "java",
+            Language::Java,
+            "src/main/java/example/Greeter.java",
+            "import missing.Dependency;\n",
+        ),
+        (
+            "typescript",
+            Language::TypeScript,
+            "src/index.ts",
+            "import { absent } from './missing.js';\n",
+        ),
+        (
+            "rust",
+            Language::Rust,
+            "crates/greeter/src/lib.rs",
+            "use missing::Dependency;\n",
+        ),
+    ] {
+        let temporary = tempdir()?;
+        copy_tree(&fixture(fixture_name), temporary.path())?;
+        let source = temporary.path().join(locator);
+        fs::write(&source, format!("{marker}{}", fs::read_to_string(&source)?))?;
+        let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory(temporary.path())),
+        ))?;
+        let semantic = analysis.capabilities.iter().find(|report| {
+            report.language == Some(language.clone()) && report.capability == Capability::Semantic
+        });
+        assert!(
+            semantic.is_some_and(|report| {
+                report.state == CapabilityState::Partial
+                    && report.coverage.covered_relation_count > 0
+                    && report.usable_remainder.is_some()
+                    && !report.diagnostics.is_empty()
+            }),
+            "{fixture_name}"
+        );
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "semantic.unresolved_dependency" }),
+            "{fixture_name}"
+        );
+        assert!(!analysis.inventory.entries.is_empty(), "{fixture_name}");
+        assert!(!analysis.structural_facts.is_empty(), "{fixture_name}");
+        assert!(!analysis.semantic_results.is_empty(), "{fixture_name}");
+        let hits = search_local(&analysis, "missing", repository.identity, 20);
+        assert!(
+            hits.iter().any(|hit| {
+                hit.result_kind == SearchResultKind::SemanticRelation
+                    && hit.capability == Capability::Semantic
+                    && hit.provenance_class == ProvenanceClass::SemanticResult
+            }),
+            "{fixture_name}"
+        );
+    }
     Ok(())
 }
 
@@ -387,6 +416,23 @@ fn explanation_search_and_canonical_links_preserve_authority_and_freshness(
     )?;
     let after = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
     assert_eq!(before, after, "analysis refresh mutated canonical context");
+    let derived = runtime.path().join("analysis-derived.json");
+    fs::write(&derived, canonical_json(&analysis)?)?;
+    fs::remove_file(&derived)?;
+    let (_, rebuilt) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(InventoryRequest::new(
+            &root,
+            project.id,
+            source.id,
+            OBSERVED_AT,
+        )),
+    ))?;
+    fs::write(&derived, canonical_json(&rebuilt)?)?;
+    assert_eq!(
+        before,
+        store.read_canonical_basis(project.id, CanonicalReadOptions::default())?,
+        "deleting and rebuilding Derived State changed canonical context"
+    );
     analysis.agent_interpretations.push(AgentInterpretation {
         identity: "agent-interpretation-1".to_owned(),
         analysis_snapshot: analysis.identity,
