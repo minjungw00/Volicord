@@ -1,0 +1,27 @@
+[package]
+name = "volicord-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "volicord-mcp"
+path = "src/main.rs"
+
+[dependencies]
+getrandom = { version = "0.3.4", features = ["std"] }
+serde_json = "1.0.150"
+volicord-context = { path = "../volicord-context" }
+volicord-inquiry = { path = "../volicord-inquiry" }
+volicord-operations = { path = "../volicord-operations" }
+volicord-projections = { path = "../volicord-projections" }
+
+[dev-dependencies]
+tempfile = "3.20.0"
+
+[lints]
+workspace = true

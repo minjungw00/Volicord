@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/volicord-context",
+    "crates/volicord-host",
     "crates/volicord-inquiry",
     "crates/volicord-local-platform",
     "crates/volicord-operations",
