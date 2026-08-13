@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
-    CanonicalReadBasis, Checkpoint, CheckpointDraft, CheckpointKind, DecisionId, OperationId,
-    ProjectId, QuestionReference, SourceId, Store, UserAcceptanceFact, UserReviewFact,
-    VerificationFact, WorkState,
+    Availability, CanonicalReadBasis, Checkpoint, CheckpointDraft, CheckpointKind, DecisionId,
+    OperationId, PrincipalKind, ProjectId, QuestionReference, SourceFreshness, SourceId,
+    SourcePayload, SourceReadBasis, Store, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
+    UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, EntryKind, FreshnessState, InventoryClassification,
+    AnalysisSnapshot, CanonicalSourceBasis, EntryKind, FreshnessState, InventoryClassification,
 };
 
 #[derive(Clone, Debug)]
@@ -44,7 +45,9 @@ pub fn attribute_repository_changes(
     pre_existing.dedup();
     if basis.baseline.project.identity() != project_id
         || basis.current.project.identity() != project_id
-        || basis.baseline.repository_source.identity() != basis.current.repository_source.identity()
+        || basis.baseline.repository_source.project() != project_id
+        || basis.current.repository_source.project() != project_id
+        || basis.baseline.repository_source != basis.current.repository_source
     {
         return ChangeAttribution::Unavailable {
             pre_existing_paths: pre_existing,
@@ -136,6 +139,9 @@ pub enum CheckpointRejection {
     NoMeaningfulChange,
     MissingSourceBasis,
     SourceUnavailable,
+    SourceStale,
+    SourceFreshnessUnknown,
+    InvalidSourceKind,
     AmbiguousChangeAttribution,
     InvalidBoundary,
 }
@@ -177,6 +183,42 @@ pub fn evaluate_checkpoint_candidate(
         .repository_work
         .as_ref()
         .map(|basis| attribute_repository_changes(candidate.project_id, basis));
+    if let Some(basis) = &candidate.repository_work {
+        let repository_rejection = if basis.baseline.project.identity() != candidate.project_id
+            || basis.current.project.identity() != candidate.project_id
+            || basis.baseline.repository_source.project() != candidate.project_id
+            || basis.current.repository_source.project() != candidate.project_id
+        {
+            Some((
+                CheckpointRejection::WrongProject,
+                "Repository Intelligence basis belongs to a different Project",
+            ))
+        } else if basis.baseline.repository_source != basis.current.repository_source {
+            Some((
+                CheckpointRejection::SourceUnavailable,
+                "baseline and current Repository Intelligence basis do not identify the same Project Source",
+            ))
+        } else if basis.baseline.freshness.state == FreshnessState::Stale
+            || basis.current.freshness.state == FreshnessState::Stale
+        {
+            Some((
+                CheckpointRejection::SourceStale,
+                "change attribution cannot use a stale Repository Intelligence basis",
+            ))
+        } else if basis.baseline.freshness.state == FreshnessState::Unknown
+            || basis.current.freshness.state == FreshnessState::Unknown
+        {
+            Some((
+                CheckpointRejection::SourceFreshnessUnknown,
+                "change attribution cannot use Repository Intelligence basis with unknown freshness",
+            ))
+        } else {
+            None
+        };
+        if let Some((reason, detail)) = repository_rejection {
+            return reject(reason, detail, attribution);
+        }
+    }
     if let Some(ChangeAttribution::Unavailable { reason, .. }) = &attribution {
         return reject(
             CheckpointRejection::SourceUnavailable,
@@ -199,25 +241,58 @@ pub fn evaluate_checkpoint_candidate(
         .repository_work
         .as_ref()
         .map(|basis| basis.current.repository_source.identity());
+    for source_id in &candidate.supporting_sources {
+        if let Err(error) = require_current_source(
+            canonical,
+            candidate.project_id,
+            *source_id,
+            CheckpointSourceUse::Supporting,
+        ) {
+            return reject(error.reason, error.detail, attribution);
+        }
+    }
+    if let Some(source_id) = current_repository_source {
+        let repository_source = match require_current_source(
+            canonical,
+            candidate.project_id,
+            source_id,
+            CheckpointSourceUse::RepositoryWork,
+        ) {
+            Ok(basis) => basis,
+            Err(error) => return reject(error.reason, error.detail, attribution),
+        };
+        let expected_basis = repository_source.snapshot_basis.clone().map_or(
+            CanonicalSourceBasis::NotApplicable,
+            CanonicalSourceBasis::Snapshot,
+        );
+        if candidate
+            .repository_work
+            .as_ref()
+            .is_some_and(|basis| basis.current.repository_source.basis() != &expected_basis)
+        {
+            return reject(
+                CheckpointRejection::SourceUnavailable,
+                format!(
+                    "Repository Intelligence Source {} snapshot basis disagrees with the current canonical Source basis",
+                    source_id
+                ),
+                attribution,
+            );
+        }
+    }
+    if let Err(error) = validate_observed_facts(canonical, &candidate) {
+        return reject(error.reason, error.detail, attribution);
+    }
     let mut source_basis = candidate.supporting_sources;
     if let Some(source) = current_repository_source {
         source_basis.push(source);
     }
     source_basis.sort_unstable();
     source_basis.dedup();
-    let canonical_sources = canonical
-        .sources
-        .iter()
-        .map(|basis| basis.source.id)
-        .collect::<BTreeSet<_>>();
-    if source_basis.is_empty()
-        || source_basis
-            .iter()
-            .any(|source| !canonical_sources.contains(source))
-    {
+    if source_basis.is_empty() {
         return reject(
             CheckpointRejection::MissingSourceBasis,
-            "Checkpoint support must use existing canonical Sources",
+            "Checkpoint requires an explicit supporting Source basis",
             attribution,
         );
     }
@@ -290,6 +365,185 @@ pub fn evaluate_checkpoint_candidate(
             changed_paths: Vec::new(),
         }),
     }
+}
+
+#[derive(Clone, Copy)]
+enum CheckpointSourceUse {
+    Supporting,
+    RepositoryWork,
+    Verification,
+    UserReview,
+    UserAcceptance,
+}
+
+impl CheckpointSourceUse {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Supporting => "Checkpoint support",
+            Self::RepositoryWork => "repository work and changed paths",
+            Self::Verification => "executed verification",
+            Self::UserReview => "observed user review",
+            Self::UserAcceptance => "observed user acceptance",
+        }
+    }
+}
+
+struct SourceGroundingError {
+    reason: CheckpointRejection,
+    detail: String,
+}
+
+fn require_current_source(
+    canonical: &CanonicalReadBasis,
+    project_id: ProjectId,
+    source_id: SourceId,
+    semantic_use: CheckpointSourceUse,
+) -> Result<&SourceReadBasis, SourceGroundingError> {
+    let Some(basis) = canonical
+        .sources
+        .iter()
+        .find(|basis| basis.source.id == source_id)
+    else {
+        return Err(SourceGroundingError {
+            reason: CheckpointRejection::MissingSourceBasis,
+            detail: format!(
+                "{} Source {} is missing from the canonical read basis",
+                semantic_use.label(),
+                source_id
+            ),
+        });
+    };
+    if basis.source.project_id != project_id {
+        return Err(SourceGroundingError {
+            reason: CheckpointRejection::WrongProject,
+            detail: format!(
+                "{} Source {} belongs to a different Project",
+                semantic_use.label(),
+                source_id
+            ),
+        });
+    }
+    let reason = match (basis.availability, basis.freshness) {
+        (Availability::Available, SourceFreshness::Current) => return Ok(basis),
+        (Availability::Unavailable, _) | (_, SourceFreshness::Unavailable) => {
+            CheckpointRejection::SourceUnavailable
+        }
+        (Availability::Stale, _) | (_, SourceFreshness::Stale) => CheckpointRejection::SourceStale,
+        (Availability::Unknown, _) | (_, SourceFreshness::Unknown) => {
+            CheckpointRejection::SourceFreshnessUnknown
+        }
+    };
+    Err(SourceGroundingError {
+        reason,
+        detail: format!(
+            "{} Source {} is not current: availability={:?}, freshness={:?}",
+            semantic_use.label(),
+            source_id,
+            basis.availability,
+            basis.freshness
+        ),
+    })
+}
+
+fn validate_observed_facts(
+    canonical: &CanonicalReadBasis,
+    candidate: &CheckpointCandidate<'_>,
+) -> Result<(), SourceGroundingError> {
+    for verification in &candidate.verification {
+        match verification.state {
+            VerificationState::NotRun => {
+                if verification.source_id.is_some() {
+                    return invalid_boundary(
+                        "not-run verification cannot claim a supporting Source",
+                    );
+                }
+            }
+            VerificationState::Partial | VerificationState::Passed | VerificationState::Failed => {
+                let source_id = verification.source_id.ok_or_else(|| SourceGroundingError {
+                    reason: CheckpointRejection::MissingSourceBasis,
+                    detail: "executed verification requires an explicit Source".to_owned(),
+                })?;
+                let basis = require_current_source(
+                    canonical,
+                    candidate.project_id,
+                    source_id,
+                    CheckpointSourceUse::Verification,
+                )?;
+                if !matches!(basis.source.payload, SourcePayload::CommandExecution { .. }) {
+                    return Err(SourceGroundingError {
+                        reason: CheckpointRejection::InvalidSourceKind,
+                        detail: format!(
+                            "executed verification Source {} is not a command-execution Source",
+                            source_id
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    match candidate.user_review.state {
+        UserReviewState::NotRequested | UserReviewState::Pending => {
+            if candidate.user_review.source_id.is_some() {
+                return invalid_boundary("unobserved user review state cannot claim a Source");
+            }
+        }
+        UserReviewState::Reviewed => validate_user_source(
+            canonical,
+            candidate.project_id,
+            candidate.user_review.source_id,
+            CheckpointSourceUse::UserReview,
+        )?,
+    }
+    match candidate.user_acceptance.state {
+        UserAcceptanceState::NotRequested | UserAcceptanceState::Pending => {
+            if candidate.user_acceptance.source_id.is_some() {
+                return invalid_boundary("unobserved user acceptance state cannot claim a Source");
+            }
+        }
+        UserAcceptanceState::Accepted | UserAcceptanceState::Rejected => validate_user_source(
+            canonical,
+            candidate.project_id,
+            candidate.user_acceptance.source_id,
+            CheckpointSourceUse::UserAcceptance,
+        )?,
+    }
+    Ok(())
+}
+
+fn validate_user_source(
+    canonical: &CanonicalReadBasis,
+    project_id: ProjectId,
+    source_id: Option<SourceId>,
+    semantic_use: CheckpointSourceUse,
+) -> Result<(), SourceGroundingError> {
+    let source_id = source_id.ok_or_else(|| SourceGroundingError {
+        reason: CheckpointRejection::MissingSourceBasis,
+        detail: format!("{} requires an explicit Source", semantic_use.label()),
+    })?;
+    let basis = require_current_source(canonical, project_id, source_id, semantic_use)?;
+    if basis.source.actor.kind != PrincipalKind::User
+        || !matches!(
+            basis.source.payload,
+            SourcePayload::CurrentHostUserTurn { .. }
+        )
+    {
+        return Err(SourceGroundingError {
+            reason: CheckpointRejection::InvalidSourceKind,
+            detail: format!(
+                "{} Source {} is not a current-host user-turn Source authored by the user",
+                semantic_use.label(),
+                source_id
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn invalid_boundary<T>(detail: &str) -> Result<T, SourceGroundingError> {
+    Err(SourceGroundingError {
+        reason: CheckpointRejection::InvalidBoundary,
+        detail: detail.to_owned(),
+    })
 }
 
 fn reject(

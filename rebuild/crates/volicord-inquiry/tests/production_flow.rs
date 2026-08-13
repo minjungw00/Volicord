@@ -1,12 +1,13 @@
 use std::fs;
 use tempfile::tempdir;
 use volicord_context::{
-    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadOptions, CheckpointKind,
+    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadBasis,
+    CanonicalReadOptions, CheckpointKind, CommandOutcome, CommandTermination,
     DeterministicIdGenerator, FixedClock, NonUserQuestionOutcome, OperationId, Principal,
-    PrincipalKind, Project, QuestionAlternative, QuestionDraft, QuestionMateriality,
-    QuestionResearchState, Source, SourceDraft, SourcePayload, Store, TimestampMicros,
-    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact,
-    VerificationState, WorkState,
+    PrincipalKind, Project, ProjectId, QuestionAlternative, QuestionDraft, QuestionMateriality,
+    QuestionResearchState, Source, SourceDraft, SourceFreshness, SourceId, SourcePayload, Store,
+    TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
+    VerificationFact, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     attribute_repository_changes, evaluate_checkpoint_candidate, evaluate_decision_applicability,
@@ -19,7 +20,8 @@ use volicord_inquiry::{
     SubmissionOutcome,
 };
 use volicord_repository_intelligence::{
-    inventory_repository, CanonicalGrounding, InventoryRequest,
+    inventory_repository, AnalysisSnapshot, CanonicalGrounding, CanonicalSourceRef, FreshnessState,
+    InventoryRequest,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -168,6 +170,110 @@ fn response(
         },
         assumptions: vec!["local-first".to_owned()],
         revisit_triggers: vec!["source boundary changes".to_owned()],
+    }
+}
+
+fn pause_candidate<'a>(
+    project_id: ProjectId,
+    supporting_sources: Vec<SourceId>,
+) -> CheckpointCandidate<'a> {
+    CheckpointCandidate {
+        project_id,
+        kind: CheckpointKind::Pause,
+        goal: "pause with grounded context".to_owned(),
+        work_state: WorkState::Paused,
+        state_change: None,
+        repository_work: None,
+        supporting_sources,
+        applied_decisions: Vec::new(),
+        verification: Vec::new(),
+        user_review: UserReviewFact {
+            state: UserReviewState::NotRequested,
+            source_id: None,
+        },
+        user_acceptance: UserAcceptanceFact {
+            state: UserAcceptanceState::NotRequested,
+            source_id: None,
+        },
+        known_limits: Vec::new(),
+        non_goals: Vec::new(),
+        next_step: "continue from current grounding".to_owned(),
+        handoff_to: None,
+        status_only: false,
+    }
+}
+
+fn repository_checkpoint_candidate<'a>(
+    project_id: ProjectId,
+    baseline: &'a AnalysisSnapshot,
+    current: &'a AnalysisSnapshot,
+) -> CheckpointCandidate<'a> {
+    CheckpointCandidate {
+        project_id,
+        kind: CheckpointKind::Completion,
+        goal: "record attributable repository work".to_owned(),
+        work_state: WorkState::Completed,
+        state_change: None,
+        repository_work: Some(RepositoryWorkBasis {
+            baseline,
+            current,
+            pre_existing_dirty_paths: Vec::new(),
+        }),
+        supporting_sources: Vec::new(),
+        applied_decisions: Vec::new(),
+        verification: Vec::new(),
+        user_review: UserReviewFact {
+            state: UserReviewState::NotRequested,
+            source_id: None,
+        },
+        user_acceptance: UserAcceptanceFact {
+            state: UserAcceptanceState::NotRequested,
+            source_id: None,
+        },
+        known_limits: Vec::new(),
+        non_goals: Vec::new(),
+        next_step: "verify the attributed change".to_owned(),
+        handoff_to: None,
+        status_only: false,
+    }
+}
+
+fn set_source_freshness(
+    canonical: &mut CanonicalReadBasis,
+    source_id: SourceId,
+    freshness: SourceFreshness,
+) {
+    let basis = canonical
+        .sources
+        .iter_mut()
+        .find(|basis| basis.source.id == source_id)
+        .unwrap_or_else(|| panic!("test Source {source_id} is missing"));
+    basis.freshness = freshness;
+    basis.availability = match freshness {
+        SourceFreshness::Current => Availability::Available,
+        SourceFreshness::Stale => Availability::Stale,
+        SourceFreshness::Unavailable => Availability::Unavailable,
+        SourceFreshness::Unknown => Availability::Unknown,
+    };
+    basis.source.availability = basis.availability;
+}
+
+fn assert_checkpoint_rejection(
+    evaluation: CheckpointEvaluation,
+    expected: CheckpointRejection,
+    detail_fragment: &str,
+) {
+    match evaluation {
+        CheckpointEvaluation::Rejected { reason, detail, .. } => {
+            assert_eq!(reason, expected);
+            assert!(
+                detail.contains(detail_fragment),
+                "rejection detail {detail:?} did not contain {detail_fragment:?}"
+            );
+        }
+        CheckpointEvaluation::Ready { .. } => {
+            panic!("expected {expected:?} Checkpoint rejection")
+        }
     }
 }
 
@@ -523,6 +629,435 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
             .checkpoint_history
             .len(),
         1
+    );
+    Ok(())
+}
+
+#[test]
+fn checkpoint_rejects_unavailable_supporting_source() -> Result<(), Box<dyn std::error::Error>> {
+    let Setup {
+        root: _root,
+        mut store,
+        project,
+        repository: _repository,
+        user_turn: _user_turn,
+    } = setup()?;
+    let unavailable = store
+        .record_source(
+            operation(93),
+            project.id,
+            SourceDraft {
+                expected_project_revision: project.revision,
+                payload: SourcePayload::File {
+                    locator: "src/unavailable.rs".to_owned(),
+                    snapshot: "snapshot-a".to_owned(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::Repository,
+                    identity: "repository".to_owned(),
+                },
+                observer: Some(Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex-host-adapter".to_owned(),
+                }),
+                availability: Availability::Unavailable,
+            },
+        )?
+        .value;
+    let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let evaluation = evaluate_checkpoint_candidate(
+        &canonical,
+        pause_candidate(project.id, vec![unavailable.id]),
+    );
+    assert_checkpoint_rejection(
+        evaluation.clone(),
+        CheckpointRejection::SourceUnavailable,
+        "availability=Unavailable",
+    );
+    assert!(record_checkpoint(&mut store, operation(94), project.id, evaluation).is_err());
+    assert_eq!(
+        store.read_canonical_basis(project.id, CanonicalReadOptions::default())?,
+        canonical
+    );
+    Ok(())
+}
+
+#[test]
+fn checkpoint_support_requires_every_source_to_be_current_and_project_owned(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Setup {
+        root: _root,
+        store,
+        project,
+        repository,
+        user_turn,
+    } = setup()?;
+    let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+
+    assert!(matches!(
+        evaluate_checkpoint_candidate(&canonical, pause_candidate(project.id, vec![repository.id])),
+        CheckpointEvaluation::Ready { .. }
+    ));
+    assert!(matches!(
+        evaluate_checkpoint_candidate(
+            &canonical,
+            pause_candidate(project.id, vec![repository.id, user_turn.id])
+        ),
+        CheckpointEvaluation::Ready { .. }
+    ));
+
+    for (freshness, expected, detail) in [
+        (
+            SourceFreshness::Unavailable,
+            CheckpointRejection::SourceUnavailable,
+            "Unavailable",
+        ),
+        (
+            SourceFreshness::Stale,
+            CheckpointRejection::SourceStale,
+            "Stale",
+        ),
+        (
+            SourceFreshness::Unknown,
+            CheckpointRejection::SourceFreshnessUnknown,
+            "Unknown",
+        ),
+    ] {
+        let mut degraded = canonical.clone();
+        set_source_freshness(&mut degraded, repository.id, freshness);
+        assert_checkpoint_rejection(
+            evaluate_checkpoint_candidate(
+                &degraded,
+                pause_candidate(project.id, vec![repository.id]),
+            ),
+            expected,
+            detail,
+        );
+        assert_checkpoint_rejection(
+            evaluate_checkpoint_candidate(
+                &degraded,
+                pause_candidate(project.id, vec![repository.id, user_turn.id]),
+            ),
+            expected,
+            detail,
+        );
+    }
+
+    let missing = SourceId::from_bytes([99; 16]);
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(&canonical, pause_candidate(project.id, vec![missing])),
+        CheckpointRejection::MissingSourceBasis,
+        "missing from the canonical read basis",
+    );
+
+    let mut wrong_project = canonical.clone();
+    let repository_basis = wrong_project
+        .sources
+        .iter_mut()
+        .find(|basis| basis.source.id == repository.id)
+        .ok_or("repository Source basis missing")?;
+    repository_basis.source.project_id = ProjectId::from_bytes([98; 16]);
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(
+            &wrong_project,
+            pause_candidate(project.id, vec![repository.id]),
+        ),
+        CheckpointRejection::WrongProject,
+        "different Project",
+    );
+    Ok(())
+}
+
+#[test]
+fn repository_checkpoint_basis_requires_current_analysis_and_canonical_source(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Setup {
+        root,
+        store,
+        project,
+        repository,
+        user_turn: _user_turn,
+    } = setup()?;
+    let repository_root = root.path().join("repository-grounding");
+    fs::create_dir_all(repository_root.join("src"))?;
+    fs::write(repository_root.join("src/lib.rs"), "pub fn baseline() {}\n")?;
+    let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let grounding = CanonicalGrounding::from_read_basis(&canonical)?;
+    let (_, baseline) = inventory_repository(InventoryRequest::new(
+        &repository_root,
+        &grounding,
+        repository.id,
+        1_000,
+    )?)?;
+    fs::write(repository_root.join("src/lib.rs"), "pub fn current() {}\n")?;
+    let (_, current) = inventory_repository(InventoryRequest::new(
+        &repository_root,
+        &grounding,
+        repository.id,
+        2_000,
+    )?)?;
+
+    let ready = evaluate_checkpoint_candidate(
+        &canonical,
+        repository_checkpoint_candidate(project.id, &baseline, &current),
+    );
+    let CheckpointEvaluation::Ready { draft, .. } = ready else {
+        return Err("current repository grounding was unexpectedly rejected".into());
+    };
+    assert_eq!(draft.source_basis, vec![repository.id]);
+    assert_eq!(draft.changed_source_basis, vec![repository.id]);
+    assert_eq!(draft.changed_paths, vec!["src/lib.rs"]);
+
+    for (freshness, expected) in [
+        (
+            SourceFreshness::Unavailable,
+            CheckpointRejection::SourceUnavailable,
+        ),
+        (SourceFreshness::Stale, CheckpointRejection::SourceStale),
+        (
+            SourceFreshness::Unknown,
+            CheckpointRejection::SourceFreshnessUnknown,
+        ),
+    ] {
+        let mut degraded = canonical.clone();
+        set_source_freshness(&mut degraded, repository.id, freshness);
+        let evaluation = evaluate_checkpoint_candidate(
+            &degraded,
+            repository_checkpoint_candidate(project.id, &baseline, &current),
+        );
+        assert_checkpoint_rejection(evaluation, expected, "repository work and changed paths");
+    }
+
+    for (freshness, expected) in [
+        (FreshnessState::Stale, CheckpointRejection::SourceStale),
+        (
+            FreshnessState::Unknown,
+            CheckpointRejection::SourceFreshnessUnknown,
+        ),
+    ] {
+        let mut non_current = current.clone();
+        non_current.freshness.state = freshness;
+        let evaluation = evaluate_checkpoint_candidate(
+            &canonical,
+            repository_checkpoint_candidate(project.id, &baseline, &non_current),
+        );
+        assert_checkpoint_rejection(evaluation, expected, "Repository Intelligence basis");
+    }
+
+    let mismatched_reference: CanonicalSourceRef = serde_json::from_value(serde_json::json!({
+        "project": project.id.to_string(),
+        "identity": repository.id.to_string(),
+        "basis": {
+            "kind": "snapshot",
+            "value": "different-canonical-snapshot"
+        }
+    }))?;
+    let mut mismatched_baseline = baseline.clone();
+    let mut mismatched_current = current.clone();
+    mismatched_baseline.repository_source = mismatched_reference.clone();
+    mismatched_current.repository_source = mismatched_reference;
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(
+            &canonical,
+            repository_checkpoint_candidate(project.id, &mismatched_baseline, &mismatched_current),
+        ),
+        CheckpointRejection::SourceUnavailable,
+        "snapshot basis disagrees",
+    );
+
+    let mut disagreeing_current = current.clone();
+    disagreeing_current.repository_source = mismatched_baseline.repository_source.clone();
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(
+            &canonical,
+            repository_checkpoint_candidate(project.id, &baseline, &disagreeing_current),
+        ),
+        CheckpointRejection::SourceUnavailable,
+        "do not identify the same Project Source",
+    );
+    Ok(())
+}
+
+#[test]
+fn verification_checkpoint_basis_is_current_and_keeps_command_kind_semantics(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Setup {
+        root: _root,
+        mut store,
+        project,
+        repository,
+        user_turn: _user_turn,
+    } = setup()?;
+    let command = store
+        .record_source(
+            operation(93),
+            project.id,
+            source_draft(
+                &project,
+                SourcePayload::CommandExecution {
+                    command_label: "cargo test".to_owned(),
+                    outcome: CommandOutcome {
+                        exit_code: Some(0),
+                        termination: CommandTermination::Exited,
+                    },
+                },
+                Principal {
+                    kind: PrincipalKind::Command,
+                    identity: "focused-validation".to_owned(),
+                },
+            ),
+        )?
+        .value;
+    let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let executed = |source_id| VerificationFact {
+        state: VerificationState::Passed,
+        source_id: Some(source_id),
+        outcome: Some("focused validation passed".to_owned()),
+    };
+    let mut current = pause_candidate(project.id, vec![repository.id]);
+    current.verification = vec![executed(command.id)];
+    assert!(matches!(
+        evaluate_checkpoint_candidate(&canonical, current),
+        CheckpointEvaluation::Ready { .. }
+    ));
+
+    for (freshness, expected) in [
+        (
+            SourceFreshness::Unavailable,
+            CheckpointRejection::SourceUnavailable,
+        ),
+        (SourceFreshness::Stale, CheckpointRejection::SourceStale),
+        (
+            SourceFreshness::Unknown,
+            CheckpointRejection::SourceFreshnessUnknown,
+        ),
+    ] {
+        let mut degraded = canonical.clone();
+        set_source_freshness(&mut degraded, command.id, freshness);
+        let mut candidate = pause_candidate(project.id, vec![repository.id]);
+        candidate.verification = vec![executed(command.id)];
+        assert_checkpoint_rejection(
+            evaluate_checkpoint_candidate(&degraded, candidate),
+            expected,
+            "executed verification",
+        );
+    }
+
+    let mut not_run = pause_candidate(project.id, vec![repository.id]);
+    not_run.verification = vec![VerificationFact {
+        state: VerificationState::NotRun,
+        source_id: None,
+        outcome: None,
+    }];
+    assert!(matches!(
+        evaluate_checkpoint_candidate(&canonical, not_run),
+        CheckpointEvaluation::Ready { .. }
+    ));
+    let mut wrong_kind = pause_candidate(project.id, vec![repository.id]);
+    wrong_kind.verification = vec![executed(repository.id)];
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(&canonical, wrong_kind),
+        CheckpointRejection::InvalidSourceKind,
+        "command-execution Source",
+    );
+    Ok(())
+}
+
+#[test]
+fn review_and_acceptance_require_current_user_turn_sources_only_when_observed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Setup {
+        root: _root,
+        store,
+        project,
+        repository,
+        user_turn,
+    } = setup()?;
+    let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+
+    let mut reviewed = pause_candidate(project.id, vec![repository.id]);
+    reviewed.user_review = UserReviewFact {
+        state: UserReviewState::Reviewed,
+        source_id: Some(user_turn.id),
+    };
+    assert!(matches!(
+        evaluate_checkpoint_candidate(&canonical, reviewed),
+        CheckpointEvaluation::Ready { .. }
+    ));
+    for acceptance in [UserAcceptanceState::Accepted, UserAcceptanceState::Rejected] {
+        let mut observed = pause_candidate(project.id, vec![repository.id]);
+        observed.user_acceptance = UserAcceptanceFact {
+            state: acceptance,
+            source_id: Some(user_turn.id),
+        };
+        assert!(matches!(
+            evaluate_checkpoint_candidate(&canonical, observed),
+            CheckpointEvaluation::Ready { .. }
+        ));
+    }
+
+    for (freshness, expected) in [
+        (
+            SourceFreshness::Unavailable,
+            CheckpointRejection::SourceUnavailable,
+        ),
+        (SourceFreshness::Stale, CheckpointRejection::SourceStale),
+        (
+            SourceFreshness::Unknown,
+            CheckpointRejection::SourceFreshnessUnknown,
+        ),
+    ] {
+        let mut degraded = canonical.clone();
+        set_source_freshness(&mut degraded, user_turn.id, freshness);
+        let mut review = pause_candidate(project.id, vec![repository.id]);
+        review.user_review = UserReviewFact {
+            state: UserReviewState::Reviewed,
+            source_id: Some(user_turn.id),
+        };
+        assert_checkpoint_rejection(
+            evaluate_checkpoint_candidate(&degraded, review),
+            expected,
+            "observed user review",
+        );
+        for acceptance in [UserAcceptanceState::Accepted, UserAcceptanceState::Rejected] {
+            let mut observed = pause_candidate(project.id, vec![repository.id]);
+            observed.user_acceptance = UserAcceptanceFact {
+                state: acceptance,
+                source_id: Some(user_turn.id),
+            };
+            assert_checkpoint_rejection(
+                evaluate_checkpoint_candidate(&degraded, observed),
+                expected,
+                "observed user acceptance",
+            );
+        }
+    }
+
+    for (review, acceptance) in [
+        (
+            UserReviewState::NotRequested,
+            UserAcceptanceState::NotRequested,
+        ),
+        (UserReviewState::Pending, UserAcceptanceState::Pending),
+    ] {
+        let mut unobserved = pause_candidate(project.id, vec![repository.id]);
+        unobserved.user_review.state = review;
+        unobserved.user_acceptance.state = acceptance;
+        assert!(matches!(
+            evaluate_checkpoint_candidate(&canonical, unobserved),
+            CheckpointEvaluation::Ready { .. }
+        ));
+    }
+
+    let mut wrong_kind = pause_candidate(project.id, vec![repository.id]);
+    wrong_kind.user_review = UserReviewFact {
+        state: UserReviewState::Reviewed,
+        source_id: Some(repository.id),
+    };
+    assert_checkpoint_rejection(
+        evaluate_checkpoint_candidate(&canonical, wrong_kind),
+        CheckpointRejection::InvalidSourceKind,
+        "current-host user-turn Source",
     );
     Ok(())
 }

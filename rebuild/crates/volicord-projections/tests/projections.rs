@@ -6,9 +6,9 @@ use volicord_context::{
     DeterministicIdGenerator, ExplicitQuestionResponse, FixedClock, NonUserQuestionOutcome,
     OperationId, Principal, PrincipalKind, Project, QuestionAlternative, QuestionDraft,
     QuestionMateriality, QuestionResearchState, QuestionResponseDraft, Source, SourceDraft,
-    SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    SourceFreshness, SourcePayload, StatementProvenanceRole, Store, TimestampMicros,
+    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource,
+    VerificationFact, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     ApplicabilityQuery, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
@@ -621,5 +621,127 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     assert!(bounded.omissions.iter().any(|omission| {
         omission.reason == OmissionReason::Bound && !omission.expandable_basis.is_empty()
     }));
+    Ok(())
+}
+
+#[test]
+fn historical_checkpoint_remains_readable_with_non_current_source_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut store = Store::open_with(
+        root.path().join("historical-checkpoint.sqlite3"),
+        DeterministicIdGenerator::new((1_u8..=8).map(|value| [value; 16])),
+        FixedClock::new(TimestampMicros::from_unix_micros(3_000)),
+    )?;
+    let project = store
+        .create_project(operation(121), "Historical Checkpoint")?
+        .value;
+    let repository = store
+        .record_source(
+            operation(122),
+            project.id,
+            source_draft(
+                &project,
+                SourcePayload::RepositorySnapshot {
+                    revision: "snapshot-current-at-creation".to_owned(),
+                },
+                Availability::Available,
+            ),
+        )?
+        .value;
+    let checkpoint = store
+        .record_checkpoint(
+            operation(123),
+            project.id,
+            CheckpointDraft {
+                expected_project_revision: project.revision,
+                kind: CheckpointKind::Pause,
+                goal: "preserve historical work context".to_owned(),
+                work_state: WorkState::Paused,
+                state_change: None,
+                source_basis: vec![repository.id],
+                changed_source_basis: Vec::new(),
+                changed_paths: Vec::new(),
+                applied_decisions: Vec::new(),
+                verification: vec![VerificationFact {
+                    state: VerificationState::NotRun,
+                    source_id: None,
+                    outcome: None,
+                }],
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: Vec::new(),
+                non_goals: Vec::new(),
+                open_questions: Vec::new(),
+                next_step: "restore current grounding before new work".to_owned(),
+                handoff_to: None,
+            },
+        )?
+        .value;
+    let historical = store.read_canonical_basis(
+        project.id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+
+    for (freshness, availability) in [
+        (SourceFreshness::Unavailable, Availability::Unavailable),
+        (SourceFreshness::Stale, Availability::Stale),
+    ] {
+        let mut degraded = historical.clone();
+        let source = degraded
+            .sources
+            .iter_mut()
+            .find(|source| source.source.id == repository.id)
+            .ok_or("historical Source basis missing")?;
+        source.freshness = freshness;
+        source.availability = availability;
+        source.source.availability = availability;
+        let brief = build_resume_brief(RecallInputs {
+            canonical: &degraded,
+            analyses: &[],
+            scope: ApplicabilityQuery {
+                project_id: project.id,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+            bound: RecallBound::default(),
+        });
+        assert_eq!(
+            brief
+                .latest_meaningful_checkpoint
+                .as_ref()
+                .map(|value| value.id),
+            Some(checkpoint.id)
+        );
+        assert_eq!(degraded.checkpoint_history, vec![checkpoint.clone()]);
+        assert!(brief
+            .used_sources
+            .iter()
+            .any(|basis| basis.source.id == repository.id && basis.freshness == freshness));
+        assert!(brief
+            .proposals
+            .iter()
+            .any(|proposal| proposal.source_ids.contains(&repository.id)));
+    }
+    assert_eq!(
+        store.read_canonical_basis(
+            project.id,
+            CanonicalReadOptions {
+                include_checkpoint_history: true,
+            },
+        )?,
+        historical
+    );
     Ok(())
 }
