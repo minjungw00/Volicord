@@ -229,6 +229,85 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "v02-java-maven",
+      "validation_id": "V02",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/java",
+      "purpose": "Qualify Java/Maven source-semantic definition, reference, type, implementation, override, same-name, source-range, and broken-dependency behavior on the official structural fixture.",
+      "expected_entities": [
+        "example.Named.name()@6",
+        "example.Greeter.name()@16",
+        "example.Greeter.greet(String)@20"
+      ],
+      "expected_relations": [
+        "defines|src/main/java/example/Greeter.java|example.Greeter.greet(String)",
+        "references|example.Greeter.greet(String)|example.Greeter.name()",
+        "type_of|example.Greeter.greet(String)|java.lang.String",
+        "implements|example.Greeter|example.Named",
+        "overrides|example.Greeter.name()|example.Named.name()"
+      ],
+      "expected_unsupported": [
+        "annotation processing and reflection",
+        "external Maven artifacts absent from the local snapshot",
+        "compiler-exact overload inference beyond locally source-resolved arity and declared types"
+      ],
+      "content_sha256": "5b3579bc2a073420d519528b89d39de143b1253ea843504ca1ada6d7ed36246f",
+      "origin": "Reuses the self-authored deterministic V01 Java fixture for V02.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v02-typescript-node",
+      "validation_id": "V02",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/typescript",
+      "purpose": "Qualify TypeScript/Node source-semantic definition, reference, type, implementation, override, same-name, module-resolution, source-range, and broken-dependency behavior on the official structural fixture.",
+      "expected_entities": [
+        "Named.name()@4",
+        "Greeter.name()@17",
+        "Greeter.greet(Identifier)@21",
+        "formatName(string)@26"
+      ],
+      "expected_relations": [
+        "defines|src/index.ts|Greeter.greet(Identifier)",
+        "references|Greeter.greet(Identifier)|formatName(string)",
+        "type_of|Greeter.greet(Identifier)|string",
+        "implements|Greeter|Named",
+        "overrides|Greeter.name()|Named.name()"
+      ],
+      "expected_unsupported": [
+        "declaration merging and type-level evaluation",
+        "external Node packages absent from the local snapshot",
+        "runtime module and dynamic property behavior"
+      ],
+      "content_sha256": "ddcb5f043dde8b5e406c5d2092771510c2f16071343e6f0a072a99be2f6abc18",
+      "origin": "Reuses the self-authored deterministic V01 TypeScript fixture for V02.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "v02-rust-cargo",
+      "validation_id": "V02",
+      "path": "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/rust",
+      "purpose": "Qualify Rust/Cargo source-semantic definition, reference, type, trait implementation, override-style, same-name, source-range, and broken-dependency behavior on the official structural fixture.",
+      "expected_entities": [
+        "Named::name(&self)@8",
+        "Greeter::greet(&self,&Identifier)@27",
+        "Greeter as Named::name(&self)@33"
+      ],
+      "expected_relations": [
+        "defines|crates/greeter/src/lib.rs|Greeter::greet(&self,&Identifier)",
+        "references|Greeter::greet(&self,&Identifier)|format::normalize(&str)",
+        "type_of|Greeter::greet(&self,&Identifier)|String",
+        "implements|Greeter|Named",
+        "overrides|Greeter as Named::name(&self)|Named::name(&self)"
+      ],
+      "expected_unsupported": [
+        "macro expansion and cfg-selected code",
+        "external Cargo crates absent from the local snapshot",
+        "compiler-exact trait selection beyond explicit local impl blocks"
+      ],
+      "content_sha256": "8161bab1034f30b88012a4dcc4ffba5ccfb43c6023561c4d30f51afa6f2fb899",
+      "origin": "Reuses the self-authored deterministic V01 Rust fixture for V02.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v03-canonical-scenario",
       "validation_id": "V03",
       "path": "rebuild/validation/canonical-context/portability/fixtures",
