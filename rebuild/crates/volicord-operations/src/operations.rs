@@ -843,7 +843,7 @@ impl LocalOperations {
                 SourceDraft {
                     expected_project_revision: project.revision,
                     payload: SourcePayload::CurrentHostUserTurn {
-                        host,
+                        host: host.clone(),
                         session,
                         turn,
                     },
@@ -851,7 +851,10 @@ impl LocalOperations {
                         kind: PrincipalKind::User,
                         identity: "current-host-user".into(),
                     },
-                    observer: None,
+                    observer: Some(Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: host,
+                    }),
                     availability: Availability::Available,
                 },
             )
