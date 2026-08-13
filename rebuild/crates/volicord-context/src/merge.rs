@@ -867,7 +867,10 @@ fn row_owner(table: &str, row: &[PortableValue]) -> Result<Option<CanonicalRecor
         "checkpoint_source_relations"
         | "checkpoint_decisions"
         | "checkpoint_questions"
-        | "checkpoint_verifications" => Some(canonical_record_identity("checkpoint", &row[1])),
+        | "checkpoint_verifications"
+        | "checkpoint_forgotten_source_witnesses" => {
+            Some(canonical_record_identity("checkpoint", &row[1]))
+        }
         "canonical_relations" => Some(canonical_record_identity(value_text(&row[1])?, &row[2])),
         "review_due" => Some(canonical_record_identity("decision", &row[1])),
         "tombstones" => Some(canonical_record_identity(value_text(&row[1])?, &row[2])),
@@ -971,6 +974,122 @@ fn record_present(
     active.contains(&record) || tombstones.contains(&record)
 }
 
+fn sanitize_checkpoint_forgotten_sources(selected: &mut RowMap) -> Result<(), Error> {
+    let source_tombstones = selected
+        .iter()
+        .filter(|(key, row)| {
+            key.starts_with("tombstones|") && matches!(value_text(&row[1]), Ok("source"))
+        })
+        .map(|(_, row)| value_key(&row[2]))
+        .collect::<BTreeSet<_>>();
+    let mut removals = Vec::new();
+    let mut replacements = Vec::new();
+    let mut witnesses = Vec::new();
+    for (key, row) in selected.iter() {
+        let table = key.split('|').next().unwrap_or_default();
+        match table {
+            "checkpoint_source_relations" if source_tombstones.contains(&value_key(&row[3])) => {
+                let semantic_use =
+                    match value_text(&row[2])? {
+                        "supported_by" => "supporting_basis",
+                        "changed_basis" => "changed_basis",
+                        _ => return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Checkpoint Source relation kind is invalid during merge sanitation",
+                        )),
+                    };
+                witnesses.push(checkpoint_witness_row(
+                    &row[0],
+                    &row[1],
+                    &row[3],
+                    semantic_use,
+                    &row[4],
+                ));
+                removals.push(key.clone());
+            }
+            "checkpoint_verifications"
+                if !matches!(row[4], PortableValue::Null)
+                    && source_tombstones.contains(&value_key(&row[4])) =>
+            {
+                witnesses.push(checkpoint_witness_row(
+                    &row[0],
+                    &row[1],
+                    &row[4],
+                    "verification",
+                    &row[2],
+                ));
+                let mut sanitized = row.clone();
+                sanitized[4] = PortableValue::Null;
+                replacements.push((key.clone(), sanitized));
+            }
+            "checkpoints" => {
+                let mut sanitized = row.clone();
+                let mut changed = false;
+                for (source_index, semantic_use) in [(9, "user_review"), (11, "user_acceptance")] {
+                    if !matches!(row[source_index], PortableValue::Null)
+                        && source_tombstones.contains(&value_key(&row[source_index]))
+                    {
+                        witnesses.push(checkpoint_witness_row(
+                            &row[1],
+                            &row[0],
+                            &row[source_index],
+                            semantic_use,
+                            &PortableValue::Integer(0),
+                        ));
+                        sanitized[source_index] = PortableValue::Null;
+                        changed = true;
+                    }
+                }
+                if changed {
+                    replacements.push((key.clone(), sanitized));
+                }
+            }
+            _ => {}
+        }
+    }
+    for key in removals {
+        selected.remove(&key);
+    }
+    for (key, row) in replacements {
+        selected.insert(key, row);
+    }
+    for row in witnesses {
+        let key = format!(
+            "checkpoint_forgotten_source_witnesses|{}|{}|{}",
+            value_key(&row[1]),
+            value_key(&row[3]),
+            value_key(&row[4])
+        );
+        if let Some(existing) = selected.get(&key) {
+            if existing != &row {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "generated merge target contains contradictory Checkpoint forgotten Source witnesses",
+                ));
+            }
+        } else {
+            selected.insert(key, row);
+        }
+    }
+    Ok(())
+}
+
+fn checkpoint_witness_row(
+    project_id: &PortableValue,
+    checkpoint_id: &PortableValue,
+    source_id: &PortableValue,
+    semantic_use: &str,
+    position: &PortableValue,
+) -> Vec<PortableValue> {
+    vec![
+        project_id.clone(),
+        checkpoint_id.clone(),
+        source_id.clone(),
+        PortableValue::Text(semantic_use.to_owned()),
+        position.clone(),
+    ]
+}
+
 fn retain_relation_integrity(selected: &mut RowMap) -> Result<(), Error> {
     let (active, tombstones) = selected_record_states(selected)?;
     selected.retain(|key, row| {
@@ -1009,6 +1128,10 @@ fn retain_relation_integrity(selected: &mut RowMap) -> Result<(), Error> {
                 active.contains(&canonical_record_identity("checkpoint", &row[1]))
                     && (matches!(row[4], PortableValue::Null)
                         || active.contains(&canonical_record_identity("source", &row[4])))
+            }
+            "checkpoint_forgotten_source_witnesses" => {
+                active.contains(&canonical_record_identity("checkpoint", &row[1]))
+                    && tombstones.contains(&canonical_record_identity("source", &row[2]))
             }
             "canonical_relations" => {
                 let from = value_text(&row[1])
@@ -1098,6 +1221,7 @@ fn build_target(compared: &ComparedState, choice: SideChoice) -> Result<Payload,
     }
     let losing_decisions = losing_decision_ids(base, &compared.local, &compared.incoming, choice)?;
     selected.retain(|key, row| !row_mentions_losing_decision(key, row, &losing_decisions));
+    sanitize_checkpoint_forgotten_sources(&mut selected)?;
     retain_relation_integrity(&mut selected)?;
     let mut tables = Vec::with_capacity(TABLES.len());
     for spec in TABLES {

@@ -51,6 +51,14 @@ pub struct ForgottenRecordBasis {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgottenCheckpointSourceBasis {
+    pub checkpoint_identity: String,
+    pub source_identity: String,
+    pub semantic_use: String,
+    pub position: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MergeReadBasis {
     pub operation_identity: String,
     pub conflict_set_identity: String,
@@ -82,6 +90,7 @@ pub struct CanonicalReadBasis {
     pub revisions: Vec<CanonicalRevisionBasis>,
     pub relations: Vec<ReadRelationBasis>,
     pub forgotten: Vec<ForgottenRecordBasis>,
+    pub forgotten_checkpoint_sources: Vec<ForgottenCheckpointSourceBasis>,
     pub bundle_merges: Vec<MergeReadBasis>,
     pub stable_ordering_identity: Vec<String>,
 }
@@ -166,6 +175,8 @@ impl Store {
         let revisions = read_revisions(&self.connection, project_id)?;
         let relations = read_relations(&self.connection, project_id)?;
         let forgotten = read_tombstones(&self.connection, project_id)?;
+        let forgotten_checkpoint_sources =
+            read_forgotten_checkpoint_sources(&self.connection, project_id)?;
         let bundle_merges = read_merges(&self.connection, project_id)?;
 
         let mut stable_ordering_identity = Vec::new();
@@ -208,6 +219,15 @@ impl Store {
                 value.record_identity
             )
         }));
+        stable_ordering_identity.extend(forgotten_checkpoint_sources.iter().map(|value| {
+            format!(
+                "forgotten_checkpoint_source:{}:{}:{}:{}",
+                value.checkpoint_identity,
+                value.semantic_use,
+                value.position,
+                value.source_identity
+            )
+        }));
         stable_ordering_identity.extend(bundle_merges.iter().map(|value| {
             format!(
                 "merge:{}:{}",
@@ -228,10 +248,51 @@ impl Store {
             revisions,
             relations,
             forgotten,
+            forgotten_checkpoint_sources,
             bundle_merges,
             stable_ordering_identity,
         })
     }
+}
+
+fn read_forgotten_checkpoint_sources(
+    connection: &rusqlite::Connection,
+    project_id: ProjectId,
+) -> Result<Vec<ForgottenCheckpointSourceBasis>, Error> {
+    let mut statement = connection
+        .prepare(
+            "SELECT checkpoint_id, source_id, semantic_use, position
+         FROM checkpoint_forgotten_source_witnesses
+         WHERE project_id = ?1
+         ORDER BY checkpoint_id, semantic_use, position",
+        )
+        .map_err(read_error)?;
+    let rows = statement
+        .query_map([project_id.as_bytes().as_slice()], |row| {
+            Ok((
+                row.get::<_, Vec<u8>>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(read_error)?;
+    let mut values = Vec::new();
+    for row in rows {
+        let (checkpoint_id, source_id, semantic_use, position) = row.map_err(read_error)?;
+        values.push(ForgottenCheckpointSourceBasis {
+            checkpoint_identity: hex(&checkpoint_id),
+            source_identity: hex(&source_id),
+            semantic_use,
+            position: u64::try_from(position).map_err(|_| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "forgotten Checkpoint Source position is invalid",
+                )
+            })?,
+        });
+    }
+    Ok(values)
 }
 
 fn source_read_basis(source: Source) -> SourceReadBasis {

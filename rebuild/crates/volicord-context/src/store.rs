@@ -26,11 +26,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 
-const REQUIRED_TABLES: [&str; 30] = [
+const REQUIRED_TABLES: [&str; 31] = [
     "metadata",
     "projects",
     "project_revisions",
@@ -52,6 +52,7 @@ const REQUIRED_TABLES: [&str; 30] = [
     "checkpoint_decisions",
     "checkpoint_questions",
     "checkpoint_verifications",
+    "checkpoint_forgotten_source_witnesses",
     "context_item_revisions",
     "decision_revisions",
     "canonical_relations",
@@ -2846,6 +2847,67 @@ impl Store {
         sanitize_forgotten_dependencies(&transaction, project_id, record, now)?;
         match record {
             CanonicalRecordId::Source(source_id) => {
+                transaction
+                    .execute(
+                        "INSERT INTO checkpoint_forgotten_source_witnesses(
+                         project_id, checkpoint_id, source_id, semantic_use, position
+                     )
+                     SELECT project_id, checkpoint_id, source_id,
+                            CASE relation_kind
+                                WHEN 'supported_by' THEN 'supporting_basis'
+                                ELSE 'changed_basis'
+                            END,
+                            position
+                     FROM checkpoint_source_relations
+                     WHERE project_id = ?1 AND source_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "INSERT INTO checkpoint_forgotten_source_witnesses(
+                         project_id, checkpoint_id, source_id, semantic_use, position
+                     )
+                     SELECT project_id, checkpoint_id, source_id, 'verification', position
+                     FROM checkpoint_verifications
+                     WHERE project_id = ?1 AND source_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "INSERT INTO checkpoint_forgotten_source_witnesses(
+                         project_id, checkpoint_id, source_id, semantic_use, position
+                     )
+                     SELECT project_id, id, user_review_source_id, 'user_review', 0
+                     FROM checkpoints
+                     WHERE project_id = ?1 AND user_review_source_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
+                transaction
+                    .execute(
+                        "INSERT INTO checkpoint_forgotten_source_witnesses(
+                         project_id, checkpoint_id, source_id, semantic_use, position
+                     )
+                     SELECT project_id, id, user_acceptance_source_id, 'user_acceptance', 0
+                     FROM checkpoints
+                     WHERE project_id = ?1 AND user_acceptance_source_id = ?2",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            source_id.as_bytes().as_slice()
+                        ],
+                    )
+                    .map_err(write_error)?;
                 transaction.execute(
                     "DELETE FROM source_relations WHERE project_id = ?1 AND (from_source_id = ?2 OR to_source_id = ?2)",
                     params![project_id.as_bytes().as_slice(), source_id.as_bytes().as_slice()],
@@ -2974,6 +3036,10 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::Checkpoint(checkpoint_id) => {
+                transaction.execute(
+                    "DELETE FROM checkpoint_forgotten_source_witnesses WHERE project_id = ?1 AND checkpoint_id = ?2",
+                    params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
+                ).map_err(write_error)?;
                 transaction.execute(
                     "DELETE FROM checkpoint_verifications WHERE project_id = ?1 AND checkpoint_id = ?2",
                     params![project_id.as_bytes().as_slice(), checkpoint_id.as_bytes().as_slice()],
@@ -4740,6 +4806,17 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  PRIMARY KEY(checkpoint_id, position),
                  FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
+             ) WITHOUT ROWID;
+             CREATE TABLE checkpoint_forgotten_source_witnesses(
+                 project_id BLOB NOT NULL CHECK(length(project_id) = 16),
+                 checkpoint_id BLOB NOT NULL CHECK(length(checkpoint_id) = 16),
+                 source_id BLOB NOT NULL CHECK(length(source_id) = 16),
+                 semantic_use TEXT NOT NULL CHECK(semantic_use IN (
+                     'supporting_basis','changed_basis','verification','user_review','user_acceptance'
+                 )),
+                 position INTEGER NOT NULL CHECK(position >= 0),
+                 PRIMARY KEY(checkpoint_id, semantic_use, position),
+                 FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT
              ) WITHOUT ROWID;
              CREATE TABLE operations(
                  operation_id BLOB PRIMARY KEY NOT NULL CHECK(length(operation_id) = 16),

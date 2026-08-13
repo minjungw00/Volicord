@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 4;
+pub const BUNDLE_FORMAT_VERSION: u32 = 5;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -389,6 +389,19 @@ pub(crate) const TABLES: &[TableSpec] = &[
         primary_key: &[1, 2],
         project_column: 0,
         order_by: "checkpoint_id, position",
+    },
+    TableSpec {
+        name: "checkpoint_forgotten_source_witnesses",
+        columns: &[
+            "project_id",
+            "checkpoint_id",
+            "source_id",
+            "semantic_use",
+            "position",
+        ],
+        primary_key: &[1, 3, 4],
+        project_column: 0,
+        order_by: "checkpoint_id, semantic_use, position",
     },
     TableSpec {
         name: "canonical_relations",
@@ -913,7 +926,8 @@ pub(crate) fn validate_portable_canonical_invariants(
                 "checkpoint_source_relations"
                 | "checkpoint_decisions"
                 | "checkpoint_questions"
-                | "checkpoint_verifications" => Some(("checkpoint", 1)),
+                | "checkpoint_verifications"
+                | "checkpoint_forgotten_source_witnesses" => Some(("checkpoint", 1)),
                 "review_due" => Some(("decision", 1)),
                 _ => None,
             };
@@ -2105,6 +2119,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 4);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 5);
     }
 }

@@ -12,6 +12,7 @@ const REQUIRED_INVARIANTS: &[&str] = &[
     "decision-correction-semantics",
     "context-item-role-provenance",
     "checkpoint-verification-state-dimensions",
+    "checkpoint-forgotten-source-witness",
     "relation-direction",
     "tombstone-content-exclusion",
     "forgetting-closure",
@@ -100,11 +101,15 @@ fn invariant_catalog_rows_have_semantic_owners_and_executable_anchors(
 
     assert_eq!(observed, required, "catalog invariant inventory changed");
     assert!(catalog.contains("exactly one content-free witness"));
+    assert!(catalog.contains("no Project-wide tombstone fact grants authority"));
     assert!(!catalog.contains("bundle-wide forgotten-Decision existence fallback"));
     assert!(tests
         .contains("fn canonical_invariant_mutation_matrix_rejects_every_portable_write_boundary("));
     assert!(tests.contains(
         "fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_boundary("
+    ));
+    assert!(tests.contains(
+        "fn malformed_checkpoint_forgotten_source_witnesses_reject_every_portable_write_boundary("
     ));
     for mutation in [
         "witness-removal",
@@ -170,6 +175,8 @@ fn every_full_state_admission_path_names_the_central_boundary(
     assert!(store.contains("canonical_state::validate_project_state(transaction, project_id)"));
     assert!(owner.contains("pub(crate) fn validate_payload"));
     assert!(owner.contains("pub(crate) fn validate_project_state"));
+    assert!(!owner.contains("!source_tombstones.is_empty()"));
+    assert!(owner.contains("checkpoint_forgotten_source_witnesses"));
     for source in [&portable, &merge, &store] {
         assert!(
             !source.contains("validate_tables"),

@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
@@ -255,6 +256,203 @@ fn semantic_fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> 
     Ok(fixture)
 }
 
+struct CheckpointForgettingFixture {
+    portable: Fixture,
+    checkpoint_id: volicord_context::CheckpointId,
+    support_one: SourceId,
+    support_two: SourceId,
+    changed_only: SourceId,
+    verification_one: SourceId,
+    verification_two: SourceId,
+    review: SourceId,
+    acceptance: SourceId,
+    active_bundle: PathBuf,
+    forgotten_bundle: PathBuf,
+}
+
+fn repository_source(locator: &str) -> SourceDraft {
+    SourceDraft {
+        expected_project_revision: 1,
+        payload: SourcePayload::File {
+            locator: locator.to_owned(),
+            snapshot: format!("snapshot-{locator}"),
+        },
+        actor: Principal {
+            kind: PrincipalKind::Repository,
+            identity: "repository".to_owned(),
+        },
+        observer: None,
+        availability: Availability::Available,
+    }
+}
+
+fn command_source(command_label: &str) -> SourceDraft {
+    SourceDraft {
+        expected_project_revision: 1,
+        payload: SourcePayload::CommandExecution {
+            command_label: command_label.to_owned(),
+            outcome: CommandOutcome {
+                exit_code: Some(0),
+                termination: CommandTermination::Exited,
+            },
+        },
+        actor: Principal {
+            kind: PrincipalKind::Command,
+            identity: "command-observer".to_owned(),
+        },
+        observer: None,
+        availability: Availability::Available,
+    }
+}
+
+fn checkpoint_forgetting_fixture(
+    root: &Path,
+) -> Result<CheckpointForgettingFixture, Box<dyn std::error::Error>> {
+    let database = root.join("checkpoint-forgetting-origin.sqlite3");
+    let active_bundle = root.join("checkpoint-forgetting-active.json");
+    let forgotten_bundle = root.join("checkpoint-forgetting-forgotten.json");
+    let mut value = store(
+        &database,
+        &[0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a],
+    )?;
+    let project = value
+        .create_project(operation(1), "Checkpoint forgetting")?
+        .value;
+    let support_one = value
+        .record_source(
+            operation(2),
+            project.id,
+            repository_source("private/support-one.rs"),
+        )?
+        .value;
+    let support_two = value
+        .record_source(
+            operation(3),
+            project.id,
+            repository_source("private/support-two.rs"),
+        )?
+        .value;
+    let changed_only = value
+        .record_source(
+            operation(4),
+            project.id,
+            repository_source("private/changed-only.rs"),
+        )?
+        .value;
+    let verification_one = value
+        .record_source(
+            operation(5),
+            project.id,
+            command_source("private-verification-one"),
+        )?
+        .value;
+    let verification_two = value
+        .record_source(
+            operation(6),
+            project.id,
+            command_source("private-verification-two"),
+        )?
+        .value;
+    let review = value
+        .record_source(operation(7), project.id, user_turn("private-review"))?
+        .value;
+    let acceptance = value
+        .record_source(operation(8), project.id, user_turn("private-acceptance"))?
+        .value;
+    let authorization = value
+        .record_source(operation(9), project.id, user_turn("forget-authorization"))?
+        .value;
+    let checkpoint = value
+        .record_checkpoint(
+            operation(10),
+            project.id,
+            CheckpointDraft {
+                expected_project_revision: 1,
+                kind: CheckpointKind::Completion,
+                goal: "Preserve independent Checkpoint facts".to_owned(),
+                work_state: WorkState::Completed,
+                state_change: Some("Recorded relation-specific forgetting".to_owned()),
+                source_basis: vec![support_one.id, support_two.id],
+                changed_source_basis: vec![support_one.id, changed_only.id],
+                changed_paths: vec!["rebuild/crates/volicord-context".to_owned()],
+                applied_decisions: vec![],
+                verification: vec![
+                    VerificationFact {
+                        state: VerificationState::Passed,
+                        source_id: Some(verification_one.id),
+                        outcome: Some("first verification passed".to_owned()),
+                    },
+                    VerificationFact {
+                        state: VerificationState::Failed,
+                        source_id: Some(verification_two.id),
+                        outcome: Some("second verification failed".to_owned()),
+                    },
+                ],
+                user_review: UserReviewFact {
+                    state: UserReviewState::Reviewed,
+                    source_id: Some(review.id),
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::Rejected,
+                    source_id: Some(acceptance.id),
+                },
+                known_limits: vec!["No deleted Source content retained".to_owned()],
+                non_goals: vec![],
+                open_questions: vec![],
+                next_step: "Inspect the relation-specific witnesses".to_owned(),
+                handoff_to: None,
+            },
+        )?
+        .value;
+    value.export_bundle(project.id, &active_bundle)?;
+    let active_bytes = fs::read(&active_bundle)?;
+    for (operation_id, source_id) in [
+        (11, support_one.id),
+        (12, support_two.id),
+        (13, changed_only.id),
+        (14, verification_one.id),
+        (15, verification_two.id),
+        (16, review.id),
+        (17, acceptance.id),
+    ] {
+        value.forget_source(
+            operation(operation_id),
+            project.id,
+            source_id,
+            authorization.id,
+        )?;
+    }
+    assert!(
+        value
+            .forget_source(operation(11), project.id, support_one.id, authorization.id,)?
+            .replayed
+    );
+    value.export_bundle(project.id, &forgotten_bundle)?;
+    fs::write(&active_bundle, active_bytes)?;
+    let portable = Fixture {
+        project_id: project.id,
+        question_id: QuestionId::from_bytes([0xf1; 16]),
+        decision_id: volicord_context::DecisionId::from_bytes([0xf2; 16]),
+        file_source_id: support_one.id,
+        authorization_id: authorization.id,
+        active_bundle: active_bundle.clone(),
+        forgotten_bundle: forgotten_bundle.clone(),
+    };
+    Ok(CheckpointForgettingFixture {
+        portable,
+        checkpoint_id: checkpoint.id,
+        support_one: support_one.id,
+        support_two: support_two.id,
+        changed_only: changed_only.id,
+        verification_one: verification_one.id,
+        verification_two: verification_two.id,
+        review: review.id,
+        acceptance: acceptance.id,
+        active_bundle,
+        forgotten_bundle,
+    })
+}
+
 fn read_json(path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
     Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
@@ -362,6 +560,10 @@ fn copy_cell(
 
 fn portable_id(value: u8) -> Value {
     serde_json::json!({"type": "bytes", "value": format!("{value:02x}").repeat(16)})
+}
+
+fn portable_null() -> Value {
+    serde_json::json!({"type": "null"})
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -2139,6 +2341,424 @@ fn source_context_and_checkpoint_semantic_mutations_reject_every_portable_write_
     for (label, document) in cases {
         assert_portable_write_boundaries_reject(root.path(), &fixture, label, document)?;
     }
+    Ok(())
+}
+
+#[test]
+fn unrelated_source_tombstone_does_not_authorize_missing_checkpoint_sources(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = semantic_fixture(root.path())?;
+    let mut document = read_json(&fixture.active_bundle)?;
+    table_mut(&mut document, "checkpoint_source_relations")["rows"] = Value::Array(Vec::new());
+    set_cell(
+        &mut document,
+        "checkpoint_verifications",
+        0,
+        "source_id",
+        portable_null(),
+    );
+    set_cell(
+        &mut document,
+        "checkpoints",
+        0,
+        "user_review_source_id",
+        portable_null(),
+    );
+    set_cell(
+        &mut document,
+        "checkpoints",
+        0,
+        "user_acceptance_source_id",
+        portable_null(),
+    );
+    push_tombstone(&mut document, "source", portable_id(0xee));
+    assert_portable_write_boundaries_reject(
+        root.path(),
+        &fixture,
+        "unrelated-source-tombstone",
+        document,
+    )
+}
+
+fn checkpoint_witnesses(document: &Value) -> BTreeSet<(String, i64, String)> {
+    let witnesses = table(document, "checkpoint_forgotten_source_witnesses");
+    let source = column(witnesses, "source_id");
+    let semantic_use = column(witnesses, "semantic_use");
+    let position = column(witnesses, "position");
+    witnesses["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|row| {
+            (
+                row[semantic_use]["value"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                row[position]["value"].as_i64().unwrap_or(-1),
+                row[source]["value"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn direct_checkpoint_source_forgetting_is_exact_portable_and_deterministic(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = checkpoint_forgetting_fixture(root.path())?;
+    let document = read_json(&fixture.forgotten_bundle)?;
+    let actual = checkpoint_witnesses(&document);
+    let expected = BTreeSet::from([
+        (
+            "supporting_basis".to_owned(),
+            0,
+            fixture.support_one.to_string(),
+        ),
+        (
+            "supporting_basis".to_owned(),
+            1,
+            fixture.support_two.to_string(),
+        ),
+        (
+            "changed_basis".to_owned(),
+            0,
+            fixture.support_one.to_string(),
+        ),
+        (
+            "changed_basis".to_owned(),
+            1,
+            fixture.changed_only.to_string(),
+        ),
+        (
+            "verification".to_owned(),
+            0,
+            fixture.verification_one.to_string(),
+        ),
+        (
+            "verification".to_owned(),
+            1,
+            fixture.verification_two.to_string(),
+        ),
+        ("user_review".to_owned(), 0, fixture.review.to_string()),
+        (
+            "user_acceptance".to_owned(),
+            0,
+            fixture.acceptance.to_string(),
+        ),
+    ]);
+    assert_eq!(actual, expected);
+    assert!(!actual
+        .iter()
+        .any(|(_, _, source)| source == &fixture.portable.authorization_id.to_string()));
+    let serialized = String::from_utf8(fs::read(&fixture.forgotten_bundle)?)?;
+    for deleted_content in [
+        "private/support-one.rs",
+        "private/support-two.rs",
+        "private/changed-only.rs",
+        "private-verification-one",
+        "private-verification-two",
+        "private-review",
+        "private-acceptance",
+    ] {
+        assert!(!serialized.contains(deleted_content));
+    }
+
+    let origin_database = root.path().join("checkpoint-forgetting-origin.sqlite3");
+    let mut reopened = store(&origin_database, &[])?;
+    let checkpoint = reopened.get_checkpoint(fixture.portable.project_id, fixture.checkpoint_id)?;
+    assert!(checkpoint.source_basis.is_empty());
+    assert!(checkpoint.changed_source_basis.is_empty());
+    assert_eq!(checkpoint.verification[0].state, VerificationState::Passed);
+    assert_eq!(checkpoint.verification[1].state, VerificationState::Failed);
+    assert!(checkpoint
+        .verification
+        .iter()
+        .all(|fact| fact.source_id.is_none()));
+    assert_eq!(checkpoint.user_review.state, UserReviewState::Reviewed);
+    assert_eq!(
+        checkpoint.user_acceptance.state,
+        UserAcceptanceState::Rejected
+    );
+    let read = reopened
+        .read_canonical_basis(fixture.portable.project_id, CanonicalReadOptions::default())?;
+    assert_eq!(read.forgotten_checkpoint_sources.len(), expected.len());
+    let repeated = root.path().join("checkpoint-forgetting-repeated.json");
+    reopened.export_bundle(fixture.portable.project_id, &repeated)?;
+    assert_eq!(fs::read(&repeated)?, fs::read(&fixture.forgotten_bundle)?);
+    drop(reopened);
+
+    let imported_database = root.path().join("checkpoint-forgetting-imported.sqlite3");
+    let mut imported = store(&imported_database, &[])?;
+    imported.import_bundle(operation(30), &fixture.forgotten_bundle)?;
+    let imported_read = imported
+        .read_canonical_basis(fixture.portable.project_id, CanonicalReadOptions::default())?;
+    assert_eq!(imported_read, read);
+    let imported_export = root.path().join("checkpoint-forgetting-imported.json");
+    imported.export_bundle(fixture.portable.project_id, &imported_export)?;
+    assert_eq!(
+        read_json(&imported_export)?["payload"]["tables"],
+        read_json(&fixture.forgotten_bundle)?["payload"]["tables"]
+    );
+    let imported_repeat = root
+        .path()
+        .join("checkpoint-forgetting-imported-repeat.json");
+    imported.export_bundle(fixture.portable.project_id, &imported_repeat)?;
+    assert_eq!(fs::read(&imported_export)?, fs::read(&imported_repeat)?);
+    imported.forget_checkpoint(
+        operation(31),
+        fixture.portable.project_id,
+        fixture.checkpoint_id,
+        fixture.portable.authorization_id,
+    )?;
+    let checkpoint_forgotten = root.path().join("checkpoint-forgotten.json");
+    imported.export_bundle(fixture.portable.project_id, &checkpoint_forgotten)?;
+    assert!(table(
+        &read_json(&checkpoint_forgotten)?,
+        "checkpoint_forgotten_source_witnesses"
+    )["rows"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+    drop(imported);
+    let reopened_import = store(&imported_database, &[])?;
+    assert!(reopened_import
+        .read_canonical_basis(fixture.portable.project_id, CanonicalReadOptions::default(),)?
+        .forgotten_checkpoint_sources
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn malformed_checkpoint_forgotten_source_witnesses_reject_every_portable_write_boundary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = checkpoint_forgetting_fixture(root.path())?;
+    let valid = read_json(&fixture.forgotten_bundle)?;
+    let witness_table = table(&valid, "checkpoint_forgotten_source_witnesses");
+    let semantic_use = column(witness_table, "semantic_use");
+    let position = column(witness_table, "position");
+    let review_row = row_with_text(
+        &valid,
+        "checkpoint_forgotten_source_witnesses",
+        "semantic_use",
+        "user_review",
+    );
+    let verification_row = witness_table["rows"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter().position(|row| {
+                row[semantic_use]["value"] == "verification" && row[position]["value"] == 0
+            })
+        })
+        .ok_or("verification witness missing")?;
+    let supporting_row = witness_table["rows"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter().position(|row| {
+                row[semantic_use]["value"] == "supporting_basis" && row[position]["value"] == 0
+            })
+        })
+        .ok_or("supporting witness missing")?;
+    let mut cases = Vec::<(&str, Value)>::new();
+
+    let mut missing = valid.clone();
+    table_mut(&mut missing, "checkpoint_forgotten_source_witnesses")["rows"]
+        .as_array_mut()
+        .ok_or("witness rows missing")?
+        .remove(review_row);
+    cases.push(("checkpoint-witness-missing", missing));
+
+    let mut wrong_checkpoint = valid.clone();
+    set_cell(
+        &mut wrong_checkpoint,
+        "checkpoint_forgotten_source_witnesses",
+        review_row,
+        "checkpoint_id",
+        portable_id(0xaa),
+    );
+    cases.push(("checkpoint-witness-wrong-checkpoint", wrong_checkpoint));
+
+    let mut wrong_source = valid.clone();
+    set_cell(
+        &mut wrong_source,
+        "checkpoint_forgotten_source_witnesses",
+        review_row,
+        "source_id",
+        serde_json::json!({
+            "type": "bytes",
+            "value": fixture.portable.authorization_id.to_string()
+        }),
+    );
+    cases.push(("checkpoint-witness-wrong-source", wrong_source));
+
+    let mut wrong_use = valid.clone();
+    set_cell(
+        &mut wrong_use,
+        "checkpoint_forgotten_source_witnesses",
+        review_row,
+        "semantic_use",
+        serde_json::json!({"type": "text", "value": "verification"}),
+    );
+    set_cell(
+        &mut wrong_use,
+        "checkpoint_forgotten_source_witnesses",
+        review_row,
+        "position",
+        serde_json::json!({"type": "integer", "value": 2}),
+    );
+    cases.push(("checkpoint-witness-wrong-use", wrong_use));
+
+    let mut wrong_position = valid.clone();
+    set_cell(
+        &mut wrong_position,
+        "checkpoint_forgotten_source_witnesses",
+        verification_row,
+        "position",
+        serde_json::json!({"type": "integer", "value": 99}),
+    );
+    cases.push(("checkpoint-witness-wrong-position", wrong_position));
+
+    let mut duplicate = valid.clone();
+    let duplicated =
+        table(&duplicate, "checkpoint_forgotten_source_witnesses")["rows"][review_row].clone();
+    table_mut(&mut duplicate, "checkpoint_forgotten_source_witnesses")["rows"]
+        .as_array_mut()
+        .ok_or("witness rows missing")?
+        .push(duplicated);
+    cases.push(("checkpoint-witness-duplicate", duplicate));
+
+    let mut ambiguous = valid.clone();
+    set_cell(
+        &mut ambiguous,
+        "checkpoints",
+        0,
+        "user_review_source_id",
+        serde_json::json!({
+            "type": "bytes",
+            "value": fixture.portable.authorization_id.to_string()
+        }),
+    );
+    cases.push(("checkpoint-witness-active-ambiguity", ambiguous));
+
+    let mut duplicate_source = valid.clone();
+    let mut repeated = table(&duplicate_source, "checkpoint_forgotten_source_witnesses")["rows"]
+        [supporting_row]
+        .clone();
+    repeated[position] = serde_json::json!({"type": "integer", "value": 2});
+    table_mut(
+        &mut duplicate_source,
+        "checkpoint_forgotten_source_witnesses",
+    )["rows"]
+        .as_array_mut()
+        .ok_or("witness rows missing")?
+        .push(repeated);
+    cases.push(("checkpoint-witness-duplicate-source", duplicate_source));
+
+    for (label, document) in cases {
+        assert_portable_write_boundaries_reject(root.path(), &fixture.portable, label, document)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_and_explicit_merges_preserve_valid_checkpoint_source_witnesses(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let fixture = checkpoint_forgetting_fixture(root.path())?;
+    let local_database = root.path().join("generated-witness-local.sqlite3");
+    let mut local = store(&local_database, &[0xd1])?;
+    local.import_bundle(operation(40), &fixture.active_bundle)?;
+    let added = local
+        .record_checkpoint(
+            operation(41),
+            fixture.portable.project_id,
+            CheckpointDraft {
+                expected_project_revision: 1,
+                kind: CheckpointKind::Pause,
+                goal: "Preserve a locally added Checkpoint".to_owned(),
+                work_state: WorkState::Paused,
+                state_change: None,
+                source_basis: vec![fixture.support_one],
+                changed_source_basis: vec![],
+                changed_paths: vec![],
+                applied_decisions: vec![],
+                verification: vec![],
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: vec![],
+                non_goals: vec![],
+                open_questions: vec![],
+                next_step: "Resume with the preserved state basis".to_owned(),
+                handoff_to: None,
+            },
+        )?
+        .value;
+    let comparison = local.compare_bundle(
+        Some(&fixture.active_bundle),
+        &fixture.forgotten_bundle,
+        None,
+    )?;
+    local.merge_bundle(
+        operation(42),
+        Some(&fixture.active_bundle),
+        &fixture.forgotten_bundle,
+        None,
+        Some(MergeResolution {
+            conflict_set_identity: comparison.conflict_set_identity,
+            conflict_revision: comparison.conflict_revision,
+            user_turn_source_id: fixture.portable.authorization_id,
+            mode: MergeResolutionMode::ChooseLocal,
+        }),
+    )?;
+    let generated = root.path().join("generated-witness-result.json");
+    local.export_bundle(fixture.portable.project_id, &generated)?;
+    let generated_document = read_json(&generated)?;
+    let generated_rows = table(&generated_document, "checkpoint_forgotten_source_witnesses");
+    let checkpoint_column = column(generated_rows, "checkpoint_id");
+    let source_column = column(generated_rows, "source_id");
+    let use_column = column(generated_rows, "semantic_use");
+    assert!(generated_rows["rows"].as_array().is_some_and(|rows| {
+        rows.iter().any(|row| {
+            row[checkpoint_column]["value"] == added.id.to_string()
+                && row[source_column]["value"] == fixture.support_one.to_string()
+                && row[use_column]["value"] == "supporting_basis"
+        })
+    }));
+
+    let mut explicit = store(&root.path().join("explicit-witness-local.sqlite3"), &[])?;
+    explicit.import_bundle(operation(43), &fixture.active_bundle)?;
+    let comparison = explicit.compare_bundle(
+        Some(&fixture.active_bundle),
+        &fixture.forgotten_bundle,
+        None,
+    )?;
+    explicit.merge_bundle(
+        operation(44),
+        Some(&fixture.active_bundle),
+        &fixture.forgotten_bundle,
+        None,
+        Some(MergeResolution {
+            conflict_set_identity: comparison.conflict_set_identity,
+            conflict_revision: comparison.conflict_revision,
+            user_turn_source_id: fixture.portable.authorization_id,
+            mode: MergeResolutionMode::ExplicitMerged {
+                bundle_path: fixture.forgotten_bundle.clone(),
+            },
+        }),
+    )?;
+    let explicit_result = root.path().join("explicit-witness-result.json");
+    explicit.export_bundle(fixture.portable.project_id, &explicit_result)?;
+    assert_eq!(
+        checkpoint_witnesses(&read_json(&explicit_result)?),
+        checkpoint_witnesses(&read_json(&fixture.forgotten_bundle)?)
+    );
     Ok(())
 }
 

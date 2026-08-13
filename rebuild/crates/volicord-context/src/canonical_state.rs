@@ -298,18 +298,27 @@ fn validate_context_provenance_with_missing(
 }
 
 pub(crate) fn validate_checkpoint_draft(draft: &CheckpointDraft) -> Result<(), Error> {
-    validate_checkpoint_draft_with_missing(draft, false)
+    validate_checkpoint_draft_with_missing(draft, &CheckpointForgottenSources::default())
+}
+
+#[derive(Default)]
+struct CheckpointForgottenSources {
+    supporting_basis: BTreeMap<i64, SourceId>,
+    changed_basis: BTreeMap<i64, SourceId>,
+    verification: BTreeMap<i64, SourceId>,
+    user_review: Option<SourceId>,
+    user_acceptance: Option<SourceId>,
 }
 
 fn validate_checkpoint_draft_with_missing(
     draft: &CheckpointDraft,
-    missing_source_witness: bool,
+    missing: &CheckpointForgottenSources,
 ) -> Result<(), Error> {
     validate_nonempty("Checkpoint goal", &draft.goal)?;
     validate_nonempty("Checkpoint next step", &draft.next_step)?;
     validate_optional_nonempty("Checkpoint state change", draft.state_change.as_deref())?;
     validate_optional_nonempty("Checkpoint handoff target", draft.handoff_to.as_deref())?;
-    if draft.source_basis.is_empty() && !missing_source_witness {
+    if draft.source_basis.is_empty() && missing.supporting_basis.is_empty() {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "Checkpoint requires an explicit supporting Source basis",
@@ -324,10 +333,16 @@ fn validate_checkpoint_draft_with_missing(
     validate_portable_string_list("Checkpoint changed path", &draft.changed_paths)?;
     validate_string_list("Checkpoint known limit", &draft.known_limits)?;
     validate_string_list("Checkpoint non-goal", &draft.non_goals)?;
-    for verification in &draft.verification {
+    for (position, verification) in draft.verification.iter().enumerate() {
+        let missing_verification = i64::try_from(position)
+            .ok()
+            .is_some_and(|position| missing.verification.contains_key(&position));
         match verification.state {
             VerificationState::NotRun => {
-                if verification.source_id.is_some() || verification.outcome.is_some() {
+                if verification.source_id.is_some()
+                    || verification.outcome.is_some()
+                    || missing_verification
+                {
                     return Err(Error::new(
                         ErrorKind::InvalidInput,
                         "not-run verification cannot claim a Source or outcome",
@@ -335,7 +350,7 @@ fn validate_checkpoint_draft_with_missing(
                 }
             }
             VerificationState::Partial | VerificationState::Passed | VerificationState::Failed => {
-                if verification.source_id.is_none() && !missing_source_witness {
+                if verification.source_id.is_none() && !missing_verification {
                     return Err(Error::new(
                         ErrorKind::InvalidInput,
                         "executed verification requires an explicit Source",
@@ -350,7 +365,7 @@ fn validate_checkpoint_draft_with_missing(
     }
     match draft.user_review.state {
         UserReviewState::NotRequested | UserReviewState::Pending => {
-            if draft.user_review.source_id.is_some() {
+            if draft.user_review.source_id.is_some() || missing.user_review.is_some() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "unobserved user review state cannot claim a user Source",
@@ -358,7 +373,7 @@ fn validate_checkpoint_draft_with_missing(
             }
         }
         UserReviewState::Reviewed => {
-            if draft.user_review.source_id.is_none() && !missing_source_witness {
+            if draft.user_review.source_id.is_none() && missing.user_review.is_none() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "reviewed state requires an explicit current-host user-turn Source",
@@ -368,7 +383,7 @@ fn validate_checkpoint_draft_with_missing(
     }
     match draft.user_acceptance.state {
         UserAcceptanceState::NotRequested | UserAcceptanceState::Pending => {
-            if draft.user_acceptance.source_id.is_some() {
+            if draft.user_acceptance.source_id.is_some() || missing.user_acceptance.is_some() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "unobserved user acceptance state cannot claim a user Source",
@@ -376,7 +391,7 @@ fn validate_checkpoint_draft_with_missing(
             }
         }
         UserAcceptanceState::Accepted | UserAcceptanceState::Rejected => {
-            if draft.user_acceptance.source_id.is_none() && !missing_source_witness {
+            if draft.user_acceptance.source_id.is_none() && missing.user_acceptance.is_none() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "accepted or rejected state requires an explicit current-host user-turn Source",
@@ -393,7 +408,7 @@ fn validate_checkpoint_draft_with_missing(
             .iter()
             .any(|fact| fact.state != VerificationState::NotRun)
         || !draft.known_limits.is_empty()
-        || missing_source_witness;
+        || !missing.changed_basis.is_empty();
     match draft.kind {
         CheckpointKind::Completion => {
             if draft.work_state != WorkState::Completed || !completion_basis {
@@ -460,7 +475,7 @@ fn validate_complete_semantics(payload: &Payload, project_id: ProjectId) -> Resu
         .collect::<Result<BTreeSet<_>, Error>>()?;
     let sources = validate_sources(payload, project_id)?;
     validate_context_items(payload, &sources, &source_tombstones)?;
-    validate_checkpoints(payload, &sources, !source_tombstones.is_empty())
+    validate_checkpoints(payload, &sources, &source_tombstones)
 }
 
 fn validate_sources(
@@ -670,29 +685,16 @@ fn context_revision_draft(row: &[PortableValue]) -> Result<ContextItemDraft, Err
 fn validate_checkpoints(
     payload: &Payload,
     sources: &BTreeMap<SourceId, Source>,
-    missing_source_witness: bool,
+    source_tombstones: &BTreeSet<SourceId>,
 ) -> Result<(), Error> {
     for row in &required_table(payload, "checkpoint_source_relations")?.rows {
         if !matches!(value_text(&row[2])?, "supported_by" | "changed_basis") {
             return corrupt("Checkpoint Source relation kind is invalid");
         }
     }
-    let supported = ordered_link_ids(
-        payload,
-        "checkpoint_source_relations",
-        1,
-        3,
-        4,
-        Some((2, "supported_by")),
-    )?;
-    let changed = ordered_link_ids(
-        payload,
-        "checkpoint_source_relations",
-        1,
-        3,
-        4,
-        Some((2, "changed_basis")),
-    )?;
+    let supported = positioned_checkpoint_source_ids(payload, "supported_by")?;
+    let changed = positioned_checkpoint_source_ids(payload, "changed_basis")?;
+    let forgotten = checkpoint_forgotten_sources(payload, source_tombstones)?;
     let decisions = ordered_decision_ids(payload)?;
     let questions = ordered_question_refs(payload)?;
     let verification = ordered_verification(payload)?;
@@ -706,6 +708,7 @@ fn validate_checkpoints(
         .iter()
         .map(|row| Ok((value_key(&row[0]), value_integer(&row[1])?)))
         .collect::<Result<BTreeSet<_>, Error>>()?;
+    let no_forgotten_sources = CheckpointForgottenSources::default();
 
     for row in &required_table(payload, "checkpoints")?.rows {
         let _ = CheckpointId::from_slice(&value_bytes(&row[0])?)?;
@@ -714,6 +717,7 @@ fn validate_checkpoints(
             return corrupt("Checkpoint revision must be exactly one");
         }
         let identity = value_key(&row[0]);
+        let missing = forgotten.get(&identity).unwrap_or(&no_forgotten_sources);
         let review_source = optional_source_id(&row[9])?;
         let acceptance_source = optional_source_id(&row[11])?;
         let draft = CheckpointDraft {
@@ -725,8 +729,16 @@ fn validate_checkpoints(
                 Error::new(ErrorKind::CorruptState, "Checkpoint work state is invalid")
             })?,
             state_change: owned_optional_text(&row[6])?,
-            source_basis: supported.get(&identity).cloned().unwrap_or_default(),
-            changed_source_basis: changed.get(&identity).cloned().unwrap_or_default(),
+            source_basis: checkpoint_source_values(
+                supported.get(&identity),
+                &missing.supporting_basis,
+                "supporting basis",
+            )?,
+            changed_source_basis: checkpoint_source_values(
+                changed.get(&identity),
+                &missing.changed_basis,
+                "changed basis",
+            )?,
             changed_paths: decode_strings(&value_bytes(&row[7])?)?,
             applied_decisions: decisions.get(&identity).cloned().unwrap_or_default(),
             verification: verification.get(&identity).cloned().unwrap_or_default(),
@@ -754,7 +766,8 @@ fn validate_checkpoints(
             next_step: value_text(&row[14])?.to_owned(),
             handoff_to: owned_optional_text(&row[15])?,
         };
-        validate_checkpoint_draft_with_missing(&draft, missing_source_witness)
+        validate_checkpoint_observation_witnesses(&draft, missing)?;
+        validate_checkpoint_draft_with_missing(&draft, missing)
             .map_err(|error| semantic_corruption("Checkpoint", error))?;
         for fact in &draft.verification {
             if let Some(source_id) = fact.source_id {
@@ -784,6 +797,144 @@ fn validate_checkpoints(
                 return corrupt("Checkpoint Question link names no exact active revision");
             }
         }
+    }
+    Ok(())
+}
+
+fn positioned_checkpoint_source_ids(
+    payload: &Payload,
+    relation_kind: &str,
+) -> Result<BTreeMap<String, BTreeMap<i64, SourceId>>, Error> {
+    let mut values = BTreeMap::<String, BTreeMap<i64, SourceId>>::new();
+    for row in &required_table(payload, "checkpoint_source_relations")?.rows {
+        if value_text(&row[2])? != relation_kind {
+            continue;
+        }
+        let position = value_integer(&row[4])?;
+        if position < 0 {
+            return corrupt("Checkpoint Source relation position is invalid");
+        }
+        if values
+            .entry(value_key(&row[1]))
+            .or_default()
+            .insert(position, SourceId::from_slice(&value_bytes(&row[3])?)?)
+            .is_some()
+        {
+            return corrupt("Checkpoint Source relation position is ambiguous");
+        }
+    }
+    Ok(values)
+}
+
+fn checkpoint_forgotten_sources(
+    payload: &Payload,
+    source_tombstones: &BTreeSet<SourceId>,
+) -> Result<BTreeMap<String, CheckpointForgottenSources>, Error> {
+    let mut values = BTreeMap::<String, CheckpointForgottenSources>::new();
+    for row in &required_table(payload, "checkpoint_forgotten_source_witnesses")?.rows {
+        let checkpoint = value_key(&row[1]);
+        let source_id = SourceId::from_slice(&value_bytes(&row[2])?)?;
+        if !source_tombstones.contains(&source_id) {
+            return corrupt("Checkpoint forgotten Source witness has no matching Source tombstone");
+        }
+        let semantic_use = value_text(&row[3])?;
+        let position = value_integer(&row[4])?;
+        if position < 0 {
+            return corrupt("Checkpoint forgotten Source witness position is invalid");
+        }
+        let missing = values.entry(checkpoint).or_default();
+        let duplicate = match semantic_use {
+            "supporting_basis" => missing
+                .supporting_basis
+                .insert(position, source_id)
+                .is_some(),
+            "changed_basis" => missing.changed_basis.insert(position, source_id).is_some(),
+            "verification" => missing.verification.insert(position, source_id).is_some(),
+            "user_review" if position == 0 => missing.user_review.replace(source_id).is_some(),
+            "user_acceptance" if position == 0 => {
+                missing.user_acceptance.replace(source_id).is_some()
+            }
+            "user_review" | "user_acceptance" => {
+                return corrupt("Checkpoint singleton forgotten Source witness position is invalid")
+            }
+            _ => return corrupt("Checkpoint forgotten Source witness semantic use is invalid"),
+        };
+        if duplicate {
+            return corrupt("Checkpoint forgotten Source witness slot is ambiguous");
+        }
+    }
+    Ok(values)
+}
+
+fn checkpoint_source_values(
+    active: Option<&BTreeMap<i64, SourceId>>,
+    forgotten: &BTreeMap<i64, SourceId>,
+    label: &str,
+) -> Result<Vec<SourceId>, Error> {
+    let empty = BTreeMap::new();
+    let active = active.unwrap_or(&empty);
+    if active
+        .keys()
+        .any(|position| forgotten.contains_key(position))
+    {
+        return corrupt(format!(
+            "Checkpoint {label} has both an active Source and a forgotten witness in one slot"
+        ));
+    }
+    let mut positions = active
+        .keys()
+        .chain(forgotten.keys())
+        .copied()
+        .collect::<Vec<_>>();
+    positions.sort_unstable();
+    if positions
+        .iter()
+        .enumerate()
+        .any(|(expected, actual)| *actual != i64::try_from(expected).unwrap_or(-1))
+    {
+        return corrupt(format!("Checkpoint {label} positions are not contiguous"));
+    }
+    let mut source_ids = BTreeSet::new();
+    if active
+        .values()
+        .chain(forgotten.values())
+        .any(|source_id| !source_ids.insert(*source_id))
+    {
+        return corrupt(format!("Checkpoint {label} contains a duplicate Source"));
+    }
+    Ok(active.values().copied().collect())
+}
+
+fn validate_checkpoint_observation_witnesses(
+    draft: &CheckpointDraft,
+    missing: &CheckpointForgottenSources,
+) -> Result<(), Error> {
+    for position in missing.verification.keys() {
+        let position = usize::try_from(*position).map_err(|_| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Checkpoint verification witness position is invalid",
+            )
+        })?;
+        let fact = draft.verification.get(position).ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Checkpoint verification witness names no verification position",
+            )
+        })?;
+        if fact.source_id.is_some() {
+            return corrupt(
+                "Checkpoint verification has both an active Source and a forgotten witness",
+            );
+        }
+    }
+    if missing.user_review.is_some() && draft.user_review.source_id.is_some() {
+        return corrupt("Checkpoint user review has both an active Source and a forgotten witness");
+    }
+    if missing.user_acceptance.is_some() && draft.user_acceptance.source_id.is_some() {
+        return corrupt(
+            "Checkpoint user acceptance has both an active Source and a forgotten witness",
+        );
     }
     Ok(())
 }

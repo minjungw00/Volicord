@@ -43,8 +43,9 @@ pub use portable::{
     BundleExport, BundleImport, BundleImportStatus, BUNDLE_FORMAT_VERSION, BUNDLE_KIND,
 };
 pub use read::{
-    CanonicalReadBasis, CanonicalReadOptions, CanonicalRevisionBasis, ForgottenRecordBasis,
-    MergeReadBasis, ReadRelationBasis, SourceFreshness, SourceReadBasis,
+    CanonicalReadBasis, CanonicalReadOptions, CanonicalRevisionBasis,
+    ForgottenCheckpointSourceBasis, ForgottenRecordBasis, MergeReadBasis, ReadRelationBasis,
+    SourceFreshness, SourceReadBasis,
 };
 pub use store::{Store, SCHEMA_KIND, SCHEMA_VERSION};
 pub use time::{Clock, FixedClock, SystemClock, TimestampMicros};
