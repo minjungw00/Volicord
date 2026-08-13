@@ -7,8 +7,7 @@ Passed for the maintained deterministic fixture and production Rust evidence at
 13 integration-test targets, 93 passing integration tests, fixture
 SHA-256 `f55de3e0df56d2383a3cc39872fdc16d6fec5d7cbe3774b797bd2cee327866eb`,
 and `status: passed`. The independently authored checkpoint audit also passed.
-The Phase 5 implementation gate is `ready` within the known limits below. The
-post-commit exact final aggregate has not run and is not part of this report.
+The Phase 5 implementation gate is `ready` within the known limits below.
 
 ## Goal
 
@@ -236,7 +235,9 @@ remote service. Raw validation output remains under ignored
 - Remote authenticity, signatures, encryption, compression, network sync,
   concurrent multi-writer behavior, conflict UI, user-facing Recall, Candidate
   behavior, and Derived State remain outside V04.
-- The exact final aggregate is intentionally outside this pre-aggregate report.
+- Repository-wide aggregate validation is outside V04's bounded semantic
+  evidence. Its execution is owned by the repository's final-validation policy
+  through `rebuild/scripts/validate final`.
 
 ## Recommended implementation choice
 
@@ -283,8 +284,7 @@ Proceed to Phase 5 implementation work from the maintained Phase 4 owners and
 this `ready` gate. Later validation still owns user-facing Recall and
 Checkpoint quality, privacy/provider deletion completeness, document
 grounding, multi-repository rehearsal, concurrency/resource behavior, and
-unmanaged-copy limits. Run the repository's exact final aggregate only after
-the documentation commit is complete and the worktree is clean.
+unmanaged-copy limits.
 
 ## Artifacts
 

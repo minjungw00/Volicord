@@ -11,7 +11,6 @@
 - Excluded claim: this conclusion does not certify Repository Intelligence,
   user-facing Recall, documents, Candidate Inspection, Guarded effects,
   installation, network synchronization, or the later multi-repository gate
-- Final aggregate status: not yet run; this document does not claim it passed
 
 ## Canonical records and complete-state authority
 
@@ -194,8 +193,9 @@ suite support proceeding to Phase 5 without an unresolved production defect or
 active Decision revisit trigger. This conclusion remains bounded by the known
 limits above and does not complete Phase 5 or later validation.
 
-The required exact post-commit final aggregate has not run and is not claimed
-as evidence in this pre-aggregate summary.
+Repository-wide aggregate validation is outside the Phase 4/V04 semantic
+evidence owned by this summary. Its execution is owned by the repository's
+final-validation policy through `rebuild/scripts/validate final`.
 
 ## Maintained references
 
