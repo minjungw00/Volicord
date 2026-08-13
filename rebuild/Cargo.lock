@@ -483,6 +483,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-repository-intelligence"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "volicord-context",
+]
+
+[[package]]
 name = "wasip2"
 version = "1.0.4+wasi-0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

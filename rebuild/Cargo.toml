@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/volicord-context",
+    "crates/volicord-repository-intelligence",
 ]
 resolver = "2"
 
