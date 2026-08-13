@@ -18,17 +18,34 @@ Each file records its content, dependency, build-context, adapter, and analyzer
 basis. A refresh reparses added or changed files and declared dependents, reuses
 unaffected current facts, and records explicit invalidation categories. A
 manifest or recognized build-context change conservatively refreshes the
-affected gate-language scope. Local search returns inventory, entity, and
-relation hits with source/range, capability, coverage, diagnostics, provenance,
-and freshness; a historical range is never marked as current navigation.
+affected gate-language scope. Local search returns inventory, entity,
+structural-relation, and semantic-relation hits with source/range, capability,
+coverage, diagnostics, provenance, and freshness; a historical range is never
+marked as current navigation.
 
-The crate still has no semantic analyzer, external provider, child-process
-analyzer, CLI, MCP surface, or canonical write path. Parser failure is a bounded
-failed capability result rather than empty success, and languages outside the
-first structural gate retain inventory-only fallback. No repository source is
-transmitted externally.
+Production semantic analysis is a distinct in-process source-semantic pass for
+Java/Maven, TypeScript/Node, and Rust/Cargo. It normalizes local definitions,
+references, declared types, explicit implementations, and override-style
+relations, resolves overloads only when scope and arity identify one target,
+and preserves unresolved targets, incomplete-build diagnostics, and usable
+remainder. It has a separate adapter/analyzer identity and `semantic_result`
+provenance from Tree-sitter structural facts. The current Analysis Snapshot
+writer is format version 3 and remains deterministically rebuildable.
 
-All results are Derived State. The crate can reference `ProjectId` and `SourceId`
-from `volicord-context`, but it cannot open or mutate the Canonical Context store.
+Grounded explanation input exposes repository observations, structural facts,
+semantic results, agent interpretations, capability coverage, gaps, freshness,
+uncertainty, and typed read-only links to canonical Source, Decision, Context
+Item, and Checkpoint identities. Analysis and refresh cannot open or mutate the
+Canonical Context store. Local search covers structural and semantic evidence
+without collapsing provenance.
+
+The crate still has no external provider, child-process analyzer, CLI, MCP
+surface, or canonical write path. Parser/analyzer failure is a bounded failed
+capability result rather than empty success, and unsupported languages retain
+inventory/structural fallback. No repository source is transmitted externally,
+and the in-process semantic selection does not trigger or claim V10.
+
+All results are Derived State. The crate can reference typed canonical IDs from
+`volicord-context`, but it cannot open or mutate the Canonical Context store.
 Deleting its serialized output cannot delete or change Projects, Sources,
 Questions, Decisions, Context Items, or Checkpoints.

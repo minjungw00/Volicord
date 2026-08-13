@@ -3,10 +3,10 @@ use crate::{AnalysisSnapshotId, RepositorySnapshotId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use volicord_context::{ProjectId, SourceId};
+use volicord_context::{CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId};
 
 pub const ANALYSIS_SNAPSHOT_KIND: &str = "volicord.repository_analysis";
-pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 2;
+pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 3;
 
 macro_rules! canonical_reference {
     ($name:ident, $inner:ty) => {
@@ -43,6 +43,18 @@ macro_rules! canonical_reference {
 
 canonical_reference!(CanonicalProjectRef, ProjectId);
 canonical_reference!(CanonicalSourceRef, SourceId);
+canonical_reference!(CanonicalDecisionRef, DecisionId);
+canonical_reference!(CanonicalContextItemRef, ContextItemId);
+canonical_reference!(CanonicalCheckpointRef, CheckpointId);
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "identity")]
+pub enum CanonicalReference {
+    Source(CanonicalSourceRef),
+    Decision(CanonicalDecisionRef),
+    ContextItem(CanonicalContextItemRef),
+    Checkpoint(CanonicalCheckpointRef),
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RepositorySnapshot {
@@ -88,8 +100,10 @@ pub struct AnalysisSnapshot {
     pub semantic_annotations: Vec<SemanticAnnotation>,
     pub agent_interpretations: Vec<AgentInterpretation>,
     pub structural_bases: Vec<FileAnalysisBasis>,
+    pub semantic_bases: Vec<FileAnalysisBasis>,
     pub invalidations: Vec<InvalidationRecord>,
     pub refresh: StructuralRefresh,
+    pub semantic_refresh: SemanticRefresh,
     pub generated_at_unix_micros: i64,
     pub freshness: FreshnessBasis,
 }
@@ -144,6 +158,14 @@ pub struct StructuralRefresh {
     pub reused_file_count: u64,
     pub failed_file_count: u64,
     pub removed_file_count: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SemanticRefresh {
+    pub analyzed_file_count: u64,
+    pub reused_file_count: u64,
+    pub failed_file_count: u64,
+    pub unavailable_file_count: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -472,7 +494,7 @@ pub struct CodeEntity {
     pub uncertainty: Uncertainty,
     pub freshness: FreshnessBasis,
     pub extensions: Vec<LanguageExtension>,
-    pub canonical_references: Vec<CanonicalSourceRef>,
+    pub canonical_links: Vec<CanonicalReference>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -655,6 +677,7 @@ pub enum SearchResultKind {
     Inventory,
     Entity,
     Relation,
+    SemanticRelation,
 }
 
 /// A resolved semantic result, distinct from syntax and generated annotation.
@@ -693,6 +716,50 @@ pub struct AgentInterpretation {
     pub known_gaps: Vec<String>,
     pub uncertainty: Uncertainty,
     pub provenance_class: ProvenanceClass,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GroundingStatementClass {
+    RepositoryObservation,
+    StructuralFact,
+    SemanticResult,
+    AgentInterpretation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GroundingEvidence {
+    pub identity: String,
+    pub statement_class: GroundingStatementClass,
+    pub source: CanonicalSourceRef,
+    pub source_range: Option<SourceRange>,
+    pub capability: Capability,
+    pub provenance_class: ProvenanceClass,
+    pub freshness: FreshnessBasis,
+    pub diagnostics: Vec<String>,
+    pub uncertainty: Uncertainty,
+    pub canonical_links: Vec<CanonicalReference>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GroundingGap {
+    pub capability: Capability,
+    pub language: Option<Language>,
+    pub state: CapabilityState,
+    pub reason: String,
+    pub affected_areas: Vec<AreaId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GroundedExplanationBasis {
+    pub analysis_snapshot: AnalysisSnapshotId,
+    pub repository_snapshot: RepositorySnapshotId,
+    pub evidence: Vec<GroundingEvidence>,
+    pub gaps: Vec<GroundingGap>,
+    pub coverage: Vec<CapabilityReport>,
+    pub freshness: FreshnessBasis,
+    /// This basis is local evidence only and never proves model/provider transmission.
+    pub background_source_transmitted: bool,
 }
 
 pub type ExtensionValue = serde_json::Value;

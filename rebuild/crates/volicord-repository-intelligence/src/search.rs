@@ -1,7 +1,7 @@
 use crate::model::{
     AnalysisSnapshot, AreaId, AreaKind, Capability, Coverage, FreshnessBasis, FreshnessState,
     InventoryClassification, ProvenanceClass, RelationTarget, SearchHit, SearchResultKind,
-    StructuralRelationKind,
+    SemanticRelationKind, StructuralRelationKind,
 };
 use crate::RepositorySnapshotId;
 
@@ -163,6 +163,61 @@ pub fn search_local(
         }
     }
 
+    for result in &analysis.semantic_results {
+        let relation = &result.relation;
+        let target = relation_target_text(&relation.target);
+        let source = analysis
+            .structural_facts
+            .iter()
+            .find(|fact| fact.entity.identity == relation.source_entity)
+            .map(|fact| &fact.entity);
+        let source_name = source
+            .and_then(|entity| entity.qualified_name.as_deref())
+            .unwrap_or(relation.source_entity.as_str());
+        let searchable = format!(
+            "{} {} {}",
+            semantic_relation_kind_text(&relation.kind),
+            source_name,
+            target
+        );
+        if let Some(score) = match_score(&searchable, &query) {
+            let language = source.map(|entity| &entity.language);
+            scored.push((
+                score + 75,
+                format!("semantic_relation:{}", relation.identity),
+                SearchHit {
+                    analysis_snapshot: analysis.identity,
+                    repository_snapshot: analysis.repository_snapshot,
+                    source: source.map_or(analysis.repository_source, |entity| entity.source),
+                    source_range: relation.supporting_range.clone(),
+                    result_kind: SearchResultKind::SemanticRelation,
+                    matched_text: format!(
+                        "{} {} -> {}",
+                        source_name,
+                        semantic_relation_kind_text(&relation.kind),
+                        target
+                    ),
+                    capability: Capability::Semantic,
+                    coverage: capability_coverage(analysis, language, Capability::Semantic),
+                    freshness: if current {
+                        relation.freshness.clone()
+                    } else {
+                        freshness.clone()
+                    },
+                    diagnostics: merged_diagnostics(
+                        &relation.diagnostics,
+                        &capability_diagnostics(analysis, language, Capability::Semantic),
+                    ),
+                    provenance_class: ProvenanceClass::SemanticResult,
+                    navigation_is_current: current
+                        && relation.supporting_range.as_ref().is_some_and(|range| {
+                            range.repository_snapshot == current_repository_snapshot
+                        }),
+                },
+            ));
+        }
+    }
+
     scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
     scored
         .into_iter()
@@ -250,5 +305,18 @@ fn relation_kind_text(kind: &StructuralRelationKind) -> &'static str {
         StructuralRelationKind::Tests => "tests",
         StructuralRelationKind::Configures => "configures",
         StructuralRelationKind::LanguageSpecific(_) => "language_specific",
+    }
+}
+
+fn semantic_relation_kind_text(kind: &SemanticRelationKind) -> &'static str {
+    match kind {
+        SemanticRelationKind::Defines => "defines",
+        SemanticRelationKind::References => "references",
+        SemanticRelationKind::ResolvesTo => "resolves_to",
+        SemanticRelationKind::TypeOf => "type_of",
+        SemanticRelationKind::Implements => "implements",
+        SemanticRelationKind::Overrides => "overrides",
+        SemanticRelationKind::InstantiatedBy => "instantiated_by",
+        SemanticRelationKind::LanguageSpecific(_) => "language_specific",
     }
 }

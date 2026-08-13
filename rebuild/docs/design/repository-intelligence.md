@@ -8,7 +8,8 @@
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
 - evidence 기준: [architecture 입력 계약](architecture-inputs.md),
   [V01 보고서](../../validation/repository-intelligence/polyglot-structural/report.md),
-  [Production structural analyzer qualification](../../validation/repository-intelligence/production-structural-qualification/report.md)
+  [Production structural analyzer qualification](../../validation/repository-intelligence/production-structural-qualification/report.md),
+  [Semantic adapter qualification](../../validation/repository-intelligence/semantic-qualification/report.md)
 - privacy 기준: [Privacy와 provider 경계](privacy-and-provider-boundary.md)
 - 비소유 범위: user judgment, canonical persistence, parser·indexer·provider 선택,
   production schema/API, invalidation algorithm과 automatic Question discovery
@@ -321,10 +322,42 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
   source를 external service로 전송하지 않는다.
 
 이 책임은 semantic resolution, compiler/LSP child process, provider annotation 또는
-canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural
-basis, invalidation과 refresh metadata가 포함된 format version 2만 생성하며 이 derived
+canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural과
+semantic basis, invalidation과 refresh metadata가 포함된 format version 3만 생성하며 이 derived
 format은 source basis에서 rebuild하는 책임을 가진다. V01 pass 여부는 별도 final
 validation이 판정한다.
+
+### 8.4 Current Production semantic responsibility
+
+V02 qualification evidence에 따라 현재 Production semantic path는 Java/Maven,
+TypeScript/Node와 Rust/Cargo의 qualified Tree-sitter structural result 위에 별도의
+in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP completeness를
+주장하지 않으며 다음 책임을 가진다.
+
+- local declaration, qualified scope, declared arity/type, explicit implementation과 local
+  module path로 확인 가능한 `defines`, `references`, `resolves_to`, `type_of`,
+  `implements`와 `overrides` relation만 semantic provenance로 publish한다.
+- 같은 이름 또는 overload 후보는 declared/call arity와 scope로 하나만 확인될 때
+  resolve하고, 남은 ambiguity는 unresolved target과 diagnostic으로 보존한다.
+- Java package/Maven manifest, TypeScript relative module/Node·`tsconfig`, Rust
+  module/Cargo·explicit trait impl evidence를 build context로 기록하되 external package
+  body, generated source와 compiler-only resolution을 current fact로 만들지 않는다.
+- analyzer identity/version, zero-based UTF-8 source range, Analysis/Repository Snapshot,
+  coverage, diagnostic, freshness와 usable remainder를 bounded result에 보존한다.
+- missing dependency, recoverable structural gap와 ambiguous target은 `partial`, adapter
+  미실행은 `unavailable`, 실행 실패는 `failed`로 보고하고 analyzer가 publish하지 않은
+  semantic fact를 만들지 않는다.
+- semantic failure 또는 cache rebuild는 inventory, structural fact, canonical record와 user
+  correction을 삭제·수정하지 않는다. Source basis에서 deterministic rebuild한다.
+- search와 explanation basis는 repository observation, structural fact, semantic result와
+  agent interpretation을 서로 다른 statement/provenance class로 노출한다. Analysis
+  entity의 Source/Decision/Context Item/Checkpoint link는 typed read-only reference이며
+  canonical write authority가 아니다.
+
+세 adapter는 local library call만 사용하므로 Production child process를 추가하지 않고
+V10을 trigger하거나 완료했다고 주장하지 않는다. LSP, SCIP 또는 compiler-native
+subprocess path를 나중에 선택하면 active Failure와 Recovery 계약의 V10 gate를 먼저
+통과해야 한다.
 
 ## 9. Failure isolation과 degradation
 

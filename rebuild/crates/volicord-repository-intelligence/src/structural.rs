@@ -1472,7 +1472,7 @@ fn materialize_file(
                 uncertainty: Uncertainty::none(),
                 freshness: freshness.clone(),
                 extensions: vec![extension],
-                canonical_references: vec![source],
+                canonical_links: vec![crate::CanonicalReference::Source(source)],
             };
             Some(StructuralFact {
                 entity: code_entity,
@@ -1742,7 +1742,7 @@ fn structural_analysis_identity(
         StructuralAnalysisError::new(format!("analysis basis serialization failed: {error}"))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.structural_analysis_snapshot.v2",
+        b"volicord.structural_analysis_snapshot.v3",
         repository_snapshot.as_bytes(),
         &bytes,
     ]))
