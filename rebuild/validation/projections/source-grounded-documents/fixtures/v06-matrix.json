@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "validation_id": "V06",
+  "fixture_sources": [
+    {
+      "fixture_id": "v02-rust-cargo",
+      "role": "single_language",
+      "coverage": [
+        "Rust structural and semantic facts",
+        "source ranges and Repository/Analysis Snapshot identity",
+        "local-only Production analysis"
+      ]
+    },
+    {
+      "fixture_id": "v01-polyglot",
+      "role": "polyglot",
+      "coverage": [
+        "Java, Python, and TypeScript inventory and structure",
+        "cross-component documentation without fabricated calls",
+        "per-language capability scope"
+      ]
+    },
+    {
+      "fixture_id": "v01-javascript",
+      "role": "partial_or_failed_analysis",
+      "coverage": [
+        "recoverable malformed source",
+        "partial parser scope",
+        "unsupported dynamic behavior"
+      ]
+    },
+    {
+      "fixture_id": "v09-phase-6-matrix",
+      "role": "canonical_and_resume",
+      "coverage": [
+        "active and superseded Decisions",
+        "latest Checkpoint and independent work, verification, review, and acceptance",
+        "open Question",
+        "stale and unavailable Source basis",
+        "read-only Candidate Inspection and bounded Recall"
+      ]
+    }
+  ],
+  "groups": {
+    "project_read_surface": [
+      ["project_overview_uses_canonical_project_identity", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["resume_uses_existing_bounded_recall", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["repository_map_preserves_snapshot_entity_and_source_identity", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["structural_and_semantic_relations_are_distinct", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["agent_interpretation_is_explicit_inference", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["decision_context_code_links_preserve_declared_scope", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["scope_overlap_does_not_claim_implementation", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["checkpoint_timeline_separates_four_fact_dimensions", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["canonical_context_inspection_is_identity_preserving", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["candidate_inspection_is_integrated_without_lifecycle_authority", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["partial_unavailable_failed_stale_and_unsupported_states_are_not_complete", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["bounded_omissions_keep_identity_scope_and_reason", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"]
+    ],
+    "generated_documents": [
+      ["project_architecture_guide_exists", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["decision_report_exists", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["implementation_plan_exists", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["handoff_resume_document_exists", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["every_claim_has_source_decision_analysis_or_inference_basis", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["active_and_superseded_decisions_remain_distinguishable", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["coverage_gaps_and_omissions_are_in_metadata_and_body", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["project_snapshot_decision_capability_gap_generator_and_time_metadata_exist", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["generated_document_metadata_has_independent_version", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"]
+    ],
+    "formats_and_language": [
+      ["markdown_is_portable_text", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["html_is_self_contained", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["markdown_and_html_share_one_semantic_body", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["english_fixed_product_text_is_available", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["korean_fixed_product_text_is_available", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["arbitrary_requested_language_is_not_allowlisted", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"]
+    ],
+    "purity_and_publication": [
+      ["repeated_projection_is_deterministic", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["repeated_generation_is_deterministic_for_fixed_basis_and_time", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["projection_and_generation_do_not_mutate_canonical_context", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["projection_and_generation_do_not_mutate_candidate_state", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["no_destination_causes_no_repository_write", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["explicit_destination_is_returned_not_published", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["publication_artifact_is_bounded_for_later_local_operations", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"]
+    ]
+  },
+  "unsupported": [
+    "local viewer framework, HTTP server, CLI, MCP, and host wiring",
+    "filesystem publication and atomic destination write",
+    "document adoption and canonical mutation",
+    "provider transport, Project opt-in, and Guarded effects",
+    "large-repository prose quality, accessibility audit, and V11 combined journey"
+  ]
+}

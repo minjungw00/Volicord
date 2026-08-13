@@ -461,6 +461,42 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "v06-source-grounded-documents",
+      "validation_id": "V06",
+      "path": "rebuild/validation/projections/source-grounded-documents/fixtures",
+      "purpose": "Map Phase 7 project projections, four grounded documents, format/language behavior, explicit degradation, and no-mutation/publication boundaries to the Production Rust projection oracle while reusing authoritative V01, V02, and V09 fixture sources.",
+      "expected_entities": [
+        "project-overview",
+        "resume-brief",
+        "repository-map",
+        "decision-context-code-map",
+        "checkpoint-timeline",
+        "canonical-inspection",
+        "candidate-inspection",
+        "project-architecture-guide",
+        "decision-report",
+        "implementation-plan",
+        "handoff-resume-document",
+        "generated-document-metadata"
+      ],
+      "expected_relations": [
+        "projection|reads_without_mutating|canonical-and-candidate-state",
+        "document-claim|grounded_by|source-decision-or-analysis",
+        "agent-interpretation|marked_as|explicit-inference",
+        "markdown-and-html|render_from|shared-semantic-body",
+        "publication-artifact|returns_without_writing|explicit-destination"
+      ],
+      "expected_unsupported": [
+        "local viewer, HTTP, CLI, MCP, host wiring, provider transport, and Guarded effects",
+        "filesystem publication and generated-document adoption",
+        "large-repository narrative quality, accessibility audit, and V11 combined journey",
+        "legacy document format, migration, compatibility alias, and parallel renderer"
+      ],
+      "content_sha256": "edcc686c28e9e682d9c335206811ca589989cb49a1b48ddf09839d4bf9981578",
+      "origin": "Self-authored deterministic V06 requirement map that references maintained V01, V02, and V09 fixture authorities and executes Production Rust behavior.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v10-local-platform-primitives",
       "validation_id": "V10",
       "path": "rebuild/validation/local-platform-primitives/fixtures",
