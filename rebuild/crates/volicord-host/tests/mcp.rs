@@ -189,6 +189,138 @@ fn guarded_transport_and_fallback_keep_one_exact_logical_request() {
         .any(|basis| basis.source.id.to_string() == source));
 }
 
+#[test]
+fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
+    use volicord_context::{
+        AgentRecommendation, Availability, NonUserQuestionOutcome, OperationId, Principal,
+        PrincipalKind, QuestionAlternative, QuestionDraft, QuestionMateriality,
+        QuestionResearchState, SourceDraft, SourcePayload, Store,
+    };
+
+    let (_temporary, mut adapter, project) = setup();
+    let project_id = parse_project(&project);
+    let mut store = Store::open(adapter.operations().layout().canonical_store())
+        .expect("open canonical test support store");
+    let canonical_project = store.get_project(project_id).expect("load Project");
+    let basis = store
+        .record_source(
+            OperationId::from_bytes([201; 16]),
+            project_id,
+            SourceDraft {
+                expected_project_revision: canonical_project.revision,
+                payload: SourcePayload::File {
+                    locator: "src/policy.rs".into(),
+                    snapshot: "v08-fixture".into(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::Repository,
+                    identity: "v08-fixture".into(),
+                },
+                observer: None,
+                availability: Availability::Available,
+            },
+        )
+        .expect("record Question basis")
+        .value;
+    let question = store
+        .create_question(
+            OperationId::from_bytes([202; 16]),
+            project_id,
+            QuestionDraft {
+                expected_project_revision: canonical_project.revision,
+                prompt_basis: "Choose the V08 storage boundary".into(),
+                source_basis: vec![basis.id],
+                dependencies: Vec::new(),
+                alternatives: vec![
+                    QuestionAlternative {
+                        key: "local".into(),
+                        label: "Local".into(),
+                        consequence: "Keep canonical data local".into(),
+                    },
+                    QuestionAlternative {
+                        key: "remote".into(),
+                        label: "Remote".into(),
+                        consequence: "Require a separate provider decision".into(),
+                    },
+                ],
+                recommendation: AgentRecommendation {
+                    alternative_key: Some("local".into()),
+                    rationale: "The accepted product boundary is local-first".into(),
+                    source_basis: vec![basis.id],
+                },
+                trade_offs: vec!["Remote augmentation remains separate".into()],
+                uncertainty: Vec::new(),
+                material_scope: vec!["storage".into()],
+                materiality: QuestionMateriality::Material,
+                presentation_order: 1,
+                why_it_matters_now: "The host journey needs an exact user choice".into(),
+                established_facts: Vec::new(),
+                assumptions: Vec::new(),
+                known_limits: Vec::new(),
+                what_the_answer_unlocks: vec!["V08 Decision transport".into()],
+                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                research_state: QuestionResearchState::ReadyToAsk,
+            },
+        )
+        .expect("create Question")
+        .value;
+    drop(store);
+
+    let decision = structured(&call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id": project,
+            "question_id": question.id.to_string(),
+            "question_revision": question.revision,
+            "alternative_key": "local",
+            "user_turn": "Use the local storage boundary",
+            "user_rationale": "Canonical project memory remains local"
+        }),
+    ))
+    .clone();
+    assert_eq!(decision["all_succeeded"], true, "{decision}");
+    let decision_source = decision["user_response_source_id"]
+        .as_str()
+        .expect("Decision Source")
+        .to_owned();
+
+    let checkpoint = structured(&call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id": project,
+            "user_turn": "Record a handoff checkpoint",
+            "goal": "Complete the clean host journey",
+            "next_step": "Run maintained V08 assertions",
+            "known_limits": ["V11 is independent"]
+        }),
+    ))
+    .clone();
+    let checkpoint_source = checkpoint["user_response_source_id"]
+        .as_str()
+        .expect("Checkpoint Source")
+        .to_owned();
+    assert_ne!(decision_source, checkpoint_source);
+
+    let canonical = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical basis");
+    for source_id in [decision_source, checkpoint_source] {
+        let source = canonical
+            .sources
+            .iter()
+            .find(|basis| basis.source.id.to_string() == source_id)
+            .expect("current-host Source remains canonical");
+        assert!(matches!(
+            source.source.payload,
+            SourcePayload::CurrentHostUserTurn { ref host, .. } if host == "codex"
+        ));
+        assert_eq!(source.source.actor.kind, PrincipalKind::User);
+    }
+}
+
 fn call(adapter: &mut HostAdapter, name: &str, arguments: Value) -> Value {
     adapter.handle(json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":name,"arguments":arguments}})).expect("tool response")
 }

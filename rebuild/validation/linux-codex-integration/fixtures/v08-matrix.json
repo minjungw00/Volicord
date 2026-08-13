@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "validation_id": "V08",
+  "production_commits": {
+    "viewer": "a6355a9edf5a587a17ad93eeb8357d1de977ba54",
+    "host_and_install": "85c876033c35acb5ad95eee3dec223fc91213f50",
+    "current_host_source": "bec6424ee0e7a7f378f2fc799bb58e201cc0c00f"
+  },
+  "groups": {
+    "clean_linux_install": [
+      ["V08-I01-isolated-home", "harness", "clean_environment", "HOME and XDG data are temporary"],
+      ["V08-I02-explicit-runtime", "harness", "clean_environment", "replacement Runtime Home is a separate explicit path"],
+      ["V08-I03-three-binaries", "harness", "install", "CLI viewer and MCP host are installed"],
+      ["V08-I04-executable-path", "harness", "install", "installed binaries are executable and PATH-discoverable"],
+      ["V08-I05-current-schemas", "harness", "install", "canonical Candidate privacy and Guarded stores initialize"],
+      ["V08-I06-project-init-bind", "harness", "project", "Project initializes with an exact repository binding"],
+      ["V08-I07-uninstall-preserves", "harness", "lifecycle", "uninstall removes binaries without deleting canonical data"],
+      ["V08-I08-reinstall-preserves", "harness", "lifecycle", "reinstall preserves the same Recall result"]
+    ],
+    "codex_and_host": [
+      ["V08-H01-real-codex", "harness", "codex", "real codex executable supplies version evidence"],
+      ["V08-H02-registration", "harness", "codex", "installer registers the exact MCP command and runtime environment"],
+      ["V08-H03-discovery", "harness", "codex", "codex mcp get and list discover Volicord"],
+      ["V08-H04-product-tools", "rust", "volicord-host/mcp", "initializes_and_discovers_only_high_level_product_capabilities"],
+      ["V08-H05-recall", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
+      ["V08-H06-decision", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
+      ["V08-H07-checkpoint", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
+      ["V08-H08-user-source-linkage", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
+      ["V08-H09-document-preview", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
+      ["V08-H10-canonical-inspection", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
+      ["V08-H11-candidate-inspection", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"]
+    ],
+    "guarded_and_viewer": [
+      ["V08-G01-host-request-identity", "rust", "volicord-host/mcp", "guarded_transport_and_fallback_keep_one_exact_logical_request"],
+      ["V08-G02-host-source-linkage", "rust", "volicord-host/mcp", "guarded_transport_and_fallback_keep_one_exact_logical_request"],
+      ["V08-G03-viewer-cli-fallback", "rust", "volicord-host/mcp", "guarded_transport_and_fallback_keep_one_exact_logical_request"],
+      ["V08-G04-viewer-request-identity", "rust", "volicord-viewer/viewer", "guarded_fallback_preserves_exact_request_revision_and_source_linkage"],
+      ["V08-G05-no-mutation-read", "rust", "volicord-viewer/viewer", "reads_render_every_project_surface_without_mutating_canonical_state"],
+      ["V08-G06-english-rendering", "rust", "volicord-viewer/viewer", "reads_render_every_project_surface_without_mutating_canonical_state"],
+      ["V08-G07-korean-rendering", "rust", "volicord-viewer/viewer", "korean_fixed_text_and_all_explanation_levels_are_available"],
+      ["V08-G08-generated-language-open", "rust", "volicord-viewer/viewer", "reads_render_every_project_surface_without_mutating_canonical_state"],
+      ["V08-G09-explanation-levels", "rust", "volicord-viewer/viewer", "korean_fixed_text_and_all_explanation_levels_are_available"]
+    ],
+    "failure_cleanup_and_exclusion": [
+      ["V08-F01-eof-cleanup", "rust", "volicord-host/mcp", "stdio_ends_cleanly_at_eof_and_preserves_ordered_responses"],
+      ["V08-F02-host-restart", "harness", "process", "host restarts and reconnects to the same Project"],
+      ["V08-F03-connection-failure", "harness", "health", "missing host launch is connection failure"],
+      ["V08-F04-capability-degradation", "rust", "volicord-host/mcp", "health_distinguishes_connection_from_degraded_capability"],
+      ["V08-F05-repository-unavailable", "harness", "health", "live host reports a missing bound repository as degraded"],
+      ["V08-F06-process-cleanup", "harness", "process", "each stdio host exits successfully at EOF"],
+      ["V08-F07-no-legacy-runtime-read", "harness", "exclusion", "legacy runtime sentinel remains byte and timestamp identical"],
+      ["V08-F08-no-legacy-dependency", "assertion", "metadata", "reconstruction packages remain independent of legacy crates"],
+      ["V08-F09-no-legacy-wire", "assertion", "source", "host source and catalog contain no legacy MCP method"]
+    ]
+  },
+  "environment_dependent": {
+    "required_when_suitable": [
+      "real codex version",
+      "codex mcp registration",
+      "codex mcp discovery"
+    ],
+    "unavailable_outcome": "V08 is not passed; the harness exits 77 and the report must remain blocked or skipped"
+  },
+  "excluded": [
+    "model-authenticated interactive Codex agent turn and external network access",
+    "V11 multi-repository dogfood or replacement rehearsal",
+    "Phase 8 quality evaluation",
+    "Phase 9 cutover and legacy deletion",
+    "legacy MCP wire methods runtime schemas commands aliases or migration"
+  ]
+}

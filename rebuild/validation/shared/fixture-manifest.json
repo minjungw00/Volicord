@@ -566,6 +566,40 @@
       "content_sha256": "dfcff91d234af21f480fc4e30effbb409140dc118381e46c8667f6129ed1eb79",
       "origin": "Self-authored deterministic Linux fixture for V10.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v08-linux-codex-integration",
+      "validation_id": "V08",
+      "path": "rebuild/validation/linux-codex-integration/fixtures",
+      "purpose": "Map the clean Linux installation, real Codex MCP registration/discovery, high-level host calls, exact Guarded fallback, viewer localization, failure/degradation, process cleanup, uninstall/reinstall, canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
+      "expected_entities": [
+        "replacement-runtime-home",
+        "installed-cli",
+        "installed-local-viewer",
+        "installed-mcp-host",
+        "codex-mcp-registration",
+        "high-level-host-tool-catalog",
+        "current-host-user-turn-source",
+        "guarded-confirmation-request",
+        "project-health-observation"
+      ],
+      "expected_relations": [
+        "codex-registration|launches|replacement-mcp-host",
+        "host-decision-and-checkpoint|preserve|current-user-turn-source",
+        "guarded-host-and-fallback|share|request-revision-and-fingerprint",
+        "viewer-and-host|delegate_mutation_to|local-operations",
+        "connected-host|reports|degraded-repository-capability",
+        "uninstall-reinstall|preserves|canonical-recall"
+      ],
+      "expected_unsupported": [
+        "model-authenticated interactive Codex agent turn and external network behavior",
+        "V11 multi-repository dogfood or replacement rehearsal",
+        "Phase 8 quality evaluation and Phase 9 cutover",
+        "legacy MCP runtime schema command alias migration import backup or dual path"
+      ],
+      "content_sha256": "ccbb46b30d46e6aa7ab9f1fa761fdd216fbfec5cfe17a03dde21438b6f50f097",
+      "origin": "Self-authored deterministic V08 requirement map with an isolated clean Linux journey and real locally installed Codex CLI discovery when available.",
+      "license": "CC0-1.0"
     }
   ]
 }
