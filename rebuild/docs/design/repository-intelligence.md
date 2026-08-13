@@ -7,7 +7,8 @@
 - 상위 architecture 기준: [논리 아키텍처](architecture.md)
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
 - evidence 기준: [architecture 입력 계약](architecture-inputs.md),
-  [V01 보고서](../../validation/repository-intelligence/polyglot-structural/report.md)
+  [V01 보고서](../../validation/repository-intelligence/polyglot-structural/report.md),
+  [Production structural analyzer qualification](../../validation/repository-intelligence/production-structural-qualification/report.md)
 - privacy 기준: [Privacy와 provider 경계](privacy-and-provider-boundary.md)
 - 비소유 범위: user judgment, canonical persistence, parser·indexer·provider 선택,
   production schema/API, invalidation algorithm과 automatic Question discovery
@@ -297,6 +298,33 @@ Common core는 다음을 소유한다.
 Common core는 language grammar나 provider-specific output 의미를 발명하지 않는다.
 공통 graph를 만들기 위해 provenance가 다른 relation을 합치거나 unsupported area를
 empty success로 채우지 않는다.
+
+### 8.3 Current Production structural responsibility
+
+현재 Production 구현은 qualification evidence가 선택한 local Tree-sitter grammar를
+일곱 gate language adapter 뒤에 둔다. 이 선택은 공통 envelope의 parser-independent
+meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 product contract로
+만들지 않는다. Production Repository Intelligence는 다음 구현 책임을 가진다.
+
+- parser-owned declaration/range와 syntax relation만 normalize하고 unsupported 또는
+  partial construct diagnostic을 함께 보존한다.
+- source range를 Repository Snapshot에 bind된 half-open, zero-based line/UTF-8-byte
+  column으로 기록한다.
+- 같은 snapshot, adapter contract와 source basis에서 entity/relation identity와
+  canonical serialization을 재현한다.
+- file content, declared dependency, recognized build context와 adapter contract basis를
+  기록하고 `file_content`, `dependency`, `build_context`, `adapter_contract`,
+  `prior_failure` 등 명시적 category로 bounded refresh 또는 reuse를 설명한다.
+- local search result에 Source/range, capability, coverage, diagnostic, provenance와
+  freshness를 포함하고 historical range를 current navigation으로 표시하지 않는다.
+- parser execution과 search를 process 내부 local operation으로 유지하며 repository
+  source를 external service로 전송하지 않는다.
+
+이 책임은 semantic resolution, compiler/LSP child process, provider annotation 또는
+canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural
+basis, invalidation과 refresh metadata가 포함된 format version 2만 생성하며 이 derived
+format은 source basis에서 rebuild하는 책임을 가진다. V01 pass 여부는 별도 final
+validation이 판정한다.
 
 ## 9. Failure isolation과 degradation
 

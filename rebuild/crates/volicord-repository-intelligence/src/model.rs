@@ -6,7 +6,7 @@ use std::fmt;
 use volicord_context::{ProjectId, SourceId};
 
 pub const ANALYSIS_SNAPSHOT_KIND: &str = "volicord.repository_analysis";
-pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 1;
+pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 2;
 
 macro_rules! canonical_reference {
     ($name:ident, $inner:ty) => {
@@ -87,8 +87,63 @@ pub struct AnalysisSnapshot {
     pub semantic_results: Vec<SemanticAnalysisResult>,
     pub semantic_annotations: Vec<SemanticAnnotation>,
     pub agent_interpretations: Vec<AgentInterpretation>,
+    pub structural_bases: Vec<FileAnalysisBasis>,
+    pub invalidations: Vec<InvalidationRecord>,
+    pub refresh: StructuralRefresh,
     pub generated_at_unix_micros: i64,
     pub freshness: FreshnessBasis,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FileAnalysisBasis {
+    pub area: AreaId,
+    pub language: Language,
+    pub content_sha256: String,
+    pub adapter: AdapterIdentity,
+    pub analyzer: AnalyzerIdentity,
+    pub dependency_locators: Vec<String>,
+    pub build_context_sha256: Option<String>,
+    pub state: CapabilityState,
+    pub diagnostic_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvalidationCategory {
+    Added,
+    FileContent,
+    Dependency,
+    BuildContext,
+    AdapterContract,
+    PriorFailure,
+    Removed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefreshAction {
+    Parsed,
+    Reused,
+    Failed,
+    Removed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct InvalidationRecord {
+    pub area: AreaId,
+    pub language: Language,
+    pub category: InvalidationCategory,
+    pub action: RefreshAction,
+    pub basis: String,
+    pub dependency_area: Option<AreaId>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StructuralRefresh {
+    pub parsed_file_count: u64,
+    pub reused_file_count: u64,
+    pub failed_file_count: u64,
+    pub removed_file_count: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -576,6 +631,30 @@ pub struct StructuralFact {
     pub entity: CodeEntity,
     pub relations: Vec<StructuralRelation>,
     pub provenance: StructuralProvenance,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub analysis_snapshot: AnalysisSnapshotId,
+    pub repository_snapshot: RepositorySnapshotId,
+    pub source: CanonicalSourceRef,
+    pub source_range: Option<SourceRange>,
+    pub result_kind: SearchResultKind,
+    pub matched_text: String,
+    pub capability: Capability,
+    pub coverage: Coverage,
+    pub freshness: FreshnessBasis,
+    pub diagnostics: Vec<String>,
+    pub provenance_class: ProvenanceClass,
+    pub navigation_is_current: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchResultKind {
+    Inventory,
+    Entity,
+    Relation,
 }
 
 /// A resolved semantic result, distinct from syntax and generated annotation.

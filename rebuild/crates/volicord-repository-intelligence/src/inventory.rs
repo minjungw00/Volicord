@@ -194,6 +194,9 @@ pub fn inventory_repository(
         semantic_results: Vec::new(),
         semantic_annotations: Vec::new(),
         agent_interpretations: Vec::new(),
+        structural_bases: Vec::new(),
+        invalidations: Vec::new(),
+        refresh: Default::default(),
         generated_at_unix_micros: request.observed_at_unix_micros,
         freshness,
     };

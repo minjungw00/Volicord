@@ -8,9 +8,9 @@ use volicord_context::{
     TimestampMicros,
 };
 use volicord_repository_intelligence::{
-    canonical_json, inventory_repository, Capability, CapabilityState, EcosystemObservationKind,
-    InventoryClassification, InventoryRequest, Language, ProvenanceClass, SemanticAnalysisResult,
-    StructuralFact,
+    analyze_repository, canonical_json, inventory_repository, Capability, CapabilityState,
+    EcosystemObservationKind, InventoryClassification, InventoryRequest, Language, ProvenanceClass,
+    SemanticAnalysisResult, StructuralAnalysisRequest, StructuralFact,
 };
 
 const OBSERVED_AT: i64 = 1_725_000_000_000_000;
@@ -208,7 +208,7 @@ fn unavailable_entry_does_not_erase_successful_inventory() -> Result<(), Box<dyn
 }
 
 #[test]
-fn inventory_has_no_canonical_mutation_authority() -> Result<(), Box<dyn Error>> {
+fn repository_analysis_has_no_canonical_mutation_authority() -> Result<(), Box<dyn Error>> {
     let runtime = tempfile::tempdir()?;
     let mut store = Store::open_with(
         runtime.path().join("context.sqlite3"),
@@ -244,7 +244,7 @@ fn inventory_has_no_canonical_mutation_authority() -> Result<(), Box<dyn Error>>
     let rust_fixture = fixture("rust");
     let inventory_request =
         InventoryRequest::new(&rust_fixture, project.id, source.id, OBSERVED_AT);
-    let (_, analysis) = inventory_repository(inventory_request)?;
+    let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory_request))?;
     let after = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
 
     assert_eq!(before, after);
