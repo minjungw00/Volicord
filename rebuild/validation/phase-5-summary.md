@@ -4,8 +4,8 @@
 - Scope: the local Rust Repository Intelligence subsystem boundary,
   Repository/Analysis Snapshot identity, inventory, structural and selected
   semantic analysis, incremental structural refresh, grounded local search,
-  explanation basis, capability/coverage/freshness reporting, and typed
-  read-only canonical linkage
+  explanation basis, capability/coverage/freshness reporting, and
+  Project-scoped, basis-grounded read-only canonical linkage
 - Excluded claim: this conclusion does not certify installation, Codex or other
   host integration, Inquiry, Recall, generated documents, background-provider
   shipping, the V11 multi-repository journey, or cutover acceptance
@@ -21,11 +21,23 @@ capability, coverage, diagnostic, freshness, uncertainty, adapter/analyzer, and
 provenance for every published result.
 
 The subsystem owns only Derived State and provenance-bearing evidence
-candidates. It may carry typed references to canonical Source, Decision,
-Context Item, and Checkpoint identities, but it has no canonical store handle or
-write operation and cannot create, answer, revise, supersede, or forget a
-Question or Decision. Analysis refresh, deleting serialized analysis, and
-rebuilding from source preserve canonical records and user correction.
+candidates. It may carry references to canonical Source, Decision, Context
+Item, and Checkpoint targets only after validating target existence and
+same-Project ownership against an immutable Canonical Context read basis.
+Source references preserve the applicable canonical snapshot basis or an
+explicit `not_applicable` state; Decision, Context Item, and Checkpoint
+references preserve an exact revision. Current and historical revisions remain
+distinguishable, and correction or Decision supersession does not silently
+retarget an existing Analysis Snapshot.
+
+Repository Intelligence has no canonical store handle or write operation and
+cannot create, answer, revise, supersede, or forget a Question or Decision.
+Consumers can reconstruct the single current Analysis Snapshot format and
+revalidate every persisted canonical link before search or explanation output
+is produced. Invalid linkage fails closed without canonical mutation. Analysis
+refresh, deleting serialized analysis, and rebuilding from source preserve
+canonical records and user correction; rebuildable Derived State owns no user
+judgment.
 
 ## Structural and semantic approach
 
@@ -62,7 +74,7 @@ The shared manifest contains nine V01 inputs and three V02 ecosystem entries:
 - one out-of-set Go text fixture for inventory fallback; and
 - Java/Maven, TypeScript/Node, and Rust/Cargo semantic entries.
 
-The maintained Phase 5 acceptance harness maps 22 subsystem requirements to 24
+The maintained Phase 5 acceptance harness maps 34 subsystem requirements to 38
 Production Rust tests. It executes the library and inventory, structural, and
 semantic integration targets rather than implementing analysis meaning in the
 orchestrator. The evidence covers deterministic repeat, expected entities and
@@ -70,7 +82,12 @@ relations, source ranges, language/ecosystem context, analyzer-independent
 inventory, polyglot failure isolation, semantic absence/failure, broken-build
 remainder in all three selected ecosystems, same-name and overload distinction,
 source-grounded search/explanation basis, canonical no-mutation, and Derived
-State rebuild separation.
+State rebuild separation. Narrow canonical-grounding assertions additionally
+cover Repository Source Project/snapshot basis, dangling and cross-Project
+targets, impossible revisions, preserved historical revisions, correction and
+supersession stability, persisted-snapshot read-side revalidation, every
+automatic/manual reference ingress, and deterministic grounded-reference
+serialization.
 
 V01 is `passed` at this subsystem boundary. All seven structural languages pass
 the maintained Production fixtures; same-snapshot identity and serialization
@@ -114,9 +131,9 @@ incremental semantic cache.
 ## Authority and privacy boundary
 
 The nested workspace dependency is one-way: Repository Intelligence depends on
-the Canonical Context Kernel only for typed identities, while the Kernel has no
-Repository Intelligence dependency. Neither reconstruction crate depends on a
-legacy Volicord crate.
+the Canonical Context Kernel only for typed identities and immutable read
+bases, while the Kernel has no Repository Intelligence dependency. Neither
+reconstruction crate depends on a legacy Volicord crate.
 
 Production analysis is local and in-process. It contains no external provider,
 network transport, child-process analyzer, CLI, MCP, viewer, or canonical write
@@ -153,11 +170,12 @@ gate within the documented limits. Q3 is not broadened: no background provider
 or source transmission path exists in this subsystem.
 
 Phase 6 entry is `ready`. Repository Intelligence now provides the bounded,
-source-grounded fact, capability, coverage, freshness, and canonical-reference
-basis that Inquiry, Checkpoint, and Recall may consume without granting analysis
-authority over user judgment. Phase 6 and later validation must preserve that
-direction and complete their own acceptance rather than treating this subsystem
-conclusion as V11 or product cutover acceptance.
+source-grounded fact, capability, coverage, freshness, and exact canonical
+target basis that Inquiry, Checkpoint, and Recall may consume and revalidate
+without granting analysis authority over user judgment. Phase 6 and later
+validation must preserve that direction and complete their own acceptance
+rather than treating this subsystem conclusion as V11 or product cutover
+acceptance.
 
 ## Maintained references
 
