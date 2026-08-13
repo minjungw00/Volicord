@@ -53,6 +53,7 @@ repository-intelligence/polyglot-structural/
 repository-intelligence/phase-5-acceptance/
 canonical-context/portability/
 inquiry/frontier-resume/
+inquiry/phase-6-acceptance/
 wave-1-summary.md
 phase-4-summary.md
 phase-5-summary.md
@@ -63,6 +64,11 @@ directory owns its fixtures, assertions, disposable prototype, and maintained
 report. The three validations share the report shape in
 `shared/report-template.md` without turning spike code into a production
 dependency.
+
+The Phase 6 acceptance orchestrator maps V09 requirement identities to named
+Production Rust tests. It validates orchestration and evidence completeness
+only; Candidate, frontier, Decision, Checkpoint, Recall, and inspection
+semantics remain owned by the Production Rust crates.
 
 Examples:
 

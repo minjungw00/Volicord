@@ -423,6 +423,42 @@
       "content_sha256": "7967a0c665f962694a2c1b35d6bcab894137cc33bacd63c3049e1f4afcb5986f",
       "origin": "Self-authored deterministic fixture for V05.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v09-phase-6-matrix",
+      "validation_id": "V09",
+      "path": "rebuild/validation/inquiry/phase-6-acceptance/fixtures",
+      "purpose": "Map the complete Phase 6 Candidate, Inquiry, Decision, Checkpoint, Recall, inspection, and restart acceptance matrix to maintained Production Rust semantic oracles.",
+      "expected_entities": [
+        "candidate-lifecycle",
+        "question-candidate-and-promotion",
+        "dependency-frontier",
+        "current-host-response",
+        "decision-applicability",
+        "current-grounded-checkpoint",
+        "historical-checkpoint-degradation",
+        "candidate-inspection",
+        "bounded-recall",
+        "restart-resume"
+      ],
+      "expected_relations": [
+        "candidate-cleanup|preserves|promotion-or-dismissal-disposition",
+        "question-frontier|recomputes_from|canonical-current-state",
+        "explicit-current-host-response|creates|question-linked-decision",
+        "decision-applicability-change|proposes|question-candidate-review",
+        "current-checkpoint|requires|current-semantic-source-basis",
+        "historical-checkpoint|remains_readable_with|degraded-source-basis",
+        "recall-and-inspection|read_without_mutating|canonical-and-candidate-state"
+      ],
+      "expected_unsupported": [
+        "LLM-dependent Question discovery or materiality quality",
+        "host UI rendering, CLI, MCP, viewer, installer, or background provider behavior",
+        "V07 privacy journey, V10 primitive qualification, and V11 multi-repository journey",
+        "large-repository relevance, latency, and resource ceilings"
+      ],
+      "content_sha256": "f56eb31f1805b1e0cda38f113a6b7adbf964a6808fbb1ca465d576aebc7ec7c6",
+      "origin": "Self-authored deterministic Phase 6 acceptance map for V09.",
+      "license": "CC0-1.0"
     }
   ]
 }
