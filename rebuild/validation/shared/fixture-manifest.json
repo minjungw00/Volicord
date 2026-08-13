@@ -497,6 +497,42 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "v07-privacy-boundary",
+      "validation_id": "V07",
+      "path": "rebuild/validation/privacy/local-only-boundary/fixtures",
+      "purpose": "Exercise Project-scoped local, interactive, and background-provider authority; explicit opt-in scope, exclusions, fake secret-like filtering, actual transmission manifests, revoke, Candidate privacy preservation, managed retention/deletion, canonical forgetting propagation, raw-body exclusion, correction protection, and truthful provider degradation through maintained Production Rust oracles.",
+      "expected_entities": [
+        "project-provider-opt-in-event",
+        "authority-observation",
+        "background-provider-request",
+        "source-transmission-manifest-entry",
+        "semantic-annotation",
+        "managed-derived-record",
+        "candidate-cleanup-observation",
+        "local-deletion-observation",
+        "provider-deletion-outcome"
+      ],
+      "expected_relations": [
+        "interactive-current-host-access|does_not_authorize|background-provider-dispatch",
+        "background-request|revalidates|current-project-opt-in",
+        "actual-transmission|records|source-manifest",
+        "revoke|prevents|new-background-invocation",
+        "candidate-opt-out|preserves|existing-candidate-lifecycle",
+        "canonical-forgetting|deletes_only|related-managed-candidate-and-derived-content",
+        "local-deletion|remains_distinct_from|provider-deletion-outcome",
+        "provider-failure|does_not_mutate|canonical-context-or-user-correction"
+      ],
+      "expected_unsupported": [
+        "commercial provider, permanent model, credential store, and network protocol selection",
+        "perfect secret detection or complete provider-side deletion guarantee",
+        "Guarded confirmation, consumption, dispatch, CLI, viewer, MCP, installer, V08, and V11",
+        "legacy provider settings, Runtime Home, migration, aliases, and dual privacy paths"
+      ],
+      "content_sha256": "f5b234f6776f89f1afda91fa1f0d6c36cd5a870f32b6c5dcfa618b683759f299",
+      "origin": "Self-authored deterministic V07 privacy fixture and requirement map executed against the Production provider boundary and existing Candidate, Canonical Context, Repository Intelligence, Inquiry, Recall, and document oracles.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v10-local-platform-primitives",
       "validation_id": "V10",
       "path": "rebuild/validation/local-platform-primitives/fixtures",

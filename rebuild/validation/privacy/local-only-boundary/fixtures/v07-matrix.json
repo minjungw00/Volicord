@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "validation_id": "V07",
+  "production_commit": "4ef58cb1",
+  "fixture_sources": [
+    {
+      "fixture_id": "v07-privacy-boundary",
+      "role": "provider_scope_filter_and_deletion",
+      "coverage": [
+        "explicit src scope",
+        "generated vendor exclusion",
+        "fake secret-like line filtering",
+        "outside-request documentation",
+        "provider dispatch and deletion observations"
+      ]
+    },
+    {
+      "fixture_id": "v01-rust",
+      "role": "local_structural_and_ecosystem",
+      "coverage": [
+        "provider-independent inventory",
+        "local structural analysis",
+        "local semantic and ecosystem analysis"
+      ]
+    },
+    {
+      "fixture_id": "v09-phase-6-matrix",
+      "role": "candidate_inquiry_checkpoint_recall",
+      "coverage": [
+        "Candidate collection opt-out and lifecycle",
+        "Inquiry and Decision",
+        "Checkpoint and Recall",
+        "Candidate Inspection"
+      ]
+    },
+    {
+      "fixture_id": "v06-source-grounded-documents",
+      "role": "provider_independent_projections_and_documents",
+      "coverage": [
+        "provider-independent Project projection",
+        "source-grounded documents",
+        "read-only canonical and Candidate behavior"
+      ]
+    }
+  ],
+  "groups": {
+    "authority_and_local_only": [
+      ["V07-A01-zero-background-before-opt-in", "volicord-privacy", "privacy_boundary", "interactive_and_local_authority_never_authorize_background_invocation"],
+      ["V07-A02-interactive-access-not-consent", "volicord-privacy", "privacy_boundary", "interactive_and_local_authority_never_authorize_background_invocation"],
+      ["V07-A03-never-enabled-inspection", "volicord-privacy", "privacy_boundary", "interactive_and_local_authority_never_authorize_background_invocation"],
+      ["V07-A04-disabled-local-only", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-A05-revoked-local-only", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-A06-provider-absence-canonical", "volicord-context", "lifecycle", "correction_preserves_identity_history_and_rejects_semantic_change"],
+      ["V07-A07-provider-absence-inventory", "volicord-repository-intelligence", "inventory", "maintained_fixtures_recognize_all_seven_gate_languages"],
+      ["V07-A08-provider-absence-structural", "volicord-repository-intelligence", "structural", "all_seven_adapters_satisfy_maintained_entities_ranges_and_relations"],
+      ["V07-A09-provider-absence-inquiry-decision-checkpoint", "volicord-inquiry", "production_flow", "exact_response_rejections_do_not_partially_transition_and_batch_is_truthful"],
+      ["V07-A10-provider-absence-recall", "volicord-projections", "projections", "resume_brief_is_deterministic_bounded_grounded_and_read_only"],
+      ["V07-A11-provider-absence-documents", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"]
+    ],
+    "opt_in_transmission_and_revoke": [
+      ["V07-T01-project-scoped-current-opt-in", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T02-provider-model-purpose-capability", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T03-request-scope-cannot-expand", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T04-actual-transmitted-manifest", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T05-excluded-source", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T06-filtered-source-known-limit", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T07-not-transmitted-source", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-T08-revoke-before-dispatch", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"]
+    ],
+    "candidate_and_forgetting": [
+      ["V07-C01-selected-scope-opt-out", "volicord-inquiry", "candidate_lifecycle", "scoped_opt_out_preserves_existing_candidates_and_restart_state"],
+      ["V07-C02-existing-candidate-visible", "volicord-inquiry", "candidate_lifecycle", "scoped_opt_out_preserves_existing_candidates_and_restart_state"],
+      ["V07-C03-expiry-and-explicit-deletion-local", "volicord-inquiry", "candidate_lifecycle", "dismissal_and_explicit_deletion_are_candidate_local"],
+      ["V07-C04-promoted-target-survives-cleanup", "volicord-inquiry", "promotion", "promoted_candidate_retention_cleanup_survives_restart_and_is_idempotent"],
+      ["V07-C05-cleaned-pending-cannot-promote", "volicord-inquiry", "promotion", "pending_retention_cleanup_cannot_promote_or_create_a_question"],
+      ["V07-C06-related-forgetting-propagation", "volicord-privacy", "privacy_boundary", "canonical_forgetting_cleans_only_related_candidate_and_derived_content"],
+      ["V07-C07-unrelated-managed-content-preserved", "volicord-privacy", "privacy_boundary", "canonical_forgetting_cleans_only_related_candidate_and_derived_content"],
+      ["V07-C08-canonical-forgetting-minimal-residue", "volicord-context", "forgetting_matrix", "every_content_bearing_kind_forgets_to_one_minimal_portable_tombstone"]
+    ],
+    "retention_deletion_and_correction": [
+      ["V07-D01-managed-identity-and-annotation", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
+      ["V07-D02-local-retention-expiry", "volicord-privacy", "privacy_boundary", "managed_retention_expiry_is_local_scoped_and_does_not_infer_provider_deletion"],
+      ["V07-D03-stale-invalidation", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-D04-local-provider-deletion-separation", "volicord-privacy", "privacy_boundary", "local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portable"],
+      ["V07-D05-provider-deletion-failure-visible", "volicord-privacy", "privacy_boundary", "local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portable"],
+      ["V07-D06-user-correction-protected", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-D07-correction-history-canonical", "volicord-context", "lifecycle", "correction_preserves_identity_history_and_rejects_semantic_change"]
+    ],
+    "degradation_portability_and_purity": [
+      ["V07-P01-provider-unavailable-no-transmission", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-P02-provider-failed-after-transmission", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-P03-partial-outcome", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-P04-stale-outcome", "volicord-privacy", "privacy_boundary", "provider_degradation_preserves_local_state_and_truthful_transmission"],
+      ["V07-P05-unaffected-local-semantic", "volicord-repository-intelligence", "semantic", "unavailable_or_failed_adapter_cannot_publish_semantic_facts"],
+      ["V07-P06-raw-source-body-not-portable", "volicord-privacy", "privacy_boundary", "local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portable"],
+      ["V07-P07-portable-excludes-noncanonical", "volicord-context", "portable_bundle", "repeated_export_is_identical_and_excludes_local_and_noncanonical_classes"],
+      ["V07-P08-projections-read-only", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
+      ["V07-P09-candidate-inspection-no-mutation", "volicord-projections", "projections", "candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates"]
+    ]
+  }
+}
