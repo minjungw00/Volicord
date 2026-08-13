@@ -3,6 +3,7 @@ members = [
     "crates/volicord-context",
     "crates/volicord-inquiry",
     "crates/volicord-local-platform",
+    "crates/volicord-operations",
     "crates/volicord-privacy",
     "crates/volicord-projections",
     "crates/volicord-repository-intelligence",

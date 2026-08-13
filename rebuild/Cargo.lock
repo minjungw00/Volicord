@@ -639,6 +639,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-operations"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "volicord-context",
+ "volicord-inquiry",
+ "volicord-local-platform",
+ "volicord-privacy",
+ "volicord-projections",
+ "volicord-repository-intelligence",
+]
+
+[[package]]
 name = "volicord-privacy"
 version = "0.1.0"
 dependencies = [

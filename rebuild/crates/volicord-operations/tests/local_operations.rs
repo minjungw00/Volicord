@@ -1,0 +1,152 @@
+use std::{ffi::OsString, fs, time::Duration};
+use tempfile::TempDir;
+use volicord_context::ProjectId;
+use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
+use volicord_operations::{HealthState, LocalOperations, OperationState, RuntimeLayout};
+
+fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src"))?;
+    fs::write(
+        repository.join("Cargo.toml"),
+        "[package]\nname='fixture'\nversion='0.1.0'\n",
+    )?;
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn answer() -> u32 { 42 }\n",
+    )?;
+    let runtime = temporary.path().join("runtime");
+    let operations = LocalOperations::new(RuntimeLayout::new(runtime)?);
+    Ok((temporary, operations, repository))
+}
+
+#[test]
+fn project_analysis_recall_and_portable_io_use_current_owners(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temporary, operations, repository) = fixture()?;
+    let initialized = operations.initialize_project("Fixture", Some(&repository))?;
+    assert!(initialized.binding.is_some());
+
+    let analysis = operations.analyze(initialized.project.id, Vec::new())?;
+    assert!(matches!(
+        analysis.state,
+        OperationState::Succeeded | OperationState::Partial
+    ));
+    let analysis_value = analysis.value.as_ref().ok_or("missing analysis value")?;
+    assert!(analysis_value
+        .stored_at
+        .starts_with(operations.layout().analysis_dir()));
+    assert!(!analysis_value.analysis.inventory.entries.is_empty());
+
+    let before = operations.canonical_basis(initialized.project.id)?;
+    let recall = operations.recall(initialized.project.id)?;
+    assert_eq!(recall.project_id, initialized.project.id);
+    let after = operations.canonical_basis(initialized.project.id)?;
+    assert_eq!(
+        before.stable_ordering_identity,
+        after.stable_ordering_identity
+    );
+
+    let bundle = temporary.path().join("fixture.volicord.json");
+    let exported = operations.export_bundle(initialized.project.id, &bundle)?;
+    assert_eq!(exported.project_id, initialized.project.id);
+    assert!(bundle.is_file());
+    Ok(())
+}
+
+#[test]
+fn repository_failure_degrades_health_without_canonical_loss(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let initialized = operations.initialize_project("Fixture", Some(&repository))?;
+    fs::remove_dir_all(&repository)?;
+
+    assert!(operations
+        .analyze(initialized.project.id, Vec::new())
+        .is_err());
+    let canonical = operations.canonical_basis(initialized.project.id)?;
+    assert_eq!(canonical.project.display_name, "Fixture");
+    let health = operations.health(Some(initialized.project.id));
+    assert_eq!(health.state, HealthState::Degraded);
+    assert_eq!(health.repository_available, Some(false));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn child_process_preserves_complete_streams_exit_and_duration(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, _repository) = fixture()?;
+    let result = operations.run_child(
+        "/bin/sh",
+        [
+            OsString::from("-c"),
+            OsString::from("printf stdout; printf stderr >&2; exit 7"),
+        ],
+        None,
+        vec!["fixture-command".into()],
+        Duration::from_secs(2),
+        CancellationFlag::default(),
+    )?;
+    assert_eq!(result.state, OperationState::Failed);
+    assert!(result.duration_micros > 0);
+    let value = result.value.as_ref().ok_or("missing child observation")?;
+    assert_eq!(value.termination, ProcessTermination::ExitCode(7));
+    assert_eq!(value.cleanup, ProcessTreeCleanup::NotRequired);
+    assert_eq!(fs::read(value.stdout.path())?, b"stdout");
+    assert_eq!(fs::read(value.stderr.path())?, b"stderr");
+    assert_eq!(value.stdout.bytes(), 6);
+    assert_eq!(value.stderr.bytes(), 6);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn timeout_detection_remains_separate_from_confirmed_termination(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, _repository) = fixture()?;
+    let result = operations.run_child(
+        "/bin/sh",
+        [
+            OsString::from("-c"),
+            OsString::from("printf partial; sleep 5"),
+        ],
+        None,
+        vec!["timeout-fixture".into()],
+        Duration::from_millis(20),
+        CancellationFlag::default(),
+    )?;
+    assert_eq!(result.state, OperationState::TimedOut);
+    let value = result.value.as_ref().ok_or("missing child observation")?;
+    assert!(value.timeout_detected);
+    assert_ne!(value.termination, ProcessTermination::Unknown);
+    assert_eq!(fs::read(value.stdout.path())?, b"partial");
+    Ok(())
+}
+
+#[test]
+fn repair_and_reindex_do_not_impersonate_semantic_correction(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let initialized = operations.initialize_project("Fixture", Some(&repository))?;
+    let repair = operations.repair(initialized.project.id, "canonical");
+    assert!(!repair.supported);
+    let reindex = operations.reindex("derived-index");
+    assert!(!reindex.supported);
+    assert_ne!(repair.kind, reindex.kind);
+    Ok(())
+}
+
+#[test]
+fn project_ids_remain_path_independent() -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let initialized = operations.initialize_project("Fixture", Some(&repository))?;
+    assert_ne!(initialized.project.id, ProjectId::from_bytes([0; 16]));
+    assert!(!initialized
+        .project
+        .id
+        .to_string()
+        .contains(repository.to_string_lossy().as_ref()));
+    Ok(())
+}
