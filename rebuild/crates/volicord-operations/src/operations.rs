@@ -636,7 +636,7 @@ impl LocalOperations {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn record_cli_confirmation(
+    pub fn record_confirmation(
         &self,
         request_identity: ConfirmationRequestId,
         request_revision: u64,
@@ -652,7 +652,7 @@ impl LocalOperations {
             || request.effect_fingerprint != effect_fingerprint
         {
             return Err(Error::new(
-                "CLI confirmation does not match the current logical request identity, revision, and fingerprint",
+                "confirmation does not match the current logical request identity, revision, and fingerprint",
             ));
         }
         let source = self.create_user_source(request.project_id, host, session, user_turn)?;

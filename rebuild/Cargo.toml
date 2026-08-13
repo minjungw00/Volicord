@@ -7,6 +7,7 @@ members = [
     "crates/volicord-privacy",
     "crates/volicord-projections",
     "crates/volicord-repository-intelligence",
+    "crates/volicord-viewer",
 ]
 resolver = "2"
 

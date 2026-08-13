@@ -606,7 +606,7 @@ fn guarded(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
             } else {
                 ConfirmationDecision::Denied
             };
-            let response = operations.record_cli_confirmation(
+            let response = operations.record_confirmation(
                 request,
                 revision,
                 &fingerprint,

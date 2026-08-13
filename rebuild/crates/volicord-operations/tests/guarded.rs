@@ -123,7 +123,7 @@ fn exact_cli_confirmation_is_source_linked_single_use_and_operation_linked(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, project) = fixture()?;
     let candidate = operations.create_guarded_request(draft(project, "two"))?;
-    let response = operations.record_cli_confirmation(
+    let response = operations.record_confirmation(
         candidate.confirmation_request_identity,
         candidate.request_revision,
         &candidate.effect_fingerprint,
@@ -172,7 +172,7 @@ fn denied_stale_expired_and_invalid_source_responses_never_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, project) = fixture()?;
     let denied_candidate = operations.create_guarded_request(draft(project, "denied"))?;
-    operations.record_cli_confirmation(
+    operations.record_confirmation(
         denied_candidate.confirmation_request_identity,
         denied_candidate.request_revision,
         &denied_candidate.effect_fingerprint,
@@ -286,7 +286,7 @@ fn indeterminate_execution_is_durable_and_never_silently_retried(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, project) = fixture()?;
     let candidate = operations.create_guarded_request(draft(project, "indeterminate"))?;
-    operations.record_cli_confirmation(
+    operations.record_confirmation(
         candidate.confirmation_request_identity,
         1,
         &candidate.effect_fingerprint,
@@ -330,7 +330,7 @@ fn confirmed_but_not_dispatched_is_consumed_and_not_reused(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, project) = fixture()?;
     let candidate = operations.create_guarded_request(draft(project, "dispatch-failed"))?;
-    operations.record_cli_confirmation(
+    operations.record_confirmation(
         candidate.confirmation_request_identity,
         1,
         &candidate.effect_fingerprint,
@@ -487,7 +487,7 @@ fn background_source_transmission_uses_guarded_dispatch_after_privacy_opt_in(
             basis: vec!["prepared provider request".into()],
         },
     })?;
-    operations.record_cli_confirmation(
+    operations.record_confirmation(
         candidate.confirmation_request_identity,
         1,
         &candidate.effect_fingerprint,

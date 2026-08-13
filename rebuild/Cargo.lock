@@ -700,6 +700,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-viewer"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "volicord-context",
+ "volicord-operations",
+ "volicord-privacy",
+ "volicord-projections",
+]
+
+[[package]]
 name = "wasip2"
 version = "1.0.4+wasi-0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
