@@ -1,7 +1,7 @@
 use volicord_context::TimestampMicros;
 use volicord_inquiry::{
-    CandidateDisposition, CandidateId, CandidateReadBasis, CandidateRecord, CollectionOptOut,
-    CollectionOptOutScope,
+    CandidateCleanup, CandidateDisposition, CandidateId, CandidateReadBasis, CandidateRecord,
+    CollectionOptOut, CollectionOptOutScope,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,9 +35,6 @@ pub enum RetentionInspection {
         expired_at_observation: bool,
         basis: String,
     },
-    Cleaned {
-        basis: String,
-    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,6 +51,9 @@ pub struct CandidateInspection {
     pub observed_at: Option<TimestampMicros>,
     pub retention: Option<RetentionInspection>,
     pub promotion_disposition: Option<CandidateDisposition>,
+    pub promotion_target: Option<volicord_context::QuestionId>,
+    pub content_cleaned: bool,
+    pub cleanup: Option<CandidateCleanup>,
     pub current_applicable_opt_out: Vec<CollectionOptOut>,
     pub bounded_summary: Option<String>,
     pub content_omission: Option<CandidateContentOmission>,
@@ -85,6 +85,9 @@ pub fn inspect_candidate(
             observed_at: None,
             retention: None,
             promotion_disposition: None,
+            promotion_target: None,
+            content_cleaned: false,
+            cleanup: None,
             current_applicable_opt_out: Vec::new(),
             bounded_summary: None,
             content_omission: None,
@@ -105,15 +108,8 @@ fn inspect_existing(
         .filter(|policy| scope_matches(&policy.scope, &candidate.collection_scope))
         .cloned()
         .collect();
-    let cleaned = matches!(
-        candidate.disposition,
-        CandidateDisposition::ExpiredOrRetentionCleaned { .. }
-    );
-    let retention = if cleaned {
-        RetentionInspection::Cleaned {
-            basis: candidate.retention.basis.clone(),
-        }
-    } else if let Some(retained_until) = candidate.retention.retained_until {
+    let cleaned = candidate.cleanup.is_some();
+    let retention = if let Some(retained_until) = candidate.retention.retained_until {
         RetentionInspection::RetainedUntil {
             retained_until,
             expired_at_observation: retained_until <= observed_at,
@@ -161,6 +157,9 @@ fn inspect_existing(
         observed_at: Some(candidate.observed_at),
         retention: Some(retention),
         promotion_disposition: Some(candidate.disposition.clone()),
+        promotion_target: candidate.promotion_target,
+        content_cleaned: cleaned,
+        cleanup: candidate.cleanup.clone(),
         current_applicable_opt_out,
         bounded_summary,
         content_omission,

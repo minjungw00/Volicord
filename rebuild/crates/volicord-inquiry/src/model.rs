@@ -77,6 +77,13 @@ pub enum CandidateCleanupKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CandidateCleanup {
+    pub kind: CandidateCleanupKind,
+    pub basis: String,
+    pub cleaned_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CandidateDisposition {
     PendingOrRetained,
     Promoted {
@@ -87,11 +94,7 @@ pub enum CandidateDisposition {
         reason: String,
         dismissed_at: TimestampMicros,
     },
-    ExpiredOrRetentionCleaned {
-        kind: CandidateCleanupKind,
-        basis: String,
-        cleaned_at: TimestampMicros,
-    },
+    ExpiredOrRetentionCleaned,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -215,6 +218,9 @@ pub struct CandidateRecord {
     pub observed_at: TimestampMicros,
     pub retention: CandidateRetention,
     pub disposition: CandidateDisposition,
+    /// Candidate-local content cleanup is independent from promotion or
+    /// dismissal. Once present, no lifecycle retry may recreate content.
+    pub cleanup: Option<CandidateCleanup>,
     /// The canonical identity established by promotion. This survives later
     /// Candidate-content cleanup so local retention policy cannot erase the
     /// cross-store reconciliation basis.

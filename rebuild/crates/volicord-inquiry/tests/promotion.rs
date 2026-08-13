@@ -8,10 +8,11 @@ use volicord_context::{
     TimestampMicros,
 };
 use volicord_inquiry::{
-    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDisposition,
-    CandidateDraft, CandidateFreshness, CandidateKind, CandidateObservationBasis, CandidateOrigin,
-    CandidateRetention, CandidateStore, DuplicateAssessment, MaterialityAssessment,
-    MaterialityStatus, QuestionCandidate, RepositoryResearchBasis, SubmissionOutcome,
+    CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
+    CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateKind,
+    CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
+    DuplicateAssessment, MaterialityAssessment, MaterialityStatus, QuestionCandidate,
+    RepositoryResearchBasis, SubmissionOutcome,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -210,7 +211,22 @@ fn promotion_reconciles_a_canonical_commit_without_creating_a_duplicate(
         "explicit Candidate retention cleanup",
     )?;
     assert!(cleaned.content.is_none());
+    assert!(matches!(
+        cleaned.disposition,
+        CandidateDisposition::Promoted {
+            canonical_question_id,
+            ..
+        } if canonical_question_id == committed.value.id
+    ));
+    assert_eq!(
+        cleaned.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::ExplicitDeletion)
+    );
     assert_eq!(cleaned.promotion_target, Some(committed.value.id));
+    let after_cleanup_retry =
+        candidates.promote_question(&mut canonical, &basis, project.id, candidate.id)?;
+    assert_eq!(after_cleanup_retry.question_id, committed.value.id);
+    assert!(candidates.get(project.id, candidate.id)?.content.is_none());
     assert_eq!(
         canonical
             .read_canonical_basis(project.id, CanonicalReadOptions::default())?
@@ -229,6 +245,119 @@ fn promotion_reconciles_a_canonical_commit_without_creating_a_duplicate(
         retained_basis.candidates[0].promotion_target,
         Some(committed.value.id)
     );
+    Ok(())
+}
+
+#[test]
+fn promoted_candidate_retention_cleanup_survives_restart_and_is_idempotent(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let canonical_path = root.path().join("canonical.sqlite3");
+    let candidate_path = root.path().join("candidates.sqlite3");
+    let mut canonical = context(&canonical_path, &[1, 2, 3])?;
+    let (project, source) = setup_context(&mut canonical)?;
+    let mut candidates = CandidateStore::open_with(
+        &candidate_path,
+        DeterministicIdGenerator::new([[9; 16]]),
+        FixedClock::new(TimestampMicros::from_unix_micros(1_000)),
+    )?;
+    let mut draft = candidate_draft(&project, &source);
+    draft.retention.retained_until = Some(TimestampMicros::from_unix_micros(1_500));
+    draft.retention.basis = "finite promoted Candidate retention".to_owned();
+    let candidate = match candidates.submit(draft)? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("Question Candidate collection was disabled".into()),
+    };
+    let basis = canonical.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let promoted = candidates.promote_question(&mut canonical, &basis, project.id, candidate.id)?;
+    assert!(candidates.get(project.id, candidate.id)?.content.is_some());
+    drop(candidates);
+
+    let mut reopened = CandidateStore::open_with(
+        &candidate_path,
+        DeterministicIdGenerator::new(std::iter::empty::<[u8; 16]>()),
+        FixedClock::new(TimestampMicros::from_unix_micros(2_000)),
+    )?;
+    assert_eq!(reopened.cleanup_expired(project.id)?, vec![candidate.id]);
+    let cleaned = reopened.get(project.id, candidate.id)?;
+    assert!(cleaned.content.is_none());
+    assert!(matches!(
+        cleaned.disposition,
+        CandidateDisposition::Promoted {
+            canonical_question_id,
+            ..
+        } if canonical_question_id == promoted.question_id
+    ));
+    assert_eq!(cleaned.promotion_target, Some(promoted.question_id));
+    assert_eq!(
+        cleaned.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::RetentionExpiry)
+    );
+    assert_eq!(
+        cleaned
+            .cleanup
+            .as_ref()
+            .map(|cleanup| cleanup.basis.as_str()),
+        Some("finite promoted Candidate retention")
+    );
+    assert_eq!(
+        cleaned.cleanup.as_ref().map(|cleanup| cleanup.cleaned_at),
+        Some(TimestampMicros::from_unix_micros(2_000))
+    );
+    let cleaned_revision = cleaned.revision;
+    assert!(reopened.cleanup_expired(project.id)?.is_empty());
+    assert_eq!(
+        reopened.get(project.id, candidate.id)?.revision,
+        cleaned_revision
+    );
+    assert_eq!(
+        canonical
+            .read_canonical_basis(project.id, CanonicalReadOptions::default())?
+            .active_questions
+            .iter()
+            .map(|question| question.id)
+            .collect::<Vec<_>>(),
+        vec![promoted.question_id]
+    );
+    let reconciled = reopened.promote_question(&mut canonical, &basis, project.id, candidate.id)?;
+    assert_eq!(reconciled.question_id, promoted.question_id);
+    assert!(reconciled.canonical_replayed);
+    assert!(reopened.get(project.id, candidate.id)?.content.is_none());
+    Ok(())
+}
+
+#[test]
+fn pending_retention_cleanup_cannot_promote_or_create_a_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut canonical = context(&root.path().join("canonical.sqlite3"), &[1, 2, 3])?;
+    let (project, source) = setup_context(&mut canonical)?;
+    let basis = canonical.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+    let mut candidates = CandidateStore::open_with(
+        root.path().join("candidates.sqlite3"),
+        DeterministicIdGenerator::new([[5; 16]]),
+        FixedClock::new(TimestampMicros::from_unix_micros(1_000)),
+    )?;
+    let mut draft = candidate_draft(&project, &source);
+    draft.retention.retained_until = Some(TimestampMicros::from_unix_micros(900));
+    let candidate = match candidates.submit(draft)? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("Question Candidate collection was disabled".into()),
+    };
+    assert_eq!(candidates.cleanup_expired(project.id)?, vec![candidate.id]);
+    let cleaned = candidates.get(project.id, candidate.id)?;
+    assert_eq!(
+        cleaned.disposition,
+        CandidateDisposition::ExpiredOrRetentionCleaned
+    );
+    assert!(cleaned.promotion_target.is_none());
+    assert!(candidates
+        .promote_question(&mut canonical, &basis, project.id, candidate.id)
+        .is_err());
+    assert!(canonical
+        .read_canonical_basis(project.id, CanonicalReadOptions::default())?
+        .active_questions
+        .is_empty());
     Ok(())
 }
 

@@ -18,7 +18,7 @@ use volicord_inquiry::{
 use volicord_projections::{
     build_resume_brief, inspect_candidate, BriefDecisionState, CandidateContentAccess,
     CandidateContentOmission, InspectionHealth, OmissionReason, RecallBound, RecallInputs,
-    RecallTriggerOutcome, SessionRecallTrigger,
+    RecallTriggerOutcome, RetentionInspection, SessionRecallTrigger,
 };
 use volicord_repository_intelligence::{
     inventory_repository, CanonicalGrounding, CapabilityState, InventoryRequest,
@@ -194,8 +194,10 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
     assert_eq!(basis, unchanged);
     assert_eq!(store.read_basis(project)?, unchanged);
 
+    store.dismiss(project, candidate.id, "not material")?;
     store.delete_candidate(project, candidate.id, "explicit cleanup")?;
     let cleaned_basis = store.read_basis(project)?;
+    let cleaned_unchanged = cleaned_basis.clone();
     let cleaned = inspect_candidate(
         &cleaned_basis,
         candidate.id,
@@ -203,12 +205,70 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
         TimestampMicros::from_unix_micros(4_000),
     );
     assert_eq!(cleaned.health, InspectionHealth::Partial);
+    assert!(cleaned.content_cleaned);
+    assert!(matches!(
+        cleaned.promotion_disposition,
+        Some(CandidateDisposition::Dismissed { ref reason, .. }) if reason == "not material"
+    ));
+    assert_eq!(cleaned.promotion_target, None);
+    assert_eq!(cleaned.current_applicable_opt_out.len(), 1);
+    assert!(matches!(
+        cleaned.retention,
+        Some(RetentionInspection::RetainedUntil {
+            retained_until,
+            expired_at_observation: true,
+            ref basis,
+        }) if retained_until == TimestampMicros::from_unix_micros(3_000)
+            && basis == "session retention"
+    ));
+    assert_eq!(
+        cleaned.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(volicord_inquiry::CandidateCleanupKind::ExplicitDeletion)
+    );
+    assert_eq!(
+        cleaned
+            .cleanup
+            .as_ref()
+            .map(|cleanup| cleanup.basis.as_str()),
+        Some("explicit cleanup")
+    );
+    assert_eq!(
+        cleaned.cleanup.as_ref().map(|cleanup| cleanup.cleaned_at),
+        Some(TimestampMicros::from_unix_micros(1_000))
+    );
     assert_eq!(
         cleaned.content_omission,
         Some(CandidateContentOmission::RetentionCleaned)
     );
+    assert_eq!(cleaned_basis, cleaned_unchanged);
+    assert_eq!(store.read_basis(project)?, cleaned_unchanged);
+
+    let canonical_question = volicord_context::QuestionId::from_bytes([8; 16]);
+    let mut promoted_basis = cleaned_basis.clone();
+    promoted_basis.candidates[0].disposition = CandidateDisposition::Promoted {
+        canonical_question_id: canonical_question,
+        promoted_at: TimestampMicros::from_unix_micros(2_500),
+    };
+    promoted_basis.candidates[0].promotion_target = Some(canonical_question);
+    let promoted_cleaned = inspect_candidate(
+        &promoted_basis,
+        candidate.id,
+        CandidateContentAccess::AllowBoundedSummary,
+        TimestampMicros::from_unix_micros(4_000),
+    );
+    assert_eq!(promoted_cleaned.promotion_target, Some(canonical_question));
+    assert!(promoted_cleaned.content_cleaned);
+    assert_eq!(promoted_cleaned.cleanup, cleaned.cleanup);
+    assert!(matches!(
+        promoted_cleaned.promotion_disposition,
+        Some(CandidateDisposition::Promoted {
+            canonical_question_id,
+            ..
+        }) if canonical_question_id == canonical_question
+    ));
     let mut unavailable_basis = cleaned_basis.clone();
     unavailable_basis.candidates[0].disposition = CandidateDisposition::PendingOrRetained;
+    unavailable_basis.candidates[0].cleanup = None;
     let degraded = inspect_candidate(
         &unavailable_basis,
         candidate.id,

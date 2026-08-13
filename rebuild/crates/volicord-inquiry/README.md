@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 1. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 2. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The six Candidate kinds preserve bounded origin, collection scope,
@@ -20,10 +20,13 @@ to present. It does not own canonical Questions or Decisions.
   user-directed submission remains distinguishable and is not blocked by an
   automatic-collection policy. Changing policy does not rewrite, hide, or
   dispose existing Candidates.
-- Dismissal, explicit content deletion, and retention expiry are explicit
-  local lifecycle transitions. Cleanup never opens Canonical Context. A
-  promoted Candidate retains its canonical Question identity independently of
-  later content cleanup so retry reconciliation remains inspectable.
+- Promotion, dismissal, and pending disposition remain separate from the
+  explicit cleanup record (kind, basis, and time). Explicit deletion and
+  retention expiry remove only Candidate content and managed Candidate copies;
+  cleanup never opens Canonical Context. A promoted Candidate retains its
+  disposition and canonical Question identity, while a dismissed Candidate
+  retains its reason, so later cleanup and retry reconciliation remain
+  inspectable.
 - `CandidateReadBasis` is an owned immutable snapshot with no store or mutation
   handle. It contains only the bounded Candidate records and current scoped
   policies admitted by this store.

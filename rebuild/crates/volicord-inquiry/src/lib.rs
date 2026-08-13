@@ -30,8 +30,8 @@ pub use frontier::{
 };
 pub use identity::CandidateId;
 pub use model::{
-    CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
-    CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateKind,
+    CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope,
+    CandidateContent, CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateKind,
     CandidateObservationBasis, CandidateOrigin, CandidateReadBasis, CandidateRecord,
     CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, InquiryScope,
     MaterialityAssessment, MaterialityStatus, PromotionResult, QuestionCandidate,

@@ -1,8 +1,9 @@
 use crate::{
-    CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition, CandidateDraft,
-    CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord, CollectionOptOut,
-    CollectionOptOutScope, DuplicateAssessment, Error, ErrorKind, MaterialityAssessment,
-    MaterialityStatus, PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
+    CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
+    CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
+    CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, Error, ErrorKind,
+    MaterialityAssessment, MaterialityStatus, PromotionResult, RepositoryResearchBasis,
+    SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -15,7 +16,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 1;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 2;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -87,6 +88,7 @@ impl CandidateStore {
             observed_at: draft.observed_at,
             retention: draft.retention,
             disposition: CandidateDisposition::PendingOrRetained,
+            cleanup: None,
             promotion_target: None,
             opt_out_state_at_collection: applicable_policies,
             content: Some(draft.content),
@@ -193,15 +195,16 @@ impl CandidateStore {
         let basis = basis.into();
         validate_text("Candidate deletion basis", &basis)?;
         let now = self.clock.now().map_err(clock_error)?;
-        self.mutate_any(project_id, candidate_id, |record| {
-            record.content = None;
-            record.disposition = CandidateDisposition::ExpiredOrRetentionCleaned {
+        let (record, _) = self.cleanup_candidate_content(
+            project_id,
+            candidate_id,
+            CandidateCleanup {
                 kind: CandidateCleanupKind::ExplicitDeletion,
                 basis,
                 cleaned_at: now,
-            };
-            Ok(())
-        })
+            },
+        )?;
+        Ok(record)
     }
 
     pub fn cleanup_expired(&mut self, project_id: ProjectId) -> Result<Vec<CandidateId>, Error> {
@@ -209,23 +212,26 @@ impl CandidateStore {
         let basis = self.read_basis(project_id)?;
         let mut cleaned = Vec::new();
         for candidate in basis.candidates {
-            if candidate.disposition == CandidateDisposition::PendingOrRetained
+            if candidate.content.is_some()
+                && candidate.cleanup.is_none()
                 && candidate
                     .retention
                     .retained_until
                     .is_some_and(|expiry| expiry <= now)
             {
                 let retention_basis = candidate.retention.basis.clone();
-                self.mutate_pending(project_id, candidate.id, |record| {
-                    record.content = None;
-                    record.disposition = CandidateDisposition::ExpiredOrRetentionCleaned {
+                let (_, transitioned) = self.cleanup_candidate_content(
+                    project_id,
+                    candidate.id,
+                    CandidateCleanup {
                         kind: CandidateCleanupKind::RetentionExpiry,
                         basis: retention_basis,
                         cleaned_at: now,
-                    };
-                    Ok(())
-                })?;
-                cleaned.push(candidate.id);
+                    },
+                )?;
+                if transitioned {
+                    cleaned.push(candidate.id);
+                }
             }
         }
         Ok(cleaned)
@@ -490,31 +496,12 @@ impl CandidateStore {
         candidate_id: CandidateId,
         mutation: impl FnOnce(&mut CandidateRecord) -> Result<(), Error>,
     ) -> Result<CandidateRecord, Error> {
-        self.mutate(project_id, candidate_id, true, mutation)
-    }
-
-    fn mutate_any(
-        &mut self,
-        project_id: ProjectId,
-        candidate_id: CandidateId,
-        mutation: impl FnOnce(&mut CandidateRecord) -> Result<(), Error>,
-    ) -> Result<CandidateRecord, Error> {
-        self.mutate(project_id, candidate_id, false, mutation)
-    }
-
-    fn mutate(
-        &mut self,
-        project_id: ProjectId,
-        candidate_id: CandidateId,
-        pending_only: bool,
-        mutation: impl FnOnce(&mut CandidateRecord) -> Result<(), Error>,
-    ) -> Result<CandidateRecord, Error> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(write_error)?;
         let mut record = load_record(&transaction, project_id, candidate_id)?;
-        if pending_only && record.disposition != CandidateDisposition::PendingOrRetained {
+        if record.disposition != CandidateDisposition::PendingOrRetained {
             return Err(Error::new(
                 ErrorKind::DomainConflict,
                 "Candidate is no longer pending or retained",
@@ -554,6 +541,60 @@ impl CandidateStore {
         }
         transaction.commit().map_err(write_error)?;
         Ok(record)
+    }
+
+    fn cleanup_candidate_content(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        cleanup: CandidateCleanup,
+    ) -> Result<(CandidateRecord, bool), Error> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(write_error)?;
+        let mut record = load_record(&transaction, project_id, candidate_id)?;
+        if record.content.is_none() || record.cleanup.is_some() {
+            return Ok((record, false));
+        }
+        if record.disposition == CandidateDisposition::PendingOrRetained {
+            record.disposition = CandidateDisposition::ExpiredOrRetentionCleaned;
+        }
+        record.content = None;
+        record.cleanup = Some(cleanup);
+        let previous_revision = record.revision;
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| Error::new(ErrorKind::CorruptState, "Candidate revision overflow"))?;
+        let encoded = encode_record(&record)?;
+        let count = transaction
+            .execute(
+                "UPDATE candidates SET revision = ?4, record_json = ?5
+                 WHERE id = ?1 AND project_id = ?2 AND revision = ?3",
+                params![
+                    candidate_id.as_bytes().as_slice(),
+                    project_id.as_bytes().as_slice(),
+                    i64::try_from(previous_revision).map_err(|_| Error::new(
+                        ErrorKind::CorruptState,
+                        "Candidate revision is outside the supported range",
+                    ))?,
+                    i64::try_from(record.revision).map_err(|_| Error::new(
+                        ErrorKind::CorruptState,
+                        "Candidate revision is outside the supported range",
+                    ))?,
+                    encoded,
+                ],
+            )
+            .map_err(write_error)?;
+        if count != 1 {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "Candidate changed concurrently",
+            ));
+        }
+        transaction.commit().map_err(write_error)?;
+        Ok((record, true))
     }
 
     fn read_policies(&self, project_id: ProjectId) -> Result<Vec<CollectionOptOut>, Error> {

@@ -1,8 +1,8 @@
 use std::path::Path;
 use tempfile::tempdir;
 use volicord_context::{
-    DeterministicIdGenerator, FixedClock, Principal, PrincipalKind, ProjectId,
-    Store as ContextStore, TimestampMicros,
+    CanonicalReadOptions, DeterministicIdGenerator, FixedClock, OperationId, Principal,
+    PrincipalKind, ProjectId, Store as ContextStore, TimestampMicros,
 };
 use volicord_inquiry::{
     CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
@@ -148,13 +148,14 @@ fn scoped_opt_out_preserves_existing_candidates_and_restart_state(
     assert_eq!(cleaned, vec![explicit.id]);
     let expired = reopened.get(project_id, explicit.id)?;
     assert!(expired.content.is_none());
-    assert!(matches!(
+    assert_eq!(
         expired.disposition,
-        CandidateDisposition::ExpiredOrRetentionCleaned {
-            kind: CandidateCleanupKind::RetentionExpiry,
-            ..
-        }
-    ));
+        CandidateDisposition::ExpiredOrRetentionCleaned
+    );
+    assert_eq!(
+        expired.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::RetentionExpiry)
+    );
     assert!(reopened.get(project_id, first.id)?.content.is_some());
     Ok(())
 }
@@ -163,12 +164,31 @@ fn scoped_opt_out_preserves_existing_candidates_and_restart_state(
 fn dismissal_and_explicit_deletion_are_candidate_local() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
     let project_id = project(9);
-    let mut candidates = store(&root.path().join("candidates.sqlite3"), &[1, 2])?;
+    let other_project = project(8);
+    let canonical_path = root.path().join("canonical.sqlite3");
+    let candidate_path = root.path().join("candidates.sqlite3");
+    let mut canonical = ContextStore::open_with(
+        &canonical_path,
+        DeterministicIdGenerator::new([[9; 16]]),
+        FixedClock::new(TimestampMicros::from_unix_micros(100)),
+    )?;
+    let canonical_project = canonical
+        .create_project(
+            OperationId::from_bytes([7; 16]),
+            "Candidate cleanup isolation",
+        )?
+        .value;
+    assert_eq!(canonical_project.id, project_id);
+    let mut candidates = store(&candidate_path, &[1, 2, 3, 4, 5, 6])?;
+    assert!(canonical
+        .read_canonical_basis(project_id, CanonicalReadOptions::default())?
+        .active_questions
+        .is_empty());
     let first = match candidates.submit(observation(
         project_id,
         CandidateCollectionMode::ExplicitUserDirected,
-        "dismiss me",
-        None,
+        "dismiss and expire me",
+        Some(90),
     ))? {
         SubmissionOutcome::Stored(value) => value,
         _ => return Err("explicit Candidate was blocked".into()),
@@ -176,8 +196,44 @@ fn dismissal_and_explicit_deletion_are_candidate_local() -> Result<(), Box<dyn s
     let second = match candidates.submit(observation(
         project_id,
         CandidateCollectionMode::ExplicitUserDirected,
-        "delete me",
+        "dismiss and delete me",
         None,
+    ))? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("explicit Candidate was blocked".into()),
+    };
+    let pending_deleted = match candidates.submit(observation(
+        project_id,
+        CandidateCollectionMode::ExplicitUserDirected,
+        "delete pending candidate",
+        None,
+    ))? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("explicit Candidate was blocked".into()),
+    };
+    let no_expiry = match candidates.submit(observation(
+        project_id,
+        CandidateCollectionMode::ExplicitUserDirected,
+        "retain without deadline",
+        None,
+    ))? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("explicit Candidate was blocked".into()),
+    };
+    let future_expiry = match candidates.submit(observation(
+        project_id,
+        CandidateCollectionMode::ExplicitUserDirected,
+        "retain until later",
+        Some(200),
+    ))? {
+        SubmissionOutcome::Stored(value) => value,
+        _ => return Err("explicit Candidate was blocked".into()),
+    };
+    let other_expired = match candidates.submit(observation(
+        other_project,
+        CandidateCollectionMode::ExplicitUserDirected,
+        "other project expired candidate",
+        Some(90),
     ))? {
         SubmissionOutcome::Stored(value) => value,
         _ => return Err("explicit Candidate was blocked".into()),
@@ -188,15 +244,66 @@ fn dismissal_and_explicit_deletion_are_candidate_local() -> Result<(), Box<dyn s
         CandidateDisposition::Dismissed { .. }
     ));
     assert!(dismissed.content.is_some());
+    candidates.dismiss(project_id, second.id, "not applicable")?;
     let deleted = candidates.delete_candidate(project_id, second.id, "privacy request")?;
     assert!(deleted.content.is_none());
     assert!(matches!(
         deleted.disposition,
-        CandidateDisposition::ExpiredOrRetentionCleaned {
-            kind: CandidateCleanupKind::ExplicitDeletion,
-            ..
-        }
+        CandidateDisposition::Dismissed { ref reason, .. } if reason == "not applicable"
     ));
+    assert_eq!(
+        deleted.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::ExplicitDeletion)
+    );
+    let deleted_revision = deleted.revision;
+    let repeated = candidates.delete_candidate(project_id, second.id, "repeated request")?;
+    assert_eq!(repeated.revision, deleted_revision);
+    assert_eq!(repeated.cleanup, deleted.cleanup);
+
+    let pending_deleted =
+        candidates.delete_candidate(project_id, pending_deleted.id, "pending privacy request")?;
+    assert_eq!(
+        pending_deleted.disposition,
+        CandidateDisposition::ExpiredOrRetentionCleaned
+    );
+    assert_eq!(
+        pending_deleted.cleanup.as_ref().map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::ExplicitDeletion)
+    );
+
+    let cleaned = candidates.cleanup_expired(project_id)?;
+    assert_eq!(cleaned, vec![first.id]);
+    let expired_dismissed = candidates.get(project_id, first.id)?;
+    assert!(matches!(
+        expired_dismissed.disposition,
+        CandidateDisposition::Dismissed { ref reason, .. } if reason == "not useful"
+    ));
+    assert_eq!(
+        expired_dismissed
+            .cleanup
+            .as_ref()
+            .map(|cleanup| cleanup.kind),
+        Some(CandidateCleanupKind::RetentionExpiry)
+    );
+    assert!(expired_dismissed.content.is_none());
+    assert!(candidates.get(project_id, no_expiry.id)?.content.is_some());
+    assert!(candidates
+        .get(project_id, future_expiry.id)?
+        .content
+        .is_some());
+    assert!(candidates
+        .get(other_project, other_expired.id)?
+        .content
+        .is_some());
+    assert!(candidates.cleanup_expired(project_id)?.is_empty());
+    assert_eq!(
+        candidates.cleanup_expired(other_project)?,
+        vec![other_expired.id]
+    );
+    assert!(canonical
+        .read_canonical_basis(project_id, CanonicalReadOptions::default())?
+        .active_questions
+        .is_empty());
     let error = candidates
         .submit(observation(
             project_id,

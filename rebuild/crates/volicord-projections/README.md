@@ -8,7 +8,8 @@ Candidate Inspection and first-project-scoped bounded Recall.
   Recall. It is never canonical.
 - Candidate Inspection accepts only `CandidateReadBasis`, the immutable bounded
   snapshot exposed by Inquiry. It reports identity, kind, provenance, scope,
-  observation, retention, disposition, current opt-out, and explicit content
+  observation, retention policy, disposition, promotion target, independent
+  cleanup kind/basis/time, current opt-out, and explicit content
   omission/degradation. It has no Candidate lifecycle handle.
 - Resume Brief reads canonical and Repository Intelligence snapshots and uses
   Inquiry's pure applicability/frontier evaluators. Each repeatable section is
