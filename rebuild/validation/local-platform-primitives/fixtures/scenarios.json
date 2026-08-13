@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "validation_id": "V10",
+  "platform": "linux",
+  "process_scenarios": [
+    "separate_complete_streams_and_nonzero_exit",
+    "timeout_is_a_trigger_not_a_cleanup_claim",
+    "cancellation_is_distinct_from_termination",
+    "process_group_descendant_cleanup"
+  ],
+  "filesystem_scenarios": [
+    "lexical_normalization",
+    "symlink_escape_rejection",
+    "primary_linked_worktree_and_clone_identity",
+    "dirty_status_observation",
+    "regular_file_and_symlink_fingerprints",
+    "atomic_no_replace_publication"
+  ],
+  "storage_scenarios": [
+    "uncommitted_transaction_is_absent_after_process_exit",
+    "schema_kind_and_version_are_checked_before_write",
+    "canonical_repair_is_not_derived_rebuild"
+  ],
+  "candidates": [
+    {
+      "id": "legacy-platform-process",
+      "source": "crates/volicord-platform-process",
+      "classification": "reimplement_from_behavior"
+    },
+    {
+      "id": "legacy-test-process",
+      "source": "crates/volicord-test-process",
+      "classification": "reference_only"
+    },
+    {
+      "id": "legacy-path-containment",
+      "source": "crates/volicord-platform-fs/src/product_path.rs",
+      "classification": "reimplement_from_behavior"
+    },
+    {
+      "id": "legacy-git-layout",
+      "source": "crates/volicord-platform-fs/src/lib.rs",
+      "classification": "reimplement_from_behavior"
+    },
+    {
+      "id": "legacy-repository-observer",
+      "source": "crates/volicord-platform-fs/src/repository_observation",
+      "classification": "reference_only"
+    },
+    {
+      "id": "legacy-content-fingerprint",
+      "source": "crates/volicord-platform-fs/src/repository_observation/model.rs",
+      "classification": "reimplement_from_behavior"
+    },
+    {
+      "id": "legacy-atomic-no-replace-publication",
+      "source": "crates/volicord-platform-fs/src/lib.rs",
+      "classification": "adopt_as_new_primitive"
+    },
+    {
+      "id": "legacy-runtime-home-mutation-lease",
+      "source": "crates/volicord-platform-fs/src/mutation_lease.rs",
+      "classification": "reject"
+    },
+    {
+      "id": "legacy-store-transaction-patterns",
+      "source": "crates/volicord-store",
+      "classification": "reference_only"
+    },
+    {
+      "id": "legacy-store-schema-and-repair",
+      "source": "crates/volicord-store",
+      "classification": "reject"
+    }
+  ]
+}

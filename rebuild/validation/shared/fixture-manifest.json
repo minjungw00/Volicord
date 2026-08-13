@@ -459,6 +459,41 @@
       "content_sha256": "f56eb31f1805b1e0cda38f113a6b7adbf964a6808fbb1ca465d576aebc7ec7c6",
       "origin": "Self-authored deterministic Phase 6 acceptance map for V09.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v10-local-platform-primitives",
+      "validation_id": "V10",
+      "path": "rebuild/validation/local-platform-primitives/fixtures",
+      "purpose": "Exercise Linux process stream, exit, timeout, cancellation and child-tree observations; path, symlink, worktree, clone, dirty-state, fingerprint and no-replace publication semantics; and bounded transaction, schema and repair classification without promoting a legacy API.",
+      "expected_entities": [
+        "legacy-platform-process",
+        "legacy-test-process",
+        "legacy-path-containment",
+        "legacy-git-layout",
+        "legacy-repository-observer",
+        "legacy-content-fingerprint",
+        "legacy-atomic-no-replace-publication",
+        "legacy-runtime-home-mutation-lease",
+        "legacy-store-transaction-patterns",
+        "legacy-store-schema-and-repair"
+      ],
+      "expected_relations": [
+        "timeout-trigger|distinct_from|termination-observation",
+        "linked-worktree|shares|local-clone-coordinate",
+        "separate-clone|does_not_imply|same-project",
+        "dirty-status|contributes_to|source-fingerprint",
+        "atomic-publication|reports|namespace-effect-and-durability",
+        "storage-pattern|does_not_create|second-canonical-engine"
+      ],
+      "expected_unsupported": [
+        "Windows and macOS process or filesystem behavior",
+        "cgroup, subreaper, PID-namespace or security-sandbox guarantees",
+        "network filesystem atomicity and hostile concurrent path replacement",
+        "legacy Runtime Home, schema, repair, migration or compatibility"
+      ],
+      "content_sha256": "dfcff91d234af21f480fc4e30effbb409140dc118381e46c8667f6129ed1eb79",
+      "origin": "Self-authored deterministic Linux fixture for V10.",
+      "license": "CC0-1.0"
     }
   ]
 }
