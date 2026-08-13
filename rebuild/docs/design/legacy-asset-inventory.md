@@ -193,6 +193,28 @@ Git history가 이동을 추적할 수 있으므로 compatibility wrapper를 만
 
 ## 12. 현재 확인 한계
 
-이 문서는 구조와 명시된 책임을 기준으로 한 분류다. 개별 function 단위 재사용 가능성, platform coverage, performance와 dependency 영향은 아직 검증하지 않았다. 실제 코드 이동은 V10 report, 새 contract와 test 승인 후 수행한다.
+V10은 `rebuild/validation/local-platform-primitives/report.md`에서 Linux process,
+filesystem/Git와 storage pattern을 재현하고 다음 최종 판정을 내렸다.
+
+| V10 대상 | 최종 판정 | Production 처리 |
+|---|---|---|
+| legacy platform process | `reimplement_from_behavior` | Linux process group과 pipe-drain behavior만 새 complete-artifact/result 책임으로 재구현 |
+| legacy test process | `reference_only` | timeout, stream, exit와 descendant test idea만 참고; bounded capture API는 승격하지 않음 |
+| path containment | `reimplement_from_behavior` | canonical root, lexical normalization과 symlink escape를 새 local path observation으로 재구현 |
+| Git layout | `reimplement_from_behavior` | clone/worktree coordinate를 local-only observation으로 재구현하고 Project identity로 사용하지 않음 |
+| repository observer | `reference_only` | dirty/failure fixture만 참고하고 Repository Intelligence authority를 복제하지 않음 |
+| content fingerprint | `reimplement_from_behavior` | typed length-delimited fingerprint만 새 Source observation 책임으로 재구현 |
+| atomic no-replace publication | `adopt_as_new_primitive` | same-parent ordinary-file validation, Linux no-replace rename, namespace effect와 parent sync를 새 좁은 module로 이동 |
+| Runtime Home mutation lease | `reject` | legacy Runtime Home과 ordinary-write admission 결합 때문에 제거 대상 유지 |
+| Store transaction pattern | `reference_only` | crash/transaction test idea만 참고; canonical transaction은 `volicord-context`가 계속 소유 |
+| Store schema와 repair | `reject` | legacy DDL, numeric dispatch, Runtime Home과 authority meaning을 가져오지 않음 |
+
+승격된 production boundary는 `volicord-local-platform`이며 legacy crate dependency,
+Runtime Home, UserAction, Task, Write Ticket, Evidence 또는 Guard admission 의미를 갖지
+않는다. Storage primitive나 두 번째 canonical engine은 추가하지 않았다.
+
+남은 한계는 공식 지원 범위 밖 OS, cgroup/subreaper 또는 sandbox guarantee, network
+filesystem과 hostile path-replacement race다. 이 한계는 accepted Linux/local-first
+contract를 바꾸는 Decision revisit trigger가 아니다.
 
 기존 구현이 복잡하다는 사실만으로 primitive가 나쁘다고 판단하지 않으며, 기존 구현이 작동한다는 사실만으로 새 제품 의미에 적합하다고 판단하지 않는다.

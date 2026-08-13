@@ -1,0 +1,19 @@
+//! Product-owned local process and filesystem mechanisms.
+
+#![forbid(unsafe_code)]
+
+mod filesystem;
+mod process;
+
+pub use filesystem::{
+    publish_file_no_replace, DirectoryEntryDurability, DirtyObservation, GitWorktreeLayout,
+    LocalRepositoryCoordinate, NoReplacePublicationEffect, NoReplacePublicationError,
+    NoReplacePublicationOutcome, NoReplacePublicationPhase, RepositoryPathError,
+    RepositoryPathState, RepositoryRoot, ResolvedRepositoryPath, SourceFingerprint,
+    SourceFingerprintError,
+};
+pub use process::{
+    CancellationFlag, ProcessCompletion, ProcessObservation, ProcessRequest, ProcessStartError,
+    ProcessStopTrigger, ProcessStreamArtifact, ProcessStreamCompleteness, ProcessTermination,
+    ProcessTreeCleanup,
+};

@@ -630,6 +630,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-local-platform"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "volicord-projections"
 version = "0.1.0"
 dependencies = [

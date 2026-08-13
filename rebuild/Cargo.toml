@@ -2,6 +2,7 @@
 members = [
     "crates/volicord-context",
     "crates/volicord-inquiry",
+    "crates/volicord-local-platform",
     "crates/volicord-projections",
     "crates/volicord-repository-intelligence",
 ]
