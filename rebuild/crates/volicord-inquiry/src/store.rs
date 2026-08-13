@@ -9,9 +9,10 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
 use std::path::Path;
 use volicord_context::{
-    CanonicalReadBasis, Clock, IdGenerator, OperationId, OperationResult, ProjectId, Question,
-    QuestionDispositionDraft, QuestionDraft, QuestionMateriality, QuestionResearchState, SourceId,
-    Store as ContextStore, SystemClock, SystemIdGenerator,
+    CanonicalInvalidation, CanonicalReadBasis, CanonicalRecordId, Clock, IdGenerator, OperationId,
+    OperationResult, ProjectId, Question, QuestionDispositionDraft, QuestionDraft,
+    QuestionMateriality, QuestionResearchState, SourceId, Store as ContextStore, SystemClock,
+    SystemIdGenerator,
 };
 use volicord_repository_intelligence::AnalysisSnapshot;
 
@@ -226,6 +227,41 @@ impl CandidateStore {
                     CandidateCleanup {
                         kind: CandidateCleanupKind::RetentionExpiry,
                         basis: retention_basis,
+                        cleaned_at: now,
+                    },
+                )?;
+                if transitioned {
+                    cleaned.push(candidate.id);
+                }
+            }
+        }
+        Ok(cleaned)
+    }
+
+    /// Removes content only from Candidates whose recorded basis refers to a
+    /// forgotten canonical record. Candidate disposition and promotion target
+    /// remain inspectable, and unrelated Candidates are not touched.
+    pub fn cleanup_related_to_canonical(
+        &mut self,
+        invalidation: &CanonicalInvalidation,
+        basis: impl Into<String>,
+    ) -> Result<Vec<CandidateId>, Error> {
+        let basis = basis.into();
+        validate_text("canonical forgetting cleanup basis", &basis)?;
+        let now = self.clock.now().map_err(clock_error)?;
+        let records = self.read_basis(invalidation.project_id)?.candidates;
+        let mut cleaned = Vec::new();
+        for candidate in records {
+            if candidate.content.is_some()
+                && candidate.cleanup.is_none()
+                && candidate_refers_to(&candidate, invalidation.record)
+            {
+                let (_, transitioned) = self.cleanup_candidate_content(
+                    invalidation.project_id,
+                    candidate.id,
+                    CandidateCleanup {
+                        kind: CandidateCleanupKind::ExplicitDeletion,
+                        basis: basis.clone(),
                         cleaned_at: now,
                     },
                 )?;
@@ -626,6 +662,41 @@ impl CandidateStore {
             .into_iter()
             .filter(|policy| scope_matches(&policy.scope, scope))
             .collect())
+    }
+}
+
+fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -> bool {
+    match record {
+        CanonicalRecordId::Project(project_id) => candidate.project_id == project_id,
+        CanonicalRecordId::Source(source_id) => {
+            candidate
+                .observation_basis
+                .source_basis
+                .contains(&source_id)
+                || candidate.content.as_ref().is_some_and(|content| {
+                    content.question.as_ref().is_some_and(|question| {
+                        question.source_basis.contains(&source_id)
+                            || question
+                                .repository_basis
+                                .iter()
+                                .any(|basis| basis.source_basis.contains(&source_id))
+                    })
+                })
+        }
+        CanonicalRecordId::Question(question_id) => {
+            candidate.promotion_target == Some(question_id)
+                || candidate.content.as_ref().is_some_and(|content| {
+                    content.question.as_ref().is_some_and(|question| {
+                        question
+                            .possible_prerequisites
+                            .iter()
+                            .any(|dependency| dependency.question_id == question_id)
+                    })
+                })
+        }
+        CanonicalRecordId::Decision(_)
+        | CanonicalRecordId::ContextItem(_)
+        | CanonicalRecordId::Checkpoint(_) => false,
     }
 }
 

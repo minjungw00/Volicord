@@ -1,0 +1,24 @@
+[package]
+name = "volicord-privacy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+volicord-context = { path = "../volicord-context" }
+volicord-inquiry = { path = "../volicord-inquiry" }
+volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
+
+[dev-dependencies]
+tempfile = "3.20.0"
+volicord-projections = { path = "../volicord-projections" }
+
+[lints]
+workspace = true

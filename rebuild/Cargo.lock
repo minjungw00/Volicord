@@ -639,6 +639,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-privacy"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "volicord-context",
+ "volicord-inquiry",
+ "volicord-projections",
+ "volicord-repository-intelligence",
+]
+
+[[package]]
 name = "volicord-projections"
 version = "0.1.0"
 dependencies = [
