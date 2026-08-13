@@ -36,6 +36,18 @@ REQUIREMENT_TESTS = {
     "analysis_no_canonical_mutation": "repository_analysis_has_no_canonical_mutation_authority",
     "derived_rebuild_preserves_canonical_correction": "explanation_search_and_canonical_links_preserve_authority_and_freshness",
     "coverage_excluded_failed_stale_states": "exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible",
+    "repository_source_project_basis_grounding": "repository_source_project_and_snapshot_basis_are_grounded",
+    "dangling_canonical_targets_rejected": "dangling_canonical_targets_are_rejected",
+    "cross_project_canonical_targets_rejected": "cross_project_canonical_targets_are_rejected",
+    "wrong_canonical_revisions_rejected": "impossible_and_unknown_canonical_revisions_are_rejected",
+    "historical_revisions_preserved": "historical_revisions_remain_grounded_after_non_semantic_correction",
+    "correction_does_not_rebind_analysis": "analysis_refresh_does_not_rebind_historical_references",
+    "supersession_does_not_redirect_analysis": "decision_supersession_does_not_redirect_existing_analysis",
+    "source_snapshot_basis_preserved": "repository_source_project_and_snapshot_basis_are_grounded",
+    "analysis_snapshot_read_side_revalidation": "persisted_analysis_snapshot_links_are_revalidated_on_read",
+    "canonical_grounding_no_mutation": "canonical_grounding_validation_has_no_mutation_authority",
+    "deterministic_grounded_reference_serialization": "grounded_reference_serialization_is_deterministic_and_current_only",
+    "all_canonical_reference_ingress_grounded": "automatic_and_manual_reference_ingress_is_grounded_before_consumption",
 }
 
 EXPECTED_V01 = {
