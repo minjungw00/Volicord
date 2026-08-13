@@ -324,8 +324,9 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
 이 책임은 semantic resolution, compiler/LSP child process, provider annotation 또는
 canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural과
 semantic basis, invalidation과 refresh metadata가 포함된 format version 3만 생성하며 이 derived
-format은 source basis에서 rebuild하는 책임을 가진다. V01 pass 여부는 별도 final
-validation이 판정한다.
+format은 source basis에서 rebuild하는 책임을 가진다. Maintained V01 report는 이 Production
+boundary에서 seven-language structural gate를 passed로 판정하며 large-repository scaling과
+complete macro/generated coverage는 주장하지 않는다.
 
 ### 8.4 Current Production semantic responsibility
 
@@ -421,7 +422,8 @@ record를 side effect로 수정해서는 안 된다.
 
 ### V02 — Semantic adapter normalization
 
-V02는 최소 세 ecosystem에서 다음을 검증해야 한다.
+Maintained V02 report는 Java/Maven, TypeScript/Node와 Rust/Cargo의 Production
+source-semantic boundary를 passed로 판정한다. 그 evidence는 다음을 검증한다.
 
 - Semantic Result와 Structural Fact의 provenance 분리
 - source range와 Analysis Snapshot binding

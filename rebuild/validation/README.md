@@ -50,9 +50,12 @@ validation assets use capability-based paths:
 shared/fixture-manifest.json
 shared/report-template.md
 repository-intelligence/polyglot-structural/
+repository-intelligence/phase-5-acceptance/
 canonical-context/portability/
 inquiry/frontier-resume/
 wave-1-summary.md
+phase-4-summary.md
+phase-5-summary.md
 ```
 
 The shared fixture manifest is the single fixture catalog. Each capability
@@ -67,3 +70,8 @@ Examples:
 rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
 rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/polyglot-structural/report.md
 ```
+
+The Phase 5 acceptance orchestrator maps maintained fixture and requirement
+identifiers to Production Rust tests. It owns orchestration and evidence
+accounting only; analyzer and product semantics remain in the Production Rust
+subsystem.
