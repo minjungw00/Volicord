@@ -59,3 +59,38 @@ Missing prerequisites, invalid revision/basis, unsatisfied or superseding
 outcomes, and dependency cycles remain explicit diagnostics. Results order by
 canonical presentation order and then typed Question identity; discovery order,
 wording, scores, timestamps, and map iteration are not authority.
+
+Resume always recomputes that frontier from the current canonical read basis.
+The latest Checkpoint's Question list is returned only as a historical
+observation so a caller can explain any difference without treating it as a
+second frontier authority.
+
+## Response and Decision review boundary
+
+Response interpretation requires an existing available canonical Source whose
+payload exactly identifies the current host, session, and user turn, whose
+actor is the user, and whose observing adapter is identified. It also requires
+the exact open Question revision and the exact displayed alternatives and
+recommendation. Ambiguity, stale display state, an echoed recommendation, a
+wrong Project, and terminal Questions are rejected before calling the Kernel.
+
+Accepted choice and delegation drafts are passed to
+`Store::record_question_response`; batch adoption invokes that operation once
+per Question and reports success, rejection, replay, and failure independently.
+The read-only Decision applicability evaluator preserves scope, assumptions,
+Source freshness, displayed basis, uncertainty, limits, revisit triggers,
+contradiction, review-due, and supersession evidence. Explicit review-due
+intents use the Kernel operation, while re-questioning first creates a bounded
+Question Candidate.
+
+## Checkpoint evaluation boundary
+
+Checkpoint evaluation compares caller-supplied baseline and current Repository
+Intelligence inventories. Paths already dirty at the baseline are reported
+separately; if such a path changes again, attribution is ambiguous and no
+canonical Checkpoint is created. The evaluator accepts only meaningful
+completion, explicit pause, or handoff with existing canonical Source basis.
+Status-only reads, source gaps, and unattributable changes remain rejected
+Candidates. A ready draft is persisted only through
+`Store::record_checkpoint`, preserving independent work, verification, user
+review, and user acceptance facts. No Git or command subprocess is introduced.

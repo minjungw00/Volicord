@@ -31,6 +31,41 @@ pub struct FrontierRead {
     pub diagnostics: Vec<FrontierDiagnostic>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResumeFrontier {
+    pub recomputed: FrontierRead,
+    pub historical_checkpoint_questions: Vec<volicord_context::QuestionReference>,
+    pub differs_from_checkpoint_observation: bool,
+}
+
+/// Recomputes resume state from canonical Questions and Decisions. A latest
+/// Checkpoint is retained only as a historical observation for comparison.
+pub fn recompute_frontier_for_resume(
+    canonical: &CanonicalReadBasis,
+    scope: &InquiryScope,
+) -> ResumeFrontier {
+    let recomputed = compute_frontier(canonical, scope);
+    let historical_checkpoint_questions = canonical
+        .latest_checkpoint
+        .as_ref()
+        .map(|checkpoint| checkpoint.open_questions.clone())
+        .unwrap_or_default();
+    let current = recomputed
+        .questions
+        .iter()
+        .map(|question| volicord_context::QuestionReference {
+            question_id: question.question_id,
+            revision: question.displayed_revision,
+        })
+        .collect::<Vec<_>>();
+    let differs_from_checkpoint_observation = current != historical_checkpoint_questions;
+    ResumeFrontier {
+        recomputed,
+        historical_checkpoint_questions,
+        differs_from_checkpoint_observation,
+    }
+}
+
 /// Computes the current Inquiry frontier without mutating canonical or
 /// Candidate state. Diagnostics are preserved even when no Question is ready.
 pub fn compute_frontier(canonical: &CanonicalReadBasis, scope: &InquiryScope) -> FrontierRead {
