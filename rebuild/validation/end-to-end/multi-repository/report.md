@@ -2,253 +2,258 @@
 
 ## Status
 
-Failed. Phase 8 is blocked. The clean official run completed all scheduled steps
-for all three repository classes and reported 27 `passed`, 3 `partial`, 18
-`unsupported`, 3 `failed`, 3 `environment_blocked`, and 0 `skipped` outcomes.
+Passed. The clean official rehearsal classified all 54 required repository-step
+outcomes as `passed`, with zero `partial`, `unsupported`, `failed`,
+`environment_blocked`, or `skipped` outcomes. The maintained gate evaluated
+`phase_8_ready = true`.
 
-The exact Phase 7 final aggregate passed at production HEAD
-`c15a864a4723deeee5db7dbe0b5346d08fecfff6`. The V11 support commit
-`1ac4135dc961cdbd9faa70dffcd34c13c3df7be2` is validation-only; no production,
-installer, runtime-contract, or design-owner change followed the production
-gate.
+The exact final aggregate passed at final-validated HEAD
+`f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`. The last production change is
+`c2caea39d46229e880c8c906a0fffe91d8c2cb9c`; `f64ee3eb` changes only this V11
+harness. The fresh preflight found no production diff, no later commit, and a
+clean worktree.
 
 ## Goal
 
-Rehearse one installed Volicord journey against the Volicord repository, a
-small single-language application, and a medium documented polyglot repository,
-using current CLI and MCP boundaries without validation-only substitutes for
-Candidate, Inquiry, merge, Guarded, canonical, or recovery semantics.
+Rehearse one installed Volicord journey against the Volicord reconstruction
+repository, a small single-language application, and a medium documented
+polyglot repository. Use current CLI and MCP boundaries for Candidate,
+Inquiry, Guarded provider, canonical, portable, document, and recovery
+semantics without validation-only substitutes.
 
 ## Accepted decisions being validated
 
 - Q1 staged Inquiry and terminal material Question handling.
 - Q2 polyglot capability and honest per-language degradation.
 - Q3 local-first operation, Project opt-in, and background-provider isolation.
-- Q4 installed CLI, MCP, viewer-facing logical surfaces, and user inspectability.
+- Q4 installed CLI, MCP, and user-inspectable logical surfaces.
 - Q5 four source-grounded document types in Markdown and self-contained HTML.
 - Q6 portable Project identity, explicit clone binding, divergence, and conflict.
 - Q7 correction, semantic supersession, and privacy-prioritized deletion.
 - Q8-A Linux/Codex installation and connection; Q8-B fresh-service legacy exclusion.
-- Q9 bounded read-only Recall; Q10 Candidate collection/promotion boundaries.
-- Q11 source-grounded Checkpoint; Q12 exact Guarded confirmation/effect behavior.
+- Q9 bounded read-only Recall; Q10 Candidate collection and promotion boundaries.
+- Q11 source-grounded Checkpoint; Q12 exact Guarded confirmation and effect behavior.
 - Q13 Decision applicability, reuse, and evidence-driven re-questioning.
 
 ## Input repositories and revisions
 
 | Class | Run revision | Deterministic content identity | Origin/license |
 | --- | --- | --- | --- |
-| Volicord reconstruction repository | `1ac4135dc961cdbd9faa70dffcd34c13c3df7be2` | `sha256:3ecf5e172144a44a69a3ad611ee390393a8e6e1eb19bfa15e56f42ed4b2b74d8` | Current Git HEAD; repository license |
-| Small Python application | `4903c02b70a28addf453c0817d21ad59a1c6a6f1` | fixture `v01-python`, `sha256:7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867` | Self-authored, CC0-1.0 |
-| Medium polyglot repository | `22a6acdd1807e5a768272c50bc84bec08c574fdd` | fixture `v11-polyglot-medium`, `sha256:7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb` | Self-authored, CC0-1.0 |
+| Volicord reconstruction repository | `f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f` | `sha256:9845d20b1e1afd676e4166fa32d88efa17a7c72cd1ea2d71d8a5e0307a462b34` | Final-validated current Git HEAD; repository license |
+| Small Python application | `9eeedb3710e2ac53ab6d09981db5efde44f5a9b4` | fixture `v01-python`, `sha256:7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867` | Self-authored, CC0-1.0 |
+| Medium polyglot repository | `93c9e5de4f5028673331723955442dd10e7b4839` | fixture `v11-polyglot-medium`, `sha256:7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb` | Self-authored, CC0-1.0 |
 
-The polyglot fixture contains documentation plus Java/Maven, Python/pyproject,
-and TypeScript/Node components. Its documented JSON process boundary is not
-treated as a direct syntax or semantic call.
+The two fixture content hashes exactly match the maintained shared fixture
+manifest. The polyglot input contains documentation plus Java/Maven,
+Python/pyproject, and TypeScript/Node components connected by an explicitly
+documented JSON process boundary; that boundary is not represented as a direct
+syntax or semantic call.
 
 ## Environment and tool versions
 
-- Linux `6.18.33.2-microsoft-standard-WSL2`, x86_64 GNU/Linux.
+- Linux `6.18.33.2-microsoft-standard-WSL2`, x86_64.
 - `rustc 1.97.1`, `cargo 1.97.1`, Python `3.12.3`, Git `2.43.0`.
-- `codex-cli 0.145.0` with an available copied authentication file.
+- `codex-cli 0.145.0` with available authentication and authorized model-service access.
 - Each target used a separate prefix, replacement Runtime Home, Codex home,
-  temporary repository/clone, and legacy bait Runtime Home below ignored V11
-  state. All three legacy sentinels remained byte- and timestamp-identical.
+  temporary repository/clone, and legacy bait Runtime Home. All three legacy
+  sentinels remained byte- and timestamp-identical.
 
 ## Candidate approaches
 
-The selected approach installed the current release binaries independently for
-each target, used structured CLI JSON and the advertised MCP tool catalog, and
-preserved every material child operation with separate stdout, stderr, exit or
-termination, and duration evidence. The harness continued after bounded
-failures so one repository or step could not hide another.
+The selected approach independently installed the current release binaries for
+each target, used structured CLI JSON and the advertised MCP catalog, and
+preserved every material child command with complete separate stdout, stderr,
+exit, duration, spawn, and termination metadata. The non-fail-fast harness ran
+all scheduled steps for every repository so one result could not mask another.
 
-The maintained V01 Python fixture was reused for the small application. The
-existing four-file V01 polyglot fixture did not satisfy the medium-repository
-role, so V11 added one bounded self-authored fixture and registered its hash,
-origin, and license in the shared catalog.
+The authenticated Codex probe used the installed MCP registration and a narrow
+approval for `project_health`. Background semantic behavior used the production
+provider boundary with an intentionally unavailable provider, allowing exact
+Guarded preparation, confirmation, terminal outcome, no-transmission, and local
+degradation behavior to be observed without fabricating a provider success.
 
 ## Commands and configuration
 
-Support checks:
+Fresh clean preflight:
 
 ```text
-rebuild/scripts/validate focused v11-harness-self-check-amend -- rebuild/validation/end-to-end/multi-repository/harness.py self-check
-rebuild/scripts/validate focused v11-fixture-manifest-amend -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
+rebuild/scripts/validate focused v11-official-preflight-remediation-conclusions -- rebuild/validation/end-to-end/multi-repository/harness.py preflight --validated-head f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f --final-artifact /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/validation/20260814T170301.578433Z-final-qxhz9229/summary.json
 ```
 
-Clean official preflight:
+Single official rehearsal:
 
 ```text
-rebuild/scripts/validate focused v11-official-preflight-amended -- rebuild/validation/end-to-end/multi-repository/harness.py preflight --validated-head c15a864a4723deeee5db7dbe0b5346d08fecfff6 --final-artifact /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/validation/20260814T125416.288396Z-final-26wy6xxw/summary.json
-```
-
-Official run:
-
-```text
-rebuild/scripts/validate focused v11-official-run-amended -- rebuild/validation/end-to-end/multi-repository/harness.py run --validated-head c15a864a4723deeee5db7dbe0b5346d08fecfff6 --final-artifact /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/validation/20260814T125416.288396Z-final-26wy6xxw/summary.json --output-dir /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/v11/20260814-official-1ac4135d
+rebuild/scripts/validate focused v11-official-run-remediation-conclusions -- rebuild/validation/end-to-end/multi-repository/harness.py run --validated-head f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f --final-artifact /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/validation/20260814T170301.578433Z-final-qxhz9229/summary.json --output-dir /home/minjungw00/projects/Volicord-rebuild/rebuild/.local/v11/20260815-official-f64ee3eb
 ```
 
 The exact final aggregate was not rerun.
 
 ## Observed results
 
-The following result was identical by repository class unless noted.
+Every row below passed for Volicord, small Python, and medium polyglot.
 
 | Journey boundary | Outcome | Observation |
 | --- | --- | --- |
-| Clean install and replacement runtime | `passed` | Three executable binaries and four replacement stores were installed separately; legacy bait was untouched. |
-| Direct MCP connection | `passed` | All 14 advertised high-level tools were discoverable; `project_health` returned connected/healthy. |
-| Authenticated Codex turn | `environment_blocked` | All three exact child calls exited 1 after network requests failed with `Operation not permitted`; the requested external retry was not authorized. |
-| Project init/bind | `passed` | Stable Project IDs and exact repository bindings were returned. |
-| Inventory, structural capability, and understanding | `passed` | Structured analysis and MCP maps exposed entities, gaps, and source-grounded coverage. |
-| Candidate collection/inspection/promotion | `unsupported` | Inspection returned an empty read-only list after analysis; no collection, promotion, dismissal, or expiry tool exists in the public catalog. |
-| Staged Inquiry and Decision | `unsupported` | The frontier remained empty because no public path collected/promoted a material Question; `decision_record` therefore had no valid exact revision to answer. |
+| Clean install and replacement runtime | `passed` | Three executable binaries were independently installed per target; the legacy bait remained untouched. |
+| Direct MCP and authenticated Codex connection | `passed` | All 16 advertised tools were discoverable, direct health was connected/healthy, and each authenticated Codex turn selected the installed `project_health` tool. |
+| Project init/bind | `passed` | A stable Project ID and exact repository binding were returned for each target. |
+| Inventory, capability analysis, and understanding | `passed` | Structured analysis and MCP understanding exposed entities, relations, coverage, gaps, freshness, and source bases. |
+| Candidate research and promotion | `passed` | A `research_required` Candidate remained absent from the frontier; insufficient evidence did not make it askable; premature readiness was rejected; sufficient source-grounded research allowed `ready_to_ask`, inspection, and explicit promotion. |
+| Staged Inquiry and Decision | `passed` | The promoted exact Question revision appeared in the frontier, and one explicit current-host response created an inspectable Source-linked Decision. |
 | Ordinary repository work | `passed` | A controlled ordinary file write completed without changing the Guarded store. |
-| Guarded exact confirmation/effect | `unsupported` | Exact request fields, mismatch rejection, and Source-linked confirmation were observable. No public dispatch path exists, so completion/failure/indeterminate, consumption reuse, and no-silent-retry could not be exercised. The controlled target remained present. |
-| Source-grounded Checkpoint | `failed` | CLI `checkpoint record ... handoff` exited 1 in every repository. The CLI supplies `handoff_to: None`; the canonical owner requires an explicit handoff target. |
-| Restart and Recall | `partial` | A fresh MCP process provided read-only Recall, but required Decision rationale and successful Checkpoint context were absent. |
-| Portable export/import/bind | `passed` | The bundle imported with the same Project identity and bound explicitly to another clone. |
-| Divergent conflict handling | `unsupported` | Independent additions imported, but public surfaces expose neither same-record conflict creation/inspection nor user resolution/branching. |
-| Correction, supersession, deletion | `unsupported` | Explicit Source deletion succeeded. No integrated Decision or Context Item existed to exercise correction and supersession. |
-| Four document outputs | `passed` | Four Markdown plus four HTML artifacts were published per repository; before/after canonical bundles were byte-identical. |
-| Parser degradation | `passed` | Controlled malformed Rust/Python areas produced scoped `partial` results with failed scopes while unaffected capability remained. |
-| Derived-index corruption/recovery | `passed` | Corruption degraded health; supported repair published a fresh Source/Analysis basis and preserved Recall meaning in all three repositories. |
-| Provider unavailable/recovery | `unsupported` | Local-only analysis remained usable with provider unconfigured, but no public operation requests background semantic dispatch, so unavailable-provider failure and recovery could not be executed. |
+| Guarded provider operation | `passed` | Exact inspection worked; denied preparation was discarded; missing and mismatched dispatch stayed unconsumed and not dispatched; confirmed dispatch consumed the Source-linked confirmation and truthfully ended `provider_unavailable`/`not_dispatched`; durable inspection matched; denied and consumed preparations were not reusable. |
+| Source-grounded Handoff Checkpoint | `passed` | Each CLI Checkpoint used the Decision response Source and explicit `next Codex session` handoff target. |
+| Restart and new-session Recall | `passed` | A fresh MCP process recovered the integrated Decision, rationale, known limits, and exact next step read-only. |
+| Portable export/import/bind | `passed` | The bundle preserved Project identity and was explicitly rebound to another clone. |
+| Divergent conflict handling | `passed` | Both clones superseded the same Decision; comparison exposed `semantic_decision_conflict` alongside independent additions; explicit resolution produced a provenance-bearing branch. |
+| Correction, supersession, deletion | `passed` | The integrated Decision was corrected to revision 2 and superseded by a new Decision; the disposable Source was forgotten and absent on inspection. |
+| Four document outputs | `passed` | Project & Architecture Guide, Decision Report, Implementation Plan, and Handoff / Resume Document were each published as grounded Markdown and self-contained HTML with no canonical mutation. |
+| Provider degradation | `passed` | The unavailable production adapter recorded zero transmission while canonical inspection and local structural analysis remained usable. |
+| Parser degradation | `passed` | Controlled malformed areas returned truthful scoped `partial` analysis with failed scopes and an unaffected usable remainder. |
+| Derived-index corruption/recovery | `passed` | Corruption degraded health; repair published a fresh repository Source/Analysis basis, retained the expected parser partial state, and preserved Recall meaning. |
+
+The official run directly observed denied and consumed terminal-preparation
+cleanup in all three integrated repositories. The final-validated public Host
+test `subsequent_host_interaction_cleans_an_expired_provider_preparation` also
+passed in the consumed exact aggregate at the same HEAD. No production change
+separates that expiry evidence from this rehearsal.
 
 ## Coverage and failures
 
-The run exercised every scheduled step for every required repository; no step
-was skipped. Per target there were 9 passed, 1 partial, 6 unsupported, 1 failed,
-and 1 environment-blocked results.
+| Repository class | Passed | Partial | Unsupported | Failed | Environment blocked | Skipped |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Volicord | 18 | 0 | 0 | 0 | 0 | 0 |
+| Small Python | 18 | 0 | 0 | 0 | 0 | 0 |
+| Medium polyglot | 18 | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **54** | **0** | **0** | **0** | **0** | **0** |
 
-The three repeated CLI Checkpoint failures are owned by the Local Operations
-CLI adapter at the boundary with the Canonical Context Checkpoint invariant.
-The Candidate/Inquiry gap spans Host and User Adapters, Inquiry and Decision,
-and Candidate lifecycle operations. Guarded dispatch and outcome recovery are
-owned by Local Operations. Conflict presentation/resolution is owned by
-Portable Context plus a Host/User surface. Provider failure/recovery requires a
-Repository Intelligence/Provider Boundary operation exposed through Local
-Operations.
+The evidence tree contains 142 recorded child commands. All 142 succeeded;
+none had a spawn error, timeout, signal termination, or nonzero exit. Expected
+domain rejections were returned as structured public Host results and were
+included in the corresponding capability assertions.
 
 ## Performance and resource observations
 
-The focused official wrapper ran for `181912.926 ms`; the structured harness
-duration was `181345.752 ms`. The ignored evidence tree contained 121 child
-operation directories and was about 1.9 GiB, dominated by three isolated
-release installations/build trees. Authenticated Codex attempts lasted about
-38 seconds each. Peak memory was not measured. No timeout or signal termination
-was reported by the focused wrapper.
+The focused wrapper ran for `146301.052 ms`; the structured journey ran for
+`145186.157 ms`. Authenticated Codex probes took approximately 13.8–14.3
+seconds per repository. The ignored evidence tree is about 2.1 GiB, including
+three isolated release installations and generated documents. The Volicord
+documents were approximately 97 MB per Markdown output and 148 MB per HTML
+output; the small and medium fixture documents were substantially smaller.
+Peak memory was not measured.
 
 ## Privacy and external transmission
 
-Background semantic configuration remained disabled for every Project. Direct
-MCP, inventory, structural analysis, canonical operations, documents, and
-recovery were local. No provider transmission was recorded, and portable
-bundles did not use legacy or copied raw-session input.
+Authenticated Codex probes sent the bounded temporary Project ID and requested
+the installed `project_health` result; they did not ask the model to read or
+transmit repository source. All three probes completed and selected the
+Volicord MCP tool.
 
-The authenticated Codex prompts contained the bounded Project ID and requested
-health operation. Network connection failed before a successful turn or
-Volicord tool result. A requested external retry was rejected because it could
-transmit Project identifiers, local paths, and returned health metadata; V11
-therefore retains `environment_blocked` rather than claiming success.
+Background semantic configuration was explicitly enabled for one bounded file
+per Project against `v11-unavailable-provider`. Exact Guarded requests exposed
+the provider, model, purpose, source scope, filter result, byte count, revision,
+expiration, and fingerprint. The production adapter reported
+`provider_unavailable`; every manifest entry remained `not_transmitted` with
+zero transmitted bytes. Canonical, structural, document, portable, and
+recovery operations remained local.
 
 ## Acceptance results
 
 | Acceptance scenario | V11 conclusion |
 | --- | --- |
-| A, P — install, connection, fresh-service boundary | `partial`: install/direct MCP/legacy exclusion passed; authenticated Codex was environment-blocked. |
-| B–E — inventory, structural, polyglot understanding | `passed` for the three V11 repositories, including honest malformed-area degradation; this is not a new all-language Phase 8 qualification. |
-| F, L — Inquiry, Decision, applicability/reuse | `unsupported`: no integrated public Question promotion path. |
-| G — Candidate boundary | `unsupported`: inspection exists; collection and lifecycle actions do not. |
-| H — ordinary work and Checkpoint | `failed`: ordinary work passed; CLI Handoff Checkpoint failed. |
-| I — new-session Recall | `partial`: read-only restart worked, but required Decision/Checkpoint content was incomplete. |
-| J — portable clone and conflict | `partial/unsupported`: export/import/bind and independent additions worked; semantic conflict handling did not. |
-| K — correction, supersession, deletion | `partial/unsupported`: deletion worked; correction/supersession did not have an integrated target. |
-| M — Guarded effect | `unsupported`: request/confirmation evidence exists, dispatch/outcome/reuse behavior does not have a public path. |
-| N — viewer/document projection | `partial`: all required outputs and canonical purity passed, but their integrated Decision/Checkpoint inputs were incomplete. |
-| O — degraded recovery | `partial`: parser and index recovery passed; provider failure/recovery was unsupported. |
-| Q — provider privacy | `partial`: local-only/no-transmission held; unavailable provider dispatch and recovery were not executable. |
+| A, P — install, connection, fresh-service boundary | `passed`: clean install, direct MCP, authenticated Codex, and legacy exclusion passed in all three targets. |
+| B–E — inventory, structural, polyglot understanding | `passed`: each repository exposed honest source-grounded capability and scoped parser degradation. This does not replace Phase 8's broader language/fallback dogfood. |
+| F, L — Inquiry, Decision, applicability/reuse | `passed`: the research-gated promoted Question received one exact current-host response and produced the integrated Decision used downstream. |
+| G — Candidate boundary | `passed`: submission, read-only inspection, research gating, explicit promotion, and promoted disposition were observed. |
+| H — ordinary work and Checkpoint | `passed`: ordinary work remained unguarded and explicit Handoff Checkpoints were source-grounded. |
+| I — new-session Recall | `passed`: fresh-process Recall restored the integrated Decision and Handoff next step without mutation. |
+| J — portable clone and conflict | `passed`: import/bind preserved identity and semantic Decision divergence was inspected and explicitly branched. |
+| K — correction, supersession, deletion | `passed`: all three mutation classes succeeded on integrated records. |
+| M — Guarded effect | `passed`: exact fields, Source linkage, no-dispatch-before-confirmation, terminal cleanup, single use, truthful outcome, and no silent retry held. |
+| N — viewer/document projection | `passed`: all eight requested artifacts per repository carried grounding metadata and left canonical bundles unchanged. |
+| O — degraded recovery | `passed`: parser and index degradation/recovery were truthful and provider unavailability preserved unaffected local functionality. |
+| Q — provider privacy | `passed`: Project opt-in and exact source scope were inspectable; unavailable-provider execution transmitted no source. |
 
-The final V11 acceptance condition is failed. A successful repository cannot
-mask the repeated failure/unsupported result in the other repositories; here
-the blockers reproduced in all three.
+The final V11 acceptance condition is passed. No repository failure is hidden by
+another repository, no required external step is environment-blocked, and the
+maintained structured result evaluates `phase_8_ready = true`.
 
 ## Known limits
 
-- Authenticated Codex evidence is environment-blocked by network policy, not a
-  Volicord connection result.
-- The run does not qualify large-repository latency, accessibility, concurrent
-  clients, abrupt power loss, hostile path races, or non-Linux hosts.
-- V11 did not replace Phase 8 first-structural-language/fallback fixtures or
-  narrative quality scoring.
-- The exact Checkpoint CLI error renders only the outer message; source
-  inspection locates the incompatible `handoff_to` construction without
-  changing production code.
-- The first diagnostic run used an over-strict derived-recovery comparison. It
-  is not cited as the official conclusion; the committed harness and clean
-  rerun compare Recall meaning while requiring the repository Source to refresh.
+- V11 is the entry gate, not Phase 8 itself. Repeated dogfood, narrative
+  usefulness, broader first-structural-language/fallback coverage, and actual
+  user learning/resumption quality remain Phase 8 work.
+- The intentionally unavailable provider validates privacy, confirmation,
+  failure, and local degradation behavior; it does not qualify a commercial
+  provider, successful external semantic result, vendor retention, or deletion.
+- Integrated V11 directly covered denial and consumed-preparation cleanup;
+  expiry cleanup is composed from the exact final aggregate's production
+  public-Host test at the same validated HEAD.
+- Volicord document and evidence sizes are large. Output usefulness, latency,
+  size ceilings, accessibility, and bounded resource behavior need observation
+  during Phase 8 rather than being inferred from successful publication.
+- The run does not qualify concurrent clients, abrupt power loss, hostile path
+  races, non-Linux hosts, or peak-memory ceilings.
 
 ## Recommended implementation choice
 
-Do not enter Phase 8 and do not repair production code in this validation
-session. Plan a new production remediation workstream from the concrete V11
-evidence. That workstream must expose existing owner semantics through a
-coherent supported journey for Candidate lifecycle/Question promotion,
-Guarded dispatch/outcome inspection, provider failure/retry, and portable
-conflict resolution, and must correct the CLI Handoff Checkpoint construction.
-It requires its own exact production final gate before V11 is attempted again.
+Retain the current production responsibility boundaries and enter Phase 8
+repeated dogfood. Use Phase 8 to evaluate real comprehension, document size and
+narrative quality, larger and more varied repositories, fallback behavior, and
+longer-duration resource use. Do not treat this one V11 rehearsal as Phase 8
+completion or as Phase 9 cutover evidence.
 
 ## Rejected alternatives and reasons
 
-- Seeding Candidate, Question, Decision, conflict, or Guarded outcome directly
-  through validation-only storage/API calls was rejected because it could pass
-  while installed production surfaces remained unusable.
-- Inventing a validation-only guarded effect dispatcher was rejected for the
-  same reason.
-- Treating an unconfigured provider as an unavailable-provider dispatch was
-  rejected because it did not exercise failure/retry ownership.
-- Flattening partial/unsupported/environment-blocked outcomes into pass was
-  rejected by the V11 acceptance contract.
-- Production fixes were rejected as out of scope for this session.
+- Seeding Candidate, Question, Decision, conflict, or Guarded outcome through
+  validation-only storage calls was rejected because it would not prove the
+  installed public journey.
+- Flattening truthful provider/parser `partial` or unavailable internal states
+  into an unqualified subsystem success was rejected; the step passed only
+  because the required degradation contract was observed.
+- Reusing a denied, expired, or consumed provider preparation was rejected by
+  the public Host boundary.
+- Treating the unavailable provider as successful transmission was rejected;
+  the recorded outcome remains `provider_unavailable` and `not_transmitted`.
+- Repeating the official rehearsal after its successful completion was rejected
+  by the one-run evidence boundary.
 
 ## Reusable primitive decision
 
 `reference_only` for production. The Python harness remains maintained external
-validation orchestration; it does not own or qualify domain semantics for
-promotion. The self-authored polyglot fixture remains reusable validation input.
+validation orchestration and does not own product semantics. The self-authored
+fixtures remain reusable validation inputs.
 
 ## Decision revisit trigger status
 
-No accepted Q1–Q13 revisit trigger is active. The evidence demonstrates missing
-or defective implementation/public integration paths, not that the accepted
-Candidate, Inquiry, portable, Guarded, provider, Checkpoint, or Linux/Codex
-contracts are infeasible. No unresolved product Question was added.
+No accepted Q1–Q13 Decision revisit trigger is active. The run supports the
+accepted Candidate research boundary, staged Inquiry, local-first/provider
+separation, portable conflict handling, Checkpoint/Recall, document grounding,
+and Guarded effect contract. The document-size observation is a Phase 8 quality
+limit, not yet evidence that Q5 portability or accessibility is infeasible.
 
 ## Follow-up work
 
-1. Open a separately scoped production remediation workstream for the owners
-   named under Coverage and failures.
-2. Run that workstream's focused tests and exact final aggregate at its final
-   production HEAD.
-3. Re-run V11 independently against all three repository classes, including an
-   authorized authenticated Codex environment.
-4. Start Phase 8 only after the repeated V11 report is fully passed with no
-   active Decision revisit trigger.
+1. Begin Phase 8 repeated dogfood using this exact validated candidate and V11
+   result as the entry evidence.
+2. Measure document usefulness/size, repository diversity, fallback behavior,
+   resumption quality, and sustained resource use during repeated real work.
+3. Keep Phase 9 cutover closed until its separately owned conditions pass.
 
 ## Artifacts
 
-- Phase 7 final aggregate:
-  `rebuild/.local/validation/20260814T125416.288396Z-final-26wy6xxw/summary.json`,
-  SHA-256 `2830792885c625be63eb27368b96436bd4b42ab5fe764389bcabacaf97b20a16`.
-- Clean V11 preflight:
-  `rebuild/.local/validation/20260814T131621.141459Z-v11-official-preflight-amended-avotb41c/result.json`,
-  SHA-256 `4321937ef4d79e8102cbc543b489e1a94f3623e6301b1a0bb4ef8b29f71169e2`.
+- Exact final aggregate:
+  `rebuild/.local/validation/20260814T170301.578433Z-final-qxhz9229/summary.json`,
+  SHA-256 `85775064da154cf7f0bc77297fd5ca82add83112675a8120631b70c5a909f4a8`.
+- Clean official preflight:
+  `rebuild/.local/validation/20260814T172306.608730Z-v11-official-preflight-remediation-conclusions-y8f6jixp/result.json`,
+  SHA-256 `71ad10ccff33cb14bca6a61fbc2a25faca92bf4694e00c5680834bc2be4d8acf`.
 - Focused official wrapper:
-  `rebuild/.local/validation/20260814T131632.123725Z-v11-official-run-amended-gcauhvov/result.json`,
-  SHA-256 `f607c9d4dbe697520546a4d69d33ffcb744df6012e4df375ab0df13c40fa5cf6`.
+  `rebuild/.local/validation/20260814T172338.951173Z-v11-official-run-remediation-conclusions-k2zlbc67/result.json`,
+  SHA-256 `7f483093492f2627e1d219f46169f6a36dc077e0c044369ed8e88fffa0ad6ea5`.
 - Structured official result:
-  `rebuild/.local/v11/20260814-official-1ac4135d/result.json`, SHA-256
-  `ffe64dcbcdae74c12bd3cc59e84789a6fc2efaa002df535c6029bd4c75c2e91e`.
+  `rebuild/.local/v11/20260815-official-f64ee3eb/result.json`, SHA-256
+  `32e52ba0c3b9308577671d763293755231da6d340a0e2da90b6a14fc524c0c1a`.
 - Maintained inputs: this report, `harness.py`, fixture
   `v11-polyglot-medium`, reused fixture `v01-python`, and
   `rebuild/validation/shared/fixture-manifest.json`.

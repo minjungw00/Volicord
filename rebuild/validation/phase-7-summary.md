@@ -1,8 +1,8 @@
 # Phase 7 product-surface validation and V11 handoff state
 
-- Phase 7 exact final aggregate: `passed` at
-  `c15a864a4723deeee5db7dbe0b5346d08fecfff6`
-- V11 integrated result: `failed`; Phase 8 entry gate: `blocked`
+- Current exact final aggregate: `passed` at
+  `f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`
+- V11 integrated result: `passed`; Phase 8 entry gate: `ready`
 - Scope: qualified local platform primitives, source-grounded Project
   projections and documents, Project-scoped provider privacy, Local Operations,
   exact Guarded confirmation, live local viewer, clean Linux installation, and
@@ -19,10 +19,11 @@
 | V08 | passed | `linux-codex-integration` | authenticated live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, fresh repository provenance, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
-The V08 report records its state before the reconstruction final aggregate.
-The later exact aggregate passed with zero failures at the production HEAD
-above. V11 then ran independently from validation-only commit `1ac4135d` and
-recorded the blocked result in `end-to-end/multi-repository/report.md`.
+The current exact aggregate passed with zero failures at final-validated HEAD
+`f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`; its last production change is
+`c2caea39d46229e880c8c906a0fffe91d8c2cb9c`. The clean independent V11
+rehearsal then passed all 54 repository-step outcomes and recorded
+`phase_8_ready = true` in `end-to-end/multi-repository/report.md`.
 
 ## Phase 7 capability conclusion
 
@@ -38,7 +39,7 @@ an untrusted Host cannot retrieve the page value, and the value is absent from
 URLs and durable outputs. Stale, mismatched, reused, malformed, and unsupported
 requests retain their existing rejection behavior.
 
-The actual installed MCP server advertises 14 closed concrete schemas. A
+The actual installed MCP server advertises 16 closed concrete schemas. A
 maintained client-side interpreter constructs representative Recall, Checkpoint,
 and Guarded calls from `tools/list`; missing and additional arguments are
 rejected consistently. A bounded authenticated `codex exec` turn selected and
@@ -86,9 +87,17 @@ background-provider authority.
   latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
   portability retain the known limits in their individual reports.
-- V11 completed against all three required repository classes but did not pass.
-  Phase 8 remains blocked pending a separately planned production remediation,
-  its own exact final gate, and an independent V11 rerun.
+- V11 passed against all three required repository classes with no partial,
+  unsupported, failed, environment-blocked, or skipped outcome. Phase 8 entry
+  is ready; V11 remains one rehearsal and does not itself complete repeated
+  dogfood.
+- The unavailable production provider path proved exact Guarded confirmation,
+  terminal cleanup, truthful no-transmission failure, and unaffected local
+  operation. It did not qualify a commercial provider or successful external
+  semantic result.
+- The Volicord document outputs and ignored evidence were large; document
+  usefulness, size, latency, accessibility, and sustained resource use remain
+  Phase 8 observations rather than V11 blockers.
 
 ## Maintained references
 
