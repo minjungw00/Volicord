@@ -13,6 +13,10 @@ surface, not a Volicord product command or production architecture.
   authorization separation, exact-once synthetic final/V11 orchestration,
   same-session artifact selection, credential-safe capsule projection, and
   no-retry behavior. It never invokes the real exact final or official V11.
+- `rebuild/scripts/validate gate-entrypoint-self-test` copies the maintained
+  admission/gate entry point into isolated temporary Git repositories and
+  checks clean, initially dirty, and admission-generated dirty candidates
+  without invoking the real exact final or official V11.
 - `rebuild/scripts/validate focused <label> -- <command> [arguments...]` runs
   the exact argument vector from the repository root and records the command,
   working directory, timestamps, duration, complete separate stdout/stderr,
@@ -24,9 +28,10 @@ surface, not a Volicord product command or production architecture.
   authorization. It prints a structured result and retains `admission.json`
   below ignored validation state; a blocked result runs neither final nor V11.
 - `rebuild/scripts/validate gate` repeats admission in its own session, invokes
-  the existing ordered four-command final owner exactly once, passes only the
-  returned summary to V11 preflight, invokes official V11 at most once, runs
-  the V11 credential-retention audit, and prints the sanitized handoff capsule.
+  an immediate live clean-worktree/HEAD recheck, invokes the existing ordered
+  four-command final owner exactly once, passes only the returned summary to
+  V11 preflight, invokes official V11 at most once, runs the V11
+  credential-retention audit, and prints the sanitized handoff capsule.
   Direct `rebuild/scripts/validate final` invocation is refused so an exact
   aggregate cannot bypass admission or become detached from V11.
 - `rebuild/scripts/check-architecture-contracts` checks the nine active Phase 3

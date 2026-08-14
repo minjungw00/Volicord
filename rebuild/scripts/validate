@@ -17,11 +17,21 @@ import time
 from typing import Sequence
 
 
+# Admission dynamically imports repository-local validation modules before it
+# inspects the candidate. Keep this process and every validation child process
+# from materializing bytecode beside those sources.
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REBUILD_ROOT = REPOSITORY_ROOT / "rebuild"
 ARTIFACT_ROOT = REBUILD_ROOT / ".local" / "validation"
 GATE_MODULE_PATH = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate.py"
 GATE_SELF_TEST = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_self_test.py"
+GATE_ENTRYPOINT_SELF_TEST = (
+    REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_entrypoint_self_test.py"
+)
 FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
     (
         "cargo",
@@ -430,6 +440,7 @@ def usage() -> int:
         "usage:\n"
         "  rebuild/scripts/validate self-test\n"
         "  rebuild/scripts/validate gate-self-test\n"
+        "  rebuild/scripts/validate gate-entrypoint-self-test\n"
         "  rebuild/scripts/validate focused <label> -- <command> [arguments...]\n"
         "  rebuild/scripts/validate final  # gate-owned; direct invocation is refused\n"
         "  rebuild/scripts/validate admission [--external-network <state>] "
@@ -450,6 +461,12 @@ def main(arguments: Sequence[str]) -> int:
             return 1
     if arguments == ("gate-self-test",) or list(arguments) == ["gate-self-test"]:
         result, run_directory = run_focused("gate-self-test", (str(GATE_SELF_TEST),))
+        print_result(result, run_directory)
+        return int(result["wrapper_exit_code"])
+    if arguments == ("gate-entrypoint-self-test",) or list(arguments) == ["gate-entrypoint-self-test"]:
+        result, run_directory = run_focused(
+            "gate-entrypoint-self-test", (str(GATE_ENTRYPOINT_SELF_TEST),)
+        )
         print_result(result, run_directory)
         return int(result["wrapper_exit_code"])
     if arguments and arguments[0] == "admission":

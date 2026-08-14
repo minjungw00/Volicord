@@ -80,7 +80,8 @@ def repository_check() -> tuple[Check, str | None]:
     head_result = git_output("rev-parse", "HEAD")
     status_result = git_output("status", "--porcelain=v1", "--untracked-files=all")
     head = head_result.stdout.strip() if head_result.returncode == 0 else None
-    dirty_count = len(status_result.stdout.splitlines()) if status_result.returncode == 0 else None
+    dirty_entries = status_result.stdout.splitlines() if status_result.returncode == 0 else None
+    dirty_count = len(dirty_entries) if dirty_entries is not None else None
     passed = head is not None and dirty_count == 0
     return (
         check(
@@ -91,8 +92,29 @@ def repository_check() -> tuple[Check, str | None]:
             else "candidate identity is unavailable or the worktree is not clean",
             candidate_head=head,
             dirty_entry_count=dirty_count,
+            dirty_entries=dirty_entries,
         ),
         head,
+    )
+
+
+def pre_final_repository_check(candidate_head: str) -> Check:
+    current, observed_head = repository_check()
+    details = current["details"]
+    head_matches = None if observed_head is None else observed_head == candidate_head
+    worktree_clean = details.get("dirty_entry_count") == 0
+    passed = head_matches is True and worktree_clean
+    return check(
+        "pre_final_candidate_identity_and_clean_worktree",
+        "passed" if passed else "environment_blocked",
+        "candidate HEAD is unchanged and the worktree is clean immediately before final"
+        if passed
+        else "candidate HEAD changed or the worktree became dirty before final",
+        expected_candidate_head=candidate_head,
+        observed_candidate_head=observed_head,
+        head_unchanged=head_matches,
+        dirty_entry_count=details.get("dirty_entry_count"),
+        dirty_entries=details.get("dirty_entries"),
     )
 
 
@@ -459,6 +481,7 @@ def make_capsule(
     v11_result: dict[str, Any] | None = None,
     v11_result_hash: str | None = None,
     credential_audit: dict[str, Any] | None = None,
+    pre_final_check: Check | None = None,
 ) -> dict[str, Any]:
     final_view = final_summary_view(final_summary or {})
     counts = v11_result.get("counts", {}) if v11_result else {}
@@ -467,6 +490,7 @@ def make_capsule(
         "validated_candidate_head": candidate_head,
         "admission_status": admission.get("status"),
         "blocking_classification": blocking_classification,
+        "pre_final_candidate_check": pre_final_check,
         "final_aggregate": final_view,
         "final_summary_sha256": final_summary_hash,
         "official_v11": {
@@ -522,6 +546,7 @@ def orchestrate(
     preflight_owner: Callable[[str, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     v11_owner: Callable[[str, Path, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     audit_owner: Callable[[Path], tuple[dict[str, Any] | None, dict[str, Any]]],
+    pre_final_check_owner: Callable[[str], Check] = pre_final_repository_check,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     counts = {"final": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
     candidate_head = admission.get("candidate_head")
@@ -533,12 +558,28 @@ def orchestrate(
         )
         return capsule, counts
 
-    current_head = git_output("rev-parse", "HEAD").stdout.strip()
-    if current_head != candidate_head:
+    if not isinstance(candidate_head, str) or not candidate_head:
+        return make_capsule(
+            admission=admission,
+            candidate_head=None,
+            blocking_classification="candidate_state_unavailable",
+        ), counts
+
+    pre_final = pre_final_check_owner(candidate_head)
+    if pre_final.get("status") != "passed":
+        details = pre_final.get("details", {})
+        blocking = (
+            "candidate_changed"
+            if details.get("head_unchanged") is False
+            else "candidate_worktree_dirty"
+            if details.get("dirty_entry_count")
+            else "candidate_state_unavailable"
+        )
         return make_capsule(
             admission=admission,
             candidate_head=candidate_head,
-            blocking_classification="candidate_changed",
+            blocking_classification=blocking,
+            pre_final_check=pre_final,
         ), counts
 
     counts["final"] += 1
@@ -551,6 +592,7 @@ def orchestrate(
             blocking_classification="final_failed",
             final_summary=final_summary,
             final_summary_hash=final_hash,
+            pre_final_check=pre_final,
         ), counts
 
     counts["preflight"] += 1
@@ -562,6 +604,7 @@ def orchestrate(
             blocking_classification="v11_preflight_failed",
             final_summary=final_summary,
             final_summary_hash=final_hash,
+            pre_final_check=pre_final,
         ), counts
 
     output_directory = gate_directory / "official-v11"
@@ -599,5 +642,6 @@ def orchestrate(
         v11_result=v11_result,
         v11_result_hash=v11_hash,
         credential_audit=audit,
+        pre_final_check=pre_final,
     )
     return capsule, counts

@@ -182,6 +182,16 @@ def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners) -> t
         preflight_owner=owners.preflight,
         v11_owner=owners.v11,
         audit_owner=owners.audit,
+        pre_final_check_owner=lambda candidate_head: gate.check(
+            "pre_final_candidate_identity_and_clean_worktree",
+            "passed",
+            "synthetic candidate remained clean",
+            expected_candidate_head=candidate_head,
+            observed_candidate_head=candidate_head,
+            head_unchanged=True,
+            dirty_entry_count=0,
+            dirty_entries=[],
+        ),
     )
 
 
@@ -220,9 +230,10 @@ def main() -> int:
             "validated_candidate_head", "final_aggregate", "final_summary_sha256",
             "official_v11", "required_identities", "credential_retention_audit",
             "authenticated_codex_outcomes", "active_decision_revisit_triggers",
-            "phase_8_ready",
+            "pre_final_candidate_check", "phase_8_ready",
         }
         assert required_capsule_keys <= capsule.keys()
+        assert capsule["pre_final_candidate_check"]["status"] == "passed"
         shutil.rmtree(owners.final_path.parent)
         shutil.rmtree(root / "success-gate" / "official-v11")
         assert required_capsule_keys <= capsule.keys() and capsule["phase_8_ready"] is True
