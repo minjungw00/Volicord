@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::fs;
+use std::{collections::BTreeSet, fs};
 use tempfile::tempdir;
 use volicord_host::{run_stdio, HostAdapter, HOST_TOOL_NAMES};
 use volicord_operations::{LocalOperations, RuntimeLayout};
@@ -39,6 +39,77 @@ fn initializes_and_discovers_only_high_level_product_capabilities() {
     assert_eq!(names, HOST_TOOL_NAMES);
     assert!(!listed.to_string().contains("database"));
     assert!(!listed.to_string().contains("legacy"));
+    for tool in listed["result"]["tools"].as_array().expect("tool array") {
+        assert_schema_is_closed_and_described(&tool["inputSchema"]);
+        assert_eq!(
+            schema_shapes(&tool["inputSchema"]),
+            expected_shapes(tool["name"].as_str().expect("tool name")),
+            "schema/handler field contract drift for {}",
+            tool["name"]
+        );
+    }
+}
+
+#[test]
+fn schema_validation_rejects_unknown_missing_and_malformed_arguments_before_mutation() {
+    let (_temporary, mut adapter, project) = setup();
+    let project_id = parse_project(&project);
+    let before = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical basis before invalid calls");
+
+    for name in HOST_TOOL_NAMES {
+        let response = call(&mut adapter, name, json!({"unexpected":true}));
+        assert_eq!(response["result"]["isError"], true, "{name}: {response}");
+        assert!(structured(&response)["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("is not allowed")));
+    }
+
+    for (name, arguments, expected) in [
+        ("recall", json!({}), "project_id is required"),
+        (
+            "decision_record",
+            json!({"project_id":project}),
+            "question_id is required",
+        ),
+        (
+            "canonical_mutate",
+            json!({"action":"forget","project_id":project,"user_turn":"forget"}),
+            "does not match any allowed shape",
+        ),
+        (
+            "document_preview",
+            json!({"project_id":project,"kind":"handoff-resume","format":"pdf"}),
+            "is not an allowed value",
+        ),
+        (
+            "guarded_interaction",
+            json!({"confirmation_request_id":"00000000000000000000000000000000","decision":"confirm"}),
+            "does not match any allowed shape",
+        ),
+    ] {
+        let response = call(&mut adapter, name, arguments);
+        assert_eq!(response["result"]["isError"], true, "{response}");
+        assert!(
+            structured(&response)["error"]
+                .as_str()
+                .is_some_and(|error| error.contains(expected)),
+            "{response}"
+        );
+    }
+
+    let health = call(&mut adapter, "project_health", json!({}));
+    assert_eq!(health["result"]["isError"], false, "{health}");
+    let recall = call(&mut adapter, "recall", json!({"project_id":project}));
+    assert_eq!(recall["result"]["isError"], false, "{recall}");
+
+    let after = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical basis after invalid calls");
+    assert_eq!(before, after);
 }
 
 #[test]
@@ -334,4 +405,191 @@ fn parse_project(value: &str) -> volicord_context::ProjectId {
             u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
     }
     volicord_context::ProjectId::from_bytes(bytes)
+}
+
+fn assert_schema_is_closed_and_described(schema: &Value) {
+    if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
+        assert!(!variants.is_empty());
+        for variant in variants {
+            assert_schema_is_closed_and_described(variant);
+        }
+        return;
+    }
+    assert_eq!(schema["type"], "object");
+    assert_eq!(schema["additionalProperties"], false);
+    let properties = schema["properties"].as_object().expect("properties");
+    assert!(!properties.is_empty());
+    for property in properties.values() {
+        assert!(property["description"].as_str().is_some());
+    }
+}
+
+fn schema_shapes(schema: &Value) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
+    let variants = schema
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_else(|| std::slice::from_ref(schema));
+    variants
+        .iter()
+        .map(|variant| {
+            let properties = variant["properties"]
+                .as_object()
+                .expect("properties")
+                .keys()
+                .cloned()
+                .collect();
+            let required = variant["required"]
+                .as_array()
+                .expect("required")
+                .iter()
+                .map(|value| value.as_str().expect("required name").to_owned())
+                .collect();
+            (properties, required)
+        })
+        .collect()
+}
+
+fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
+    let shape = |properties: &[&str], required: &[&str]| {
+        (
+            properties.iter().map(|value| (*value).to_owned()).collect(),
+            required.iter().map(|value| (*value).to_owned()).collect(),
+        )
+    };
+    match name {
+        "project_initialize" => vec![shape(&["display_name", "repository"], &["display_name"])],
+        "project_health" => vec![shape(&["project_id"], &[])],
+        "recall"
+        | "repository_understanding"
+        | "canonical_inspect"
+        | "candidate_inspect"
+        | "privacy_status" => {
+            vec![shape(&["project_id"], &["project_id"])]
+        }
+        "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
+        "inquiry_frontier" => vec![shape(&["project_id", "material_scope"], &["project_id"])],
+        "decision_record" => vec![shape(
+            &[
+                "project_id",
+                "question_id",
+                "question_revision",
+                "alternative_key",
+                "user_turn",
+                "user_rationale",
+            ],
+            &[
+                "project_id",
+                "question_id",
+                "question_revision",
+                "alternative_key",
+                "user_turn",
+            ],
+        )],
+        "checkpoint_record" => vec![shape(
+            &[
+                "project_id",
+                "user_turn",
+                "goal",
+                "next_step",
+                "known_limits",
+            ],
+            &["project_id", "user_turn", "goal", "next_step"],
+        )],
+        "canonical_mutate" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "expected_revision",
+                    "corrected_text",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "expected_revision",
+                    "corrected_text",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "expected_revision",
+                    "corrected_text",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "expected_revision",
+                    "corrected_text",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "alternative_key",
+                    "rationale",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "alternative_key",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "record_kind",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "user_turn",
+                    "record_id",
+                    "record_kind",
+                ],
+            ),
+        ],
+        "document_preview" => vec![shape(
+            &["project_id", "kind", "format", "language", "locale"],
+            &["project_id", "kind"],
+        )],
+        "guarded_interaction" => vec![
+            shape(&["confirmation_request_id"], &["confirmation_request_id"]),
+            shape(
+                &[
+                    "confirmation_request_id",
+                    "request_revision",
+                    "effect_fingerprint",
+                    "decision",
+                    "user_turn",
+                ],
+                &[
+                    "confirmation_request_id",
+                    "request_revision",
+                    "effect_fingerprint",
+                    "decision",
+                    "user_turn",
+                ],
+            ),
+        ],
+        _ => panic!("unexpected public tool {name}"),
+    }
 }

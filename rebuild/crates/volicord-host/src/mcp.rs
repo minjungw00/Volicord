@@ -124,22 +124,25 @@ impl HostAdapter {
             .get("arguments")
             .cloned()
             .unwrap_or_else(|| json!({}));
-        let result = match name {
-            "project_initialize" => self.project_initialize(&arguments),
-            "project_health" => self.project_health(&arguments),
-            "recall" => self.recall(&arguments),
-            "repository_understanding" => self.repository_understanding(&arguments),
-            "repository_analyze" => self.repository_analyze(&arguments),
-            "inquiry_frontier" => self.inquiry_frontier(&arguments),
-            "decision_record" => self.decision_record(&arguments),
-            "checkpoint_record" => self.checkpoint_record(&arguments),
-            "canonical_inspect" => self.canonical_inspect(&arguments),
-            "canonical_mutate" => self.canonical_mutate(&arguments),
-            "candidate_inspect" => self.candidate_inspect(&arguments),
-            "privacy_status" => self.privacy_status(&arguments),
-            "document_preview" => self.document_preview(&arguments),
-            "guarded_interaction" => self.guarded_interaction(&arguments),
-            _ => Err(HostError::new("unknown high-level tool")),
+        let result = match tool_contract(name) {
+            Some(contract) => contract.validate(&arguments).and_then(|()| match name {
+                "project_initialize" => self.project_initialize(&arguments),
+                "project_health" => self.project_health(&arguments),
+                "recall" => self.recall(&arguments),
+                "repository_understanding" => self.repository_understanding(&arguments),
+                "repository_analyze" => self.repository_analyze(&arguments),
+                "inquiry_frontier" => self.inquiry_frontier(&arguments),
+                "decision_record" => self.decision_record(&arguments),
+                "checkpoint_record" => self.checkpoint_record(&arguments),
+                "canonical_inspect" => self.canonical_inspect(&arguments),
+                "canonical_mutate" => self.canonical_mutate(&arguments),
+                "candidate_inspect" => self.candidate_inspect(&arguments),
+                "privacy_status" => self.privacy_status(&arguments),
+                "document_preview" => self.document_preview(&arguments),
+                "guarded_interaction" => self.guarded_interaction(&arguments),
+                _ => Err(HostError::new("tool contract has no handler")),
+            }),
+            None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
             Ok(value) => Ok(tool_result(value, false)),
@@ -597,12 +600,473 @@ pub fn run_stdio(
 }
 
 fn tool_catalog() -> Vec<Value> {
-    HOST_TOOL_NAMES.iter().map(|name| json!({"name":name,"description":tool_description(name),"inputSchema":{"type":"object","additionalProperties":true}})).collect()
+    HOST_TOOL_NAMES
+        .iter()
+        .filter_map(|name| tool_contract(name))
+        .map(|contract| {
+            json!({
+                "name": contract.name,
+                "description": contract.description,
+                "inputSchema": contract.input_schema,
+            })
+        })
+        .collect()
 }
 
-fn tool_description(name: &str) -> &'static str {
-    match name {
-    "project_initialize"=>"Initialize and optionally bind a clean current Volicord Project.","project_health"=>"Distinguish MCP connection from Project capability health.","recall"=>"Read a bounded source-grounded Project resume brief.","repository_understanding"=>"Read the Project overview, repository map, Decision-context-code links, gaps, and degraded states.","repository_analyze"=>"Run local repository inventory and structural analysis.","inquiry_frontier"=>"Read current material Questions and choices.","decision_record"=>"Record one exact current-host user response against one current Question revision.","checkpoint_record"=>"Record a source-linked current-host handoff Checkpoint.","canonical_inspect"=>"Inspect canonical memory without mutation.","canonical_mutate"=>"Correct, supersede, or forget canonical memory through Local Operations using an explicit current-host user turn.","candidate_inspect"=>"Inspect bounded Candidate lifecycle state without mutation.","privacy_status"=>"Inspect Project background-provider consent and local-only state.","document_preview"=>"Preview one of four grounded documents without repository write or adoption.","guarded_interaction"=>"Inspect or answer one exact Guarded request/revision; returns viewer/CLI fallback when host elicitation is unavailable.",_=>"" }
+struct ToolContract {
+    name: &'static str,
+    description: &'static str,
+    input_schema: Value,
+}
+
+impl ToolContract {
+    fn validate(&self, arguments: &Value) -> Result<(), HostError> {
+        validate_schema(&self.input_schema, arguments, "arguments")
+            .map_err(|error| HostError::new(format!("invalid {} arguments: {error}", self.name)))
+    }
+}
+
+fn tool_contract(name: &str) -> Option<ToolContract> {
+    let (description, input_schema) = match name {
+        "project_initialize" => (
+            "Initialize and optionally bind a clean current Volicord Project.",
+            object_schema(
+                vec![
+                    ("display_name", text_schema("Project display name", 1, 1024)),
+                    ("repository", text_schema("Optional absolute repository path", 1, 4096)),
+                ],
+                &["display_name"],
+            ),
+        ),
+        "project_health" => (
+            "Distinguish MCP connection from Project capability health.",
+            object_schema(
+                vec![("project_id", identity_schema("Optional Project identity"))],
+                &[],
+            ),
+        ),
+        "recall" => (
+            "Read a bounded source-grounded Project resume brief.",
+            project_schema(),
+        ),
+        "repository_understanding" => (
+            "Read the Project overview, repository map, Decision-context-code links, gaps, and degraded states.",
+            project_schema(),
+        ),
+        "repository_analyze" => (
+            "Run local repository inventory and structural analysis.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("excluded_paths", string_array_schema("Repository-relative paths to exclude")),
+                ],
+                &["project_id"],
+            ),
+        ),
+        "inquiry_frontier" => (
+            "Read current material Questions and choices.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("material_scope", string_array_schema("Material scope filters")),
+                ],
+                &["project_id"],
+            ),
+        ),
+        "decision_record" => (
+            "Record one exact current-host user response against one current Question revision.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("question_id", identity_schema("Question identity")),
+                    ("question_revision", unsigned_schema("Displayed Question revision", 1)),
+                    ("alternative_key", text_schema("Displayed alternative key", 1, 1024)),
+                    ("user_turn", user_turn_schema()),
+                    ("user_rationale", text_schema("Optional user rationale", 1, 16_384)),
+                ],
+                &["project_id", "question_id", "question_revision", "alternative_key", "user_turn"],
+            ),
+        ),
+        "checkpoint_record" => (
+            "Record a source-linked current-host handoff Checkpoint.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("user_turn", user_turn_schema()),
+                    ("goal", text_schema("Current Project goal", 1, 16_384)),
+                    ("next_step", text_schema("Next meaningful step", 1, 16_384)),
+                    ("known_limits", string_array_schema("Known limits")),
+                ],
+                &["project_id", "user_turn", "goal", "next_step"],
+            ),
+        ),
+        "canonical_inspect" => (
+            "Inspect canonical memory without mutation.",
+            project_schema(),
+        ),
+        "canonical_mutate" => (
+            "Correct, supersede, or forget canonical memory through Local Operations using an explicit current-host user turn.",
+            json!({"oneOf": canonical_mutation_schemas()}),
+        ),
+        "candidate_inspect" => (
+            "Inspect bounded Candidate lifecycle state without mutation.",
+            project_schema(),
+        ),
+        "privacy_status" => (
+            "Inspect Project background-provider consent and local-only state.",
+            project_schema(),
+        ),
+        "document_preview" => (
+            "Preview one of four grounded documents without repository write or adoption.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("kind", enum_schema("Grounded document kind", &["project-architecture-guide", "decision-report", "implementation-plan", "handoff-resume"])),
+                    ("format", enum_schema("Preview format", &["markdown", "html"])),
+                    ("language", text_schema("Requested generated-content language", 1, 128)),
+                    ("locale", enum_schema("Bundled fixed-text locale", &["en", "ko"])),
+                ],
+                &["project_id", "kind"],
+            ),
+        ),
+        "guarded_interaction" => (
+            "Inspect or answer one exact Guarded request/revision; returns viewer/CLI fallback when host elicitation is unavailable.",
+            json!({"oneOf": guarded_interaction_schemas()}),
+        ),
+        _ => return None,
+    };
+    Some(ToolContract {
+        name: HOST_TOOL_NAMES
+            .iter()
+            .copied()
+            .find(|candidate| *candidate == name)?,
+        description,
+        input_schema,
+    })
+}
+
+fn canonical_mutation_schemas() -> Vec<Value> {
+    let common = || {
+        vec![
+            ("project_id", identity_schema("Project identity")),
+            ("user_turn", user_turn_schema()),
+            ("record_id", identity_schema("Canonical record identity")),
+        ]
+    };
+    let correction = |action: &'static str, description: &'static str| {
+        let mut fields = common();
+        fields.push((
+            "action",
+            enum_schema("Canonical mutation action", &[action]),
+        ));
+        fields.push((
+            "expected_revision",
+            unsigned_schema("Expected record revision", 1),
+        ));
+        fields.push(("corrected_text", text_schema(description, 1, 16_384)));
+        object_schema(
+            fields,
+            &[
+                "action",
+                "project_id",
+                "user_turn",
+                "record_id",
+                "expected_revision",
+                "corrected_text",
+            ],
+        )
+    };
+    let mut supersede = common();
+    supersede.push((
+        "action",
+        enum_schema("Canonical mutation action", &["supersede_decision"]),
+    ));
+    supersede.push((
+        "alternative_key",
+        text_schema("New displayed alternative key", 1, 1024),
+    ));
+    supersede.push((
+        "rationale",
+        text_schema("Optional user rationale", 1, 16_384),
+    ));
+    let mut forget = common();
+    forget.push((
+        "action",
+        enum_schema("Canonical mutation action", &["forget"]),
+    ));
+    forget.push((
+        "record_kind",
+        enum_schema(
+            "Forgettable canonical record kind",
+            &[
+                "source",
+                "question",
+                "decision",
+                "context_item",
+                "checkpoint",
+            ],
+        ),
+    ));
+    vec![
+        correction("correct_context", "Corrected Context Item statement"),
+        correction("correct_decision", "Corrected Decision rationale"),
+        object_schema(
+            supersede,
+            &[
+                "action",
+                "project_id",
+                "user_turn",
+                "record_id",
+                "alternative_key",
+            ],
+        ),
+        object_schema(
+            forget,
+            &[
+                "action",
+                "project_id",
+                "user_turn",
+                "record_id",
+                "record_kind",
+            ],
+        ),
+    ]
+}
+
+fn guarded_interaction_schemas() -> Vec<Value> {
+    vec![
+        object_schema(
+            vec![(
+                "confirmation_request_id",
+                identity_schema("Guarded confirmation request identity"),
+            )],
+            &["confirmation_request_id"],
+        ),
+        object_schema(
+            vec![
+                (
+                    "confirmation_request_id",
+                    identity_schema("Guarded confirmation request identity"),
+                ),
+                (
+                    "request_revision",
+                    unsigned_schema("Exact displayed request revision", 1),
+                ),
+                ("effect_fingerprint", fingerprint_schema()),
+                (
+                    "decision",
+                    enum_schema("Explicit current-host response", &["confirm", "deny"]),
+                ),
+                ("user_turn", user_turn_schema()),
+            ],
+            &[
+                "confirmation_request_id",
+                "request_revision",
+                "effect_fingerprint",
+                "decision",
+                "user_turn",
+            ],
+        ),
+    ]
+}
+
+fn project_schema() -> Value {
+    object_schema(
+        vec![("project_id", identity_schema("Project identity"))],
+        &["project_id"],
+    )
+}
+
+fn object_schema(fields: Vec<(&str, Value)>, required: &[&str]) -> Value {
+    let properties = fields
+        .into_iter()
+        .map(|(name, schema)| (name.to_owned(), schema))
+        .collect::<serde_json::Map<_, _>>();
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": false,
+    })
+}
+
+fn identity_schema(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": description,
+        "pattern": "^[0-9a-fA-F]{32}$",
+    })
+}
+
+fn fingerprint_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "Exact Guarded effect fingerprint",
+        "pattern": "^sha256:[0-9a-f]{64}$",
+    })
+}
+
+fn text_schema(description: &str, minimum: usize, maximum: usize) -> Value {
+    json!({
+        "type": "string",
+        "description": description,
+        "minLength": minimum,
+        "maxLength": maximum,
+    })
+}
+
+fn user_turn_schema() -> Value {
+    text_schema("Explicit current-host user turn", 1, 16_384)
+}
+
+fn unsigned_schema(description: &str, minimum: u64) -> Value {
+    json!({
+        "type": "integer",
+        "description": description,
+        "minimum": minimum,
+    })
+}
+
+fn string_array_schema(description: &str) -> Value {
+    json!({
+        "type": "array",
+        "description": description,
+        "items": {"type": "string", "minLength": 1, "maxLength": 4096},
+    })
+}
+
+fn enum_schema(description: &str, values: &[&str]) -> Value {
+    json!({
+        "type": "string",
+        "description": description,
+        "enum": values,
+    })
+}
+
+fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
+        let failures = variants
+            .iter()
+            .filter_map(|variant| validate_schema(variant, value, path).err())
+            .collect::<Vec<_>>();
+        return match variants.len().saturating_sub(failures.len()) {
+            1 => Ok(()),
+            0 => Err(format!(
+                "{path} does not match any allowed shape: {}",
+                failures.join("; ")
+            )),
+            _ => Err(format!("{path} matches more than one allowed shape")),
+        };
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("object") => validate_object(schema, value, path),
+        Some("string") => validate_string(schema, value, path),
+        Some("array") => validate_array(schema, value, path),
+        Some("integer") => validate_integer(schema, value, path),
+        Some(kind) => Err(format!("{path} uses unsupported schema type {kind}")),
+        None => Err(format!("{path} schema has no type")),
+    }
+}
+
+fn validate_object(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{path} must be an object"))?;
+    let properties = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("{path} schema has no properties"))?;
+    if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
+        if let Some(name) = object.keys().find(|name| !properties.contains_key(*name)) {
+            return Err(format!("{path}.{name} is not allowed"));
+        }
+    }
+    if let Some(required) = schema.get("required").and_then(Value::as_array) {
+        for name in required.iter().filter_map(Value::as_str) {
+            if !object.contains_key(name) {
+                return Err(format!("{path}.{name} is required"));
+            }
+        }
+    }
+    for (name, child) in object {
+        if let Some(child_schema) = properties.get(name) {
+            validate_schema(child_schema, child, &format!("{path}.{name}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    let text = value
+        .as_str()
+        .ok_or_else(|| format!("{path} must be a string"))?;
+    let length = text.chars().count() as u64;
+    if let Some(minimum) = schema.get("minLength").and_then(Value::as_u64) {
+        if length < minimum {
+            return Err(format!("{path} is shorter than {minimum} characters"));
+        }
+    }
+    if let Some(maximum) = schema.get("maxLength").and_then(Value::as_u64) {
+        if length > maximum {
+            return Err(format!("{path} exceeds {maximum} characters"));
+        }
+    }
+    if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+        if !values
+            .iter()
+            .any(|candidate| candidate.as_str() == Some(text))
+        {
+            return Err(format!("{path} is not an allowed value"));
+        }
+    }
+    match schema.get("pattern").and_then(Value::as_str) {
+        Some("^[0-9a-fA-F]{32}$") if !is_hex(text, 32, true) => {
+            Err(format!("{path} must contain 32 hexadecimal digits"))
+        }
+        Some("^sha256:[0-9a-f]{64}$")
+            if !text
+                .strip_prefix("sha256:")
+                .is_some_and(|value| is_hex(value, 64, false)) =>
+        {
+            Err(format!("{path} must be a sha256 fingerprint"))
+        }
+        Some("^[0-9a-fA-F]{32}$" | "^sha256:[0-9a-f]{64}$") | None => Ok(()),
+        Some(pattern) => Err(format!("{path} uses unsupported schema pattern {pattern}")),
+    }
+}
+
+fn validate_array(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    let values = value
+        .as_array()
+        .ok_or_else(|| format!("{path} must be an array"))?;
+    let item_schema = schema
+        .get("items")
+        .ok_or_else(|| format!("{path} schema has no item contract"))?;
+    for (index, item) in values.iter().enumerate() {
+        validate_schema(item_schema, item, &format!("{path}[{index}]"))?;
+    }
+    Ok(())
+}
+
+fn validate_integer(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    let number = value
+        .as_u64()
+        .ok_or_else(|| format!("{path} must be an unsigned integer"))?;
+    if let Some(minimum) = schema.get("minimum").and_then(Value::as_u64) {
+        if number < minimum {
+            return Err(format!("{path} must be at least {minimum}"));
+        }
+    }
+    Ok(())
+}
+
+fn is_hex(value: &str, length: usize, uppercase_allowed: bool) -> bool {
+    value.len() == length
+        && value.bytes().all(|byte| {
+            byte.is_ascii_digit()
+                || (b'a'..=b'f').contains(&byte)
+                || (uppercase_allowed && (b'A'..=b'F').contains(&byte))
+        })
 }
 
 fn tool_result(value: Value, is_error: bool) -> Value {
