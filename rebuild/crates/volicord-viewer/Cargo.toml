@@ -13,6 +13,7 @@ name = "volicord-viewer"
 path = "src/main.rs"
 
 [dependencies]
+getrandom = { version = "0.3.4", features = ["std"] }
 volicord-context = { path = "../volicord-context" }
 volicord-operations = { path = "../volicord-operations" }
 volicord-privacy = { path = "../volicord-privacy" }

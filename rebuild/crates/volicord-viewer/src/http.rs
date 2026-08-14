@@ -3,6 +3,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     io::{self, Read, Write},
+    net::SocketAddr,
     path::PathBuf,
 };
 use volicord_context::{
@@ -22,6 +23,9 @@ pub struct ViewerServer {
     default_level: ExplanationLevel,
     requested_language: String,
     session: String,
+    authority: String,
+    origin: String,
+    request_authenticity: String,
 }
 
 impl ViewerServer {
@@ -31,15 +35,25 @@ impl ViewerServer {
         default_locale: ViewerLocale,
         default_level: ExplanationLevel,
         requested_language: String,
-    ) -> Self {
-        Self {
+        authority: SocketAddr,
+    ) -> Result<Self, ViewerError> {
+        if !authority.ip().is_loopback() {
+            return Err(ViewerError::new(
+                "the local viewer authority must use a loopback address",
+            ));
+        }
+        let authority = authority.to_string();
+        Ok(Self {
             adapter,
             project_id,
             default_locale,
             default_level,
             requested_language,
             session: format!("viewer-process-{}", std::process::id()),
-        }
+            origin: format!("http://{authority}"),
+            authority,
+            request_authenticity: new_request_authenticity()?,
+        })
     }
 
     pub fn adapter(&self) -> &ViewerAdapter {
@@ -61,6 +75,10 @@ impl ViewerServer {
     }
 
     fn route(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
+        self.validate_authority(&request)?;
+        if request.method == "POST" {
+            self.validate_mutation_request(&request)?;
+        }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/") => self.render(request.query, None),
             ("POST", "/memory/context/correct") => {
@@ -74,6 +92,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
                 self.adapter
@@ -98,6 +117,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
                 self.adapter
@@ -122,6 +142,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
                 self.adapter
@@ -145,6 +166,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let record = canonical_record(
                     form.required("record_kind")?,
@@ -168,6 +190,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let decision = match form.required("decision")? {
                     "confirm" => ConfirmationDecision::Confirmed,
@@ -198,6 +221,7 @@ impl ViewerServer {
                     "locale",
                     "language",
                     "guarded",
+                    "request_authenticity",
                 ])?;
                 let view = self.view_parameters(&form.values)?;
                 self.adapter
@@ -230,6 +254,38 @@ impl ViewerServer {
         }
     }
 
+    fn validate_authority(&self, request: &HttpRequest) -> Result<(), HttpFailure> {
+        if request.host.as_deref() != Some(self.authority.as_str()) {
+            return Err(HttpFailure::new(
+                421,
+                "Misdirected Request",
+                "request Host does not match the active local viewer authority",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_mutation_request(&self, request: &HttpRequest) -> Result<(), HttpFailure> {
+        if request.origin.as_deref() != Some(self.origin.as_str()) {
+            return Err(HttpFailure::forbidden());
+        }
+        if request
+            .fetch_site
+            .as_deref()
+            .is_some_and(|value| value != "same-origin")
+        {
+            return Err(HttpFailure::forbidden());
+        }
+        let form = request.form()?;
+        let supplied = form
+            .optional("request_authenticity")
+            .ok_or_else(HttpFailure::forbidden)?;
+        if !constant_time_equal(supplied.as_bytes(), self.request_authenticity.as_bytes()) {
+            return Err(HttpFailure::forbidden());
+        }
+        Ok(())
+    }
+
     fn render(
         &self,
         query: FormData,
@@ -250,13 +306,16 @@ impl ViewerServer {
         let guarded = guarded_path.or(guarded_query);
         let page = self
             .adapter
-            .render(&ViewerRequest {
-                project_id: self.project_id,
-                locale: view.locale,
-                explanation_level: view.level,
-                requested_language: view.language,
-                guarded_request: guarded,
-            })
+            .render(
+                &ViewerRequest {
+                    project_id: self.project_id,
+                    locale: view.locale,
+                    explanation_level: view.level,
+                    requested_language: view.language,
+                    guarded_request: guarded,
+                },
+                &self.request_authenticity,
+            )
             .map_err(domain_failure)?;
         Ok(HttpResponse::html(page.html))
     }
@@ -325,6 +384,9 @@ struct HttpRequest {
     path: String,
     query: FormData,
     content_type: Option<String>,
+    host: Option<String>,
+    origin: Option<String>,
+    fetch_site: Option<String>,
     body: Vec<u8>,
 }
 
@@ -373,6 +435,9 @@ impl HttpRequest {
         }
         let mut content_length = None;
         let mut content_type = None;
+        let mut host = None;
+        let mut origin = None;
+        let mut fetch_site = None;
         for line in lines {
             let (name, value) = line
                 .split_once(':')
@@ -396,6 +461,9 @@ impl HttpRequest {
                     }
                     content_type = Some(value.to_ascii_lowercase());
                 }
+                "host" => set_unique_header(&mut host, value, "Host")?,
+                "origin" => set_unique_header(&mut origin, value, "Origin")?,
+                "sec-fetch-site" => set_unique_header(&mut fetch_site, value, "Sec-Fetch-Site")?,
                 "transfer-encoding" => {
                     return Err(HttpFailure::bad_request(
                         "Transfer-Encoding is not supported",
@@ -422,6 +490,9 @@ impl HttpRequest {
             path: percent_decode(path)?,
             query: FormData::parse(raw_query.as_bytes())?,
             content_type,
+            host,
+            origin,
+            fetch_site,
             body,
         })
     }
@@ -554,7 +625,7 @@ impl HttpResponse {
     }
 
     fn write(self, writer: &mut impl Write) -> io::Result<()> {
-        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len())?;
+        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len())?;
         if let Some(location) = self.location {
             write!(writer, "Location: {location}\r\n")?;
         }
@@ -588,6 +659,13 @@ impl HttpFailure {
             405,
             "Method Not Allowed",
             format!("allowed methods: {allowed}"),
+        )
+    }
+    fn forbidden() -> Self {
+        Self::new(
+            403,
+            "Forbidden",
+            "local viewer request authenticity check failed",
         )
     }
 }
@@ -689,4 +767,43 @@ fn percent_encode(value: &str) -> String {
         }
     }
     encoded
+}
+
+fn set_unique_header(
+    destination: &mut Option<String>,
+    value: &str,
+    name: &str,
+) -> Result<(), HttpFailure> {
+    if destination.is_some() || value.is_empty() {
+        return Err(HttpFailure::bad_request(format!(
+            "{name} must be present at most once and non-empty"
+        )));
+    }
+    *destination = Some(value.to_owned());
+    Ok(())
+}
+
+fn new_request_authenticity() -> Result<String, ViewerError> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|error| {
+        ViewerError::new(format!(
+            "operating-system randomness for viewer request authenticity is unavailable: {error}"
+        ))
+    })?;
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    Ok(encoded)
+}
+
+fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut difference = 0_u8;
+    for (left, right) in left.iter().zip(right) {
+        difference |= left ^ right;
+    }
+    difference == 0
 }

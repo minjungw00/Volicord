@@ -1,4 +1,10 @@
-use std::{env, ffi::OsString, net::TcpListener, path::PathBuf, time::Duration};
+use std::{
+    env,
+    ffi::OsString,
+    net::{SocketAddr, TcpListener},
+    path::PathBuf,
+    time::Duration,
+};
 use volicord_context::ProjectId;
 use volicord_operations::{LocalOperations, RuntimeLayout};
 use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerServer};
@@ -49,7 +55,10 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         }
         index += 2;
     }
-    if !bind.starts_with("127.0.0.1:") && !bind.starts_with("[::1]:") {
+    let bind_address = bind
+        .parse::<SocketAddr>()
+        .map_err(|error| format!("invalid viewer bind address {bind}: {error}"))?;
+    if !bind_address.ip().is_loopback() {
         return Err("the local viewer binds only to a loopback address".into());
     }
     let project = project.ok_or_else(|| "--project is required".to_owned())?;
@@ -57,16 +66,21 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         Some(path) => RuntimeLayout::new(path).map_err(|error| error.to_string())?,
         None => RuntimeLayout::from_environment().map_err(|error| error.to_string())?,
     };
+    let listener = TcpListener::bind(bind_address)
+        .map_err(|error| format!("cannot bind {bind_address}: {error}"))?;
+    let authority = listener
+        .local_addr()
+        .map_err(|error| format!("cannot identify bound viewer authority: {error}"))?;
     let server = ViewerServer::new(
         ViewerAdapter::new(LocalOperations::new(layout)),
         project,
         locale,
         level,
         language,
-    );
-    let listener =
-        TcpListener::bind(&bind).map_err(|error| format!("cannot bind {bind}: {error}"))?;
-    eprintln!("Volicord local viewer: http://{bind}/");
+        authority,
+    )
+    .map_err(|error| error.to_string())?;
+    eprintln!("Volicord local viewer: http://{authority}/");
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|error| format!("viewer connection failed: {error}"))?;
         stream

@@ -26,13 +26,16 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         .expect("basis before render");
     let repository_entries_before = repository_entries(&_temporary);
     let page = viewer
-        .render(&ViewerRequest {
-            project_id: project,
-            locale: ViewerLocale::English,
-            explanation_level: ExplanationLevel::Deep,
-            requested_language: "fr-CA".into(),
-            guarded_request: None,
-        })
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Deep,
+                requested_language: "fr-CA".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
         .expect("render viewer");
     let after = viewer
         .operations()
@@ -67,13 +70,16 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
         ExplanationLevel::Deep,
     ] {
         let page = viewer
-            .render(&ViewerRequest {
-                project_id: project,
-                locale: ViewerLocale::Korean,
-                explanation_level: level,
-                requested_language: "한국어".into(),
-                guarded_request: None,
-            })
+            .render(
+                &ViewerRequest {
+                    project_id: project,
+                    locale: ViewerLocale::Korean,
+                    explanation_level: level,
+                    requested_language: "한국어".into(),
+                    guarded_request: None,
+                },
+                "test-request-authenticity",
+            )
             .expect("render Korean viewer");
         assert!(page.html.contains("프로젝트 개요"));
         assert!(page.html.contains("저장소 지도"));
@@ -110,13 +116,16 @@ fn guarded_fallback_preserves_exact_request_revision_and_source_linkage() {
         })
         .expect("create Guarded request");
     let page = viewer
-        .render(&ViewerRequest {
-            project_id: project,
-            locale: ViewerLocale::English,
-            explanation_level: ExplanationLevel::Working,
-            requested_language: "en".into(),
-            guarded_request: Some(request.confirmation_request_identity),
-        })
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Working,
+                requested_language: "en".into(),
+                guarded_request: Some(request.confirmation_request_identity),
+            },
+            "test-request-authenticity",
+        )
         .expect("render Guarded fallback");
     assert!(page
         .html

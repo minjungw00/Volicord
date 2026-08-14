@@ -86,7 +86,11 @@ impl ViewerAdapter {
         &self.operations
     }
 
-    pub fn render(&self, request: &ViewerRequest) -> Result<ViewerPage, ViewerError> {
+    pub fn render(
+        &self,
+        request: &ViewerRequest,
+        request_authenticity: &str,
+    ) -> Result<ViewerPage, ViewerError> {
         let projection = self
             .operations
             .project_projection(request.project_id)
@@ -157,10 +161,10 @@ impl ViewerAdapter {
         render_candidates(&mut html, request, &projection);
         render_canonical(&mut html, request, &projection);
         render_privacy(&mut html, request, privacy.as_ref());
-        render_documents(&mut html, request, &documents);
-        render_mutation_controls(&mut html, request, &projection);
+        render_documents(&mut html, request, &documents, request_authenticity);
+        render_mutation_controls(&mut html, request, &projection, request_authenticity);
         if let Some(candidate) = guarded.as_ref() {
-            render_guarded(&mut html, request, candidate);
+            render_guarded(&mut html, request, candidate, request_authenticity);
         }
         html.push_str("</main></body></html>");
         Ok(ViewerPage {
@@ -594,7 +598,12 @@ fn render_privacy(
     }
 }
 
-fn render_documents(html: &mut String, request: &ViewerRequest, documents: &DocumentSet) {
+fn render_documents(
+    html: &mut String,
+    request: &ViewerRequest,
+    documents: &DocumentSet,
+    request_authenticity: &str,
+) {
     heading(
         html,
         2,
@@ -629,7 +638,7 @@ fn render_documents(html: &mut String, request: &ViewerRequest, documents: &Docu
         ));
     }
     html.push_str(&format!("</select></label> <label>{} <select name=\"format\"><option value=\"markdown\">Markdown</option><option value=\"html\">HTML</option></select></label> <label>{} <input name=\"destination\" required></label>", escape(text(request.locale, "Format", "형식")), escape(text(request.locale, "Absolute destination", "절대 대상 경로"))));
-    render_view_fields(html, request);
+    render_view_fields(html, request, request_authenticity);
     html.push_str(&format!(
         "<button type=\"submit\">{}</button></form>",
         escape(text(request.locale, "Export", "내보내기"))
@@ -641,6 +650,7 @@ fn render_mutation_controls(
     html: &mut String,
     request: &ViewerRequest,
     projection: &ProjectProjection,
+    request_authenticity: &str,
 ) {
     heading(html, 2, text(request.locale, "Memory actions", "기억 작업"));
     item(html, text(request.locale, "Correction, supersession, forgetting, provider changes, document publication, and Guarded responses are submitted to Local Operations; this viewer has no write store", "수정, 대체, 삭제, 공급자 변경, 문서 게시 및 보호 응답은 로컬 작업 계층에 제출됨; 이 뷰어에는 쓰기 저장소가 없음"));
@@ -651,7 +661,7 @@ fn render_mutation_controls(
                 hidden(html, "record_id", &record.identity);
                 hidden(html, "expected_revision", &record.revision.to_string());
                 html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected statement", "수정한 진술")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
-                render_view_fields(html, request);
+                render_view_fields(html, request, request_authenticity);
                 html.push_str(&format!(
                     "<button type=\"submit\">{}</button></form></details>",
                     escape(text(request.locale, "Correct", "수정"))
@@ -662,11 +672,11 @@ fn render_mutation_controls(
                 hidden(html, "record_id", &record.identity);
                 hidden(html, "expected_revision", &record.revision.to_string());
                 html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected rationale", "수정한 근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
-                render_view_fields(html, request);
+                render_view_fields(html, request, request_authenticity);
                 html.push_str(&format!("<button type=\"submit\">{}</button></form><form method=\"post\" action=\"/memory/decision/supersede\">", escape(text(request.locale, "Correct rationale", "근거 수정"))));
                 hidden(html, "record_id", &record.identity);
                 html.push_str(&format!("<label>{} <input name=\"alternative\" required></label><label>{} <textarea name=\"rationale\"></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "New displayed alternative key", "새 표시 대안 키")), escape(text(request.locale, "Rationale", "근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
-                render_view_fields(html, request);
+                render_view_fields(html, request, request_authenticity);
                 html.push_str(&format!(
                     "<button type=\"submit\">{}</button></form></details>",
                     escape(text(request.locale, "Supersede", "대체"))
@@ -686,7 +696,7 @@ fn render_mutation_controls(
                     "현재 사용자 입력"
                 ))
             ));
-            render_view_fields(html, request);
+            render_view_fields(html, request, request_authenticity);
             html.push_str(&format!(
                 "<button type=\"submit\">{}</button></form></details>",
                 escape(text(request.locale, "Forget this record", "이 기록 삭제"))
@@ -699,6 +709,7 @@ fn render_guarded(
     html: &mut String,
     request: &ViewerRequest,
     candidate: &volicord_operations::GuardedEffectCandidate,
+    request_authenticity: &str,
 ) {
     heading(
         html,
@@ -739,7 +750,7 @@ fn render_guarded(
             "현재 사용자 입력"
         ))
     ));
-    render_view_fields(html, request);
+    render_view_fields(html, request, request_authenticity);
     html.push_str(&format!("<button name=\"decision\" value=\"confirm\" type=\"submit\">{}</button> <button name=\"decision\" value=\"deny\" type=\"submit\">{}</button></form>", escape(text(request.locale, "Confirm exact effect", "정확한 효과 확인")), escape(text(request.locale, "Deny", "거부"))));
 }
 
@@ -812,7 +823,8 @@ fn forgettable_kind(kind: CanonicalInspectionKind) -> Option<&'static str> {
     }
 }
 
-fn render_view_fields(html: &mut String, request: &ViewerRequest) {
+fn render_view_fields(html: &mut String, request: &ViewerRequest, request_authenticity: &str) {
+    hidden(html, "request_authenticity", request_authenticity);
     hidden(html, "level", level_key(request.explanation_level));
     hidden(html, "locale", locale_key(request.locale));
     hidden(html, "language", &request.requested_language);

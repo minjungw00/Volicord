@@ -89,14 +89,25 @@ fn get(address: &str, target: &str) -> String {
     )
 }
 
-fn post(address: &str, target: &str, body: &str) -> String {
+fn post(address: &str, target: &str, body: &str, request_authenticity: &str) -> String {
+    let body = format!("{body}&request_authenticity={request_authenticity}");
     exchange(
         address,
         &format!(
-            "POST {target} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "POST {target} HTTP/1.1\r\nHost: {address}\r\nOrigin: http://{address}\r\nSec-Fetch-Site: same-origin\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         ),
     )
+}
+
+fn request_authenticity(response: &str) -> String {
+    let marker = "name=\"request_authenticity\" value=\"";
+    let start = response.find(marker).expect("request authenticity field") + marker.len();
+    let end = response[start..]
+        .find('"')
+        .map(|offset| start + offset)
+        .expect("request authenticity value end");
+    response[start..end].to_owned()
 }
 
 fn export(
@@ -141,6 +152,13 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     assert!(deep.contains("main.py"));
     assert_ne!(overview, working);
     assert_ne!(working, deep);
+    let request_authenticity = request_authenticity(&overview);
+    let rebound = exchange(
+        &address,
+        "GET /?level=deep HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n",
+    );
+    assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
+    assert!(!rebound.contains("request_authenticity"));
 
     let mut store = Store::open(operations.layout().canonical_store()).expect("canonical store");
     let project_revision = store.get_project(project).expect("Project").revision;
@@ -197,6 +215,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
             "record_id={}&expected_revision={}&corrected_text=state+created+after+viewer+startup&user_turn=Correct+this+viewer+memory&level=deep&locale=en&language=en",
             context.id, context.revision
         ),
+        &request_authenticity,
     );
     assert!(
         corrected.starts_with("HTTP/1.1 303 See Other"),
@@ -229,6 +248,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         &address,
         "/memory/forget",
         "record_kind=source&record_id=00000000000000000000000000000000&user_turn=no&unexpected=true",
+        &request_authenticity,
     )
     .starts_with("HTTP/1.1 400 Bad Request"));
     let after_invalid = export(
@@ -295,6 +315,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
                 "confirmation_request_id={}&request_revision={revision}&effect_fingerprint={fingerprint}&decision=confirm&user_turn={turn}&guarded={}",
                 current.confirmation_request_identity, current.confirmation_request_identity
             ),
+            &request_authenticity,
         )
     };
     assert!(submit(

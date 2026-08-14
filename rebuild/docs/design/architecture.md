@@ -203,6 +203,12 @@ Adapters가 소유한다. Host가 confirmation을 elicitation할 수 없으면 �
 contract를 local viewer 또는 CLI로 전달하는 fallback을 제공한다. Fallback은 weaker
 approval, general consent 또는 다른 operation identity를 만드는 경로가 아니다.
 
+Local viewer는 실제 bound loopback listener에서 하나의 HTTP authority를 정하고,
+sensitive view를 제공하기 전에 exact Host 일치를 요구한다. 모든 mutation POST는 domain
+operation 전에 exact local Origin, present할 경우 `same-origin` Fetch Metadata와 viewer가
+발급한 cryptographically unguessable operational form token을 검증한다. 이 token은
+canonical/portable/document meaning이나 Guarded confirmation의 두 번째 approval이 아니다.
+
 Adapter는 Question을 답한 것으로 추론하거나, recommendation을 user choice로
 바꾸거나, low-level transport identity를 domain identity로 만들지 않는다. 특정
 host, command 또는 wire representation은 이 문서의 architecture contract가
