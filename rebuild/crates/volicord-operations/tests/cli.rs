@@ -309,3 +309,183 @@ fn cli_guarded_fallback_preserves_request_revision_fingerprint_and_source_linkag
     assert!(confirmation["user_response_source_id"].as_str().is_some());
     Ok(())
 }
+
+#[test]
+fn cli_handoff_requires_and_records_an_explicit_target_without_changing_other_kinds(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{CanonicalReadOptions, ProjectId, Store};
+
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let runtime_text = runtime.to_str().ok_or("runtime path")?;
+    let mut output = Vec::new();
+    let mut error = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "project",
+                "init",
+                "Checkpoint Fixture",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS
+    );
+    let initialized: Value = serde_json::from_slice(&output)?;
+    let project = initialized["project_id"]
+        .as_str()
+        .ok_or("missing Project ID")?
+        .to_owned();
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "canonical",
+                "user-source",
+                &project,
+                "cli",
+                "checkpoint-test",
+                "record an explicit checkpoint",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS
+    );
+    let source: Value = serde_json::from_slice(&output)?;
+    let source = source["identity"]
+        .as_str()
+        .ok_or("missing Source ID")?
+        .to_owned();
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "checkpoint",
+                "record",
+                &project,
+                "handoff",
+                &source,
+                "handoff goal",
+                "continue work",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::USAGE
+    );
+    assert!(String::from_utf8_lossy(&error).contains("missing explicit handoff target"));
+
+    let project_id = ProjectId::from_bytes(parse_hex_identity(&project)?);
+    let store = Store::open(runtime.join("canonical.sqlite3"))?;
+    assert!(store
+        .read_canonical_basis(
+            project_id,
+            CanonicalReadOptions {
+                include_checkpoint_history: true,
+            },
+        )?
+        .checkpoint_history
+        .is_empty());
+    drop(store);
+
+    for kind in ["completion", "pause"] {
+        output.clear();
+        error.clear();
+        assert_eq!(
+            run_cli(
+                [
+                    "--runtime",
+                    runtime_text,
+                    "checkpoint",
+                    "record",
+                    &project,
+                    kind,
+                    &source,
+                    "ordinary checkpoint goal",
+                    "continue ordinary work",
+                ],
+                &mut output,
+                &mut error,
+            ),
+            CliExit::SUCCESS,
+            "{}",
+            String::from_utf8_lossy(&error)
+        );
+    }
+    let store = Store::open(runtime.join("canonical.sqlite3"))?;
+    let before_handoff = store.read_canonical_basis(
+        project_id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+    assert_eq!(before_handoff.checkpoint_history.len(), 2);
+    assert!(before_handoff
+        .checkpoint_history
+        .iter()
+        .all(|checkpoint| checkpoint.handoff_to.is_none()));
+    drop(store);
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "checkpoint",
+                "record",
+                &project,
+                "handoff",
+                &source,
+                "handoff goal",
+                "continue work",
+                "next Codex session",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let store = Store::open(runtime.join("canonical.sqlite3"))?;
+    let after_handoff = store.read_canonical_basis(
+        project_id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+    assert_eq!(after_handoff.checkpoint_history.len(), 3);
+    assert_eq!(
+        after_handoff
+            .latest_checkpoint
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.handoff_to.as_deref()),
+        Some("next Codex session")
+    );
+    Ok(())
+}
+
+fn parse_hex_identity(value: &str) -> Result<[u8; 16], Box<dyn std::error::Error>> {
+    if value.len() != 32 {
+        return Err("identity must contain 32 hexadecimal digits".into());
+    }
+    let mut bytes = [0_u8; 16];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] = u8::from_str_radix(std::str::from_utf8(pair)?, 16)?;
+    }
+    Ok(bytes)
+}

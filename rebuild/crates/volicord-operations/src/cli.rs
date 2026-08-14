@@ -517,7 +517,7 @@ fn inquiry(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
 fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     if cursor.next("checkpoint command")? != "record" {
         return Err(usage(
-            "checkpoint currently supports: checkpoint record PROJECT KIND SOURCE GOAL NEXT_STEP",
+            "checkpoint currently supports: checkpoint record PROJECT KIND SOURCE GOAL NEXT_STEP [HANDOFF_TARGET]",
         ));
     }
     let project = project_id(&cursor.next("Project ID")?)?;
@@ -534,6 +534,16 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
     let source = source_id(&cursor.next("grounding Source ID")?)?;
     let goal = cursor.next("goal")?;
     let next_step = cursor.next("next step")?;
+    let handoff_to = if kind == CheckpointKind::Handoff {
+        Some(cursor.next("explicit handoff target")?)
+    } else {
+        None
+    };
+    if cursor.has_remaining() {
+        return Err(usage(
+            "checkpoint accepts HANDOFF_TARGET only for handoff and accepts no trailing arguments",
+        ));
+    }
     let project_revision = operations.canonical_basis(project)?.project.revision;
     let work_state = match kind {
         CheckpointKind::Completion => WorkState::Completed,
@@ -568,7 +578,7 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
             non_goals: Vec::new(),
             open_questions: Vec::new(),
             next_step,
-            handoff_to: None,
+            handoff_to,
         },
     )?;
     mutation_json("checkpoint_record", result)
@@ -809,6 +819,9 @@ impl Cursor {
     }
     fn previous(&self) -> Option<String> {
         self.previous.clone()
+    }
+    fn has_remaining(&self) -> bool {
+        self.index < self.args.len()
     }
     fn done(&self) -> Result<(), Error> {
         if self.index == self.args.len() {
