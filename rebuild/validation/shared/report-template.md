@@ -14,11 +14,15 @@ List the decision identifiers and preserve their accepted scope.
 
 ## Input repositories and revisions
 
-List fixture IDs, content hashes, and source revisions.
+List fixture IDs, content hashes, and source revisions. For a capsule-backed V11
+conclusion, also record the candidate and maintained dependency/fixture identity
+paths and SHA-256 values.
 
 ## Environment and tool versions
 
-Record the operating system, executable versions, and unavailable tools.
+Record the operating system, executable versions, and unavailable tools. For a
+capsule-backed V11 conclusion, preserve the capsule field labels and exact
+environment, runtime, and tool-version values.
 
 ## Candidate approaches
 
@@ -26,7 +30,9 @@ Describe every required approach and whether it was executable.
 
 ## Commands and configuration
 
-Record exact reproducible commands and meaningful configuration.
+Record exact reproducible commands and meaningful configuration. For a
+capsule-backed V11 conclusion, include the gate and exact-final argument vectors,
+bounded transmission configuration, and same-gate final-to-V11 artifact flow.
 
 ## Observed results
 

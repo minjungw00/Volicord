@@ -17,6 +17,10 @@ surface, not a Volicord product command or production architecture.
   admission/gate entry point into isolated temporary Git repositories and
   checks clean, initially dirty, and admission-generated dirty candidates
   without invoking the real exact final or official V11.
+- `rebuild/scripts/check-validation-report --self-test` proves generic report
+  compatibility plus positive and negative capsule-backed V11 semantics. The
+  negative cases omit a required tool version or exact-final command vector;
+  neither exact final nor official V11 is invoked.
 - `rebuild/scripts/validate focused <label> -- <command> [arguments...]` runs
   the exact argument vector from the repository root and records the command,
   working directory, timestamps, duration, complete separate stdout/stderr,
@@ -151,22 +155,53 @@ stderr. The gate writes `admission.json`, `gate-result.json`, and `capsule.json`
 under the reported ignored run directory and prints the complete capsule to
 stdout so it can be copied before that directory disappears.
 
-The versionless current capsule has `kind = validation_handoff_capsule` and
-contains only the validated HEAD, final status/command outcomes/failure count
-and summary hash, official V11 status/result hash and required-step counts,
-fixture identities, `phase_8_ready`, credential-audit counts, bounded
-authenticated-Codex classifications, active Decision revisit-trigger IDs when
-reported, and any gate blocker. It excludes credentials and fingerprints,
-source bodies, raw logs/provider payloads, and private prompt bodies. A later
-documentation-only session uses the copied capsule and maintained tracked
+The versionless current capsule has `kind = validation_handoff_capsule`. Its
+bounded cross-session evidence is:
+
+- validated candidate HEAD, pre-final check, and any gate blocker;
+- Linux OS/release/platform, machine/architecture, and Python runtime identity;
+- bounded Python, Git, Cargo, Rust compiler, and installed Codex CLI version
+  probes, including explicit unavailable/error state;
+- SHA-256 identities for `rebuild/Cargo.lock`, `rebuild/Cargo.toml`, and the
+  maintained fixture manifest, plus the required V11 fixture identities;
+- the exact reproducible gate `argv`, technical network assertion, bounded
+  authorization assertion ID, and maintained destination, purpose, target
+  scope, and source scope;
+- exact-final aggregate status, failure count, summary hash, and each command's
+  actual `argv`, outcome, exit/termination, and duration;
+- same-gate final artifact production and consumption facts for V11 preflight
+  and official V11;
+- official V11 status/result hash and status counts, authenticated target
+  classifications, credential-audit result/counts, `phase_8_ready`, and active
+  Decision revisit-trigger state.
+
+It excludes environment-variable or home-directory dumps, usernames,
+credentials, `auth.json` contents, reusable credential fingerprints, source
+bodies, full command logs, raw provider payloads, and private prompt bodies. A
+later documentation-only session uses the copied capsule and maintained tracked
 inputs; it never needs, searches for, or substitutes an ignored final or V11
 artifact from another session.
+
+Generic maintained reports keep the one-argument shape check. A V11 conclusion
+must use the capsule-backed semantic mode so the checker compares structured
+capsule values to the relevant report sections:
+
+```text
+rebuild/scripts/check-validation-report \
+  --capsule /path/to/copied-capsule.json \
+  rebuild/validation/end-to-end/multi-repository/report.md
+```
+
+The report records the capsule field labels and values; it may render them as
+tables or prose. Statements that versions or commands were not projected do
+not satisfy this mode when the capsule contains those values.
 
 Examples:
 
 ```text
 rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
 rebuild/scripts/check-validation-report rebuild/validation/repository-intelligence/polyglot-structural/report.md
+rebuild/scripts/check-validation-report --self-test
 ```
 
 The Phase 5 acceptance orchestrator maps maintained fixture and requirement

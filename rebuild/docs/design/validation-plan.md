@@ -136,15 +136,39 @@ documentation-only conclusion commit까지 exact-final candidate에 포함됐다
 production/test code를 바꾸거나 final/V11을 다시 실행하지 않는다.
 
 Gate는 numeric legacy version branch가 없는 현재 `validation_handoff_capsule` 하나를
-stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 validated HEAD,
-final aggregate/command outcome/failure count와 summary SHA-256, V11 status/result SHA-256,
-fixture identity, required-step/status count, `phase_8_ready`, credential-audit count/result,
-target별 authenticated Codex classification, reported active Decision revisit-trigger ID와
-blocking classification만 bounded projection으로 보존한다. Credential/API/session token,
-credential content나 reusable fingerprint, source body, full log, raw provider payload와
-private prompt body는 포함하지 않는다. 따라서 raw `.local` evidence가 session 뒤
-삭제돼도 copied capsule은 독립 conclusion handoff로 충분하며, ignored artifact의
-cross-session persistence는 maintained contract가 아니다.
+stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 다음 bounded evidence를
+보존한다.
+
+- validated candidate HEAD, pre-final candidate check와 blocking classification
+- 실제 Linux OS/release/platform, machine/architecture와 Python runtime identity
+- bounded `--version` probe에서 얻은 Python, Git, Cargo, Rust compiler와 installed Codex
+  CLI version 또는 probe별 explicit `unavailable`/`error` state
+- reconstruction `Cargo.lock`, workspace `Cargo.toml`과 maintained fixture manifest의 path,
+  SHA-256 및 V11 required fixture identity
+- gate의 reproducible `argv`, technical external-network assertion, exact bounded
+  authorization assertion ID, maintained destination/purpose/target/source scope
+- exact final aggregate status/failure count/summary SHA-256와 command별 actual `argv`,
+  outcome, exit/termination 및 duration
+- final artifact가 같은 gate invocation에서 생성되고 V11 preflight와 official V11에
+  전달됐는지를 나타내는 artifact-flow fact
+- V11 status/result SHA-256, fixture identity, required-step/status count,
+  `phase_8_ready`, credential-audit count/result, target별 authenticated Codex
+  classification과 reported active Decision revisit-trigger ID
+
+Version probe는 fixed non-secret command만 사용하며 environment variable, home content,
+username 또는 unrelated host metadata를 수집하지 않는다. Capsule은 Credential/API/session
+token, `auth.json` content, credential content나 reusable fingerprint, source body, full
+command log, raw provider payload와 private prompt body를 포함하지 않는다. 따라서 raw
+`.local` evidence가 session 뒤 삭제돼도 copied capsule은 독립 conclusion handoff로
+충분하며, ignored artifact의 cross-session persistence는 maintained contract가 아니다.
+
+`check-validation-report`의 기본 one-report mode는 기존 generic report shape만 검사한다.
+V11 documentation conclusion은 `--capsule <copied-capsule.json>`을 함께 전달하는 semantic
+mode를 사용한다. 이 mode는 raw `.local` artifact를 읽거나 추론하지 않고 capsule의
+structured value를 report section과 비교해 candidate/environment/tool/dependency,
+exact command/configuration, final/V11 hash와 count, credential audit, `phase_8_ready` 및
+Decision revisit-trigger state가 실제로 기록됐는지 검사한다. Capsule에 value가 있는데도
+version이나 command가 unavailable/not projected라고 대체한 report는 통과하지 않는다.
 
 ## 4. 실행 순서
 
