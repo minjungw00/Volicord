@@ -7,12 +7,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 
@@ -94,6 +96,145 @@ def tool(
     return result["structuredContent"]
 
 
+def tool_result(
+    process: subprocess.Popen[str], request_id: int, name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    return rpc(
+        process,
+        request_id,
+        "tools/call",
+        {"name": name, "arguments": arguments},
+    )["result"]
+
+
+def schema_variants(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    variants = schema.get("oneOf")
+    return variants if isinstance(variants, list) else [schema]
+
+
+def assert_concrete_schema(name: str, schema: dict[str, Any]) -> None:
+    variants = schema_variants(schema)
+    require(bool(variants), f"{name} advertises no usable input shape")
+    for variant in variants:
+        require(variant.get("type") == "object", f"{name} input is not an object")
+        require(
+            variant.get("additionalProperties") is False,
+            f"{name} input permits undocumented properties",
+        )
+        properties = variant.get("properties")
+        required = variant.get("required")
+        require(isinstance(properties, dict) and properties, f"{name} has no properties")
+        require(isinstance(required, list), f"{name} has no required-field declaration")
+        require(set(required) <= set(properties), f"{name} requires an undocumented property")
+        for field, child in properties.items():
+            require(isinstance(child, dict), f"{name}.{field} schema is not concrete")
+            require(isinstance(child.get("description"), str), f"{name}.{field} is undescribed")
+            require(
+                child.get("type") in {"string", "integer", "array"},
+                f"{name}.{field} uses an unsupported client-visible type",
+            )
+            if child.get("type") == "array":
+                require(isinstance(child.get("items"), dict), f"{name}.{field} has no item schema")
+
+
+def schema_error(schema: dict[str, Any], value: Any, path: str = "arguments") -> str | None:
+    variants = schema.get("oneOf")
+    if isinstance(variants, list):
+        matches = [variant for variant in variants if schema_error(variant, value, path) is None]
+        return None if len(matches) == 1 else f"{path} must match exactly one shape"
+    kind = schema.get("type")
+    if kind == "object":
+        if not isinstance(value, dict):
+            return f"{path} must be an object"
+        properties = schema.get("properties", {})
+        if schema.get("additionalProperties") is False:
+            unknown = next((field for field in value if field not in properties), None)
+            if unknown is not None:
+                return f"{path}.{unknown} is not allowed"
+        for field in schema.get("required", []):
+            if field not in value:
+                return f"{path}.{field} is required"
+        for field, child in value.items():
+            if field in properties:
+                error = schema_error(properties[field], child, f"{path}.{field}")
+                if error:
+                    return error
+        return None
+    if kind == "string":
+        if not isinstance(value, str):
+            return f"{path} must be a string"
+        if len(value) < schema.get("minLength", 0):
+            return f"{path} is too short"
+        if len(value) > schema.get("maxLength", len(value)):
+            return f"{path} is too long"
+        if "enum" in schema and value not in schema["enum"]:
+            return f"{path} is not an allowed value"
+        if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
+            return f"{path} does not match its pattern"
+        return None
+    if kind == "integer":
+        if not isinstance(value, int) or isinstance(value, bool):
+            return f"{path} must be an integer"
+        if value < schema.get("minimum", value):
+            return f"{path} is too small"
+        return None
+    if kind == "array":
+        if not isinstance(value, list):
+            return f"{path} must be an array"
+        for index, item in enumerate(value):
+            error = schema_error(schema["items"], item, f"{path}[{index}]")
+            if error:
+                return error
+        return None
+    return f"{path} uses an unsupported schema"
+
+
+def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
+    kind = schema.get("type")
+    description = str(schema.get("description", "")).lower()
+    if kind == "string":
+        if "enum" in schema:
+            return schema["enum"][0]
+        pattern = schema.get("pattern")
+        if pattern == "^[0-9a-fA-F]{32}$":
+            if "guarded confirmation" in description:
+                return context["confirmation_request_id"]
+            return context["project_id"]
+        if pattern == "^sha256:[0-9a-f]{64}$":
+            return context["effect_fingerprint"]
+        if "user turn" in description:
+            return "Explicit V08 schema-driven user turn"
+        if "goal" in description:
+            return "Validate discoverable MCP contracts"
+        if "next meaningful step" in description:
+            return "Continue the corrected Phase 7 validation"
+        minimum = int(schema.get("minLength", 1))
+        return "schema-client".ljust(minimum, "x")
+    if kind == "integer":
+        if "request revision" in description:
+            return context["request_revision"]
+        return int(schema.get("minimum", 0))
+    if kind == "array":
+        return []
+    if kind == "object":
+        return {
+            field: value_from_schema(schema["properties"][field], context)
+            for field in schema.get("required", [])
+        }
+    raise AssertionError(f"cannot interpret advertised schema: {schema}")
+
+
+def arguments_from_schema(
+    schema: dict[str, Any], context: dict[str, Any], *, fullest: bool = False
+) -> dict[str, Any]:
+    variants = schema_variants(schema)
+    variant = max(variants, key=lambda value: len(value.get("required", []))) if fullest else variants[0]
+    value = value_from_schema(variant, context)
+    require(isinstance(value, dict), "advertised tool input did not produce an object")
+    require(schema_error(schema, value) is None, f"schema-generated arguments are invalid: {value}")
+    return value
+
+
 def start_host(binary: Path, env: dict[str, str]) -> subprocess.Popen[str]:
     return subprocess.Popen(
         [str(binary)],
@@ -115,7 +256,7 @@ def stop_host(process: subprocess.Popen[str]) -> None:
     require(process.poll() == 0, "MCP host remains live after EOF")
 
 
-def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[str]:
+def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dict[str, Any]]:
     initialized = rpc(
         process,
         request_id,
@@ -126,11 +267,186 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[str
     catalog = rpc(process, request_id + 1, "tools/list", {})["result"]["tools"]
     names = [entry["name"] for entry in catalog]
     require(names == EXPECTED_TOOLS, "high-level MCP catalog changed")
-    return names
+    return catalog
+
+
+def exercise_discovered_tool_contracts(
+    process: subprocess.Popen[str], catalog: list[dict[str, Any]], project_id: str,
+    guarded: dict[str, Any]
+) -> dict[str, Any]:
+    context = {
+        "project_id": project_id,
+        "confirmation_request_id": guarded["confirmation_request_identity"],
+        "request_revision": guarded["request_revision"],
+        "effect_fingerprint": guarded["effect_fingerprint"],
+    }
+    by_name = {entry["name"]: entry for entry in catalog}
+    request_id = 100
+    for name, entry in by_name.items():
+        schema = entry.get("inputSchema")
+        require(isinstance(schema, dict), f"{name} has no advertised inputSchema")
+        assert_concrete_schema(name, schema)
+
+        unknown = {"unexpected_v08_field": True}
+        require(schema_error(schema, unknown) is not None, f"{name} locally accepted an unknown field")
+        rejected = tool_result(process, request_id, name, unknown)
+        request_id += 1
+        require(rejected["isError"] is True, f"{name} server accepted an unknown field")
+        require(
+            f"invalid {name} arguments" in rejected["structuredContent"]["error"],
+            f"{name} unknown-field failure bypassed advertised validation",
+        )
+
+        variant = max(schema_variants(schema), key=lambda value: len(value.get("required", [])))
+        required = variant.get("required", [])
+        if required:
+            complete = value_from_schema(variant, context)
+            missing = dict(complete)
+            missing.pop(required[-1])
+            require(schema_error(schema, missing) is not None, f"{name} locally accepted a missing field")
+            rejected = tool_result(process, request_id, name, missing)
+            request_id += 1
+            require(rejected["isError"] is True, f"{name} server accepted a missing field")
+            require(
+                f"invalid {name} arguments" in rejected["structuredContent"]["error"],
+                f"{name} missing-field failure bypassed advertised validation",
+            )
+
+    recall_args = arguments_from_schema(by_name["recall"]["inputSchema"], context)
+    recall = tool(process, request_id, "recall", recall_args)
+    request_id += 1
+    require(recall["project_id"] == project_id and recall["read_only"] is True, "schema-built Recall failed")
+
+    checkpoint_args = arguments_from_schema(by_name["checkpoint_record"]["inputSchema"], context)
+    checkpoint = tool(process, request_id, "checkpoint_record", checkpoint_args)
+    request_id += 1
+    require(checkpoint.get("checkpoint_id"), "schema-built Checkpoint failed")
+
+    guarded_args = arguments_from_schema(
+        by_name["guarded_interaction"]["inputSchema"], context, fullest=True
+    )
+    guarded_result = tool(process, request_id, "guarded_interaction", guarded_args)
+    require(
+        guarded_result["confirmation_request_id"] == context["confirmation_request_id"]
+        and guarded_result["request_revision"] == context["request_revision"],
+        "schema-built Guarded response lost exact identity or revision",
+    )
+    return {
+        "advertised_tools": len(catalog),
+        "schema_invalid_calls": request_id - 100,
+        "schema_built_calls": ["recall", "checkpoint_record", "guarded_interaction"],
+    }
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def exercise_analysis_recovery(
+    cli: Path, env: dict[str, str], temporary: Path, runtime: Path
+) -> dict[str, Any]:
+    first_repository = temporary / "repair-repository"
+    second_repository = temporary / "unrelated-repository"
+    (first_repository / "src").mkdir(parents=True)
+    second_repository.mkdir()
+    (first_repository / "src/main.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (second_repository / "main.go").write_text("package main\n", encoding="utf-8")
+    first = json.loads(
+        run(
+            [str(cli), "project", "init", "Repair Project", "--repository", str(first_repository)],
+            env,
+        ).stdout
+    )["project_id"]
+    second = json.loads(
+        run(
+            [str(cli), "project", "init", "Unrelated Project", "--repository", str(second_repository)],
+            env,
+        ).stdout
+    )["project_id"]
+    first_analysis = json.loads(run([str(cli), "analyze", first], env).stdout)
+    second_analysis = json.loads(run([str(cli), "analyze", second], env).stdout)
+    first_path = Path(first_analysis["stored_at"])
+    second_path = Path(second_analysis["stored_at"])
+    second_bytes = second_path.read_bytes()
+
+    run(
+        [
+            str(cli),
+            "canonical",
+            "user-source",
+            first,
+            "v08-recovery",
+            "canonical-preservation",
+            "Preserve this canonical state across derived recovery",
+        ],
+        env,
+    )
+    before_bundle = temporary / "repair-before.json"
+    after_repair_bundle = temporary / "repair-after.json"
+    after_reindex_bundle = temporary / "reindex-after.json"
+    run([str(cli), "portable", "export", first, str(before_bundle)], env)
+
+    first_path.write_bytes(b"{ controlled corrupt derived analysis")
+    degraded = json.loads(run([str(cli), "health", first], env).stdout)
+    require(degraded["state"] == "degraded", "corrupt analysis was not observable as degraded")
+    require(
+        any(
+            issue["kind"] == "corrupt" and issue["scope"] == f"derived_analysis:{first}"
+            for issue in degraded["issues"]
+        ),
+        "corrupt Project analysis scope was not diagnosed",
+    )
+
+    repaired = json.loads(run([str(cli), "repair", first, "derived-analysis"], env).stdout)
+    require(repaired["kind"] == "derivedanalysisrepair", "repair used the wrong recovery kind")
+    require(repaired["discarded_entries"] == 1, "repair did not discard the corrupt owned entry")
+    require(Path(repaired["stored_at"]).is_file(), "repair did not publish a fresh analysis")
+    require(json.loads(Path(repaired["stored_at"]).read_text(encoding="utf-8")), "repair output is unreadable")
+    require(json.loads(run([str(cli), "health", first], env).stdout)["state"] == "healthy", "repair did not restore health")
+    run([str(cli), "portable", "export", first, str(after_repair_bundle)], env)
+    require(before_bundle.read_bytes() == after_repair_bundle.read_bytes(), "repair changed canonical state")
+    require(second_path.read_bytes() == second_bytes, "repair changed another Project's derived state")
+
+    (first_repository / "src/current.py").write_text("CURRENT = True\n", encoding="utf-8")
+    reindexed = json.loads(run([str(cli), "reindex", first], env).stdout)
+    require(reindexed["kind"] == "derivedrebuild", "reindex used the wrong recovery kind")
+    require(
+        reindexed["analysis_snapshot"] != repaired["analysis_snapshot"],
+        "reindex did not force a fresh Analysis Snapshot",
+    )
+    reindexed_path = Path(reindexed["stored_at"])
+    require(reindexed_path.is_file(), "reindex did not publish replacement analysis")
+    reindexed_value = json.loads(reindexed_path.read_text(encoding="utf-8"))
+    require(
+        "src/current.py" in json.dumps(reindexed_value),
+        "reindex did not observe current authoritative repository input",
+    )
+    run([str(cli), "portable", "export", first, str(after_reindex_bundle)], env)
+    require(before_bundle.read_bytes() == after_reindex_bundle.read_bytes(), "reindex changed canonical state")
+    require(second_path.read_bytes() == second_bytes, "reindex changed another Project's derived state")
+
+    analysis_root = runtime / "derived" / "analysis"
+    project_analysis = analysis_root / first
+    require(
+        [path for path in project_analysis.iterdir() if path.is_file()] == [reindexed_path],
+        "Project derived replacement did not leave exactly one current snapshot",
+    )
+    require(
+        all(path.is_dir() for path in analysis_root.iterdir()),
+        "recovery required an old top-level derived-storage file path",
+    )
+    unsupported_before = (before_bundle.read_bytes(), reindexed_path.read_bytes(), second_path.read_bytes())
+    unsupported = run([str(cli), "repair", first, "canonical"], env, expected=1)
+    require("unsupported repair scope" in unsupported.stderr, "unsupported repair appeared successful")
+    unsupported_after = (before_bundle.read_bytes(), reindexed_path.read_bytes(), second_path.read_bytes())
+    require(unsupported_before == unsupported_after, "unsupported repair mutated owned state")
+    return {
+        "canonical_preserved": True,
+        "cross_project_isolation": True,
+        "repair_snapshot": repaired["analysis_snapshot"],
+        "reindex_snapshot": reindexed["analysis_snapshot"],
+        "unsupported_scope_rejected": True,
+    }
 
 
 def main() -> int:
@@ -161,6 +477,7 @@ def main() -> int:
             "XDG_DATA_HOME": str(home / ".local/share"),
             "CODEX_HOME": str(codex_home),
             "VOLICORD_HOME": str(legacy),
+            "VOLICORD_RUNTIME_DIR": str(runtime),
             "PATH": f"{prefix / 'bin'}:{base_env.get('PATH', '')}",
         }
         env.setdefault("CARGO_HOME", str(original_home / ".cargo"))
@@ -213,7 +530,7 @@ def main() -> int:
         require(initialized["binding"]["path"] == str(repository.resolve()), "Project binding mismatch")
 
         host = start_host(prefix / "bin" / "volicord-mcp", env)
-        tool_names = initialize_host(host, 1)
+        catalog = initialize_host(host, 1)
         health = tool(host, 3, "project_health", {"project_id": project_id})
         require(health["connection"] == "connected", "MCP connection not reported connected")
         require(health["capability_state"] == "healthy", "clean Project is not healthy")
@@ -232,6 +549,27 @@ def main() -> int:
             },
         )
         require(checkpoint.get("checkpoint_id"), "Checkpoint call did not create identity")
+
+        expiration = str(time.time_ns() // 1_000 + 600_000_000)
+        guarded = json.loads(
+            run(
+                [
+                    str(cli),
+                    "guarded",
+                    "request",
+                    project_id,
+                    "external-publication",
+                    "publish schema fixture",
+                    "registry/schema-fixture",
+                    "publish a public schema fixture",
+                    "public artifact",
+                    expiration,
+                    "release:schema-fixture",
+                ],
+                env,
+            ).stdout
+        )
+        schema_evidence = exercise_discovered_tool_contracts(host, catalog, project_id, guarded)
         stop_host(host)
 
         restarted = start_host(prefix / "bin" / "volicord-mcp", env)
@@ -292,6 +630,8 @@ def main() -> int:
         require(recall_after == recall_before, "reinstall changed canonical Recall")
         require(json.loads(run([codex, "mcp", "get", "volicord", "--json"], env).stdout), "registration missing after reinstall")
 
+        recovery_evidence = exercise_analysis_recovery(cli, env, temporary, runtime)
+
         legacy_after = (legacy_sentinel.stat().st_mtime_ns, sha256(legacy_sentinel))
         require(legacy_after == legacy_before, "clean journey touched the legacy runtime sentinel")
 
@@ -304,9 +644,11 @@ def main() -> int:
                     "connection_failure": connection_failure,
                     "degraded_capability": degraded["capability_state"],
                     "legacy_runtime": "untouched",
-                    "mcp_tools": len(tool_names),
+                    "mcp_tools": len(catalog),
+                    "mcp_schema_contract": schema_evidence,
                     "process_cleanup": "passed",
                     "project_id": project_id,
+                    "repair_reindex": recovery_evidence,
                     "reinstall_preserved_recall": True,
                     "runtime_schemas": sorted(runtime_files),
                     "status": "passed",

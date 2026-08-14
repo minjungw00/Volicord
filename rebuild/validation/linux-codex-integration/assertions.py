@@ -15,12 +15,16 @@ DIRECTORY = ROOT / "rebuild/validation/linux-codex-integration"
 FIXTURE = DIRECTORY / "fixtures/v08-matrix.json"
 MANIFEST = ROOT / "rebuild/validation/shared/fixture-manifest.json"
 HARNESS = DIRECTORY / "harness.py"
+CODEX_PROBE = DIRECTORY / "codex_probe.py"
 REPORT = DIRECTORY / "report.md"
 PHASE_SUMMARY = ROOT / "rebuild/validation/phase-7-summary.md"
 EXPECTED_GROUPS = {
     "clean_linux_install",
     "codex_and_host",
-    "guarded_and_viewer",
+    "viewer_http",
+    "mcp_schema_client",
+    "guarded_fallback",
+    "analysis_recovery",
     "failure_cleanup_and_exclusion",
 }
 EXPECTED_COMMITS = {
@@ -35,6 +39,18 @@ EXPECTED_COMMITS = {
     "current_host_source": (
         "bec6424ee0e7a7f378f2fc799bb58e201cc0c00f",
         "fix: preserve current-host Source observer",
+    ),
+    "viewer_http": (
+        "55271418ea9f7b621a31250bf086194e7ac92dfd",
+        "fix: make local viewer interactions live",
+    ),
+    "mcp_schemas": (
+        "ecef64e1a3516f4a1aa2ceaaebcc8b84f8b60183",
+        "fix: publish exact MCP tool schemas",
+    ),
+    "analysis_recovery": (
+        "369402c6065232b4ef0a0534340b1b2a447436ad",
+        "feat: add derived analysis repair and reindex",
     ),
 }
 
@@ -95,14 +111,14 @@ def main() -> int:
         require(subject == expected_subject, f"{role} Production commit subject changed")
 
     changed_since_production = run(
-        ["git", "diff", "--name-only", EXPECTED_COMMITS["current_host_source"][0]], capture=True
+        ["git", "diff", "--name-only", EXPECTED_COMMITS["analysis_recovery"][0]], capture=True
     ).stdout.splitlines()
     production_drift = [
         path
         for path in changed_since_production
         if (
             path.startswith("rebuild/crates/")
-            and path != "rebuild/crates/volicord-host/tests/mcp.rs"
+            and "/tests/" not in path
         )
         or path in {
             "rebuild/Cargo.toml",
@@ -123,6 +139,7 @@ def main() -> int:
     )
     require(REPORT.is_file(), "maintained V08 report is missing")
     require(PHASE_SUMMARY.is_file(), "maintained Phase 7 summary is missing")
+    require(CODEX_PROBE.is_file(), "maintained authenticated Codex probe is missing")
     report_text = REPORT.read_text(encoding="utf-8")
     phase_summary = PHASE_SUMMARY.read_text(encoding="utf-8")
     for validation_id in ("V06", "V07", "V08", "V10"):
@@ -140,6 +157,10 @@ def main() -> int:
         "final aggregate has not yet been run" in normalized_report,
         "V08 report must not pre-claim the final aggregate",
     )
+    require(
+        "authenticated Codex product-tool probe passed" in normalized_report,
+        "V08 report does not preserve the observed model-driven product-tool result",
+    )
 
     mappings: list[tuple[str, str, str, str]] = []
     for group, values in fixture["groups"].items():
@@ -154,7 +175,7 @@ def main() -> int:
             mappings.append(tuple(mapping))
     requirement_ids = [mapping[0] for mapping in mappings]
     require(len(requirement_ids) == len(set(requirement_ids)), "duplicate V08 requirement")
-    require(len(mappings) >= 35, "V08 matrix no longer covers the complete integration boundary")
+    require(len(mappings) >= 60, "V08 matrix no longer covers the corrected integration boundary")
 
     metadata = json.loads(
         run(
@@ -220,7 +241,8 @@ def main() -> int:
                 "mapped_requirements": len(mappings),
                 "production_targets": len(target_mappings),
                 "discovered_tests": discovered,
-                "real_codex_journey": "passed",
+                "deterministic_v08_journey": "passed",
+                "authenticated_codex_probe": "recorded separately as passed",
                 "status": "passed",
             },
             indent=2,

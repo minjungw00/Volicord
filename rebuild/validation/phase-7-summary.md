@@ -2,9 +2,9 @@
 
 - Phase 7 capability gate before the final aggregate: `ready`
 - Scope: qualified local platform primitives, source-grounded Project
-  projections and documents, Project-scoped provider privacy, Local Operations
-  and CLI, exact Guarded confirmation, local viewer, clean Linux installation,
-  and high-level Codex/MCP host integration
+  projections and documents, Project-scoped provider privacy, Local Operations,
+  exact Guarded confirmation, live local viewer, clean Linux installation, and
+  discoverable high-level Codex/MCP integration
 - Excluded claim: this summary does not claim the reconstruction final
   aggregate, V11, Phase 8 dogfood quality, Phase 9 cutover, or legacy deletion
 
@@ -14,45 +14,43 @@
 | --- | --- | --- | --- |
 | V06 | passed | `projections/source-grounded-documents` | four source-grounded documents, read-only Project projections, explicit publication/adoption |
 | V07 | passed | `privacy/local-only-boundary` | local-first utility, Project opt-in, truthful transmission and deletion state |
-| V08 | passed | `linux-codex-integration` | viewer, clean install, real Codex discovery, high-level MCP, lifecycle and preservation |
+| V08 | passed | `linux-codex-integration` | live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, lifecycle, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
-The V08 report deliberately records that the reconstruction final aggregate has
-not yet been run. Its status is based on the maintained focused journey and
-mapped semantic oracles, not on a future aggregate result.
+The V08 report records that the reconstruction final aggregate has not yet been
+run. Its status is based on focused deterministic executable/client evidence
+plus the separately executed environment-dependent authenticated Codex probe.
 
 ## Phase 7 capability conclusion
 
-The smallest complete local surface is now present. A user can initialize and
-bind a Project, inspect health, Recall, repository structure, Decisions,
-Checkpoints, Candidates, canonical context, privacy state, and grounded
-documents through the CLI, local viewer, or high-level host adapter. Read
-surfaces do not gain mutation authority. Corrections, supersession, forgetting,
-adoption/publication, Checkpoints, Inquiry responses, and Guarded confirmation
-remain routed through Local Operations and their canonical Source requirements.
+The corrected user surfaces now have executable-boundary evidence. The real
+viewer process serves request-specific `overview`, `working`, and `deep`
+projections, reads current state on each request, routes canonical memory
+correction through Local Operations, and preserves exact Guarded request
+identity/revision/fingerprint while rejecting stale, mismatched, and reused
+responses. Malformed and unsupported requests leave canonical bundle bytes
+unchanged.
 
-The viewer supports English and Korean fixed product text, overview/working/deep
-explanations, explicit degraded states, and arbitrary requested generated
-language. The Codex integration exposes product capabilities rather than raw
-database operations. When host elicitation is unavailable, it returns the same
-Guarded request identity, revision, and fingerprint to viewer/CLI fallback.
-Connection launch failure remains separate from a connected but degraded
-Project capability.
+The actual installed MCP server advertises 14 closed concrete schemas. A
+maintained client-side interpreter constructs representative Recall, Checkpoint,
+and Guarded calls from `tools/list`; missing and additional arguments are
+rejected consistently. A bounded authenticated `codex exec` turn selected and
+completed `volicord.project_health` using the advertised `project_id` shape and
+received connected/healthy structured state.
+
+Supported `repair derived-analysis` and `reindex` now have a two-Project CLI
+journey. Controlled Project-owned corruption degrades visibly, repair restores
+health from authoritative input, reindex observes fresh repository state,
+portable canonical bytes and the unrelated Project remain unchanged, and an
+unsupported canonical repair fails.
 
 ## Legacy exclusion audit
 
 Cargo metadata places every reconstruction package below `rebuild/`. No package
-depends on `volicord-core`, `volicord-store`, `volicord-types`,
-`volicord-user-action-service`, a legacy MCP protocol/server crate, or another
-legacy workflow crate. The clean installer accepts only its explicit current
-prefix and replacement Runtime Home, registers the current `volicord-mcp`
-binary, and contains no `VOLICORD_HOME`, legacy schema, migration, import,
-backup, conversion, old command alias, or dual decoder path.
-
-The V08 clean journey supplies a bait `VOLICORD_HOME` that contains a sentinel.
-Install, Project use, uninstall, and reinstall leave the sentinel byte and
-timestamp identical while the separate replacement canonical store survives.
-This is an exclusion observation, not legacy compatibility or migration support.
+depends on a legacy Volicord workflow or MCP crate. The clean installer and all
+corrected probes use an explicit replacement Runtime Home. The bait legacy
+sentinel remains byte- and timestamp-identical, and current derived recovery
+uses only Project-scoped replacement-owned analysis directories.
 
 ## Accepted-Decision revisit triggers
 
@@ -62,24 +60,23 @@ user Source provenance, semantic Decision correction/supersession distinction,
 Candidate non-canonical lifecycle, explicit document adoption/publication,
 Project-scoped provider consent, and exact Guarded-effect confirmation.
 
-The current Codex CLI registration syntax is an adapter fact, not a durable
-domain decision. A future CLI syntax or elicitation capability change may
-require adapter work without changing canonical identity or confirmation
-meaning. V08's small deterministic repository does not trigger the accepted
-large-context or multi-repository revisit conditions; those remain for V11.
+The Codex CLI's per-MCP-tool approval mode is an adapter/configuration fact. The
+authenticated read-only probe uses a narrow isolated `approve` setting for
+`project_health`; it does not broaden Volicord's Guarded product contract or
+background-provider authority.
 
 ## Known limits and next boundary
 
-- Real Codex CLI registration and discovery are qualified, but an authenticated
-  model-driven session and external network behavior are not required or claimed.
-- The Linux journey does not qualify other operating systems, hostile filesystem
-  races, concurrent MCP clients, abrupt power loss, large-repository latency,
-  accessibility, or long-duration resource ceilings.
+- The environment-dependent Codex probe requires valid authentication, model
+  service network access, and a CLI that supports bounded noninteractive mode;
+  it is not part of deterministic workspace unit tests.
+- The Linux journey does not qualify other operating systems, concurrent
+  clients, abrupt power loss, hostile filesystem races, large-repository
+  latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
-  portability retain the known limits documented in their individual reports.
+  portability retain the known limits in their individual reports.
 - V11/Phase 8 remains the next independent multi-repository dogfood and product
-  quality boundary after, and only after, the single Phase 7 final aggregate
-  genuinely passes.
+  quality boundary after the single exact final aggregate genuinely passes.
 
 ## Maintained references
 
