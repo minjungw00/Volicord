@@ -76,6 +76,12 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
             {"id": "v11-polyglot-medium", "validation_id": "V11", "content_sha256": "b" * 64},
         ],
     }), encoding="utf-8")
+    (candidate / "rebuild/Cargo.toml").write_text(
+        "[workspace]\nresolver = \"2\"\nmembers = []\n", encoding="utf-8"
+    )
+    (candidate / "rebuild/Cargo.lock").write_text(
+        "# synthetic gate-entrypoint fixture\nversion = 4\n", encoding="utf-8"
+    )
 
     write_executable(candidate / "rebuild/install.sh", "#!/bin/sh\nexit 0\n")
     write_executable(
@@ -102,9 +108,16 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     final_marker = parent / "exact-final-invoked"
     write_executable(
         bin_directory / "cargo",
-        f"#!/bin/sh\n: > '{final_marker}'\nexit 98\n",
+        "#!/bin/sh\n"
+        "if [ \"${1:-}\" = --version ]; then printf 'cargo 1.90.0 (fixture)\\n'; exit 0; fi\n"
+        f": > '{final_marker}'\nexit 98\n",
     )
-    write_executable(bin_directory / "codex", "#!/bin/sh\nexit 0\n")
+    write_executable(
+        bin_directory / "codex",
+        "#!/bin/sh\n"
+        "if [ \"${1:-}\" = --version ]; then printf 'codex-cli 0.0.0-fixture\\n'; fi\n"
+        "exit 0\n",
+    )
     auth = parent / "codex-home/auth.json"
     auth.parent.mkdir(parents=True)
     auth.write_text("fixture-auth-present\n", encoding="utf-8")
@@ -200,6 +213,18 @@ def main() -> int:
         original_dirty.unlink()
         assert git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout == ""
 
+        authorized = invoke(
+            candidate,
+            env,
+            "admission",
+            "--external-network",
+            "available",
+            "--authorize-external-transmission",
+            AUTHORIZATION_ASSERTION,
+        )
+        authorized_value = structured_stdout(authorized)
+        assert authorized_value["status"] == "eligible", authorized_value
+
         probe_env = env.copy()
         probe_env["VALIDATION_DIRTY_PROBE"] = "1"
         probe = invoke(
@@ -215,7 +240,7 @@ def main() -> int:
         pre_final = capsule["pre_final_candidate_check"]
         generated = candidate / "admission-generated-dirty.txt"
         assert probe.returncode == 1
-        assert capsule["admission_status"] == "eligible"
+        assert capsule["admission_status"] == "eligible", capsule
         assert capsule["blocking_classification"] == "candidate_worktree_dirty"
         assert pre_final["status"] == "environment_blocked"
         assert pre_final["details"]["head_unchanged"] is True
@@ -230,7 +255,7 @@ def main() -> int:
         "status": "passed",
         "scenarios": 4,
         "maintained_v11_preflight_invocations": 1,
-        "real_admission_entrypoint_invocations": 3,
+        "real_admission_entrypoint_invocations": 4,
         "real_final_invocations": 0,
         "official_v11_invocations": 0,
     }, indent=2, sort_keys=True))

@@ -10,6 +10,7 @@ import platform
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 from typing import Any, Callable, Sequence
 
@@ -24,6 +25,19 @@ RESOURCE_ESTIMATE = HERE / "resource-estimate.json"
 REQUIRED_FIXTURE_IDS = ("v01-python", "v11-polyglot-medium")
 FINAL_COMMAND_LABELS = ("cargo_metadata", "cargo_fmt", "cargo_clippy", "cargo_test")
 AUTHORIZATION_ASSERTION = "v11-openai-codex-project-health-three-targets"
+VERSION_OUTPUT_LIMIT_BYTES = 4096
+TOOL_VERSION_COMMANDS = {
+    "python": ("python3", "--version"),
+    "git": ("git", "--version"),
+    "cargo": ("cargo", "--version"),
+    "rustc": ("rustc", "--version"),
+    "codex": ("codex", "--version"),
+}
+DEPENDENCY_INPUTS = {
+    "cargo_lock": REBUILD_ROOT / "Cargo.lock",
+    "workspace_manifest": REBUILD_ROOT / "Cargo.toml",
+    "fixture_manifest": FIXTURE_MANIFEST,
+}
 EXTERNAL_TRANSMISSION = {
     "required": True,
     "destination": "OpenAI Codex service used by the installed Codex CLI",
@@ -39,6 +53,115 @@ CommandRunner = Callable[[Path, Sequence[str]], dict[str, Any]]
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def bounded_version_probe(argv: Sequence[str]) -> dict[str, Any]:
+    result: dict[str, Any] = {"argv": list(argv), "status": "error", "version": None}
+    try:
+        completed = subprocess.run(
+            list(argv),
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return {**result, "status": "unavailable", "error": "executable_not_found"}
+    except subprocess.TimeoutExpired:
+        return {**result, "error": "probe_timeout"}
+    except OSError as error:
+        return {**result, "error": type(error).__name__}
+
+    output = completed.stdout.strip() or completed.stderr.strip()
+    if completed.returncode != 0:
+        return {**result, "exit_code": completed.returncode, "error": "nonzero_exit"}
+    if not output:
+        return {**result, "exit_code": completed.returncode, "error": "empty_output"}
+    if len(output.encode("utf-8")) > VERSION_OUTPUT_LIMIT_BYTES:
+        return {**result, "exit_code": completed.returncode, "error": "output_exceeded_bound"}
+    return {
+        "argv": list(argv),
+        "status": "available",
+        "version": output,
+        "exit_code": completed.returncode,
+    }
+
+
+def execution_environment() -> dict[str, Any]:
+    return {
+        "platform": {
+            "operating_system": platform.system(),
+            "release": platform.release(),
+            "platform_version": platform.version(),
+            "machine": platform.machine(),
+            "architecture": platform.architecture()[0],
+        },
+        "python_runtime": {
+            "implementation": platform.python_implementation(),
+            "version": platform.python_version(),
+            "executable_basename": Path(sys.executable).name,
+        },
+        "tools": {
+            name: bounded_version_probe(argv)
+            for name, argv in TOOL_VERSION_COMMANDS.items()
+        },
+    }
+
+
+def hashed_identity(path: Path) -> dict[str, Any]:
+    relative = path.relative_to(ROOT).as_posix()
+    try:
+        return {"path": relative, "status": "available", "sha256": sha256(path)}
+    except FileNotFoundError:
+        return {"path": relative, "status": "unavailable", "sha256": None}
+    except OSError as error:
+        return {
+            "path": relative,
+            "status": "error",
+            "sha256": None,
+            "error": type(error).__name__,
+        }
+
+
+def dependency_snapshot(candidate_head: str | None) -> dict[str, Any]:
+    return {
+        "candidate_head": candidate_head,
+        **{
+            name: hashed_identity(path)
+            for name, path in DEPENDENCY_INPUTS.items()
+        },
+    }
+
+
+def gate_configuration(
+    *,
+    authorization_assertion: str | None,
+    external_network: str,
+) -> dict[str, Any]:
+    argv = [
+        "rebuild/scripts/validate",
+        "gate",
+        "--external-network",
+        external_network,
+    ]
+    argv_status = "complete"
+    if authorization_assertion == AUTHORIZATION_ASSERTION:
+        argv.extend(("--authorize-external-transmission", AUTHORIZATION_ASSERTION))
+    elif authorization_assertion is not None:
+        argv_status = "unrecognized_authorization_assertion_not_retained"
+    return {
+        "argv": argv,
+        "argv_status": argv_status,
+        "technical_external_network_assertion": external_network,
+        "authorization_assertion_id": (
+            AUTHORIZATION_ASSERTION
+            if authorization_assertion == AUTHORIZATION_ASSERTION
+            else None
+        ),
+        "external_transmission": EXTERNAL_TRANSMISSION,
+    }
 
 
 def directory_bytes(directory: Path) -> int:
@@ -286,6 +409,8 @@ def evaluate_admission(
     command_runner: CommandRunner,
     runner_path: Path,
     overrides: dict[str, Check] | None = None,
+    environment_evidence: dict[str, Any] | None = None,
+    dependency_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     overrides = overrides or {}
     checks: list[Check] = []
@@ -386,6 +511,12 @@ def evaluate_admission(
         "candidate_head": candidate_head,
         "checks": checks,
         "required_fixture_identities": identities,
+        "execution_environment": environment_evidence or execution_environment(),
+        "dependency_snapshot": dependency_evidence or dependency_snapshot(candidate_head),
+        "gate_configuration": gate_configuration(
+            authorization_assertion=authorization_assertion,
+            external_network=external_network,
+        ),
         "external_transmission": EXTERNAL_TRANSMISSION,
         "final_command_count": 0,
         "official_v11_command_count": 0,
@@ -401,6 +532,7 @@ def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
         "commands": [
             {
                 "name": FINAL_COMMAND_LABELS[index] if index < len(FINAL_COMMAND_LABELS) else f"command_{index + 1}",
+                "argv": value.get("argv") if isinstance(value.get("argv"), list) else None,
                 "outcome": value.get("outcome"),
                 "exit_code": value.get("exit_code"),
                 "termination": value.get("termination"),
@@ -482,6 +614,9 @@ def make_capsule(
     v11_result_hash: str | None = None,
     credential_audit: dict[str, Any] | None = None,
     pre_final_check: Check | None = None,
+    final_artifact_produced: bool = False,
+    preflight_consumed_final_artifact: bool = False,
+    official_v11_consumed_final_artifact: bool = False,
 ) -> dict[str, Any]:
     final_view = final_summary_view(final_summary or {})
     counts = v11_result.get("counts", {}) if v11_result else {}
@@ -491,6 +626,16 @@ def make_capsule(
         "admission_status": admission.get("status"),
         "blocking_classification": blocking_classification,
         "pre_final_candidate_check": pre_final_check,
+        "execution_environment": admission.get("execution_environment", {}),
+        "dependency_snapshot": admission.get("dependency_snapshot", {}),
+        "gate_configuration": {
+            **admission.get("gate_configuration", {}),
+            "same_session_artifact_flow": {
+                "final_artifact_produced_by_gate": final_artifact_produced,
+                "v11_preflight_consumed_same_gate_final_artifact": preflight_consumed_final_artifact,
+                "official_v11_consumed_same_gate_final_artifact": official_v11_consumed_final_artifact,
+            },
+        },
         "final_aggregate": final_view,
         "final_summary_sha256": final_summary_hash,
         "official_v11": {
@@ -593,6 +738,7 @@ def orchestrate(
             final_summary=final_summary,
             final_summary_hash=final_hash,
             pre_final_check=pre_final,
+            final_artifact_produced=True,
         ), counts
 
     counts["preflight"] += 1
@@ -605,6 +751,8 @@ def orchestrate(
             final_summary=final_summary,
             final_summary_hash=final_hash,
             pre_final_check=pre_final,
+            final_artifact_produced=True,
+            preflight_consumed_final_artifact=True,
         ), counts
 
     output_directory = gate_directory / "official-v11"
@@ -643,5 +791,8 @@ def orchestrate(
         v11_result_hash=v11_hash,
         credential_audit=audit,
         pre_final_check=pre_final,
+        final_artifact_produced=True,
+        preflight_consumed_final_artifact=True,
+        official_v11_consumed_final_artifact=True,
     )
     return capsule, counts

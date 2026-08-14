@@ -32,6 +32,14 @@ gate = load_module("volicord_gate_self_test_target", GATE_PATH)
 harness = load_module("volicord_harness_self_test_target", HARNESS_PATH)
 HEAD = gate.git_output("rev-parse", "HEAD").stdout.strip()
 FINAL_COMMANDS = (("synthetic-final-command", "--exact"),)
+SECRET_SENTINELS = (
+    "auth.json contents must not be projected",
+    "credential-value-must-not-be-projected",
+    "reusable-credential-fingerprint-must-not-be-projected",
+    "raw-repository-source-body-must-not-be-projected",
+    "full-command-log-must-not-be-projected",
+    "raw-provider-payload-must-not-be-projected",
+)
 
 
 def passed(name: str, **details: Any) -> dict[str, Any]:
@@ -57,12 +65,60 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
         "filesystem_and_runtime_home": passed("filesystem_and_runtime_home"),
         "bounded_local_resource_estimate": passed("bounded_local_resource_estimate"),
         "local_loopback": passed("local_loopback", requires_escalation=False),
-        "codex_authentication_material": passed("codex_authentication_material", available=True),
+        "codex_authentication_material": passed(
+            "codex_authentication_material",
+            available=True,
+            auth_json_contents=SECRET_SENTINELS[0],
+            credential_value=SECRET_SENTINELS[1],
+            credential_fingerprint=SECRET_SENTINELS[2],
+        ),
     }
 
 
 def unused_command_runner(_directory: Path, _argv: Sequence[str]) -> dict[str, Any]:
     raise AssertionError("overridden admission unexpectedly invoked a command")
+
+
+def synthetic_environment_evidence() -> dict[str, Any]:
+    return {
+        "platform": {
+            "operating_system": "Linux",
+            "release": "6.12.0-fixture",
+            "platform_version": "#1 fixture kernel",
+            "machine": "x86_64",
+            "architecture": "64bit",
+        },
+        "python_runtime": {
+            "implementation": "CPython",
+            "version": "3.13.0",
+            "executable_basename": "python3",
+        },
+        "tools": {
+            name: {
+                "argv": [name if name != "python" else "python3", "--version"],
+                "status": "available",
+                "version": f"{name} synthetic-version",
+                "exit_code": 0,
+            }
+            for name in ("python", "git", "cargo", "rustc", "codex")
+        },
+    }
+
+
+def synthetic_dependency_evidence() -> dict[str, Any]:
+    return {
+        "candidate_head": HEAD,
+        "cargo_lock": {
+            "path": "rebuild/Cargo.lock", "status": "available", "sha256": "c" * 64,
+        },
+        "workspace_manifest": {
+            "path": "rebuild/Cargo.toml", "status": "available", "sha256": "d" * 64,
+        },
+        "fixture_manifest": {
+            "path": "rebuild/validation/shared/fixture-manifest.json",
+            "status": "available", "sha256": "e" * 64,
+        },
+    }
 
 
 def admission(root: Path, *, authorization: str | None = None, loopback_failed: bool = False) -> dict[str, Any]:
@@ -81,6 +137,8 @@ def admission(root: Path, *, authorization: str | None = None, loopback_failed: 
         command_runner=unused_command_runner,
         runner_path=ROOT / "rebuild/scripts/validate",
         overrides=overrides,
+        environment_evidence=synthetic_environment_evidence(),
+        dependency_evidence=synthetic_dependency_evidence(),
     )
 
 
@@ -109,6 +167,7 @@ class Owners:
                     "exit_code": 9 if failed else 0,
                     "termination": None,
                     "duration_ms": 1.0,
+                    "stdout": SECRET_SENTINELS[4],
                 }
                 for command in FINAL_COMMANDS
             ],
@@ -157,6 +216,8 @@ class Owners:
                 }
                 for target in ("volicord", "small-python", "polyglot-medium")
             ],
+            "raw_repository_source_body": SECRET_SENTINELS[3],
+            "raw_provider_payload": SECRET_SENTINELS[5],
         }
         (output_directory / "result.json").write_text(json.dumps(result), encoding="utf-8")
         return result, {"exit_code": 0 if self.v11_passes else 1}
@@ -169,6 +230,7 @@ class Owners:
             "auth_named_file_count": 0,
             "credential_content_match_count": 0,
             "scan_error_count": 0,
+            "credential_fingerprint": SECRET_SENTINELS[2],
         }, {"exit_code": 0}
 
 
@@ -230,10 +292,33 @@ def main() -> int:
             "validated_candidate_head", "final_aggregate", "final_summary_sha256",
             "official_v11", "required_identities", "credential_retention_audit",
             "authenticated_codex_outcomes", "active_decision_revisit_triggers",
-            "pre_final_candidate_check", "phase_8_ready",
+            "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
+            "gate_configuration", "phase_8_ready",
         }
         assert required_capsule_keys <= capsule.keys()
         assert capsule["pre_final_candidate_check"]["status"] == "passed"
+        assert capsule["execution_environment"]["platform"]["operating_system"] == "Linux"
+        assert set(capsule["execution_environment"]["tools"]) == {
+            "python", "git", "cargo", "rustc", "codex",
+        }
+        assert all(
+            value["status"] == "available" and value["version"]
+            for value in capsule["execution_environment"]["tools"].values()
+        )
+        assert capsule["dependency_snapshot"] == synthetic_dependency_evidence()
+        assert capsule["final_aggregate"]["commands"][0]["argv"] == list(FINAL_COMMANDS[0])
+        configuration = capsule["gate_configuration"]
+        assert configuration["argv"] == [
+            "rebuild/scripts/validate", "gate", "--external-network", "available",
+            "--authorize-external-transmission", gate.AUTHORIZATION_ASSERTION,
+        ]
+        assert configuration["technical_external_network_assertion"] == "available"
+        assert configuration["authorization_assertion_id"] == gate.AUTHORIZATION_ASSERTION
+        assert configuration["external_transmission"] == gate.EXTERNAL_TRANSMISSION
+        assert set(configuration["same_session_artifact_flow"].values()) == {True}
+        for sentinel in SECRET_SENTINELS:
+            assert sentinel not in encoded
+        assert len(encoded.encode("utf-8")) < 32_000
         shutil.rmtree(owners.final_path.parent)
         shutil.rmtree(root / "success-gate" / "official-v11")
         assert required_capsule_keys <= capsule.keys() and capsule["phase_8_ready"] is True
@@ -252,6 +337,8 @@ def main() -> int:
 
         harness.assert_required_step_policy_regressions()
         harness.assert_credential_retention_audit()
+        unavailable = gate.bounded_version_probe(("volicord-version-probe-does-not-exist", "--version"))
+        assert unavailable["status"] == "unavailable" and unavailable["version"] is None
 
     print(json.dumps({
         "status": "passed",
