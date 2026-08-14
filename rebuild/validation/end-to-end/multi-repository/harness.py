@@ -1342,6 +1342,67 @@ def assert_authenticated_codex_lifecycle() -> None:
             raise AssertionError("source Codex authentication was modified")
 
 
+def credential_retention_audit(
+    artifact_directory: Path,
+    authentication_source: Path | None = None,
+) -> dict[str, Any]:
+    auth = authentication_source or (
+        Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+    )
+    named_files = 0
+    content_matches = 0
+    scan_errors = 0
+    try:
+        credential = auth.read_bytes()
+    except OSError:
+        credential = b""
+        scan_errors += 1
+    needles = {credential, credential.rstrip()} - {b""}
+    if not artifact_directory.is_dir():
+        scan_errors += 1
+    else:
+        for path in artifact_directory.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.name == "auth.json":
+                named_files += 1
+            try:
+                content = path.read_bytes()
+            except OSError:
+                scan_errors += 1
+                continue
+            if any(needle in content for needle in needles):
+                content_matches += 1
+    passed = named_files == 0 and content_matches == 0 and scan_errors == 0
+    return {
+        "kind": "v11_credential_retention_audit",
+        "status": "passed" if passed else "failed",
+        "auth_named_file_count": named_files,
+        "credential_content_match_count": content_matches,
+        "scan_error_count": scan_errors,
+    }
+
+
+def assert_credential_retention_audit() -> None:
+    secret = b'{"synthetic":"credential-audit-secret"}\n'
+    with tempfile.TemporaryDirectory(prefix="volicord-v11-credential-audit-") as directory:
+        root = Path(directory)
+        auth = root / "source-auth.json"
+        auth.write_bytes(secret)
+        clean = root / "clean"
+        clean.mkdir()
+        (clean / "result.json").write_text('{"status":"passed"}\n', encoding="utf-8")
+        clean_result = credential_retention_audit(clean, auth)
+        if clean_result["status"] != "passed" or secret.rstrip() in json.dumps(clean_result).encode():
+            raise AssertionError("clean credential audit is not bounded and secret-free")
+        leaked = root / "leaked"
+        leaked.mkdir()
+        (leaked / "auth.json").write_bytes(secret)
+        leaked_result = credential_retention_audit(leaked, auth)
+        if leaked_result["status"] != "failed":
+            raise AssertionError("credential audit accepted retained authentication")
+
+
 def self_check() -> int:
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
@@ -1355,6 +1416,7 @@ def self_check() -> int:
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
     assert_authenticated_codex_lifecycle()
+    assert_credential_retention_audit()
     fake = {
         "schema_version": 1,
         "repositories": [
@@ -1369,6 +1431,7 @@ def self_check() -> int:
         "evidence_driven_steps": len(REQUIRED_STEPS),
         "required_step_policy_regressions": "passed",
         "authentication_lifecycle": "passed",
+        "credential_retention_audit": "passed",
         "polyglot_hash": tree_hash(POLYGLOT_FIXTURE),
     }, indent=2))
     return 0
@@ -1462,6 +1525,8 @@ def parse_args() -> argparse.Namespace:
             child.add_argument("--allow-validation-changes", action="store_true")
         if name == "run":
             child.add_argument("--output-dir", required=True)
+    audit = subparsers.add_parser("credential-audit")
+    audit.add_argument("--artifact-dir", required=True)
     return parser.parse_args()
 
 
@@ -1471,6 +1536,10 @@ def main() -> int:
         return self_check()
     if args.command == "preflight":
         return preflight(args)
+    if args.command == "credential-audit":
+        result = credential_retention_audit(Path(args.artifact_dir).resolve())
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["status"] == "passed" else 1
     return run(args)
 
 

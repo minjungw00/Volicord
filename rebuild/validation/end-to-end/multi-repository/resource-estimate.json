@@ -1,0 +1,7 @@
+{
+  "basis": "One candidate clone, two fixture work areas, the current release-build footprint, and bounded retained operation evidence for the three-target V11 journey.",
+  "candidate_copy_count": 2,
+  "fixture_copy_count": 2,
+  "minimum_build_and_evidence_bytes": 8589934592,
+  "free_space_headroom_percent": 20
+}

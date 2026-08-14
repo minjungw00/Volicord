@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,8 @@ from typing import Sequence
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REBUILD_ROOT = REPOSITORY_ROOT / "rebuild"
 ARTIFACT_ROOT = REBUILD_ROOT / ".local" / "validation"
+GATE_MODULE_PATH = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate.py"
+GATE_SELF_TEST = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_self_test.py"
 FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
     (
         "cargo",
@@ -303,12 +306,136 @@ def print_result(result: dict[str, object], run_directory: Path) -> None:
     )
 
 
+def load_gate_module() -> object:
+    spec = importlib.util.spec_from_file_location("volicord_validation_gate", GATE_MODULE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("validation gate module could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def lifecycle_options(arguments: Sequence[str]) -> tuple[str, str | None]:
+    external_network = "unknown"
+    authorization = None
+    remaining = list(arguments)
+    while remaining:
+        option = remaining.pop(0)
+        if option == "--external-network" and remaining:
+            external_network = remaining.pop(0)
+            if external_network not in {"available", "unavailable", "requires-escalation"}:
+                raise ValueError("--external-network must be available, unavailable, or requires-escalation")
+        elif option == "--authorize-external-transmission" and remaining:
+            authorization = remaining.pop(0)
+        else:
+            raise ValueError(f"unknown or incomplete lifecycle option: {option}")
+    return external_network, authorization
+
+
+def gate_command_runner(directory: Path, argv: Sequence[str]) -> dict[str, object]:
+    return run_in_directory(directory, argv)
+
+
+def run_admission(arguments: Sequence[str]) -> int:
+    gate = load_gate_module()
+    external_network, authorization = lifecycle_options(arguments)
+    run_directory = new_run_directory("admission")
+    result = gate.evaluate_admission(
+        authorization_assertion=authorization,
+        external_network=external_network,
+        artifact_root=run_directory,
+        command_runner=gate_command_runner,
+        runner_path=Path(__file__).resolve(),
+    )
+    write_json(run_directory / "admission.json", result)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    print(f"admission result: {run_directory / 'admission.json'}", file=sys.stderr)
+    return 0 if result["eligible"] else 1
+
+
+def run_gate(arguments: Sequence[str]) -> int:
+    gate = load_gate_module()
+    external_network, authorization = lifecycle_options(arguments)
+    run_directory = new_run_directory("v11-gate")
+    admission = gate.evaluate_admission(
+        authorization_assertion=authorization,
+        external_network=external_network,
+        artifact_root=run_directory / "admission-checks",
+        command_runner=gate_command_runner,
+        runner_path=Path(__file__).resolve(),
+    )
+    write_json(run_directory / "admission.json", admission)
+
+    def final_owner() -> tuple[dict[str, object], Path]:
+        summary, directory = run_aggregate("final", FINAL_COMMANDS)
+        return summary, directory / "summary.json"
+
+    def preflight_owner(candidate_head: str, final_path: Path) -> tuple[dict[str, object] | None, dict[str, object]]:
+        return gate.run_json_command(
+            gate_command_runner,
+            run_directory / "v11-preflight",
+            (
+                str(gate.HARNESS), "preflight", "--validated-head", candidate_head,
+                "--final-artifact", str(final_path),
+            ),
+        )
+
+    def v11_owner(
+        candidate_head: str,
+        final_path: Path,
+        output_directory: Path,
+    ) -> tuple[dict[str, object] | None, dict[str, object]]:
+        _, execution = gate.run_json_command(
+            gate_command_runner,
+            run_directory / "official-v11-invocation",
+            (
+                str(gate.HARNESS), "run", "--validated-head", candidate_head,
+                "--final-artifact", str(final_path), "--output-dir", str(output_directory),
+            ),
+        )
+        result_path = output_directory / "result.json"
+        result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
+        return result, execution
+
+    def audit_owner(output_directory: Path) -> tuple[dict[str, object] | None, dict[str, object]]:
+        return gate.run_json_command(
+            gate_command_runner,
+            run_directory / "credential-retention-audit",
+            (str(gate.HARNESS), "credential-audit", "--artifact-dir", str(output_directory)),
+        )
+
+    capsule, invocation_counts = gate.orchestrate(
+        gate_directory=run_directory,
+        admission=admission,
+        final_commands=FINAL_COMMANDS,
+        final_owner=final_owner,
+        preflight_owner=preflight_owner,
+        v11_owner=v11_owner,
+        audit_owner=audit_owner,
+    )
+    write_json(run_directory / "capsule.json", capsule)
+    write_json(run_directory / "gate-result.json", {
+        "kind": "validation_gate_result",
+        "status": "passed" if capsule["phase_8_ready"] else "blocked",
+        "blocking_classification": capsule["blocking_classification"],
+        "invocation_counts": invocation_counts,
+    })
+    print(json.dumps(capsule, indent=2, sort_keys=True))
+    print(f"evidence capsule: {run_directory / 'capsule.json'}", file=sys.stderr)
+    return 0 if capsule["phase_8_ready"] else 1
+
+
 def usage() -> int:
     print(
         "usage:\n"
         "  rebuild/scripts/validate self-test\n"
+        "  rebuild/scripts/validate gate-self-test\n"
         "  rebuild/scripts/validate focused <label> -- <command> [arguments...]\n"
-        "  rebuild/scripts/validate final",
+        "  rebuild/scripts/validate final  # gate-owned; direct invocation is refused\n"
+        "  rebuild/scripts/validate admission [--external-network <state>] "
+        "[--authorize-external-transmission <assertion>]\n"
+        "  rebuild/scripts/validate gate [--external-network <state>] "
+        "[--authorize-external-transmission <assertion>]",
         file=sys.stderr,
     )
     return 2
@@ -321,10 +448,28 @@ def main(arguments: Sequence[str]) -> int:
         except (AssertionError, OSError, ValueError) as error:
             print(f"validation self-test failed: {error}", file=sys.stderr)
             return 1
+    if arguments == ("gate-self-test",) or list(arguments) == ["gate-self-test"]:
+        result, run_directory = run_focused("gate-self-test", (str(GATE_SELF_TEST),))
+        print_result(result, run_directory)
+        return int(result["wrapper_exit_code"])
+    if arguments and arguments[0] == "admission":
+        try:
+            return run_admission(arguments[1:])
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"validation admission failed: {error}", file=sys.stderr)
+            return 2
+    if arguments and arguments[0] == "gate":
+        try:
+            return run_gate(arguments[1:])
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            print(f"validation gate failed: {error}", file=sys.stderr)
+            return 2
     if arguments == ("final",) or list(arguments) == ["final"]:
-        summary, run_directory = run_aggregate("final", FINAL_COMMANDS)
-        print(f"final validation {summary['outcome']}; failures={summary['failure_count']}; artifacts: {run_directory}")
-        return 0 if summary["failure_count"] == 0 else 1
+        print(
+            "direct final validation is refused; run admission, then use the same-session validation gate",
+            file=sys.stderr,
+        )
+        return 2
     if len(arguments) >= 4 and arguments[0] == "focused" and arguments[2] == "--":
         try:
             result, run_directory = run_focused(arguments[1], arguments[3:])
