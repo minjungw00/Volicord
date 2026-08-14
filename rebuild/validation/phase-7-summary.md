@@ -1,12 +1,14 @@
-# Phase 7 product-surface validation state
+# Phase 7 product-surface validation and V11 handoff state
 
-- Phase 7 capability gate before the final aggregate: `ready`
+- Phase 7 exact final aggregate: `passed` at
+  `c15a864a4723deeee5db7dbe0b5346d08fecfff6`
+- V11 integrated result: `failed`; Phase 8 entry gate: `blocked`
 - Scope: qualified local platform primitives, source-grounded Project
   projections and documents, Project-scoped provider privacy, Local Operations,
   exact Guarded confirmation, live local viewer, clean Linux installation, and
   discoverable high-level Codex/MCP integration
-- Excluded claim: this summary does not claim the reconstruction final
-  aggregate, V11, Phase 8 dogfood quality, Phase 9 cutover, or legacy deletion
+- Excluded claim: this summary does not claim Phase 8 dogfood quality, Phase 9
+  cutover, or legacy deletion
 
 ## Maintained validation status
 
@@ -17,9 +19,10 @@
 | V08 | passed | `linux-codex-integration` | authenticated live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, fresh repository provenance, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
-The V08 report records that the reconstruction final aggregate has not yet been
-run. Its status is based on focused deterministic executable/client evidence
-plus the separately executed environment-dependent authenticated Codex probe.
+The V08 report records its state before the reconstruction final aggregate.
+The later exact aggregate passed with zero failures at the production HEAD
+above. V11 then ran independently from validation-only commit `1ac4135d` and
+recorded the blocked result in `end-to-end/multi-repository/report.md`.
 
 ## Phase 7 capability conclusion
 
@@ -83,8 +86,9 @@ background-provider authority.
   latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
   portability retain the known limits in their individual reports.
-- V11/Phase 8 remains the next independent multi-repository dogfood and product
-  quality boundary after the single exact final aggregate genuinely passes.
+- V11 completed against all three required repository classes but did not pass.
+  Phase 8 remains blocked pending a separately planned production remediation,
+  its own exact final gate, and an independent V11 rerun.
 
 ## Maintained references
 
@@ -92,6 +96,7 @@ background-provider authority.
 - `rebuild/validation/privacy/local-only-boundary/report.md`
 - `rebuild/validation/linux-codex-integration/report.md`
 - `rebuild/validation/local-platform-primitives/report.md`
+- `rebuild/validation/end-to-end/multi-repository/report.md`
 - `rebuild/validation/shared/fixture-manifest.json`
 - `rebuild/docs/design/validation-plan.md`
 - `rebuild/docs/design/architecture.md`
