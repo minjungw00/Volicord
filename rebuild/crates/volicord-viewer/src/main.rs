@@ -1,7 +1,7 @@
-use std::{env, ffi::OsString, io::Write, net::TcpListener, path::PathBuf};
+use std::{env, ffi::OsString, net::TcpListener, path::PathBuf, time::Duration};
 use volicord_context::ProjectId;
 use volicord_operations::{LocalOperations, RuntimeLayout};
-use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRequest};
+use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerServer};
 
 fn main() {
     if let Err(error) = run(env::args_os().skip(1).collect()) {
@@ -57,29 +57,30 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         Some(path) => RuntimeLayout::new(path).map_err(|error| error.to_string())?,
         None => RuntimeLayout::from_environment().map_err(|error| error.to_string())?,
     };
-    let adapter = ViewerAdapter::new(LocalOperations::new(layout));
-    let page = adapter
-        .render(&ViewerRequest {
-            project_id: project,
-            locale,
-            explanation_level: level,
-            requested_language: language,
-            guarded_request: None,
-        })
-        .map_err(|error| error.to_string())?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(layout)),
+        project,
+        locale,
+        level,
+        language,
+    );
     let listener =
         TcpListener::bind(&bind).map_err(|error| format!("cannot bind {bind}: {error}"))?;
     eprintln!("Volicord local viewer: http://{bind}/");
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|error| format!("viewer connection failed: {error}"))?;
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\n\r\n{}",
-            page.html.len(),
-            page.html
-        );
         stream
-            .write_all(response.as_bytes())
-            .map_err(|error| format!("viewer response failed: {error}"))?;
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|error| format!("cannot bound viewer request read: {error}"))?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|error| format!("cannot bound viewer response write: {error}"))?;
+        let mut response_stream = stream
+            .try_clone()
+            .map_err(|error| format!("cannot prepare viewer response stream: {error}"))?;
+        server
+            .serve_connection(&mut stream, &mut response_stream)
+            .map_err(|error| format!("viewer request failed: {error}"))?;
     }
     Ok(())
 }

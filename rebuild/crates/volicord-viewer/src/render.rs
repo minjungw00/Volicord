@@ -9,8 +9,8 @@ use volicord_operations::{
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
-    DocumentKind, DocumentRequest, DocumentSet, FixedLocale, GeneratorIdentity, OutputFormat,
-    ProjectProjection, ProjectionHealth, RequestedDestination,
+    CanonicalInspectionKind, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
+    GeneratorIdentity, OutputFormat, ProjectProjection, ProjectionHealth, RequestedDestination,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,7 +58,7 @@ pub struct ViewerError {
 }
 
 impl ViewerError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
         }
@@ -121,7 +121,10 @@ impl ViewerAdapter {
         let mut html = String::new();
         html.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>");
         html.push_str(STYLE);
-        html.push_str("</head><body><main>");
+        html.push_str(&format!(
+            "</head><body data-explanation-level=\"{}\"><main>",
+            level_key(request.explanation_level)
+        ));
         heading(&mut html, 1, text(request.locale, "Project", "프로젝트"));
         html.push_str("<nav>");
         for (level, label) in [
@@ -130,12 +133,22 @@ impl ViewerAdapter {
             ("deep", text(request.locale, "Deep", "심층")),
         ] {
             html.push_str(&format!(
-                "<a href=\"?level={level}&amp;locale={}\">{}</a> ",
+                "<a href=\"?level={level}&amp;locale={}&amp;language={}{}\">{}</a> ",
                 locale_key(request.locale),
+                percent_encode(&request.requested_language),
+                request
+                    .guarded_request
+                    .map(|identity| format!("&amp;guarded={identity}"))
+                    .unwrap_or_default(),
                 escape(label)
             ));
         }
         html.push_str("</nav>");
+        html.push_str(&format!(
+            "<p><strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Explanation level", "설명 수준")),
+            escape(level_key(request.explanation_level))
+        ));
         render_status(&mut html, request, &projection, &health);
         render_overview(&mut html, request, &projection);
         render_repository(&mut html, request, &projection);
@@ -145,7 +158,7 @@ impl ViewerAdapter {
         render_canonical(&mut html, request, &projection);
         render_privacy(&mut html, request, privacy.as_ref());
         render_documents(&mut html, request, &documents);
-        render_mutation_controls(&mut html, request);
+        render_mutation_controls(&mut html, request, &projection);
         if let Some(candidate) = guarded.as_ref() {
             render_guarded(&mut html, request, candidate);
         }
@@ -604,12 +617,82 @@ fn render_documents(html: &mut String, request: &ViewerRequest, documents: &Docu
             escape(&document.markdown.content)
         ));
     }
+    html.push_str(&format!(
+        "<form method=\"post\" action=\"/documents/export\"><label>{} <select name=\"kind\">",
+        escape(text(request.locale, "Document", "문서"))
+    ));
+    for kind in DocumentKind::ALL {
+        html.push_str(&format!(
+            "<option value=\"{}\">{}</option>",
+            escape(kind.slug()),
+            escape(kind.slug())
+        ));
+    }
+    html.push_str(&format!("</select></label> <label>{} <select name=\"format\"><option value=\"markdown\">Markdown</option><option value=\"html\">HTML</option></select></label> <label>{} <input name=\"destination\" required></label>", escape(text(request.locale, "Format", "형식")), escape(text(request.locale, "Absolute destination", "절대 대상 경로"))));
+    render_view_fields(html, request);
+    html.push_str(&format!(
+        "<button type=\"submit\">{}</button></form>",
+        escape(text(request.locale, "Export", "내보내기"))
+    ));
     item(html, text(request.locale, "Export writes only to an explicit absolute destination and never adopts the document automatically", "내보내기는 명시한 절대 경로에만 쓰며 문서를 자동 채택하지 않음"));
 }
 
-fn render_mutation_controls(html: &mut String, request: &ViewerRequest) {
+fn render_mutation_controls(
+    html: &mut String,
+    request: &ViewerRequest,
+    projection: &ProjectProjection,
+) {
     heading(html, 2, text(request.locale, "Memory actions", "기억 작업"));
     item(html, text(request.locale, "Correction, supersession, forgetting, provider changes, document publication, and Guarded responses are submitted to Local Operations; this viewer has no write store", "수정, 대체, 삭제, 공급자 변경, 문서 게시 및 보호 응답은 로컬 작업 계층에 제출됨; 이 뷰어에는 쓰기 저장소가 없음"));
+    for record in &projection.canonical_inspection {
+        match record.kind {
+            CanonicalInspectionKind::ContextItem => {
+                html.push_str(&format!("<details><summary>{} <code>{}</code></summary><form method=\"post\" action=\"/memory/context/correct\">", escape(text(request.locale, "Correct Context Item", "맥락 항목 수정")), escape(&record.identity)));
+                hidden(html, "record_id", &record.identity);
+                hidden(html, "expected_revision", &record.revision.to_string());
+                html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected statement", "수정한 진술")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
+                render_view_fields(html, request);
+                html.push_str(&format!(
+                    "<button type=\"submit\">{}</button></form></details>",
+                    escape(text(request.locale, "Correct", "수정"))
+                ));
+            }
+            CanonicalInspectionKind::Decision => {
+                html.push_str(&format!("<details><summary>{} <code>{}</code></summary><form method=\"post\" action=\"/memory/decision/correct\">", escape(text(request.locale, "Correct or supersede Decision", "결정 수정 또는 대체")), escape(&record.identity)));
+                hidden(html, "record_id", &record.identity);
+                hidden(html, "expected_revision", &record.revision.to_string());
+                html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected rationale", "수정한 근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
+                render_view_fields(html, request);
+                html.push_str(&format!("<button type=\"submit\">{}</button></form><form method=\"post\" action=\"/memory/decision/supersede\">", escape(text(request.locale, "Correct rationale", "근거 수정"))));
+                hidden(html, "record_id", &record.identity);
+                html.push_str(&format!("<label>{} <input name=\"alternative\" required></label><label>{} <textarea name=\"rationale\"></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "New displayed alternative key", "새 표시 대안 키")), escape(text(request.locale, "Rationale", "근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
+                render_view_fields(html, request);
+                html.push_str(&format!(
+                    "<button type=\"submit\">{}</button></form></details>",
+                    escape(text(request.locale, "Supersede", "대체"))
+                ));
+            }
+            _ => {}
+        }
+        if let Some(kind) = forgettable_kind(record.kind) {
+            html.push_str(&format!("<details><summary>{} {:?} <code>{}</code></summary><form method=\"post\" action=\"/memory/forget\">", escape(text(request.locale, "Forget", "삭제")), record.kind, escape(&record.identity)));
+            hidden(html, "record_kind", kind);
+            hidden(html, "record_id", &record.identity);
+            html.push_str(&format!(
+                "<label>{} <textarea name=\"user_turn\" required></textarea></label>",
+                escape(text(
+                    request.locale,
+                    "Current user turn",
+                    "현재 사용자 입력"
+                ))
+            ));
+            render_view_fields(html, request);
+            html.push_str(&format!(
+                "<button type=\"submit\">{}</button></form></details>",
+                escape(text(request.locale, "Forget this record", "이 기록 삭제"))
+            ));
+        }
+    }
 }
 
 fn render_guarded(
@@ -636,6 +719,28 @@ fn render_guarded(
         candidate.expires_at.as_unix_micros()
     ));
     item(html, text(request.locale, "The response must carry this exact request identity, revision, and fingerprint; it is not general consent", "응답은 이 정확한 요청 ID, 리비전 및 지문을 포함해야 하며 일반 동의가 아님"));
+    html.push_str("<form method=\"post\" action=\"/guarded/confirm\">");
+    hidden(
+        html,
+        "confirmation_request_id",
+        &candidate.confirmation_request_identity.to_string(),
+    );
+    hidden(
+        html,
+        "request_revision",
+        &candidate.request_revision.to_string(),
+    );
+    hidden(html, "effect_fingerprint", &candidate.effect_fingerprint);
+    html.push_str(&format!(
+        "<label>{} <textarea name=\"user_turn\" required></textarea></label>",
+        escape(text(
+            request.locale,
+            "Current user turn",
+            "현재 사용자 입력"
+        ))
+    ));
+    render_view_fields(html, request);
+    html.push_str(&format!("<button name=\"decision\" value=\"confirm\" type=\"submit\">{}</button> <button name=\"decision\" value=\"deny\" type=\"submit\">{}</button></form>", escape(text(request.locale, "Confirm exact effect", "정확한 효과 확인")), escape(text(request.locale, "Deny", "거부"))));
 }
 
 fn visible<T>(values: &[T], level: ExplanationLevel) -> &[T] {
@@ -688,6 +793,54 @@ fn locale_key(locale: ViewerLocale) -> &'static str {
     }
 }
 
+fn level_key(level: ExplanationLevel) -> &'static str {
+    match level {
+        ExplanationLevel::Overview => "overview",
+        ExplanationLevel::Working => "working",
+        ExplanationLevel::Deep => "deep",
+    }
+}
+
+fn forgettable_kind(kind: CanonicalInspectionKind) -> Option<&'static str> {
+    match kind {
+        CanonicalInspectionKind::Project => None,
+        CanonicalInspectionKind::Source => Some("source"),
+        CanonicalInspectionKind::Question => Some("question"),
+        CanonicalInspectionKind::Decision => Some("decision"),
+        CanonicalInspectionKind::ContextItem => Some("context_item"),
+        CanonicalInspectionKind::Checkpoint => Some("checkpoint"),
+    }
+}
+
+fn render_view_fields(html: &mut String, request: &ViewerRequest) {
+    hidden(html, "level", level_key(request.explanation_level));
+    hidden(html, "locale", locale_key(request.locale));
+    hidden(html, "language", &request.requested_language);
+    if let Some(identity) = request.guarded_request {
+        hidden(html, "guarded", &identity.to_string());
+    }
+}
+
+fn hidden(html: &mut String, name: &str, value: &str) {
+    html.push_str(&format!(
+        "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
+        escape(name),
+        escape(value)
+    ));
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -698,7 +851,7 @@ fn escape(value: &str) -> String {
 }
 
 const STYLE: &str = r#"<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:1100px;margin:auto;padding:2rem}h1,h2,h3{color:#f9fafb}h2{border-top:1px solid #374151;padding-top:1rem}a{color:#93c5fd}.item,details,.state,.guarded{padding:.65rem .8rem;margin:.4rem 0;background:#1f2937;border-radius:.45rem}.Degraded,.degraded{border-left:4px solid #f59e0b}.Failed,.failed{border-left:4px solid #ef4444}.guarded{border:2px solid #f59e0b}code,pre{white-space:pre-wrap;overflow-wrap:anywhere}pre{max-height:32rem;overflow:auto}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:1100px;margin:auto;padding:2rem}h1,h2,h3{color:#f9fafb}h2{border-top:1px solid #374151;padding-top:1rem}a{color:#93c5fd}.item,details,.state,.guarded{padding:.65rem .8rem;margin:.4rem 0;background:#1f2937;border-radius:.45rem}.Degraded,.degraded{border-left:4px solid #f59e0b}.Failed,.failed{border-left:4px solid #ef4444}.guarded{border:2px solid #f59e0b}code,pre{white-space:pre-wrap;overflow-wrap:anywhere}pre{max-height:32rem;overflow:auto}form{display:grid;gap:.5rem;margin:.6rem 0}label{display:grid;gap:.25rem}textarea,input,select,button{font:inherit;padding:.45rem}button{width:max-content}
 </style>"#;
 
 #[allow(dead_code)]

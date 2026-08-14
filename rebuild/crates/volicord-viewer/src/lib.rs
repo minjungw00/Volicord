@@ -4,8 +4,10 @@
 //! database, canonical authority, Candidate lifecycle, or Guarded approval
 //! model of its own.
 
+mod http;
 mod render;
 
+pub use http::ViewerServer;
 pub use render::{
     ExplanationLevel, ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRequest,
 };
