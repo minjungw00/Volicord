@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -56,6 +57,11 @@ ALLOWED_STATUS = {
     "failed",
     "environment_blocked",
     "skipped",
+}
+PROVIDER_SOURCE_PATHS = {
+    "volicord": "rebuild/Cargo.toml",
+    "small-python": "src/greeter/__init__.py",
+    "polyglot-medium": "system.json",
 }
 
 
@@ -247,6 +253,35 @@ def recall_meaning(value: dict[str, Any] | None) -> dict[str, Any] | None:
     return {key: item for key, item in value.items() if key != "used_sources"}
 
 
+def canonical_record(
+    inspection: dict[str, Any] | None,
+    kind: str,
+    *,
+    summary_contains: str | None = None,
+    lifecycle_state: str | None = None,
+) -> dict[str, Any] | None:
+    records = inspection.get("records", []) if inspection else []
+    return next(
+        (
+            record
+            for record in records
+            if record.get("kind") == kind
+            and (summary_contains is None or summary_contains in record.get("summary", ""))
+            and (lifecycle_state is None or record.get("lifecycle_state") == lifecycle_state)
+        ),
+        None,
+    )
+
+
+def unsupported_cli(*operations: dict[str, Any]) -> bool:
+    attempted = [operation for operation in operations if operation.get("exit_code") is not None]
+    return bool(attempted) and any(
+        operation.get("exit_code") == 2
+        or "unsupported" in stderr_text(operation).lower()
+        for operation in attempted
+    )
+
+
 def git_revision(recorder: Recorder, repository: Path, env: dict[str, str]) -> str:
     result = recorder.run("git-revision", ["git", "rev-parse", "HEAD"], env, cwd=repository)
     return decoded(result).strip() if result["exit_code"] == 0 else "unavailable"
@@ -427,28 +462,182 @@ def rehearse_target(
         result=understanding, cleanup=understanding_cleanup,
     )
 
+    candidate_tools = {"candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record", "canonical_inspect"}
+    candidate_evidence: dict[str, Any] = {}
+    inquiry_evidence: dict[str, Any] = {}
+    candidate_status = "failed"
+    inquiry_status = "failed"
+    decision_id = None
+    decision_revision = None
+    decision_source_id = None
     try:
         host = Mcp(mcp_binary, env)
         catalog = host.initialize()
-        candidate_view, candidate_ok = host.tool("candidate_inspect", {"project_id": project_id})
-        frontier, frontier_ok = host.tool("inquiry_frontier", {"project_id": project_id})
-        host.close()
-        mutation_names = {tool["name"] for tool in catalog} & {
-            "candidate_collect", "candidate_promote", "candidate_dismiss", "candidate_expire"
-        }
+        catalog_names = {tool["name"] for tool in catalog}
+        missing_candidate_tools = sorted(candidate_tools - catalog_names)
+        if missing_candidate_tools:
+            candidate_status = inquiry_status = "unsupported"
+            candidate_evidence = {"missing_public_tools": missing_candidate_tools}
+            inquiry_evidence = {"missing_public_tools": missing_candidate_tools}
+        else:
+            canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
+            repository_source = canonical_record(canonical_before, "source", summary_contains="RepositorySnapshot")
+            source_id = repository_source.get("identity") if repository_source else None
+            submitted, submitted_ok = host.tool("candidate_manage", {
+                "action": "submit_question",
+                "project_id": project_id,
+                "source_ids": [source_id] if source_id else [],
+                "source_operation": "v11-integrated-repository-review",
+                "repository_snapshot": analysis.get("repository_snapshot", "unknown") if analysis else "unknown",
+                "research_state": "research_required",
+                "research_state_basis": "repository structure must be inspected before asking for a user judgment",
+                "retention_basis": "retain through the explicit V11 inquiry disposition",
+                "bounded_summary": "Choose how this Project should preserve its local context boundary",
+                "prompt": "Which context boundary should this Project use?",
+                "why_now": "the integrated journey needs one material current-host Decision",
+                "affected_scope": ["project-context"],
+                "established_facts": ["The Project has a current local Analysis Snapshot"],
+                "assumptions": ["The Project remains local-first"],
+                "uncertainty": ["External augmentation may be evaluated separately"],
+                "alternatives": [
+                    {"key": "local", "label": "Local", "consequence": "Keep canonical context local"},
+                    {"key": "remote", "label": "Remote", "consequence": "Require a separate provider boundary"},
+                ],
+                "recommendation_key": "local",
+                "recommendation_rationale": "the accepted Project boundary is local-first",
+                "trade_offs": ["Remote augmentation remains a separately authorized capability"],
+                "known_limits": ["The configured external provider is intentionally unavailable"],
+                "what_unlocks": ["the integrated Checkpoint and portability journey"],
+                "materiality_rationale": "the choice changes durable context behavior",
+                "duplicate_basis": "canonical inspection found no matching Question",
+                "presentation_order": 1,
+            })
+            candidate_id = submitted.get("candidate_id") if submitted_ok and submitted else None
+            after_submission, after_submission_ok = host.tool("candidate_inspect", {"project_id": project_id})
+            frontier_before, frontier_before_ok = host.tool("inquiry_frontier", {"project_id": project_id})
+            insufficient, insufficient_ok = host.tool("candidate_manage", {
+                "action": "attach_repository_research",
+                "project_id": project_id,
+                "candidate_id": candidate_id,
+                "capability": "structural",
+                "coverage": "current repository declarations",
+                "freshness": "current",
+                "source_ids": [source_id] if source_id else [],
+                "evidence_assessment": "insufficient",
+                "limits": ["cross-component consequences still require review"],
+            }) if candidate_id else (None, False)
+            premature_ready, premature_ready_ok = host.tool("candidate_manage", {
+                "action": "mark_research_ready", "project_id": project_id, "candidate_id": candidate_id,
+            }) if candidate_id else (None, False)
+            sufficient, sufficient_ok = host.tool("candidate_manage", {
+                "action": "attach_repository_research",
+                "project_id": project_id,
+                "candidate_id": candidate_id,
+                "capability": "structural",
+                "coverage": "current repository structure and explicit Project boundary",
+                "freshness": "current",
+                "source_ids": [source_id] if source_id else [],
+                "evidence_assessment": "sufficient",
+                "limits": ["runtime-only external behavior remains excluded"],
+            }) if candidate_id else (None, False)
+            ready, ready_ok = host.tool("candidate_manage", {
+                "action": "mark_research_ready", "project_id": project_id, "candidate_id": candidate_id,
+            }) if candidate_id else (None, False)
+            ready_inspection, ready_inspection_ok = host.tool("candidate_inspect", {"project_id": project_id})
+            promoted, promoted_ok = host.tool("candidate_manage", {
+                "action": "promote_question", "project_id": project_id, "candidate_id": candidate_id,
+            }) if candidate_id else (None, False)
+            question_id = promoted.get("question_id") if promoted_ok and promoted else None
+            promoted_inspection, promoted_inspection_ok = host.tool(
+                "candidate_inspect", {"project_id": project_id}
+            )
+            promoted_candidate = next(
+                (
+                    item
+                    for item in (promoted_inspection or {}).get("candidates", [])
+                    if item.get("identity") == candidate_id
+                ),
+                None,
+            )
+            frontier, frontier_ok = host.tool("inquiry_frontier", {"project_id": project_id})
+            questions = frontier.get("questions", []) if frontier_ok and frontier else []
+            displayed = next((question for question in questions if question.get("identity") == question_id), None)
+            decision, decision_ok = host.tool("decision_record", {
+                "project_id": project_id,
+                "question_id": question_id,
+                "question_revision": displayed.get("revision") if displayed else 0,
+                "alternative_key": "local",
+                "user_turn": "Choose the local Project context boundary",
+                "user_rationale": "Keep canonical Project context local and authorize providers separately",
+            }) if displayed else (None, False)
+            canonical_after, canonical_after_ok = host.tool("canonical_inspect", {"project_id": project_id})
+            decision_record = canonical_record(canonical_after, "decision", lifecycle_state="active")
+            decision_id = decision_record.get("identity") if decision_record else None
+            decision_revision = decision_record.get("revision") if decision_record else None
+            decision_source_id = decision.get("user_response_source_id") if decision_ok and decision else None
+            submitted_candidate = next(
+                (item for item in (after_submission or {}).get("candidates", []) if item.get("identity") == candidate_id),
+                None,
+            )
+            ready_candidate = next(
+                (item for item in (ready_inspection or {}).get("candidates", []) if item.get("identity") == candidate_id),
+                None,
+            )
+            candidate_ok = all([
+                canonical_before_ok, source_id, submitted_ok,
+                submitted and submitted.get("research_state") == "research_required",
+                after_submission_ok, submitted_candidate and submitted_candidate.get("research_state") == "research_required",
+                frontier_before_ok, not (frontier_before or {}).get("questions"),
+                insufficient_ok,
+                insufficient and insufficient.get("research_state") == "research_required",
+                not premature_ready_ok, sufficient_ok,
+                sufficient and sufficient.get("research_state") == "research_required",
+                ready_ok, ready and ready.get("research_state") == "ready_to_ask",
+                ready_inspection_ok, ready_candidate and ready_candidate.get("research_state") == "ready_to_ask",
+                promoted_ok, question_id,
+                promoted_inspection_ok,
+                promoted_candidate and promoted_candidate.get("disposition", {}).get("state") == "promoted",
+                promoted_candidate and promoted_candidate.get("promotion_target") == question_id,
+            ])
+            inquiry_ok = all([
+                frontier_ok, displayed, decision_ok, decision and decision.get("all_succeeded") is True,
+                canonical_after_ok, decision_id, decision_revision, decision_source_id,
+            ])
+            candidate_status = "passed" if candidate_ok else "failed"
+            inquiry_status = "passed" if inquiry_ok else "failed"
+            candidate_evidence = {
+                "repository_source": repository_source,
+                "submission": submitted,
+                "inspection_after_submission": submitted_candidate,
+                "frontier_after_submission": frontier_before,
+                "insufficient_research": insufficient,
+                "premature_ready_transition": premature_ready,
+                "sufficient_research": sufficient,
+                "ready_transition": ready,
+                "ready_inspection": ready_candidate,
+                "promotion": promoted,
+                "promoted_disposition": promoted_candidate,
+            }
+            inquiry_evidence = {
+                "frontier": frontier,
+                "displayed_question": displayed,
+                "decision": decision,
+                "canonical_decision": decision_record,
+            }
+        candidate_cleanup = host.close()
+        candidate_evidence["cleanup"] = candidate_cleanup
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-        candidate_view, candidate_ok, frontier, frontier_ok, mutation_names = {"error": str(error)}, False, {}, False, set()
-    candidate_count = len(candidate_view.get("candidates", [])) if candidate_ok and candidate_view else 0
+        candidate_evidence = {"error": str(error), **candidate_evidence}
+        inquiry_evidence = {"error": str(error), **inquiry_evidence}
     steps["candidate_boundary"] = step(
-        "unsupported" if candidate_ok and not mutation_names and candidate_count == 0 else "partial",
-        "analysis produced no inspectable Candidate and the supported tool catalog has no collection/promotion/disposition operation",
-        inspection=candidate_view, candidate_mutation_tools=sorted(mutation_names),
+        candidate_status,
+        "research-required Candidate stayed off the frontier until source-grounded research, readiness, inspection, and explicit promotion completed",
+        **candidate_evidence,
     )
-    question_count = len(frontier.get("questions", [])) if frontier_ok and frontier else 0
     steps["inquiry_decision"] = step(
-        "unsupported" if frontier_ok and question_count == 0 else "partial",
-        "no public path promoted a material Question, so an explicit staged Decision could not be exercised",
-        frontier=frontier,
+        inquiry_status,
+        "the promoted frontier Question received one explicit current-host response and produced an inspectable Decision",
+        **inquiry_evidence,
     )
 
     guarded_before = sha256(runtime / "guarded.sqlite3")
@@ -461,61 +650,196 @@ def rehearse_target(
         changed_path=str(ordinary.relative_to(repository)), guarded_store_unchanged=guarded_before == guarded_after,
     )
 
-    expiration = str(time.time_ns() // 1_000 + 600_000_000)
-    target_effect = target_root / "guarded-target.txt"
-    target_effect.write_text("controlled V11 effect target\n", encoding="utf-8")
-    request, request_op = cli_json(
-        recorder, "guarded-request", cli, env, "guarded", "request", project_id,
-        "destructive-delete", "delete controlled V11 target", str(target_effect),
-        "remove the controlled temporary file", "bounded destructive deletion", expiration,
-        f"path:{target_effect}",
+    provider_source_path = PROVIDER_SOURCE_PATHS[target_kind]
+    provider_opt_in_source, provider_source_op = cli_json(
+        recorder, "provider-opt-in-source", cli, env, "canonical", "user-source", project_id,
+        "cli", "cli", "Enable the bounded V11 background semantic provider scope",
     )
-    wrong, wrong_op = (None, {"exit_code": None})
-    confirmed = None
-    if request:
-        wrong, wrong_op = cli_json(
-            recorder, "guarded-mismatch", cli, env, "guarded", "confirm",
-            request["confirmation_request_identity"], str(request["request_revision"]),
-            "sha256:" + "0" * 64, "codex", "v11", "Confirm exact controlled deletion",
+    provider_opt_in, provider_opt_in_op = (None, {"exit_code": None})
+    if provider_opt_in_source:
+        provider_opt_in, provider_opt_in_op = cli_json(
+            recorder, "provider-opt-in", cli, env, "privacy", "enable", project_id,
+            "v11-unavailable-provider", "v11-model", provider_opt_in_source["identity"], provider_source_path,
         )
-        try:
-            host = Mcp(mcp_binary, env)
-            host.initialize()
-            confirmed, confirmed_ok = host.tool("guarded_interaction", {
-                "confirmation_request_id": request["confirmation_request_identity"],
-                "request_revision": request["request_revision"],
-                "effect_fingerprint": request["effect_fingerprint"],
+    guarded_status = "failed"
+    provider_status = "failed"
+    guarded_evidence: dict[str, Any] = {
+        "opt_in_source": provider_opt_in_source,
+        "opt_in_source_operation": provider_source_op,
+        "opt_in": provider_opt_in,
+        "opt_in_operation": provider_opt_in_op,
+    }
+    provider_evidence: dict[str, Any] = {}
+    required_provider_tools = {"background_semantic_operation", "guarded_interaction", "canonical_inspect", "repository_analyze"}
+    try:
+        provider_host = Mcp(mcp_binary, env)
+        provider_catalog = provider_host.initialize()
+        provider_tool_names = {tool["name"] for tool in provider_catalog}
+        missing_provider_tools = sorted(required_provider_tools - provider_tool_names)
+        if missing_provider_tools:
+            guarded_status = provider_status = "unsupported"
+            guarded_evidence["missing_public_tools"] = missing_provider_tools
+            provider_evidence["missing_public_tools"] = missing_provider_tools
+        elif provider_opt_in:
+            expiration = time.time_ns() // 1_000 + 600_000_000
+            prepare_arguments = {
+                "action": "prepare",
+                "project_id": project_id,
+                "provider": "v11-unavailable-provider",
+                "model": "v11-model",
+                "purpose": "background semantic analysis",
+                "requested_capability": "semantic",
+                "source_paths": [provider_source_path],
+                "expiration_unix_micros": expiration,
+            }
+            denied_preparation, denied_preparation_ok = provider_host.tool(
+                "background_semantic_operation", prepare_arguments
+            )
+            denied_request = (denied_preparation or {}).get("guarded_request", {})
+            denied, denied_ok = provider_host.tool("guarded_interaction", {
+                "confirmation_request_id": denied_request.get("confirmation_request_id"),
+                "request_revision": denied_request.get("request_revision"),
+                "effect_fingerprint": denied_request.get("effect_fingerprint"),
+                "decision": "deny",
+                "user_turn": "Deny this exact V11 provider transmission",
+            }) if denied_request else (None, False)
+            denied_dispatch, denied_dispatch_ok = provider_host.tool("background_semantic_operation", {
+                "action": "dispatch",
+                "confirmation_request_id": denied_request.get("confirmation_request_id"),
+                "request_revision": denied_request.get("request_revision"),
+                "effect_fingerprint": denied_request.get("effect_fingerprint"),
+            }) if denied_request else (None, False)
+
+            prepared, prepared_ok = provider_host.tool("background_semantic_operation", prepare_arguments)
+            request = (prepared or {}).get("guarded_request", {})
+            provider_request = (prepared or {}).get("provider_request", {})
+            inspected_request, inspected_request_ok = provider_host.tool("guarded_interaction", {
+                "confirmation_request_id": request.get("confirmation_request_id"),
+            }) if request else (None, False)
+            mismatched, mismatched_ok = provider_host.tool("background_semantic_operation", {
+                "action": "dispatch",
+                "confirmation_request_id": request.get("confirmation_request_id"),
+                "request_revision": request.get("request_revision"),
+                "effect_fingerprint": "sha256:" + "0" * 64,
+            }) if request else (None, False)
+            missing, missing_ok = provider_host.tool("background_semantic_operation", {
+                "action": "dispatch",
+                "confirmation_request_id": request.get("confirmation_request_id"),
+                "request_revision": request.get("request_revision"),
+                "effect_fingerprint": request.get("effect_fingerprint"),
+            }) if request else (None, False)
+            confirmed, confirmed_ok = provider_host.tool("guarded_interaction", {
+                "confirmation_request_id": request.get("confirmation_request_id"),
+                "request_revision": request.get("request_revision"),
+                "effect_fingerprint": request.get("effect_fingerprint"),
                 "decision": "confirm",
-                "user_turn": "Confirm the exact controlled V11 deletion",
+                "user_turn": "Confirm this exact filtered V11 provider transmission",
+            }) if request else (None, False)
+            dispatched, dispatched_ok = provider_host.tool("background_semantic_operation", {
+                "action": "dispatch",
+                "confirmation_request_id": request.get("confirmation_request_id"),
+                "request_revision": request.get("request_revision"),
+                "effect_fingerprint": request.get("effect_fingerprint"),
+            }) if request else (None, False)
+            durable, durable_ok = provider_host.tool("background_semantic_operation", {
+                "action": "inspect",
+                "project_id": project_id,
+                "operation_id": (dispatched or {}).get("operation_id"),
+                "provider_request_id": provider_request.get("provider_request_id"),
+            }) if dispatched_ok and dispatched else (None, False)
+            reused, reused_ok = provider_host.tool("background_semantic_operation", {
+                "action": "dispatch",
+                "confirmation_request_id": request.get("confirmation_request_id"),
+                "request_revision": request.get("request_revision"),
+                "effect_fingerprint": request.get("effect_fingerprint"),
+            }) if request else (None, False)
+            local_canonical, local_canonical_ok = provider_host.tool("canonical_inspect", {"project_id": project_id})
+            local_structural, local_structural_ok = provider_host.tool(
+                "repository_analyze", {"project_id": project_id, "excluded_paths": []}
+            )
+            provider_request_after = (durable or {}).get("provider_request", {})
+            manifest = provider_request_after.get("manifest", [])
+            guarded_ok = all([
+                denied_preparation_ok,
+                denied_preparation and denied_preparation.get("state") == "awaiting_exact_confirmation",
+                denied_ok, denied and denied.get("decision") == "denied",
+                not denied_dispatch_ok,
+                prepared_ok, prepared and prepared.get("state") == "awaiting_exact_confirmation",
+                prepared and prepared.get("dispatch_occurred") is False,
+                inspected_request_ok,
+                inspected_request and inspected_request.get("effect_fingerprint") == request.get("effect_fingerprint"),
+                mismatched_ok,
+                mismatched and mismatched.get("guarded_outcome", {}).get("rejection") == "mismatched",
+                mismatched and mismatched.get("provider_request", {}).get("outcome") == "prepared",
+                missing_ok,
+                missing and missing.get("guarded_outcome", {}).get("rejection") == "missing",
+                missing and missing.get("provider_request", {}).get("outcome") == "prepared",
+                confirmed_ok, confirmed and confirmed.get("decision") == "confirmed",
+                dispatched_ok,
+                dispatched and dispatched.get("guarded_outcome", {}).get("confirmation_consumed") is True,
+                durable_ok, durable == dispatched,
+                not reused_ok,
+                reused and "live provider preparation is unavailable" in reused.get("error", ""),
+            ])
+            provider_ok = all([
+                durable_ok,
+                provider_request_after.get("outcome") == "provider_unavailable",
+                manifest,
+                all(entry.get("transmission_outcome") == "not_transmitted" for entry in manifest),
+                local_canonical_ok,
+                local_structural_ok,
+                local_structural and local_structural.get("state") in {"succeeded", "partial"},
+            ])
+            guarded_status = "passed" if guarded_ok else "failed"
+            provider_status = "passed" if provider_ok else "failed"
+            guarded_evidence.update({
+                "denied_preparation": denied_preparation,
+                "denial": denied,
+                "dispatch_after_denial": denied_dispatch,
+                "preparation": prepared,
+                "exact_inspection": inspected_request,
+                "mismatched_dispatch": mismatched,
+                "missing_confirmation_dispatch": missing,
+                "confirmation": confirmed,
+                "dispatch_attempt": dispatched,
+                "durable_inspection": durable,
+                "reuse_attempt": reused,
             })
-            host.close()
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
-            confirmed_ok = False
-    else:
-        confirmed_ok = False
+            provider_evidence = {
+                "durable_inspection": durable,
+                "local_canonical": local_canonical,
+                "local_structural": local_structural,
+            }
+        elif unsupported_cli(provider_opt_in_op):
+            guarded_status = provider_status = "unsupported"
+        provider_cleanup = provider_host.close()
+        guarded_evidence["cleanup"] = provider_cleanup
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        guarded_evidence["error"] = str(error)
+        provider_evidence["error"] = str(error)
     steps["guarded_boundary"] = step(
-        "unsupported",
-        "exact request/Source-linked confirmation is public, but no CLI/MCP/viewer dispatch operation exists to exercise completion, failure, indeterminate outcome, or reuse rejection",
-        request=request, request_operation=request_op, mismatched_confirmation_exit=wrong_op.get("exit_code"),
-        exact_confirmation=confirmed, exact_confirmation_ok=confirmed_ok,
-        controlled_target_remains=target_effect.exists(), public_tools=mcp_evidence.get("tool_names", []),
+        guarded_status,
+        "the public provider operation enforced exact inspection, denial cleanup, pre-confirmation rejection, confirmation consumption, durable outcome inspection, and terminal reuse rejection",
+        **guarded_evidence,
     )
 
-    checkpoint_source, source_op = cli_json(
-        recorder, "checkpoint-source", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11", "Record the source-grounded V11 checkpoint",
-    )
     checkpoint_value, checkpoint_op = (None, {"exit_code": None})
-    if checkpoint_source:
+    checkpoint_next_step = f"Resume the {target_kind} V11 journey in a new session"
+    checkpoint_target = "next Codex session"
+    if decision_source_id:
         checkpoint_value, checkpoint_op = cli_json(
             recorder, "checkpoint", cli, env, "checkpoint", "record", project_id, "handoff",
-            checkpoint_source["identity"], f"Rehearse {target_kind}", "Resume in a new session",
+            decision_source_id, f"Rehearse {target_kind} after the explicit Decision",
+            checkpoint_next_step, checkpoint_target,
         )
+    checkpoint_status = "passed" if checkpoint_value else (
+        "unsupported" if unsupported_cli(checkpoint_op) else "failed"
+    )
     steps["checkpoint"] = step(
-        "passed" if checkpoint_value else "failed",
-        "source-grounded Checkpoint was recorded" if checkpoint_value else
-        "the public CLI accepted the Checkpoint command shape but the domain operation failed",
-        source=checkpoint_source, source_operation=source_op, checkpoint=checkpoint_value, operation=checkpoint_op,
+        checkpoint_status,
+        "the Decision response Source grounded a Handoff Checkpoint with an explicit next-session target",
+        decision_source_id=decision_source_id, handoff_target=checkpoint_target,
+        checkpoint=checkpoint_value, operation=checkpoint_op,
     )
     recall_before, recall_op = cli_json(recorder, "recall", cli, env, "recall", project_id)
     try:
@@ -525,9 +849,19 @@ def rehearse_target(
         restart_cleanup = restarted.close()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         recall_after, recall_after_ok, restart_cleanup = {"error": str(error)}, False, {}
+    restart_ok = all([
+        checkpoint_value,
+        recall_before,
+        recall_before.get("active_decision_count", 0) >= 1,
+        recall_before.get("next_step") == checkpoint_next_step,
+        recall_after_ok,
+        recall_after,
+        len(recall_after.get("decisions", [])) >= 1,
+        recall_after.get("next_step") == checkpoint_next_step,
+    ])
     steps["restart_recall"] = step(
-        "partial" if recall_after_ok else "failed",
-        "new MCP process kept Recall usable, but required Checkpoint and Decision context is incomplete",
+        "passed" if restart_ok else "failed",
+        "a new MCP process recovered the integrated Decision and explicit Handoff next step",
         cli_recall=recall_before, cli_operation=recall_op, restarted_recall=recall_after, cleanup=restart_cleanup,
     )
 
@@ -540,37 +874,116 @@ def rehearse_target(
         bound, bind_op = cli_json(
             recorder, "clone-bind", cli, env, "project", "bind", project_id, str(clone), runtime=clone_runtime
         )
-    portability_ok = exported and clone_result["exit_code"] == 0 and imported and bound
+    portability_ok = bool(exported and clone_result["exit_code"] == 0 and imported and bound)
+    portability_status = "passed" if portability_ok else (
+        "unsupported" if unsupported_cli(export_op, import_op, bind_op) else "failed"
+    )
     steps["portable_clone"] = step(
-        "passed" if portability_ok else "failed", "portable bundle imported and explicitly rebound in another clone",
+        portability_status, "portable bundle imported and explicitly rebound in another clone",
         export=exported, export_operation=export_op, clone_operation=clone_result,
         import_result=imported, import_operation=import_op, binding=bound, bind_operation=bind_op,
     )
 
-    if portability_ok:
-        source_a, _ = cli_json(recorder, "diverge-a-source", cli, env, "canonical", "user-source", project_id, "codex", "clone-a", "Independent A")
-        source_b, _ = cli_json(recorder, "diverge-b-source", cli, env, "canonical", "user-source", project_id, "codex", "clone-b", "Independent B", runtime=clone_runtime)
+    local_decision = incoming_decision = comparison = resolution = None
+    source_a = source_b = None
+    conflict_operations: list[dict[str, Any]] = []
+    if portability_ok and decision_id:
+        source_a, source_a_op = cli_json(
+            recorder, "diverge-a-source", cli, env, "canonical", "user-source", project_id,
+            "codex", "clone-a", "Choose the remote branch in clone A",
+        )
+        source_b, source_b_op = cli_json(
+            recorder, "diverge-b-source", cli, env, "canonical", "user-source", project_id,
+            "codex", "clone-b", "Retain the local branch in clone B", runtime=clone_runtime,
+        )
+        conflict_operations.extend([source_a_op, source_b_op])
+        if source_a:
+            local_decision, local_decision_op = cli_json(
+                recorder, "diverge-a-decision", cli, env, "canonical", "supersede-decision",
+                project_id, decision_id, source_a["identity"], "remote", "Clone A chooses remote augmentation",
+            )
+            conflict_operations.append(local_decision_op)
+        if source_b:
+            incoming_decision, incoming_decision_op = cli_json(
+                recorder, "diverge-b-decision", cli, env, "canonical", "supersede-decision",
+                project_id, decision_id, source_b["identity"], "local", "Clone B retains local context",
+                runtime=clone_runtime,
+            )
+            conflict_operations.append(incoming_decision_op)
         bundle_a = target_root / "a.volicord.json"
         bundle_b = target_root / "b.volicord.json"
-        cli_json(recorder, "diverge-a-export", cli, env, "portable", "export", project_id, str(bundle_a))
-        cli_json(recorder, "diverge-b-export", cli, env, "portable", "export", project_id, str(bundle_b), runtime=clone_runtime)
-        merged, merge_op = cli_json(recorder, "independent-merge", cli, env, "portable", "import", str(bundle_b))
-    else:
-        source_a = source_b = merged = None
-        merge_op = {"exit_code": None}
+        bundle_a_value, bundle_a_op = cli_json(
+            recorder, "diverge-a-export", cli, env, "portable", "export", project_id, str(bundle_a)
+        )
+        bundle_b_value, bundle_b_op = cli_json(
+            recorder, "diverge-b-export", cli, env, "portable", "export", project_id, str(bundle_b),
+            runtime=clone_runtime,
+        )
+        conflict_operations.extend([bundle_a_op, bundle_b_op])
+        if bundle_a_value and bundle_b_value:
+            comparison, comparison_op = cli_json(
+                recorder, "divergent-compare", cli, env, "portable", "compare", str(bundle_b),
+                "--base", str(base_bundle),
+            )
+            conflict_operations.append(comparison_op)
+            if comparison and source_a:
+                resolution, resolution_op = cli_json(
+                    recorder, "divergent-resolution", cli, env, "portable", "resolve", str(bundle_b),
+                    comparison["conflict_set_identity"], str(comparison["conflict_revision"]),
+                    source_a["identity"], "context-branch", "--base", str(base_bundle),
+                )
+                conflict_operations.append(resolution_op)
+    conflicts = comparison.get("conflicts", []) if comparison else []
+    conflict_ok = all([
+        source_a, source_b, local_decision, incoming_decision, comparison,
+        comparison and comparison.get("requires_user_resolution") is True,
+        any(conflict.get("class") in {"same_record_revision", "semantic_decision_conflict"} for conflict in conflicts),
+        resolution,
+        resolution and resolution.get("status") in {"resolved", "branched"},
+        resolution and resolution.get("resolution_source_id") == source_a.get("identity") if source_a else False,
+    ])
+    conflict_status = "passed" if conflict_ok else (
+        "unsupported" if unsupported_cli(*conflict_operations) else "failed"
+    )
     steps["divergent_conflict"] = step(
-        "unsupported",
-        "independent divergence can be imported, but supported user surfaces expose neither same-record conflict creation nor conflict inspection/resolution",
-        clone_a_source=source_a, clone_b_source=source_b, independent_merge=merged, merge_operation=merge_op,
+        conflict_status,
+        "both clones superseded the same integrated Decision, exposed the canonical conflict set, and explicitly created a context branch",
+        clone_a_source=source_a, clone_b_source=source_b,
+        clone_a_decision=local_decision, clone_b_decision=incoming_decision,
+        comparison=comparison, resolution=resolution,
     )
 
-    deletion_authorization, _ = cli_json(
+    correction_authorization, correction_source_op = cli_json(
+        recorder, "correction-authorization", cli, env, "canonical", "user-source", project_id,
+        "codex", "v11-correction", "Correct the integrated Decision rationale",
+    )
+    corrected = None
+    correction_op = {"exit_code": None}
+    if correction_authorization and local_decision:
+        corrected, correction_op = cli_json(
+            recorder, "correct-decision", cli, env, "canonical", "correct-decision", project_id,
+            local_decision["identity"], str(local_decision["revision"]), correction_authorization["identity"],
+            "Remote augmentation Clone A chooses",
+        )
+    supersession_authorization, supersession_source_op = cli_json(
+        recorder, "supersession-authorization", cli, env, "canonical", "user-source", project_id,
+        "codex", "v11-supersession", "Return the integrated Decision to the local boundary",
+    )
+    superseded = None
+    supersession_op = {"exit_code": None}
+    if supersession_authorization and local_decision and corrected:
+        superseded, supersession_op = cli_json(
+            recorder, "supersede-corrected-decision", cli, env, "canonical", "supersede-decision",
+            project_id, local_decision["identity"], supersession_authorization["identity"], "local",
+            "Keep canonical context local after evaluating the explicit provider boundary",
+        )
+    deletion_authorization, deletion_source_op = cli_json(
         recorder, "deletion-authorization", cli, env, "canonical", "user-source", project_id,
         "codex", "v11", "Authorize deletion of the disposable V11 Source",
     )
-    disposable_source, _ = cli_json(
+    disposable_source, disposable_source_op = cli_json(
         recorder, "disposable-source", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11", "Disposable V11 source content",
+        "codex", "v11", "Disposable Source created by the integrated V11 journey",
     )
     deletion = None
     if deletion_authorization and disposable_source:
@@ -580,11 +993,35 @@ def rehearse_target(
         )
     else:
         deletion_op = {"exit_code": None}
+    canonical_after_mutations, canonical_after_mutations_op = cli_json(
+        recorder, "canonical-after-mutations", cli, env, "canonical", "inspect", project_id
+    )
+    records_after_mutations = canonical_after_mutations.get("records", []) if canonical_after_mutations else []
+    mutation_operations = [
+        correction_source_op, correction_op, supersession_source_op, supersession_op,
+        deletion_source_op, disposable_source_op, deletion_op, canonical_after_mutations_op,
+    ]
+    mutations_ok = all([
+        corrected,
+        corrected and corrected.get("identity") == local_decision.get("identity") if local_decision else False,
+        corrected and corrected.get("revision") == 2,
+        superseded,
+        superseded and superseded.get("identity") != local_decision.get("identity") if local_decision else False,
+        deletion,
+        canonical_after_mutations,
+        disposable_source and all(record.get("identity") != disposable_source.get("identity") for record in records_after_mutations),
+        canonical_record(canonical_after_mutations, "decision", lifecycle_state="active") is not None,
+    ])
+    mutation_status = "passed" if mutations_ok else (
+        "unsupported" if unsupported_cli(*mutation_operations) else "failed"
+    )
     steps["correction_supersession_deletion"] = step(
-        "unsupported",
-        "deletion is public and was exercised, but no public Candidate/Question journey created a correctable Context Item or supersedable Decision",
+        mutation_status,
+        "the integrated Decision was corrected and superseded, and an integrated disposable Source was forgotten",
+        correction_authorization=correction_authorization, correction=corrected,
+        supersession_authorization=supersession_authorization, supersession=superseded,
         deletion_authorization=deletion_authorization, disposable_source=disposable_source,
-        deletion=deletion, deletion_operation=deletion_op,
+        deletion=deletion, canonical_after=canonical_after_mutations,
     )
 
     canonical_before_docs = target_root / "before-documents.json"
@@ -608,10 +1045,11 @@ def rehearse_target(
     )
 
     privacy, privacy_op = cli_json(recorder, "privacy-status", cli, env, "privacy", "status", project_id)
+    provider_evidence.update({"privacy": privacy, "privacy_operation": privacy_op})
     steps["provider_failure"] = step(
-        "unsupported",
-        "local-only operation with an unconfigured provider is observable, but no public operation requests background semantic dispatch to exercise an unavailable provider and recovery",
-        privacy=privacy, privacy_operation=privacy_op, local_analysis_remained=analysis_ok,
+        provider_status,
+        "the configured production adapter reported provider_unavailable without transmission while canonical inspection and local structural analysis remained usable",
+        **provider_evidence,
     )
 
     malformed = repository / ("src/v11_broken.rs" if target_kind == "volicord" else "v11_broken.py")
@@ -677,6 +1115,37 @@ def validate_result(result: dict[str, Any]) -> None:
                 raise AssertionError("invalid per-step status")
 
 
+def assert_required_steps_are_evidence_driven() -> None:
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    assigned: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not isinstance(call.func, ast.Name) or call.func.id != "step" or not call.args:
+            continue
+        for target in node.targets:
+            if not (
+                isinstance(target, ast.Subscript)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "steps"
+                and isinstance(target.slice, ast.Constant)
+                and isinstance(target.slice.value, str)
+            ):
+                continue
+            name = target.slice.value
+            if name not in REQUIRED_STEPS:
+                continue
+            assigned.add(name)
+            if isinstance(call.args[0], ast.Constant) and call.args[0].value != "skipped":
+                raise AssertionError(
+                    f"required production-backed step {name} has a permanently hard-coded status"
+                )
+    missing = set(REQUIRED_STEPS) - assigned
+    if missing:
+        raise AssertionError(f"required steps have no evidence-driven assignment: {sorted(missing)}")
+
+
 def self_check() -> int:
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
@@ -687,6 +1156,7 @@ def self_check() -> int:
     suffixes = {path.suffix for path in POLYGLOT_FIXTURE.rglob("*") if path.is_file()}
     if not {".java", ".py", ".ts", ".md"} <= suffixes:
         raise AssertionError("polyglot fixture lost three languages or documentation")
+    assert_required_steps_are_evidence_driven()
     fake = {
         "schema_version": 1,
         "repositories": [
@@ -695,7 +1165,12 @@ def self_check() -> int:
         ],
     }
     validate_result(fake)
-    print(json.dumps({"status": "passed", "required_steps": len(REQUIRED_STEPS), "polyglot_hash": tree_hash(POLYGLOT_FIXTURE)}, indent=2))
+    print(json.dumps({
+        "status": "passed",
+        "required_steps": len(REQUIRED_STEPS),
+        "evidence_driven_steps": len(REQUIRED_STEPS),
+        "polyglot_hash": tree_hash(POLYGLOT_FIXTURE),
+    }, indent=2))
     return 0
 
 
