@@ -25,7 +25,8 @@ use volicord_context::{
 };
 use volicord_inquiry::{
     compute_frontier, record_response_batch, ApplicabilityQuery, BatchResponseItem,
-    BatchResponseResult, CandidateReadBasis, CandidateStore, FrontierRead, InquiryScope,
+    BatchResponseResult, CandidateDraft, CandidateId, CandidateReadBasis, CandidateRecord,
+    CandidateStore, FrontierRead, InquiryScope, PromotionResult, SubmissionOutcome,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, GitWorktreeLayout,
@@ -570,6 +571,59 @@ impl LocalOperations {
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|store| store.read_basis(project_id))
             .map_err(|error| Error::with_source("Candidate inspection failed", error))
+    }
+
+    pub fn submit_candidate(&self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
+        self.initialize_runtime()?;
+        let _ = self.canonical_basis(draft.project_id)?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| store.submit(draft))
+            .map_err(|error| Error::with_source("Candidate submission failed", error))
+    }
+
+    pub fn promote_question_candidate(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+    ) -> Result<PromotionResult, Error> {
+        let mut canonical = self.open_canonical()?;
+        let basis = canonical
+            .read_canonical_basis(
+                project_id,
+                CanonicalReadOptions {
+                    include_checkpoint_history: true,
+                },
+            )
+            .map_err(|error| Error::with_source("canonical inspection failed", error))?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.promote_question(&mut canonical, &basis, project_id, candidate_id)
+            })
+            .map_err(|error| Error::with_source("Question Candidate promotion failed", error))
+    }
+
+    pub fn dismiss_candidate(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        reason: impl Into<String>,
+    ) -> Result<CandidateRecord, Error> {
+        let _ = self.canonical_basis(project_id)?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| store.dismiss(project_id, candidate_id, reason))
+            .map_err(|error| Error::with_source("Candidate dismissal failed", error))
+    }
+
+    pub fn delete_candidate(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        basis: impl Into<String>,
+    ) -> Result<CandidateRecord, Error> {
+        let _ = self.canonical_basis(project_id)?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| store.delete_candidate(project_id, candidate_id, basis))
+            .map_err(|error| Error::with_source("Candidate deletion failed", error))
     }
 
     pub fn privacy_status(&self, project_id: ProjectId) -> Result<ProjectPrivacyInspection, Error> {

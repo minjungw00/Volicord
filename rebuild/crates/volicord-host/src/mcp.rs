@@ -6,14 +6,20 @@ use std::{
     path::PathBuf,
 };
 use volicord_context::{
-    ApplicabilityScope, CanonicalRecordId, CheckpointDraft, CheckpointId, CheckpointKind, Clock,
-    ContextItemCorrectionDraft, ContextItemId, CorrectionKind, DecisionCorrectionDraft, DecisionId,
-    OperationId, ProjectId, QuestionId, SourceId, SystemClock, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact, VerificationState,
-    WorkState,
+    AgentRecommendation, ApplicabilityScope, CanonicalRecordId, CheckpointDraft, CheckpointId,
+    CheckpointKind, Clock, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
+    DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId, Principal,
+    PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
+    QuestionEvidenceFreshness, QuestionId, QuestionResearchState, SourceId, SystemClock,
+    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact,
+    VerificationState, WorkState,
 };
 use volicord_inquiry::{
-    BatchResponseItem, CurrentHostResponse, DisplayedQuestion, ResponseMapping,
+    BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
+    CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateId, CandidateKind,
+    CandidateObservationBasis, CandidateOrigin, CandidateRetention, CurrentHostResponse,
+    DisplayedQuestion, DuplicateAssessment, MaterialityAssessment, MaterialityStatus,
+    QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     ConfirmationDecision, ConfirmationRequestId, HealthState, LocalOperations,
@@ -22,7 +28,7 @@ use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 14] = [
+pub const HOST_TOOL_NAMES: [&str; 15] = [
     "project_initialize",
     "project_health",
     "recall",
@@ -34,6 +40,7 @@ pub const HOST_TOOL_NAMES: [&str; 14] = [
     "canonical_inspect",
     "canonical_mutate",
     "candidate_inspect",
+    "candidate_manage",
     "privacy_status",
     "document_preview",
     "guarded_interaction",
@@ -137,6 +144,7 @@ impl HostAdapter {
                 "canonical_inspect" => self.canonical_inspect(&arguments),
                 "canonical_mutate" => self.canonical_mutate(&arguments),
                 "candidate_inspect" => self.candidate_inspect(&arguments),
+                "candidate_manage" => self.candidate_manage(&arguments),
                 "privacy_status" => self.privacy_status(&arguments),
                 "document_preview" => self.document_preview(&arguments),
                 "guarded_interaction" => self.guarded_interaction(&arguments),
@@ -470,9 +478,195 @@ impl HostAdapter {
             .operations
             .project_projection(project(args)?)
             .map_err(operation_error)?;
-        Ok(
-            json!({"candidates":projection.candidate_inspection.into_iter().map(|candidate| json!({"identity":candidate.candidate_id.to_string(),"exists":candidate.exists,"health":format!("{:?}",candidate.health).to_lowercase(),"kind":candidate.kind.map(|value| format!("{:?}",value).to_lowercase()),"summary":candidate.bounded_summary,"disposition":candidate.promotion_disposition.map(|value| format!("{:?}",value).to_lowercase()),"opt_out":candidate.current_applicable_opt_out.len()})).collect::<Vec<_>>(),"read_only":true}),
-        )
+        Ok(json!({
+            "candidates": projection
+                .candidate_inspection
+                .into_iter()
+                .map(candidate_inspection_json)
+                .collect::<Vec<_>>(),
+            "read_only": true
+        }))
+    }
+
+    fn candidate_manage(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        match required_str(args, "action")? {
+            "submit_question" => {
+                let source_basis = source_ids(args, "source_ids")?;
+                let now = SystemClock
+                    .now()
+                    .map_err(|error| HostError::new(error.to_string()))?;
+                let alternatives = candidate_alternatives(args)?;
+                let recommendation_key = required_str(args, "recommendation_key")?.to_owned();
+                if !alternatives
+                    .iter()
+                    .any(|alternative| alternative.key == recommendation_key)
+                {
+                    return Err(HostError::new(
+                        "recommendation_key must name one submitted alternative",
+                    ));
+                }
+                let established_facts = string_array(args, "established_facts")?
+                    .into_iter()
+                    .map(|statement| QuestionEstablishedFact {
+                        statement,
+                        source_basis: source_basis.clone(),
+                        capability: None,
+                        freshness: QuestionEvidenceFreshness::Current,
+                    })
+                    .collect();
+                let draft = CandidateDraft {
+                    project_id,
+                    kind: CandidateKind::QuestionCandidate,
+                    collection_mode: CandidateCollectionMode::Automatic,
+                    origin: CandidateOrigin {
+                        actor: Principal {
+                            kind: PrincipalKind::Agent,
+                            identity: "codex".into(),
+                        },
+                        subsystem: "inquiry".into(),
+                        session: Some(self.host_session.clone()),
+                        provenance_summary: "explicit Codex Question Candidate submission".into(),
+                    },
+                    collection_scope: CandidateCollectionScope {
+                        project_id,
+                        session: Some(self.host_session.clone()),
+                        source_operation: Some(required_str(args, "source_operation")?.to_owned()),
+                        candidate_kind: CandidateKind::QuestionCandidate,
+                    },
+                    observation_basis: CandidateObservationBasis {
+                        source_basis: source_basis.clone(),
+                        repository_snapshot: args
+                            .get("repository_snapshot")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned),
+                        analysis_snapshot: None,
+                        execution: None,
+                        host_turn: None,
+                        other: Some("explicit agent Candidate operation".into()),
+                    },
+                    observed_at: now,
+                    retention: CandidateRetention {
+                        retained_until: None,
+                        basis: required_str(args, "retention_basis")?.to_owned(),
+                    },
+                    content: CandidateContent {
+                        bounded_summary: required_str(args, "bounded_summary")?.to_owned(),
+                        question: Some(QuestionCandidate {
+                            prompt_basis: required_str(args, "prompt")?.to_owned(),
+                            known_facts: established_facts,
+                            assumptions: string_array(args, "assumptions")?,
+                            uncertainty: string_array(args, "uncertainty")?,
+                            affected_scope: string_array(args, "affected_scope")?,
+                            possible_prerequisites: Vec::new(),
+                            source_basis: source_basis.clone(),
+                            repository_basis: Vec::new(),
+                            freshness: CandidateFreshness::Current,
+                            duplicate_assessment: DuplicateAssessment::NoDuplicate {
+                                basis: required_str(args, "duplicate_basis")?.to_owned(),
+                            },
+                            materiality: MaterialityAssessment {
+                                status: MaterialityStatus::Material,
+                                rationale: Some(
+                                    required_str(args, "materiality_rationale")?.to_owned(),
+                                ),
+                                source_basis: source_basis.clone(),
+                                assessed_by: Some(Principal {
+                                    kind: PrincipalKind::Agent,
+                                    identity: "codex".into(),
+                                }),
+                                assessed_at: Some(now),
+                            },
+                            presentation_order: Some(required_u64(args, "presentation_order")?),
+                            why_it_matters_now: required_str(args, "why_now")?.to_owned(),
+                            alternatives,
+                            recommendation: AgentRecommendation {
+                                alternative_key: Some(recommendation_key),
+                                rationale: required_str(args, "recommendation_rationale")?
+                                    .to_owned(),
+                                source_basis,
+                            },
+                            trade_offs: string_array(args, "trade_offs")?,
+                            known_limits: string_array(args, "known_limits")?,
+                            what_the_answer_unlocks: string_array(args, "what_unlocks")?,
+                            allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                            research_state: QuestionResearchState::ReadyToAsk,
+                        }),
+                    },
+                };
+                match self
+                    .operations
+                    .submit_candidate(draft)
+                    .map_err(operation_error)?
+                {
+                    SubmissionOutcome::Stored(candidate) => Ok(json!({
+                        "action": "submit_question",
+                        "state": "stored",
+                        "candidate_id": candidate.id.to_string(),
+                        "candidate_revision": candidate.revision,
+                        "collection_mode": "automatic",
+                        "disposition": candidate_disposition_json(&candidate.disposition),
+                        "canonical_mutation": false
+                    })),
+                    SubmissionOutcome::CollectionDisabled { matching_scopes } => Ok(json!({
+                        "action": "submit_question",
+                        "state": "collection_disabled",
+                        "matching_opt_out_scopes": matching_scopes.into_iter().map(collection_opt_out_json).collect::<Vec<_>>(),
+                        "canonical_mutation": false
+                    })),
+                }
+            }
+            "promote_question" => {
+                let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
+                let result = self
+                    .operations
+                    .promote_question_candidate(project_id, candidate_id)
+                    .map_err(operation_error)?;
+                Ok(json!({
+                    "action": "promote_question",
+                    "candidate_id": result.candidate_id.to_string(),
+                    "question_id": result.question_id.to_string(),
+                    "canonical_replayed": result.canonical_replayed,
+                    "candidate_reconciled": result.candidate_reconciled
+                }))
+            }
+            "dismiss" => {
+                let candidate = self
+                    .operations
+                    .dismiss_candidate(
+                        project_id,
+                        parse_candidate(required_str(args, "candidate_id")?)?,
+                        required_str(args, "reason")?,
+                    )
+                    .map_err(operation_error)?;
+                Ok(json!({
+                    "action": "dismiss",
+                    "candidate_id": candidate.id.to_string(),
+                    "candidate_revision": candidate.revision,
+                    "disposition": candidate_disposition_json(&candidate.disposition),
+                    "canonical_mutation": false
+                }))
+            }
+            "delete" => {
+                let candidate = self
+                    .operations
+                    .delete_candidate(
+                        project_id,
+                        parse_candidate(required_str(args, "candidate_id")?)?,
+                        required_str(args, "basis")?,
+                    )
+                    .map_err(operation_error)?;
+                Ok(json!({
+                    "action": "delete",
+                    "candidate_id": candidate.id.to_string(),
+                    "candidate_revision": candidate.revision,
+                    "content_cleaned": candidate.content.is_none(),
+                    "disposition": candidate_disposition_json(&candidate.disposition),
+                    "canonical_mutation": false
+                }))
+            }
+            _ => Err(HostError::new("unknown Candidate lifecycle action")),
+        }
     }
 
     fn privacy_status(&self, args: &Value) -> Result<Value, HostError> {
@@ -712,6 +906,10 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             "Inspect bounded Candidate lifecycle state without mutation.",
             project_schema(),
         ),
+        "candidate_manage" => (
+            "Explicitly submit an agent Question Candidate, promote a reviewed Candidate to a Question, or disposition Candidate-local content without creating a user Decision.",
+            json!({"oneOf": candidate_management_schemas()}),
+        ),
         "privacy_status" => (
             "Inspect Project background-provider consent and local-only state.",
             project_schema(),
@@ -743,6 +941,157 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         description,
         input_schema,
     })
+}
+
+fn candidate_management_schemas() -> Vec<Value> {
+    let submit = object_schema(
+        vec![
+            (
+                "action",
+                enum_schema("Candidate lifecycle action", &["submit_question"]),
+            ),
+            ("project_id", identity_schema("Project identity")),
+            (
+                "source_ids",
+                identity_array_schema("Canonical Source identities supporting the Candidate", 1),
+            ),
+            (
+                "source_operation",
+                text_schema(
+                    "Inspectable operation or inquiry scope that collected the Candidate",
+                    1,
+                    4096,
+                ),
+            ),
+            (
+                "repository_snapshot",
+                text_schema("Optional repository snapshot basis", 1, 4096),
+            ),
+            (
+                "retention_basis",
+                text_schema("Candidate retention-policy basis", 1, 4096),
+            ),
+            (
+                "bounded_summary",
+                text_schema("Bounded Candidate summary", 1, 4096),
+            ),
+            (
+                "prompt",
+                text_schema("Proposed material Question wording", 1, 4096),
+            ),
+            (
+                "why_now",
+                text_schema("Why the Question materially matters now", 1, 4096),
+            ),
+            (
+                "affected_scope",
+                nonempty_string_array_schema("Affected material scopes"),
+            ),
+            (
+                "established_facts",
+                string_array_schema("Source-grounded established facts"),
+            ),
+            ("assumptions", string_array_schema("Known assumptions")),
+            ("uncertainty", string_array_schema("Known uncertainty")),
+            ("alternatives", candidate_alternatives_schema()),
+            (
+                "recommendation_key",
+                text_schema("Agent-recommended submitted alternative key", 1, 1024),
+            ),
+            (
+                "recommendation_rationale",
+                text_schema("Agent recommendation rationale", 1, 4096),
+            ),
+            (
+                "trade_offs",
+                string_array_schema("Trade-offs of the material choice"),
+            ),
+            (
+                "known_limits",
+                string_array_schema("Known limits of the Candidate basis"),
+            ),
+            (
+                "what_unlocks",
+                string_array_schema("Work unlocked by an explicit response"),
+            ),
+            (
+                "materiality_rationale",
+                text_schema("Agent materiality-assessment rationale", 1, 4096),
+            ),
+            (
+                "duplicate_basis",
+                text_schema(
+                    "Basis for concluding no canonical duplicate exists",
+                    1,
+                    4096,
+                ),
+            ),
+            (
+                "presentation_order",
+                unsigned_schema("Explicit deterministic presentation order", 1),
+            ),
+        ],
+        &[
+            "action",
+            "project_id",
+            "source_ids",
+            "source_operation",
+            "retention_basis",
+            "bounded_summary",
+            "prompt",
+            "why_now",
+            "affected_scope",
+            "alternatives",
+            "recommendation_key",
+            "recommendation_rationale",
+            "materiality_rationale",
+            "duplicate_basis",
+            "presentation_order",
+        ],
+    );
+    let candidate_action = |action: &'static str, detail: (&'static str, Value)| {
+        let (detail_name, detail_schema) = detail;
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Candidate lifecycle action", &[action]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Candidate identity")),
+                (detail_name, detail_schema),
+            ],
+            &["action", "project_id", "candidate_id", detail_name],
+        )
+    };
+    vec![
+        submit,
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Candidate lifecycle action", &["promote_question"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Candidate identity")),
+            ],
+            &["action", "project_id", "candidate_id"],
+        ),
+        candidate_action(
+            "dismiss",
+            (
+                "reason",
+                text_schema("Explicit non-promotion disposition reason", 1, 4096),
+            ),
+        ),
+        candidate_action(
+            "delete",
+            (
+                "basis",
+                text_schema("Explicit Candidate-local content deletion basis", 1, 4096),
+            ),
+        ),
+    ]
 }
 
 fn canonical_mutation_schemas() -> Vec<Value> {
@@ -935,6 +1284,37 @@ fn string_array_schema(description: &str) -> Value {
     })
 }
 
+fn nonempty_string_array_schema(description: &str) -> Value {
+    let mut schema = string_array_schema(description);
+    schema["minItems"] = json!(1);
+    schema
+}
+
+fn identity_array_schema(description: &str, minimum: usize) -> Value {
+    json!({
+        "type": "array",
+        "description": description,
+        "minItems": minimum,
+        "items": identity_schema("Canonical Source identity"),
+    })
+}
+
+fn candidate_alternatives_schema() -> Value {
+    json!({
+        "type": "array",
+        "description": "Displayed Question alternatives",
+        "minItems": 1,
+        "items": object_schema(
+            vec![
+                ("key", text_schema("Stable alternative key", 1, 1024)),
+                ("label", text_schema("User-facing alternative label", 1, 4096)),
+                ("consequence", text_schema("Consequence of choosing the alternative", 1, 4096)),
+            ],
+            &["key", "label", "consequence"],
+        ),
+    })
+}
+
 fn enum_schema(description: &str, values: &[&str]) -> Value {
     json!({
         "type": "string",
@@ -1039,6 +1419,11 @@ fn validate_array(schema: &Value, value: &Value, path: &str) -> Result<(), Strin
     let values = value
         .as_array()
         .ok_or_else(|| format!("{path} must be an array"))?;
+    if let Some(minimum) = schema.get("minItems").and_then(Value::as_u64) {
+        if values.len() < minimum as usize {
+            return Err(format!("{path} must contain at least {minimum} items"));
+        }
+    }
     let item_schema = schema
         .get("items")
         .ok_or_else(|| format!("{path} schema has no item contract"))?;
@@ -1071,6 +1456,157 @@ fn is_hex(value: &str, length: usize, uppercase_allowed: bool) -> bool {
 
 fn tool_result(value: Value, is_error: bool) -> Value {
     json!({"content":[{"type":"text","text":serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())}],"structuredContent":value,"isError":is_error})
+}
+
+fn candidate_inspection_json(candidate: volicord_projections::CandidateInspection) -> Value {
+    let origin = candidate.origin.map(|origin| {
+        json!({
+            "actor_kind": format!("{:?}", origin.actor.kind).to_lowercase(),
+            "actor_identity": origin.actor.identity,
+            "subsystem": origin.subsystem,
+            "session": origin.session,
+            "provenance_summary": origin.provenance_summary,
+        })
+    });
+    let collection_scope = candidate.collection_scope.map(|scope| {
+        json!({
+            "project_id": scope.project_id.to_string(),
+            "session": scope.session,
+            "source_operation": scope.source_operation,
+            "candidate_kind": format!("{:?}", scope.candidate_kind).to_lowercase(),
+        })
+    });
+    let observation_basis = candidate.observation_basis.map(|basis| {
+        json!({
+            "source_ids": basis.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>(),
+            "repository_snapshot": basis.repository_snapshot,
+            "analysis_snapshot": basis.analysis_snapshot,
+            "execution": basis.execution,
+            "host_turn": basis.host_turn,
+            "other": basis.other,
+        })
+    });
+    let retention = candidate.retention.map(|retention| match retention {
+        volicord_projections::RetentionInspection::RetainedIndefinitely { basis } => {
+            json!({"state":"retained_indefinitely","basis":basis})
+        }
+        volicord_projections::RetentionInspection::RetainedUntil {
+            retained_until,
+            expired_at_observation,
+            basis,
+        } => json!({
+            "state":"retained_until",
+            "retained_until_unix_micros":retained_until.as_unix_micros(),
+            "expired_at_observation":expired_at_observation,
+            "basis":basis
+        }),
+    });
+    let cleanup = candidate.cleanup.map(|cleanup| {
+        json!({
+            "kind": format!("{:?}", cleanup.kind).to_lowercase(),
+            "basis": cleanup.basis,
+            "cleaned_at_unix_micros": cleanup.cleaned_at.as_unix_micros(),
+        })
+    });
+    json!({
+        "identity":candidate.candidate_id.to_string(),
+        "exists":candidate.exists,
+        "health":format!("{:?}",candidate.health).to_lowercase(),
+        "revision":candidate.revision,
+        "kind":candidate.kind.map(|value| format!("{:?}",value).to_lowercase()),
+        "origin":origin,
+        "collection_scope":collection_scope,
+        "observation_basis":observation_basis,
+        "created_at_unix_micros":candidate.created_at.map(|value| value.as_unix_micros()),
+        "observed_at_unix_micros":candidate.observed_at.map(|value| value.as_unix_micros()),
+        "retention":retention,
+        "summary":candidate.bounded_summary,
+        "content_omission":candidate.content_omission.map(|value| format!("{:?}",value).to_lowercase()),
+        "content_cleaned":candidate.content_cleaned,
+        "cleanup":cleanup,
+        "disposition":candidate.promotion_disposition.as_ref().map(candidate_disposition_json),
+        "promotion_target":candidate.promotion_target.map(|value| value.to_string()),
+        "applicable_opt_out":candidate.current_applicable_opt_out.into_iter().map(collection_opt_out_json).collect::<Vec<_>>(),
+    })
+}
+
+fn candidate_disposition_json(disposition: &CandidateDisposition) -> Value {
+    match disposition {
+        CandidateDisposition::PendingOrRetained => json!({"state":"pending_or_retained"}),
+        CandidateDisposition::Promoted {
+            canonical_question_id,
+            promoted_at,
+        } => json!({
+            "state":"promoted",
+            "question_id":canonical_question_id.to_string(),
+            "at_unix_micros":promoted_at.as_unix_micros()
+        }),
+        CandidateDisposition::Dismissed {
+            reason,
+            dismissed_at,
+        } => json!({
+            "state":"dismissed",
+            "reason":reason,
+            "at_unix_micros":dismissed_at.as_unix_micros()
+        }),
+        CandidateDisposition::ExpiredOrRetentionCleaned => {
+            json!({"state":"expired_or_retention_cleaned"})
+        }
+    }
+}
+
+fn collection_opt_out_json(policy: volicord_inquiry::CollectionOptOut) -> Value {
+    json!({
+        "project_id":policy.scope.project_id.to_string(),
+        "session":policy.scope.session,
+        "source_operation":policy.scope.source_operation,
+        "candidate_kind":policy.scope.candidate_kind.map(|value| format!("{:?}",value).to_lowercase()),
+        "opted_out":policy.opted_out,
+        "effective_at_unix_micros":policy.effective_at.as_unix_micros(),
+        "basis":policy.basis,
+    })
+}
+
+fn string_array(value: &Value, key: &str) -> Result<Vec<String>, HostError> {
+    value
+        .get(key)
+        .map(|items| {
+            items
+                .as_array()
+                .ok_or_else(|| HostError::new(format!("{key} must be an array")))?
+                .iter()
+                .map(|item| {
+                    item.as_str()
+                        .map(ToOwned::to_owned)
+                        .ok_or_else(|| HostError::new(format!("{key} items must be strings")))
+                })
+                .collect()
+        })
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+fn source_ids(value: &Value, key: &str) -> Result<Vec<SourceId>, HostError> {
+    string_array(value, key)?
+        .into_iter()
+        .map(|source| parse_source(&source))
+        .collect()
+}
+
+fn candidate_alternatives(value: &Value) -> Result<Vec<QuestionAlternative>, HostError> {
+    value
+        .get("alternatives")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("alternatives are required"))?
+        .iter()
+        .map(|alternative| {
+            Ok(QuestionAlternative {
+                key: required_str(alternative, "key")?.to_owned(),
+                label: required_str(alternative, "label")?.to_owned(),
+                consequence: required_str(alternative, "consequence")?.to_owned(),
+            })
+        })
+        .collect()
 }
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
@@ -1110,6 +1646,9 @@ fn parse_question(value: &str) -> Result<volicord_context::QuestionId, HostError
     Ok(volicord_context::QuestionId::from_bytes(parse_identity(
         value,
     )?))
+}
+fn parse_candidate(value: &str) -> Result<CandidateId, HostError> {
+    Ok(CandidateId::from_bytes(parse_identity(value)?))
 }
 fn parse_confirmation(value: &str) -> Result<ConfirmationRequestId, HostError> {
     Ok(ConfirmationRequestId::from_bytes(parse_identity(value)?))

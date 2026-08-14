@@ -392,6 +392,197 @@ fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
     }
 }
 
+#[test]
+fn supported_candidate_path_requires_explicit_promotion_and_current_host_decision() {
+    use volicord_context::{
+        Availability, OperationId, Principal, PrincipalKind, SourceDraft, SourcePayload, Store,
+    };
+
+    let (_temporary, mut adapter, project) = setup();
+    let project_id = parse_project(&project);
+    let mut store = Store::open(adapter.operations().layout().canonical_store())
+        .expect("open canonical test support store");
+    let canonical_project = store.get_project(project_id).expect("load Project");
+    let source = store
+        .record_source(
+            OperationId::from_bytes([211; 16]),
+            project_id,
+            SourceDraft {
+                expected_project_revision: canonical_project.revision,
+                payload: SourcePayload::RepositorySnapshot {
+                    revision: "candidate-host-fixture".into(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::Repository,
+                    identity: "candidate-host-fixture".into(),
+                },
+                observer: Some(Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".into(),
+                }),
+                availability: Availability::Available,
+            },
+        )
+        .expect("record Candidate Source")
+        .value;
+    drop(store);
+
+    let submitted = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        question_candidate_arguments(&project, &source.id.to_string(), 1, "Choose storage"),
+    ))
+    .clone();
+    assert_eq!(submitted["state"], "stored", "{submitted}");
+    assert_eq!(submitted["canonical_mutation"], false);
+    let candidate_id = submitted["candidate_id"]
+        .as_str()
+        .expect("Candidate identity")
+        .to_owned();
+
+    let before_promotion = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical before promotion");
+    assert!(before_promotion.active_questions.is_empty());
+    assert!(before_promotion.active_decisions.is_empty());
+    let inspected = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let candidate = inspected["candidates"]
+        .as_array()
+        .expect("Candidate inspection")
+        .iter()
+        .find(|value| value["identity"] == candidate_id)
+        .expect("submitted Candidate");
+    assert_eq!(candidate["disposition"]["state"], "pending_or_retained");
+    assert_eq!(candidate["origin"]["actor_kind"], "agent");
+    assert_eq!(
+        candidate["observation_basis"]["source_ids"][0],
+        source.id.to_string()
+    );
+    assert_eq!(
+        candidate["collection_scope"]["source_operation"],
+        "design-review"
+    );
+    assert_eq!(inspected["read_only"], true);
+    assert!(adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after inspection")
+        .active_questions
+        .is_empty());
+
+    let promoted = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"promote_question",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    ))
+    .clone();
+    let question_id = promoted["question_id"]
+        .as_str()
+        .expect("promoted Question identity")
+        .to_owned();
+    let frontier = structured(&call(
+        &mut adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(frontier["questions"][0]["identity"], question_id);
+    let after_promotion = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after promotion");
+    assert_eq!(after_promotion.active_questions.len(), 1);
+    assert!(after_promotion.active_decisions.is_empty());
+
+    let decided = structured(&call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project,
+            "question_id":question_id,
+            "question_revision":frontier["questions"][0]["revision"],
+            "alternative_key":"local",
+            "user_turn":"Choose the local Candidate alternative",
+            "user_rationale":"Keep canonical state local"
+        }),
+    ))
+    .clone();
+    assert_eq!(decided["all_succeeded"], true, "{decided}");
+    let after_decision = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after explicit response");
+    assert_eq!(after_decision.active_decisions.len(), 1);
+
+    let second = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        question_candidate_arguments(&project, &source.id.to_string(), 2, "Choose cache"),
+    ))
+    .clone();
+    let dismissed = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"dismiss",
+            "project_id":project,
+            "candidate_id":second["candidate_id"],
+            "reason":"not material to the current work"
+        }),
+    ))
+    .clone();
+    assert_eq!(dismissed["disposition"]["state"], "dismissed");
+    assert_eq!(
+        adapter
+            .operations()
+            .canonical_basis(project_id)
+            .expect("canonical after dismissal")
+            .active_questions
+            .len(),
+        0
+    );
+}
+
+fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt: &str) -> Value {
+    json!({
+        "action":"submit_question",
+        "project_id":project,
+        "source_ids":[source],
+        "source_operation":"design-review",
+        "repository_snapshot":"candidate-host-fixture",
+        "retention_basis":"retain through explicit inquiry disposition",
+        "bounded_summary":format!("material Candidate: {prompt}"),
+        "prompt":prompt,
+        "why_now":"the implementation result depends on this choice",
+        "affected_scope":["storage"],
+        "established_facts":["Canonical context is local"],
+        "assumptions":["the Project remains local-first"],
+        "uncertainty":["future scale is unknown"],
+        "alternatives":[
+            {"key":"local","label":"Local","consequence":"Keep canonical state local"},
+            {"key":"remote","label":"Remote","consequence":"Require a separate provider boundary"}
+        ],
+        "recommendation_key":"local",
+        "recommendation_rationale":"matches the local-first contract",
+        "trade_offs":["remote augmentation remains separate"],
+        "known_limits":["provider behavior is not evaluated"],
+        "what_unlocks":["the storage implementation"],
+        "materiality_rationale":"the choice changes durable behavior",
+        "duplicate_basis":"canonical inspection found no matching Question",
+        "presentation_order":order
+    })
+}
+
 fn call(adapter: &mut HostAdapter, name: &str, arguments: Value) -> Value {
     adapter.handle(json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":name,"arguments":arguments}})).expect("tool response")
 }
@@ -565,6 +756,63 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "record_id",
                     "record_kind",
                 ],
+            ),
+        ],
+        "candidate_manage" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "source_ids",
+                    "source_operation",
+                    "repository_snapshot",
+                    "retention_basis",
+                    "bounded_summary",
+                    "prompt",
+                    "why_now",
+                    "affected_scope",
+                    "established_facts",
+                    "assumptions",
+                    "uncertainty",
+                    "alternatives",
+                    "recommendation_key",
+                    "recommendation_rationale",
+                    "trade_offs",
+                    "known_limits",
+                    "what_unlocks",
+                    "materiality_rationale",
+                    "duplicate_basis",
+                    "presentation_order",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "source_ids",
+                    "source_operation",
+                    "retention_basis",
+                    "bounded_summary",
+                    "prompt",
+                    "why_now",
+                    "affected_scope",
+                    "alternatives",
+                    "recommendation_key",
+                    "recommendation_rationale",
+                    "materiality_rationale",
+                    "duplicate_basis",
+                    "presentation_order",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "candidate_id"],
+                &["action", "project_id", "candidate_id"],
+            ),
+            shape(
+                &["action", "project_id", "candidate_id", "reason"],
+                &["action", "project_id", "candidate_id", "reason"],
+            ),
+            shape(
+                &["action", "project_id", "candidate_id", "basis"],
+                &["action", "project_id", "candidate_id", "basis"],
             ),
         ],
         "document_preview" => vec![shape(

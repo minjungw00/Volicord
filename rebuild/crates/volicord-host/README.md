@@ -2,8 +2,16 @@
 
 `volicord-mcp` is a stdio MCP server exposing high-level Project, health,
 Recall, repository understanding, Inquiry/Decision, Checkpoint, canonical and
-Candidate inspection, privacy, document, analysis, and Guarded interaction
+Candidate lifecycle, privacy, document, analysis, and Guarded interaction
 capabilities. It never exposes raw database operations or legacy methods.
+
+`candidate_manage` accepts four explicit actions: `submit_question` stores an
+agent-authored Question Candidate without canonical mutation, `promote_question`
+invokes the maintained materiality/duplicate/source checks to create a
+canonical Question, and `dismiss`/`delete` apply Candidate-local disposition or
+content cleanup. `candidate_inspect` remains the read-only inspection surface;
+an explicit current-host answer continues through `decision_record` and its
+Question-revision/User-Source linkage.
 
 Register an installed server with the current Codex CLI:
 
