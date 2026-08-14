@@ -1,0 +1,4 @@
+{
+  "components": ["gateway", "formatter", "client"],
+  "boundary": "json-message"
+}

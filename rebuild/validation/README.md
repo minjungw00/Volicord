@@ -71,6 +71,13 @@ Production Rust tests. It validates orchestration and evidence completeness
 only; Candidate, frontier, Decision, Checkpoint, Recall, and inspection
 semantics remain owned by the Production Rust crates.
 
+The V11 multi-repository harness is under
+`end-to-end/multi-repository/`. It performs a non-fail-fast rehearsal against
+the installed CLI and MCP surfaces, writes child-operation evidence and its
+structured result only below ignored `rebuild/.local/`, and classifies missing
+public product paths as `unsupported` instead of substituting validation-only
+domain behavior.
+
 Examples:
 
 ```text

@@ -533,6 +533,36 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "v11-polyglot-medium",
+      "validation_id": "V11",
+      "path": "rebuild/validation/end-to-end/multi-repository/fixtures/polyglot-medium",
+      "purpose": "Exercise the V11 medium polyglot journey with documentation and Java, Python, and TypeScript components connected by an explicitly documented JSON process boundary.",
+      "expected_entities": [
+        "java|java/src/main/java/example/relay/Route.java|record|Route",
+        "java|java/src/main/java/example/relay/Gateway.java|class|Gateway",
+        "python|python/src/relay_formatter/formatting.py|function|normalize",
+        "python|python/src/relay_formatter/formatting.py|function|format_message",
+        "typescript|typescript/src/client.ts|interface|Reply",
+        "typescript|typescript/src/client.ts|function|renderReply",
+        "document|README.md|project-overview|Relay Desk",
+        "document|docs/flow.md|process-boundary|json-message"
+      ],
+      "expected_relations": [
+        "declares|example.relay.Gateway|route",
+        "calls_syntactically|relay_formatter.format_message|normalize",
+        "imports|typescript/src/transport.ts|./client.js",
+        "documented_boundary|gateway-formatter-client|json-message"
+      ],
+      "expected_unsupported": [
+        "the documented JSON process boundary is not a direct syntax or semantic call",
+        "downloaded Maven, Python, or Node dependencies are outside this self-contained fixture",
+        "runtime network and deployment behavior are not represented"
+      ],
+      "content_sha256": "7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb",
+      "origin": "Self-authored deterministic medium polyglot repository fixture for V11.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v10-local-platform-primitives",
       "validation_id": "V10",
       "path": "rebuild/validation/local-platform-primitives/fixtures",

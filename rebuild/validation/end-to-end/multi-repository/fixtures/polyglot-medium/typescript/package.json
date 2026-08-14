@@ -1,0 +1,5 @@
+{
+  "name": "relay-client",
+  "private": true,
+  "type": "module"
+}
