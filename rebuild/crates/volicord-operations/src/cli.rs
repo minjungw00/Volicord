@@ -10,10 +10,11 @@ use std::{
     path::PathBuf,
 };
 use volicord_context::{
-    CanonicalRecordId, CheckpointDraft, CheckpointKind, ContextItemCorrectionDraft, ContextItemId,
-    CorrectionKind, DecisionCorrectionDraft, DecisionId, Principal, PrincipalKind, ProjectId,
-    SourceId, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
-    VerificationFact, VerificationState, WorkState,
+    BundleComparison, BundleConflictClass, BundleMergeStatus, CanonicalRecordId, CheckpointDraft,
+    CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
+    DecisionCorrectionDraft, DecisionId, MergeResolution, MergeResolutionMode, Principal,
+    PrincipalKind, ProjectId, SourceId, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
+    UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_privacy::{
     ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
@@ -252,7 +253,164 @@ fn portable(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, 
                 json!({"operation":"portable_import","project_id":result.project_id.to_string(),"checksum":result.checksum,"history_basis":result.history_basis,"status":debug_name(result.status)}),
             )
         }
-        _ => Err(usage("portable requires export or import")),
+        "compare" => {
+            let incoming = absolute_path(&cursor.next("incoming bundle")?)?;
+            let base = optional_base(cursor)?;
+            ensure_no_portable_trailing_arguments(cursor)?;
+            let comparison = operations.compare_portable_bundle(base.as_deref(), &incoming)?;
+            Ok(portable_comparison_json(&comparison))
+        }
+        "merge" => {
+            let incoming = absolute_path(&cursor.next("incoming bundle")?)?;
+            let base = optional_base(cursor)?;
+            ensure_no_portable_trailing_arguments(cursor)?;
+            let result = operations.merge_portable_bundle(base.as_deref(), &incoming, None)?;
+            Ok(portable_merge_json("portable_merge", result))
+        }
+        "resolve" => {
+            let incoming = absolute_path(&cursor.next("incoming bundle")?)?;
+            let conflict_set_identity = cursor.next("conflict-set identity")?;
+            let conflict_revision = number(&cursor.next("conflict-set revision")?)?;
+            let user_turn_source_id = source_id(&cursor.next("current-host user Source ID")?)?;
+            let mode_name = cursor.next("resolution mode")?;
+            let base = optional_base(cursor)?;
+            let mode = match mode_name.as_str() {
+                "choose-local" => MergeResolutionMode::ChooseLocal,
+                "choose-incoming" => MergeResolutionMode::ChooseIncoming,
+                "context-branch" => MergeResolutionMode::ContextBranch,
+                "explicit-merged" => {
+                    if !cursor.peek("--merged-bundle") {
+                        return Err(usage(
+                            "portable resolve explicit-merged requires --merged-bundle ABSOLUTE_PATH",
+                        ));
+                    }
+                    cursor.next("--merged-bundle")?;
+                    MergeResolutionMode::ExplicitMerged {
+                        bundle_path: absolute_path(&cursor.next("explicit merged bundle")?)?,
+                    }
+                }
+                _ => {
+                    return Err(usage(
+                        "portable resolution mode must be choose-local, choose-incoming, explicit-merged, or context-branch",
+                    ))
+                }
+            };
+            ensure_no_portable_trailing_arguments(cursor)?;
+            let result = operations.merge_portable_bundle(
+                base.as_deref(),
+                &incoming,
+                Some(MergeResolution {
+                    conflict_set_identity,
+                    conflict_revision,
+                    user_turn_source_id,
+                    mode,
+                }),
+            )?;
+            Ok(portable_merge_json("portable_resolve", result))
+        }
+        _ => Err(usage(
+            "portable requires export, import, compare, merge, or resolve",
+        )),
+    }
+}
+
+fn optional_base(cursor: &mut Cursor) -> Result<Option<PathBuf>, Error> {
+    if cursor.peek("--base") {
+        cursor.next("--base")?;
+        absolute_path(&cursor.next("common-base bundle")?).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn ensure_no_portable_trailing_arguments(cursor: &Cursor) -> Result<(), Error> {
+    if cursor.has_remaining() {
+        Err(usage("unexpected portable arguments"))
+    } else {
+        Ok(())
+    }
+}
+
+fn portable_comparison_json(comparison: &BundleComparison) -> Value {
+    json!({
+        "operation":"portable_compare",
+        "project_id":comparison.project_id.to_string(),
+        "conflict_set_identity":comparison.conflict_set_identity,
+        "conflict_revision":comparison.conflict_revision,
+        "requires_user_resolution":comparison.requires_user_resolution(),
+        "already_present":comparison.already_present,
+        "common_base":comparison.common_base.as_ref().map(bundle_basis_json),
+        "local":bundle_basis_json(&comparison.local),
+        "incoming":bundle_basis_json(&comparison.incoming),
+        "conflicts":comparison.conflicts.iter().map(|conflict| json!({
+            "conflict_identity":conflict.conflict_identity,
+            "class":portable_conflict_class(conflict.class),
+            "affected_identities":conflict.affected_identities,
+            "base_basis":conflict.base_basis,
+            "local_basis":conflict.local_basis,
+            "incoming_basis":conflict.incoming_basis,
+            "sources":conflict.sources.iter().map(|source| json!({
+                "source_identity":source.source_identity,
+                "base":source.base.map(debug_name),
+                "local":source.local.map(debug_name),
+                "incoming":source.incoming.map(debug_name),
+            })).collect::<Vec<_>>(),
+            "consequence":conflict.consequence,
+            "uncertainty":conflict.uncertainty,
+            "automatic_resolution_allowed":conflict.automatic_resolution_allowed,
+            "user_judgment_reason":conflict.user_judgment_reason,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn bundle_basis_json(basis: &volicord_context::BundleBasis) -> Value {
+    json!({
+        "checksum":basis.checksum,
+        "history_basis":basis.history_basis,
+        "common_base_basis":basis.common_base_basis,
+    })
+}
+
+fn portable_merge_json(
+    operation: &str,
+    result: volicord_context::OperationResult<volicord_context::BundleMerge>,
+) -> Value {
+    let value = result.value;
+    json!({
+        "operation":operation,
+        "project_id":value.project_id.to_string(),
+        "conflict_set_identity":value.conflict_set_identity,
+        "conflict_revision":value.conflict_revision,
+        "common_base_basis":value.common_base_basis,
+        "local_history_basis":value.local_history_basis,
+        "incoming_history_basis":value.incoming_history_basis,
+        "result_history_basis":value.result_history_basis,
+        "status":portable_merge_status(value.status),
+        "resolution_source_id":value.resolution_source_id.map(|source| source.to_string()),
+        "affected_identities":value.affected_identities,
+        "branch_history_basis":value.branch_history_basis,
+        "replayed":result.replayed,
+    })
+}
+
+const fn portable_conflict_class(class: BundleConflictClass) -> &'static str {
+    match class {
+        BundleConflictClass::IndependentAdditions => "independent_additions",
+        BundleConflictClass::SameRecordRevision => "same_record_revision",
+        BundleConflictClass::SemanticDecisionConflict => "semantic_decision_conflict",
+        BundleConflictClass::DeleteModifyConflict => "delete_modify_conflict",
+        BundleConflictClass::SourceBindingConflict => "source_binding_conflict",
+        BundleConflictClass::CommonBaseUnavailable => "common_base_unavailable",
+    }
+}
+
+const fn portable_merge_status(status: BundleMergeStatus) -> &'static str {
+    match status {
+        BundleMergeStatus::AlreadyPresent => "already_present",
+        BundleMergeStatus::MergedAutomatically => "merged_automatically",
+        BundleMergeStatus::Resolved => "resolved",
+        BundleMergeStatus::Branched => "branched",
+        BundleMergeStatus::Unresolved => "unresolved",
     }
 }
 

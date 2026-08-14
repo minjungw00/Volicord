@@ -18,9 +18,10 @@ use std::{
     time::{Duration, Instant},
 };
 use volicord_context::{
-    Availability, CanonicalReadBasis, CanonicalReadOptions, CanonicalRecordId, CheckpointDraft,
-    Clock, ContextItemCorrectionDraft, ContextItemId, DecisionChoice, DecisionCorrectionDraft,
-    DecisionId, DecisionSupersessionDraft, OperationId, Principal, PrincipalKind, ProjectId,
+    Availability, BundleComparison, BundleMerge, CanonicalReadBasis, CanonicalReadOptions,
+    CanonicalRecordId, CheckpointDraft, Clock, ContextItemCorrectionDraft, ContextItemId,
+    DecisionChoice, DecisionCorrectionDraft, DecisionId, DecisionSupersessionDraft,
+    MergeResolution, OperationId, OperationResult, Principal, PrincipalKind, ProjectId,
     SourceDraft, SourceId, SourcePayload, Store, SystemClock, TimestampMicros, UserTurnSource,
 };
 use volicord_inquiry::{
@@ -554,6 +555,27 @@ impl LocalOperations {
             .import_bundle(new_operation_id()?, source)
             .map(|result| result.value)
             .map_err(|error| Error::with_source("portable import failed", error))
+    }
+
+    pub fn compare_portable_bundle(
+        &self,
+        common_base: Option<&Path>,
+        incoming: &Path,
+    ) -> Result<BundleComparison, Error> {
+        self.open_canonical()?
+            .compare_bundle(common_base, incoming, None)
+            .map_err(|error| Error::with_source("portable comparison failed", error))
+    }
+
+    pub fn merge_portable_bundle(
+        &self,
+        common_base: Option<&Path>,
+        incoming: &Path,
+        resolution: Option<MergeResolution>,
+    ) -> Result<OperationResult<BundleMerge>, Error> {
+        self.open_canonical()?
+            .merge_bundle(new_operation_id()?, common_base, incoming, None, resolution)
+            .map_err(|error| Error::with_source("portable merge failed", error))
     }
 
     pub fn canonical_basis(&self, project_id: ProjectId) -> Result<CanonicalReadBasis, Error> {
