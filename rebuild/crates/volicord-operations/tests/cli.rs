@@ -92,7 +92,7 @@ fn cli_initializes_binds_analyzes_and_inspects_without_raw_storage_access(
 }
 
 #[test]
-fn cli_reports_distinct_unsupported_repair_and_reindex_results(
+fn cli_runs_derived_repair_and_reindex_and_rejects_canonical_repair(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
     let runtime = temporary.path().join("runtime");
@@ -129,6 +129,24 @@ fn cli_reports_distinct_unsupported_repair_and_reindex_results(
             [
                 "--runtime",
                 runtime.to_str().ok_or("runtime path")?,
+                "analyze",
+                &project,
+            ],
+            &mut output,
+            &mut error
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime.to_str().ok_or("runtime path")?,
                 "repair",
                 &project,
                 "canonical"
@@ -136,10 +154,31 @@ fn cli_reports_distinct_unsupported_repair_and_reindex_results(
             &mut output,
             &mut error
         ),
-        CliExit::SUCCESS
+        CliExit::FAILURE
+    );
+    assert!(String::from_utf8_lossy(&error).contains("unsupported repair scope"));
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime.to_str().ok_or("runtime path")?,
+                "repair",
+                &project,
+                "derived-analysis"
+            ],
+            &mut output,
+            &mut error
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
     );
     let repair: Value = serde_json::from_slice(&output)?;
-    assert_eq!(repair["kind"], "authoritativerepair");
+    assert_eq!(repair["kind"], "derivedanalysisrepair");
+    assert!(repair["analysis_snapshot"].is_string());
 
     output.clear();
     error.clear();
@@ -158,6 +197,7 @@ fn cli_reports_distinct_unsupported_repair_and_reindex_results(
     );
     let reindex: Value = serde_json::from_slice(&output)?;
     assert_eq!(reindex["kind"], "derivedrebuild");
+    assert!(reindex["analysis_snapshot"].is_string());
     Ok(())
 }
 

@@ -3,6 +3,7 @@ use std::{
     env,
     path::{Path, PathBuf},
 };
+use volicord_context::ProjectId;
 
 const RUNTIME_ENV: &str = "VOLICORD_RUNTIME_DIR";
 
@@ -57,6 +58,9 @@ impl RuntimeLayout {
     }
     pub fn analysis_dir(&self) -> PathBuf {
         self.derived_dir().join("analysis")
+    }
+    pub fn analysis_project_dir(&self, project_id: ProjectId) -> PathBuf {
+        self.analysis_dir().join(project_id.to_string())
     }
     pub fn artifacts_dir(&self) -> PathBuf {
         self.root.join("operations")

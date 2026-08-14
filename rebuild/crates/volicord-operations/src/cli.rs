@@ -192,21 +192,47 @@ fn rebuild(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
 }
 
 fn reindex(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
-    let project = cursor.next("Project ID")?;
-    project_id(&project)?;
-    let result = operations.reindex(format!("project:{project}"));
-    Ok(
-        json!({"operation":"reindex","supported":result.supported,"kind":debug_name(result.kind),"scope":result.affected_scope,"detail":result.detail}),
-    )
+    let project = project_id(&cursor.next("Project ID")?)?;
+    let excludes = excluded_paths(cursor)?;
+    repair_json("reindex", operations.reindex(project, excludes)?)
 }
 
 fn repair(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     let project = project_id(&cursor.next("Project ID")?)?;
     let scope = cursor.next("repair scope")?;
-    let result = operations.repair(project, scope);
-    Ok(
-        json!({"operation":"repair","supported":result.supported,"kind":debug_name(result.kind),"scope":result.affected_scope,"detail":result.detail}),
-    )
+    let excludes = excluded_paths(cursor)?;
+    repair_json("repair", operations.repair(project, scope, excludes)?)
+}
+
+fn excluded_paths(cursor: &mut Cursor) -> Result<Vec<String>, Error> {
+    let mut excludes = Vec::new();
+    while cursor.peek("--exclude") {
+        cursor.next("--exclude")?;
+        excludes.push(cursor.next("excluded path")?);
+    }
+    Ok(excludes)
+}
+
+fn repair_json(operation: &str, result: crate::RepairOutcome) -> Result<Value, Error> {
+    let analysis =
+        result.operation.value.as_ref().ok_or_else(|| {
+            Error::new("derived reconstruction ended without an inspectable result")
+        })?;
+    Ok(json!({
+        "operation":operation,
+        "operation_id":result.operation.operation_id.to_string(),
+        "state":debug_name(result.operation.state),
+        "kind":debug_name(result.kind),
+        "scope":result.affected_scope,
+        "diagnosis":result.diagnosis,
+        "discarded_entries":result.discarded_entries,
+        "analysis_snapshot":analysis.analysis.identity.to_string(),
+        "stored_at":analysis.stored_at,
+        "completed_scopes":result.operation.partial.completed_scopes,
+        "failed_scopes":result.operation.partial.failed_scopes,
+        "omitted_scopes":result.operation.partial.omitted_scopes,
+        "diagnostic":result.operation.diagnostic,
+    }))
 }
 
 fn portable(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {

@@ -204,6 +204,15 @@ impl LocalOperations {
             },
             Err(_) => None,
         });
+        if let Some(project_id) = project_id {
+            if let Err(error) = self.load_analyses(project_id) {
+                issues.push(HealthIssue {
+                    kind: HealthIssueKind::Corrupt,
+                    scope: format!("derived_analysis:{project_id}"),
+                    detail: error.to_string(),
+                });
+            }
+        }
         let state = if !canonical_available {
             HealthState::Failed
         } else if issues.is_empty() {
@@ -266,20 +275,51 @@ impl LocalOperations {
         let basis = canonical
             .read_canonical_basis(project_id, CanonicalReadOptions::default())
             .map_err(|error| Error::with_source("cannot read canonical analysis basis", error))?;
+        drop(canonical);
+        self.analyze_from_basis(
+            operation_id,
+            started_at,
+            monotonic,
+            root,
+            binding.absolute_path,
+            basis,
+            source.value.id,
+            excluded_paths,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn analyze_from_basis(
+        &self,
+        operation_id: OperationId,
+        started_at: TimestampMicros,
+        monotonic: Instant,
+        root: RepositoryRoot,
+        requested_path: PathBuf,
+        basis: CanonicalReadBasis,
+        repository_source: SourceId,
+        excluded_paths: Vec<String>,
+        replace_existing: bool,
+    ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
         let grounding = CanonicalGrounding::from_read_basis(&basis).map_err(|error| {
             Error::with_source("canonical analysis grounding is invalid", error)
         })?;
         let mut inventory = InventoryRequest::new(
             root.canonical_path(),
             &grounding,
-            source.value.id,
+            repository_source,
             started_at.as_unix_micros(),
         )
         .map_err(|error| Error::with_source("cannot create repository inventory request", error))?;
         inventory.excluded_paths = excluded_paths;
         let (repository, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory))
             .map_err(|error| Error::with_source("repository analysis failed", error))?;
-        let stored_at = self.store_analysis(&analysis)?;
+        let stored_at = if replace_existing {
+            self.replace_analysis(&analysis)?
+        } else {
+            self.store_analysis(&analysis)?
+        };
         let mut completed_scopes = Vec::new();
         let mut failed_scopes = Vec::new();
         let mut omitted_scopes = Vec::new();
@@ -304,7 +344,7 @@ impl LocalOperations {
         let duration = duration_micros(monotonic.elapsed());
         Ok(LongOperationResult {
             operation_id,
-            requested_scope: vec![binding.absolute_path.display().to_string()],
+            requested_scope: vec![requested_path.display().to_string()],
             state,
             started_at_unix_micros: started_at.as_unix_micros(),
             ended_at_unix_micros: now_micros()?.as_unix_micros(),
@@ -335,25 +375,92 @@ impl LocalOperations {
         project_id: ProjectId,
         excluded_paths: Vec<String>,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
-        self.analyze(project_id, excluded_paths)
+        let operation_id = new_operation_id()?;
+        let started_at = now_micros()?;
+        let monotonic = Instant::now();
+        let canonical = self.open_canonical()?;
+        canonical.get_project(project_id).map_err(|error| {
+            Error::with_source("cannot read Project for analysis rebuild", error)
+        })?;
+        let binding = canonical.get_local_binding(project_id).map_err(|error| {
+            Error::with_source("Project has no usable repository binding", error)
+        })?;
+        let root = RepositoryRoot::open(&binding.absolute_path)
+            .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
+        let basis = canonical
+            .read_canonical_basis(project_id, CanonicalReadOptions::default())
+            .map_err(|error| Error::with_source("cannot read canonical rebuild basis", error))?;
+        let repository_source = basis
+            .sources
+            .iter()
+            .filter(|source| {
+                source.availability == Availability::Available
+                    && matches!(source.source.payload, SourcePayload::RepositorySnapshot { .. })
+            })
+            .max_by_key(|source| (source.source.recorded_at, source.source.id))
+            .map(|source| source.source.id)
+            .ok_or_else(|| {
+                Error::new(
+                    "analysis rebuild requires an available canonical repository Source; run analyze first",
+                )
+            })?;
+        self.analyze_from_basis(
+            operation_id,
+            started_at,
+            monotonic,
+            root,
+            binding.absolute_path,
+            basis,
+            repository_source,
+            excluded_paths,
+            true,
+        )
     }
 
-    pub fn repair(&self, _project_id: ProjectId, scope: impl Into<String>) -> RepairOutcome {
-        RepairOutcome {
-            kind: RepairKind::AuthoritativeRepair,
-            supported: false,
-            affected_scope: scope.into(),
-            detail: "no authoritative owner currently exposes a safe repair transformation; inspect health and preserve the last verified state".into(),
+    pub fn repair(
+        &self,
+        project_id: ProjectId,
+        scope: impl Into<String>,
+        excluded_paths: Vec<String>,
+    ) -> Result<RepairOutcome, Error> {
+        let scope = scope.into();
+        if scope != "derived-analysis" {
+            return Err(Error::new(format!(
+                "unsupported repair scope {scope:?}; supported scope: derived-analysis"
+            )));
         }
+        let diagnosis = match self.load_analyses(project_id) {
+            Ok(values) if values.is_empty() => "derived analysis is missing".to_owned(),
+            Ok(_) => {
+                "derived analysis is readable; forced verification rebuild requested".to_owned()
+            }
+            Err(error) => format!("derived analysis is corrupt: {error}"),
+        };
+        let discarded_entries = self.project_analysis_entry_count(project_id)?;
+        let operation = self.rebuild_analysis(project_id, excluded_paths)?;
+        Ok(RepairOutcome {
+            kind: RepairKind::DerivedAnalysisRepair,
+            affected_scope: format!("project:{project_id}:derived-analysis"),
+            diagnosis,
+            discarded_entries,
+            operation,
+        })
     }
 
-    pub fn reindex(&self, scope: impl Into<String>) -> RepairOutcome {
-        RepairOutcome {
+    pub fn reindex(
+        &self,
+        project_id: ProjectId,
+        excluded_paths: Vec<String>,
+    ) -> Result<RepairOutcome, Error> {
+        let discarded_entries = self.project_analysis_entry_count(project_id)?;
+        let operation = self.rebuild_analysis(project_id, excluded_paths)?;
+        Ok(RepairOutcome {
             kind: RepairKind::DerivedRebuild,
-            supported: false,
-            affected_scope: scope.into(),
-            detail: "no independent Derived Index owner exists yet; repository analysis rebuild remains available".into(),
-        }
+            affected_scope: format!("project:{project_id}:derived-analysis"),
+            diagnosis: "forced derived-analysis reconstruction requested".into(),
+            discarded_entries,
+            operation,
+        })
     }
 
     pub fn run_child(
@@ -863,20 +970,73 @@ impl LocalOperations {
     }
 
     fn store_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
-        fs::create_dir_all(self.layout.analysis_dir())
-            .map_err(|error| Error::with_source("cannot create analysis directory", error))?;
+        let directory = self
+            .layout
+            .analysis_project_dir(analysis.project.identity());
+        fs::create_dir_all(&directory).map_err(|error| {
+            Error::with_source("cannot create Project analysis directory", error)
+        })?;
         let bytes = serde_json::to_vec_pretty(analysis)
             .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
-        let path = self
-            .layout
-            .analysis_dir()
-            .join(format!("{}.json", analysis.identity));
+        let path = directory.join(format!("{}.json", analysis.identity));
         publish_bytes_no_replace(&path, &bytes)?;
         Ok(path)
     }
 
+    fn replace_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
+        let project_id = analysis.project.identity();
+        let base = self.layout.analysis_dir();
+        fs::create_dir_all(&base)
+            .map_err(|error| Error::with_source("cannot create analysis directory", error))?;
+        let destination = self.layout.analysis_project_dir(project_id);
+        let staging = base.join(format!(".staging-{project_id}-{}", analysis.identity));
+        let replaced = base.join(format!(".replaced-{project_id}-{}", analysis.identity));
+        fs::create_dir(&staging).map_err(|error| {
+            Error::with_source("cannot stage Project analysis replacement", error)
+        })?;
+        let bytes = serde_json::to_vec_pretty(analysis)
+            .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
+        let file_name = format!("{}.json", analysis.identity);
+        if let Err(error) = publish_bytes_no_replace(&staging.join(&file_name), &bytes) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+        let had_previous = destination.exists();
+        if had_previous {
+            fs::rename(&destination, &replaced).map_err(|error| {
+                Error::with_source("cannot isolate prior Project analysis", error)
+            })?;
+        }
+        if let Err(error) = fs::rename(&staging, &destination) {
+            if had_previous {
+                let _ = fs::rename(&replaced, &destination);
+            }
+            let _ = fs::remove_dir_all(&staging);
+            return Err(Error::with_source(
+                "cannot publish Project analysis replacement",
+                error,
+            ));
+        }
+        if had_previous {
+            fs::remove_dir_all(&replaced).map_err(|error| {
+                Error::with_source("cannot discard replaced Project analysis", error)
+            })?;
+        }
+        Ok(destination.join(file_name))
+    }
+
+    fn project_analysis_entry_count(&self, project_id: ProjectId) -> Result<u64, Error> {
+        let directory = self.layout.analysis_project_dir(project_id);
+        if !directory.exists() {
+            return Ok(0);
+        }
+        fs::read_dir(directory)
+            .map_err(|error| Error::with_source("cannot inspect Project analysis directory", error))
+            .map(|entries| entries.count() as u64)
+    }
+
     fn load_analyses(&self, project_id: ProjectId) -> Result<Vec<AnalysisSnapshot>, Error> {
-        let directory = self.layout.analysis_dir();
+        let directory = self.layout.analysis_project_dir(project_id);
         if !directory.exists() {
             return Ok(Vec::new());
         }
@@ -900,9 +1060,13 @@ impl LocalOperations {
                     error,
                 )
             })?;
-            if value.project.identity() == project_id {
-                values.push(value);
+            if value.project.identity() != project_id {
+                return Err(Error::new(format!(
+                    "Analysis Snapshot {} belongs to another Project",
+                    entry.path().display()
+                )));
             }
+            values.push(value);
         }
         values.sort_by_key(|value| (value.generated_at_unix_micros, value.identity));
         if values.len() > 1 {

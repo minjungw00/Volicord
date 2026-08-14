@@ -126,15 +126,14 @@ fn timeout_detection_remains_separate_from_confirmed_termination(
 }
 
 #[test]
-fn repair_and_reindex_do_not_impersonate_semantic_correction(
+fn unsupported_repair_scope_fails_without_impersonating_canonical_repair(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, repository) = fixture()?;
     let initialized = operations.initialize_project("Fixture", Some(&repository))?;
-    let repair = operations.repair(initialized.project.id, "canonical");
-    assert!(!repair.supported);
-    let reindex = operations.reindex("derived-index");
-    assert!(!reindex.supported);
-    assert_ne!(repair.kind, reindex.kind);
+    let error = operations
+        .repair(initialized.project.id, "canonical", Vec::new())
+        .expect_err("canonical repair must not be claimed");
+    assert!(error.message().contains("unsupported repair scope"));
     Ok(())
 }
 

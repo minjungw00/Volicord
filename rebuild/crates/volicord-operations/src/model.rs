@@ -140,16 +140,17 @@ pub struct HealthReport {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RepairKind {
-    AuthoritativeRepair,
+    DerivedAnalysisRepair,
     DerivedRebuild,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RepairOutcome {
     pub kind: RepairKind,
-    pub supported: bool,
     pub affected_scope: String,
-    pub detail: String,
+    pub diagnosis: String,
+    pub discarded_entries: u64,
+    pub operation: LongOperationResult<AnalysisOutcome>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
