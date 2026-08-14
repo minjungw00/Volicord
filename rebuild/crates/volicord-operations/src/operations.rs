@@ -1,8 +1,8 @@
 use crate::{
-    AnalysisOutcome, BindingOutcome, CanonicalMutationOutcome, ChildProcessOutcome, Error,
-    HealthIssue, HealthIssueKind, HealthReport, HealthState, LongOperationResult, OperationState,
-    PartialOutcome, ProgressState, ProjectInitialization, PublicationOutcome, RepairKind,
-    RepairOutcome, RuntimeLayout,
+    AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
+    ChildProcessOutcome, Error, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
+    PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -30,7 +30,8 @@ use volicord_context::{
 use volicord_inquiry::{
     compute_frontier, record_response_batch, ApplicabilityQuery, BatchResponseItem,
     BatchResponseResult, CandidateDraft, CandidateId, CandidateReadBasis, CandidateRecord,
-    CandidateStore, FrontierRead, InquiryScope, PromotionResult, SubmissionOutcome,
+    CandidateStore, FrontierRead, InquiryScope, PromotionResult, RepositoryResearchBasis,
+    SubmissionOutcome,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, GitWorktreeLayout,
@@ -607,6 +608,56 @@ impl LocalOperations {
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| store.submit(draft))
             .map_err(|error| Error::with_source("Candidate submission failed", error))
+    }
+
+    pub fn attach_candidate_repository_research(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        draft: CandidateRepositoryResearchDraft,
+    ) -> Result<CandidateRecord, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let analysis = self.load_analyses(project_id)?.pop().ok_or_else(|| {
+            Error::new("Candidate repository research requires a current Analysis Snapshot")
+        })?;
+        let basis = RepositoryResearchBasis {
+            repository_snapshot: analysis.repository_snapshot.to_string(),
+            analysis_snapshot: Some(analysis.identity.to_string()),
+            capability: draft.capability,
+            coverage: draft.coverage,
+            freshness: draft.freshness,
+            source_basis: draft.source_basis,
+            sufficient: draft.sufficient,
+            limits: draft.limits,
+        };
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.attach_repository_research(
+                    project_id,
+                    candidate_id,
+                    &canonical,
+                    &analysis,
+                    basis,
+                )
+            })
+            .map_err(|error| Error::with_source("Candidate research attachment failed", error))
+    }
+
+    pub fn mark_candidate_ready_to_ask(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+    ) -> Result<CandidateRecord, Error> {
+        let _ = self.canonical_basis(project_id)?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.set_research_state(
+                    project_id,
+                    candidate_id,
+                    volicord_context::QuestionResearchState::ReadyToAsk,
+                )
+            })
+            .map_err(|error| Error::with_source("Candidate research transition failed", error))
     }
 
     pub fn promote_question_candidate(

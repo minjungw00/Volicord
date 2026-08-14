@@ -5,13 +5,16 @@ Recall, repository understanding, Inquiry/Decision, Checkpoint, canonical and
 Candidate lifecycle, privacy, document, analysis, and Guarded interaction
 capabilities. It never exposes raw database operations or legacy methods.
 
-`candidate_manage` accepts four explicit actions: `submit_question` stores an
-agent-authored Question Candidate without canonical mutation, `promote_question`
-invokes the maintained materiality/duplicate/source checks to create a
-canonical Question, and `dismiss`/`delete` apply Candidate-local disposition or
-content cleanup. `candidate_inspect` remains the read-only inspection surface;
-an explicit current-host answer continues through `decision_record` and its
-Question-revision/User-Source linkage.
+`candidate_manage` requires `submit_question` to declare `research_required` or
+`ready_to_ask` with an explicit `research_state_basis`.
+`attach_repository_research` binds evidence to the current Project Analysis
+Snapshot and canonical Repository Source, while
+`mark_research_ready` invokes the Candidate owner's sufficient-evidence guard.
+Neither action promotes the Candidate. `promote_question` remains the explicit
+canonical Question transition, and `dismiss`/`delete` remain Candidate-local.
+`candidate_inspect` exposes the current research state and attached repository
+basis; an explicit current-host answer continues separately through
+`decision_record` and its Question-revision/User-Source linkage.
 
 Register an installed server with the current Codex CLI:
 

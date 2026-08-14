@@ -56,6 +56,8 @@ pub struct CandidateInspection {
     pub cleanup: Option<CandidateCleanup>,
     pub current_applicable_opt_out: Vec<CollectionOptOut>,
     pub bounded_summary: Option<String>,
+    pub question_research_state: Option<volicord_context::QuestionResearchState>,
+    pub repository_research_basis: Vec<volicord_inquiry::RepositoryResearchBasis>,
     pub content_omission: Option<CandidateContentOmission>,
 }
 
@@ -90,6 +92,8 @@ pub fn inspect_candidate(
             cleanup: None,
             current_applicable_opt_out: Vec::new(),
             bounded_summary: None,
+            question_research_state: None,
+            repository_research_basis: Vec::new(),
             content_omission: None,
         };
     };
@@ -144,6 +148,22 @@ fn inspect_existing(
             ),
         },
     };
+    let (question_research_state, repository_research_basis) = match content_access {
+        CandidateContentAccess::AllowBoundedSummary => candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.question.as_ref())
+            .map_or_else(
+                || (None, Vec::new()),
+                |question| {
+                    (
+                        Some(question.research_state),
+                        question.repository_basis.clone(),
+                    )
+                },
+            ),
+        CandidateContentAccess::PolicyWithheld => (None, Vec::new()),
+    };
     CandidateInspection {
         candidate_id: candidate.id,
         exists: true,
@@ -162,6 +182,8 @@ fn inspect_existing(
         cleanup: candidate.cleanup.clone(),
         current_applicable_opt_out,
         bounded_summary,
+        question_research_state,
+        repository_research_basis,
         content_omission,
     }
 }

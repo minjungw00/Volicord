@@ -23,11 +23,12 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    BackgroundProviderOperationDraft, ConfirmationDecision, ConfirmationRejection,
-    ConfirmationRequestId, FilterOutcome, GuardedOperationId, GuardedOperationOutcome,
-    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
-    HealthState, LocalOperations, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
-    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
+    BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft, ConfirmationDecision,
+    ConfirmationRejection, ConfirmationRequestId, FilterOutcome, GuardedOperationId,
+    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
+    GuardedProviderPreparationOutcome, HealthState, LocalOperations, ProviderRequestId,
+    ProviderRequestOutcome, ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass,
+    TransmissionOutcome,
 };
 use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
@@ -511,6 +512,9 @@ impl HostAdapter {
         match required_str(args, "action")? {
             "submit_question" => {
                 let source_basis = source_ids(args, "source_ids")?;
+                let research_state =
+                    question_research_state(required_str(args, "research_state")?)?;
+                let research_state_basis = required_str(args, "research_state_basis")?.to_owned();
                 let now = SystemClock
                     .now()
                     .map_err(|error| HostError::new(error.to_string()))?;
@@ -561,7 +565,9 @@ impl HostAdapter {
                         analysis_snapshot: None,
                         execution: None,
                         host_turn: None,
-                        other: Some("explicit agent Candidate operation".into()),
+                        other: Some(format!(
+                            "explicit agent Candidate operation; research state basis: {research_state_basis}"
+                        )),
                     },
                     observed_at: now,
                     retention: CandidateRetention {
@@ -608,7 +614,7 @@ impl HostAdapter {
                             known_limits: string_array(args, "known_limits")?,
                             what_the_answer_unlocks: string_array(args, "what_unlocks")?,
                             allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
-                            research_state: QuestionResearchState::ReadyToAsk,
+                            research_state,
                         }),
                     },
                 };
@@ -622,6 +628,8 @@ impl HostAdapter {
                         "state": "stored",
                         "candidate_id": candidate.id.to_string(),
                         "candidate_revision": candidate.revision,
+                        "research_state": question_research_state_name(research_state),
+                        "research_state_basis": research_state_basis,
                         "collection_mode": "automatic",
                         "disposition": candidate_disposition_json(&candidate.disposition),
                         "canonical_mutation": false
@@ -633,6 +641,33 @@ impl HostAdapter {
                         "canonical_mutation": false
                     })),
                 }
+            }
+            "attach_repository_research" => {
+                let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
+                let candidate = self
+                    .operations
+                    .attach_candidate_repository_research(
+                        project_id,
+                        candidate_id,
+                        CandidateRepositoryResearchDraft {
+                            capability: required_str(args, "capability")?.to_owned(),
+                            coverage: required_str(args, "coverage")?.to_owned(),
+                            freshness: candidate_freshness(required_str(args, "freshness")?)?,
+                            source_basis: source_ids(args, "source_ids")?,
+                            sufficient: required_str(args, "evidence_assessment")? == "sufficient",
+                            limits: string_array(args, "limits")?,
+                        },
+                    )
+                    .map_err(operation_error)?;
+                candidate_research_lifecycle_json("attach_repository_research", &candidate)
+            }
+            "mark_research_ready" => {
+                let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
+                let candidate = self
+                    .operations
+                    .mark_candidate_ready_to_ask(project_id, candidate_id)
+                    .map_err(operation_error)?;
+                candidate_research_lifecycle_json("mark_research_ready", &candidate)
             }
             "promote_question" => {
                 let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
@@ -1068,7 +1103,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             project_schema(),
         ),
         "candidate_manage" => (
-            "Explicitly submit an agent Question Candidate, promote a reviewed Candidate to a Question, or disposition Candidate-local content without creating a user Decision.",
+            "Explicitly submit and research an agent Question Candidate, promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision.",
             json!({"oneOf": candidate_management_schemas()}),
         ),
         "privacy_status" => (
@@ -1227,6 +1262,21 @@ fn candidate_management_schemas() -> Vec<Value> {
                 text_schema("Optional repository snapshot basis", 1, 4096),
             ),
             (
+                "research_state",
+                enum_schema(
+                    "Explicit repository/environment research requirement",
+                    &["research_required", "ready_to_ask"],
+                ),
+            ),
+            (
+                "research_state_basis",
+                text_schema(
+                    "Why repository/environment research is required or unnecessary",
+                    1,
+                    4096,
+                ),
+            ),
+            (
                 "retention_basis",
                 text_schema("Candidate retention-policy basis", 1, 4096),
             ),
@@ -1295,6 +1345,8 @@ fn candidate_management_schemas() -> Vec<Value> {
             "project_id",
             "source_ids",
             "source_operation",
+            "research_state",
+            "research_state_basis",
             "retention_basis",
             "bounded_summary",
             "prompt",
@@ -1325,6 +1377,64 @@ fn candidate_management_schemas() -> Vec<Value> {
     };
     vec![
         submit,
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema(
+                        "Candidate lifecycle action",
+                        &["attach_repository_research"],
+                    ),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Candidate identity")),
+                (
+                    "capability",
+                    text_schema("Repository Intelligence capability used", 1, 4096),
+                ),
+                (
+                    "coverage",
+                    text_schema("Inspectable research coverage", 1, 4096),
+                ),
+                (
+                    "freshness",
+                    enum_schema("Research freshness", &["current", "stale", "unknown"]),
+                ),
+                (
+                    "source_ids",
+                    identity_array_schema("Canonical Sources supporting the research", 1),
+                ),
+                (
+                    "evidence_assessment",
+                    enum_schema(
+                        "Whether this evidence is sufficient to finish research",
+                        &["sufficient", "insufficient"],
+                    ),
+                ),
+                ("limits", string_array_schema("Known research limits")),
+            ],
+            &[
+                "action",
+                "project_id",
+                "candidate_id",
+                "capability",
+                "coverage",
+                "freshness",
+                "source_ids",
+                "evidence_assessment",
+            ],
+        ),
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Candidate lifecycle action", &["mark_research_ready"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Candidate identity")),
+            ],
+            &["action", "project_id", "candidate_id"],
+        ),
         object_schema(
             vec![
                 (
@@ -1914,6 +2024,11 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "cleaned_at_unix_micros": cleanup.cleaned_at.as_unix_micros(),
         })
     });
+    let repository_research = candidate
+        .repository_research_basis
+        .into_iter()
+        .map(repository_research_json)
+        .collect::<Vec<_>>();
     json!({
         "identity":candidate.candidate_id.to_string(),
         "exists":candidate.exists,
@@ -1927,6 +2042,8 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         "observed_at_unix_micros":candidate.observed_at.map(|value| value.as_unix_micros()),
         "retention":retention,
         "summary":candidate.bounded_summary,
+        "research_state":candidate.question_research_state.map(question_research_state_name),
+        "repository_research":repository_research,
         "content_omission":candidate.content_omission.map(|value| format!("{:?}",value).to_lowercase()),
         "content_cleaned":candidate.content_cleaned,
         "cleanup":cleanup,
@@ -1934,6 +2051,76 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         "promotion_target":candidate.promotion_target.map(|value| value.to_string()),
         "applicable_opt_out":candidate.current_applicable_opt_out.into_iter().map(collection_opt_out_json).collect::<Vec<_>>(),
     })
+}
+
+fn candidate_research_lifecycle_json(
+    action: &str,
+    candidate: &volicord_inquiry::CandidateRecord,
+) -> Result<Value, HostError> {
+    let question = candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.question.as_ref())
+        .ok_or_else(|| HostError::new("Question Candidate research content is unavailable"))?;
+    Ok(json!({
+        "action":action,
+        "candidate_id":candidate.id.to_string(),
+        "candidate_revision":candidate.revision,
+        "research_state":question_research_state_name(question.research_state),
+        "repository_research":question.repository_basis.iter().cloned().map(repository_research_json).collect::<Vec<_>>(),
+        "disposition":candidate_disposition_json(&candidate.disposition),
+        "canonical_mutation":false,
+        "promoted":false,
+    }))
+}
+
+fn repository_research_json(basis: volicord_inquiry::RepositoryResearchBasis) -> Value {
+    json!({
+        "repository_snapshot":basis.repository_snapshot,
+        "analysis_snapshot":basis.analysis_snapshot,
+        "capability":basis.capability,
+        "coverage":basis.coverage,
+        "freshness":candidate_freshness_name(basis.freshness),
+        "source_ids":basis.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>(),
+        "evidence_assessment":if basis.sufficient { "sufficient" } else { "insufficient" },
+        "limits":basis.limits,
+    })
+}
+
+const fn question_research_state_name(state: QuestionResearchState) -> &'static str {
+    match state {
+        QuestionResearchState::ReadyToAsk => "ready_to_ask",
+        QuestionResearchState::ResearchRequired => "research_required",
+    }
+}
+
+fn question_research_state(value: &str) -> Result<QuestionResearchState, HostError> {
+    match value {
+        "ready_to_ask" => Ok(QuestionResearchState::ReadyToAsk),
+        "research_required" => Ok(QuestionResearchState::ResearchRequired),
+        _ => Err(HostError::new(
+            "research_state must be ready_to_ask or research_required",
+        )),
+    }
+}
+
+const fn candidate_freshness_name(state: CandidateFreshness) -> &'static str {
+    match state {
+        CandidateFreshness::Current => "current",
+        CandidateFreshness::Stale => "stale",
+        CandidateFreshness::Unknown => "unknown",
+    }
+}
+
+fn candidate_freshness(value: &str) -> Result<CandidateFreshness, HostError> {
+    match value {
+        "current" => Ok(CandidateFreshness::Current),
+        "stale" => Ok(CandidateFreshness::Stale),
+        "unknown" => Ok(CandidateFreshness::Unknown),
+        _ => Err(HostError::new(
+            "freshness must be current, stale, or unknown",
+        )),
+    }
 }
 
 fn candidate_disposition_json(disposition: &CandidateDisposition) -> Value {

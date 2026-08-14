@@ -9,7 +9,7 @@ use volicord_inquiry::{
     CandidateRetention, DuplicateAssessment, MaterialityAssessment, MaterialityStatus,
     QuestionCandidate, SubmissionOutcome,
 };
-use volicord_operations::{LocalOperations, RuntimeLayout};
+use volicord_operations::{CandidateRepositoryResearchDraft, LocalOperations, RuntimeLayout};
 
 #[test]
 fn local_operations_orchestrate_candidate_lifecycle_without_owning_domain_semantics(
@@ -94,6 +94,151 @@ fn local_operations_orchestrate_candidate_lifecycle_without_owning_domain_semant
             .len(),
         1
     );
+    Ok(())
+}
+
+#[test]
+fn local_operations_use_the_current_project_analysis_for_candidate_research(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let repository = root.path().join("repository");
+    std::fs::create_dir(&repository)?;
+    std::fs::write(repository.join("lib.rs"), "pub fn first() {}\n")?;
+    let operations = LocalOperations::new(RuntimeLayout::new(root.path().join("runtime"))?);
+    let project = operations
+        .initialize_project("Candidate research", Some(&repository))?
+        .project;
+    let first_analysis = operations
+        .analyze(project.id, Vec::new())?
+        .value
+        .ok_or("first analysis did not complete")?;
+    let first_source = first_analysis.analysis.repository_source.identity();
+    let mut draft = question_candidate(project.id, first_source, 1);
+    draft
+        .content
+        .question
+        .as_mut()
+        .ok_or("Question Candidate content is missing")?
+        .research_state = QuestionResearchState::ResearchRequired;
+    let candidate = match operations.submit_candidate(draft)? {
+        SubmissionOutcome::Stored(candidate) => candidate,
+        SubmissionOutcome::CollectionDisabled { .. } => {
+            return Err("Candidate collection unexpectedly disabled".into())
+        }
+    };
+    assert_eq!(
+        candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.question.as_ref())
+            .map(|question| question.research_state),
+        Some(QuestionResearchState::ResearchRequired)
+    );
+    assert!(operations
+        .inquiry_frontier(project.id, Vec::new())?
+        .questions
+        .is_empty());
+    assert!(operations
+        .mark_candidate_ready_to_ask(project.id, candidate.id)
+        .is_err());
+
+    std::fs::write(repository.join("lib.rs"), "pub fn second() {}\n")?;
+    let current_analysis = operations
+        .analyze(project.id, Vec::new())?
+        .value
+        .ok_or("current analysis did not complete")?;
+    let current_source = current_analysis.analysis.repository_source.identity();
+    assert_ne!(first_source, current_source);
+    let stale_source = operations.attach_candidate_repository_research(
+        project.id,
+        candidate.id,
+        CandidateRepositoryResearchDraft {
+            capability: "structural".into(),
+            coverage: "stale first snapshot".into(),
+            freshness: CandidateFreshness::Stale,
+            source_basis: vec![first_source],
+            sufficient: true,
+            limits: Vec::new(),
+        },
+    );
+    let stale_source =
+        stale_source.expect_err("old Analysis Source must not attach as current research");
+    assert!(std::error::Error::source(&stale_source)
+        .is_some_and(|source| source.to_string().contains("canonical Repository Source")));
+
+    let other_repository = root.path().join("other-repository");
+    std::fs::create_dir(&other_repository)?;
+    std::fs::write(other_repository.join("lib.rs"), "pub fn other() {}\n")?;
+    let other_project = operations
+        .initialize_project("Other Candidate Project", Some(&other_repository))?
+        .project;
+    let other_analysis = operations
+        .analyze(other_project.id, Vec::new())?
+        .value
+        .ok_or("other analysis did not complete")?;
+    assert!(operations
+        .attach_candidate_repository_research(
+            other_project.id,
+            candidate.id,
+            CandidateRepositoryResearchDraft {
+                capability: "structural".into(),
+                coverage: "other Project".into(),
+                freshness: CandidateFreshness::Current,
+                source_basis: vec![other_analysis.analysis.repository_source.identity()],
+                sufficient: true,
+                limits: Vec::new(),
+            },
+        )
+        .is_err());
+
+    let attached = operations.attach_candidate_repository_research(
+        project.id,
+        candidate.id,
+        CandidateRepositoryResearchDraft {
+            capability: "structural".into(),
+            coverage: "current repository declarations".into(),
+            freshness: CandidateFreshness::Current,
+            source_basis: vec![current_source],
+            sufficient: true,
+            limits: vec!["runtime behavior excluded".into()],
+        },
+    )?;
+    let attached_question = attached
+        .content
+        .as_ref()
+        .and_then(|content| content.question.as_ref())
+        .ok_or("attached Question Candidate content is missing")?;
+    assert_eq!(
+        attached_question.research_state,
+        QuestionResearchState::ResearchRequired
+    );
+    assert_eq!(
+        attached_question.repository_basis[0].analysis_snapshot,
+        Some(current_analysis.analysis.identity.to_string())
+    );
+    assert_eq!(
+        attached_question.repository_basis[0].repository_snapshot,
+        current_analysis.analysis.repository_snapshot.to_string()
+    );
+    assert!(operations
+        .canonical_basis(project.id)?
+        .active_questions
+        .is_empty());
+
+    let ready = operations.mark_candidate_ready_to_ask(project.id, candidate.id)?;
+    assert_eq!(
+        ready
+            .content
+            .as_ref()
+            .and_then(|content| content.question.as_ref())
+            .map(|question| question.research_state),
+        Some(QuestionResearchState::ReadyToAsk)
+    );
+    assert_eq!(ready.disposition, CandidateDisposition::PendingOrRetained);
+    assert!(operations
+        .canonical_basis(project.id)?
+        .active_questions
+        .is_empty());
     Ok(())
 }
 

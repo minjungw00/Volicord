@@ -23,10 +23,10 @@ pub use guarded::{
 };
 pub use layout::RuntimeLayout;
 pub use model::{
-    AnalysisOutcome, BindingOutcome, CanonicalMutationOutcome, ChildProcessOutcome, HealthIssue,
-    HealthIssueKind, HealthReport, HealthState, LongOperationResult, OperationState,
-    PartialOutcome, ProgressState, ProjectInitialization, PublicationOutcome, RepairKind,
-    RepairOutcome,
+    AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
+    ChildProcessOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
+    PublicationOutcome, RepairKind, RepairOutcome,
 };
 pub use operations::LocalOperations;
 pub use volicord_privacy::{

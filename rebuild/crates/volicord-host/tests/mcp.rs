@@ -675,6 +675,213 @@ fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
 }
 
 #[test]
+fn supported_candidate_research_is_source_grounded_and_separate_from_promotion_and_decision() {
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src")).expect("source directory");
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn research_fixture() {}\n",
+    )
+    .expect("source file");
+    let project_id = parse_project(&project);
+    let analyzed = adapter
+        .operations()
+        .analyze(project_id, Vec::new())
+        .expect("analysis")
+        .value
+        .expect("completed analysis");
+    let repository_source = analyzed.analysis.repository_source.identity().to_string();
+    let wrong_source = adapter
+        .operations()
+        .record_user_source(
+            project_id,
+            "codex".into(),
+            "candidate-research".into(),
+            "this user turn is not repository research".into(),
+        )
+        .expect("non-repository Source")
+        .identity;
+    let mut arguments =
+        question_candidate_arguments(&project, &repository_source, 1, "Choose repository policy");
+    arguments["research_state"] = json!("research_required");
+    arguments["research_state_basis"] =
+        json!("repository facts must be established before asking for user judgment");
+    let submitted = structured(&call(&mut adapter, "candidate_manage", arguments)).clone();
+    assert_eq!(submitted["research_state"], "research_required");
+    let candidate_id = submitted["candidate_id"]
+        .as_str()
+        .expect("Candidate identity")
+        .to_owned();
+    assert!(adapter
+        .operations()
+        .inquiry_frontier(project_id, Vec::new())
+        .expect("frontier before research")
+        .questions
+        .is_empty());
+
+    let premature = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"mark_research_ready",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    );
+    assert_eq!(premature["result"]["isError"], true, "{premature}");
+
+    let mismatched_source = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"attach_repository_research",
+            "project_id":project,
+            "candidate_id":candidate_id,
+            "capability":"structural",
+            "coverage":"src/lib.rs",
+            "freshness":"current",
+            "source_ids":[wrong_source],
+            "evidence_assessment":"sufficient",
+            "limits":[]
+        }),
+    );
+    assert_eq!(
+        mismatched_source["result"]["isError"], true,
+        "{mismatched_source}"
+    );
+
+    let insufficient = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"attach_repository_research",
+            "project_id":project,
+            "candidate_id":candidate_id,
+            "capability":"structural",
+            "coverage":"src/lib.rs declarations only",
+            "freshness":"current",
+            "source_ids":[repository_source],
+            "evidence_assessment":"insufficient",
+            "limits":["runtime behavior remains unknown"]
+        }),
+    ))
+    .clone();
+    assert_eq!(insufficient["research_state"], "research_required");
+    assert_eq!(insufficient["promoted"], false);
+    assert_eq!(insufficient["canonical_mutation"], false);
+    assert!(adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after research attachment")
+        .active_questions
+        .is_empty());
+
+    let still_premature = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"mark_research_ready",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    );
+    assert_eq!(
+        still_premature["result"]["isError"], true,
+        "{still_premature}"
+    );
+
+    let sufficient = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"attach_repository_research",
+            "project_id":project,
+            "candidate_id":candidate_id,
+            "capability":"structural",
+            "coverage":"current repository policy implementation and call sites",
+            "freshness":"current",
+            "source_ids":[repository_source],
+            "evidence_assessment":"sufficient",
+            "limits":["external runtime behavior is excluded"]
+        }),
+    ))
+    .clone();
+    assert_eq!(sufficient["research_state"], "research_required");
+    assert_eq!(sufficient["promoted"], false);
+    assert_eq!(
+        sufficient["repository_research"][1]["analysis_snapshot"],
+        analyzed.analysis.identity.to_string()
+    );
+    assert_eq!(
+        sufficient["repository_research"][1]["repository_snapshot"],
+        analyzed.analysis.repository_snapshot.to_string()
+    );
+
+    let ready = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"mark_research_ready",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    ))
+    .clone();
+    assert_eq!(ready["research_state"], "ready_to_ask");
+    assert_eq!(ready["promoted"], false);
+    let inspected = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(inspected["candidates"][0]["research_state"], "ready_to_ask");
+    assert_eq!(
+        inspected["candidates"][0]["repository_research"]
+            .as_array()
+            .expect("research evidence")
+            .len(),
+        2
+    );
+
+    let promoted = structured(&call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"promote_question",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    ))
+    .clone();
+    let frontier = structured(&call(
+        &mut adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(
+        frontier["questions"][0]["identity"],
+        promoted["question_id"]
+    );
+    let decided = structured(&call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project,
+            "question_id":promoted["question_id"],
+            "question_revision":frontier["questions"][0]["revision"],
+            "alternative_key":"local",
+            "user_turn":"Choose the local repository policy",
+            "user_rationale":"Keep this Project local-first"
+        }),
+    ))
+    .clone();
+    assert_eq!(decided["all_succeeded"], true, "{decided}");
+}
+
+#[test]
 fn supported_candidate_path_requires_explicit_promotion_and_current_host_decision() {
     use volicord_context::{
         Availability, OperationId, Principal, PrincipalKind, SourceDraft, SourcePayload, Store,
@@ -716,6 +923,11 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
     ))
     .clone();
     assert_eq!(submitted["state"], "stored", "{submitted}");
+    assert_eq!(submitted["research_state"], "ready_to_ask");
+    assert_eq!(
+        submitted["research_state_basis"],
+        "the unresolved branch is purely a user judgment"
+    );
     assert_eq!(submitted["canonical_mutation"], false);
     let candidate_id = submitted["candidate_id"]
         .as_str()
@@ -742,10 +954,18 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
         .expect("submitted Candidate");
     assert_eq!(candidate["disposition"]["state"], "pending_or_retained");
     assert_eq!(candidate["origin"]["actor_kind"], "agent");
+    assert_eq!(candidate["research_state"], "ready_to_ask");
+    assert!(candidate["repository_research"]
+        .as_array()
+        .expect("repository research")
+        .is_empty());
     assert_eq!(
         candidate["observation_basis"]["source_ids"][0],
         source.id.to_string()
     );
+    assert!(candidate["observation_basis"]["other"]
+        .as_str()
+        .is_some_and(|basis| basis.contains("purely a user judgment")));
     assert_eq!(
         candidate["collection_scope"]["source_operation"],
         "design-review"
@@ -930,6 +1150,8 @@ fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt:
         "source_ids":[source],
         "source_operation":"design-review",
         "repository_snapshot":"candidate-host-fixture",
+        "research_state":"ready_to_ask",
+        "research_state_basis":"the unresolved branch is purely a user judgment",
         "retention_basis":"retain through explicit inquiry disposition",
         "bounded_summary":format!("material Candidate: {prompt}"),
         "prompt":prompt,
@@ -1197,6 +1419,8 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "source_ids",
                     "source_operation",
                     "repository_snapshot",
+                    "research_state",
+                    "research_state_basis",
                     "retention_basis",
                     "bounded_summary",
                     "prompt",
@@ -1220,6 +1444,8 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "source_ids",
                     "source_operation",
+                    "research_state",
+                    "research_state_basis",
                     "retention_basis",
                     "bounded_summary",
                     "prompt",
@@ -1232,6 +1458,33 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "duplicate_basis",
                     "presentation_order",
                 ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "candidate_id",
+                    "capability",
+                    "coverage",
+                    "freshness",
+                    "source_ids",
+                    "evidence_assessment",
+                    "limits",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "candidate_id",
+                    "capability",
+                    "coverage",
+                    "freshness",
+                    "source_ids",
+                    "evidence_assessment",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "candidate_id"],
+                &["action", "project_id", "candidate_id"],
             ),
             shape(
                 &["action", "project_id", "candidate_id"],

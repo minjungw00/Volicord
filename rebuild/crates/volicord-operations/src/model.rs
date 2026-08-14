@@ -1,5 +1,6 @@
 use std::path::PathBuf;
-use volicord_context::{LocalBinding, OperationId, Project};
+use volicord_context::{LocalBinding, OperationId, Project, SourceId};
+use volicord_inquiry::CandidateFreshness;
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
     ProcessTreeCleanup,
@@ -100,6 +101,16 @@ pub struct AnalysisOutcome {
     pub repository: RepositorySnapshot,
     pub analysis: AnalysisSnapshot,
     pub stored_at: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CandidateRepositoryResearchDraft {
+    pub capability: String,
+    pub coverage: String,
+    pub freshness: CandidateFreshness,
+    pub source_basis: Vec<SourceId>,
+    pub sufficient: bool,
+    pub limits: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
