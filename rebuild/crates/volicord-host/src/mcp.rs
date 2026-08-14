@@ -97,6 +97,7 @@ impl HostAdapter {
     }
 
     pub fn handle(&mut self, message: Value) -> Option<Value> {
+        self.cleanup_expired_provider_operations();
         let method = message.get("method").and_then(Value::as_str)?;
         let id = message.get("id").cloned();
         if id.is_none() {
@@ -165,6 +166,14 @@ impl HostAdapter {
             Ok(value) => Ok(tool_result(value, false)),
             Err(error) => Ok(tool_result(json!({"error":error.to_string()}), true)),
         }
+    }
+
+    fn cleanup_expired_provider_operations(&mut self) {
+        let Ok(now) = SystemClock.now() else {
+            return;
+        };
+        self.pending_provider_operations
+            .retain(|_, preparation| now < preparation.candidate.expires_at);
     }
 
     fn project_initialize(&self, args: &Value) -> Result<Value, HostError> {
@@ -768,14 +777,19 @@ impl HostAdapter {
                     })?;
                 let project_id = preparation.candidate.project_id;
                 let provider_request_id = preparation.provider_request.id;
-                let result = self
+                let dispatch = self
                     .operations
                     .dispatch_guarded_provider_with_configured_adapter(
                         preparation,
                         request_revision,
                         effect_fingerprint,
-                    )
-                    .map_err(operation_error)?;
+                    );
+                let payload_consumed = !preparation.retains_authorized_payload();
+                let terminal = dispatch.as_ref().is_ok_and(provider_dispatch_is_terminal);
+                if payload_consumed || terminal {
+                    self.pending_provider_operations.remove(&request_id);
+                }
+                let result = dispatch.map_err(operation_error)?;
                 let inspected = self
                     .operations
                     .inspect_guarded_provider_operation(
@@ -851,7 +865,7 @@ impl HostAdapter {
         )
     }
 
-    fn guarded_interaction(&self, args: &Value) -> Result<Value, HostError> {
+    fn guarded_interaction(&mut self, args: &Value) -> Result<Value, HostError> {
         let request_id = parse_confirmation(required_str(args, "confirmation_request_id")?)?;
         let request = self
             .operations
@@ -886,9 +900,32 @@ impl HostAdapter {
                 user_turn,
             )
             .map_err(operation_error)?;
+        if response.decision == ConfirmationDecision::Denied {
+            self.pending_provider_operations.remove(&request_id);
+        }
         Ok(
             json!({"confirmation_request_id":response.confirmation_request_identity.to_string(),"request_revision":response.request_revision,"effect_fingerprint":response.effect_fingerprint,"decision":format!("{:?}",response.decision).to_lowercase(),"user_response_source_id":response.user_response_source_id.to_string()}),
         )
+    }
+}
+
+fn provider_dispatch_is_terminal(result: &volicord_operations::GuardedOperationResult) -> bool {
+    match &result.outcome {
+        GuardedOperationOutcome::NotDispatched {
+            rejection:
+                Some(
+                    ConfirmationRejection::Stale
+                    | ConfirmationRejection::Expired
+                    | ConfirmationRejection::Denied
+                    | ConfirmationRejection::Reused
+                    | ConfirmationRejection::InvalidUserSource,
+                ),
+            ..
+        } => true,
+        GuardedOperationOutcome::NotDispatched { .. } => false,
+        GuardedOperationOutcome::DispatchedAndCompleted { .. }
+        | GuardedOperationOutcome::DispatchedAndFailed { .. }
+        | GuardedOperationOutcome::ExecutionOutcomeIndeterminate { .. } => true,
     }
 }
 

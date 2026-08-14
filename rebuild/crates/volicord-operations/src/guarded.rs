@@ -257,6 +257,15 @@ pub struct GuardedProviderPreparation {
     pub(crate) authorized: Option<AuthorizedProviderDispatch>,
 }
 
+impl GuardedProviderPreparation {
+    /// Reports whether this live preparation still retains the authorized,
+    /// privacy-filtered provider payload. Once dispatch takes the payload the
+    /// preparation is terminal even if durable outcome recording later fails.
+    pub fn retains_authorized_payload(&self) -> bool {
+        self.authorized.is_some()
+    }
+}
+
 pub enum GuardedProviderPreparationOutcome {
     Ready(Box<GuardedProviderPreparation>),
     Rejected(Box<ProviderRequestRecord>),

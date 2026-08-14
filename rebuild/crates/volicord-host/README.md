@@ -33,9 +33,11 @@ separate prerequisite and can be managed with the existing `volicord privacy`
 CLI surface.
 
 Filtered source bodies are retained only in the live MCP server while the
-prepared request awaits confirmation. Restarting the host drops that ephemeral
-dispatch material without authorizing or retrying transmission; already
-recorded outcomes remain inspectable. This build has no selected external
-semantic-provider transport, so the configured-adapter path truthfully records
-`provider_unavailable`, keeps every manifest entry `not_transmitted`, and leaves
-local operations available.
+prepared request remains valid and awaits confirmation or a retryable
+pre-dispatch correction. Explicit denial, expiration, terminal Guarded
+rejection, or consumption by an actual dispatch releases that material.
+Restarting the host also drops it without authorizing or retrying transmission;
+already recorded outcomes remain inspectable. This build has no selected
+external semantic-provider transport, so the configured-adapter path truthfully
+records `provider_unavailable`, keeps every manifest entry `not_transmitted`,
+and leaves local operations available.

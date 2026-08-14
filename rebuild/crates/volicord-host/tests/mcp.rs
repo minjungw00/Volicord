@@ -456,10 +456,10 @@ fn codex_host_exposes_guarded_provider_dispatch_and_durable_unavailable_outcome(
             "effect_fingerprint":request["effect_fingerprint"]
         }),
     );
-    assert_eq!(
-        structured(&reused)["guarded_outcome"]["rejection"],
-        "reused"
-    );
+    assert_eq!(reused["result"]["isError"], true, "{reused}");
+    assert!(structured(&reused)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("live provider preparation is unavailable")));
     let local = call(
         &mut adapter,
         "canonical_inspect",
@@ -472,6 +472,74 @@ fn codex_host_exposes_guarded_provider_dispatch_and_durable_unavailable_outcome(
         json!({"project_id":project,"excluded_paths":[]}),
     );
     assert_eq!(structural["result"]["isError"], false, "{structural}");
+}
+
+#[test]
+fn explicit_provider_denial_discards_the_live_preparation() {
+    let (_temporary, mut adapter, project, request) = setup_guarded_provider_request(60_000_000);
+    let denied = call(
+        &mut adapter,
+        "guarded_interaction",
+        json!({
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"],
+            "decision":"deny",
+            "user_turn":"deny this exact provider request"
+        }),
+    );
+    assert_eq!(structured(&denied)["decision"], "denied", "{denied}");
+
+    let dispatch = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"]
+        }),
+    );
+    assert_eq!(dispatch["result"]["isError"], true, "{dispatch}");
+    assert!(structured(&dispatch)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("live provider preparation is unavailable")));
+    assert_eq!(
+        call(
+            &mut adapter,
+            "canonical_inspect",
+            json!({"project_id":project})
+        )["result"]["isError"],
+        false
+    );
+}
+
+#[test]
+fn subsequent_host_interaction_cleans_an_expired_provider_preparation() {
+    let (_temporary, mut adapter, project, request) = setup_guarded_provider_request(100_000);
+    std::thread::sleep(std::time::Duration::from_millis(150));
+
+    let health = call(
+        &mut adapter,
+        "project_health",
+        json!({"project_id":project}),
+    );
+    assert_eq!(health["result"]["isError"], false, "{health}");
+
+    let dispatch = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"]
+        }),
+    );
+    assert_eq!(dispatch["result"]["isError"], true, "{dispatch}");
+    assert!(structured(&dispatch)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("live provider preparation is unavailable")));
 }
 
 #[test]
@@ -765,6 +833,94 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
             .len(),
         0
     );
+}
+
+fn setup_guarded_provider_request(
+    expiration_delta_micros: i64,
+) -> (tempfile::TempDir, HostAdapter, String, Value) {
+    use volicord_context::{Clock, Principal, PrincipalKind, SystemClock};
+
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src")).expect("source directory");
+    fs::write(repository.join("src/lib.rs"), "pub fn host_path() {}\n").expect("source file");
+    let project_id = parse_project(&project);
+    adapter
+        .operations()
+        .analyze(project_id, Vec::new())
+        .expect("analysis");
+    let opt_in_source = adapter
+        .operations()
+        .record_user_source(
+            project_id,
+            "codex".into(),
+            "privacy-host".into(),
+            "enable provider".into(),
+        )
+        .expect("opt-in source");
+    adapter
+        .operations()
+        .enable_provider(
+            ProviderOptInPolicy {
+                project_id,
+                provider: "configured-provider".into(),
+                model: "configured-model".into(),
+                purpose: "background semantic analysis".into(),
+                requested_capability: "semantic".into(),
+                allowed_source_scopes: vec!["src/lib.rs".into()],
+                exclusions: SourceExclusionPolicy {
+                    path_prefixes: Vec::new(),
+                    file_classes: Vec::new(),
+                    basis: "host cleanup fixture".into(),
+                },
+                filtering: SecretFilteringPolicy {
+                    enabled: false,
+                    line_markers: Vec::new(),
+                    replacement: "[filtered]".into(),
+                    known_limits: Vec::new(),
+                },
+                retention: ProviderRetentionPolicy {
+                    local_annotation_retained_until: None,
+                    local_basis: "until explicit deletion".into(),
+                    provider_expectation: "configured provider policy".into(),
+                    provider_known_limits: Vec::new(),
+                },
+            },
+            ProviderIntentProvenance {
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "current-host-user".into(),
+                },
+                host: "codex".into(),
+                session: "privacy-host".into(),
+                user_turn_source: parse_source_identity(&opt_in_source.identity),
+                basis: "explicit host fixture opt-in".into(),
+            },
+        )
+        .expect("provider opt-in");
+    let now = SystemClock.now().expect("clock");
+    let expiration = now
+        .as_unix_micros()
+        .checked_add(expiration_delta_micros)
+        .and_then(|value| u64::try_from(value).ok())
+        .expect("positive supported expiration");
+    let prepared = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"prepare",
+            "project_id":project,
+            "provider":"configured-provider",
+            "model":"configured-model",
+            "purpose":"background semantic analysis",
+            "requested_capability":"semantic",
+            "source_paths":["src/lib.rs"],
+            "expiration_unix_micros":expiration
+        }),
+    );
+    assert_eq!(prepared["result"]["isError"], false, "{prepared}");
+    let request = structured(&prepared)["guarded_request"].clone();
+    (temporary, adapter, project, request)
 }
 
 fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt: &str) -> Value {
