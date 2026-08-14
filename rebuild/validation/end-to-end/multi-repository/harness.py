@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -15,8 +16,9 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
-from typing import Any
+from typing import Any, Iterator
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -282,6 +284,53 @@ def unsupported_cli(*operations: dict[str, Any]) -> bool:
     )
 
 
+class AuthenticationCleanupError(RuntimeError):
+    """The bounded authenticated Codex staging directory could not be removed."""
+
+
+@contextmanager
+def staged_codex_authentication(
+    source_auth: Path,
+    registered_codex_home: Path,
+    retained_root: Path,
+    *,
+    staging_parent: Path | None = None,
+) -> Iterator[Path]:
+    """Yield a Codex home containing only the registered config and staged auth."""
+    if staging_parent is not None:
+        staging_parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.TemporaryDirectory(
+        prefix="volicord-v11-codex-auth-",
+        dir=staging_parent,
+    )
+    staging_directory = Path(temporary.name)
+    try:
+        retained = retained_root.resolve()
+        staged = staging_directory.resolve()
+        if staged == retained or retained in staged.parents:
+            raise RuntimeError("Codex authentication staging resolved inside retained V11 artifacts")
+
+        codex_home = staging_directory / "codex-home"
+        codex_home.mkdir(mode=0o700)
+        registered_config = registered_codex_home / "config.toml"
+        if not registered_config.is_file():
+            raise FileNotFoundError("the isolated V11 Codex registration is unavailable")
+        shutil.copyfile(registered_config, codex_home / "config.toml")
+        (codex_home / "config.toml").chmod(0o600)
+        shutil.copyfile(source_auth, codex_home / "auth.json")
+        (codex_home / "auth.json").chmod(0o600)
+        yield codex_home
+    finally:
+        try:
+            temporary.cleanup()
+        except OSError as error:
+            raise AuthenticationCleanupError(
+                f"temporary Codex authentication cleanup failed: {type(error).__name__}"
+            ) from error
+        if staging_directory.exists():
+            raise AuthenticationCleanupError("temporary Codex authentication directory remains")
+
+
 def git_revision(recorder: Recorder, repository: Path, env: dict[str, str]) -> str:
     result = recorder.run("git-revision", ["git", "rev-parse", "HEAD"], env, cwd=repository)
     return decoded(result).strip() if result["exit_code"] == 0 else "unavailable"
@@ -314,30 +363,50 @@ def authenticated_codex(
     env: dict[str, str],
     repository: Path,
     project_id: str,
+    retained_root: Path,
+    *,
+    staging_parent: Path | None = None,
+    authentication_source: Path | None = None,
 ) -> dict[str, Any]:
-    auth = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
-    isolated_auth = Path(env["CODEX_HOME"]) / "auth.json"
+    auth = authentication_source or (
+        Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+    )
     if codex is None:
         return step("environment_blocked", "Codex CLI is unavailable")
     if not auth.is_file():
         return step("environment_blocked", "Codex authentication is unavailable")
-    shutil.copy2(auth, isolated_auth)
-    isolated_auth.chmod(0o600)
     prompt = (
         "Use the registered Volicord MCP server's project_health tool for Project "
         f"{project_id}. Do not run shell commands. Report its returned connection and capability state."
     )
-    result = recorder.run(
-        "authenticated-codex",
-        [
-            codex, "--ask-for-approval", "never", "--config",
-            'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
-            "exec", "--ephemeral", "--json", "--sandbox", "read-only",
-            "--skip-git-repo-check", "-C", str(repository), prompt,
-        ],
-        env,
-        timeout=180,
-    )
+    try:
+        with staged_codex_authentication(
+            auth,
+            Path(env["CODEX_HOME"]),
+            retained_root,
+            staging_parent=staging_parent,
+        ) as codex_home:
+            result = recorder.run(
+                "authenticated-codex",
+                [
+                    codex, "--ask-for-approval", "never", "--config",
+                    'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
+                    "exec", "--ephemeral", "--json", "--sandbox", "read-only",
+                    "--skip-git-repo-check", "-C", str(repository), prompt,
+                ],
+                env | {"CODEX_HOME": str(codex_home)},
+                timeout=180,
+            )
+    except AuthenticationCleanupError as error:
+        return step("failed", "temporary Codex authentication cleanup failed", error=str(error))
+    except OSError as error:
+        return step(
+            "environment_blocked",
+            "authenticated Codex material could not be staged",
+            error=f"{type(error).__name__}: {error}",
+        )
+    if any(path.is_file() for path in retained_root.rglob("auth.json")):
+        return step("failed", "authenticated Codex material remains in retained V11 artifacts")
     if result["exit_code"] != 0:
         return step("environment_blocked", "authenticated Codex turn did not complete", operation=result)
     calls = []
@@ -434,7 +503,9 @@ def rehearse_target(
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         direct_ok = False
         mcp_evidence = {"error": str(error)}
-    codex_result = authenticated_codex(recorder, codex, env, repository, project_id)
+    codex_result = authenticated_codex(
+        recorder, codex, env, repository, project_id, target_root
+    )
     combined_status = "passed" if direct_ok and codex_result["status"] == "passed" else (
         "environment_blocked" if direct_ok and codex_result["status"] == "environment_blocked" else "failed"
     )
@@ -1146,6 +1217,100 @@ def assert_required_steps_are_evidence_driven() -> None:
         raise AssertionError(f"required steps have no evidence-driven assignment: {sorted(missing)}")
 
 
+def assert_authenticated_codex_lifecycle() -> None:
+    synthetic_material = b'{"synthetic":"v11-auth-lifecycle"}\n'
+    with tempfile.TemporaryDirectory(prefix="volicord-v11-auth-self-check-") as directory:
+        root = Path(directory)
+        retained = root / "retained"
+        registered_codex_home = retained / "work" / "synthetic" / "home" / ".codex"
+        registered_codex_home.mkdir(parents=True)
+        (registered_codex_home / "config.toml").write_text(
+            '[mcp_servers.volicord]\ncommand = "synthetic-volicord-mcp"\n',
+            encoding="utf-8",
+        )
+        source_auth = root / "source-auth.json"
+        source_auth.write_bytes(synthetic_material)
+        repository = root / "repository"
+        repository.mkdir()
+        visibility_marker = root / "child-saw-auth"
+        staging_parent = root / "ephemeral-auth"
+        fake_codex = root / "synthetic-codex"
+        fake_codex.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys\n"
+            "auth = pathlib.Path(os.environ['CODEX_HOME']) / 'auth.json'\n"
+            "expected = b'{\\\"synthetic\\\":\\\"v11-auth-lifecycle\\\"}\\n'\n"
+            "if not auth.is_file() or auth.read_bytes() != expected:\n"
+            "    raise SystemExit(41)\n"
+            "pathlib.Path(os.environ['V11_AUTH_VISIBILITY_MARKER']).write_text('visible\\n')\n"
+            "if os.environ.get('V11_SYNTHETIC_CODEX_FAILURE') == '1':\n"
+            "    raise SystemExit(19)\n"
+            "print(json.dumps({'type':'mcp_tool_call','server':'volicord','tool':'project_health'}))\n",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+        recorder = Recorder(retained)
+        env = os.environ.copy() | {
+            "CODEX_HOME": str(registered_codex_home),
+            "V11_AUTH_VISIBILITY_MARKER": str(visibility_marker),
+        }
+
+        succeeded = authenticated_codex(
+            recorder,
+            str(fake_codex),
+            env,
+            repository,
+            "synthetic-project",
+            retained,
+            staging_parent=staging_parent,
+            authentication_source=source_auth,
+        )
+        if succeeded["status"] != "passed" or not visibility_marker.is_file():
+            raise AssertionError("synthetic child could not use staged Codex authentication")
+        if any(staging_parent.iterdir()):
+            raise AssertionError("Codex authentication staging remains after successful execution")
+
+        failed = authenticated_codex(
+            recorder,
+            str(fake_codex),
+            env | {"V11_SYNTHETIC_CODEX_FAILURE": "1"},
+            repository,
+            "synthetic-project",
+            retained,
+            staging_parent=staging_parent,
+            authentication_source=source_auth,
+        )
+        if failed["status"] != "environment_blocked":
+            raise AssertionError("synthetic child failure was not handled")
+        if any(staging_parent.iterdir()):
+            raise AssertionError("Codex authentication staging remains after child failure")
+
+        caught = False
+        try:
+            with staged_codex_authentication(
+                source_auth,
+                registered_codex_home,
+                retained,
+                staging_parent=staging_parent,
+            ) as codex_home:
+                if (codex_home / "auth.json").read_bytes() != synthetic_material:
+                    raise AssertionError("staged authentication was unavailable during execution")
+                raise RuntimeError("synthetic handled exception")
+        except RuntimeError as error:
+            if str(error) != "synthetic handled exception":
+                raise
+            caught = True
+        if not caught or any(staging_parent.iterdir()):
+            raise AssertionError("Codex authentication staging remains after handled exception")
+        if list(retained.rglob("auth.json")):
+            raise AssertionError("retained V11 artifacts contain synthetic authentication")
+        for path in retained.rglob("*"):
+            if path.is_file() and synthetic_material.rstrip() in path.read_bytes():
+                raise AssertionError("retained V11 evidence contains synthetic authentication content")
+        if source_auth.read_bytes() != synthetic_material:
+            raise AssertionError("source Codex authentication was modified")
+
+
 def self_check() -> int:
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
@@ -1157,6 +1322,7 @@ def self_check() -> int:
     if not {".java", ".py", ".ts", ".md"} <= suffixes:
         raise AssertionError("polyglot fixture lost three languages or documentation")
     assert_required_steps_are_evidence_driven()
+    assert_authenticated_codex_lifecycle()
     fake = {
         "schema_version": 1,
         "repositories": [
@@ -1169,6 +1335,7 @@ def self_check() -> int:
         "status": "passed",
         "required_steps": len(REQUIRED_STEPS),
         "evidence_driven_steps": len(REQUIRED_STEPS),
+        "authentication_lifecycle": "passed",
         "polyglot_hash": tree_hash(POLYGLOT_FIXTURE),
     }, indent=2))
     return 0
