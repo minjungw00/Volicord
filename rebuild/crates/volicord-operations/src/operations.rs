@@ -50,6 +50,13 @@ pub struct LocalOperations {
     layout: RuntimeLayout,
 }
 
+struct PreparedAnalysisBasis {
+    root: RepositoryRoot,
+    requested_path: PathBuf,
+    canonical: CanonicalReadBasis,
+    repository_source: SourceId,
+}
+
 impl LocalOperations {
     pub fn new(layout: RuntimeLayout) -> Self {
         Self { layout }
@@ -240,6 +247,25 @@ impl LocalOperations {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let monotonic = Instant::now();
+        let prepared = self.prepare_analysis_basis(project_id, started_at)?;
+        self.analyze_from_basis(
+            operation_id,
+            started_at,
+            monotonic,
+            prepared.root,
+            prepared.requested_path,
+            prepared.canonical,
+            prepared.repository_source,
+            excluded_paths,
+            false,
+        )
+    }
+
+    fn prepare_analysis_basis(
+        &self,
+        project_id: ProjectId,
+        observed_at: TimestampMicros,
+    ) -> Result<PreparedAnalysisBasis, Error> {
         let mut canonical = self.open_canonical()?;
         let project = canonical
             .get_project(project_id)
@@ -250,7 +276,7 @@ impl LocalOperations {
         let root = RepositoryRoot::open(&binding.absolute_path)
             .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
         let revision =
-            repository_observation_basis(root.canonical_path(), started_at.as_unix_micros())?;
+            repository_observation_basis(root.canonical_path(), observed_at.as_unix_micros())?;
         let source = canonical
             .record_source(
                 new_operation_id()?,
@@ -275,18 +301,12 @@ impl LocalOperations {
         let basis = canonical
             .read_canonical_basis(project_id, CanonicalReadOptions::default())
             .map_err(|error| Error::with_source("cannot read canonical analysis basis", error))?;
-        drop(canonical);
-        self.analyze_from_basis(
-            operation_id,
-            started_at,
-            monotonic,
+        Ok(PreparedAnalysisBasis {
             root,
-            binding.absolute_path,
-            basis,
-            source.value.id,
-            excluded_paths,
-            false,
-        )
+            requested_path: binding.absolute_path,
+            canonical: basis,
+            repository_source: source.value.id,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -378,40 +398,15 @@ impl LocalOperations {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let monotonic = Instant::now();
-        let canonical = self.open_canonical()?;
-        canonical.get_project(project_id).map_err(|error| {
-            Error::with_source("cannot read Project for analysis rebuild", error)
-        })?;
-        let binding = canonical.get_local_binding(project_id).map_err(|error| {
-            Error::with_source("Project has no usable repository binding", error)
-        })?;
-        let root = RepositoryRoot::open(&binding.absolute_path)
-            .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
-        let basis = canonical
-            .read_canonical_basis(project_id, CanonicalReadOptions::default())
-            .map_err(|error| Error::with_source("cannot read canonical rebuild basis", error))?;
-        let repository_source = basis
-            .sources
-            .iter()
-            .filter(|source| {
-                source.availability == Availability::Available
-                    && matches!(source.source.payload, SourcePayload::RepositorySnapshot { .. })
-            })
-            .max_by_key(|source| (source.source.recorded_at, source.source.id))
-            .map(|source| source.source.id)
-            .ok_or_else(|| {
-                Error::new(
-                    "analysis rebuild requires an available canonical repository Source; run analyze first",
-                )
-            })?;
+        let prepared = self.prepare_analysis_basis(project_id, started_at)?;
         self.analyze_from_basis(
             operation_id,
             started_at,
             monotonic,
-            root,
-            binding.absolute_path,
-            basis,
-            repository_source,
+            prepared.root,
+            prepared.requested_path,
+            prepared.canonical,
+            prepared.repository_source,
             excluded_paths,
             true,
         )

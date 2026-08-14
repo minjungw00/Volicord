@@ -58,6 +58,11 @@ binding에서 다시 확인할 수 있고, 반대로 같은 path의 content가 �
 basis가 된다. Identity나 fingerprint의 concrete algorithm은 이 문서가 선택하지
 않는다.
 
+Current mutable repository를 읽는 analyze, repair와 reindex는 각각 그 scan을 위한
+fresh repository observation `Source`를 먼저 canonical로 기록하고, 성공한 Repository
+Snapshot과 Analysis Snapshot은 모두 그 exact Source를 참조한다. Source 기록이
+실패하면 해당 scan을 current Derived State로 publish하지 않는다.
+
 ### 2.2 Analysis Snapshot
 
 `Analysis Snapshot`은 정확히 하나의 Repository Snapshot에 대해 수행한 capability
