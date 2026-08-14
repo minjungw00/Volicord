@@ -1,8 +1,8 @@
 # Phase 7 product-surface validation and V11 handoff state
 
-- Current exact final aggregate: `passed` at
-  `f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`
-- V11 integrated result: `passed`; Phase 8 entry gate: `ready`
+- Current exact final aggregate evidence: unavailable at its maintained local
+  artifact path; a new exact aggregate is pending for the documentation HEAD
+- V11 integrated result: `blocked at preflight`; Phase 8 entry gate: `blocked`
 - Scope: qualified local platform primitives, source-grounded Project
   projections and documents, Project-scoped provider privacy, Local Operations,
   exact Guarded confirmation, live local viewer, clean Linux installation, and
@@ -19,11 +19,14 @@
 | V08 | passed | `linux-codex-integration` | authenticated live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, fresh repository provenance, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
-The current exact aggregate passed with zero failures at final-validated HEAD
-`f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`; its last production change is
-`c2caea39d46229e880c8c906a0fffe91d8c2cb9c`. The clean independent V11
-rehearsal then passed all 54 repository-step outcomes and recorded
-`phase_8_ready = true` in `end-to-end/multi-repository/report.md`.
+The production candidate has no production or design-contract diff from
+final-validated HEAD `f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`; its last production change is
+`c2caea39d46229e880c8c906a0fffe91d8c2cb9c`. The corrected V11 harness
+self-check passed, including the hard-coded-status policy and synthetic
+ephemeral-authentication lifecycle. The maintained official preflight then
+failed because its required prior exact-final aggregate artifact was absent.
+No repository target ran, and `phase_8_ready = false` is recorded in
+`end-to-end/multi-repository/report.md`.
 
 ## Phase 7 capability conclusion
 
@@ -87,10 +90,10 @@ background-provider authority.
   latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
   portability retain the known limits in their individual reports.
-- V11 passed against all three required repository classes with no partial,
-  unsupported, failed, environment-blocked, or skipped outcome. Phase 8 entry
-  is ready; V11 remains one rehearsal and does not itself complete repeated
-  dogfood.
+- Corrected V11 target execution did not start because the maintained
+  preflight could not read its required prior exact-final aggregate artifact.
+  There is no current repository-step matrix, real authenticated cleanup
+  result, or Phase 8 entry evidence; Phase 8 remains blocked.
 - The unavailable production provider path proved exact Guarded confirmation,
   terminal cleanup, truthful no-transmission failure, and unaffected local
   operation. It did not qualify a commercial provider or successful external
