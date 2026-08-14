@@ -207,7 +207,7 @@ def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
         if "goal" in description:
             return "Validate discoverable MCP contracts"
         if "next meaningful step" in description:
-            return "Continue the corrected Phase 7 validation"
+            return "Continue Phase 7 validation"
         minimum = int(schema.get("minLength", 1))
         return "schema-client".ljust(minimum, "x")
     if kind == "integer":
@@ -342,6 +342,81 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def portable_tables(path: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[str, str]]:
+    envelope = json.loads(path.read_text(encoding="utf-8"))
+    payload = envelope["payload"]
+    tables: dict[str, list[dict[str, Any]]] = {}
+    for table in payload["tables"]:
+        columns = table["columns"]
+        rows = []
+        for encoded_row in table["rows"]:
+            decoded = []
+            for value in encoded_row:
+                decoded.append(None if value["type"] == "null" else value["value"])
+            rows.append(dict(zip(columns, decoded, strict=True)))
+        tables[table["name"]] = rows
+    return tables, payload["lineage"]
+
+
+def repository_sources(path: Path) -> list[dict[str, Any]]:
+    tables, _ = portable_tables(path)
+    return [row for row in tables["sources"] if row["source_kind"] == "repository_snapshot"]
+
+
+def analysis_lineage(
+    path: Path,
+    project_id: str,
+    analysis_snapshot: str,
+    bundle: Path,
+) -> dict[str, str]:
+    analysis = json.loads(path.read_text(encoding="utf-8"))
+    source = analysis["repository_source"]
+    source_basis = source["basis"]
+    require(analysis["identity"] == analysis_snapshot, "CLI and stored Analysis Snapshot disagree")
+    require(source["project"] == project_id, "Analysis repository Source belongs to another Project")
+    require(source_basis["kind"] == "snapshot", "Analysis repository Source lacks snapshot basis")
+    rows = [row for row in repository_sources(bundle) if row["id"] == source["identity"]]
+    require(len(rows) == 1, "Analysis repository Source is absent or ambiguous in canonical state")
+    require(
+        rows[0]["snapshot_basis"] == source_basis["value"],
+        "Analysis repository Source basis disagrees with canonical provenance",
+    )
+    return {
+        "analysis_snapshot": analysis["identity"],
+        "repository_snapshot": analysis["repository_snapshot"],
+        "repository_source": source["identity"],
+        "source_basis": source_basis["value"],
+    }
+
+
+def assert_only_repository_observation_added(
+    before: Path, after: Path, current_source: str
+) -> None:
+    before_tables, before_lineage = portable_tables(before)
+    after_tables, after_lineage = portable_tables(after)
+    require(before_tables.keys() == after_tables.keys(), "portable table set changed during analysis")
+    for name in before_tables:
+        if name != "sources":
+            require(
+                before_tables[name] == after_tables[name],
+                f"analysis changed user-owned canonical table {name}",
+            )
+    before_sources = before_tables["sources"]
+    after_sources = after_tables["sources"]
+    require(
+        all(row in after_sources for row in before_sources),
+        "analysis rewrote or removed a historical canonical Source",
+    )
+    additions = [row for row in after_sources if row not in before_sources]
+    require(len(additions) == 1, "analysis canonical delta was not one repository observation")
+    require(
+        additions[0]["id"] == current_source
+        and additions[0]["source_kind"] == "repository_snapshot",
+        "analysis canonical delta was not its current repository Source",
+    )
+    require(before_lineage != after_lineage, "portable lineage did not record canonical provenance change")
+
+
 def exercise_analysis_recovery(
     cli: Path, env: dict[str, str], temporary: Path, runtime: Path
 ) -> dict[str, Any]:
@@ -367,9 +442,10 @@ def exercise_analysis_recovery(
     second_analysis = json.loads(run([str(cli), "analyze", second], env).stdout)
     first_path = Path(first_analysis["stored_at"])
     second_path = Path(second_analysis["stored_at"])
+    first_value = json.loads(first_path.read_text(encoding="utf-8"))
     second_bytes = second_path.read_bytes()
 
-    run(
+    stable_source = json.loads(run(
         [
             str(cli),
             "canonical",
@@ -380,12 +456,65 @@ def exercise_analysis_recovery(
             "Preserve this canonical state across derived recovery",
         ],
         env,
+    ).stdout)
+    run(
+        [
+            str(cli),
+            "checkpoint",
+            "record",
+            first,
+            "pause",
+            stable_source["identity"],
+            "Preserve user-owned recovery meaning",
+            "Repair and reindex from fresh repository observations",
+        ],
+        env,
+    )
+    disposable_source = json.loads(run(
+        [
+            str(cli),
+            "canonical",
+            "user-source",
+            first,
+            "v08-recovery",
+            "forgetting-state",
+            "Forget this disposable source before recovery",
+        ],
+        env,
+    ).stdout)
+    run(
+        [
+            str(cli),
+            "canonical",
+            "forget",
+            first,
+            "source",
+            disposable_source["identity"],
+            stable_source["identity"],
+        ],
+        env,
     )
     before_bundle = temporary / "repair-before.json"
     after_repair_bundle = temporary / "repair-after.json"
     after_reindex_bundle = temporary / "reindex-after.json"
+    second_bundle = temporary / "unrelated-before.json"
     run([str(cli), "portable", "export", first, str(before_bundle)], env)
+    run([str(cli), "portable", "export", second, str(second_bundle)], env)
+    second_bundle_bytes = second_bundle.read_bytes()
+    initial_lineage = analysis_lineage(
+        first_path,
+        first,
+        first_analysis["analysis_snapshot"],
+        before_bundle,
+    )
+    require(
+        initial_lineage["repository_snapshot"] == first_analysis["repository_snapshot"],
+        "initial Repository Snapshot identity disagrees across the CLI boundary",
+    )
 
+    (first_repository / "src/repair-current.py").write_text(
+        "REPAIRED_CURRENT = True\n", encoding="utf-8"
+    )
     first_path.write_bytes(b"{ controlled corrupt derived analysis")
     degraded = json.loads(run([str(cli), "health", first], env).stdout)
     require(degraded["state"] == "degraded", "corrupt analysis was not observable as degraded")
@@ -401,11 +530,44 @@ def exercise_analysis_recovery(
     require(repaired["kind"] == "derivedanalysisrepair", "repair used the wrong recovery kind")
     require(repaired["discarded_entries"] == 1, "repair did not discard the corrupt owned entry")
     require(Path(repaired["stored_at"]).is_file(), "repair did not publish a fresh analysis")
-    require(json.loads(Path(repaired["stored_at"]).read_text(encoding="utf-8")), "repair output is unreadable")
+    repaired_path = Path(repaired["stored_at"])
+    repaired_value = json.loads(repaired_path.read_text(encoding="utf-8"))
+    require(repaired_value, "repair output is unreadable")
+    require(
+        "src/repair-current.py" in json.dumps(repaired_value),
+        "repair did not read current repository content",
+    )
     require(json.loads(run([str(cli), "health", first], env).stdout)["state"] == "healthy", "repair did not restore health")
     run([str(cli), "portable", "export", first, str(after_repair_bundle)], env)
-    require(before_bundle.read_bytes() == after_repair_bundle.read_bytes(), "repair changed canonical state")
+    repaired_lineage = analysis_lineage(
+        repaired_path,
+        first,
+        repaired["analysis_snapshot"],
+        after_repair_bundle,
+    )
+    require(
+        repaired_lineage["repository_snapshot"] != initial_lineage["repository_snapshot"]
+        and repaired_lineage["analysis_snapshot"] != initial_lineage["analysis_snapshot"]
+        and repaired_lineage["repository_source"] != initial_lineage["repository_source"],
+        "repair reused stale repository provenance",
+    )
+    assert_only_repository_observation_added(
+        before_bundle, after_repair_bundle, repaired_lineage["repository_source"]
+    )
+    require(
+        any(
+            row["id"] == initial_lineage["repository_source"]
+            and row["snapshot_basis"] == initial_lineage["source_basis"]
+            for row in repository_sources(after_repair_bundle)
+        ),
+        "repair rewrote the initial repository Source instead of preserving history",
+    )
     require(second_path.read_bytes() == second_bytes, "repair changed another Project's derived state")
+    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-repair.json")], env)
+    require(
+        (temporary / "unrelated-after-repair.json").read_bytes() == second_bundle_bytes,
+        "repair changed another Project's canonical state",
+    )
 
     (first_repository / "src/current.py").write_text("CURRENT = True\n", encoding="utf-8")
     reindexed = json.loads(run([str(cli), "reindex", first], env).stdout)
@@ -422,8 +584,31 @@ def exercise_analysis_recovery(
         "reindex did not observe current authoritative repository input",
     )
     run([str(cli), "portable", "export", first, str(after_reindex_bundle)], env)
-    require(before_bundle.read_bytes() == after_reindex_bundle.read_bytes(), "reindex changed canonical state")
+    reindexed_lineage = analysis_lineage(
+        reindexed_path,
+        first,
+        reindexed["analysis_snapshot"],
+        after_reindex_bundle,
+    )
+    require(
+        reindexed_lineage["repository_snapshot"] != repaired_lineage["repository_snapshot"]
+        and reindexed_lineage["repository_source"] != repaired_lineage["repository_source"],
+        "reindex reused repair's repository provenance",
+    )
+    assert_only_repository_observation_added(
+        after_repair_bundle, after_reindex_bundle, reindexed_lineage["repository_source"]
+    )
+    require(
+        first_value["repository_source"]["identity"]
+        == initial_lineage["repository_source"],
+        "captured initial analysis provenance changed in memory",
+    )
     require(second_path.read_bytes() == second_bytes, "reindex changed another Project's derived state")
+    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-reindex.json")], env)
+    require(
+        (temporary / "unrelated-after-reindex.json").read_bytes() == second_bundle_bytes,
+        "reindex changed another Project's canonical state",
+    )
 
     analysis_root = runtime / "derived" / "analysis"
     project_analysis = analysis_root / first
@@ -435,16 +620,30 @@ def exercise_analysis_recovery(
         all(path.is_dir() for path in analysis_root.iterdir()),
         "recovery required an old top-level derived-storage file path",
     )
-    unsupported_before = (before_bundle.read_bytes(), reindexed_path.read_bytes(), second_path.read_bytes())
+    unsupported_before = (
+        after_reindex_bundle.read_bytes(),
+        reindexed_path.read_bytes(),
+        second_path.read_bytes(),
+        second_bundle_bytes,
+    )
     unsupported = run([str(cli), "repair", first, "canonical"], env, expected=1)
     require("unsupported repair scope" in unsupported.stderr, "unsupported repair appeared successful")
-    unsupported_after = (before_bundle.read_bytes(), reindexed_path.read_bytes(), second_path.read_bytes())
+    run([str(cli), "portable", "export", first, str(temporary / "unsupported-after.json")], env)
+    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-unsupported.json")], env)
+    unsupported_after = (
+        (temporary / "unsupported-after.json").read_bytes(),
+        reindexed_path.read_bytes(),
+        second_path.read_bytes(),
+        (temporary / "unrelated-after-unsupported.json").read_bytes(),
+    )
     require(unsupported_before == unsupported_after, "unsupported repair mutated owned state")
     return {
-        "canonical_preserved": True,
+        "canonical_delta": "repository observations only",
         "cross_project_isolation": True,
-        "repair_snapshot": repaired["analysis_snapshot"],
-        "reindex_snapshot": reindexed["analysis_snapshot"],
+        "initial_lineage": initial_lineage,
+        "repair_lineage": repaired_lineage,
+        "reindex_lineage": reindexed_lineage,
+        "user_owned_canonical_meaning_preserved": True,
         "unsupported_scope_rejected": True,
     }
 

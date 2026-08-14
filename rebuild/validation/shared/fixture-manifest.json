@@ -571,7 +571,7 @@
       "id": "v08-linux-codex-integration",
       "validation_id": "V08",
       "path": "rebuild/validation/linux-codex-integration/fixtures",
-      "purpose": "Map the clean Linux installation, executable viewer HTTP, advertised MCP schemas, a completed authenticated Codex product-tool call, exact Guarded fallback, project-scoped analysis repair and reindex, failure cleanup, canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
+      "purpose": "Map the clean Linux installation, executable viewer request-authenticity, advertised MCP schemas, a completed authenticated Codex product-tool call, exact Guarded fallback, fresh repository provenance for project-scoped analysis repair and reindex, failure cleanup, user-owned canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
       "expected_entities": [
         "replacement-runtime-home",
         "installed-cli",
@@ -582,9 +582,12 @@
         "advertised-input-schema",
         "completed-codex-tool-call",
         "live-viewer-listener",
+        "viewer-request-authenticity",
         "current-host-user-turn-source",
         "guarded-confirmation-request",
         "project-health-observation",
+        "repository-observation-source",
+        "repository-snapshot",
         "project-analysis-snapshot"
       ],
       "expected_relations": [
@@ -593,8 +596,10 @@
         "host-decision-and-checkpoint|preserve|current-user-turn-source",
         "guarded-host-and-fallback|share|request-revision-and-fingerprint",
         "viewer-and-host|delegate_mutation_to|local-operations",
+        "viewer-mutation|requires|exact-authority-origin-and-request-authenticity",
         "connected-host|reports|degraded-repository-capability",
-        "repair-and-reindex|replace|project-owned-derived-analysis",
+        "repair-and-reindex|bind_snapshots_to|fresh-repository-observation-source",
+        "repair-and-reindex|preserve|user-owned-canonical-meaning",
         "uninstall-reinstall|preserves|canonical-recall"
       ],
       "expected_unsupported": [
@@ -603,7 +608,7 @@
         "concurrent interactive clients or hostile concurrent path replacement",
         "legacy MCP runtime schema command alias migration import backup or dual path"
       ],
-      "content_sha256": "00a5e5d153185f1b25777128c621a23b53ff841c23be51af4bee0e314fe8d7b5",
+      "content_sha256": "826ee2267a9bdd5e1a60d572b984a4661e22a3a6e63830ed429a32fd58943f99",
       "origin": "Self-authored V08 requirement map with isolated deterministic Linux journeys plus a separately recorded authenticated Codex CLI product-tool probe.",
       "license": "CC0-1.0"
     }

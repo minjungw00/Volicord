@@ -1,7 +1,7 @@
 use std::{
     fs,
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpStream,
     path::Path,
     process::{Child, Command, Stdio},
     thread,
@@ -19,6 +19,7 @@ use volicord_operations::{
 
 struct ViewerProcess {
     child: Child,
+    address: String,
 }
 
 impl Drop for ViewerProcess {
@@ -28,12 +29,7 @@ impl Drop for ViewerProcess {
     }
 }
 
-fn reserve_loopback_address() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("reserve loopback port");
-    listener.local_addr().expect("loopback address").to_string()
-}
-
-fn start_viewer(runtime: &Path, project: &str, address: &str) -> ViewerProcess {
+fn start_viewer(runtime: &Path, project: &str) -> ViewerProcess {
     let child = Command::new(env!("CARGO_BIN_EXE_volicord-viewer"))
         .args([
             "--runtime",
@@ -41,15 +37,31 @@ fn start_viewer(runtime: &Path, project: &str, address: &str) -> ViewerProcess {
             "--project",
             project,
             "--bind",
-            address,
+            "127.0.0.1:0",
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn real viewer executable");
+    let mut viewer = ViewerProcess {
+        child,
+        address: String::new(),
+    };
+    let mut startup = String::new();
+    BufReader::new(viewer.child.stderr.take().expect("viewer stderr"))
+        .read_line(&mut startup)
+        .expect("read bound viewer authority");
+    let address = startup
+        .trim()
+        .strip_prefix("Volicord local viewer: http://")
+        .and_then(|value| value.strip_suffix('/'))
+        .filter(|value| value.starts_with("127.0.0.1:") && !value.ends_with(":0"))
+        .unwrap_or_else(|| panic!("viewer reports its actual ephemeral authority: {startup:?}"))
+        .to_owned();
+    viewer.address.clone_from(&address);
     for _ in 0..100 {
-        if let Ok(mut stream) = TcpStream::connect(address) {
+        if let Ok(mut stream) = TcpStream::connect(&address) {
             let request = format!(
                 "GET /?level=overview HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
             );
@@ -58,7 +70,7 @@ fn start_viewer(runtime: &Path, project: &str, address: &str) -> ViewerProcess {
                 if stream.read_to_string(&mut response).is_ok()
                     && response.starts_with("HTTP/1.1 200 OK")
                 {
-                    return ViewerProcess { child };
+                    return viewer;
                 }
             }
         }
@@ -91,10 +103,32 @@ fn get(address: &str, target: &str) -> String {
 
 fn post(address: &str, target: &str, body: &str, request_authenticity: &str) -> String {
     let body = format!("{body}&request_authenticity={request_authenticity}");
+    post_with_context(
+        address,
+        target,
+        &body,
+        address,
+        Some(&format!("http://{address}")),
+        Some("same-origin"),
+    )
+}
+
+fn post_with_context(
+    address: &str,
+    target: &str,
+    body: &str,
+    host: &str,
+    origin: Option<&str>,
+    fetch_site: Option<&str>,
+) -> String {
+    let origin = origin.map_or(String::new(), |value| format!("Origin: {value}\r\n"));
+    let fetch_site = fetch_site.map_or(String::new(), |value| {
+        format!("Sec-Fetch-Site: {value}\r\n")
+    });
     exchange(
         address,
         &format!(
-            "POST {target} HTTP/1.1\r\nHost: {address}\r\nOrigin: http://{address}\r\nSec-Fetch-Site: same-origin\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "POST {target} HTTP/1.1\r\nHost: {host}\r\n{origin}{fetch_site}Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         ),
     )
@@ -138,12 +172,12 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         .analyze(project, Vec::new())
         .expect("analyze fixture");
 
-    let address = reserve_loopback_address();
-    let _viewer = start_viewer(&runtime, &project.to_string(), &address);
+    let viewer = start_viewer(&runtime, &project.to_string());
+    let address = viewer.address.as_str();
 
-    let overview = get(&address, "/?level=overview&locale=en&language=fr-CA");
-    let working = get(&address, "/?level=working&locale=ko&language=ko");
-    let deep = get(&address, "/?level=deep&locale=en&language=ja");
+    let overview = get(address, "/?level=overview&locale=en&language=fr-CA");
+    let working = get(address, "/?level=working&locale=ko&language=ko");
+    let deep = get(address, "/?level=deep&locale=en&language=ja");
     assert!(overview.starts_with("HTTP/1.1 200 OK"), "{overview}");
     assert!(overview.contains("data-explanation-level=\"overview\""));
     assert!(working.contains("data-explanation-level=\"working\""));
@@ -153,8 +187,10 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     assert_ne!(overview, working);
     assert_ne!(working, deep);
     let request_authenticity = request_authenticity(&overview);
+    assert_eq!(request_authenticity.len(), 64);
+    assert!(!overview.contains("?request_authenticity="));
     let rebound = exchange(
-        &address,
+        address,
         "GET /?level=deep HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n",
     );
     assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
@@ -204,12 +240,12 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         .value;
     drop(store);
     assert!(!overview.contains(&context.id.to_string()));
-    let refreshed = get(&address, "/?level=deep&locale=en&language=en");
+    let refreshed = get(address, "/?level=deep&locale=en&language=en");
     assert!(refreshed.contains(&context.id.to_string()));
     assert!(refreshed.contains("viewer state created after startup"));
 
     let corrected = post(
-        &address,
+        address,
         "/memory/context/correct",
         &format!(
             "record_id={}&expected_revision={}&corrected_text=state+created+after+viewer+startup&user_turn=Correct+this+viewer+memory&level=deep&locale=en&language=en",
@@ -235,17 +271,37 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         corrected_context.statement,
         "state created after viewer startup"
     );
-    assert!(get(&address, "/?level=deep").contains("state created after viewer startup"));
+    assert!(get(address, "/?level=deep").contains("state created after viewer startup"));
+
+    let published_document = temporary.path().join("published").join("handoff.md");
+    let published = post(
+        address,
+        "/documents/export",
+        &format!(
+            "kind=handoff-resume&format=markdown&destination={}&level=working&locale=en&language=en",
+            published_document.display()
+        ),
+        &request_authenticity,
+    );
+    assert!(
+        published.starts_with("HTTP/1.1 303 See Other"),
+        "{published}"
+    );
+    assert!(!published.contains(&request_authenticity));
+    assert!(published_document.is_file());
+    assert!(!fs::read_to_string(&published_document)
+        .expect("read viewer-published document")
+        .contains(&request_authenticity));
 
     let before_invalid = export(
         &independent,
         project,
         &temporary.path().join("before-invalid.json"),
     );
-    assert!(get(&address, "/?level=unsupported").starts_with("HTTP/1.1 400 Bad Request"));
-    assert!(get(&address, "/missing").starts_with("HTTP/1.1 404 Not Found"));
+    assert!(get(address, "/?level=unsupported").starts_with("HTTP/1.1 400 Bad Request"));
+    assert!(get(address, "/missing").starts_with("HTTP/1.1 404 Not Found"));
     assert!(post(
-        &address,
+        address,
         "/memory/forget",
         "record_kind=source&record_id=00000000000000000000000000000000&user_turn=no&unexpected=true",
         &request_authenticity,
@@ -294,7 +350,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         )
         .expect("revised Guarded request");
     let shown = get(
-        &address,
+        address,
         &format!(
             "/guarded/{}?level=working",
             current.confirmation_request_identity
@@ -307,9 +363,129 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         current.request_revision
     )));
 
+    let rejected_destination = temporary.path().join("rejected").join("handoff.md");
+    let correction_body = format!(
+        "record_id={}&expected_revision=2&corrected_text=must+not+be+applied&user_turn=Rejected+viewer+mutation",
+        context.id
+    );
+    let guarded_body = format!(
+        "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&decision=confirm&user_turn=Rejected+viewer+confirmation&guarded={}",
+        current.confirmation_request_identity,
+        current.request_revision,
+        current.effect_fingerprint,
+        current.confirmation_request_identity
+    );
+    let export_body = format!(
+        "kind=handoff-resume&format=markdown&destination={}",
+        rejected_destination.display()
+    );
+    let wrong_token = "00".repeat(32);
+    let rejected_requests = [
+        (
+            "missing authenticity value",
+            "/memory/context/correct",
+            correction_body.clone(),
+            address,
+            Some(format!("http://{address}")),
+            Some("same-origin".to_owned()),
+            "HTTP/1.1 403 Forbidden",
+        ),
+        (
+            "incorrect authenticity value",
+            "/guarded/confirm",
+            format!("{guarded_body}&request_authenticity={wrong_token}"),
+            address,
+            Some(format!("http://{address}")),
+            Some("same-origin".to_owned()),
+            "HTTP/1.1 403 Forbidden",
+        ),
+        (
+            "cross-origin request",
+            "/documents/export",
+            format!("{export_body}&request_authenticity={request_authenticity}"),
+            address,
+            Some("http://attacker.example".to_owned()),
+            Some("same-origin".to_owned()),
+            "HTTP/1.1 403 Forbidden",
+        ),
+        (
+            "alternate Host",
+            "/memory/context/correct",
+            format!("{correction_body}&request_authenticity={request_authenticity}"),
+            "attacker.example",
+            Some(format!("http://{address}")),
+            Some("same-origin".to_owned()),
+            "HTTP/1.1 421 Misdirected Request",
+        ),
+        (
+            "cross-site Fetch Metadata",
+            "/guarded/confirm",
+            format!("{guarded_body}&request_authenticity={request_authenticity}"),
+            address,
+            Some(format!("http://{address}")),
+            Some("cross-site".to_owned()),
+            "HTTP/1.1 403 Forbidden",
+        ),
+    ];
+    for (label, target, body, host, origin, fetch_site, expected) in rejected_requests {
+        let canonical_before = independent
+            .canonical_basis(project)
+            .expect("canonical basis before rejected request");
+        assert!(GuardedStore::open(independent.layout().guarded_store())
+            .expect("Guarded store before rejected request")
+            .response(
+                current.confirmation_request_identity,
+                current.request_revision,
+            )
+            .expect("Guarded response before rejected request")
+            .is_none());
+        assert!(!rejected_destination.exists());
+        assert!(!rejected_destination
+            .parent()
+            .expect("rejected destination parent")
+            .exists());
+
+        let response = post_with_context(
+            address,
+            target,
+            &body,
+            host,
+            origin.as_deref(),
+            fetch_site.as_deref(),
+        );
+        assert!(response.starts_with(expected), "{label}: {response}");
+        assert!(!response.contains(&request_authenticity));
+        assert_eq!(
+            independent
+                .canonical_basis(project)
+                .expect("canonical basis after rejected request"),
+            canonical_before,
+            "{label} changed canonical memory or recorded a current-host Source"
+        );
+        assert!(
+            GuardedStore::open(independent.layout().guarded_store())
+                .expect("Guarded store after rejected request")
+                .response(
+                    current.confirmation_request_identity,
+                    current.request_revision,
+                )
+                .expect("Guarded response after rejected request")
+                .is_none(),
+            "{label} consumed a Guarded confirmation"
+        );
+        assert!(!rejected_destination.exists(), "{label} published a file");
+        assert!(
+            !rejected_destination
+                .parent()
+                .expect("rejected destination parent")
+                .exists(),
+            "{label} created a publication directory"
+        );
+    }
+
     let submit = |revision: u64, fingerprint: &str, turn: &str| {
         post(
-            &address,
+            address,
             "/guarded/confirm",
             &format!(
                 "confirmation_request_id={}&request_revision={revision}&effect_fingerprint={fingerprint}&decision=confirm&user_turn={turn}&guarded={}",
@@ -368,4 +544,25 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         .sources
         .iter()
         .any(|source| source.source.id == response.user_response_source_id));
+
+    let portable = temporary.path().join("request-authenticity.volicord.json");
+    assert!(!String::from_utf8(export(&independent, project, &portable))
+        .expect("portable bundle UTF-8")
+        .contains(&request_authenticity));
+    let projection = independent
+        .project_projection(project)
+        .expect("canonical inspection after viewer requests");
+    assert!(projection.canonical_inspection.iter().all(|record| {
+        !record.identity.contains(&request_authenticity)
+            && !record.lifecycle_state.contains(&request_authenticity)
+            && record
+                .statement_role
+                .as_deref()
+                .is_none_or(|role| !role.contains(&request_authenticity))
+            && !record.summary.contains(&request_authenticity)
+            && record
+                .source_basis
+                .iter()
+                .all(|source| !source.to_string().contains(&request_authenticity))
+    }));
 }

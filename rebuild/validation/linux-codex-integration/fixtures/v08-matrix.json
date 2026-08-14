@@ -7,7 +7,9 @@
     "current_host_source": "bec6424ee0e7a7f378f2fc799bb58e201cc0c00f",
     "viewer_http": "55271418ea9f7b621a31250bf086194e7ac92dfd",
     "mcp_schemas": "ecef64e1a3516f4a1aa2ceaaebcc8b84f8b60183",
-    "analysis_recovery": "369402c6065232b4ef0a0534340b1b2a447436ad"
+    "analysis_recovery": "369402c6065232b4ef0a0534340b1b2a447436ad",
+    "fresh_repository_sources": "5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a",
+    "viewer_request_trust": "3b48545bd9e2a224d6feb75ae1c743d1af31f4cf"
   },
   "groups": {
     "clean_linux_install": [
@@ -44,7 +46,17 @@
       ["V08-V07-independent-canonical-read", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
       ["V08-V08-guarded-exact-current", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
       ["V08-V09-guarded-stale-mismatch-reuse", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
-      ["V08-V10-malformed-no-mutation", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"]
+      ["V08-V10-malformed-no-mutation", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V11-actual-ephemeral-authority", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V12-browser-token", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V13-authenticated-document-export", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V14-untrusted-host-no-read", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V15-missing-token-no-side-effect", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V16-wrong-token-no-side-effect", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V17-cross-origin-no-side-effect", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V18-alternate-host-no-side-effect", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V19-cross-site-no-side-effect", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
+      ["V08-V20-token-not-durable-or-url", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"]
     ],
     "mcp_schema_client": [
       ["V08-S01-tools-list-runtime", "harness", "mcp_schema", "actual installed server advertises all public tools"],
@@ -66,13 +78,19 @@
     ],
     "analysis_recovery": [
       ["V08-R01-corruption-visible", "harness", "analysis_recovery", "Project health reports controlled derived corruption as degraded"],
-      ["V08-R02-repair-supported", "rust", "volicord-operations/analysis_recovery", "corrupt_analysis_is_diagnosed_repaired_and_canonical_bytes_are_unchanged"],
-      ["V08-R03-canonical-preserved", "harness", "analysis_recovery", "portable canonical bytes remain identical after repair and reindex"],
+      ["V08-R02-repair-supported", "rust", "volicord-operations/analysis_recovery", "corrupt_analysis_repair_observes_current_repository_and_preserves_user_meaning"],
+      ["V08-R03-provenance-only-canonical-delta", "harness", "analysis_recovery", "portable canonical changes are limited to fresh repository Source observations"],
       ["V08-R04-reindex-fresh", "rust", "volicord-operations/analysis_recovery", "forced_reindex_discards_prior_snapshot_and_observes_current_repository"],
       ["V08-R05-cross-project-isolation", "rust", "volicord-operations/analysis_recovery", "project_owned_analysis_recovery_does_not_touch_another_project"],
       ["V08-R06-current-project-layout", "harness", "analysis_recovery", "Project-scoped derived directory contains only the current snapshot"],
       ["V08-R07-no-old-storage-path", "harness", "analysis_recovery", "derived analysis root contains Project directories and needs no top-level old reader"],
-      ["V08-R08-unsupported-scope", "rust", "volicord-operations/local_operations", "unsupported_repair_scope_fails_without_impersonating_canonical_repair"]
+      ["V08-R08-unsupported-scope", "rust", "volicord-operations/local_operations", "unsupported_repair_scope_fails_without_impersonating_canonical_repair"],
+      ["V08-R09-initial-source-lineage", "harness", "analysis_recovery", "initial Repository and Analysis Snapshots share their canonical repository Source"],
+      ["V08-R10-repair-current-source-lineage", "harness", "analysis_recovery", "repair reads changed repository content and binds both snapshots to a fresh repository Source"],
+      ["V08-R11-reindex-current-source-lineage", "harness", "analysis_recovery", "reindex reads later repository content and binds both snapshots to its own fresh repository Source"],
+      ["V08-R12-historical-source-preserved", "rust", "volicord-operations/analysis_recovery", "forced_reindex_discards_prior_snapshot_and_observes_current_repository"],
+      ["V08-R13-user-meaning-preserved", "rust", "volicord-operations/analysis_recovery", "corrupt_analysis_repair_observes_current_repository_and_preserves_user_meaning"],
+      ["V08-R14-correction-supersession-forgetting", "rust", "volicord-operations/analysis_recovery", "forced_reindex_discards_prior_snapshot_and_observes_current_repository"]
     ],
     "failure_cleanup_and_exclusion": [
       ["V08-F01-eof-cleanup", "rust", "volicord-host/mcp", "stdio_ends_cleanly_at_eof_and_preserves_ordered_responses"],

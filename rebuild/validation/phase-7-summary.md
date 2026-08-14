@@ -14,7 +14,7 @@
 | --- | --- | --- | --- |
 | V06 | passed | `projections/source-grounded-documents` | four source-grounded documents, read-only Project projections, explicit publication/adoption |
 | V07 | passed | `privacy/local-only-boundary` | local-first utility, Project opt-in, truthful transmission and deletion state |
-| V08 | passed | `linux-codex-integration` | live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, lifecycle, recovery and preservation |
+| V08 | passed | `linux-codex-integration` | authenticated live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, fresh repository provenance, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 The V08 report records that the reconstruction final aggregate has not yet been
@@ -23,13 +23,17 @@ plus the separately executed environment-dependent authenticated Codex probe.
 
 ## Phase 7 capability conclusion
 
-The corrected user surfaces now have executable-boundary evidence. The real
-viewer process serves request-specific `overview`, `working`, and `deep`
-projections, reads current state on each request, routes canonical memory
-correction through Local Operations, and preserves exact Guarded request
-identity/revision/fingerprint while rejecting stale, mismatched, and reused
-responses. Malformed and unsupported requests leave canonical bundle bytes
-unchanged.
+The user surfaces have executable-boundary evidence. The real
+viewer process uses its actual ephemeral loopback authority, serves
+request-specific `overview`, `working`, and `deep` projections, reads current
+state on each request, and exposes a browser-received request-authenticity value.
+Authenticated same-origin requests route canonical memory correction, exact
+Guarded response, and explicit document publication through Local Operations.
+Missing/wrong authenticity, cross-origin, cross-site, and alternate-Host
+requests are rejected with no canonical, Guarded, or filesystem side effect;
+an untrusted Host cannot retrieve the page value, and the value is absent from
+URLs and durable outputs. Stale, mismatched, reused, malformed, and unsupported
+requests retain their existing rejection behavior.
 
 The actual installed MCP server advertises 14 closed concrete schemas. A
 maintained client-side interpreter constructs representative Recall, Checkpoint,
@@ -39,10 +43,14 @@ completed `volicord.project_health` using the advertised `project_id` shape and
 received connected/healthy structured state.
 
 Supported `repair derived-analysis` and `reindex` now have a two-Project CLI
-journey. Controlled Project-owned corruption degrades visibly, repair restores
-health from authoritative input, reindex observes fresh repository state,
-portable canonical bytes and the unrelated Project remain unchanged, and an
-unsupported canonical repair fails.
+journey. Controlled Project-owned corruption degrades visibly. Repository
+changes before `repair` and `reindex` are read into new Repository and Analysis
+Snapshots that reference the fresh canonical repository Source for each scan.
+Portable state changes only by the required repository observation bookkeeping;
+user Questions, Decisions, corrected Context Items, Checkpoints, supersession,
+forgetting, and non-repository Sources remain unchanged. Earlier repository
+Sources retain their historical basis, the unrelated Project remains unchanged,
+and an unsupported canonical repair fails.
 
 ## Legacy exclusion audit
 

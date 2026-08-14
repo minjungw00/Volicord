@@ -352,6 +352,12 @@ fn corrupt_analysis_repair_observes_current_repository_and_preserves_user_meanin
         first.repository.repository_source.identity(),
     )?;
     let before_basis = fixture.operations.canonical_basis(initialized.project.id)?;
+    let historical_repository_source = before_basis
+        .sources
+        .iter()
+        .find(|source| source.source.id == first.repository.repository_source.identity())
+        .cloned()
+        .ok_or("initial repository Source missing from canonical history")?;
 
     fs::write(
         fixture.repository.join("src/repair-current.py"),
@@ -413,6 +419,21 @@ fn corrupt_analysis_repair_observes_current_repository_and_preserves_user_meanin
 
     let after_basis = fixture.operations.canonical_basis(initialized.project.id)?;
     assert_user_owned_meaning_preserved(&before_basis, &after_basis);
+    assert_eq!(
+        after_basis
+            .sources
+            .iter()
+            .find(|source| source.source.id == first.repository.repository_source.identity())
+            .ok_or("historical repository Source disappeared during repair")?,
+        &historical_repository_source
+    );
+    assert!(after_basis.sources.iter().any(|source| {
+        source.source.id == repaired_value.repository.repository_source.identity()
+            && matches!(
+                source.source.payload,
+                SourcePayload::RepositorySnapshot { .. }
+            )
+    }));
     let corrected = after_basis
         .context_items
         .iter()
@@ -433,6 +454,18 @@ fn forced_reindex_discards_prior_snapshot_and_observes_current_repository(
         .operations
         .analyze(initialized.project.id, Vec::new())?;
     let first = first.value.ok_or("first analysis missing")?;
+    add_user_owned_meaning(
+        &fixture.operations,
+        initialized.project.id,
+        first.repository.repository_source.identity(),
+    )?;
+    let before_basis = fixture.operations.canonical_basis(initialized.project.id)?;
+    let historical_repository_source = before_basis
+        .sources
+        .iter()
+        .find(|source| source.source.id == first.repository.repository_source.identity())
+        .cloned()
+        .ok_or("initial repository Source missing from canonical history")?;
     let before_bundle = export_bytes(
         &fixture.operations,
         initialized.project.id,
@@ -483,6 +516,15 @@ fn forced_reindex_discards_prior_snapshot_and_observes_current_repository(
     )?;
     assert_ne!(before_bundle, after_bundle);
     let canonical = fixture.operations.canonical_basis(initialized.project.id)?;
+    assert_user_owned_meaning_preserved(&before_basis, &canonical);
+    assert_eq!(
+        canonical
+            .sources
+            .iter()
+            .find(|source| source.source.id == first.repository.repository_source.identity())
+            .ok_or("historical repository Source disappeared during reindex")?,
+        &historical_repository_source
+    );
     let current_source = canonical
         .sources
         .iter()

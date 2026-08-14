@@ -52,6 +52,14 @@ EXPECTED_COMMITS = {
         "369402c6065232b4ef0a0534340b1b2a447436ad",
         "feat: add derived analysis repair and reindex",
     ),
+    "fresh_repository_sources": (
+        "5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a",
+        "fix: bind rebuilds to fresh repository sources",
+    ),
+    "viewer_request_trust": (
+        "3b48545bd9e2a224d6feb75ae1c743d1af31f4cf",
+        "fix: authenticate local viewer mutations",
+    ),
 }
 
 
@@ -111,7 +119,8 @@ def main() -> int:
         require(subject == expected_subject, f"{role} Production commit subject changed")
 
     changed_since_production = run(
-        ["git", "diff", "--name-only", EXPECTED_COMMITS["analysis_recovery"][0]], capture=True
+        ["git", "diff", "--name-only", EXPECTED_COMMITS["viewer_request_trust"][0]],
+        capture=True,
     ).stdout.splitlines()
     production_drift = [
         path
@@ -161,6 +170,16 @@ def main() -> int:
         "authenticated Codex product-tool probe passed" in normalized_report,
         "V08 report does not preserve the observed model-driven product-tool result",
     )
+    require(
+        "byte-identical after both operations" not in normalized_report
+        and "portable canonical bytes remain identical" not in normalized_report,
+        "V08 report still requires whole-bundle equality after a repository observation",
+    )
+    require(
+        "request-authenticity" in normalized_report
+        and "repository Source" in normalized_report,
+        "V08 report omits a corrected provenance or viewer-trust boundary",
+    )
 
     mappings: list[tuple[str, str, str, str]] = []
     for group, values in fixture["groups"].items():
@@ -175,7 +194,7 @@ def main() -> int:
             mappings.append(tuple(mapping))
     requirement_ids = [mapping[0] for mapping in mappings]
     require(len(requirement_ids) == len(set(requirement_ids)), "duplicate V08 requirement")
-    require(len(mappings) >= 60, "V08 matrix no longer covers the corrected integration boundary")
+    require(len(mappings) >= 75, "V08 matrix no longer covers the corrected integration boundary")
 
     metadata = json.loads(
         run(

@@ -2,15 +2,15 @@
 
 ## Status
 
-Passed against the maintained viewer/host baseline and the three corrective
-Production commits `55271418ea9f7b621a31250bf086194e7ac92dfd`,
-`ecef64e1a3516f4a1aa2ceaaebcc8b84f8b60183`, and
-`369402c6065232b4ef0a0534340b1b2a447436ad`. The 61-requirement matrix now
-covers the real viewer listener, runtime-discovered MCP schemas, supported
-derived-analysis recovery, and an authenticated Codex product-tool turn. The
-corrected deterministic evidence passed, and the authenticated Codex
-product-tool probe passed. The reconstruction final aggregate has not yet been
-run and is not claimed by this report.
+Passed against the eight Production commit identities fixed by
+`v08-matrix.json`, ending with `5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a`
+and `3b48545bd9e2a224d6feb75ae1c743d1af31f4cf`. The 77-requirement matrix
+covers the real viewer listener and request-authenticity boundary,
+runtime-discovered MCP schemas, repository-Source-grounded analysis recovery,
+and an authenticated Codex product-tool turn. The deterministic evidence
+passed, and the authenticated Codex product-tool probe passed. The
+reconstruction final aggregate has not yet been run and is not claimed by this
+report.
 
 ## Goal
 
@@ -34,8 +34,7 @@ The clean harness creates self-authored temporary README, Python, and Go
 repositories. The viewer executable test creates a temporary Python Project.
 The authenticated Codex probe creates a separate one-file repository and a
 clean isolated Codex configuration/registration home. Production behavior is
-fixed by the six commit identities in `v08-matrix.json`; the last three are the
-corrective viewer, MCP schema, and analysis-recovery commits listed in Status.
+fixed by the eight commit identities in `v08-matrix.json`.
 
 ## Environment and tool versions
 
@@ -60,7 +59,7 @@ rebuild/scripts/validate focused codex-cli-help -- codex --help
 rebuild/scripts/validate focused codex-exec-help -- codex exec --help
 rebuild/scripts/validate focused codex-login-status -- codex login status
 rebuild/scripts/validate focused viewer-executable-http -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer --test executable_http --all-features
-rebuild/scripts/validate focused v08-corrected-harness -- python3 -B rebuild/validation/linux-codex-integration/harness.py
+rebuild/scripts/validate focused v08-provenance-trust-harness -- python3 -B rebuild/validation/linux-codex-integration/harness.py
 rebuild/scripts/validate focused v08-real-codex-product-tool -- python3 -B rebuild/validation/linux-codex-integration/codex_probe.py
 rebuild/scripts/validate focused v08-assertions -- python3 -B rebuild/validation/linux-codex-integration/assertions.py
 rebuild/scripts/validate focused v08-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
@@ -74,15 +73,27 @@ read-only sandbox, no interactive prompt, and the narrow configuration override
 
 ## Observed results
 
-The real viewer executable opened its loopback listener. Separate requests
-selected `overview`, `working`, and `deep`; a canonical Context Item created
-after process start appeared without restart. A correction submitted through
-HTTP became revision 2 and was confirmed through a separately opened Local
-Operations read. A revised Guarded request rendered its current exact identity,
-revision, and fingerprint. Stale and mismatched responses were rejected, one
-exact response succeeded with a canonical current-host Source, and reuse was
-rejected. Unsupported paths, explanation values, and form fields left the
-portable canonical bundle byte-identical.
+The real viewer executable bound `127.0.0.1:0`, reported its actual ephemeral
+authority, and served only requests carrying that exact Host. The page supplied
+the request-authenticity value through the browser-received HTML. Separate
+requests selected `overview`, `working`, and `deep`; a canonical Context Item
+created after process start appeared without restart. Authenticated same-origin
+HTTP corrected that Context Item to revision 2, confirmed through a separately
+opened Local Operations read, and published an explicit document to the
+requested temporary path. A revised Guarded request rendered its current exact
+identity, revision, and fingerprint. One exact authenticated response succeeded
+with a canonical current-host Source; stale, mismatched, and reused responses
+were rejected.
+
+Missing and incorrect authenticity values, a cross-origin Origin, cross-site
+Fetch Metadata, and an alternate Host were rejected before domain routing. For
+each request the test independently re-read canonical memory, the pending
+Guarded response, and the publication destination: no current-host Source or
+canonical record changed, no Guarded confirmation was recorded or available to
+dispatch, and no file or parent directory was created. An alternate Host could
+not retrieve the page or request-authenticity value. The value was absent from
+request URLs and redirects, portable output, canonical inspection, and the
+ordinary generated document.
 
 The installed MCP process advertised 14 high-level tools. Every advertised
 shape was a closed object with typed, described properties and explicit
@@ -94,14 +105,25 @@ advertised contract. Production Rust oracles independently match every schema
 shape to handler-consumed fields and verify invalid requests fail before
 mutation.
 
-The CLI recovery journey established two Projects and analyses, corrupted only
-one Project-owned analysis file, observed `degraded` plus the exact corrupt
-scope, and repaired it from current repository/canonical input. Health returned
-to `healthy`. A later `reindex` created a different Analysis Snapshot containing
-the newly added source file. Portable canonical bytes remained identical after
-both operations; the unrelated Project analysis remained byte-identical; the
-Project directory retained one current snapshot. Unsupported canonical repair
-failed and changed none of the compared state.
+The CLI recovery journey established two Projects and analyses, recorded stable
+user-owned Source, Checkpoint, and forgetting state, then changed repository
+content and corrupted only one Project-owned analysis file. Health exposed
+`degraded` plus the exact corrupt scope. `repair` read the changed file and
+published a new Repository Snapshot and Analysis Snapshot that both referenced
+the fresh canonical repository Source for that observation. A later repository
+change followed by `reindex` produced another fresh Source/Snapshot lineage and
+included the later file.
+
+Portable output changed after both scans, as required by repository observation
+provenance. Table-by-table comparison showed exactly one added
+`repository_snapshot` Source per scan; all prior Sources and every other
+canonical table remained unchanged. Rust recovery oracles separately preserve
+active and terminal Questions, active and superseded Decisions, corrected
+Context Items, Checkpoints, forgetting state, non-repository user Sources, and
+their revisions. Earlier repository Sources retained their original snapshot
+basis, the unrelated Project remained byte-identical in both canonical and
+derived state, and the Project analysis directory retained one current derived
+snapshot. Unsupported canonical repair failed without changing compared state.
 
 The authenticated Codex event stream showed the model select
 `volicord.project_health`, construct `{"project_id": ...}` from tool metadata,
@@ -113,8 +135,8 @@ not registration, startup, or a manually constructed stdio RPC.
 
 Final focused results used for this report:
 
-- real viewer executable: passed in `498.833 ms`;
-- deterministic clean/MCP/recovery harness: passed in `345.362 ms` with warm
+- real viewer executable: passed in `246.121 ms`;
+- deterministic clean/MCP/recovery harness: passed in `414.967 ms` with warm
   release artifacts;
 - authenticated Codex product-tool probe: passed in `13,839.621 ms`.
 
@@ -144,9 +166,12 @@ legacy Runtime Home remained byte- and timestamp-identical.
 
 ## Acceptance results
 
-- Pass: real HTTP requests exercise current viewer state, all three explanation
-  levels, memory correction, exact Guarded fallback, stale/mismatch/reuse
-  rejection, and malformed-request no-mutation.
+- Pass: real HTTP requests use the executable's actual ephemeral authority and
+  browser-received request-authenticity value for memory correction, exact
+  Guarded fallback, and explicit document publication.
+- Pass: missing/wrong authenticity, cross-origin, cross-site, and alternate-Host
+  requests fail with no canonical, Guarded, or filesystem side effect; an
+  untrusted Host cannot retrieve the page value and the value is not durable.
 - Pass: `tools/list` exposes concrete closed schemas for every public tool;
   representative read, mutation, and Guarded calls are constructed from those
   schemas and execute successfully.
@@ -154,8 +179,10 @@ legacy Runtime Home remained byte- and timestamp-identical.
   fail consistently before mutation.
 - Pass: authenticated Codex selects and completes a Volicord read-only product
   tool from the isolated registered server and returned schema.
-- Pass: repair and reindex recover only replacement-owned derived analysis,
-  preserve canonical bytes and another Project, and reject unsupported scope.
+- Pass: repair and reindex recover replacement-owned derived analysis from the
+  current repository observation, add only required repository provenance to
+  canonical state, preserve user meaning and another Project, retain historical
+  Source basis, and reject unsupported scope.
 - Pass: clean install, lifecycle, degradation, process cleanup, canonical
   preservation, and legacy exclusion remain intact.
 
@@ -171,10 +198,10 @@ on it.
 
 ## Recommended implementation choice
 
-Retain the thin viewer and high-level reconstruction-owned MCP edge. Retain
-closed tool schemas as the executable client contract and Project-scoped
-derived replacement for repair/reindex. Keep the authenticated Codex probe
-explicit and separate from ordinary deterministic workspace tests.
+Retain the thin viewer and high-level reconstruction-owned MCP edge. Retain the
+bound-authority and request-authenticity checks, closed tool schemas, and fresh
+repository Source observation as executable contracts. Keep the authenticated
+Codex probe explicit and separate from ordinary deterministic workspace tests.
 
 ## Rejected alternatives and reasons
 
@@ -190,7 +217,7 @@ black-box acceptance orchestration only.
 
 ## Decision revisit trigger status
 
-Not triggered. The corrected evidence preserves local-first operation,
+Not triggered. The evidence preserves local-first operation,
 Project-scoped canonical and derived authority, current-host Source provenance,
 exact Guarded confirmation, and honest failure/recovery. Codex requires an
 explicit MCP approval-mode configuration for a bounded noninteractive call;
