@@ -167,9 +167,18 @@ Rules:
   for focused or long-running validation. Inspect the preserved result under
   `rebuild/.local/validation/` before reporting its status.
 - Use `rebuild/scripts/validate self-test` to verify the repository-local
-  validation runner. `rebuild/scripts/validate final` owns the ordered
-  aggregate suite from the root `AGENTS.md`; run it only when the task's
-  validation role is final.
+  validation runner and `rebuild/scripts/validate gate-self-test` to verify
+  admission/orchestration without consuming the real final aggregate or V11.
+- Before any exact final aggregate, use `rebuild/scripts/validate admission`
+  to discover local, fixture, resource, network, authentication and bounded
+  external-transmission authorization blockers. `rebuild/scripts/validate
+  gate` is the only maintained path that may invoke the ordered final suite:
+  after successful admission it runs final once and the official V11 once in
+  the same parent process/session. Direct `rebuild/scripts/validate final`
+  invocation is refused.
+- The gate's printed, versionless evidence capsule is the maintained
+  cross-session handoff. Ignored final/V11 artifacts support the current gate
+  process only and must not be required by a later documentation session.
 - Keep maintained fixtures, validation report templates, and experiment
   summaries under `rebuild/validation/`. Keep raw command output, generated
   graphs, and measurement artifacts under ignored `rebuild/.local/` state.

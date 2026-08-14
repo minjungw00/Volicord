@@ -9,13 +9,26 @@ surface, not a Volicord product command or production architecture.
 - `rebuild/scripts/validate self-test` checks command execution, output and
   status preservation, signal reporting, and non-fail-fast aggregation with
   fake commands.
+- `rebuild/scripts/validate gate-self-test` checks admission blocking,
+  authorization separation, exact-once synthetic final/V11 orchestration,
+  same-session artifact selection, credential-safe capsule projection, and
+  no-retry behavior. It never invokes the real exact final or official V11.
 - `rebuild/scripts/validate focused <label> -- <command> [arguments...]` runs
   the exact argument vector from the repository root and records the command,
   working directory, timestamps, duration, complete separate stdout/stderr,
   exit code, and termination details.
-- `rebuild/scripts/validate final` runs the four root `AGENTS.md` aggregate
-  commands in order, records every result, and fails after all commands finish
-  if any failed. It is reserved for work whose validation role is `final`.
+- `rebuild/scripts/validate admission` evaluates the current clean candidate,
+  runner/V11 self-checks, fixture integrity, executables, writable disposable
+  homes, the maintained resource estimate, loopback, Codex authentication,
+  technical external-network state, and the exact bounded transmission
+  authorization. It prints a structured result and retains `admission.json`
+  below ignored validation state; a blocked result runs neither final nor V11.
+- `rebuild/scripts/validate gate` repeats admission in its own session, invokes
+  the existing ordered four-command final owner exactly once, passes only the
+  returned summary to V11 preflight, invokes official V11 at most once, runs
+  the V11 credential-retention audit, and prints the sanitized handoff capsule.
+  Direct `rebuild/scripts/validate final` invocation is refused so an exact
+  aggregate cannot bypass admission or become detached from V11.
 - `rebuild/scripts/check-architecture-contracts` checks the nine active Phase 3
   owner documents, routing, relative links, traceability IDs, capability-based
   validation paths, prohibited supported paths, Phase 4 handoff structure,
@@ -77,6 +90,62 @@ the installed CLI and MCP surfaces, writes child-operation evidence and its
 structured result only below ignored `rebuild/.local/`, and classifies missing
 public product paths as `unsupported` instead of substituting validation-only
 domain behavior.
+
+## Admission, authorization, and handoff
+
+Technical network availability and authorization are separate current-
+invocation inputs. `--external-network available` asserts only that the
+execution environment can reach the service. It does not authorize a
+transmission. Missing or escalation-dependent technical access is an
+`environment_blocked` admission result.
+
+The only accepted authorization assertion is:
+
+```text
+--authorize-external-transmission v11-openai-codex-project-health-three-targets
+```
+
+It covers the maintained journey's three authenticated Codex turns for the
+`volicord`, `small-python`, and `polyglot-medium` targets. Their destination is
+the OpenAI Codex service used by the installed Codex CLI; their purpose is to
+select the installed `project_health` MCP tool; their intended source scope is
+the bounded V11 prompt, Project identity, and tool result, not repository
+source bodies. Credentials, generic network access, sandbox escalation,
+Project provider opt-in, an earlier report, or an earlier session cannot
+supply this assertion. Admission records only whether the exact assertion was
+present, not operator authorization prose or credential contents.
+
+Preflight-only example:
+
+```text
+rebuild/scripts/validate admission \
+  --external-network available \
+  --authorize-external-transmission v11-openai-codex-project-health-three-targets
+```
+
+Exact gate example (reserved for the one authorized final/V11 session):
+
+```text
+rebuild/scripts/validate gate \
+  --external-network available \
+  --authorize-external-transmission v11-openai-codex-project-health-three-targets
+```
+
+Admission writes its current structured result to the path reported on
+stderr. The gate writes `admission.json`, `gate-result.json`, and `capsule.json`
+under the reported ignored run directory and prints the complete capsule to
+stdout so it can be copied before that directory disappears.
+
+The versionless current capsule has `kind = validation_handoff_capsule` and
+contains only the validated HEAD, final status/command outcomes/failure count
+and summary hash, official V11 status/result hash and required-step counts,
+fixture identities, `phase_8_ready`, credential-audit counts, bounded
+authenticated-Codex classifications, active Decision revisit-trigger IDs when
+reported, and any gate blocker. It excludes credentials and fingerprints,
+source bodies, raw logs/provider payloads, and private prompt bodies. A later
+documentation-only session uses the copied capsule and maintained tracked
+inputs; it never needs, searches for, or substitutes an ignored final or V11
+artifact from another session.
 
 Examples:
 

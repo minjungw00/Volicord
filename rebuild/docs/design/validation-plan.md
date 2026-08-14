@@ -85,6 +85,67 @@ Artifacts
 
 보고서에는 raw 전체 source나 secret를 복제하지 않는다. 필요한 artifact는 ignored experiment output에 두고 maintained report에는 path, hash와 요약만 기록한다.
 
+### 3.1 Maintained final, V11과 documentation handoff lifecycle
+
+Production/test candidate를 봉인하는 exact final, V11 acceptance와 그 결과를 해석하는
+documentation conclusion은 서로 다른 책임이다. Maintained lifecycle은 다음 한 방향이다.
+
+```text
+implementation and focused checks
+→ admission gate
+→ exact final once
+→ same-session V11 once
+→ sanitized evidence capsule
+→ independent documentation-only conclusion
+```
+
+`rebuild/scripts/validate admission`은 exact final을 시작하기 전에 독립 실행할 수 있는
+machine-readable preflight다. 현재 clean worktree와 candidate HEAD, validation runner와
+V11 self-check, required fixture identity/integrity, executable, disposable filesystem/runtime
+home, repository-owned bounded disk estimate, loopback, Codex executable/authentication,
+technical external-network state와 maintained authenticated V11 transmission을 평가한다.
+Blocker가 하나라도 있으면 exact final command count와 official V11 command count는 모두
+0이다.
+
+Authenticated V11은 installed Codex CLI가 사용하는 OpenAI Codex service를 destination으로
+하고, 세 target(`volicord`, `small-python`, `polyglot-medium`)에서 installed
+`project_health` MCP tool을 선택하는 세 bounded turn을 purpose/scope로 하는 외부 전송을
+필요로 한다. Intended transmitted scope는 bounded V11 prompt, Project identity와 tool
+result이며 repository source body 전송은 의도하지 않는다. 이 전송에는 current
+invocation의 exact assertion
+`v11-openai-codex-project-health-three-targets`가 필요하다. Credential 소유,
+`--external-network available`, sandbox escalation, 이전 session/report, 또는 Project
+provider opt-in에서 authorization을 추론하지 않는다. Missing assertion은
+`authorization_blocked`이며 operator prose나 credential content는 retained evidence에
+저장하지 않는다.
+
+`rebuild/scripts/validate gate`는 자체 admission을 다시 평가하는 유일한 exact-final
+entry point다. Admission이 통과하면 gate parent process는 admission에서 기록한 HEAD를
+다시 확인하고 existing final owner의 ordered command vector를 정확히 한 번 실행한다.
+그 호출이 직접 반환한 새 `summary.json`만 읽으며 older ignored artifact를 검색하거나
+대체하지 않는다. 모든 exact command와 `failure_count = 0`을 확인한 경우에만 그 같은
+path와 HEAD를 existing V11 preflight에 전달한다. Preflight가 통과한 경우에만 official
+V11을 정확히 한 번 실행하고 credential-retention audit을 수행한다. Final failure는
+final retry 또는 V11을 만들지 않고, V11 failure는 final retry를 만들지 않는다. Direct
+`rebuild/scripts/validate final` invocation은 이 lifecycle을 우회할 수 없도록 거부한다.
+
+Exact final은 그 HEAD의 production code와 tests가 통과한 candidate라는 사실을
+봉인한다. 이후 V11과 credential audit이 acceptance evidence를 만들며, 나중의
+documentation-only conclusion commit까지 exact-final candidate에 포함됐다는 뜻은
+아니다. Documentation session은 copied capsule과 tracked maintained input만 해석하고
+production/test code를 바꾸거나 final/V11을 다시 실행하지 않는다.
+
+Gate는 numeric legacy version branch가 없는 현재 `validation_handoff_capsule` 하나를
+stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 validated HEAD,
+final aggregate/command outcome/failure count와 summary SHA-256, V11 status/result SHA-256,
+fixture identity, required-step/status count, `phase_8_ready`, credential-audit count/result,
+target별 authenticated Codex classification, reported active Decision revisit-trigger ID와
+blocking classification만 bounded projection으로 보존한다. Credential/API/session token,
+credential content나 reusable fingerprint, source body, full log, raw provider payload와
+private prompt body는 포함하지 않는다. 따라서 raw `.local` evidence가 session 뒤
+삭제돼도 copied capsule은 독립 conclusion handoff로 충분하며, ignored artifact의
+cross-session persistence는 maintained contract가 아니다.
+
 ## 4. 실행 순서
 
 ```text
@@ -605,6 +666,10 @@ reject
 ### 목표
 
 개별 spike가 결합됐을 때 실제 사용 가능한 하나의 Volicord journey를 제공하는지 검증한다.
+
+Official V11 실행은 3.1의 admission과 exact final을 통과한 같은 gate process/session만
+소유한다. 별도 session의 prior final artifact를 preflight input으로 요구하거나
+대체해서는 안 된다.
 
 ### 대상
 
