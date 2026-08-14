@@ -483,10 +483,14 @@ def rehearse_target(
         "Project initialized with an explicit clone binding" if project_id else "Project initialization failed",
         operation=init_op, project_id=project_id,
     )
+    project_prerequisite_status = "passed" if project_id else "skipped"
     if not project_id:
         for name in REQUIRED_STEPS[3:]:
-            steps[name] = step("skipped", "Project initialization failed")
-        steps["codex_mcp_connection"] = step("skipped", "Project initialization failed")
+            steps[name] = step(project_prerequisite_status, "Project initialization failed")
+        steps["codex_mcp_connection"] = step(
+            project_prerequisite_status,
+            "Project initialization failed",
+        )
         return {"class": target_kind, "identity": identity, "steps": steps}
 
     mcp_evidence: dict[str, Any] = {}
@@ -1186,8 +1190,12 @@ def validate_result(result: dict[str, Any]) -> None:
                 raise AssertionError("invalid per-step status")
 
 
-def assert_required_steps_are_evidence_driven() -> None:
-    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+def assert_required_steps_are_evidence_driven(
+    source: str | None = None,
+    required_steps: set[str] | None = None,
+) -> None:
+    tree = ast.parse(source if source is not None else Path(__file__).read_text(encoding="utf-8"))
+    required = set(REQUIRED_STEPS) if required_steps is None else required_steps
     assigned: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
@@ -1205,16 +1213,39 @@ def assert_required_steps_are_evidence_driven() -> None:
             ):
                 continue
             name = target.slice.value
-            if name not in REQUIRED_STEPS:
+            if name not in required:
                 continue
             assigned.add(name)
-            if isinstance(call.args[0], ast.Constant) and call.args[0].value != "skipped":
+            if isinstance(call.args[0], ast.Constant):
                 raise AssertionError(
                     f"required production-backed step {name} has a permanently hard-coded status"
                 )
-    missing = set(REQUIRED_STEPS) - assigned
+    missing = required - assigned
     if missing:
         raise AssertionError(f"required steps have no evidence-driven assignment: {sorted(missing)}")
+
+
+def assert_required_step_policy_regressions() -> None:
+    required = {"clean_install"}
+    hard_coded_skip = 'steps["clean_install"] = step("skipped", "permanent")\n'
+    try:
+        assert_required_steps_are_evidence_driven(hard_coded_skip, required)
+    except AssertionError as error:
+        if "permanently hard-coded status" not in str(error):
+            raise
+    else:
+        raise AssertionError("required step with hard-coded skipped status was accepted")
+
+    evidence_conditional = (
+        'steps["clean_install"] = step("passed" if observed else "failed", "observed")\n'
+    )
+    assert_required_steps_are_evidence_driven(evidence_conditional, required)
+
+    dynamic_runtime_classification = (
+        'runtime_status = "skipped" if prerequisite_failed else "environment_blocked"\n'
+        'steps["clean_install"] = step(runtime_status, "observed runtime classification")\n'
+    )
+    assert_required_steps_are_evidence_driven(dynamic_runtime_classification, required)
 
 
 def assert_authenticated_codex_lifecycle() -> None:
@@ -1322,6 +1353,7 @@ def self_check() -> int:
     if not {".java", ".py", ".ts", ".md"} <= suffixes:
         raise AssertionError("polyglot fixture lost three languages or documentation")
     assert_required_steps_are_evidence_driven()
+    assert_required_step_policy_regressions()
     assert_authenticated_codex_lifecycle()
     fake = {
         "schema_version": 1,
@@ -1335,6 +1367,7 @@ def self_check() -> int:
         "status": "passed",
         "required_steps": len(REQUIRED_STEPS),
         "evidence_driven_steps": len(REQUIRED_STEPS),
+        "required_step_policy_regressions": "passed",
         "authentication_lifecycle": "passed",
         "polyglot_hash": tree_hash(POLYGLOT_FIXTURE),
     }, indent=2))
