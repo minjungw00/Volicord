@@ -139,7 +139,8 @@ Gate는 numeric legacy version branch가 없는 현재 `validation_handoff_capsu
 stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 다음 bounded evidence를
 보존한다.
 
-- validated candidate HEAD, pre-final candidate check와 blocking classification
+- validated candidate HEAD, sanitized admission check name/status, pre-final candidate check와
+  blocking classification
 - 실제 Linux OS/release/platform, machine/architecture와 Python runtime identity
 - bounded `--version` probe에서 얻은 Python, Git, Cargo, Rust compiler와 installed Codex
   CLI version 또는 probe별 explicit `unavailable`/`error` state
@@ -148,7 +149,7 @@ stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 �
 - gate의 reproducible `argv`, technical external-network assertion, exact bounded
   authorization assertion ID, maintained destination/purpose/target/source scope
 - exact final aggregate status/failure count/summary SHA-256와 command별 actual `argv`,
-  outcome, exit/termination 및 duration
+  outcome, exit/termination/spawn state 및 duration
 - final artifact가 같은 gate invocation에서 생성되고 V11 preflight와 official V11에
   전달됐는지를 나타내는 artifact-flow fact
 - V11 status/result SHA-256, fixture identity, required-step/status count,
@@ -169,6 +170,27 @@ structured value를 report section과 비교해 candidate/environment/tool/depen
 exact command/configuration, final/V11 hash와 count, credential audit, `phase_8_ready` 및
 Decision revisit-trigger state가 실제로 기록됐는지 검사한다. Capsule에 value가 있는데도
 version이나 command가 unavailable/not projected라고 대체한 report는 통과하지 않는다.
+
+Semantic mode는 success 전용 capsule을 가정하지 않는다. 같은 현재 capsule contract에서
+관찰된 stage를 admission status, blocker, final status, official V11 status와 same-session
+artifact-flow fact로 판정하고 다음 evidence를 조건부로 요구한다.
+
+- admission 또는 immediate pre-final check가 막히면 blocker를 뒷받침하는 sanitized check를
+  요구하고 final/V11/audit evidence는 `not_run`과 truthful false flow로 둔다.
+- final이 실패하면 exact final command/process/failure/hash evidence를 요구하고 V11
+  preflight와 official V11 evidence를 허용하지 않는다.
+- successful final 뒤 V11 preflight가 실패하면 같은 gate final artifact의 production과
+  preflight consumption을 요구하고 official V11 evidence는 `not_run`으로 둔다.
+- official V11이 시작된 뒤 실패하면 successful final과 same-session ownership, 실제 V11
+  result/status/count, attempted target outcome과 credential-audit evidence만 요구한다.
+- fully passed이면 exact final, 세 target, official V11, credential audit과 모든 artifact-flow
+  fact가 완전할 때만 `phase_8_ready = true`를 허용한다.
+
+아직 시작하지 않은 stage의 hash, command, authenticated target 또는 consumption evidence는
+요구하지 않는다. 반대로 earlier-stage failure와 later-stage success를 함께 주장하거나,
+gate-produced final 없이 V11 consumption을 주장하거나, required target이 빠진 V11 pass처럼
+관찰 순서와 모순되는 조합은 거부한다. 별도 failure schema, numeric capsule version 또는
+legacy decoder는 두지 않는다.
 
 ## 4. 실행 순서
 

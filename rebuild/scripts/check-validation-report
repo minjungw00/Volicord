@@ -37,6 +37,29 @@ SECTIONS = (
 )
 REQUIRED_TOOLS = ("python", "git", "cargo", "rustc", "codex")
 DEPENDENCY_IDENTITIES = ("cargo_lock", "workspace_manifest", "fixture_manifest")
+FINAL_COMMAND_LABELS = ("cargo_metadata", "cargo_fmt", "cargo_clippy", "cargo_test")
+FINAL_COMMANDS = (
+    (
+        "cargo", "metadata", "--manifest-path", "rebuild/Cargo.toml",
+        "--no-deps", "--format-version", "1",
+    ),
+    (
+        "cargo", "fmt", "--manifest-path", "rebuild/Cargo.toml", "--all", "--", "--check",
+    ),
+    (
+        "cargo", "clippy", "--manifest-path", "rebuild/Cargo.toml",
+        "--workspace", "--all-targets", "--all-features",
+    ),
+    (
+        "cargo", "test", "--manifest-path", "rebuild/Cargo.toml",
+        "--workspace", "--all-targets", "--all-features",
+    ),
+)
+FLOW_KEYS = (
+    "final_artifact_produced_by_gate",
+    "v11_preflight_consumed_same_gate_final_artifact",
+    "official_v11_consumed_same_gate_final_artifact",
+)
 SHA256 = re.compile(r"[0-9a-f]{64}")
 HEAD = re.compile(r"[0-9a-f]{40}")
 
@@ -114,11 +137,77 @@ def digest(value: Any, label: str, errors: list[str], pattern: re.Pattern[str] =
     return text
 
 
+def optional_digest(
+    value: Any,
+    label: str,
+    errors: list[str],
+    pattern: re.Pattern[str] = SHA256,
+) -> str | None:
+    if value is None:
+        return None
+    return digest(value, label, errors, pattern)
+
+
 def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if capsule.get("kind") != "validation_handoff_capsule":
         errors.append("capsule kind must be validation_handoff_capsule")
-    digest(capsule.get("validated_candidate_head"), "validated_candidate_head", errors, HEAD)
+    candidate_head = optional_digest(
+        capsule.get("validated_candidate_head"), "validated_candidate_head", errors, HEAD
+    )
+    admission_status = capsule.get("admission_status")
+    if admission_status not in {"eligible", "blocked"}:
+        errors.append("capsule admission_status must be eligible or blocked")
+    blocking = capsule.get("blocking_classification")
+    if blocking is not None and (not isinstance(blocking, str) or not blocking):
+        errors.append("capsule blocking_classification must be null or a nonempty string")
+
+    admission_checks = sequence(capsule.get("admission_checks"), "admission_checks", errors)
+    if not admission_checks:
+        errors.append("capsule admission checks are empty")
+    admission_check_statuses: list[str] = []
+    admission_check_names: list[str] = []
+    for index, value in enumerate(admission_checks):
+        admission_check = mapping(value, f"admission_checks[{index}]", errors)
+        name = nonempty_string(
+            admission_check.get("name"), f"admission_checks[{index}].name", errors
+        )
+        status = nonempty_string(
+            admission_check.get("status"), f"admission_checks[{index}].status", errors
+        )
+        if status not in {"passed", "failed", "environment_blocked", "authorization_blocked"}:
+            errors.append(f"capsule admission check status is invalid: index {index}")
+        admission_check_names.append(name)
+        admission_check_statuses.append(status)
+    if len(set(admission_check_names)) != len(admission_check_names):
+        errors.append("capsule admission check names must be unique")
+    if admission_status == "eligible" and any(
+        status != "passed" for status in admission_check_statuses
+    ):
+        errors.append("capsule eligible admission requires every admission check to pass")
+    if admission_status == "blocked" and all(
+        status == "passed" for status in admission_check_statuses
+    ):
+        errors.append("capsule blocked admission requires a non-passing admission check")
+    if admission_status == "blocked":
+        expected_status = {
+            "authorization_blocked": "authorization_blocked",
+            "environment_blocked": "environment_blocked",
+            "validation_failed": "failed",
+        }.get(blocking)
+        if expected_status is None or expected_status not in admission_check_statuses:
+            errors.append("capsule admission blocker is not supported by admission checks")
+    candidate_check_status = next(
+        (
+            value.get("status")
+            for value in admission_checks
+            if isinstance(value, dict)
+            and value.get("name") == "candidate_identity_and_clean_worktree"
+        ),
+        None,
+    )
+    if (admission_status == "eligible" or candidate_check_status == "passed") and candidate_head is None:
+        errors.append("capsule admitted candidate identity is missing")
 
     environment = mapping(capsule.get("execution_environment"), "execution_environment", errors)
     platform_value = mapping(environment.get("platform"), "execution_environment.platform", errors)
@@ -142,56 +231,116 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
             errors.append(f"capsule tool probe must preserve explicit unavailable/error state: {name}")
 
     dependencies = mapping(capsule.get("dependency_snapshot"), "dependency_snapshot", errors)
-    dependency_head = digest(dependencies.get("candidate_head"), "dependency_snapshot.candidate_head", errors, HEAD)
-    if dependency_head and dependency_head != capsule.get("validated_candidate_head"):
+    dependency_head = optional_digest(
+        dependencies.get("candidate_head"), "dependency_snapshot.candidate_head", errors, HEAD
+    )
+    if dependency_head != candidate_head:
         errors.append("capsule dependency candidate HEAD does not match validated_candidate_head")
     for name in DEPENDENCY_IDENTITIES:
         identity = mapping(dependencies.get(name), f"dependency_snapshot.{name}", errors)
         nonempty_string(identity.get("path"), f"dependency_snapshot.{name}.path", errors)
-        if identity.get("status") != "available":
-            errors.append(f"capsule dependency identity is not available: {name}")
-        digest(identity.get("sha256"), f"dependency_snapshot.{name}.sha256", errors)
+        identity_status = identity.get("status")
+        if identity_status not in {"available", "unavailable", "error"}:
+            errors.append(f"capsule dependency identity status is invalid: {name}")
+        if identity_status == "available":
+            digest(identity.get("sha256"), f"dependency_snapshot.{name}.sha256", errors)
+        elif identity.get("sha256") is not None:
+            errors.append(f"capsule unavailable dependency identity has a digest: {name}")
+        if admission_status == "eligible" and identity_status != "available":
+            errors.append(f"capsule eligible admission requires dependency identity: {name}")
 
     final = mapping(capsule.get("final_aggregate"), "final_aggregate", errors)
-    nonempty_string(final.get("status"), "final_aggregate.status", errors)
-    if not isinstance(final.get("command_count"), int) or final.get("command_count", 0) <= 0:
-        errors.append("capsule final_aggregate.command_count must be positive")
-    if not isinstance(final.get("failure_count"), int):
+    final_status = nonempty_string(final.get("status"), "final_aggregate.status", errors)
+    final_started = final_status != "not_run"
+    command_count = final.get("command_count")
+    failure_count = final.get("failure_count")
+    if not isinstance(command_count, int) or command_count < 0:
+        errors.append("capsule final_aggregate.command_count must be a nonnegative integer")
+    if not isinstance(failure_count, int) or failure_count < 0:
         errors.append("capsule final_aggregate.failure_count must be an integer")
     commands = sequence(final.get("commands"), "final_aggregate.commands", errors)
-    if len(commands) != final.get("command_count"):
+    if len(commands) != command_count:
         errors.append("capsule final command count does not match commands")
+    command_failures = 0
+    command_names: list[str] = []
+    command_vectors: list[tuple[str, ...]] = []
     for index, value in enumerate(commands):
         command = mapping(value, f"final_aggregate.commands[{index}]", errors)
-        nonempty_string(command.get("name"), f"final_aggregate.commands[{index}].name", errors)
+        command_names.append(nonempty_string(
+            command.get("name"), f"final_aggregate.commands[{index}].name", errors
+        ))
         argv = sequence(command.get("argv"), f"final_aggregate.commands[{index}].argv", errors)
         if not argv or not all(isinstance(part, str) and part for part in argv):
             errors.append(f"capsule final command argv is incomplete: index {index}")
-        nonempty_string(command.get("outcome"), f"final_aggregate.commands[{index}].outcome", errors)
-        if not isinstance(command.get("exit_code"), int):
-            errors.append(f"capsule final command exit_code must be an integer: index {index}")
-        if not isinstance(command.get("duration_ms"), (int, float)):
+        command_vectors.append(tuple(part for part in argv if isinstance(part, str)))
+        outcome = nonempty_string(
+            command.get("outcome"), f"final_aggregate.commands[{index}].outcome", errors
+        )
+        if outcome not in {"succeeded", "failed", "terminated", "spawn_failed"}:
+            errors.append(f"capsule final command outcome is invalid: index {index}")
+        if outcome != "succeeded":
+            command_failures += 1
+        exit_code = command.get("exit_code")
+        termination = command.get("termination")
+        spawn_error = command.get("spawn_error")
+        if not isinstance(spawn_error, bool):
+            errors.append(f"capsule final command spawn_error must be a boolean: index {index}")
+        if outcome == "succeeded" and (exit_code != 0 or termination is not None or spawn_error):
+            errors.append(f"capsule successful final command has inconsistent process state: index {index}")
+        if outcome == "failed" and (
+            not isinstance(exit_code, int) or exit_code == 0 or termination is not None or spawn_error
+        ):
+            errors.append(f"capsule failed final command has inconsistent process state: index {index}")
+        if outcome == "terminated" and (
+            exit_code is not None or not isinstance(termination, dict) or spawn_error
+        ):
+            errors.append(f"capsule terminated final command has inconsistent process state: index {index}")
+        if outcome == "spawn_failed" and (
+            exit_code is not None or termination is not None or spawn_error is not True
+        ):
+            errors.append(f"capsule spawn-failed final command has inconsistent process state: index {index}")
+        if not isinstance(command.get("duration_ms"), (int, float)) or command.get("duration_ms", -1) < 0:
             errors.append(f"capsule final command duration_ms must be numeric: index {index}")
-        if "termination" not in command:
-            errors.append(f"capsule final command termination is missing: index {index}")
-    digest(capsule.get("final_summary_sha256"), "final_summary_sha256", errors)
+    if final_started:
+        if admission_status != "eligible":
+            errors.append("capsule final commands cannot run after blocked admission")
+        if final_status not in {"succeeded", "failed"}:
+            errors.append("capsule started final aggregate status is invalid")
+        if tuple(command_names) != FINAL_COMMAND_LABELS or command_count != len(FINAL_COMMAND_LABELS):
+            errors.append("capsule started final aggregate must contain the exact final command set")
+        if tuple(command_vectors) != FINAL_COMMANDS:
+            errors.append("capsule started final aggregate argv does not match the exact final contract")
+        if failure_count != command_failures:
+            errors.append("capsule final aggregate failure count does not match command outcomes")
+        if (final_status == "succeeded") != (failure_count == 0):
+            errors.append("capsule final aggregate status does not match failure count")
+        digest(capsule.get("final_summary_sha256"), "final_summary_sha256", errors)
+    elif command_count != 0 or failure_count != 0 or commands or capsule.get("final_summary_sha256") is not None:
+        errors.append("capsule final-not-run state contains final execution evidence")
 
     configuration = mapping(capsule.get("gate_configuration"), "gate_configuration", errors)
     gate_argv = sequence(configuration.get("argv"), "gate_configuration.argv", errors)
     if not gate_argv or not all(isinstance(value, str) and value for value in gate_argv):
         errors.append("capsule gate_configuration.argv is incomplete")
-    if configuration.get("argv_status") != "complete":
-        errors.append("capsule gate_configuration.argv_status must be complete")
+    argv_status = configuration.get("argv_status")
+    if argv_status not in {"complete", "unrecognized_authorization_assertion_not_retained"}:
+        errors.append("capsule gate_configuration.argv_status is invalid")
+    if admission_status == "eligible" and argv_status != "complete":
+        errors.append("capsule eligible admission requires complete gate argv")
     nonempty_string(
         configuration.get("technical_external_network_assertion"),
         "gate_configuration.technical_external_network_assertion",
         errors,
     )
-    nonempty_string(
-        configuration.get("authorization_assertion_id"),
-        "gate_configuration.authorization_assertion_id",
-        errors,
-    )
+    authorization_assertion_id = configuration.get("authorization_assertion_id")
+    if authorization_assertion_id is not None:
+        nonempty_string(
+            authorization_assertion_id,
+            "gate_configuration.authorization_assertion_id",
+            errors,
+        )
+    if admission_status == "eligible" and authorization_assertion_id is None:
+        errors.append("capsule eligible admission requires an authorization assertion ID")
     transmission = mapping(configuration.get("external_transmission"), "gate_configuration.external_transmission", errors)
     for key in ("destination", "purpose", "source_scope", "authorization_assertion"):
         nonempty_string(transmission.get(key), f"gate_configuration.external_transmission.{key}", errors)
@@ -199,31 +348,53 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     if not scopes or not all(isinstance(value, str) and value for value in scopes):
         errors.append("capsule external transmission target scope is incomplete")
     flow = mapping(configuration.get("same_session_artifact_flow"), "gate_configuration.same_session_artifact_flow", errors)
-    for key in (
-        "final_artifact_produced_by_gate",
-        "v11_preflight_consumed_same_gate_final_artifact",
-        "official_v11_consumed_same_gate_final_artifact",
-    ):
-        if flow.get(key) is not True:
-            errors.append(f"capsule successful V11 handoff requires true artifact-flow fact: {key}")
+    for key in FLOW_KEYS:
+        if not isinstance(flow.get(key), bool):
+            errors.append(f"capsule artifact-flow fact must be a boolean: {key}")
 
     official = mapping(capsule.get("official_v11"), "official_v11", errors)
-    nonempty_string(official.get("status"), "official_v11.status", errors)
-    digest(official.get("result_sha256"), "official_v11.result_sha256", errors)
-    if not isinstance(official.get("required_step_count"), int):
-        errors.append("capsule official_v11.required_step_count must be an integer")
+    official_status = nonempty_string(official.get("status"), "official_v11.status", errors)
+    official_started = official_status != "not_run"
+    required_step_count = official.get("required_step_count")
+    if not isinstance(required_step_count, int) or required_step_count < 0:
+        errors.append("capsule official_v11.required_step_count must be a nonnegative integer")
     counts = mapping(official.get("status_counts"), "official_v11.status_counts", errors)
-    if not counts or not all(isinstance(key, str) and isinstance(value, int) for key, value in counts.items()):
+    if not all(
+        isinstance(key, str) and key and isinstance(value, int) and value >= 0
+        for key, value in counts.items()
+    ):
         errors.append("capsule official_v11.status_counts is incomplete")
-    if not isinstance(official.get("phase_8_ready"), bool):
+    official_ready = official.get("phase_8_ready")
+    if not isinstance(official_ready, bool):
         errors.append("capsule official_v11.phase_8_ready must be a boolean")
+    if official_started:
+        if official_status not in {"passed", "failed"}:
+            errors.append("capsule started official V11 status is invalid")
+        digest(official.get("result_sha256"), "official_v11.result_sha256", errors)
+        if not counts or required_step_count <= 0 or required_step_count != sum(counts.values()):
+            errors.append("capsule official V11 step count does not match status counts")
+        if official_status != "passed" and official_ready is not False:
+            errors.append("capsule failed official V11 cannot mark its phase ready")
+        if official_status == "passed" and any(
+            status != "passed" and count != 0 for status, count in counts.items()
+        ):
+            errors.append("capsule passed official V11 contains non-passing step counts")
+    elif (
+        official.get("result_sha256") is not None
+        or required_step_count != 0
+        or counts
+        or official_ready is not False
+    ):
+        errors.append("capsule official-V11-not-run state contains official V11 evidence")
 
     identities = mapping(capsule.get("required_identities"), "required_identities", errors)
-    identity_head = digest(identities.get("candidate_head"), "required_identities.candidate_head", errors, HEAD)
-    if identity_head and identity_head != capsule.get("validated_candidate_head"):
+    identity_head = optional_digest(
+        identities.get("candidate_head"), "required_identities.candidate_head", errors, HEAD
+    )
+    if identity_head != candidate_head:
         errors.append("capsule required identity HEAD does not match validated_candidate_head")
     fixtures = sequence(identities.get("fixtures"), "required_identities.fixtures", errors)
-    if not fixtures:
+    if admission_status == "eligible" and not fixtures:
         errors.append("capsule required fixture identities are empty")
     for index, value in enumerate(fixtures):
         fixture = mapping(value, f"required_identities.fixtures[{index}]", errors)
@@ -240,11 +411,12 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         )
 
     audit = mapping(capsule.get("credential_retention_audit"), "credential_retention_audit", errors)
-    nonempty_string(audit.get("status"), "credential_retention_audit.status", errors)
+    audit_status = nonempty_string(audit.get("status"), "credential_retention_audit.status", errors)
     for key in ("auth_named_file_count", "credential_content_match_count", "scan_error_count"):
-        if not isinstance(audit.get(key), int):
+        if not isinstance(audit.get(key), int) or audit.get(key, -1) < 0:
             errors.append(f"capsule credential audit count must be an integer: {key}")
-    if not isinstance(capsule.get("phase_8_ready"), bool):
+    phase_8_ready = capsule.get("phase_8_ready")
+    if not isinstance(phase_8_ready, bool):
         errors.append("capsule phase_8_ready must be a boolean")
     triggers = sequence(
         capsule.get("active_decision_revisit_triggers"),
@@ -259,8 +431,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         errors,
     )
     outcomes = sequence(capsule.get("authenticated_codex_outcomes"), "authenticated_codex_outcomes", errors)
-    if not outcomes:
-        errors.append("capsule authenticated Codex outcomes are empty")
+    outcome_targets: list[str] = []
     for index, value in enumerate(outcomes):
         outcome = mapping(value, f"authenticated_codex_outcomes[{index}]", errors)
         for key in ("target", "status", "classification"):
@@ -269,6 +440,100 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
                 f"authenticated_codex_outcomes[{index}].{key}",
                 errors,
             )
+        target = outcome.get("target")
+        if isinstance(target, str):
+            outcome_targets.append(target)
+            if target not in scopes:
+                errors.append(f"capsule authenticated Codex outcome target is out of scope: {target}")
+    if len(outcome_targets) != len(set(outcome_targets)):
+        errors.append("capsule authenticated Codex outcome targets must be unique")
+
+    pre_final = capsule.get("pre_final_candidate_check")
+    if pre_final is not None:
+        pre_final = mapping(pre_final, "pre_final_candidate_check", errors)
+        nonempty_string(pre_final.get("name"), "pre_final_candidate_check.name", errors)
+        nonempty_string(pre_final.get("status"), "pre_final_candidate_check.status", errors)
+
+    final_passed = final_started and final_status == "succeeded" and failure_count == 0
+    expected_flow = (
+        (False, False, False)
+        if not final_started
+        else (True, False, False)
+        if not final_passed
+        else (True, True, True)
+        if official_started
+        else (True, True, False)
+    )
+    actual_flow = tuple(flow.get(key) for key in FLOW_KEYS)
+    if actual_flow != expected_flow:
+        errors.append("capsule same-session artifact flow is inconsistent with observed stages")
+
+    if final_started and (not isinstance(pre_final, dict) or pre_final.get("status") != "passed"):
+        errors.append("capsule final start requires a passed pre-final candidate check")
+    if not final_started and admission_status == "eligible":
+        if not isinstance(pre_final, dict) or pre_final.get("status") == "passed":
+            errors.append("capsule eligible admission without final requires a failed pre-final check")
+        if blocking not in {"candidate_changed", "candidate_worktree_dirty", "candidate_state_unavailable"}:
+            errors.append("capsule pre-final blocker classification is invalid")
+        details = mapping(
+            pre_final.get("details") if isinstance(pre_final, dict) else None,
+            "pre_final_candidate_check.details",
+            errors,
+        )
+        if blocking == "candidate_changed" and details.get("head_unchanged") is not False:
+            errors.append("capsule candidate-changed blocker lacks supporting pre-final evidence")
+        if blocking == "candidate_worktree_dirty" and (
+            not isinstance(details.get("dirty_entry_count"), int)
+            or details.get("dirty_entry_count", 0) <= 0
+        ):
+            errors.append("capsule dirty-worktree blocker lacks supporting pre-final evidence")
+
+    if not final_started:
+        if official_started or outcomes or audit_status != "not_run":
+            errors.append("capsule final-not-run state contains later-stage evidence")
+    elif not final_passed:
+        if blocking != "final_failed" or official_started or outcomes or audit_status != "not_run":
+            errors.append("capsule final failure contains inconsistent V11 evidence")
+    elif not official_started:
+        if blocking != "v11_preflight_failed" or outcomes or audit_status != "not_run":
+            errors.append("capsule V11 preflight failure contains inconsistent official V11 evidence")
+    else:
+        if audit_status == "not_run":
+            errors.append("capsule official V11 start requires credential-audit evidence")
+        if blocking not in {None, "v11_failed", "credential_retention_audit_failed"}:
+            errors.append("capsule official V11 blocker classification is invalid")
+        if official_status == "passed":
+            if set(outcome_targets) != set(scopes) or any(
+                value.get("status") != "passed" or value.get("classification") != "passed"
+                for value in outcomes if isinstance(value, dict)
+            ):
+                errors.append("capsule passed official V11 requires every authenticated target to pass")
+
+    fully_passed = (
+        admission_status == "eligible"
+        and blocking is None
+        and final_passed
+        and official_status == "passed"
+        and official_ready is True
+        and audit_status == "passed"
+        and not triggers
+        and actual_flow == (True, True, True)
+        and set(outcome_targets) == set(scopes)
+        and all(
+            isinstance(value, dict)
+            and value.get("status") == "passed"
+            and value.get("classification") == "passed"
+            for value in outcomes
+        )
+    )
+    if phase_8_ready is True and not fully_passed:
+        errors.append("capsule phase_8_ready requires a fully passed unified V11 gate")
+    if fully_passed and phase_8_ready is not True:
+        errors.append("capsule fully passed unified V11 gate must mark phase_8_ready true")
+    if not fully_passed and phase_8_ready is not False:
+        errors.append("capsule non-passing lifecycle must mark phase_8_ready false")
+    if fully_passed and capsule.get("decision_revisit_trigger_assessment") != "reported_by_official_v11":
+        errors.append("capsule fully passed V11 requires the official revisit-trigger assessment")
     return errors
 
 
@@ -301,12 +566,15 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
     revisit = sections.get("Decision revisit trigger status", "")
 
     head = capsule["validated_candidate_head"]
-    require(inputs, "Input repositories and revisions", "validated_candidate_head", head, errors)
+    if head is not None:
+        require(inputs, "Input repositories and revisions", "validated_candidate_head", head, errors)
     dependencies = capsule["dependency_snapshot"]
     for name in DEPENDENCY_IDENTITIES:
         identity = dependencies[name]
         require(inputs, "Input repositories and revisions", name, identity["path"], errors)
-        require(inputs, "Input repositories and revisions", f"{name}.sha256", identity["sha256"], errors)
+        require(inputs, "Input repositories and revisions", f"{name}.status", identity["status"], errors)
+        if identity["sha256"] is not None:
+            require(inputs, "Input repositories and revisions", f"{name}.sha256", identity["sha256"], errors)
     fixtures = capsule.get("required_identities", {}).get("fixtures", [])
     for fixture in fixtures:
         require(inputs, "Input repositories and revisions", "fixture.id", fixture.get("id"), errors)
@@ -337,24 +605,26 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
         configuration["technical_external_network_assertion"],
         errors,
     )
-    require(
-        commands_section,
-        "Commands and configuration",
-        "authorization_assertion_id",
-        configuration["authorization_assertion_id"],
-        errors,
-    )
+    if configuration["authorization_assertion_id"] is not None:
+        require(
+            commands_section,
+            "Commands and configuration",
+            "authorization_assertion_id",
+            configuration["authorization_assertion_id"],
+            errors,
+        )
     for key, value in configuration["same_session_artifact_flow"].items():
         require(commands_section, "Commands and configuration", key, value, errors)
     final = capsule["final_aggregate"]
-    for key in ("status", "command_count", "failure_count"):
-        require(commands_section, "Commands and configuration", f"final_aggregate.{key}", final[key], errors)
-    for command in final["commands"]:
-        label = f"final_command.{command['name']}"
-        require(commands_section, "Commands and configuration", label, shlex.join(command["argv"]), errors)
-        for key in ("outcome", "exit_code", "termination", "duration_ms"):
-            require(commands_section, "Commands and configuration", f"{label}.{key}", command[key], errors)
-    require(commands_section, "Commands and configuration", "final_summary_sha256", capsule["final_summary_sha256"], errors)
+    if final["status"] != "not_run":
+        for key in ("status", "command_count", "failure_count"):
+            require(commands_section, "Commands and configuration", f"final_aggregate.{key}", final[key], errors)
+        for command in final["commands"]:
+            label = f"final_command.{command['name']}"
+            require(commands_section, "Commands and configuration", label, shlex.join(command["argv"]), errors)
+            for key in ("outcome", "exit_code", "termination", "spawn_error", "duration_ms"):
+                require(commands_section, "Commands and configuration", f"{label}.{key}", command[key], errors)
+        require(commands_section, "Commands and configuration", "final_summary_sha256", capsule["final_summary_sha256"], errors)
 
     transmission = configuration["external_transmission"]
     for key in ("destination", "purpose", "source_scope"):
@@ -369,35 +639,55 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
         errors,
     )
     audit = capsule["credential_retention_audit"]
-    for key, value in audit.items():
-        require(privacy, "Privacy and external transmission", f"credential_retention_audit.{key}", value, errors)
+    if audit["status"] != "not_run":
+        for key, value in audit.items():
+            require(privacy, "Privacy and external transmission", f"credential_retention_audit.{key}", value, errors)
 
     official = capsule["official_v11"]
-    for key in ("status", "result_sha256", "required_step_count", "phase_8_ready"):
-        require(observed, "Observed results", f"official_v11.{key}", official[key], errors)
-    for status, count in official["status_counts"].items():
-        require(coverage, "Coverage and failures", f"official_v11.status_counts.{status}", count, errors)
+    if official["status"] != "not_run":
+        for key in ("status", "result_sha256", "required_step_count", "phase_8_ready"):
+            require(observed, "Observed results", f"official_v11.{key}", official[key], errors)
+        for status, count in official["status_counts"].items():
+            require(coverage, "Coverage and failures", f"official_v11.status_counts.{status}", count, errors)
     require(acceptance, "Acceptance results", "admission_status", capsule.get("admission_status"), errors)
     require(acceptance, "Acceptance results", "blocking_classification", capsule.get("blocking_classification"), errors)
     require(acceptance, "Acceptance results", "phase_8_ready", capsule["phase_8_ready"], errors)
+    for admission_check in capsule["admission_checks"]:
+        require(
+            acceptance,
+            "Acceptance results",
+            f"admission_check.{admission_check['name']}.status",
+            admission_check["status"],
+            errors,
+        )
+    pre_final = capsule.get("pre_final_candidate_check")
+    if pre_final is not None:
+        require(
+            acceptance,
+            "Acceptance results",
+            "pre_final_candidate_check.status",
+            pre_final["status"],
+            errors,
+        )
     for outcome in capsule.get("authenticated_codex_outcomes", []):
         require(acceptance, "Acceptance results", "authenticated_codex_outcomes.target", outcome.get("target"), errors)
         require(acceptance, "Acceptance results", f"authenticated_codex_outcomes.{outcome.get('target')}.status", outcome.get("status"), errors)
         require(acceptance, "Acceptance results", f"authenticated_codex_outcomes.{outcome.get('target')}.classification", outcome.get("classification"), errors)
-    require(
-        revisit,
-        "Decision revisit trigger status",
-        "active_decision_revisit_triggers",
-        capsule["active_decision_revisit_triggers"],
-        errors,
-    )
-    require(
-        revisit,
-        "Decision revisit trigger status",
-        "decision_revisit_trigger_assessment",
-        capsule["decision_revisit_trigger_assessment"],
-        errors,
-    )
+    if official["status"] != "not_run":
+        require(
+            revisit,
+            "Decision revisit trigger status",
+            "active_decision_revisit_triggers",
+            capsule["active_decision_revisit_triggers"],
+            errors,
+        )
+        require(
+            revisit,
+            "Decision revisit trigger status",
+            "decision_revisit_trigger_assessment",
+            capsule["decision_revisit_trigger_assessment"],
+            errors,
+        )
     return errors
 
 
@@ -412,11 +702,33 @@ def self_test_capsule() -> dict[str, Any]:
         }
         for name in REQUIRED_TOOLS
     }
+    final_commands = [
+        {
+            "name": name,
+            "argv": list(argv),
+            "outcome": "succeeded",
+            "exit_code": 0,
+            "termination": None,
+            "spawn_error": False,
+            "duration_ms": float(index),
+        }
+        for index, (name, argv) in enumerate(
+            zip(FINAL_COMMAND_LABELS, FINAL_COMMANDS), start=1
+        )
+    ]
     return {
         "kind": "validation_handoff_capsule",
         "validated_candidate_head": head,
         "admission_status": "eligible",
         "blocking_classification": None,
+        "admission_checks": [
+            {"name": "candidate_identity_and_clean_worktree", "status": "passed"},
+            {"name": "operator_external_transmission_authorization", "status": "passed"},
+        ],
+        "pre_final_candidate_check": {
+            "name": "pre_final_candidate_identity_and_clean_worktree",
+            "status": "passed",
+        },
         "execution_environment": {
             "platform": {
                 "operating_system": "Linux", "release": "6.12.0", "platform_version": "#1 test",
@@ -451,14 +763,17 @@ def self_test_capsule() -> dict[str, Any]:
             },
         },
         "final_aggregate": {
-            "status": "succeeded", "command_count": 1, "failure_count": 0,
-            "commands": [{"name": "cargo_test", "argv": ["cargo", "test", "--workspace"], "outcome": "succeeded", "exit_code": 0, "termination": None, "duration_ms": 1.0}],
+            "status": "succeeded", "command_count": len(final_commands), "failure_count": 0,
+            "commands": final_commands,
         },
         "final_summary_sha256": "e" * 64,
-        "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 2, "status_counts": {"passed": 2}, "phase_8_ready": True},
+        "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 3, "status_counts": {"passed": 3}, "phase_8_ready": True},
         "required_identities": {"candidate_head": head, "fixtures": [{"id": "fixture-one", "validation_id": "V11", "content_sha256": "1" * 64}]},
         "credential_retention_audit": {"status": "passed", "auth_named_file_count": 0, "credential_content_match_count": 0, "scan_error_count": 0},
-        "authenticated_codex_outcomes": [{"target": "volicord", "status": "passed", "classification": "passed"}],
+        "authenticated_codex_outcomes": [
+            {"target": target, "status": "passed", "classification": "passed"}
+            for target in ("volicord", "small-python", "polyglot-medium")
+        ],
         "active_decision_revisit_triggers": [],
         "decision_revisit_trigger_assessment": "reported_by_official_v11",
         "phase_8_ready": True,
@@ -478,7 +793,11 @@ def self_test_report(capsule: dict[str, Any]) -> str:
 
     content = {section: "Maintained test content." for section in SECTIONS}
     content["Input repositories and revisions"] = "\n".join((
-        f"validated_candidate_head = {capsule['validated_candidate_head']}",
+        *(
+            (f"validated_candidate_head = {capsule['validated_candidate_head']}",)
+            if capsule["validated_candidate_head"] is not None
+            else ()
+        ),
         *flat_lines(capsule["dependency_snapshot"]),
         *(
             line
@@ -490,27 +809,48 @@ def self_test_report(capsule: dict[str, Any]) -> str:
         ),
     ))
     content["Environment and tool versions"] = "\n".join(flat_lines(capsule["execution_environment"]))
+    final = capsule["final_aggregate"]
+    final_lines = (
+        (
+            *(
+                line
+                for command in final["commands"]
+                for line in (
+                    f"final_command.{command['name']} = {shlex.join(command['argv'])}",
+                    *(
+                        f"final_command.{command['name']}.{key} = {scalar_text(command[key])}"
+                        for key in ("outcome", "exit_code", "termination", "spawn_error", "duration_ms")
+                    ),
+                )
+            ),
+            *flat_lines({"final_aggregate": {key: value for key, value in final.items() if key != "commands"}}),
+            f"final_summary_sha256 = {capsule['final_summary_sha256']}",
+        )
+        if final["status"] != "not_run"
+        else ()
+    )
     content["Commands and configuration"] = "\n".join((
         f"gate_configuration.argv = {shlex.join(capsule['gate_configuration']['argv'])}",
         *flat_lines(capsule["gate_configuration"]),
-        f"final_command.cargo_test = {shlex.join(capsule['final_aggregate']['commands'][0]['argv'])}",
-        *(
-            f"final_command.cargo_test.{key} = {scalar_text(capsule['final_aggregate']['commands'][0][key])}"
-            for key in ("outcome", "exit_code", "termination", "duration_ms")
-        ),
-        *flat_lines({"final_aggregate": {key: value for key, value in capsule["final_aggregate"].items() if key != "commands"}}),
-        f"final_summary_sha256 = {capsule['final_summary_sha256']}",
+        *final_lines,
     ))
-    content["Observed results"] = "\n".join(flat_lines({
-        "official_v11": {key: value for key, value in capsule["official_v11"].items() if key != "status_counts"},
-    }))
-    content["Coverage and failures"] = "\n".join(flat_lines({
-        "official_v11": {"status_counts": capsule["official_v11"]["status_counts"]},
-    }))
+    official = capsule["official_v11"]
+    if official["status"] != "not_run":
+        content["Observed results"] = "\n".join(flat_lines({
+            "official_v11": {key: value for key, value in official.items() if key != "status_counts"},
+        }))
+        content["Coverage and failures"] = "\n".join(flat_lines({
+            "official_v11": {"status_counts": official["status_counts"]},
+        }))
+    audit_lines = (
+        flat_lines({"credential_retention_audit": capsule["credential_retention_audit"]})
+        if capsule["credential_retention_audit"]["status"] != "not_run"
+        else []
+    )
     content["Privacy and external transmission"] = "\n".join((
         *flat_lines({"external_transmission": capsule["gate_configuration"]["external_transmission"]}),
         *(f"external_transmission.scope = {target}" for target in capsule["gate_configuration"]["external_transmission"]["scope"]),
-        *flat_lines({"credential_retention_audit": capsule["credential_retention_audit"]}),
+        *audit_lines,
     ))
     content["Acceptance results"] = "\n".join((
         *flat_lines({
@@ -518,6 +858,18 @@ def self_test_report(capsule: dict[str, Any]) -> str:
             "blocking_classification": capsule["blocking_classification"],
             "phase_8_ready": capsule["phase_8_ready"],
         }),
+        *(
+            f"admission_check.{value['name']}.status = {value['status']}"
+            for value in capsule["admission_checks"]
+        ),
+        *(
+            (
+                "pre_final_candidate_check.status = "
+                f"{capsule['pre_final_candidate_check']['status']}",
+            )
+            if capsule["pre_final_candidate_check"] is not None
+            else ()
+        ),
         *(
             line
             for outcome in capsule["authenticated_codex_outcomes"]
@@ -528,42 +880,159 @@ def self_test_report(capsule: dict[str, Any]) -> str:
             )
         ),
     ))
-    content["Decision revisit trigger status"] = "\n".join((
-        f"active_decision_revisit_triggers = {scalar_text(capsule['active_decision_revisit_triggers'])}",
-        f"decision_revisit_trigger_assessment = {capsule['decision_revisit_trigger_assessment']}",
-    ))
+    if official["status"] != "not_run":
+        content["Decision revisit trigger status"] = "\n".join((
+            f"active_decision_revisit_triggers = {scalar_text(capsule['active_decision_revisit_triggers'])}",
+            f"decision_revisit_trigger_assessment = {capsule['decision_revisit_trigger_assessment']}",
+        ))
     return "# V11 — Semantic checker self-test\n\n" + "\n\n".join(
         f"## {section}\n\n{content[section]}" for section in SECTIONS
     ) + "\n"
 
 
 def self_test() -> int:
-    capsule = self_test_capsule()
-    report = self_test_report(capsule)
-    assert check_shape_text(report) == []
-    assert check_capsule_semantics(report, capsule) == []
+    fully_passed = self_test_capsule()
+    fully_passed_report = self_test_report(fully_passed)
+    assert check_shape_text(fully_passed_report) == []
+    assert check_capsule_semantics(fully_passed_report, fully_passed) == []
 
-    missing_version = report.replace("cargo 1.2.3", "version omitted from report")
-    version_errors = check_capsule_semantics(missing_version, capsule)
+    def without_official_v11(capsule: dict[str, Any]) -> None:
+        capsule["official_v11"] = {
+            "status": "not_run",
+            "result_sha256": None,
+            "required_step_count": 0,
+            "status_counts": {},
+            "phase_8_ready": False,
+        }
+        capsule["credential_retention_audit"] = {
+            "status": "not_run",
+            "auth_named_file_count": 0,
+            "credential_content_match_count": 0,
+            "scan_error_count": 0,
+        }
+        capsule["authenticated_codex_outcomes"] = []
+        capsule["active_decision_revisit_triggers"] = []
+        capsule["decision_revisit_trigger_assessment"] = (
+            "independent_documentation_review_required"
+        )
+        capsule["phase_8_ready"] = False
+
+    admission_blocked = copy.deepcopy(fully_passed)
+    admission_blocked["admission_status"] = "blocked"
+    admission_blocked["blocking_classification"] = "authorization_blocked"
+    admission_blocked["admission_checks"][1]["status"] = "authorization_blocked"
+    admission_blocked["pre_final_candidate_check"] = None
+    admission_blocked["gate_configuration"]["authorization_assertion_id"] = None
+    admission_blocked["gate_configuration"]["argv"] = admission_blocked[
+        "gate_configuration"
+    ]["argv"][:-2]
+    admission_blocked["gate_configuration"]["same_session_artifact_flow"] = {
+        key: False for key in FLOW_KEYS
+    }
+    admission_blocked["final_aggregate"] = {
+        "status": "not_run", "command_count": 0, "failure_count": 0, "commands": [],
+    }
+    admission_blocked["final_summary_sha256"] = None
+    without_official_v11(admission_blocked)
+    assert check_capsule_semantics(
+        self_test_report(admission_blocked), admission_blocked
+    ) == []
+
+    impossible_admission = copy.deepcopy(admission_blocked)
+    impossible_admission["phase_8_ready"] = True
+    assert any(
+        "phase_8_ready" in error
+        for error in capsule_contract_errors(impossible_admission)
+    )
+
+    final_failed = copy.deepcopy(fully_passed)
+    without_official_v11(final_failed)
+    final_failed["blocking_classification"] = "final_failed"
+    final_failed["gate_configuration"]["same_session_artifact_flow"] = {
+        FLOW_KEYS[0]: True,
+        FLOW_KEYS[1]: False,
+        FLOW_KEYS[2]: False,
+    }
+    final_failed["final_aggregate"]["status"] = "failed"
+    final_failed["final_aggregate"]["failure_count"] = 1
+    final_failed["final_aggregate"]["commands"][0].update({
+        "outcome": "failed", "exit_code": 9,
+    })
+    assert check_capsule_semantics(self_test_report(final_failed), final_failed) == []
+
+    impossible_final = copy.deepcopy(final_failed)
+    impossible_final["official_v11"] = copy.deepcopy(fully_passed["official_v11"])
+    impossible_final["authenticated_codex_outcomes"] = copy.deepcopy(
+        fully_passed["authenticated_codex_outcomes"]
+    )
+    impossible_final["gate_configuration"]["same_session_artifact_flow"][FLOW_KEYS[2]] = True
+    assert any(
+        "final failure" in error or "artifact flow" in error
+        for error in capsule_contract_errors(impossible_final)
+    )
+
+    preflight_failed = copy.deepcopy(fully_passed)
+    without_official_v11(preflight_failed)
+    preflight_failed["blocking_classification"] = "v11_preflight_failed"
+    preflight_failed["gate_configuration"]["same_session_artifact_flow"] = {
+        FLOW_KEYS[0]: True,
+        FLOW_KEYS[1]: True,
+        FLOW_KEYS[2]: False,
+    }
+    assert check_capsule_semantics(
+        self_test_report(preflight_failed), preflight_failed
+    ) == []
+
+    official_failed = copy.deepcopy(fully_passed)
+    official_failed["blocking_classification"] = "v11_failed"
+    official_failed["official_v11"].update({
+        "status": "failed",
+        "required_step_count": 2,
+        "status_counts": {"passed": 1, "failed": 1},
+        "phase_8_ready": False,
+    })
+    official_failed["authenticated_codex_outcomes"] = [
+        {"target": "volicord", "status": "passed", "classification": "passed"},
+        {"target": "small-python", "status": "failed", "classification": "failed"},
+    ]
+    official_failed["phase_8_ready"] = False
+    assert check_capsule_semantics(
+        self_test_report(official_failed), official_failed
+    ) == []
+
+    missing_version = fully_passed_report.replace(
+        "cargo 1.2.3", "version omitted from report"
+    )
+    version_errors = check_capsule_semantics(missing_version, fully_passed)
     assert any("tools.cargo.version" in error for error in version_errors)
 
-    command_text = shlex.join(capsule["final_aggregate"]["commands"][0]["argv"])
-    missing_argv = report.replace(command_text, "command vector omitted")
-    argv_errors = check_capsule_semantics(missing_argv, capsule)
-    assert any("final_command.cargo_test" in error for error in argv_errors)
+    command = fully_passed["final_aggregate"]["commands"][0]
+    command_text = shlex.join(command["argv"])
+    missing_argv = fully_passed_report.replace(command_text, "command vector omitted")
+    argv_errors = check_capsule_semantics(missing_argv, fully_passed)
+    assert any(f"final_command.{command['name']}" in error for error in argv_errors)
 
-    incomplete_capsule = copy.deepcopy(capsule)
+    incomplete_capsule = copy.deepcopy(fully_passed)
+    incomplete_capsule["execution_environment"]["platform"]["release"] = None
+    assert any(
+        "platform.release" in error
+        for error in capsule_contract_errors(incomplete_capsule)
+    )
+    incomplete_capsule = copy.deepcopy(fully_passed)
     incomplete_capsule["execution_environment"]["tools"]["rustc"]["version"] = None
     assert any("tools.rustc.version" in error for error in capsule_contract_errors(incomplete_capsule))
-    incomplete_capsule = copy.deepcopy(capsule)
+    incomplete_capsule = copy.deepcopy(fully_passed)
+    incomplete_capsule["dependency_snapshot"]["cargo_lock"]["sha256"] = None
+    assert any("cargo_lock.sha256" in error for error in capsule_contract_errors(incomplete_capsule))
+    incomplete_capsule = copy.deepcopy(fully_passed)
     incomplete_capsule["final_aggregate"]["commands"][0]["argv"] = []
     assert any("final command argv" in error for error in capsule_contract_errors(incomplete_capsule))
 
     with tempfile.TemporaryDirectory(prefix="validation-report-checker-self-test-") as directory:
         path = Path(directory) / "generic-report.md"
-        path.write_text(report, encoding="utf-8")
+        path.write_text(fully_passed_report, encoding="utf-8")
         assert check(path) == []
-    print("validation report checker self-test passed")
+    print("validation report checker self-test passed; lifecycle scenarios: 5")
     return 0
 
 

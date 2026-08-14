@@ -143,9 +143,17 @@ def admission(root: Path, *, authorization: str | None = None, loopback_failed: 
 
 
 class Owners:
-    def __init__(self, root: Path, *, final_passes: bool = True, v11_passes: bool = True):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        final_passes: bool = True,
+        preflight_passes: bool = True,
+        v11_passes: bool = True,
+    ):
         self.root = root
         self.final_passes = final_passes
+        self.preflight_passes = preflight_passes
         self.v11_passes = v11_passes
         self.counts = {"final": 0, "preflight": 0, "v11": 0, "audit": 0}
         self.final_path: Path | None = None
@@ -181,7 +189,10 @@ class Owners:
         if candidate_head != HEAD:
             raise AssertionError("preflight received the wrong candidate HEAD")
         self.preflight_path = final_path
-        return {"status": "passed"}, {"exit_code": 0}
+        return (
+            {"status": "passed" if self.preflight_passes else "failed"},
+            {"exit_code": 0 if self.preflight_passes else 1},
+        )
 
     def v11(
         self,
@@ -274,6 +285,14 @@ def main() -> int:
         assert authorization_blocked["blocking_classification"] == "authorization_blocked"
         assert capsule["blocking_classification"] == "authorization_blocked"
         assert counts["final"] == 0 and counts["official_v11"] == 0
+        assert capsule["final_aggregate"] == {
+            "status": "not_run", "command_count": 0, "failure_count": 0, "commands": [],
+        }
+        assert set(capsule["gate_configuration"]["same_session_artifact_flow"].values()) == {False}
+        assert any(
+            value["status"] == "authorization_blocked"
+            for value in capsule["admission_checks"]
+        )
 
         admitted = admission(root / "admitted", authorization=gate.AUTHORIZATION_ASSERTION)
         assert admitted["eligible"] is True
@@ -292,7 +311,7 @@ def main() -> int:
             "validated_candidate_head", "final_aggregate", "final_summary_sha256",
             "official_v11", "required_identities", "credential_retention_audit",
             "authenticated_codex_outcomes", "active_decision_revisit_triggers",
-            "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
+            "admission_checks", "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
             "gate_configuration", "phase_8_ready",
         }
         assert required_capsule_keys <= capsule.keys()
@@ -328,12 +347,34 @@ def main() -> int:
         assert capsule["blocking_classification"] == "final_failed"
         assert counts["final"] == 1 and counts["official_v11"] == 0
         assert owners.counts["final"] == 1 and owners.counts["v11"] == 0
+        assert capsule["final_aggregate"]["status"] == "failed"
+        assert capsule["final_summary_sha256"]
+        assert capsule["official_v11"]["status"] == "not_run"
+        assert capsule["authenticated_codex_outcomes"] == []
+        assert capsule["phase_8_ready"] is False
+
+        owners = Owners(root / "preflight-failure-owners", preflight_passes=False)
+        capsule, counts = run_orchestration(root / "preflight-failure-gate", admitted, owners)
+        assert capsule["blocking_classification"] == "v11_preflight_failed"
+        assert counts["final"] == 1 and counts["preflight"] == 1
+        assert counts["official_v11"] == 0
+        assert capsule["final_aggregate"]["status"] == "succeeded"
+        flow = capsule["gate_configuration"]["same_session_artifact_flow"]
+        assert flow["final_artifact_produced_by_gate"] is True
+        assert flow["v11_preflight_consumed_same_gate_final_artifact"] is True
+        assert flow["official_v11_consumed_same_gate_final_artifact"] is False
+        assert capsule["official_v11"]["status"] == "not_run"
+        assert capsule["phase_8_ready"] is False
 
         owners = Owners(root / "v11-failure-owners", v11_passes=False)
         capsule, counts = run_orchestration(root / "v11-failure-gate", admitted, owners)
         assert capsule["blocking_classification"] == "v11_failed"
         assert counts["final"] == 1 and counts["official_v11"] == 1
         assert owners.counts["final"] == 1 and owners.counts["v11"] == 1
+        assert capsule["official_v11"]["status"] == "failed"
+        assert capsule["official_v11"]["result_sha256"]
+        assert len(capsule["authenticated_codex_outcomes"]) == 3
+        assert capsule["phase_8_ready"] is False
 
         harness.assert_required_step_policy_regressions()
         harness.assert_credential_retention_audit()
@@ -342,7 +383,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 9,
+        "scenarios": 10,
         "real_final_invocations": 0,
         "official_v11_invocations": 0,
     }, indent=2, sort_keys=True))

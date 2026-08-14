@@ -18,9 +18,11 @@ surface, not a Volicord product command or production architecture.
   checks clean, initially dirty, and admission-generated dirty candidates
   without invoking the real exact final or official V11.
 - `rebuild/scripts/check-validation-report --self-test` proves generic report
-  compatibility plus positive and negative capsule-backed V11 semantics. The
-  negative cases omit a required tool version or exact-final command vector;
-  neither exact final nor official V11 is invoked.
+  compatibility plus positive and negative capsule-backed semantics for
+  admission-blocked, final-failed, V11-preflight-failed,
+  official-V11-failed, and fully-passed lifecycles. It also rejects impossible
+  stage combinations and missing success evidence; neither exact final nor
+  official V11 is invoked.
 - `rebuild/scripts/validate focused <label> -- <command> [arguments...]` runs
   the exact argument vector from the repository root and records the command,
   working directory, timestamps, duration, complete separate stdout/stderr,
@@ -155,10 +157,12 @@ stderr. The gate writes `admission.json`, `gate-result.json`, and `capsule.json`
 under the reported ignored run directory and prints the complete capsule to
 stdout so it can be copied before that directory disappears.
 
-The versionless current capsule has `kind = validation_handoff_capsule`. Its
-bounded cross-session evidence is:
+The versionless current capsule has `kind = validation_handoff_capsule`. It is
+one stage-dependent contract rather than separate success and failure schemas.
+Its bounded cross-session evidence is:
 
-- validated candidate HEAD, pre-final check, and any gate blocker;
+- validated candidate HEAD, sanitized admission check name/status, pre-final
+  check, and any gate blocker;
 - Linux OS/release/platform, machine/architecture, and Python runtime identity;
 - bounded Python, Git, Cargo, Rust compiler, and installed Codex CLI version
   probes, including explicit unavailable/error state;
@@ -168,7 +172,7 @@ bounded cross-session evidence is:
   authorization assertion ID, and maintained destination, purpose, target
   scope, and source scope;
 - exact-final aggregate status, failure count, summary hash, and each command's
-  actual `argv`, outcome, exit/termination, and duration;
+  actual `argv`, outcome, exit/termination/spawn state, and duration;
 - same-gate final artifact production and consumption facts for V11 preflight
   and official V11;
 - official V11 status/result hash and status counts, authenticated target
@@ -181,6 +185,16 @@ bodies, full command logs, raw provider payloads, and private prompt bodies. A
 later documentation-only session uses the copied capsule and maintained tracked
 inputs; it never needs, searches for, or substitutes an ignored final or V11
 artifact from another session.
+
+Capsule semantic checking follows the stages actually reached. A blocked
+admission or pre-final check requires its supporting check outcome and no later
+evidence. A final failure requires complete exact-final evidence and no V11
+evidence. A V11-preflight failure requires the successful same-gate final and
+preflight consumption but no official result. An official-V11 failure requires
+the successful final, same-session ownership, actual V11 result/status, and
+only the authenticated targets attempted. Full success additionally requires
+all maintained targets, the credential audit, and every artifact-flow fact.
+Only that final state may set `phase_8_ready = true`.
 
 Generic maintained reports keep the one-argument shape check. A V11 conclusion
 must use the capsule-backed semantic mode so the checker compares structured

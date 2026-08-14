@@ -525,6 +525,13 @@ def evaluate_admission(
 
 def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
     commands = summary.get("commands") if isinstance(summary.get("commands"), list) else []
+    if not summary:
+        return {
+            "status": "not_run",
+            "command_count": 0,
+            "failure_count": 0,
+            "commands": [],
+        }
     return {
         "status": summary.get("outcome", "invalid"),
         "command_count": summary.get("command_count", 0),
@@ -536,6 +543,7 @@ def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
                 "outcome": value.get("outcome"),
                 "exit_code": value.get("exit_code"),
                 "termination": value.get("termination"),
+                "spawn_error": value.get("spawn_error") is not None,
                 "duration_ms": value.get("duration_ms"),
             }
             for index, value in enumerate(commands)
@@ -625,6 +633,14 @@ def make_capsule(
         "validated_candidate_head": candidate_head,
         "admission_status": admission.get("status"),
         "blocking_classification": blocking_classification,
+        "admission_checks": [
+            {
+                "name": value.get("name"),
+                "status": value.get("status"),
+            }
+            for value in admission.get("checks", [])
+            if isinstance(value, dict)
+        ],
         "pre_final_candidate_check": pre_final_check,
         "execution_environment": admission.get("execution_environment", {}),
         "dependency_snapshot": admission.get("dependency_snapshot", {}),
