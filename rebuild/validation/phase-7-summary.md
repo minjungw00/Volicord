@@ -1,8 +1,10 @@
 # Phase 7 product-surface validation and V11 handoff state
 
-- Current exact final aggregate evidence: unavailable at its maintained local
-  artifact path; a new exact aggregate is pending for the documentation HEAD
-- V11 integrated result: `blocked at preflight`; Phase 8 entry gate: `blocked`
+- Exact-final production/test candidate:
+  `21e7f8f77b8ecfc44be7a71b140533ad191bb683`; aggregate `succeeded` with four
+  commands succeeded and zero failures
+- V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
+  entry: `phase_8_ready = true`
 - Scope: qualified local platform primitives, source-grounded Project
   projections and documents, Project-scoped provider privacy, Local Operations,
   exact Guarded confirmation, live local viewer, clean Linux installation, and
@@ -19,14 +21,21 @@
 | V08 | passed | `linux-codex-integration` | authenticated live viewer HTTP, exact MCP schemas, authenticated Codex product-tool use, fresh repository provenance, recovery and preservation |
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
-The production candidate has no production or design-contract diff from
-final-validated HEAD `f64ee3eb8f5b66a9b458adbba0b4d66c979a4c8f`; its last production change is
-`c2caea39d46229e880c8c906a0fffe91d8c2cb9c`. The corrected V11 harness
-self-check passed, including the hard-coded-status policy and synthetic
-ephemeral-authentication lifecycle. The maintained official preflight then
-failed because its required prior exact-final aggregate artifact was absent.
-No repository target ran, and `phase_8_ready = false` is recorded in
+Exact final sealed production/test candidate HEAD
+`21e7f8f77b8ecfc44be7a71b140533ad191bb683`. Its four-command aggregate
+`succeeded` with zero failures; summary SHA-256 is
+`61ce1dfce9f5a349a02c200779428afd3bed8f8085e8c935dac2f956659258de`.
+The same-session official V11 then passed all 54 required steps with no failed,
+partial, unsupported, skipped, or environment-blocked status. Result SHA-256
+is `66d65c73fadb6b69437375b60642972f9f7c8661635fce7489ca3b8f8f2cbb22`.
+All three authenticated Codex targets passed, the credential-retention audit
+passed with zero auth-named files, credential-content matches, or scan errors,
+and `phase_8_ready = true` is recorded in
 `end-to-end/multi-repository/report.md`.
+
+The later documentation-only conclusion records that observed gate result. It
+is not part of the exact-final candidate and does not require another final
+aggregate.
 
 ## Phase 7 capability conclusion
 
@@ -69,7 +78,9 @@ uses only Project-scoped replacement-owned analysis directories.
 
 ## Accepted-Decision revisit triggers
 
-No accepted Q1–Q13 Decision revisit trigger is active. Phase 7 retains the
+No accepted Q1–Q13 Decision revisit trigger is active. The sanitized capsule
+reports an empty active-trigger list, and independent documentation review of
+the accepted criteria found no trigger to open. Phase 7 retains the
 Project as the user-facing unit, local-first canonical authority, current-host
 user Source provenance, semantic Decision correction/supersession distinction,
 Candidate non-canonical lifecycle, explicit document adoption/publication,
@@ -90,17 +101,17 @@ background-provider authority.
   latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
   portability retain the known limits in their individual reports.
-- Corrected V11 target execution did not start because the maintained
-  preflight could not read its required prior exact-final aggregate artifact.
-  There is no current repository-step matrix, real authenticated cleanup
-  result, or Phase 8 entry evidence; Phase 8 remains blocked.
+- Official V11 establishes entry eligibility for Phase 8. Phase 8 may begin,
+  but V11 does not establish its dogfood quality or completion. Phase 8 must
+  still evaluate repeated use, document usefulness, size, latency,
+  accessibility, and sustained resource behavior under its maintained plan.
 - The unavailable production provider path proved exact Guarded confirmation,
   terminal cleanup, truthful no-transmission failure, and unaffected local
   operation. It did not qualify a commercial provider or successful external
   semantic result.
 - The Volicord document outputs and ignored evidence were large; document
   usefulness, size, latency, accessibility, and sustained resource use remain
-  Phase 8 observations rather than V11 blockers.
+  Phase 8 observations rather than V11 conclusions.
 
 ## Maintained references
 

@@ -96,6 +96,16 @@ structured result only below ignored `rebuild/.local/`, and classifies missing
 public product paths as `unsupported` instead of substituting validation-only
 domain behavior.
 
+The current maintained conclusion is recorded in
+`end-to-end/multi-repository/report.md` and summarized in
+`phase-7-summary.md`. Exact final sealed production/test candidate
+`21e7f8f77b8ecfc44be7a71b140533ad191bb683`; the same-session official V11
+passed all 54 required steps, all three authenticated Codex targets, and the
+credential-retention audit. No Decision revisit trigger or blocker is active,
+and `phase_8_ready = true`. Phase 8 may begin, but is not itself certified by
+that V11 result. The later documentation conclusion records the result and is
+not part of the exact-final candidate.
+
 ## Admission, authorization, and handoff
 
 Technical network availability and authorization are separate current-
