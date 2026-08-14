@@ -627,6 +627,7 @@ dependencies = [
  "volicord-context",
  "volicord-inquiry",
  "volicord-operations",
+ "volicord-privacy",
  "volicord-projections",
 ]
 

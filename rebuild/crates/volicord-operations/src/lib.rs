@@ -14,11 +14,12 @@ mod operations;
 pub use cli::{run_cli, CliExit};
 pub use error::Error;
 pub use guarded::{
-    BackgroundProviderDispatcher, ConfirmationDecision, ConfirmationRejection,
-    ConfirmationRequestId, ConfirmationResponse, ConfirmationResponseId, DispatchExpectation,
-    DispatchObservation, GuardedEffectCandidate, GuardedEffectCategory, GuardedEffectDispatcher,
-    GuardedEffectDraft, GuardedOperationId, GuardedOperationOutcome, GuardedOperationResult,
-    GuardedRisk, GuardedStore, RequestingProvenance,
+    BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
+    ConfirmationRejection, ConfirmationRequestId, ConfirmationResponse, ConfirmationResponseId,
+    DispatchExpectation, DispatchObservation, GuardedEffectCandidate, GuardedEffectCategory,
+    GuardedEffectDispatcher, GuardedEffectDraft, GuardedOperationId, GuardedOperationOutcome,
+    GuardedOperationResult, GuardedProviderInspection, GuardedProviderPreparation,
+    GuardedProviderPreparationOutcome, GuardedRisk, GuardedStore, RequestingProvenance,
 };
 pub use layout::RuntimeLayout;
 pub use model::{
@@ -28,3 +29,7 @@ pub use model::{
     RepairOutcome,
 };
 pub use operations::LocalOperations;
+pub use volicord_privacy::{
+    FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,
+    SourceClass, TransmissionOutcome,
+};

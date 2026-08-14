@@ -427,6 +427,18 @@ fingerprint와 unused state를 확인한 뒤에만 하나의 operation identity�
 indeterminate execution은 [Failure와 Recovery 계약](failure-and-recovery.md)에 따라
 silent retry나 success claim 없이 scoped recovery로 보낸다.
 
+Background semantic provider의 production 연결은 두 경계를 합치지 않는다. Local
+Operations는 current Analysis Snapshot의 explicit repository-relative file scope를 다시
+확인하고 Privacy Boundary가 만든 filtered transmission manifest와 provider request
+identity를 exact Guarded action/target/effect/scope/fingerprint에 bind한다. Filtered source
+body는 live preparation 동안만 유지하며 operational store에 serialize하지 않는다.
+Current-host Source-linked confirmation 뒤에도 provider opt-in revision을 다시 검증하고,
+실제 호출은 `BackgroundProviderDispatcher`를 통해서만 수행한다. Guarded operation과
+provider request는 각각 durable identity/outcome을 유지하므로 `not_dispatched`, provider
+`unavailable`, confirmed execution failure와 indeterminate effect를 별도로 inspect할 수
+있다. Production transport가 선택·설정되지 않은 build는 transmission을 만들지 않고
+provider `unavailable`을 반환하며 local/canonical operation은 계속 제공한다.
+
 ### 10. Analyzer, provider, index, source와 process failure recovery
 
 Local Operations는 bounded subsystem outcome을 모두 관찰하고 active

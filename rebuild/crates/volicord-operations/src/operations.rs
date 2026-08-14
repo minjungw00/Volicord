@@ -5,12 +5,15 @@ use crate::{
     RepairOutcome, RuntimeLayout,
 };
 use crate::{
-    ConfirmationDecision, ConfirmationRequestId, ConfirmationResponse, DispatchExpectation,
-    GuardedEffectCandidate, GuardedEffectDispatcher, GuardedEffectDraft, GuardedOperationResult,
-    GuardedStore,
+    BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
+    ConfirmationRequestId, ConfirmationResponse, DispatchExpectation, GuardedEffectCandidate,
+    GuardedEffectCategory, GuardedEffectDispatcher, GuardedEffectDraft, GuardedOperationId,
+    GuardedOperationResult, GuardedProviderInspection, GuardedProviderPreparation,
+    GuardedProviderPreparationOutcome, GuardedRisk, GuardedStore,
 };
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     io::Write,
@@ -32,11 +35,14 @@ use volicord_inquiry::{
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, GitWorktreeLayout,
     NoReplacePublicationOutcome, ProcessCompletion, ProcessRequest, ProcessStopTrigger,
-    ProcessTermination, ProcessTreeCleanup, RepositoryRoot,
+    ProcessTermination, ProcessTreeCleanup, RepositoryPathState, RepositoryRoot,
 };
 use volicord_privacy::{
-    PrivacyStore, ProjectPrivacyInspection, ProviderIntentProvenance, ProviderOptInEvent,
-    ProviderOptInPolicy,
+    BackgroundSemanticProvider, BackgroundSemanticRequest, BackgroundSource, PreparationOutcome,
+    PrivacyStore, ProjectPrivacyInspection, ProviderAvailability, ProviderDeletionOutcome,
+    ProviderDeletionRequest, ProviderExecution, ProviderIdentity, ProviderIntentProvenance,
+    ProviderInvocation, ProviderOptInEvent, ProviderOptInPolicy, ProviderRequestId,
+    ProviderRequestRecord, SourceClass,
 };
 use volicord_projections::{
     build_project_projection, generate_documents, CandidateContentAccess, DocumentKind,
@@ -44,8 +50,8 @@ use volicord_projections::{
     ProjectProjectionInputs, ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
 };
 use volicord_repository_intelligence::{
-    analyze_repository, AnalysisSnapshot, CanonicalGrounding, CapabilityState, InventoryRequest,
-    StructuralAnalysisRequest,
+    analyze_repository, AnalysisSnapshot, CanonicalGrounding, CapabilityState, EntryKind,
+    InventoryClassification, InventoryEntry, InventoryRequest, StructuralAnalysisRequest,
 };
 
 pub struct LocalOperations {
@@ -693,6 +699,194 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("provider revoke failed", error))
     }
 
+    pub fn prepare_guarded_provider_operation(
+        &self,
+        draft: BackgroundProviderOperationDraft,
+    ) -> Result<GuardedProviderPreparationOutcome, Error> {
+        self.initialize_runtime()?;
+        if draft.source_paths.is_empty() {
+            return Err(Error::new(
+                "background provider operation requires at least one explicit source path",
+            ));
+        }
+        let unique_paths = draft.source_paths.iter().collect::<BTreeSet<_>>();
+        if unique_paths.len() != draft.source_paths.len() {
+            return Err(Error::new(
+                "background provider source paths must not contain duplicates",
+            ));
+        }
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let binding = self
+            .open_canonical()?
+            .get_local_binding(draft.project_id)
+            .map_err(|error| {
+                Error::with_source("Project has no usable repository binding", error)
+            })?;
+        let root = RepositoryRoot::open(&binding.absolute_path)
+            .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
+        let analysis = self.load_analyses(draft.project_id)?.pop().ok_or_else(|| {
+            Error::new("background semantic preparation requires a current local Analysis Snapshot")
+        })?;
+        let mut sources = Vec::with_capacity(draft.source_paths.len());
+        for locator in &draft.source_paths {
+            sources.push(background_source(&root, &analysis, locator)?);
+        }
+
+        let mut privacy = PrivacyStore::open(self.layout.privacy_store())
+            .map_err(|error| Error::with_source("cannot open privacy store", error))?;
+        let preparation = privacy
+            .prepare_background_request(BackgroundSemanticRequest {
+                project_id: draft.project_id,
+                repository_snapshot: analysis.repository_snapshot,
+                analysis_snapshot: analysis.identity,
+                provider: draft.provider,
+                model: draft.model,
+                purpose: draft.purpose,
+                requested_capability: draft.requested_capability,
+                requested_source_scopes: draft.source_paths,
+                sources,
+            })
+            .map_err(|error| {
+                Error::with_source("background provider request preparation failed", error)
+            })?;
+        let authorized = match preparation {
+            PreparationOutcome::Ready(value) => value,
+            PreparationOutcome::Rejected(record) => {
+                return Ok(GuardedProviderPreparationOutcome::Rejected(Box::new(
+                    record,
+                )))
+            }
+        };
+        let provider_request = authorized.record().clone();
+        let candidate = self.create_guarded_request(GuardedEffectDraft {
+            project_id: draft.project_id,
+            exact_action: "transmit_source_for_background_semantic_processing".into(),
+            target: format!(
+                "provider:{}/model:{}",
+                provider_request.provider, provider_request.model
+            ),
+            expected_effect: format!(
+                "transmit {} privacy-filtered source file(s) for {} using provider request {}",
+                provider_request
+                    .manifest
+                    .iter()
+                    .filter(|entry| {
+                        entry.scope_outcome == volicord_privacy::ScopeOutcome::Included
+                    })
+                    .count(),
+                provider_request.purpose,
+                provider_request.id
+            ),
+            risk: GuardedRisk {
+                category: GuardedEffectCategory::PersonalDataOrSourceCodeExternalTransmission,
+                concrete_consequence:
+                    "the authorized, filtered source manifest may leave the local environment"
+                        .into(),
+            },
+            scope: provider_guarded_scope(&provider_request),
+            expires_at: draft.expires_at,
+            requesting_provenance: draft.requesting_provenance,
+        })?;
+        if canonical.project.id != candidate.project_id {
+            return Err(Error::new(
+                "prepared provider request changed Project before Guarded creation",
+            ));
+        }
+        Ok(GuardedProviderPreparationOutcome::Ready(Box::new(
+            GuardedProviderPreparation {
+                candidate,
+                provider_request,
+                authorized: Some(authorized),
+            },
+        )))
+    }
+
+    pub fn dispatch_guarded_provider(
+        &self,
+        preparation: &mut GuardedProviderPreparation,
+        request_revision: u64,
+        effect_fingerprint: &str,
+        provider: &mut dyn BackgroundSemanticProvider,
+    ) -> Result<GuardedOperationResult, Error> {
+        let mut expectation = DispatchExpectation::from(&preparation.candidate);
+        expectation.effect_fingerprint = effect_fingerprint.to_owned();
+        let mut privacy = PrivacyStore::open(self.layout.privacy_store())
+            .map_err(|error| Error::with_source("cannot open privacy store", error))?;
+        let mut dispatcher = BackgroundProviderDispatcher::new(
+            &mut privacy,
+            &mut preparation.authorized,
+            &preparation.candidate,
+            provider,
+        );
+        self.dispatch_guarded(
+            preparation.candidate.confirmation_request_identity,
+            request_revision,
+            &expectation,
+            &mut dispatcher,
+        )
+    }
+
+    pub fn dispatch_guarded_provider_with_configured_adapter(
+        &self,
+        preparation: &mut GuardedProviderPreparation,
+        request_revision: u64,
+        effect_fingerprint: &str,
+    ) -> Result<GuardedOperationResult, Error> {
+        let mut provider = UnavailableConfiguredProvider {
+            identity: ProviderIdentity {
+                provider: preparation.provider_request.provider.clone(),
+                model: preparation.provider_request.model.clone(),
+            },
+        };
+        self.dispatch_guarded_provider(
+            preparation,
+            request_revision,
+            effect_fingerprint,
+            &mut provider,
+        )
+    }
+
+    pub fn guarded_operation(
+        &self,
+        operation: GuardedOperationId,
+    ) -> Result<GuardedOperationResult, Error> {
+        GuardedStore::open(self.layout.guarded_store())?.operation(operation)
+    }
+
+    pub fn inspect_guarded_provider_operation(
+        &self,
+        project_id: ProjectId,
+        operation_id: GuardedOperationId,
+        provider_request_id: ProviderRequestId,
+    ) -> Result<GuardedProviderInspection, Error> {
+        let operation = self.guarded_operation(operation_id)?;
+        let request = GuardedStore::open(self.layout.guarded_store())?.request(
+            operation.confirmation_request_identity,
+            operation.request_revision,
+        )?;
+        if request.project_id != project_id {
+            return Err(Error::new(
+                "Guarded provider operation belongs to another Project",
+            ));
+        }
+        let provider_request = PrivacyStore::open(self.layout.privacy_store())
+            .and_then(|store| store.provider_request(project_id, provider_request_id))
+            .map_err(|error| Error::with_source("provider request inspection failed", error))?;
+        if !request
+            .scope
+            .contains(&format!("provider_request:{}", provider_request.id))
+        {
+            return Err(Error::new(
+                "provider request is not bound to the inspected Guarded operation",
+            ));
+        }
+        Ok(GuardedProviderInspection {
+            request,
+            operation,
+            provider_request,
+        })
+    }
+
     pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
         let canonical = self.canonical_basis(project_id)?;
         let analyses = self.load_analyses(project_id)?;
@@ -1148,6 +1342,172 @@ impl LocalOperations {
             values.push(latest);
         }
         Ok(values)
+    }
+}
+
+fn background_source(
+    root: &RepositoryRoot,
+    analysis: &AnalysisSnapshot,
+    locator: &str,
+) -> Result<BackgroundSource, Error> {
+    let resolved = root
+        .resolve(locator)
+        .map_err(|error| Error::with_source("background source path is invalid", error))?;
+    if resolved.state() != RepositoryPathState::Existing || resolved.traversed_symlink() {
+        return Err(Error::new(format!(
+            "background source {locator:?} must be an existing non-symlink repository file"
+        )));
+    }
+    let entry = analysis
+        .inventory
+        .entries
+        .iter()
+        .find(|entry| entry.area.path == locator && entry.entry_kind == EntryKind::File)
+        .ok_or_else(|| {
+            Error::new(format!(
+                "background source {locator:?} is not a file in the current Analysis Snapshot"
+            ))
+        })?;
+    if !entry
+        .classifications
+        .contains(&InventoryClassification::Included)
+    {
+        return Err(Error::new(format!(
+            "background source {locator:?} is not included in the current Analysis Snapshot"
+        )));
+    }
+    let bytes = fs::read(root.canonical_path().join(resolved.relative()))
+        .map_err(|error| Error::with_source("cannot read background source", error))?;
+    let content_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    if entry.content_sha256.as_deref() != Some(content_sha256.as_str()) {
+        return Err(Error::new(format!(
+            "background source {locator:?} changed after the current Analysis Snapshot; analyze again before preparing transmission"
+        )));
+    }
+    let body = String::from_utf8(bytes)
+        .map_err(|error| Error::with_source("background source is not UTF-8 text", error))?;
+    Ok(BackgroundSource {
+        source: analysis.repository_source.clone(),
+        locator: locator.to_owned(),
+        class: provider_source_class(entry),
+        body,
+    })
+}
+
+fn provider_source_class(entry: &InventoryEntry) -> SourceClass {
+    if entry
+        .classifications
+        .contains(&InventoryClassification::Binary)
+    {
+        SourceClass::Binary
+    } else if entry
+        .classifications
+        .contains(&InventoryClassification::Generated)
+    {
+        SourceClass::Generated
+    } else if entry
+        .classifications
+        .contains(&InventoryClassification::Vendor)
+    {
+        SourceClass::Vendor
+    } else if entry
+        .classifications
+        .contains(&InventoryClassification::Configuration)
+        || entry
+            .classifications
+            .contains(&InventoryClassification::Manifest)
+        || entry
+            .classifications
+            .contains(&InventoryClassification::WorkspaceManifest)
+    {
+        SourceClass::Configuration
+    } else if entry
+        .classifications
+        .contains(&InventoryClassification::Document)
+    {
+        SourceClass::Document
+    } else {
+        SourceClass::Source
+    }
+}
+
+fn provider_guarded_scope(record: &ProviderRequestRecord) -> Vec<String> {
+    let mut scope = vec![
+        format!("provider_request:{}", record.id),
+        format!("repository_snapshot:{}", record.repository_snapshot),
+        format!("analysis_snapshot:{}", record.analysis_snapshot),
+        format!("purpose:{}", record.purpose),
+        format!("capability:{}", record.requested_capability),
+    ];
+    scope.extend(record.manifest.iter().map(|entry| {
+        format!(
+            "source:{};class:{};scope:{};filter:{};original_bytes:{};filtered_lines:{}",
+            entry.locator,
+            source_class_slug(entry.class),
+            scope_outcome_slug(entry.scope_outcome),
+            filter_outcome_slug(entry.filter_outcome),
+            entry.original_bytes,
+            entry.filtered_line_count,
+        )
+    }));
+    scope
+}
+
+const fn source_class_slug(class: SourceClass) -> &'static str {
+    match class {
+        SourceClass::Source => "source",
+        SourceClass::Generated => "generated",
+        SourceClass::Vendor => "vendor",
+        SourceClass::Binary => "binary",
+        SourceClass::Configuration => "configuration",
+        SourceClass::Document => "document",
+    }
+}
+
+const fn scope_outcome_slug(outcome: volicord_privacy::ScopeOutcome) -> &'static str {
+    match outcome {
+        volicord_privacy::ScopeOutcome::Included => "included",
+        volicord_privacy::ScopeOutcome::Excluded => "excluded",
+        volicord_privacy::ScopeOutcome::OutsideRequestedScope => "outside_requested_scope",
+        volicord_privacy::ScopeOutcome::OutsideOptInScope => "outside_opt_in_scope",
+    }
+}
+
+const fn filter_outcome_slug(outcome: volicord_privacy::FilterOutcome) -> &'static str {
+    match outcome {
+        volicord_privacy::FilterOutcome::NotApplied => "not_applied",
+        volicord_privacy::FilterOutcome::NoMatch => "no_match",
+        volicord_privacy::FilterOutcome::Filtered => "filtered",
+    }
+}
+
+struct UnavailableConfiguredProvider {
+    identity: ProviderIdentity,
+}
+
+impl BackgroundSemanticProvider for UnavailableConfiguredProvider {
+    fn identity(&self) -> ProviderIdentity {
+        self.identity.clone()
+    }
+
+    fn availability(&self) -> ProviderAvailability {
+        ProviderAvailability::Unavailable {
+            diagnostic:
+                "no production external semantic-provider transport is configured in this build"
+                    .into(),
+        }
+    }
+
+    fn invoke(&mut self, _request: ProviderInvocation) -> ProviderExecution {
+        ProviderExecution::Failed {
+            diagnostic: "unavailable provider adapter cannot invoke a transport".into(),
+        }
+    }
+
+    fn delete(&mut self, _request: ProviderDeletionRequest) -> ProviderDeletionOutcome {
+        ProviderDeletionOutcome::Unsupported {
+            diagnostic: "no production external semantic-provider transport is configured".into(),
+        }
     }
 }
 

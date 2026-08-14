@@ -3,6 +3,10 @@ use std::{collections::BTreeSet, fs};
 use tempfile::tempdir;
 use volicord_host::{run_stdio, HostAdapter, HOST_TOOL_NAMES};
 use volicord_operations::{LocalOperations, RuntimeLayout};
+use volicord_privacy::{
+    ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
+    SourceExclusionPolicy,
+};
 
 fn setup() -> (tempfile::TempDir, HostAdapter, String) {
     let temporary = tempdir().expect("temporary directory");
@@ -258,6 +262,216 @@ fn guarded_transport_and_fallback_keep_one_exact_logical_request() {
         .sources
         .iter()
         .any(|basis| basis.source.id.to_string() == source));
+}
+
+#[test]
+fn codex_host_exposes_guarded_provider_dispatch_and_durable_unavailable_outcome() {
+    use volicord_context::{Clock, Principal, PrincipalKind, SystemClock};
+
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src")).expect("source directory");
+    fs::write(
+        repository.join("src/lib.rs"),
+        "// SECRET=host-fixture\npub fn host_path() {}\n",
+    )
+    .expect("source file");
+    let project_id = parse_project(&project);
+    adapter
+        .operations()
+        .analyze(project_id, Vec::new())
+        .expect("analysis");
+    let opt_in_source = adapter
+        .operations()
+        .record_user_source(
+            project_id,
+            "codex".into(),
+            "privacy-host".into(),
+            "enable provider".into(),
+        )
+        .expect("opt-in source");
+    adapter
+        .operations()
+        .enable_provider(
+            ProviderOptInPolicy {
+                project_id,
+                provider: "configured-provider".into(),
+                model: "configured-model".into(),
+                purpose: "background semantic analysis".into(),
+                requested_capability: "semantic".into(),
+                allowed_source_scopes: vec!["src/lib.rs".into()],
+                exclusions: SourceExclusionPolicy {
+                    path_prefixes: Vec::new(),
+                    file_classes: Vec::new(),
+                    basis: "host fixture".into(),
+                },
+                filtering: SecretFilteringPolicy {
+                    enabled: true,
+                    line_markers: vec!["SECRET".into()],
+                    replacement: "[filtered]".into(),
+                    known_limits: vec!["marker filtering is incomplete".into()],
+                },
+                retention: ProviderRetentionPolicy {
+                    local_annotation_retained_until: None,
+                    local_basis: "until explicit deletion".into(),
+                    provider_expectation: "configured provider policy".into(),
+                    provider_known_limits: Vec::new(),
+                },
+            },
+            ProviderIntentProvenance {
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "current-host-user".into(),
+                },
+                host: "codex".into(),
+                session: "privacy-host".into(),
+                user_turn_source: parse_source_identity(&opt_in_source.identity),
+                basis: "explicit host fixture opt-in".into(),
+            },
+        )
+        .expect("provider opt-in");
+    adapter.handle(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{}}}}));
+    let now = SystemClock.now().expect("clock");
+    let prepared = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"prepare",
+            "project_id":project,
+            "provider":"configured-provider",
+            "model":"configured-model",
+            "purpose":"background semantic analysis",
+            "requested_capability":"semantic",
+            "source_paths":["src/lib.rs"],
+            "expiration_unix_micros":u64::try_from(now.as_unix_micros() + 60_000_000).expect("positive expiration")
+        }),
+    );
+    assert_eq!(prepared["result"]["isError"], false, "{prepared}");
+    let prepared = structured(&prepared);
+    assert_eq!(prepared["state"], "awaiting_exact_confirmation");
+    assert_eq!(prepared["dispatch_occurred"], false);
+    let request = prepared["guarded_request"].clone();
+    let provider_request_id = prepared["provider_request"]["provider_request_id"]
+        .as_str()
+        .expect("provider request ID")
+        .to_owned();
+
+    let mismatched = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":format!("sha256:{}", "0".repeat(64))
+        }),
+    );
+    assert_eq!(
+        structured(&mismatched)["guarded_outcome"]["rejection"],
+        "mismatched"
+    );
+    assert_eq!(
+        structured(&mismatched)["provider_request"]["outcome"],
+        "prepared"
+    );
+
+    let missing = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"]
+        }),
+    );
+    assert_eq!(
+        structured(&missing)["guarded_outcome"]["kind"],
+        "not_dispatched"
+    );
+    assert_eq!(
+        structured(&missing)["guarded_outcome"]["rejection"],
+        "missing"
+    );
+    assert_eq!(
+        structured(&missing)["provider_request"]["outcome"],
+        "prepared"
+    );
+
+    let confirmed = call(
+        &mut adapter,
+        "guarded_interaction",
+        json!({
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"],
+            "decision":"confirm",
+            "user_turn":"confirm this exact provider request"
+        }),
+    );
+    assert_eq!(confirmed["result"]["isError"], false, "{confirmed}");
+    let dispatched = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"]
+        }),
+    );
+    let dispatched = structured(&dispatched);
+    assert_eq!(dispatched["guarded_outcome"]["kind"], "not_dispatched");
+    assert_eq!(dispatched["guarded_outcome"]["confirmation_consumed"], true);
+    assert_eq!(
+        dispatched["provider_request"]["outcome"],
+        "provider_unavailable"
+    );
+    assert!(dispatched["provider_request"]["manifest"]
+        .as_array()
+        .expect("manifest")
+        .iter()
+        .all(|entry| entry["transmission_outcome"] == "not_transmitted"));
+    let operation_id = dispatched["operation_id"].as_str().expect("operation ID");
+
+    let inspected = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"inspect",
+            "project_id":project,
+            "operation_id":operation_id,
+            "provider_request_id":provider_request_id
+        }),
+    );
+    assert_eq!(structured(&inspected), dispatched);
+
+    let reused = call(
+        &mut adapter,
+        "background_semantic_operation",
+        json!({
+            "action":"dispatch",
+            "confirmation_request_id":request["confirmation_request_id"],
+            "request_revision":request["request_revision"],
+            "effect_fingerprint":request["effect_fingerprint"]
+        }),
+    );
+    assert_eq!(
+        structured(&reused)["guarded_outcome"]["rejection"],
+        "reused"
+    );
+    let local = call(
+        &mut adapter,
+        "canonical_inspect",
+        json!({"project_id":project}),
+    );
+    assert_eq!(local["result"]["isError"], false, "{local}");
+    let structural = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project,"excluded_paths":[]}),
+    );
+    assert_eq!(structural["result"]["isError"], false, "{structural}");
 }
 
 #[test]
@@ -598,6 +812,15 @@ fn parse_project(value: &str) -> volicord_context::ProjectId {
     volicord_context::ProjectId::from_bytes(bytes)
 }
 
+fn parse_source_identity(value: &str) -> volicord_context::SourceId {
+    let mut bytes = [0_u8; 16];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] =
+            u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
+    }
+    volicord_context::SourceId::from_bytes(bytes)
+}
+
 fn assert_schema_is_closed_and_described(schema: &Value) {
     if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
         assert!(!variants.is_empty());
@@ -659,6 +882,58 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
+        "background_semantic_operation" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "provider",
+                    "model",
+                    "purpose",
+                    "requested_capability",
+                    "source_paths",
+                    "expiration_unix_micros",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "provider",
+                    "model",
+                    "purpose",
+                    "requested_capability",
+                    "source_paths",
+                    "expiration_unix_micros",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "confirmation_request_id",
+                    "request_revision",
+                    "effect_fingerprint",
+                ],
+                &[
+                    "action",
+                    "confirmation_request_id",
+                    "request_revision",
+                    "effect_fingerprint",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "operation_id",
+                    "provider_request_id",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "operation_id",
+                    "provider_request_id",
+                ],
+            ),
+        ],
         "inquiry_frontier" => vec![shape(&["project_id", "material_scope"], &["project_id"])],
         "decision_record" => vec![shape(
             &[

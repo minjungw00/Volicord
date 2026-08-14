@@ -637,6 +637,27 @@ impl PrivacyStore {
         })
     }
 
+    pub fn provider_request(
+        &self,
+        project_id: ProjectId,
+        request_id: ProviderRequestId,
+    ) -> Result<ProviderRequestRecord, Error> {
+        let encoded = self
+            .connection
+            .query_row(
+                "SELECT record_json FROM provider_requests WHERE project_id = ?1 AND id = ?2",
+                params![
+                    project_id.as_bytes().as_slice(),
+                    request_id.as_bytes().as_slice()
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(read_error)?
+            .ok_or_else(|| Error::new(ErrorKind::NotFound, "provider request was not found"))?;
+        decode(&encoded)
+    }
+
     pub fn get_derived(
         &self,
         project_id: ProjectId,

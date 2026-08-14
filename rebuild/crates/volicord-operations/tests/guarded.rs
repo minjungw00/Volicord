@@ -497,7 +497,9 @@ fn background_source_transmission_uses_guarded_dispatch_after_privacy_opt_in(
         "confirm exact source transmission".into(),
     )?;
     let mut provider = FakeProvider { calls: 0 };
-    let mut dispatcher = BackgroundProviderDispatcher::new(&mut privacy, prepared, &mut provider);
+    let mut prepared = Some(prepared);
+    let mut dispatcher =
+        BackgroundProviderDispatcher::new(&mut privacy, &mut prepared, &candidate, &mut provider);
     let result = operations.dispatch_guarded(
         candidate.confirmation_request_identity,
         1,

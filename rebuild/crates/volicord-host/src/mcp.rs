@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeMap,
     error::Error as StdError,
     fmt,
     io::{BufRead, Write},
@@ -11,8 +12,8 @@ use volicord_context::{
     DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId, Principal,
     PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
     QuestionEvidenceFreshness, QuestionId, QuestionResearchState, SourceId, SystemClock,
-    UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact,
-    VerificationState, WorkState,
+    TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
+    VerificationFact, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
@@ -22,13 +23,17 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    ConfirmationDecision, ConfirmationRequestId, HealthState, LocalOperations,
+    BackgroundProviderOperationDraft, ConfirmationDecision, ConfirmationRejection,
+    ConfirmationRequestId, FilterOutcome, GuardedOperationId, GuardedOperationOutcome,
+    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
+    HealthState, LocalOperations, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
+    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
 };
 use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 15] = [
+pub const HOST_TOOL_NAMES: [&str; 16] = [
     "project_initialize",
     "project_health",
     "recall",
@@ -42,6 +47,7 @@ pub const HOST_TOOL_NAMES: [&str; 15] = [
     "candidate_inspect",
     "candidate_manage",
     "privacy_status",
+    "background_semantic_operation",
     "document_preview",
     "guarded_interaction",
 ];
@@ -72,6 +78,7 @@ pub struct HostAdapter {
     initialized: bool,
     client_supports_elicitation: bool,
     host_session: String,
+    pending_provider_operations: BTreeMap<ConfirmationRequestId, GuardedProviderPreparation>,
 }
 
 impl HostAdapter {
@@ -81,6 +88,7 @@ impl HostAdapter {
             initialized: false,
             client_supports_elicitation: false,
             host_session: new_identity_text().unwrap_or_else(|_| "unavailable-session".into()),
+            pending_provider_operations: BTreeMap::new(),
         }
     }
 
@@ -146,6 +154,7 @@ impl HostAdapter {
                 "candidate_inspect" => self.candidate_inspect(&arguments),
                 "candidate_manage" => self.candidate_manage(&arguments),
                 "privacy_status" => self.privacy_status(&arguments),
+                "background_semantic_operation" => self.background_semantic_operation(&arguments),
                 "document_preview" => self.document_preview(&arguments),
                 "guarded_interaction" => self.guarded_interaction(&arguments),
                 _ => Err(HostError::new("tool contract has no handler")),
@@ -679,6 +688,121 @@ impl HostAdapter {
         )
     }
 
+    fn background_semantic_operation(&mut self, args: &Value) -> Result<Value, HostError> {
+        match required_str(args, "action")? {
+            "prepare" => {
+                let expires_at = required_u64(args, "expiration_unix_micros")?;
+                let expires_at = i64::try_from(expires_at)
+                    .map(TimestampMicros::from_unix_micros)
+                    .map_err(|_| {
+                        HostError::new("expiration exceeds the supported timestamp range")
+                    })?;
+                let source_paths = required_strings(args, "source_paths")?;
+                let outcome = self
+                    .operations
+                    .prepare_guarded_provider_operation(BackgroundProviderOperationDraft {
+                        project_id: project(args)?,
+                        provider: required_str(args, "provider")?.to_owned(),
+                        model: required_str(args, "model")?.to_owned(),
+                        purpose: required_str(args, "purpose")?.to_owned(),
+                        requested_capability: required_str(args, "requested_capability")?
+                            .to_owned(),
+                        source_paths,
+                        expires_at,
+                        requesting_provenance: RequestingProvenance {
+                            actor: Principal {
+                                kind: PrincipalKind::Agent,
+                                identity: "codex".into(),
+                            },
+                            host: Some("codex".into()),
+                            session: Some(self.host_session.clone()),
+                            basis: vec![
+                                "Codex requested a bounded background semantic operation".into()
+                            ],
+                        },
+                    })
+                    .map_err(operation_error)?;
+                match outcome {
+                    GuardedProviderPreparationOutcome::Rejected(record) => Ok(json!({
+                        "state":"not_prepared",
+                        "provider_request":provider_request_json(&record),
+                        "guarded_request":Value::Null,
+                        "dispatch_occurred":false,
+                        "next_safe_action":"inspect privacy status and establish matching Project opt-in before preparing a new operation"
+                    })),
+                    GuardedProviderPreparationOutcome::Ready(preparation) => {
+                        let preparation = *preparation;
+                        let candidate = preparation.candidate.clone();
+                        let provider_request = preparation.provider_request.clone();
+                        if self
+                            .pending_provider_operations
+                            .insert(candidate.confirmation_request_identity, preparation)
+                            .is_some()
+                        {
+                            return Err(HostError::new(
+                                "generated Guarded request identity collided with a live preparation",
+                            ));
+                        }
+                        Ok(json!({
+                            "state":"awaiting_exact_confirmation",
+                            "provider_request":provider_request_json(&provider_request),
+                            "guarded_request":guarded_candidate_json(&candidate),
+                            "dispatch_occurred":false,
+                            "next_safe_action":"inspect and answer this exact request with guarded_interaction, then dispatch this live preparation"
+                        }))
+                    }
+                }
+            }
+            "dispatch" => {
+                let request_id =
+                    parse_confirmation(required_str(args, "confirmation_request_id")?)?;
+                let request_revision = required_u64(args, "request_revision")?;
+                let effect_fingerprint = required_str(args, "effect_fingerprint")?;
+                let preparation = self
+                    .pending_provider_operations
+                    .get_mut(&request_id)
+                    .ok_or_else(|| {
+                        HostError::new(
+                            "live provider preparation is unavailable; no provider dispatch occurred",
+                        )
+                    })?;
+                let project_id = preparation.candidate.project_id;
+                let provider_request_id = preparation.provider_request.id;
+                let result = self
+                    .operations
+                    .dispatch_guarded_provider_with_configured_adapter(
+                        preparation,
+                        request_revision,
+                        effect_fingerprint,
+                    )
+                    .map_err(operation_error)?;
+                let inspected = self
+                    .operations
+                    .inspect_guarded_provider_operation(
+                        project_id,
+                        result.operation_identity,
+                        provider_request_id,
+                    )
+                    .map_err(operation_error)?;
+                Ok(guarded_provider_inspection_json(&inspected))
+            }
+            "inspect" => {
+                let inspected = self
+                    .operations
+                    .inspect_guarded_provider_operation(
+                        project(args)?,
+                        parse_guarded_operation(required_str(args, "operation_id")?)?,
+                        parse_provider_request(required_str(args, "provider_request_id")?)?,
+                    )
+                    .map_err(operation_error)?;
+                Ok(guarded_provider_inspection_json(&inspected))
+            }
+            _ => Err(HostError::new(
+                "background semantic operation action must be prepare, dispatch, or inspect",
+            )),
+        }
+    }
+
     fn document_preview(&self, args: &Value) -> Result<Value, HostError> {
         let kind = document_kind(required_str(args, "kind")?)?;
         let format = if args.get("format").and_then(Value::as_str) == Some("html") {
@@ -914,6 +1038,10 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             "Inspect Project background-provider consent and local-only state.",
             project_schema(),
         ),
+        "background_semantic_operation" => (
+            "Prepare, Guarded-dispatch, or durably inspect one privacy-authorized background semantic-provider operation.",
+            json!({"oneOf": background_semantic_operation_schemas()}),
+        ),
         "document_preview" => (
             "Preview one of four grounded documents without repository write or adoption.",
             object_schema(
@@ -941,6 +1069,100 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         description,
         input_schema,
     })
+}
+
+fn background_semantic_operation_schemas() -> Vec<Value> {
+    vec![
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Provider operation action", &["prepare"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "provider",
+                    text_schema("Provider identity from the Project opt-in", 1, 16_384),
+                ),
+                (
+                    "model",
+                    text_schema("Model identity from the Project opt-in", 1, 16_384),
+                ),
+                (
+                    "purpose",
+                    text_schema("Exact background analysis purpose", 1, 16_384),
+                ),
+                (
+                    "requested_capability",
+                    text_schema("Exact requested semantic capability", 1, 16_384),
+                ),
+                (
+                    "source_paths",
+                    nonempty_string_array_schema("Explicit repository-relative source paths"),
+                ),
+                (
+                    "expiration_unix_micros",
+                    unsigned_schema("Guarded confirmation expiration", 1),
+                ),
+            ],
+            &[
+                "action",
+                "project_id",
+                "provider",
+                "model",
+                "purpose",
+                "requested_capability",
+                "source_paths",
+                "expiration_unix_micros",
+            ],
+        ),
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Provider operation action", &["dispatch"]),
+                ),
+                (
+                    "confirmation_request_id",
+                    identity_schema("Guarded confirmation request identity"),
+                ),
+                (
+                    "request_revision",
+                    unsigned_schema("Exact displayed request revision", 1),
+                ),
+                ("effect_fingerprint", fingerprint_schema()),
+            ],
+            &[
+                "action",
+                "confirmation_request_id",
+                "request_revision",
+                "effect_fingerprint",
+            ],
+        ),
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Provider operation action", &["inspect"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "operation_id",
+                    identity_schema("Guarded operation identity"),
+                ),
+                (
+                    "provider_request_id",
+                    identity_schema("Provider request identity"),
+                ),
+            ],
+            &[
+                "action",
+                "project_id",
+                "operation_id",
+                "provider_request_id",
+            ],
+        ),
+    ]
 }
 
 fn candidate_management_schemas() -> Vec<Value> {
@@ -1458,6 +1680,153 @@ fn tool_result(value: Value, is_error: bool) -> Value {
     json!({"content":[{"type":"text","text":serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())}],"structuredContent":value,"isError":is_error})
 }
 
+fn guarded_candidate_json(candidate: &volicord_operations::GuardedEffectCandidate) -> Value {
+    json!({
+        "confirmation_request_id":candidate.confirmation_request_identity.to_string(),
+        "request_revision":candidate.request_revision,
+        "project_id":candidate.project_id.to_string(),
+        "exact_action":candidate.exact_action,
+        "target":candidate.target,
+        "expected_effect":candidate.expected_effect,
+        "risk_category":"personal_data_or_source_code_external_transmission",
+        "risk_consequence":candidate.risk.concrete_consequence,
+        "scope":candidate.scope,
+        "expiration_unix_micros":candidate.expires_at.as_unix_micros(),
+        "effect_fingerprint":candidate.effect_fingerprint,
+        "requesting_actor":format!("{:?}:{}", candidate.requesting_provenance.actor.kind, candidate.requesting_provenance.actor.identity),
+        "requesting_provenance":candidate.requesting_provenance.basis,
+    })
+}
+
+fn provider_request_json(record: &ProviderRequestRecord) -> Value {
+    json!({
+        "provider_request_id":record.id.to_string(),
+        "project_id":record.project_id.to_string(),
+        "opt_in_revision":record.opt_in_revision,
+        "repository_snapshot":record.repository_snapshot.to_string(),
+        "analysis_snapshot":record.analysis_snapshot.to_string(),
+        "provider":record.provider,
+        "model":record.model,
+        "purpose":record.purpose,
+        "requested_capability":record.requested_capability,
+        "requested_source_scopes":record.requested_source_scopes,
+        "outcome":provider_outcome_name(record.outcome),
+        "diagnostic":record.diagnostic,
+        "requested_at_unix_micros":record.requested_at.as_unix_micros(),
+        "completed_at_unix_micros":record.completed_at.map(TimestampMicros::as_unix_micros),
+        "manifest":record.manifest.iter().map(|entry| json!({
+            "source_id":entry.source.identity().to_string(),
+            "locator":entry.locator,
+            "class":source_class_name(entry.class),
+            "scope_outcome":scope_outcome_name(entry.scope_outcome),
+            "filter_outcome":filter_outcome_name(entry.filter_outcome),
+            "transmission_outcome":if entry.transmission_outcome == TransmissionOutcome::Transmitted { "transmitted" } else { "not_transmitted" },
+            "original_bytes":entry.original_bytes,
+            "transmitted_bytes":entry.transmitted_bytes,
+            "filtered_line_count":entry.filtered_line_count,
+            "reason":entry.reason,
+        })).collect::<Vec<_>>()
+    })
+}
+
+fn guarded_provider_inspection_json(inspection: &GuardedProviderInspection) -> Value {
+    let (outcome, next_safe_action) = match &inspection.operation.outcome {
+        GuardedOperationOutcome::NotDispatched {
+            rejection,
+            confirmation_consumed,
+            diagnostic,
+        } => (
+            json!({
+                "kind":"not_dispatched",
+                "rejection":rejection.map(confirmation_rejection_name),
+                "confirmation_consumed":confirmation_consumed,
+                "diagnostic":diagnostic,
+            }),
+            match rejection {
+                Some(ConfirmationRejection::Missing) => "record an exact current-host confirmation, then explicitly dispatch again",
+                Some(ConfirmationRejection::Reused) => "do not retry; the confirmation is single-use and already consumed",
+                Some(_) => "prepare or revise the exact request and obtain a new explicit confirmation",
+                None => "inspect the provider outcome; any new attempt requires a new preparation and confirmation",
+            },
+        ),
+        GuardedOperationOutcome::DispatchedAndCompleted { diagnostic } => (
+            json!({"kind":"dispatched_and_completed","diagnostic":diagnostic}),
+            "no retry is required",
+        ),
+        GuardedOperationOutcome::DispatchedAndFailed { diagnostic } => (
+            json!({"kind":"dispatched_and_failed","diagnostic":diagnostic}),
+            "review the provider failure before preparing any explicit new operation",
+        ),
+        GuardedOperationOutcome::ExecutionOutcomeIndeterminate { diagnostic } => (
+            json!({"kind":"execution_outcome_indeterminate","diagnostic":diagnostic}),
+            "do not retry; reconcile external provider state before any new operation",
+        ),
+    };
+    json!({
+        "operation_id":inspection.operation.operation_identity.to_string(),
+        "confirmation_request_id":inspection.operation.confirmation_request_identity.to_string(),
+        "request_revision":inspection.operation.request_revision,
+        "user_response_source_id":inspection.operation.user_response_source_id.map(|source| source.to_string()),
+        "guarded_outcome":outcome,
+        "provider_request":provider_request_json(&inspection.provider_request),
+        "exact_request":guarded_candidate_json(&inspection.request),
+        "next_safe_action":next_safe_action,
+    })
+}
+
+const fn confirmation_rejection_name(rejection: ConfirmationRejection) -> &'static str {
+    match rejection {
+        ConfirmationRejection::Missing => "missing",
+        ConfirmationRejection::Denied => "denied",
+        ConfirmationRejection::Stale => "stale",
+        ConfirmationRejection::Expired => "expired",
+        ConfirmationRejection::Mismatched => "mismatched",
+        ConfirmationRejection::Reused => "reused",
+        ConfirmationRejection::InvalidUserSource => "invalid_user_source",
+    }
+}
+
+const fn provider_outcome_name(outcome: ProviderRequestOutcome) -> &'static str {
+    match outcome {
+        ProviderRequestOutcome::Prepared => "prepared",
+        ProviderRequestOutcome::NotAuthorized => "not_authorized",
+        ProviderRequestOutcome::NotTransmitted => "not_transmitted",
+        ProviderRequestOutcome::ProviderUnavailable => "provider_unavailable",
+        ProviderRequestOutcome::ProviderFailed => "provider_failed",
+        ProviderRequestOutcome::Completed => "completed",
+        ProviderRequestOutcome::Partial => "partial",
+        ProviderRequestOutcome::Stale => "stale",
+    }
+}
+
+const fn source_class_name(class: SourceClass) -> &'static str {
+    match class {
+        SourceClass::Source => "source",
+        SourceClass::Generated => "generated",
+        SourceClass::Vendor => "vendor",
+        SourceClass::Binary => "binary",
+        SourceClass::Configuration => "configuration",
+        SourceClass::Document => "document",
+    }
+}
+
+const fn scope_outcome_name(outcome: ScopeOutcome) -> &'static str {
+    match outcome {
+        ScopeOutcome::Included => "included",
+        ScopeOutcome::Excluded => "excluded",
+        ScopeOutcome::OutsideRequestedScope => "outside_requested_scope",
+        ScopeOutcome::OutsideOptInScope => "outside_opt_in_scope",
+    }
+}
+
+const fn filter_outcome_name(outcome: FilterOutcome) -> &'static str {
+    match outcome {
+        FilterOutcome::NotApplied => "not_applied",
+        FilterOutcome::NoMatch => "no_match",
+        FilterOutcome::Filtered => "filtered",
+    }
+}
+
 fn candidate_inspection_json(candidate: volicord_projections::CandidateInspection) -> Value {
     let origin = candidate.origin.map(|origin| {
         json!({
@@ -1626,6 +1995,19 @@ fn required_u64(value: &Value, key: &str) -> Result<u64, HostError> {
         .and_then(Value::as_u64)
         .ok_or_else(|| HostError::new(format!("{key} must be an unsigned integer")))
 }
+fn required_strings(value: &Value, key: &str) -> Result<Vec<String>, HostError> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new(format!("{key} must be an array")))?
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| HostError::new(format!("{key} must contain only strings")))
+        })
+        .collect()
+}
 fn project(value: &Value) -> Result<ProjectId, HostError> {
     parse_project(required_str(value, "project_id")?)
 }
@@ -1652,6 +2034,12 @@ fn parse_candidate(value: &str) -> Result<CandidateId, HostError> {
 }
 fn parse_confirmation(value: &str) -> Result<ConfirmationRequestId, HostError> {
     Ok(ConfirmationRequestId::from_bytes(parse_identity(value)?))
+}
+fn parse_guarded_operation(value: &str) -> Result<GuardedOperationId, HostError> {
+    Ok(GuardedOperationId::from_bytes(parse_identity(value)?))
+}
+fn parse_provider_request(value: &str) -> Result<ProviderRequestId, HostError> {
+    Ok(ProviderRequestId::from_bytes(parse_identity(value)?))
 }
 fn parse_identity(value: &str) -> Result<[u8; 16], HostError> {
     if value.len() != 32 {

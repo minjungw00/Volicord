@@ -9,7 +9,7 @@ use volicord_context::{
 };
 use volicord_privacy::{
     AuthorizedProviderDispatch, BackgroundSemanticProvider, PrivacyStore, ProviderRequestOutcome,
-    TransmissionOutcome,
+    ProviderRequestRecord, TransmissionOutcome,
 };
 
 const GUARDED_SCHEMA_KIND: &str = "volicord-guarded-operations";
@@ -76,6 +76,18 @@ pub struct RequestingProvenance {
     pub host: Option<String>,
     pub session: Option<String>,
     pub basis: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackgroundProviderOperationDraft {
+    pub project_id: ProjectId,
+    pub provider: String,
+    pub model: String,
+    pub purpose: String,
+    pub requested_capability: String,
+    pub source_paths: Vec<String>,
+    pub expires_at: TimestampMicros,
+    pub requesting_provenance: RequestingProvenance,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -234,6 +246,27 @@ pub struct GuardedOperationResult {
     pub outcome: GuardedOperationOutcome,
     pub started_at: TimestampMicros,
     pub completed_at: TimestampMicros,
+}
+
+/// An authorized provider request held only for the live Guarded interaction.
+/// Filtered source bodies remain ephemeral and are never serialized into either
+/// operational store.
+pub struct GuardedProviderPreparation {
+    pub candidate: GuardedEffectCandidate,
+    pub provider_request: ProviderRequestRecord,
+    pub(crate) authorized: Option<AuthorizedProviderDispatch>,
+}
+
+pub enum GuardedProviderPreparationOutcome {
+    Ready(Box<GuardedProviderPreparation>),
+    Rejected(Box<ProviderRequestRecord>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuardedProviderInspection {
+    pub request: GuardedEffectCandidate,
+    pub operation: GuardedOperationResult,
+    pub provider_request: ProviderRequestRecord,
 }
 
 pub struct GuardedStore {
@@ -650,19 +683,22 @@ impl GuardedStore {
 
 pub struct BackgroundProviderDispatcher<'a> {
     privacy: &'a mut PrivacyStore,
-    prepared: Option<AuthorizedProviderDispatch>,
+    prepared: &'a mut Option<AuthorizedProviderDispatch>,
+    expected_fingerprint: String,
     provider: &'a mut dyn BackgroundSemanticProvider,
 }
 
 impl<'a> BackgroundProviderDispatcher<'a> {
     pub fn new(
         privacy: &'a mut PrivacyStore,
-        prepared: AuthorizedProviderDispatch,
+        prepared: &'a mut Option<AuthorizedProviderDispatch>,
+        expected: &GuardedEffectCandidate,
         provider: &'a mut dyn BackgroundSemanticProvider,
     ) -> Self {
         Self {
             privacy,
-            prepared: Some(prepared),
+            prepared,
+            expected_fingerprint: expected.effect_fingerprint.clone(),
             provider,
         }
     }
@@ -672,8 +708,14 @@ impl GuardedEffectDispatcher for BackgroundProviderDispatcher<'_> {
     fn dispatch(
         &mut self,
         _operation_id: GuardedOperationId,
-        _effect: &GuardedEffectCandidate,
+        effect: &GuardedEffectCandidate,
     ) -> DispatchObservation {
+        if effect.effect_fingerprint != self.expected_fingerprint {
+            return DispatchObservation::NotDispatched {
+                diagnostic: "prepared provider request is not bound to this exact Guarded effect"
+                    .into(),
+            };
+        }
         let Some(prepared) = self.prepared.take() else {
             return DispatchObservation::NotDispatched {
                 diagnostic: "provider dispatch adapter is single-use".into(),
