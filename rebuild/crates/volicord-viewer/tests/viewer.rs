@@ -45,6 +45,7 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
 
     assert_eq!(before, after);
     assert_eq!(repository_entries_before, repository_entries_after);
+    assert!(page.html.starts_with("<!doctype html><html lang=\"en\">"));
     for expected in [
         "Project overview",
         "Repository Map",
@@ -81,6 +82,7 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
                 "test-request-authenticity",
             )
             .expect("render Korean viewer");
+        assert!(page.html.starts_with("<!doctype html><html lang=\"ko\">"));
         assert!(page.html.contains("프로젝트 개요"));
         assert!(page.html.contains("저장소 지도"));
         assert!(page.html.contains("문서 미리보기 / 내보내기"));

@@ -123,7 +123,9 @@ impl ViewerAdapter {
             })?;
 
         let mut html = String::new();
-        html.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>");
+        html.push_str("<!doctype html><html lang=\"");
+        html.push_str(locale_key(request.locale));
+        html.push_str("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>");
         html.push_str(STYLE);
         html.push_str(&format!(
             "</head><body data-explanation-level=\"{}\"><main>",

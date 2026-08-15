@@ -482,7 +482,10 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         assert!(!document.metadata.included_decisions.is_empty());
         assert!(!document.metadata.capability_coverage.is_empty());
         assert!(!document.metadata.capability_gaps.is_empty());
-        assert!(document.html.content.starts_with("<!doctype html>"));
+        assert!(document
+            .html
+            .content
+            .starts_with("<!doctype html><html lang=\"fr-CA\">"));
         assert!(!document.html.content.contains("<script"));
         assert!(!document.html.content.contains(" href="));
         assert!(!document.html.content.contains(" src="));
@@ -516,6 +519,28 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     assert!(!explicit_destination.exists());
     assert_eq!(files_under(&repository_root), before_files);
 
+    let attribute_language = "fr-CA\" data-unsafe=\"<&";
+    let attribute_safe = generate_documents(
+        &projection,
+        &DocumentRequest {
+            requested_language: attribute_language.to_owned(),
+            requested_destinations: Vec::new(),
+            ..request.clone()
+        },
+    )?;
+    assert!(attribute_safe
+        .project_architecture_guide
+        .html
+        .content
+        .starts_with("<!doctype html><html lang=\"fr-CA&quot; data-unsafe=&quot;&lt;&amp;\">"));
+    assert_eq!(
+        attribute_safe
+            .project_architecture_guide
+            .metadata
+            .requested_language,
+        attribute_language
+    );
+
     let korean = generate_documents(
         &projection,
         &DocumentRequest {
@@ -531,6 +556,11 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .markdown
         .content
         .contains("프로젝트 및 아키텍처 가이드"));
+    assert!(korean
+        .project_architecture_guide
+        .html
+        .content
+        .starts_with("<!doctype html><html lang=\"ko\">"));
     assert_eq!(canonical, canonical_before);
     assert_eq!(
         store.read_canonical_basis(

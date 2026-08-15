@@ -989,8 +989,10 @@ fn render_markdown(
 }
 
 fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLocale) -> String {
-    let mut output = String::from(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}code{overflow-wrap:anywhere}</style><title>",
+    let mut output = String::from("<!doctype html><html lang=\"");
+    output.push_str(&escape_html(&metadata.requested_language));
+    output.push_str(
+        "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}code{overflow-wrap:anywhere}</style><title>",
     );
     output.push_str(&escape_html(&body.title));
     output.push_str("</title></head><body><main><h1>");
