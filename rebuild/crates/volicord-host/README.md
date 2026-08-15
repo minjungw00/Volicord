@@ -10,6 +10,18 @@ exact current-host user turn as a user-authored Context Item. It returns both
 the canonical Source and Context Item identities; a `goal` recorded this way is
 available to ordinary Recall without creating a Decision.
 
+`repository_analyze` returns the existing Analysis and Repository Snapshot
+identities needed to bound an ordinary work unit. `checkpoint_record` takes the
+canonical Goal Context identity and baseline Analysis identity, observes the
+repository again, and derives changed paths only from compatible same-Project
+snapshot evidence. It validates explicit applied Decision identities through
+the current applicability contract and records executed verification as
+command-execution Sources; the reported command outcome remains cooperative
+host evidence rather than an OS attestation. User review and acceptance remain
+independent and are not inferred by this operation. Recall exposes the complete
+latest Checkpoint so a restarted host can recover work state, repository
+changes, Decisions, verification, limits, and next step.
+
 `candidate_manage` requires `submit_question` to declare `research_required` or
 `ready_to_ask` with an explicit `research_state_basis`.
 `attach_repository_research` binds evidence to the current Project Analysis

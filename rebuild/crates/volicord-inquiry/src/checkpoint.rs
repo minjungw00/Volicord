@@ -47,7 +47,10 @@ pub fn attribute_repository_changes(
         || basis.current.project.identity() != project_id
         || basis.baseline.repository_source.project() != project_id
         || basis.current.repository_source.project() != project_id
-        || basis.baseline.repository_source != basis.current.repository_source
+        || !basis
+            .baseline
+            .repository_source
+            .has_compatible_repository_observation_scope(&basis.current.repository_source)
     {
         return ChangeAttribution::Unavailable {
             pre_existing_paths: pre_existing,
@@ -193,7 +196,11 @@ pub fn evaluate_checkpoint_candidate(
                 CheckpointRejection::WrongProject,
                 "Repository Intelligence basis belongs to a different Project",
             ))
-        } else if basis.baseline.repository_source != basis.current.repository_source {
+        } else if !basis
+            .baseline
+            .repository_source
+            .has_compatible_repository_observation_scope(&basis.current.repository_source)
+        {
             Some((
                 CheckpointRejection::SourceUnavailable,
                 "baseline and current Repository Intelligence basis do not identify the same Project Source",
@@ -237,6 +244,10 @@ pub fn evaluate_checkpoint_candidate(
         Some(ChangeAttribution::Attributed { changed_paths, .. }) => changed_paths.clone(),
         _ => Vec::new(),
     };
+    let baseline_repository_source = candidate
+        .repository_work
+        .as_ref()
+        .map(|basis| basis.baseline.repository_source.identity());
     let current_repository_source = candidate
         .repository_work
         .as_ref()
@@ -251,39 +262,31 @@ pub fn evaluate_checkpoint_candidate(
             return reject(error.reason, error.detail, attribution);
         }
     }
-    if let Some(source_id) = current_repository_source {
-        let repository_source = match require_current_source(
-            canonical,
-            candidate.project_id,
-            source_id,
-            CheckpointSourceUse::RepositoryWork,
-        ) {
-            Ok(basis) => basis,
-            Err(error) => return reject(error.reason, error.detail, attribution),
-        };
-        let expected_basis = repository_source.snapshot_basis.clone().map_or(
-            CanonicalSourceBasis::NotApplicable,
-            CanonicalSourceBasis::Snapshot,
-        );
-        if candidate
-            .repository_work
-            .as_ref()
-            .is_some_and(|basis| basis.current.repository_source.basis() != &expected_basis)
-        {
-            return reject(
-                CheckpointRejection::SourceUnavailable,
-                format!(
-                    "Repository Intelligence Source {} snapshot basis disagrees with the current canonical Source basis",
-                    source_id
-                ),
-                attribution,
-            );
+    if let Some(repository_work) = &candidate.repository_work {
+        for (reference, semantic_use) in [
+            (
+                &repository_work.baseline.repository_source,
+                CheckpointSourceUse::BaselineRepositoryWork,
+            ),
+            (
+                &repository_work.current.repository_source,
+                CheckpointSourceUse::CurrentRepositoryWork,
+            ),
+        ] {
+            if let Err(error) =
+                validate_repository_source(canonical, candidate.project_id, reference, semantic_use)
+            {
+                return reject(error.reason, error.detail, attribution);
+            }
         }
     }
     if let Err(error) = validate_observed_facts(canonical, &candidate) {
         return reject(error.reason, error.detail, attribution);
     }
     let mut source_basis = candidate.supporting_sources;
+    if let Some(source) = baseline_repository_source {
+        source_basis.push(source);
+    }
     if let Some(source) = current_repository_source {
         source_basis.push(source);
     }
@@ -370,7 +373,8 @@ pub fn evaluate_checkpoint_candidate(
 #[derive(Clone, Copy)]
 enum CheckpointSourceUse {
     Supporting,
-    RepositoryWork,
+    BaselineRepositoryWork,
+    CurrentRepositoryWork,
     Verification,
     UserReview,
     UserAcceptance,
@@ -380,12 +384,37 @@ impl CheckpointSourceUse {
     const fn label(self) -> &'static str {
         match self {
             Self::Supporting => "Checkpoint support",
-            Self::RepositoryWork => "repository work and changed paths",
+            Self::BaselineRepositoryWork => "baseline repository work",
+            Self::CurrentRepositoryWork => "current repository work and changed paths",
             Self::Verification => "executed verification",
             Self::UserReview => "observed user review",
             Self::UserAcceptance => "observed user acceptance",
         }
     }
+}
+
+fn validate_repository_source(
+    canonical: &CanonicalReadBasis,
+    project_id: ProjectId,
+    reference: &volicord_repository_intelligence::CanonicalSourceRef,
+    semantic_use: CheckpointSourceUse,
+) -> Result<(), SourceGroundingError> {
+    let source_id = reference.identity();
+    let canonical_source = require_current_source(canonical, project_id, source_id, semantic_use)?;
+    let expected_basis = canonical_source.snapshot_basis.clone().map_or(
+        CanonicalSourceBasis::NotApplicable,
+        CanonicalSourceBasis::Snapshot,
+    );
+    if reference.basis() != &expected_basis {
+        return Err(SourceGroundingError {
+            reason: CheckpointRejection::SourceUnavailable,
+            detail: format!(
+                "Repository Intelligence Source {} snapshot basis disagrees with its canonical Source basis",
+                source_id
+            ),
+        });
+    }
+    Ok(())
 }
 
 struct SourceGroundingError {

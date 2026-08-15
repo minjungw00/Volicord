@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, fs};
+use std::{collections::BTreeSet, fs, process::Command};
 use tempfile::tempdir;
 use volicord_host::{run_stdio, HostAdapter, HOST_TOOL_NAMES};
 use volicord_operations::{LocalOperations, RuntimeLayout};
@@ -548,15 +548,28 @@ fn subsequent_host_interaction_cleans_an_expired_provider_preparation() {
 }
 
 #[test]
-fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
+fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_readback() {
     use volicord_context::{
         AgentRecommendation, Availability, NonUserQuestionOutcome, OperationId, Principal,
         PrincipalKind, QuestionAlternative, QuestionDraft, QuestionMateriality,
         QuestionResearchState, SourceDraft, SourcePayload, Store,
     };
 
-    let (_temporary, mut adapter, project) = setup();
+    let (temporary, mut adapter, project) = setup();
     let project_id = parse_project(&project);
+    let repository = temporary.path().join("repository");
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repository)
+        .arg("init")
+        .status()
+        .expect("run git init")
+        .success());
+    fs::write(
+        repository.join("pre-existing.txt"),
+        "unrelated dirty content\n",
+    )
+    .expect("pre-existing dirty fixture");
     let mut store = Store::open(adapter.operations().layout().canonical_store())
         .expect("open canonical test support store");
     let canonical_project = store.get_project(project_id).expect("load Project");
@@ -642,30 +655,214 @@ fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
         .as_str()
         .expect("Decision Source")
         .to_owned();
+    let decision_id = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after Decision")
+        .active_decisions[0]
+        .decision
+        .id
+        .to_string();
+
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"Complete a grounded ordinary-work handoff for the next Codex session.",
+            "role":"goal",
+            "statement":"Complete a grounded ordinary-work handoff"
+        }),
+    ))
+    .clone();
+    let goal_context_id = goal["context_item_id"]
+        .as_str()
+        .expect("Goal identity")
+        .to_owned();
+    let goal_source = goal["source_id"].as_str().expect("Goal Source").to_owned();
+
+    let baseline = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let baseline_id = baseline["analysis_snapshot_id"]
+        .as_str()
+        .expect("baseline Analysis Snapshot")
+        .to_owned();
+
+    let other_repository = temporary.path().join("other-repository");
+    fs::create_dir(&other_repository).expect("other repository");
+    fs::write(other_repository.join("other.txt"), "other Project\n").expect("other fixture");
+    let other = adapter
+        .operations()
+        .initialize_project("Other Host Project", Some(&other_repository))
+        .expect("other Project");
+    let other_analysis = adapter
+        .operations()
+        .analyze(other.project.id, Vec::new())
+        .expect("other analysis")
+        .value
+        .expect("other analysis value")
+        .analysis
+        .identity
+        .to_string();
+
+    let invalid_args =
+        |project_id: String, goal_id: String, analysis_id: String, decisions: Value| {
+            json!({
+                "project_id":project_id,
+                "goal_context_id":goal_id,
+                "baseline_analysis_snapshot_id":analysis_id,
+                "kind":"handoff",
+                "work_state":"paused",
+                "applied_decision_ids":decisions,
+                "verification":[{"state":"not_run"}],
+                "next_step":"Continue",
+                "handoff_to":"next Codex session"
+            })
+        };
+    let wrong_project = call(
+        &mut adapter,
+        "checkpoint_record",
+        invalid_args(
+            other.project.id.to_string(),
+            goal_context_id.clone(),
+            other_analysis.clone(),
+            json!([]),
+        ),
+    );
+    assert_eq!(wrong_project["result"]["isError"], true, "{wrong_project}");
+    let wrong_baseline = call(
+        &mut adapter,
+        "checkpoint_record",
+        invalid_args(
+            project.clone(),
+            goal_context_id.clone(),
+            other_analysis,
+            json!([]),
+        ),
+    );
+    assert_eq!(
+        wrong_baseline["result"]["isError"], true,
+        "{wrong_baseline}"
+    );
+
+    let non_goal_response = call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"This is a constraint, not the Goal.",
+            "role":"constraint",
+            "statement":"This is a constraint"
+        }),
+    );
+    assert_eq!(
+        non_goal_response["result"]["isError"], false,
+        "{non_goal_response}"
+    );
+    let non_goal = structured(&non_goal_response).clone();
+    let wrong_goal = call(
+        &mut adapter,
+        "checkpoint_record",
+        invalid_args(
+            project.clone(),
+            non_goal["context_item_id"]
+                .as_str()
+                .expect("non-Goal ID")
+                .into(),
+            baseline_id.clone(),
+            json!([]),
+        ),
+    );
+    assert_eq!(wrong_goal["result"]["isError"], true, "{wrong_goal}");
+    let wrong_decision = call(
+        &mut adapter,
+        "checkpoint_record",
+        invalid_args(
+            project.clone(),
+            goal_context_id.clone(),
+            baseline_id.clone(),
+            json!(["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]),
+        ),
+    );
+    assert_eq!(
+        wrong_decision["result"]["isError"], true,
+        "{wrong_decision}"
+    );
+    let unexecuted_pass = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline_id,
+            "kind":"handoff",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "verification":[{"state":"passed"}],
+            "next_step":"Continue",
+            "handoff_to":"next Codex session"
+        }),
+    );
+    assert_eq!(
+        unexecuted_pass["result"]["isError"], true,
+        "{unexecuted_pass}"
+    );
+
+    fs::write(repository.join("implemented.rs"), "pub fn grounded() {}\n")
+        .expect("ordinary work change");
 
     let checkpoint = structured(&call(
         &mut adapter,
         "checkpoint_record",
         json!({
             "project_id": project,
-            "user_turn": "Record a handoff checkpoint",
-            "goal": "Complete the clean host journey",
+            "goal_context_id": goal_context_id,
+            "baseline_analysis_snapshot_id": baseline_id,
+            "kind":"handoff",
+            "work_state":"paused",
+            "state_change":"Implemented the grounded handoff path",
+            "applied_decision_ids":[decision_id],
+            "verification":[
+                {"state":"passed","command_label":"cargo test -p focused","exit_code":0,"termination":"exited","outcome":"focused test passed"},
+                {"state":"failed","command_label":"cargo test -p known-failure","exit_code":1,"termination":"exited","outcome":"known failure reproduced"},
+                {"state":"not_run"}
+            ],
             "next_step": "Run maintained V08 assertions",
-            "known_limits": ["V11 is independent"]
+            "known_limits": ["V11 is independent"],
+            "handoff_to":"next Codex session"
         }),
     ))
     .clone();
-    let checkpoint_source = checkpoint["user_response_source_id"]
-        .as_str()
-        .expect("Checkpoint Source")
-        .to_owned();
-    assert_ne!(decision_source, checkpoint_source);
+    assert_eq!(
+        checkpoint["changed_paths"],
+        json!(["implemented.rs"]),
+        "{checkpoint}"
+    );
+    assert_eq!(
+        checkpoint["applied_decision_ids"],
+        json!([decision_id]),
+        "{checkpoint}"
+    );
+    assert_eq!(
+        checkpoint["verification_source_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert!(!checkpoint["changed_paths"]
+        .as_array()
+        .expect("paths")
+        .contains(&json!("pre-existing.txt")));
 
     let canonical = adapter
         .operations()
         .canonical_basis(project_id)
         .expect("canonical basis");
-    for source_id in [decision_source, checkpoint_source] {
+    for source_id in [decision_source, goal_source] {
         let source = canonical
             .sources
             .iter()
@@ -677,6 +874,94 @@ fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
         ));
         assert_eq!(source.source.actor.kind, PrincipalKind::User);
     }
+    let saved = canonical
+        .latest_checkpoint
+        .as_ref()
+        .expect("latest Checkpoint");
+    assert_eq!(saved.goal, "Complete a grounded ordinary-work handoff");
+    assert_eq!(saved.changed_paths, vec!["implemented.rs"]);
+    assert_eq!(saved.applied_decisions[0].to_string(), decision_id);
+    assert_eq!(
+        saved.verification[0].state,
+        volicord_context::VerificationState::Passed
+    );
+    assert_eq!(
+        saved.verification[1].state,
+        volicord_context::VerificationState::Failed
+    );
+    assert_eq!(
+        saved.verification[2].state,
+        volicord_context::VerificationState::NotRun
+    );
+    assert_eq!(saved.verification[2].source_id, None);
+    for (fact, exit_code) in saved.verification.iter().zip([0, 1]) {
+        let source = canonical
+            .sources
+            .iter()
+            .find(|basis| Some(basis.source.id) == fact.source_id)
+            .expect("verification command Source");
+        assert!(matches!(
+            source.source.payload,
+            SourcePayload::CommandExecution {
+                outcome: volicord_context::CommandOutcome {
+                    exit_code: Some(code),
+                    termination: volicord_context::CommandTermination::Exited,
+                },
+                ..
+            } if code == exit_code
+        ));
+        assert_eq!(source.source.actor.kind, PrincipalKind::Command);
+        assert_eq!(
+            source.source.observer.as_ref().map(|value| value.kind),
+            Some(PrincipalKind::Agent)
+        );
+    }
+    assert_eq!(
+        saved.user_review.state,
+        volicord_context::UserReviewState::NotRequested
+    );
+    assert_eq!(
+        saved.user_acceptance.state,
+        volicord_context::UserAcceptanceState::NotRequested
+    );
+
+    let mut restarted = HostAdapter::new(LocalOperations::new(
+        RuntimeLayout::new(temporary.path().join("runtime")).expect("restart runtime"),
+    ));
+    let recalled = structured(&call(
+        &mut restarted,
+        "recall",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(
+        recalled["goals"],
+        json!(["Complete a grounded ordinary-work handoff"])
+    );
+    assert_eq!(recalled["checkpoint"]["work_state"], "paused");
+    assert_eq!(
+        recalled["checkpoint"]["changed_paths"],
+        json!(["implemented.rs"])
+    );
+    assert_eq!(
+        recalled["checkpoint"]["applied_decisions"],
+        json!([decision_id])
+    );
+    assert_eq!(recalled["checkpoint"]["verification"][0]["state"], "passed");
+    assert_eq!(recalled["checkpoint"]["verification"][1]["state"], "failed");
+    assert_eq!(
+        recalled["checkpoint"]["verification"][2]["state"],
+        "not_run"
+    );
+    assert_eq!(
+        recalled["decisions"][0]["rationale"],
+        "Canonical project memory remains local"
+    );
+    assert_eq!(
+        recalled["checkpoint"]["known_limits"],
+        json!(["V11 is independent"])
+    );
+    assert_eq!(recalled["next_step"], "Run maintained V08 assertions");
 }
 
 #[test]
@@ -1390,12 +1675,31 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
         "checkpoint_record" => vec![shape(
             &[
                 "project_id",
-                "user_turn",
-                "goal",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+                "kind",
+                "work_state",
+                "state_change",
+                "applied_decision_ids",
+                "decision_components",
+                "work_contexts",
+                "met_revisit_triggers",
+                "verification",
                 "next_step",
                 "known_limits",
+                "non_goals",
+                "handoff_to",
             ],
-            &["project_id", "user_turn", "goal", "next_step"],
+            &[
+                "project_id",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+                "kind",
+                "work_state",
+                "applied_decision_ids",
+                "verification",
+                "next_step",
+            ],
         )],
         "canonical_mutate" => vec![
             shape(

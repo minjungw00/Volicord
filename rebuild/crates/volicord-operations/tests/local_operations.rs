@@ -1,8 +1,15 @@
 use std::{ffi::OsString, fs, time::Duration};
 use tempfile::TempDir;
-use volicord_context::{ContextItemRole, PrincipalKind, ProjectId, SourcePayload};
+use volicord_context::{
+    CheckpointKind, ContextItemId, ContextItemRole, PrincipalKind, ProjectId, SourcePayload,
+    VerificationState, WorkState,
+};
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
-use volicord_operations::{HealthState, LocalOperations, OperationState, RuntimeLayout};
+use volicord_operations::{
+    CommandVerificationDraft, GroundedCheckpointDraft, HealthState, LocalOperations,
+    OperationState, RuntimeLayout,
+};
+use volicord_repository_intelligence::AnalysisSnapshotId;
 
 fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
@@ -115,6 +122,44 @@ fn exact_current_host_goal_context_round_trips_through_recall(
             .len(),
         before
     );
+    Ok(())
+}
+
+#[test]
+fn grounded_checkpoint_rejects_passed_verification_without_execution_before_mutation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let project = operations
+        .initialize_project("Verification Fixture", Some(&repository))?
+        .project;
+    let before = operations.canonical_basis(project.id)?;
+    let error = operations
+        .record_grounded_checkpoint(GroundedCheckpointDraft {
+            project_id: project.id,
+            goal_context_id: ContextItemId::from_bytes([91; 16]),
+            baseline_analysis_snapshot_id: AnalysisSnapshotId::from_hex(&"00".repeat(32))?,
+            kind: CheckpointKind::Handoff,
+            work_state: WorkState::Paused,
+            state_change: None,
+            applied_decisions: Vec::new(),
+            decision_components: Vec::new(),
+            work_contexts: Vec::new(),
+            met_revisit_triggers: Vec::new(),
+            verification: vec![CommandVerificationDraft {
+                state: VerificationState::Passed,
+                command_label: None,
+                exit_code: None,
+                termination: None,
+                outcome: None,
+            }],
+            known_limits: Vec::new(),
+            non_goals: Vec::new(),
+            next_step: "Run an actual verification command".into(),
+            handoff_to: Some("next Codex session".into()),
+        })
+        .expect_err("passed verification without execution must be rejected");
+    assert!(error.message().contains("command label"));
+    assert_eq!(operations.canonical_basis(project.id)?, before);
     Ok(())
 }
 

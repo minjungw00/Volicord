@@ -1,6 +1,7 @@
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, Error, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    ChildProcessOutcome, CommandVerificationDraft, Error, GroundedCheckpointDraft,
+    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
     PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout, UserContextRecordingOutcome,
 };
@@ -22,16 +23,21 @@ use std::{
 };
 use volicord_context::{
     Availability, BundleComparison, BundleMerge, CanonicalReadBasis, CanonicalReadOptions,
-    CanonicalRecordId, CheckpointDraft, Clock, ContextItemCorrectionDraft, ContextItemDraft,
-    ContextItemId, ContextItemRole, DecisionChoice, DecisionCorrectionDraft, DecisionId,
-    DecisionSupersessionDraft, MergeResolution, OperationId, OperationResult, Principal,
-    PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload, StatementProvenanceRole, Store,
-    SystemClock, TimestampMicros, UserTurnSource,
+    CanonicalRecordId, CheckpointDraft, Clock, CommandOutcome, ContextItemCorrectionDraft,
+    ContextItemDraft, ContextItemId, ContextItemRole, DecisionChoice, DecisionCorrectionDraft,
+    DecisionId, DecisionSupersessionDraft, MergeResolution, OperationId, OperationResult,
+    Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload,
+    StatementProvenanceRole, Store, SystemClock, TimestampMicros, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
+    VerificationState,
 };
 use volicord_inquiry::{
-    compute_frontier, record_response_batch, ApplicabilityQuery, BatchResponseItem,
-    BatchResponseResult, CandidateDraft, CandidateId, CandidateReadBasis, CandidateRecord,
-    CandidateStore, FrontierRead, InquiryScope, PromotionResult, RepositoryResearchBasis,
+    attribute_repository_changes, compute_frontier, evaluate_checkpoint_candidate,
+    evaluate_decision_applicability, record_checkpoint as persist_evaluated_checkpoint,
+    record_response_batch, ApplicabilityQuery, BatchResponseItem, BatchResponseResult,
+    CandidateDraft, CandidateId, CandidateReadBasis, CandidateRecord, CandidateStore,
+    ChangeAttribution, CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
+    FrontierRead, InquiryScope, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
     SubmissionOutcome,
 };
 use volicord_local_platform::{
@@ -52,8 +58,9 @@ use volicord_projections::{
     ProjectProjectionInputs, ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
 };
 use volicord_repository_intelligence::{
-    analyze_repository, AnalysisSnapshot, CanonicalGrounding, CapabilityState, EntryKind,
-    InventoryClassification, InventoryEntry, InventoryRequest, StructuralAnalysisRequest,
+    analyze_repository, AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding, CapabilityState,
+    EntryKind, InventoryClassification, InventoryEntry, InventoryRequest,
+    StructuralAnalysisRequest,
 };
 
 pub struct LocalOperations {
@@ -1291,6 +1298,254 @@ impl LocalOperations {
         })
     }
 
+    pub fn record_grounded_checkpoint(
+        &self,
+        draft: GroundedCheckpointDraft,
+    ) -> Result<GroundedCheckpointOutcome, Error> {
+        validate_verification_drafts(&draft.verification)?;
+        let boundary_valid = match draft.kind {
+            volicord_context::CheckpointKind::Completion => {
+                draft.work_state == volicord_context::WorkState::Completed
+                    && draft.handoff_to.is_none()
+            }
+            volicord_context::CheckpointKind::Pause => {
+                draft.work_state == volicord_context::WorkState::Paused
+                    && draft.handoff_to.is_none()
+            }
+            volicord_context::CheckpointKind::Handoff => draft.handoff_to.is_some(),
+        };
+        if !boundary_valid {
+            return Err(Error::new(
+                "Checkpoint kind, work state, and handoff target are inconsistent",
+            ));
+        }
+        let initial_canonical = self.canonical_basis(draft.project_id)?;
+        let goal = initial_canonical
+            .context_items
+            .iter()
+            .find(|item| item.id == draft.goal_context_id)
+            .ok_or_else(|| Error::new("Checkpoint Goal Context was not found in the Project"))?
+            .clone();
+        if goal.role != ContextItemRole::Goal
+            || goal.provenance_role != StatementProvenanceRole::UserStatement
+            || goal.author.kind != PrincipalKind::User
+        {
+            return Err(Error::new(
+                "Checkpoint goal must reference a current user-stated Goal Context Item",
+            ));
+        }
+        for source_id in &goal.source_basis {
+            let source = initial_canonical
+                .sources
+                .iter()
+                .find(|basis| basis.source.id == *source_id)
+                .ok_or_else(|| Error::new("Checkpoint Goal Context Source is unavailable"))?;
+            if source.freshness != volicord_context::SourceFreshness::Current
+                || source.source.actor.kind != PrincipalKind::User
+                || !matches!(
+                    source.source.payload,
+                    SourcePayload::CurrentHostUserTurn { .. }
+                )
+            {
+                return Err(Error::new(
+                    "Checkpoint Goal Context is not grounded by a current-host user Source",
+                ));
+            }
+        }
+
+        let mut unique_decisions = BTreeSet::new();
+        for decision_id in &draft.applied_decisions {
+            if !unique_decisions.insert(*decision_id) {
+                return Err(Error::new("Checkpoint applied Decision IDs must be unique"));
+            }
+            if !initial_canonical
+                .active_decisions
+                .iter()
+                .any(|lifecycle| lifecycle.decision.id == *decision_id)
+            {
+                return Err(Error::new(
+                    "Checkpoint applied Decision is not current in this Project",
+                ));
+            }
+        }
+
+        let baseline =
+            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let excluded_paths = baseline
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let current_result = self.analyze(draft.project_id, excluded_paths)?;
+        let current_outcome = current_result.value.ok_or_else(|| {
+            Error::new("current repository analysis completed without a usable snapshot")
+        })?;
+        let repository_work = RepositoryWorkBasis {
+            baseline: &baseline,
+            current: &current_outcome.analysis,
+            pre_existing_dirty_paths: Vec::new(),
+        };
+        let changed_paths = match attribute_repository_changes(draft.project_id, &repository_work) {
+            ChangeAttribution::Attributed { changed_paths, .. } => changed_paths,
+            ChangeAttribution::Ambiguous { reason, .. }
+            | ChangeAttribution::Unavailable { reason, .. } => return Err(Error::new(reason)),
+        };
+
+        let current_assumptions = initial_canonical
+            .context_items
+            .iter()
+            .filter(|item| item.role == ContextItemRole::Assumption)
+            .map(|item| item.statement.clone())
+            .collect::<Vec<_>>();
+        let applicability = ApplicabilityQuery {
+            project_id: draft.project_id,
+            paths: changed_paths.clone(),
+            components: draft.decision_components.clone(),
+            work_contexts: draft.work_contexts.clone(),
+            current_assumptions,
+            met_revisit_triggers: draft.met_revisit_triggers.clone(),
+        };
+        for decision_id in &draft.applied_decisions {
+            let lifecycle = initial_canonical
+                .active_decisions
+                .iter()
+                .find(|lifecycle| lifecycle.decision.id == *decision_id)
+                .ok_or_else(|| Error::new("Checkpoint applied Decision is not current"))?;
+            let evaluation =
+                evaluate_decision_applicability(&initial_canonical, lifecycle, &applicability);
+            if evaluation.state != DecisionApplicabilityState::ReusableCurrent {
+                return Err(Error::new(format!(
+                    "Checkpoint applied Decision {} is not currently applicable: {:?}",
+                    decision_id, evaluation.issues
+                )));
+            }
+        }
+
+        let mut verification = Vec::with_capacity(draft.verification.len());
+        let mut verification_source_ids = Vec::new();
+        for fact in &draft.verification {
+            if fact.state == VerificationState::NotRun {
+                verification.push(VerificationFact {
+                    state: VerificationState::NotRun,
+                    source_id: None,
+                    outcome: None,
+                });
+                continue;
+            }
+            let source = self.record_command_source(draft.project_id, fact)?;
+            verification_source_ids.push(source.id);
+            verification.push(VerificationFact {
+                state: fact.state,
+                source_id: Some(source.id),
+                outcome: fact.outcome.clone(),
+            });
+        }
+
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let evaluation = evaluate_checkpoint_candidate(
+            &canonical,
+            CheckpointCandidate {
+                project_id: draft.project_id,
+                kind: draft.kind,
+                goal: goal.statement,
+                work_state: draft.work_state,
+                state_change: draft.state_change,
+                repository_work: Some(repository_work),
+                supporting_sources: goal.source_basis,
+                applied_decisions: draft.applied_decisions.clone(),
+                verification,
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: draft.known_limits,
+                non_goals: draft.non_goals,
+                next_step: draft.next_step,
+                handoff_to: draft.handoff_to,
+                status_only: false,
+            },
+        );
+        if let CheckpointEvaluation::Rejected { detail, .. } = &evaluation {
+            return Err(Error::new(format!(
+                "source-grounded Checkpoint was rejected: {detail}"
+            )));
+        }
+        let mut store = self.open_canonical()?;
+        let checkpoint = persist_evaluated_checkpoint(
+            &mut store,
+            new_operation_id()?,
+            draft.project_id,
+            evaluation,
+        )
+        .map_err(|error| Error::with_source("Checkpoint recording failed", error))?
+        .value;
+        Ok(GroundedCheckpointOutcome {
+            checkpoint_id: checkpoint.id,
+            checkpoint_revision: checkpoint.revision,
+            goal_context_id: draft.goal_context_id,
+            baseline_analysis_snapshot_id: baseline.identity,
+            current_analysis_snapshot_id: current_outcome.analysis.identity,
+            baseline_repository_snapshot_id: baseline.repository_snapshot,
+            current_repository_snapshot_id: current_outcome.analysis.repository_snapshot,
+            changed_paths: checkpoint.changed_paths,
+            applied_decisions: checkpoint.applied_decisions,
+            verification_source_ids,
+        })
+    }
+
+    fn record_command_source(
+        &self,
+        project_id: ProjectId,
+        draft: &CommandVerificationDraft,
+    ) -> Result<volicord_context::Source, Error> {
+        let mut canonical = self.open_canonical()?;
+        let project = canonical
+            .get_project(project_id)
+            .map_err(|error| Error::with_source("cannot read Project", error))?;
+        canonical
+            .record_source(
+                new_operation_id()?,
+                project_id,
+                SourceDraft {
+                    expected_project_revision: project.revision,
+                    payload: SourcePayload::CommandExecution {
+                        command_label: draft.command_label.clone().ok_or_else(|| {
+                            Error::new("executed verification needs a command label")
+                        })?,
+                        outcome: CommandOutcome {
+                            exit_code: draft.exit_code,
+                            termination: draft.termination.ok_or_else(|| {
+                                Error::new("executed verification needs a command termination")
+                            })?,
+                        },
+                    },
+                    actor: Principal {
+                        kind: PrincipalKind::Command,
+                        identity: "current-host-reported-command".into(),
+                    },
+                    observer: Some(Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: "codex".into(),
+                    }),
+                    availability: Availability::Available,
+                },
+            )
+            .map(|result| result.value)
+            .map_err(|error| Error::with_source("cannot record verification Source", error))
+    }
+
     fn open_canonical(&self) -> Result<Store, Error> {
         Store::open(self.layout.canonical_store())
             .map_err(|error| Error::with_source("cannot open canonical store", error))
@@ -1442,6 +1697,107 @@ impl LocalOperations {
         }
         Ok(values)
     }
+
+    fn load_analysis_snapshot(
+        &self,
+        project_id: ProjectId,
+        analysis_id: AnalysisSnapshotId,
+    ) -> Result<AnalysisSnapshot, Error> {
+        let path = self
+            .layout
+            .analysis_project_dir(project_id)
+            .join(format!("{analysis_id}.json"));
+        let bytes = fs::read(&path).map_err(|error| {
+            Error::with_source(
+                format!("baseline Analysis Snapshot {analysis_id} is unavailable"),
+                error,
+            )
+        })?;
+        let value: AnalysisSnapshot = serde_json::from_slice(&bytes).map_err(|error| {
+            Error::with_source(
+                format!("baseline Analysis Snapshot {analysis_id} is unsupported or corrupt"),
+                error,
+            )
+        })?;
+        if value.identity != analysis_id || value.project.identity() != project_id {
+            return Err(Error::new(
+                "baseline Analysis Snapshot identity or Project binding is incompatible",
+            ));
+        }
+        Ok(value)
+    }
+}
+
+fn validate_verification_drafts(values: &[CommandVerificationDraft]) -> Result<(), Error> {
+    for value in values {
+        if value.state == VerificationState::NotRun {
+            if value.command_label.is_some()
+                || value.exit_code.is_some()
+                || value.termination.is_some()
+                || value.outcome.is_some()
+            {
+                return Err(Error::new(
+                    "not-run verification cannot claim command execution or an outcome",
+                ));
+            }
+            continue;
+        }
+        let label = value
+            .command_label
+            .as_deref()
+            .ok_or_else(|| Error::new("executed verification needs a command label"))?;
+        if label.is_empty() || label.chars().count() > 1_024 {
+            return Err(Error::new(
+                "verification command label must contain 1 to 1024 characters",
+            ));
+        }
+        let outcome = value
+            .outcome
+            .as_deref()
+            .ok_or_else(|| Error::new("executed verification needs an outcome"))?;
+        if outcome.is_empty() || outcome.chars().count() > 16_384 {
+            return Err(Error::new(
+                "verification outcome must contain 1 to 16384 characters",
+            ));
+        }
+        let termination = value
+            .termination
+            .ok_or_else(|| Error::new("executed verification needs a command termination"))?;
+        match termination {
+            volicord_context::CommandTermination::Exited if value.exit_code.is_none() => {
+                return Err(Error::new(
+                    "an exited verification command requires its actual exit code",
+                ));
+            }
+            volicord_context::CommandTermination::Signaled
+            | volicord_context::CommandTermination::SpawnFailed
+            | volicord_context::CommandTermination::Indeterminate
+                if value.exit_code.is_some() =>
+            {
+                return Err(Error::new(
+                    "a non-exited verification command cannot claim an exit code",
+                ));
+            }
+            _ => {}
+        }
+        if value.state == VerificationState::Passed
+            && !(termination == volicord_context::CommandTermination::Exited
+                && value.exit_code == Some(0))
+        {
+            return Err(Error::new(
+                "passed verification requires an executed command that exited with code 0",
+            ));
+        }
+        if value.state == VerificationState::Failed
+            && termination == volicord_context::CommandTermination::Exited
+            && value.exit_code == Some(0)
+        {
+            return Err(Error::new(
+                "failed verification cannot claim a command that exited with code 0",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn background_source(
@@ -1714,8 +2070,10 @@ fn repository_observation_basis(root: &Path, observed_at: i64) -> Result<String,
     let mut digest = Sha256::new();
     digest.update((coordinate.len() as u64).to_be_bytes());
     digest.update(coordinate.as_bytes());
-    digest.update(observed_at.to_be_bytes());
-    Ok(format!("local-observation:sha256:{:x}", digest.finalize()))
+    Ok(format!(
+        "local-observation:sha256:{:x}:at:{observed_at}",
+        digest.finalize()
+    ))
 }
 
 fn new_operation_id() -> Result<OperationId, Error> {

@@ -7,13 +7,12 @@ use std::{
     path::PathBuf,
 };
 use volicord_context::{
-    AgentRecommendation, ApplicabilityScope, CanonicalRecordId, CheckpointDraft, CheckpointId,
-    CheckpointKind, Clock, ContextItemCorrectionDraft, ContextItemId, ContextItemRole,
+    AgentRecommendation, ApplicabilityScope, CanonicalRecordId, CheckpointId, CheckpointKind,
+    Clock, CommandTermination, ContextItemCorrectionDraft, ContextItemId, ContextItemRole,
     CorrectionKind, DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId,
     Principal, PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
     QuestionEvidenceFreshness, QuestionId, QuestionResearchState, SourceId, SystemClock,
-    TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
-    VerificationFact, VerificationState, WorkState,
+    TimestampMicros, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
@@ -23,12 +22,12 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft, ConfirmationDecision,
-    ConfirmationRejection, ConfirmationRequestId, FilterOutcome, GuardedOperationId,
-    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
-    GuardedProviderPreparationOutcome, HealthState, LocalOperations, ProviderRequestId,
-    ProviderRequestOutcome, ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass,
-    TransmissionOutcome,
+    AnalysisSnapshotId, BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft,
+    CommandVerificationDraft, ConfirmationDecision, ConfirmationRejection, ConfirmationRequestId,
+    FilterOutcome, GroundedCheckpointDraft, GuardedOperationId, GuardedOperationOutcome,
+    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
+    HealthState, LocalOperations, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
+    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
 };
 use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
@@ -211,12 +210,33 @@ impl HostAdapter {
             .operations
             .recall(project(args)?)
             .map_err(operation_error)?;
+        let checkpoint = brief.latest_meaningful_checkpoint.map(|value| json!({
+            "identity":value.id.to_string(),
+            "revision":value.revision,
+            "kind":checkpoint_kind_name(value.kind),
+            "goal":value.goal,
+            "work_state":work_state_name(value.work_state),
+            "state_change":value.state_change,
+            "source_basis":value.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "changed_source_basis":value.changed_source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "changed_paths":value.changed_paths,
+            "applied_decisions":value.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "verification":value.verification.into_iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+            "user_review":{"state":user_review_state_name(value.user_review.state),"source_id":value.user_review.source_id.map(|id| id.to_string())},
+            "user_acceptance":{"state":user_acceptance_state_name(value.user_acceptance.state),"source_id":value.user_acceptance.source_id.map(|id| id.to_string())},
+            "known_limits":value.known_limits,
+            "non_goals":value.non_goals,
+            "open_questions":value.open_questions.into_iter().map(|question| json!({"identity":question.question_id.to_string(),"revision":question.revision})).collect::<Vec<_>>(),
+            "next_step":value.next_step,
+            "handoff_to":value.handoff_to,
+            "recorded_at_unix_micros":value.recorded_at.as_unix_micros(),
+        }));
         Ok(json!({
             "project_id":brief.project_id.to_string(),"project_name":brief.project_name,
             "goals":brief.goals_and_why.into_iter().map(|value| value.statement).collect::<Vec<_>>(),
             "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
             "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
-            "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"omitted_count":brief.omitted_count,
+            "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
             "read_only":true
         }))
     }
@@ -252,8 +272,16 @@ impl HostAdapter {
             .operations
             .analyze(project(args)?, excludes)
             .map_err(operation_error)?;
+        let analysis_snapshot_id = result
+            .value
+            .as_ref()
+            .map(|value| value.analysis.identity.to_string());
+        let repository_snapshot_id = result
+            .value
+            .as_ref()
+            .map(|value| value.repository.identity.to_string());
         Ok(
-            json!({"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
+            json!({"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
         )
     }
 
@@ -352,68 +380,52 @@ impl HostAdapter {
 
     fn checkpoint_record(&self, args: &Value) -> Result<Value, HostError> {
         let project_id = project(args)?;
-        let source = self
-            .operations
-            .record_user_source(
-                project_id,
-                "codex".into(),
-                self.host_session.clone(),
-                required_str(args, "user_turn")?.to_owned(),
-            )
-            .map_err(operation_error)?;
-        let source_id = parse_source(&source.identity)?;
-        let canonical = self
-            .operations
-            .canonical_basis(project_id)
-            .map_err(operation_error)?;
+        let verification = args
+            .get("verification")
+            .and_then(Value::as_array)
+            .ok_or_else(|| HostError::new("verification must be an array"))?
+            .iter()
+            .map(command_verification)
+            .collect::<Result<Vec<_>, _>>()?;
         let result = self
             .operations
-            .record_checkpoint(
+            .record_grounded_checkpoint(GroundedCheckpointDraft {
                 project_id,
-                CheckpointDraft {
-                    expected_project_revision: canonical.project.revision,
-                    kind: CheckpointKind::Handoff,
-                    goal: required_str(args, "goal")?.to_owned(),
-                    work_state: WorkState::Paused,
-                    state_change: Some("explicit Codex host checkpoint".into()),
-                    source_basis: vec![source_id],
-                    changed_source_basis: Vec::new(),
-                    changed_paths: Vec::new(),
-                    applied_decisions: Vec::new(),
-                    verification: vec![VerificationFact {
-                        state: VerificationState::NotRun,
-                        source_id: None,
-                        outcome: None,
-                    }],
-                    user_review: UserReviewFact {
-                        state: UserReviewState::NotRequested,
-                        source_id: None,
-                    },
-                    user_acceptance: UserAcceptanceFact {
-                        state: UserAcceptanceState::NotRequested,
-                        source_id: None,
-                    },
-                    known_limits: args
-                        .get("known_limits")
-                        .and_then(Value::as_array)
-                        .map(|values| {
-                            values
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .map(ToOwned::to_owned)
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                    non_goals: Vec::new(),
-                    open_questions: Vec::new(),
-                    next_step: required_str(args, "next_step")?.to_owned(),
-                    handoff_to: Some("next Codex session".into()),
-                },
-            )
+                goal_context_id: ContextItemId::from_bytes(parse_identity(required_str(
+                    args,
+                    "goal_context_id",
+                )?)?),
+                baseline_analysis_snapshot_id: AnalysisSnapshotId::from_hex(required_str(
+                    args,
+                    "baseline_analysis_snapshot_id",
+                )?)
+                .map_err(HostError::new)?,
+                kind: checkpoint_kind(required_str(args, "kind")?)?,
+                work_state: work_state(required_str(args, "work_state")?)?,
+                state_change: optional_string(args, "state_change")?,
+                applied_decisions: decision_ids(args, "applied_decision_ids")?,
+                decision_components: string_array(args, "decision_components")?,
+                work_contexts: string_array(args, "work_contexts")?,
+                met_revisit_triggers: string_array(args, "met_revisit_triggers")?,
+                verification,
+                known_limits: string_array(args, "known_limits")?,
+                non_goals: string_array(args, "non_goals")?,
+                next_step: required_str(args, "next_step")?.to_owned(),
+                handoff_to: optional_string(args, "handoff_to")?,
+            })
             .map_err(operation_error)?;
-        Ok(
-            json!({"checkpoint_id":result.identity,"revision":result.revision,"user_response_source_id":source_id.to_string()}),
-        )
+        Ok(json!({
+            "checkpoint_id":result.checkpoint_id.to_string(),
+            "revision":result.checkpoint_revision,
+            "goal_context_id":result.goal_context_id.to_string(),
+            "baseline_analysis_snapshot_id":result.baseline_analysis_snapshot_id.to_string(),
+            "current_analysis_snapshot_id":result.current_analysis_snapshot_id.to_string(),
+            "baseline_repository_snapshot_id":result.baseline_repository_snapshot_id.to_string(),
+            "current_repository_snapshot_id":result.current_repository_snapshot_id.to_string(),
+            "changed_paths":result.changed_paths,
+            "applied_decision_ids":result.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "verification_source_ids":result.verification_source_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        }))
     }
 
     fn context_record(&self, args: &Value) -> Result<Value, HostError> {
@@ -1107,23 +1119,33 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 vec![
                     ("project_id", identity_schema("Project identity")),
                     ("user_turn", user_turn_schema()),
-                    ("role", enum_schema("User-statement Context role", &["goal", "fact", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
+                    ("role", enum_schema("User-statement Context role", &["goal", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
                     ("statement", text_schema("Verbatim bounded statement from the current-host user turn", 1, 16_384)),
                 ],
                 &["project_id", "user_turn", "role", "statement"],
             ),
         ),
         "checkpoint_record" => (
-            "Record a source-linked current-host handoff Checkpoint.",
+            "Record a grounded Checkpoint from a canonical Goal, repository baseline/current analysis, applicable Decisions, and truthful verification evidence.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
-                    ("user_turn", user_turn_schema()),
-                    ("goal", text_schema("Current Project goal", 1, 16_384)),
+                    ("goal_context_id", identity_schema("Canonical user-stated Goal Context identity")),
+                    ("baseline_analysis_snapshot_id", digest_identity_schema("Baseline Analysis Snapshot identity")),
+                    ("kind", enum_schema("Checkpoint kind", &["completion", "pause", "handoff"])),
+                    ("work_state", enum_schema("Independent work state", &["in_progress", "paused", "completed", "abandoned", "superseded"])),
+                    ("state_change", text_schema("Optional meaningful state change", 1, 16_384)),
+                    ("applied_decision_ids", identity_array_schema("Explicit applied Decision identities", 0)),
+                    ("decision_components", string_array_schema("Current components used to evaluate Decision applicability")),
+                    ("work_contexts", string_array_schema("Current work contexts used to evaluate Decision applicability")),
+                    ("met_revisit_triggers", string_array_schema("Decision revisit triggers known to be met")),
+                    ("verification", checkpoint_verification_schema()),
                     ("next_step", text_schema("Next meaningful step", 1, 16_384)),
                     ("known_limits", string_array_schema("Known limits")),
+                    ("non_goals", string_array_schema("Explicit non-goals")),
+                    ("handoff_to", text_schema("Required target for handoff checkpoints", 1, 4096)),
                 ],
-                &["project_id", "user_turn", "goal", "next_step"],
+                &["project_id", "goal_context_id", "baseline_analysis_snapshot_id", "kind", "work_state", "applied_decision_ids", "verification", "next_step"],
             ),
         ),
         "canonical_inspect" => (
@@ -1652,6 +1674,14 @@ fn identity_schema(description: &str) -> Value {
     })
 }
 
+fn digest_identity_schema(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": description,
+        "pattern": "^[0-9a-fA-F]{64}$",
+    })
+}
+
 fn fingerprint_schema() -> Value {
     json!({
         "type": "string",
@@ -1700,7 +1730,33 @@ fn identity_array_schema(description: &str, minimum: usize) -> Value {
         "type": "array",
         "description": description,
         "minItems": minimum,
-        "items": identity_schema("Canonical Source identity"),
+        "items": identity_schema(description),
+    })
+}
+
+fn checkpoint_verification_schema() -> Value {
+    json!({
+        "type": "array",
+        "description": "Independent verification observations; executed states require command evidence",
+        "minItems": 1,
+        "items": {
+            "oneOf": [
+                object_schema(
+                    vec![("state", enum_schema("Verification state", &["not_run"]))],
+                    &["state"],
+                ),
+                object_schema(
+                    vec![
+                        ("state", enum_schema("Executed verification state", &["partial", "passed", "failed"])),
+                        ("command_label", text_schema("Bounded cooperative command label", 1, 1024)),
+                        ("exit_code", unsigned_schema("Actual process exit code when termination is exited", 0)),
+                        ("termination", enum_schema("Actual command termination", &["exited", "signaled", "spawn_failed", "indeterminate"])),
+                        ("outcome", text_schema("Observed verification outcome", 1, 16_384)),
+                    ],
+                    &["state", "command_label", "termination", "outcome"],
+                ),
+            ]
+        }
     })
 }
 
@@ -1815,7 +1871,10 @@ fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), Stri
         {
             Err(format!("{path} must be a sha256 fingerprint"))
         }
-        Some("^[0-9a-fA-F]{32}$" | "^sha256:[0-9a-f]{64}$") | None => Ok(()),
+        Some("^[0-9a-fA-F]{64}$") if !is_hex(text, 64, true) => {
+            Err(format!("{path} must contain 64 hexadecimal digits"))
+        }
+        Some("^[0-9a-fA-F]{32}$" | "^[0-9a-fA-F]{64}$" | "^sha256:[0-9a-f]{64}$") | None => Ok(()),
         Some(pattern) => Err(format!("{path} uses unsupported schema pattern {pattern}")),
     }
 }
@@ -2167,6 +2226,109 @@ fn context_item_role(value: &str) -> Result<ContextItemRole, HostError> {
     }
 }
 
+const fn checkpoint_kind_name(value: CheckpointKind) -> &'static str {
+    match value {
+        CheckpointKind::Completion => "completion",
+        CheckpointKind::Pause => "pause",
+        CheckpointKind::Handoff => "handoff",
+    }
+}
+
+fn checkpoint_kind(value: &str) -> Result<CheckpointKind, HostError> {
+    match value {
+        "completion" => Ok(CheckpointKind::Completion),
+        "pause" => Ok(CheckpointKind::Pause),
+        "handoff" => Ok(CheckpointKind::Handoff),
+        _ => Err(HostError::new("unknown Checkpoint kind")),
+    }
+}
+
+const fn work_state_name(value: WorkState) -> &'static str {
+    match value {
+        WorkState::InProgress => "in_progress",
+        WorkState::Paused => "paused",
+        WorkState::Completed => "completed",
+        WorkState::Abandoned => "abandoned",
+        WorkState::Superseded => "superseded",
+    }
+}
+
+fn work_state(value: &str) -> Result<WorkState, HostError> {
+    match value {
+        "in_progress" => Ok(WorkState::InProgress),
+        "paused" => Ok(WorkState::Paused),
+        "completed" => Ok(WorkState::Completed),
+        "abandoned" => Ok(WorkState::Abandoned),
+        "superseded" => Ok(WorkState::Superseded),
+        _ => Err(HostError::new("unknown work state")),
+    }
+}
+
+const fn verification_state_name(value: VerificationState) -> &'static str {
+    match value {
+        VerificationState::NotRun => "not_run",
+        VerificationState::Partial => "partial",
+        VerificationState::Passed => "passed",
+        VerificationState::Failed => "failed",
+    }
+}
+
+const fn user_review_state_name(value: volicord_context::UserReviewState) -> &'static str {
+    match value {
+        volicord_context::UserReviewState::NotRequested => "not_requested",
+        volicord_context::UserReviewState::Pending => "pending",
+        volicord_context::UserReviewState::Reviewed => "reviewed",
+    }
+}
+
+const fn user_acceptance_state_name(value: volicord_context::UserAcceptanceState) -> &'static str {
+    match value {
+        volicord_context::UserAcceptanceState::NotRequested => "not_requested",
+        volicord_context::UserAcceptanceState::Pending => "pending",
+        volicord_context::UserAcceptanceState::Accepted => "accepted",
+        volicord_context::UserAcceptanceState::Rejected => "rejected",
+    }
+}
+
+fn command_verification(value: &Value) -> Result<CommandVerificationDraft, HostError> {
+    let state = match required_str(value, "state")? {
+        "not_run" => VerificationState::NotRun,
+        "partial" => VerificationState::Partial,
+        "passed" => VerificationState::Passed,
+        "failed" => VerificationState::Failed,
+        _ => return Err(HostError::new("unknown verification state")),
+    };
+    let termination = value
+        .get("termination")
+        .and_then(Value::as_str)
+        .map(|value| match value {
+            "exited" => Ok(CommandTermination::Exited),
+            "signaled" => Ok(CommandTermination::Signaled),
+            "spawn_failed" => Ok(CommandTermination::SpawnFailed),
+            "indeterminate" => Ok(CommandTermination::Indeterminate),
+            _ => Err(HostError::new("unknown command termination")),
+        })
+        .transpose()?;
+    let exit_code = value
+        .get("exit_code")
+        .and_then(Value::as_u64)
+        .map(|code| i32::try_from(code).map_err(|_| HostError::new("exit_code exceeds i32 range")))
+        .transpose()?;
+    Ok(CommandVerificationDraft {
+        state,
+        command_label: value
+            .get("command_label")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        exit_code,
+        termination,
+        outcome: value
+            .get("outcome")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+    })
+}
+
 const fn candidate_freshness_name(state: CandidateFreshness) -> &'static str {
     match state {
         CandidateFreshness::Current => "current",
@@ -2240,6 +2402,24 @@ fn string_array(value: &Value, key: &str) -> Result<Vec<String>, HostError> {
         })
         .transpose()
         .map(Option::unwrap_or_default)
+}
+
+fn optional_string(value: &Value, key: &str) -> Result<Option<String>, HostError> {
+    value
+        .get(key)
+        .map(|item| {
+            item.as_str()
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| HostError::new(format!("{key} must be a string")))
+        })
+        .transpose()
+}
+
+fn decision_ids(value: &Value, key: &str) -> Result<Vec<DecisionId>, HostError> {
+    string_array(value, key)?
+        .into_iter()
+        .map(|identity| Ok(DecisionId::from_bytes(parse_identity(&identity)?)))
+        .collect()
 }
 
 fn source_ids(value: &Value, key: &str) -> Result<Vec<SourceId>, HostError> {

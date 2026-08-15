@@ -509,7 +509,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         mut store,
         project,
         repository,
-        user_turn: _user_turn,
+        user_turn,
     } = setup()?;
     let repository_root = root.path().join("repo");
     fs::create_dir_all(repository_root.join("src"))?;
@@ -542,6 +542,48 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
             changed_paths: vec!["src/lib.rs".to_owned()],
         }
     );
+    let compatible_reference = |identity: SourceId, scope: &str, observed_at: i64| {
+        serde_json::from_value::<CanonicalSourceRef>(serde_json::json!({
+            "project": project.id.to_string(),
+            "identity": identity.to_string(),
+            "basis": {
+                "kind": "snapshot",
+                "value": format!("local-observation:sha256:{scope}:at:{observed_at}")
+            }
+        }))
+    };
+    let scope = "ab".repeat(32);
+    let mut distinct_baseline = baseline.clone();
+    let mut distinct_current = current.clone();
+    distinct_baseline.repository_source = compatible_reference(repository.id, &scope, 1_000)?;
+    distinct_current.repository_source = compatible_reference(user_turn.id, &scope, 2_000)?;
+    assert_eq!(
+        attribute_repository_changes(
+            project.id,
+            &RepositoryWorkBasis {
+                baseline: &distinct_baseline,
+                current: &distinct_current,
+                pre_existing_dirty_paths: vec!["pre.txt".into()],
+            }
+        ),
+        ChangeAttribution::Attributed {
+            pre_existing_paths: vec!["pre.txt".into()],
+            changed_paths: vec!["src/lib.rs".into()],
+        }
+    );
+    distinct_current.repository_source =
+        compatible_reference(user_turn.id, &"cd".repeat(32), 2_000)?;
+    assert!(matches!(
+        attribute_repository_changes(
+            project.id,
+            &RepositoryWorkBasis {
+                baseline: &distinct_baseline,
+                current: &distinct_current,
+                pre_existing_dirty_paths: Vec::new(),
+            }
+        ),
+        ChangeAttribution::Unavailable { .. }
+    ));
     let evaluation = evaluate_checkpoint_candidate(
         &canonical,
         CheckpointCandidate {
@@ -825,7 +867,7 @@ fn repository_checkpoint_basis_requires_current_analysis_and_canonical_source(
             &degraded,
             repository_checkpoint_candidate(project.id, &baseline, &current),
         );
-        assert_checkpoint_rejection(evaluation, expected, "repository work and changed paths");
+        assert_checkpoint_rejection(evaluation, expected, "baseline repository work");
     }
 
     for (freshness, expected) in [

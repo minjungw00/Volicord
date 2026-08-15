@@ -127,6 +127,38 @@ impl CanonicalSourceRef {
     pub const fn basis(&self) -> &CanonicalSourceBasis {
         &self.basis
     }
+
+    /// Returns whether two repository observations belong to the same bounded
+    /// local repository coordinate. Observation Sources and snapshot identities
+    /// remain distinct; only their explicit coordinate scope is compared.
+    pub fn has_compatible_repository_observation_scope(&self, other: &Self) -> bool {
+        if self.project != other.project {
+            return false;
+        }
+        if self == other {
+            return true;
+        }
+        match (&self.basis, &other.basis) {
+            (CanonicalSourceBasis::Snapshot(left), CanonicalSourceBasis::Snapshot(right)) => {
+                repository_observation_scope(left).is_some_and(|left_scope| {
+                    repository_observation_scope(right)
+                        .is_some_and(|right_scope| left_scope == right_scope)
+                })
+            }
+            (CanonicalSourceBasis::NotApplicable, _) | (_, CanonicalSourceBasis::NotApplicable) => {
+                false
+            }
+        }
+    }
+}
+
+fn repository_observation_scope(value: &str) -> Option<&str> {
+    let value = value.strip_prefix("local-observation:sha256:")?;
+    let (scope, observed_at) = value.split_once(":at:")?;
+    (scope.len() == 64
+        && scope.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && observed_at.parse::<i64>().is_ok())
+    .then_some(scope)
 }
 
 impl fmt::Display for CanonicalSourceRef {

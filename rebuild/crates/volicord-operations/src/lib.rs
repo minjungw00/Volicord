@@ -24,7 +24,8 @@ pub use guarded::{
 pub use layout::RuntimeLayout;
 pub use model::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    ChildProcessOutcome, CommandVerificationDraft, GroundedCheckpointDraft,
+    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
     PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
 };
@@ -33,3 +34,4 @@ pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,
     SourceClass, TransmissionOutcome,
 };
+pub use volicord_repository_intelligence::AnalysisSnapshotId;

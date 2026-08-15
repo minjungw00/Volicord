@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use volicord_context::{
-    ContextItemId, ContextItemRole, LocalBinding, OperationId, Project, SourceId,
+    CheckpointId, CheckpointKind, CommandTermination, ContextItemId, ContextItemRole, DecisionId,
+    LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
 };
 use volicord_inquiry::CandidateFreshness;
 use volicord_local_platform::{
@@ -8,6 +9,7 @@ use volicord_local_platform::{
     ProcessTreeCleanup,
 };
 use volicord_repository_intelligence::{AnalysisSnapshot, RepositorySnapshot};
+use volicord_repository_intelligence::{AnalysisSnapshotId, RepositorySnapshotId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OperationState {
@@ -187,4 +189,46 @@ pub struct UserContextRecordingOutcome {
     pub context_item_id: ContextItemId,
     pub context_item_revision: u64,
     pub role: ContextItemRole,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommandVerificationDraft {
+    pub state: VerificationState,
+    pub command_label: Option<String>,
+    pub exit_code: Option<i32>,
+    pub termination: Option<CommandTermination>,
+    pub outcome: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroundedCheckpointDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub kind: CheckpointKind,
+    pub work_state: WorkState,
+    pub state_change: Option<String>,
+    pub applied_decisions: Vec<DecisionId>,
+    pub decision_components: Vec<String>,
+    pub work_contexts: Vec<String>,
+    pub met_revisit_triggers: Vec<String>,
+    pub verification: Vec<CommandVerificationDraft>,
+    pub known_limits: Vec<String>,
+    pub non_goals: Vec<String>,
+    pub next_step: String,
+    pub handoff_to: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroundedCheckpointOutcome {
+    pub checkpoint_id: CheckpointId,
+    pub checkpoint_revision: u64,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub current_analysis_snapshot_id: AnalysisSnapshotId,
+    pub baseline_repository_snapshot_id: RepositorySnapshotId,
+    pub current_repository_snapshot_id: RepositorySnapshotId,
+    pub changed_paths: Vec<String>,
+    pub applied_decisions: Vec<DecisionId>,
+    pub verification_source_ids: Vec<SourceId>,
 }

@@ -225,7 +225,11 @@ def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
         if pattern == "^[0-9a-fA-F]{32}$":
             if "guarded confirmation" in description:
                 return context["confirmation_request_id"]
+            if "goal context" in description:
+                return context["goal_context_id"]
             return context["project_id"]
+        if pattern == "^[0-9a-fA-F]{64}$":
+            return context["baseline_analysis_snapshot_id"]
         if pattern == "^sha256:[0-9a-f]{64}$":
             return context["effect_fingerprint"]
         if "user turn" in description:
@@ -298,13 +302,15 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
 
 def exercise_discovered_tool_contracts(
     process: subprocess.Popen[str], catalog: list[dict[str, Any]], project_id: str,
-    guarded: dict[str, Any]
+    guarded: dict[str, Any], goal_context_id: str, baseline_analysis_snapshot_id: str
 ) -> dict[str, Any]:
     context = {
         "project_id": project_id,
         "confirmation_request_id": guarded["confirmation_request_identity"],
         "request_revision": guarded["request_revision"],
         "effect_fingerprint": guarded["effect_fingerprint"],
+        "goal_context_id": goal_context_id,
+        "baseline_analysis_snapshot_id": baseline_analysis_snapshot_id,
     }
     by_name = {entry["name"]: entry for entry in catalog}
     request_id = 100
@@ -343,7 +349,20 @@ def exercise_discovered_tool_contracts(
     request_id += 1
     require(recall["project_id"] == project_id and recall["read_only"] is True, "schema-built Recall failed")
 
-    checkpoint_args = arguments_from_schema(by_name["checkpoint_record"]["inputSchema"], context)
+    checkpoint_args = {
+        "project_id": project_id,
+        "goal_context_id": goal_context_id,
+        "baseline_analysis_snapshot_id": baseline_analysis_snapshot_id,
+        "kind": "pause",
+        "work_state": "paused",
+        "applied_decision_ids": [],
+        "verification": [{"state": "not_run"}],
+        "next_step": "Continue the schema-driven integration journey",
+    }
+    require(
+        schema_error(by_name["checkpoint_record"]["inputSchema"], checkpoint_args) is None,
+        "grounded schema-built Checkpoint arguments are invalid",
+    )
     checkpoint = tool(process, request_id, "checkpoint_record", checkpoint_args)
     request_id += 1
     require(checkpoint.get("checkpoint_id"), "schema-built Checkpoint failed")
@@ -806,19 +825,44 @@ def main() -> int:
         require(health["capability_state"] == "healthy", "clean Project is not healthy")
         recall = tool(host, 4, "recall", {"project_id": project_id})
         require(recall["project_id"] == project_id and recall["read_only"] is True, "Recall mismatch")
-        checkpoint = tool(
+        goal = tool(
             host,
             5,
+            "context_record",
+            {
+                "project_id": project_id,
+                "user_turn": "Validate Linux and Codex integration through the current product path.",
+                "role": "goal",
+                "statement": "Validate Linux and Codex integration",
+            },
+        )
+        baseline = tool(host, 6, "repository_analyze", {"project_id": project_id})
+        require(baseline.get("analysis_snapshot_id"), "analysis did not expose its stable identity")
+        (repository / "grounded-checkpoint.txt").write_text(
+            "ordinary work after the baseline\n", encoding="utf-8"
+        )
+        checkpoint = tool(
+            host,
+            7,
             "checkpoint_record",
             {
                 "project_id": project_id,
-                "user_turn": "Pause the V08 clean integration journey",
-                "goal": "Validate Linux and Codex integration",
+                "goal_context_id": goal["context_item_id"],
+                "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
+                "kind": "handoff",
+                "work_state": "paused",
+                "applied_decision_ids": [],
+                "verification": [{"state": "not_run"}],
                 "next_step": "Restart the host",
                 "known_limits": ["V11 remains independent"],
+                "handoff_to": "next Codex session",
             },
         )
         require(checkpoint.get("checkpoint_id"), "Checkpoint call did not create identity")
+        require(
+            checkpoint.get("changed_paths") == ["grounded-checkpoint.txt"],
+            "Checkpoint did not derive the ordinary-work path",
+        )
 
         expiration = str(time.time_ns() // 1_000 + 600_000_000)
         guarded = json.loads(
@@ -839,7 +883,14 @@ def main() -> int:
                 env,
             ).stdout
         )
-        schema_evidence = exercise_discovered_tool_contracts(host, catalog, project_id, guarded)
+        schema_evidence = exercise_discovered_tool_contracts(
+            host,
+            catalog,
+            project_id,
+            guarded,
+            goal["context_item_id"],
+            baseline["analysis_snapshot_id"],
+        )
         stop_host(host)
 
         restarted = start_host(prefix / "bin" / "volicord-mcp", env)
