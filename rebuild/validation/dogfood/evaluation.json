@@ -1,0 +1,93 @@
+{
+  "kind": "phase8_dogfood_evaluation_definition",
+  "status_values": [
+    "passed",
+    "failed",
+    "partial",
+    "unsupported",
+    "skipped",
+    "environment_blocked"
+  ],
+  "candidate_cycle_count": 2,
+  "repository_classes": {
+    "volicord": {
+      "actual_repository_required": true,
+      "expected_revision": "candidate_head"
+    },
+    "small-python": {
+      "actual_repository_required": true,
+      "maximum_files": 250,
+      "official_structural_language_count": 1
+    },
+    "polyglot-medium": {
+      "actual_repository_required": true,
+      "minimum_files": 100,
+      "minimum_official_structural_languages": 3,
+      "documentation_required": true
+    }
+  },
+  "required_product_steps": [
+    "clean_install",
+    "codex_mcp_connection",
+    "project_binding",
+    "repository_analysis",
+    "source_grounded_understanding",
+    "candidate_boundary",
+    "inquiry_decision",
+    "ordinary_work",
+    "guarded_boundary",
+    "checkpoint",
+    "restart_recall",
+    "portable_clone",
+    "divergent_conflict",
+    "correction_supersession_deletion",
+    "document_outputs",
+    "provider_failure",
+    "parser_failure",
+    "derived_index_recovery"
+  ],
+  "quality_observations": [
+    "context_recovery_accuracy",
+    "decision_repetition",
+    "question_relevance",
+    "decision_comprehension",
+    "source_grounding",
+    "capability_honesty",
+    "coverage",
+    "memory_correctability",
+    "interruption_cost",
+    "document_fidelity_and_usefulness",
+    "portability",
+    "recovery"
+  ],
+  "measurements": [
+    "inventory_analysis_duration_ms",
+    "recall_duration_ms",
+    "document_generation_duration_ms",
+    "repair_reindex_duration_ms",
+    "document_output_bytes",
+    "portable_bundle_bytes",
+    "runtime_home_bytes",
+    "derived_state_bytes",
+    "peak_memory_bytes"
+  ],
+  "accessibility_checks": [
+    "keyboard_reachability",
+    "visible_focus",
+    "not_color_only",
+    "headings_and_labels",
+    "narrow_and_zoomed_presentation",
+    "korean_english_fixed_ui",
+    "document_html_language"
+  ],
+  "fixture_regression_command": [
+    "python3",
+    "rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py"
+  ],
+  "codex_transmission": {
+    "authorization_assertion": "phase8-openai-codex-project-health-six-real-repository-cycles",
+    "destination": "OpenAI Codex service used by the installed Codex CLI",
+    "purpose": "one bounded project_health turn in each of two fresh cycles for three actual repositories",
+    "source_scope": "bounded prompt, Project identity, and project_health tool result; no intended repository source body"
+  }
+}
