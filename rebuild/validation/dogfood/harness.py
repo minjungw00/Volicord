@@ -14,10 +14,10 @@ import os
 from pathlib import Path
 import platform
 import re
-import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Callable
 
@@ -31,6 +31,18 @@ ALLOWED_STATUS = {
     "passed", "failed", "partial", "unsupported", "skipped", "environment_blocked"
 }
 CLASSES = ("volicord", "small-python", "polyglot-medium")
+REAL_SESSION_CHECKS = (
+    "repository_specific_objective",
+    "clean_bounded_baseline",
+    "meaningful_ordinary_changes",
+    "source_grounded_checkpoint",
+    "explicit_user_decision_source",
+    "distinct_work_and_resume_invocations",
+    "fresh_resume_without_prior_context",
+    "recall_precedes_inspection_and_continuation",
+    "recall_matches_checkpoint_decision_and_context",
+    "meaningful_recalled_continuation",
+)
 OFFICIAL_SUFFIXES = {
     ".java": "Java",
     ".py": "Python",
@@ -117,6 +129,11 @@ def load_definition() -> dict[str, Any]:
     v11 = load_v11()
     if tuple(value.get("required_product_steps", [])) != tuple(v11.REQUIRED_STEPS):
         raise ValueError("Phase 8 no longer routes its product journey through maintained V11 steps")
+    evidence = value.get("real_session_evidence", {})
+    if evidence.get("mode") != "verify_externally_supplied_sanitized_process_evidence":
+        raise ValueError("Phase 8 must verify externally supplied real-session evidence")
+    if evidence.get("harness_performs_or_authorizes_transmission") is not False:
+        raise ValueError("the Phase 8 verifier may not claim Codex transmission authority")
     return value
 
 
@@ -199,6 +216,25 @@ def load_repository_specs(path: Path, candidate_head: str, definition: dict[str,
     return by_class, identities
 
 
+def load_real_session_cycle(reference: Any, manifest_directory: Path) -> dict[str, Any] | None:
+    if not nonempty_string(reference):
+        return None
+    relative = Path(reference)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("real-session evidence references must be relative to the repository manifest")
+    evidence_path = (manifest_directory / relative).resolve()
+    try:
+        evidence_path.relative_to(manifest_directory.resolve())
+    except ValueError as error:
+        raise ValueError("real-session evidence escaped the manifest directory") from error
+    value = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("real-session evidence must be a JSON object")
+    value["_evidence_file_sha256"] = sha256(evidence_path)
+    value["_evidence_directory"] = str(evidence_path.parent)
+    return value
+
+
 def operation_duration(step_value: dict[str, Any], *keys: str) -> float | None:
     evidence = step_value.get("evidence", {})
     for key in keys:
@@ -227,6 +263,287 @@ def status_from_steps(step_statuses: dict[str, str]) -> str:
         if status in values:
             return status
     return "passed" if values else "failed"
+
+
+def deterministic_v11_statuses(steps: dict[str, Any]) -> dict[str, str]:
+    statuses = {name: value.get("status", "failed") for name, value in steps.items()}
+    connection = steps.get("codex_mcp_connection", {}).get("evidence", {})
+    direct = connection.get("direct", {})
+    health = direct.get("health") if isinstance(direct, dict) else None
+    if isinstance(health, dict) and health.get("connection") == "connected":
+        statuses["codex_mcp_connection"] = "passed"
+    return statuses
+
+
+def valid_capture_sha256(value: Any) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def verified_capture(invocation: dict[str, Any], evidence_directory: Path | None) -> bool:
+    reference = invocation.get("event_capture_file")
+    if evidence_directory is None or not nonempty_string(reference):
+        return False
+    relative = Path(reference)
+    if relative.is_absolute() or ".." in relative.parts:
+        return False
+    capture = (evidence_directory / relative).resolve()
+    try:
+        capture.relative_to(evidence_directory.resolve())
+    except ValueError:
+        return False
+    return (
+        capture.is_file()
+        and valid_capture_sha256(invocation.get("event_capture_sha256"))
+        and sha256(capture) == invocation["event_capture_sha256"]
+    )
+
+
+def nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def bounded_repository_paths(value: Any) -> list[str] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    paths: list[str] = []
+    for item in value:
+        if not nonempty_string(item):
+            return None
+        candidate = Path(item)
+        if candidate.is_absolute() or ".." in candidate.parts or item != candidate.as_posix():
+            return None
+        paths.append(item)
+    return paths
+
+
+def looks_like_synthetic_marker(path: str) -> bool:
+    lowered = Path(path).name.lower()
+    return (
+        lowered == "v11-ordinary-work.txt"
+        or "synthetic-marker" in lowered
+        or lowered.startswith("marker.")
+        or lowered.endswith(".marker")
+    )
+
+
+def evidence_check(present: bool, valid: bool) -> str:
+    if not present:
+        return "partial"
+    return "passed" if valid else "failed"
+
+
+def real_session_evidence(
+    raw: Any,
+    *,
+    kind: str,
+    cycle: int,
+    repository_revision: str | None,
+) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {
+            "evidence_class": "actual_repository_real_session",
+            "status": "partial",
+            "checks": {name: "partial" for name in REAL_SESSION_CHECKS},
+            "basis": "externally supplied sanitized real-session evidence was absent",
+        }
+
+    objective = raw.get("objective") if isinstance(raw.get("objective"), dict) else {}
+    baseline = raw.get("baseline") if isinstance(raw.get("baseline"), dict) else {}
+    ordinary_work = (
+        raw.get("ordinary_work") if isinstance(raw.get("ordinary_work"), dict) else {}
+    )
+    checkpoint = raw.get("checkpoint") if isinstance(raw.get("checkpoint"), dict) else {}
+    decision = raw.get("user_decision") if isinstance(raw.get("user_decision"), dict) else {}
+    work = raw.get("work_invocation") if isinstance(raw.get("work_invocation"), dict) else {}
+    resume = (
+        raw.get("resume_invocation") if isinstance(raw.get("resume_invocation"), dict) else {}
+    )
+    recall = resume.get("recall") if isinstance(resume.get("recall"), dict) else {}
+    continuation = (
+        resume.get("continuation") if isinstance(resume.get("continuation"), dict) else {}
+    )
+    evidence_directory_value = raw.get("_evidence_directory")
+    evidence_directory = (
+        Path(evidence_directory_value) if nonempty_string(evidence_directory_value) else None
+    )
+
+    objective_summary = objective.get("summary")
+    objective_ok = (
+        raw.get("kind") == "phase8_real_session_cycle_evidence"
+        and raw.get("producer") == "codex_process_evidence_sanitizer"
+        and valid_capture_sha256(raw.get("_evidence_file_sha256"))
+        and raw.get("repository_class") == kind
+        and raw.get("cycle") == cycle
+        and raw.get("repository_revision") == repository_revision
+        and objective.get("repository_specific") is True
+        and nonempty_string(objective_summary)
+        and "v11-ordinary-work" not in objective_summary.lower()
+        and "synthetic marker" not in objective_summary.lower()
+    )
+
+    baseline_ok = (
+        isinstance(baseline, dict)
+        and baseline.get("clean") is True
+        and baseline.get("revision") == repository_revision
+        and baseline.get("task_scope_verified") is True
+    )
+
+    changed_paths = (
+        bounded_repository_paths(ordinary_work.get("changed_paths"))
+        if isinstance(ordinary_work, dict)
+        else None
+    )
+    ordinary_ok = (
+        changed_paths is not None
+        and ordinary_work.get("status") == "completed"
+        and ordinary_work.get("bounded_to_objective") is True
+        and not all(looks_like_synthetic_marker(path) for path in changed_paths)
+        and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
+    )
+
+    checkpoint_paths = (
+        bounded_repository_paths(checkpoint.get("changed_paths"))
+        if isinstance(checkpoint, dict)
+        else None
+    )
+    checkpoint_sources = checkpoint.get("source_ids") if isinstance(checkpoint, dict) else None
+    checkpoint_decisions = (
+        checkpoint.get("applied_decision_ids") if isinstance(checkpoint, dict) else None
+    )
+    checkpoint_context = checkpoint.get("context_ids") if isinstance(checkpoint, dict) else None
+    checkpoint_ok = (
+        nonempty_string(checkpoint.get("checkpoint_id"))
+        and checkpoint_paths is not None
+        and changed_paths is not None
+        and set(changed_paths) <= set(checkpoint_paths)
+        and isinstance(checkpoint_sources, list)
+        and bool(checkpoint_sources)
+        and all(nonempty_string(item) for item in checkpoint_sources)
+        and isinstance(checkpoint_decisions, list)
+        and bool(checkpoint_decisions)
+        and all(nonempty_string(item) for item in checkpoint_decisions)
+        and isinstance(checkpoint_context, list)
+        and bool(checkpoint_context)
+        and all(nonempty_string(item) for item in checkpoint_context)
+        and nonempty_string(checkpoint.get("next_step"))
+    )
+
+    user_source = decision.get("user_response_source", {}) if isinstance(decision, dict) else {}
+    decision_ok = (
+        nonempty_string(decision.get("decision_id"))
+        and decision.get("decision_id") in (checkpoint_decisions or [])
+        and nonempty_string(decision.get("question_id"))
+        and isinstance(decision.get("question_revision"), int)
+        and decision.get("question_revision", 0) > 0
+        and nonempty_string(decision.get("explicit_choice"))
+        and isinstance(user_source, dict)
+        and user_source.get("kind") == "current_host_user_turn"
+        and user_source.get("actor") == "user"
+        and nonempty_string(user_source.get("source_id"))
+        and nonempty_string(user_source.get("host"))
+        and nonempty_string(user_source.get("user_turn_id"))
+        and isinstance(user_source.get("event_sequence"), int)
+        and user_source.get("event_sequence", 0) > 0
+        and user_source.get("session_id") == work.get("session_id")
+        and user_source.get("question_id") == decision.get("question_id")
+        and user_source.get("question_revision") == decision.get("question_revision")
+    )
+
+    invocations_ok = (
+        nonempty_string(work.get("invocation_id"))
+        and nonempty_string(work.get("session_id"))
+        and work.get("host") == "codex"
+        and nonempty_string(work.get("process_id"))
+        and verified_capture(work, evidence_directory)
+        and nonempty_string(resume.get("invocation_id"))
+        and nonempty_string(resume.get("session_id"))
+        and resume.get("host") == "codex"
+        and nonempty_string(resume.get("process_id"))
+        and verified_capture(resume, evidence_directory)
+        and work.get("invocation_id") != resume.get("invocation_id")
+        and work.get("session_id") != resume.get("session_id")
+        and work.get("process_id") != resume.get("process_id")
+    )
+    fresh_ok = resume.get("prior_conversation_context") is False
+
+    recall_sequence = recall.get("sequence") if isinstance(recall, dict) else None
+    inspection_sequence = resume.get("first_repository_inspection_sequence")
+    continuation_sequence = continuation.get("sequence") if isinstance(continuation, dict) else None
+    ordering_ok = (
+        isinstance(recall_sequence, int)
+        and isinstance(inspection_sequence, int)
+        and isinstance(continuation_sequence, int)
+        and recall.get("operation") == "volicord_recall"
+        and recall_sequence < inspection_sequence < continuation_sequence
+    )
+    recalled_decisions = recall.get("decision_ids") if isinstance(recall, dict) else None
+    recalled_context = recall.get("context_ids") if isinstance(recall, dict) else None
+    recall_match_ok = (
+        checkpoint_ok
+        and recall.get("checkpoint_id") == checkpoint.get("checkpoint_id")
+        and isinstance(recalled_decisions, list)
+        and set(checkpoint_decisions or []) <= set(recalled_decisions)
+        and isinstance(recalled_context, list)
+        and set(checkpoint_context or []) <= set(recalled_context)
+    )
+    continuation_paths = (
+        bounded_repository_paths(continuation.get("changed_paths"))
+        if isinstance(continuation, dict) and continuation.get("changed_paths")
+        else []
+    )
+    verification_sources = (
+        continuation.get("verification_source_ids") if isinstance(continuation, dict) else None
+    )
+    continuation_ok = (
+        continuation.get("status") == "passed"
+        and continuation.get("derived_from_checkpoint_next_step") == checkpoint.get("next_step")
+        and (
+            bool(continuation_paths)
+            or (
+                isinstance(verification_sources, list)
+                and bool(verification_sources)
+                and all(nonempty_string(item) for item in verification_sources)
+            )
+        )
+    )
+
+    checks = {
+        "repository_specific_objective": evidence_check(bool(objective), objective_ok),
+        "clean_bounded_baseline": evidence_check(bool(baseline), baseline_ok),
+        "meaningful_ordinary_changes": evidence_check(bool(ordinary_work), ordinary_ok),
+        "source_grounded_checkpoint": evidence_check(bool(checkpoint), checkpoint_ok),
+        "explicit_user_decision_source": evidence_check(bool(decision), decision_ok),
+        "distinct_work_and_resume_invocations": evidence_check(
+            bool(work) and bool(resume), invocations_ok
+        ),
+        "fresh_resume_without_prior_context": evidence_check(
+            "prior_conversation_context" in resume, fresh_ok
+        ),
+        "recall_precedes_inspection_and_continuation": evidence_check(
+            bool(recall)
+            and "first_repository_inspection_sequence" in resume
+            and bool(continuation),
+            ordering_ok,
+        ),
+        "recall_matches_checkpoint_decision_and_context": evidence_check(
+            bool(recall) and bool(checkpoint), recall_match_ok
+        ),
+        "meaningful_recalled_continuation": evidence_check(
+            bool(continuation), continuation_ok
+        ),
+    }
+    return {
+        "evidence_class": "actual_repository_real_session",
+        "status": status_from_steps(checks),
+        "checks": checks,
+        "objective": objective_summary,
+        "changed_paths": changed_paths or [],
+        "checkpoint_id": checkpoint.get("checkpoint_id"),
+        "decision_id": decision.get("decision_id"),
+        "work_invocation_id": work.get("invocation_id"),
+        "resume_invocation_id": resume.get("invocation_id"),
+        "evidence_origin": "externally_supplied_sanitized_codex_process_capture",
+    }
 
 
 def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, str]]:
@@ -311,6 +628,78 @@ def parse_accessibility_html(content: str, *, expected_language: str | None) -> 
     }
 
 
+def qualify_accessibility(
+    machine_result: dict[str, Any],
+    observations: dict[str, Any] | None,
+    permitted: set[str],
+) -> dict[str, Any]:
+    machine_checks = dict(machine_result.get("checks", {}))
+    checks = dict(machine_checks)
+    qualified: dict[str, dict[str, str]] = {}
+    for name, observation in (observations or {}).items():
+        if name not in permitted or not isinstance(observation, dict):
+            raise ValueError(f"unsupported accessibility observation: {name}")
+        status = observation.get("status")
+        basis = observation.get("basis")
+        if status not in ALLOWED_STATUS or not nonempty_string(basis):
+            raise ValueError(f"accessibility observation needs a status and bounded basis: {name}")
+        if name not in machine_checks:
+            qualified[name] = {
+                "machine_status": "absent",
+                "observation_status": status,
+                "effective_status": machine_result.get("status", "failed"),
+                "basis": basis,
+            }
+            continue
+        machine_status = machine_checks[name]
+        effective = machine_status
+        if status == "failed":
+            effective = "failed"
+        elif status == "passed" and machine_status == "partial":
+            effective = "passed"
+        checks[name] = effective
+        qualified[name] = {
+            "machine_status": machine_status,
+            "observation_status": status,
+            "effective_status": effective,
+            "basis": basis,
+        }
+    barrier = machine_result.get("status")
+    effective_inputs = dict(checks)
+    if barrier in {"failed", "environment_blocked", "unsupported", "skipped"}:
+        effective_inputs["machine_availability"] = barrier
+    return {
+        **machine_result,
+        "status": status_from_steps(effective_inputs),
+        "checks": checks,
+        "machine_checks": machine_checks,
+        "observations": qualified,
+    }
+
+
+def qualify_quality_observation(
+    machine: dict[str, str],
+    observation: dict[str, Any],
+    name: str,
+) -> dict[str, str]:
+    if observation.get("status") not in ALLOWED_STATUS:
+        raise ValueError(f"manual Phase 8 observation has an invalid status: {name}")
+    basis = observation.get("basis")
+    if not nonempty_string(basis):
+        raise ValueError(f"manual Phase 8 observation needs a bounded basis: {name}")
+    machine_status = machine.get("status", "failed")
+    observed_status = observation["status"]
+    effective = machine_status
+    if observed_status == "failed":
+        effective = "failed"
+    elif observed_status == "passed" and machine_status in {"passed", "partial"}:
+        effective = "passed"
+    return {
+        "status": effective,
+        "basis": f"machine={machine_status}; observation={observed_status}; {basis}",
+    }
+
+
 def exchange_http(address: str, target: str) -> str:
     host, port = address.rsplit(":", 1)
     with socket.create_connection((host, int(port)), timeout=5) as connection:
@@ -389,10 +778,13 @@ def sanitized_cycle(
     raw: dict[str, Any],
     cycle_root: Path,
     duration_ms: float,
+    repository_revision: str | None,
+    real_session_raw: dict[str, Any] | None,
     manual_observations: dict[str, Any] | None = None,
+    accessibility_observations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps = raw.get("steps", {})
-    step_statuses = {name: value.get("status", "failed") for name, value in steps.items()}
+    step_statuses = deterministic_v11_statuses(steps)
     document_durations, document_sizes = document_measurements(steps.get("document_outputs", {}))
     target_root = cycle_root / "work" / kind
     bundle = target_root / "base.volicord.json"
@@ -427,6 +819,11 @@ def sanitized_cycle(
         else "failed"
     )
     accessibility["status"] = status_from_steps(accessibility["checks"])
+    accessibility = qualify_accessibility(
+        accessibility,
+        accessibility_observations,
+        set(load_definition()["permitted_accessibility_observations"]),
+    )
     quality = quality_observations(step_statuses)
     subjective = {
         "question_relevance",
@@ -437,20 +834,35 @@ def sanitized_cycle(
     for name, observation in (manual_observations or {}).items():
         if name not in subjective or not isinstance(observation, dict):
             raise ValueError(f"unsupported manual Phase 8 observation: {name}")
-        if observation.get("status") not in ALLOWED_STATUS:
-            raise ValueError(f"manual Phase 8 observation has an invalid status: {name}")
-        basis = observation.get("basis")
-        if not isinstance(basis, str) or not basis.strip() or len(basis) > 500:
-            raise ValueError(f"manual Phase 8 observation needs a bounded basis: {name}")
-        quality[name] = {"status": observation["status"], "basis": basis}
+        quality[name] = qualify_quality_observation(quality[name], observation, name)
+    actual = real_session_evidence(
+        real_session_raw,
+        kind=kind,
+        cycle=cycle,
+        repository_revision=repository_revision,
+    )
+    deterministic_status = status_from_steps(step_statuses)
     return {
         "cycle": cycle,
-        "status": status_from_steps(step_statuses),
+        "status": status_from_steps(
+            {
+                "deterministic_v11": deterministic_status,
+                "real_session_dogfood": actual["status"],
+            }
+        ),
         "project_identity": raw.get("project_id"),
         "repository_revision": raw.get("identity", {}).get("revision"),
         "legacy_runtime_untouched": raw.get("legacy_runtime_untouched"),
         "step_statuses": step_statuses,
         "step_status_counts": dict(sorted(Counter(step_statuses.values()).items())),
+        "deterministic_v11": {
+            "evidence_class": "deterministic_product_path_regression",
+            "status": deterministic_status,
+            "scripted_inquiry_and_decision": True,
+            "synthetic_ordinary_work": True,
+            "qualifies_as_real_session_dogfood": False,
+        },
+        "real_session_dogfood": actual,
         "quality_observations": quality,
         "measurements": metrics,
         "accessibility": accessibility,
@@ -510,6 +922,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     repositories = result.get("repositories", [])
     if [item.get("class") for item in repositories] != list(CLASSES):
         raise ValueError("dogfood result does not contain the three ordered repository classes")
+    real_invocations: list[str] = []
     for repository in repositories:
         if len(repository.get("cycles", [])) != definition["candidate_cycle_count"]:
             raise ValueError("dogfood result does not contain two cycles per repository")
@@ -519,6 +932,26 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             statuses = set(cycle["step_statuses"].values())
             if not statuses <= ALLOWED_STATUS:
                 raise ValueError("dogfood cycle contains an unknown status")
+            deterministic = cycle.get("deterministic_v11", {})
+            if (
+                deterministic.get("evidence_class") != "deterministic_product_path_regression"
+                or deterministic.get("qualifies_as_real_session_dogfood") is not False
+                or deterministic.get("synthetic_ordinary_work") is not True
+            ):
+                raise ValueError("V11 regression was not kept separate from real-session dogfood")
+            actual = cycle.get("real_session_dogfood", {})
+            if actual.get("evidence_class") != "actual_repository_real_session":
+                raise ValueError("dogfood cycle lacks the real-session evidence class")
+            if set(actual.get("checks", {})) != set(REAL_SESSION_CHECKS):
+                raise ValueError("real-session dogfood evidence checks are incomplete")
+            if not set(actual["checks"].values()) <= ALLOWED_STATUS:
+                raise ValueError("real-session dogfood evidence contains an unknown status")
+            real_invocations.extend(
+                [
+                    actual.get("work_invocation_id"),
+                    actual.get("resume_invocation_id"),
+                ]
+            )
     if result.get("replacement_pass_candidate") is True:
         if result.get("status") != "passed" or result.get("blockers"):
             raise ValueError("replacement pass cannot have a non-pass status or blocker")
@@ -530,17 +963,34 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             raise ValueError("replacement pass requires current structural/fallback regression")
         if result.get("accessibility", {}).get("status") != "passed":
             raise ValueError("replacement pass requires passed accessibility evaluation")
+        accessibility_checks = result.get("accessibility", {}).get("checks", {})
+        if set(accessibility_checks) != set(definition["accessibility_checks"]) or any(
+            status != "passed" for status in accessibility_checks.values()
+        ):
+            raise ValueError("replacement pass requires every accessibility check to pass")
         for repository in repositories:
             if repository.get("status") != "passed" or not repository.get("independent_fresh_runtime_cycles"):
                 raise ValueError("replacement pass requires two independent passed repository cycles")
             for cycle in repository["cycles"]:
                 if cycle.get("status") != "passed":
                     raise ValueError("replacement pass contains a non-pass dogfood cycle")
+                if cycle.get("deterministic_v11", {}).get("status") != "passed":
+                    raise ValueError("replacement pass requires passed deterministic V11 regression")
+                actual = cycle.get("real_session_dogfood", {})
+                if actual.get("status") != "passed" or any(
+                    status != "passed" for status in actual.get("checks", {}).values()
+                ):
+                    raise ValueError("replacement pass requires complete real-session dogfood evidence")
                 if any(
                     observation.get("status") != "passed"
                     for observation in cycle.get("quality_observations", {}).values()
                 ):
                     raise ValueError("replacement pass contains an unqualified quality observation")
+        if (
+            any(not nonempty_string(identity) for identity in real_invocations)
+            or len(set(real_invocations)) != len(real_invocations)
+        ):
+            raise ValueError("replacement pass requires globally distinct Codex invocations")
     sanitize_check(result)
 
 
@@ -577,7 +1027,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
     if candidate_head is None or candidate_head != args.candidate_head:
         raise RuntimeError("candidate HEAD does not match --candidate-head")
     clean_before = git_clean(ROOT)
-    specs, identities = load_repository_specs(Path(args.repositories), candidate_head, definition)
+    repository_manifest = Path(args.repositories).resolve()
+    specs, identities = load_repository_specs(repository_manifest, candidate_head, definition)
     output = Path(args.output_dir).resolve()
     if output.exists() and any(output.iterdir()):
         raise RuntimeError("Phase 8 output directory must be absent or empty")
@@ -588,9 +1039,6 @@ def run_evaluation(args: argparse.Namespace) -> int:
     base_env = os.environ.copy()
     base_env.setdefault("CARGO_HOME", str(Path.home() / ".cargo"))
     base_env.setdefault("RUSTUP_HOME", str(Path.home() / ".rustup"))
-    authorization = definition["codex_transmission"]["authorization_assertion"]
-    codex_authorized = args.authorize_codex_transmission == authorization
-    codex = shutil.which("codex") if codex_authorized else None
     original_prepare: Callable[..., Any] = v11.prepare_repository
     source_by_class = {kind: Path(specs[kind]["path"]).resolve() for kind in CLASSES}
 
@@ -626,7 +1074,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
                     recorder = v11.Recorder(cycle_root)
                     cycle_started = time.monotonic_ns()
                     try:
-                        raw = v11.rehearse_target(kind, cycle_root, recorder, base_env, codex)
+                        raw = v11.rehearse_target(kind, cycle_root, recorder, base_env, None)
                     except (AssertionError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
                         raw = {
                             "class": kind,
@@ -643,11 +1091,26 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         raw,
                         cycle_root,
                         (time.monotonic_ns() - cycle_started) / 1_000_000,
+                        identity["revision"],
+                        load_real_session_cycle(
+                            specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
+                            repository_manifest.parent,
+                        ),
                         specs[kind].get("manual_observations", {}).get(str(cycle_number)),
+                        specs[kind].get("accessibility_observations", {}).get(str(cycle_number)),
                     ))
             else:
                 for cycle_number in range(1, definition["candidate_cycle_count"] + 1):
                     skipped = {name: "environment_blocked" for name in definition["required_product_steps"]}
+                    actual = real_session_evidence(
+                        load_real_session_cycle(
+                            specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
+                            repository_manifest.parent,
+                        ),
+                        kind=kind,
+                        cycle=cycle_number,
+                        repository_revision=identity["revision"],
+                    )
                     cycles.append({
                         "cycle": cycle_number,
                         "status": "environment_blocked",
@@ -656,6 +1119,14 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         "legacy_runtime_untouched": None,
                         "step_statuses": skipped,
                         "step_status_counts": {"environment_blocked": len(skipped)},
+                        "deterministic_v11": {
+                            "evidence_class": "deterministic_product_path_regression",
+                            "status": "environment_blocked",
+                            "scripted_inquiry_and_decision": True,
+                            "synthetic_ordinary_work": True,
+                            "qualifies_as_real_session_dogfood": False,
+                        },
+                        "real_session_dogfood": actual,
                         "quality_observations": quality_observations(skipped),
                         "measurements": {
                             name: None for name in definition["measurements"]
@@ -688,8 +1159,6 @@ def run_evaluation(args: argparse.Namespace) -> int:
     )
     if not clean_before or not clean_after:
         blockers.append("candidate worktree was not clean for the complete dogfood run")
-    if not codex_authorized:
-        blockers.append("fresh Codex dogfood turns were not authorized by the exact bounded Phase 8 assertion")
     if maintained_decisions.get("decision_revisit_trigger_assessment") != v11.OFFICIAL_REVISIT_ASSESSMENT:
         blockers.append("the accepted Decision register could not be assessed")
     if maintained_decisions.get("active_decision_revisit_triggers"):
@@ -702,6 +1171,10 @@ def run_evaluation(args: argparse.Namespace) -> int:
         if repository["status"] != "passed":
             blockers.append(f"{repository['class']} repeated journey did not pass")
         for cycle in repository["cycles"]:
+            if cycle.get("real_session_dogfood", {}).get("status") != "passed":
+                blockers.append(
+                    f"{repository['class']} cycle {cycle['cycle']} lacks qualifying real-session dogfood evidence"
+                )
             incomplete_quality = sorted(
                 name
                 for name, observation in cycle["quality_observations"].items()
@@ -736,10 +1209,10 @@ def run_evaluation(args: argparse.Namespace) -> int:
         "fixture_regression": regression,
         "accessibility": accessibility,
         "privacy_and_transmission": {
-            "codex_transmission_required": True,
-            "codex_transmission_authorized": codex_authorized,
-            "authorization_assertion_id": authorization if codex_authorized else None,
-            "authenticated_codex_turn_count_expected": 6,
+            "evidence_mode": definition["real_session_evidence"]["mode"],
+            "harness_performed_or_authorized_codex_transmission": False,
+            "verified_external_process_invocation_count_expected": 12,
+            "task_relevant_repository_content_may_have_been_transmitted_by_external_evidence_producers": True,
             "commercial_semantic_provider_success_claimed": False,
             "raw_source_in_sanitized_result": False,
             "credentials_in_sanitized_result": False,
@@ -775,88 +1248,367 @@ def run_evaluation(args: argparse.Namespace) -> int:
     return 0 if replacement_pass_candidate else 1
 
 
+def real_session_fixture(
+    kind: str,
+    cycle: int,
+    revision: str,
+    evidence_directory: Path,
+) -> dict[str, Any]:
+    work_session = f"{kind}-work-session-{cycle}"
+    resume_session = f"{kind}-resume-session-{cycle}"
+    checkpoint = f"{kind}-checkpoint-{cycle}"
+    decision = f"{kind}-decision-{cycle}"
+    context = f"{kind}-context-{cycle}"
+    next_step = "Verify the repository-specific implementation change"
+    work_capture = evidence_directory / f"{kind}-{cycle}-work-events.jsonl"
+    resume_capture = evidence_directory / f"{kind}-{cycle}-resume-events.jsonl"
+    work_capture.write_text('{"event":"work"}\n', encoding="utf-8")
+    resume_capture.write_text('{"event":"recall_then_continue"}\n', encoding="utf-8")
+    return {
+        "kind": "phase8_real_session_cycle_evidence",
+        "producer": "codex_process_evidence_sanitizer",
+        "_evidence_file_sha256": "0" * 64,
+        "_evidence_directory": str(evidence_directory),
+        "repository_class": kind,
+        "cycle": cycle,
+        "repository_revision": revision,
+        "objective": {
+            "repository_specific": True,
+            "summary": f"Improve an existing {kind} implementation and its regression coverage",
+        },
+        "baseline": {
+            "clean": True,
+            "revision": revision,
+            "task_scope_verified": True,
+        },
+        "ordinary_work": {
+            "status": "completed",
+            "bounded_to_objective": True,
+            "changed_paths": ["src/existing.rs", "tests/existing.rs"],
+        },
+        "checkpoint": {
+            "checkpoint_id": checkpoint,
+            "changed_paths": ["src/existing.rs", "tests/existing.rs"],
+            "source_ids": [f"{kind}-source-{cycle}"],
+            "applied_decision_ids": [decision],
+            "context_ids": [context],
+            "next_step": next_step,
+        },
+        "user_decision": {
+            "decision_id": decision,
+            "question_id": f"{kind}-question-{cycle}",
+            "question_revision": 1,
+            "explicit_choice": "apply the repository-specific correction",
+            "user_response_source": {
+                "kind": "current_host_user_turn",
+                "actor": "user",
+                "source_id": f"{kind}-user-source-{cycle}",
+                "host": "codex",
+                "session_id": work_session,
+                "user_turn_id": f"{kind}-user-turn-{cycle}",
+                "event_sequence": 1,
+                "question_id": f"{kind}-question-{cycle}",
+                "question_revision": 1,
+            },
+        },
+        "work_invocation": {
+            "invocation_id": f"{kind}-work-invocation-{cycle}",
+            "session_id": work_session,
+            "host": "codex",
+            "process_id": f"{kind}-work-process-{cycle}",
+            "event_capture_file": work_capture.name,
+            "event_capture_sha256": sha256(work_capture),
+        },
+        "resume_invocation": {
+            "invocation_id": f"{kind}-resume-invocation-{cycle}",
+            "session_id": resume_session,
+            "host": "codex",
+            "process_id": f"{kind}-resume-process-{cycle}",
+            "event_capture_file": resume_capture.name,
+            "event_capture_sha256": sha256(resume_capture),
+            "prior_conversation_context": False,
+            "first_repository_inspection_sequence": 2,
+            "recall": {
+                "operation": "volicord_recall",
+                "sequence": 1,
+                "checkpoint_id": checkpoint,
+                "decision_ids": [decision],
+                "context_ids": [context],
+            },
+            "continuation": {
+                "sequence": 3,
+                "status": "passed",
+                "derived_from_checkpoint_next_step": next_step,
+                "changed_paths": [],
+                "verification_source_ids": [f"{kind}-verification-{cycle}"],
+            },
+        },
+    }
+
+
+def expect_rejected(result: dict[str, Any], definition: dict[str, Any], message: str) -> None:
+    try:
+        validate_result(result, definition)
+    except ValueError:
+        return
+    raise AssertionError(message)
+
+
 def self_test() -> int:
     definition = load_definition()
+    revision = "0" * 40
+    temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
+    evidence_directory = Path(temporary.name)
+    external_fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
+    external_fixture.pop("_evidence_file_sha256")
+    external_fixture.pop("_evidence_directory")
+    external_fixture_path = evidence_directory / "cycle-evidence.json"
+    write_json(external_fixture_path, external_fixture)
+    loaded_fixture = load_real_session_cycle(
+        external_fixture_path.name,
+        evidence_directory,
+    )
+    if real_session_evidence(
+        loaded_fixture,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["status"] != "passed":
+        raise AssertionError("external sanitized process evidence did not qualify")
     fake_steps = {name: "passed" for name in definition["required_product_steps"]}
-    fake_cycle = {
-        "cycle": 1,
-        "status": "passed",
-        "project_identity": "0" * 32,
-        "repository_revision": "0" * 40,
-        "legacy_runtime_untouched": True,
-        "step_statuses": fake_steps,
-        "step_status_counts": {"passed": len(fake_steps)},
-        "quality_observations": {
-            name: {"status": "passed", "basis": "synthetic bounded observation"}
-            for name in definition["quality_observations"]
+    valid_html = (
+        "<!doctype html><html lang=\"en\"><head>"
+        "<meta name=\"viewport\" content=\"width=device-width\">"
+        "<style>:focus{outline:2px solid}</style></head>"
+        "<body><h1>x</h1><a href=\"/\">x</a><label>y<input></label></body></html>"
+    )
+    parsed = parse_accessibility_html(valid_html, expected_language="en")
+    parsed["checks"]["korean_english_fixed_ui"] = "passed"
+    parsed["status"] = status_from_steps(parsed["checks"])
+    accessibility = qualify_accessibility(
+        parsed,
+        {
+            "not_color_only": {
+                "status": "passed",
+                "basis": "Operator verified that every status includes a textual label.",
+            },
+            "narrow_and_zoomed_presentation": {
+                "status": "passed",
+                "basis": "Operator verified the live page at narrow width and browser zoom.",
+            },
         },
-        "measurements": {},
-        "accessibility": {"status": "passed", "checks": {"visible_focus": "passed"}},
-    }
+        set(definition["permitted_accessibility_observations"]),
+    )
+    if accessibility["status"] != "passed":
+        raise AssertionError("real parser and permitted observations did not reach accessibility pass")
+    accessibility_aggregate = aggregate_accessibility(
+        [{"cycles": [{"accessibility": accessibility}]}]
+    )
+    if accessibility_aggregate["status"] != "passed":
+        raise AssertionError("qualified parser evidence did not reach aggregate accessibility pass")
+
     repositories = []
     for index, kind in enumerate(CLASSES):
-        first = {**fake_cycle, "cycle": 1, "project_identity": f"{index + 1:032x}"}
-        second = {**fake_cycle, "cycle": 2, "project_identity": f"{index + 11:032x}"}
+        cycles = []
+        for cycle in (1, 2):
+            actual = real_session_evidence(
+                real_session_fixture(kind, cycle, revision, evidence_directory),
+                kind=kind,
+                cycle=cycle,
+                repository_revision=revision,
+            )
+            if actual["status"] != "passed":
+                raise AssertionError("valid real-session evidence did not qualify")
+            cycles.append({
+                "cycle": cycle,
+                "status": "passed",
+                "project_identity": f"{index * 10 + cycle:032x}",
+                "repository_revision": revision,
+                "legacy_runtime_untouched": True,
+                "step_statuses": fake_steps,
+                "step_status_counts": {"passed": len(fake_steps)},
+                "deterministic_v11": {
+                    "evidence_class": "deterministic_product_path_regression",
+                    "status": "passed",
+                    "scripted_inquiry_and_decision": True,
+                    "synthetic_ordinary_work": True,
+                    "qualifies_as_real_session_dogfood": False,
+                },
+                "real_session_dogfood": actual,
+                "quality_observations": {
+                    name: {"status": "passed", "basis": "bounded observation"}
+                    for name in definition["quality_observations"]
+                },
+                "measurements": {},
+                "accessibility": accessibility,
+            })
         repositories.append({
             "class": kind,
             "status": "passed",
             "independent_fresh_runtime_cycles": True,
-            "cycles": [first, second],
+            "cycles": cycles,
         })
     result = {
         "kind": "phase8_dogfood_result",
-        "candidate_head": "0" * 40,
+        "candidate_head": revision,
         "status": "passed",
         "replacement_pass_candidate": True,
         "blockers": [],
         "repositories": repositories,
         "candidate_worktree": {"clean_before": True, "clean_after": True},
         "fixture_regression": {"status": "passed"},
-        "accessibility": {"status": "passed"},
+        "accessibility": accessibility_aggregate,
         "decision_revisit": {"observed_active_triggers": []},
     }
     validate_result(result, definition)
+
     blocked = json.loads(json.dumps(result))
     blocked["status"] = "environment_blocked"
     blocked["replacement_pass_candidate"] = False
-    blocked["blockers"] = ["synthetic missing repository"]
+    blocked["blockers"] = ["missing repository"]
     validate_result(blocked, definition)
     leaked = json.loads(json.dumps(blocked))
     leaked["private_prompt"] = "private prompt body"
-    try:
-        validate_result(leaked, definition)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("sanitizer accepted private prompt content")
+    expect_rejected(leaked, definition, "sanitizer accepted private prompt content")
     active = json.loads(json.dumps(result))
     active["decision_revisit"]["observed_active_triggers"] = [{"decision_id": "Q5"}]
-    try:
-        validate_result(active, definition)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("replacement pass accepted an active Decision revisit trigger")
-    parsed = parse_accessibility_html("<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width\"></head><body><h1>x</h1><a href=\"/\">x</a></body></html>", expected_language="en")
-    if parsed["checks"]["document_html_language"] != "failed":
-        raise AssertionError("missing HTML language was not detected")
-    if viewer_start_failure_status("cannot bind: Operation not permitted (os error 1)") != "environment_blocked":
+    expect_rejected(active, definition, "replacement pass accepted a Decision revisit trigger")
+
+    v11_only = json.loads(json.dumps(result))
+    v11_only["repositories"][0]["cycles"][0]["real_session_dogfood"] = real_session_evidence(
+        None, kind="volicord", cycle=1, repository_revision=revision
+    )
+    expect_rejected(v11_only, definition, "V11-only evidence qualified as real dogfood")
+    marker_only = real_session_fixture("volicord", 1, revision, evidence_directory)
+    marker_only["ordinary_work"]["changed_paths"] = ["v11-ordinary-work.txt"]
+    marker_only["checkpoint"]["changed_paths"] = ["v11-ordinary-work.txt"]
+    if real_session_evidence(
+        marker_only, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_ordinary_changes"] != "failed":
+        raise AssertionError("synthetic marker work qualified as ordinary repository work")
+
+    fabricated_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
+    fabricated_decision["user_decision"]["user_response_source"]["actor"] = "agent"
+    if real_session_evidence(
+        fabricated_decision, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("agent-authored Decision provenance was accepted")
+    missing_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
+    missing_decision.pop("user_decision")
+    if real_session_evidence(
+        missing_decision, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "partial":
+        raise AssertionError("missing user Decision evidence was not left unqualified")
+
+    same_session = real_session_fixture("volicord", 1, revision, evidence_directory)
+    same_session["resume_invocation"]["session_id"] = same_session["work_invocation"]["session_id"]
+    if real_session_evidence(
+        same_session, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["distinct_work_and_resume_invocations"] != "failed":
+        raise AssertionError("same-session resume evidence was accepted")
+
+    no_recall_first = real_session_fixture("volicord", 1, revision, evidence_directory)
+    no_recall_first["resume_invocation"]["recall"]["sequence"] = 3
+    if real_session_evidence(
+        no_recall_first, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["recall_precedes_inspection_and_continuation"] != "failed":
+        raise AssertionError("resume without Recall before continuation was accepted")
+
+    missing_language = parse_accessibility_html(
+        "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width\">"
+        "</head><body><h1>x</h1></body></html>",
+        expected_language="en",
+    )
+    missing_language["status"] = status_from_steps(missing_language["checks"])
+    missing_qualified = qualify_accessibility(
+        missing_language,
+        {
+            "not_color_only": {"status": "passed", "basis": "bounded observation"},
+            "narrow_and_zoomed_presentation": {
+                "status": "passed",
+                "basis": "bounded observation",
+            },
+        },
+        set(definition["permitted_accessibility_observations"]),
+    )
+    if missing_qualified["checks"]["document_html_language"] != "failed":
+        raise AssertionError("observations hid missing HTML language")
+    wrong_language = parse_accessibility_html(valid_html, expected_language="ko")
+    wrong_language["status"] = status_from_steps(wrong_language["checks"])
+    wrong_qualified = qualify_accessibility(
+        wrong_language,
+        {
+            "not_color_only": {"status": "passed", "basis": "bounded observation"},
+            "narrow_and_zoomed_presentation": {
+                "status": "passed",
+                "basis": "bounded observation",
+            },
+        },
+        set(definition["permitted_accessibility_observations"]),
+    )
+    if wrong_qualified["checks"]["document_html_language"] != "failed":
+        raise AssertionError("observations hid wrong HTML language")
+
+    unavailable_viewer = {
+        "status": "environment_blocked",
+        "checks": {},
+        "reason": "viewer_start_failed",
+    }
+    unavailable_qualified = qualify_accessibility(
+        unavailable_viewer,
+        {
+            "not_color_only": {"status": "passed", "basis": "bounded observation"},
+            "narrow_and_zoomed_presentation": {
+                "status": "passed",
+                "basis": "bounded observation",
+            },
+        },
+        set(definition["permitted_accessibility_observations"]),
+    )
+    if unavailable_qualified["status"] != "environment_blocked":
+        raise AssertionError("observations hid viewer environment failure")
+
+    failed_quality = qualify_quality_observation(
+        {"status": "failed", "basis": "machine failure"},
+        {"status": "passed", "basis": "operator impression"},
+        "question_relevance",
+    )
+    if failed_quality["status"] != "failed":
+        raise AssertionError("manual quality evidence hid a machine failure")
+
+    if viewer_start_failure_status(
+        "cannot bind: Operation not permitted (os error 1)"
+    ) != "environment_blocked":
         raise AssertionError("sandbox viewer bind denial was not preserved as environment-blocked")
     if viewer_start_failure_status("viewer rejected the project") != "failed":
         raise AssertionError("product viewer startup failure was not preserved as failed")
+    if load_real_session_cycle(
+        real_session_fixture("volicord", 1, revision, evidence_directory),
+        evidence_directory,
+    ) is not None:
+        raise AssertionError("inline manifest literal was accepted as real-session evidence")
     print(json.dumps({
         "status": "passed",
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
         "two_cycle_contract": "passed",
-        "non_pass_preservation": "passed",
+        "real_session_positive_path": "passed",
+        "v11_only_rejected": "passed",
+        "synthetic_marker_work_rejected": "passed",
+        "same_session_rejected": "passed",
+        "recall_order_rejected": "passed",
+        "user_decision_provenance_rejected": "passed",
+        "missing_user_decision_unqualified": "passed",
+        "accessibility_real_parser_success": "passed",
+        "accessibility_machine_failure_authority": "passed",
+        "viewer_environment_blocking": "passed",
+        "manual_override_boundary": "passed",
         "sanitization_regressions": "passed",
         "decision_revisit_blocking": "passed",
-        "accessibility_blocker_detection": "passed",
-        "viewer_environment_blocking": "passed",
         "v11_reuse_route": str(V11_HARNESS.relative_to(ROOT)),
     }, indent=2, sort_keys=True))
+    temporary.cleanup()
     return 0
 
 
@@ -868,7 +1620,6 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--candidate-head", required=True)
     run.add_argument("--repositories", required=True)
     run.add_argument("--output-dir", required=True)
-    run.add_argument("--authorize-codex-transmission")
     return parser.parse_args()
 
 

@@ -80,14 +80,20 @@
     "korean_english_fixed_ui",
     "document_html_language"
   ],
+  "permitted_accessibility_observations": [
+    "keyboard_reachability",
+    "visible_focus",
+    "not_color_only",
+    "narrow_and_zoomed_presentation"
+  ],
   "fixture_regression_command": [
     "python3",
     "rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py"
   ],
-  "codex_transmission": {
-    "authorization_assertion": "phase8-openai-codex-project-health-six-real-repository-cycles",
-    "destination": "OpenAI Codex service used by the installed Codex CLI",
-    "purpose": "one bounded project_health turn in each of two fresh cycles for three actual repositories",
-    "source_scope": "bounded prompt, Project identity, and project_health tool result; no intended repository source body"
+  "real_session_evidence": {
+    "mode": "verify_externally_supplied_sanitized_process_evidence",
+    "harness_performs_or_authorizes_transmission": false,
+    "required_process_invocations_per_cycle": 2,
+    "raw_evidence_retention": "ignored_local_state_only"
   }
 }
