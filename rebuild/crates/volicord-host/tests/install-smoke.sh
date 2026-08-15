@@ -24,7 +24,11 @@ test -f "$test_runtime/canonical.sqlite3"
 test -f "$test_runtime/candidates.sqlite3"
 test -f "$test_runtime/privacy.sqlite3"
 test -f "$test_runtime/guarded.sqlite3"
-rg -F "mcp add volicord --env VOLICORD_RUNTIME_DIR=$test_runtime -- $test_prefix/bin/volicord-mcp" "$codex_log"
+awk -v expected_add="mcp add volicord --env VOLICORD_RUNTIME_DIR=$test_runtime -- $test_prefix/bin/volicord-mcp" '
+    NR == 1 && $0 != "mcp remove volicord" { exit 1 }
+    NR == 2 && $0 != expected_add { exit 1 }
+    END { if (NR != 2) exit 1 }
+' "$codex_log"
 
 "$test_prefix/bin/volicord" --runtime "$test_runtime" project init "Install smoke" >/dev/null
 canonical_size=$(wc -c < "$test_runtime/canonical.sqlite3")

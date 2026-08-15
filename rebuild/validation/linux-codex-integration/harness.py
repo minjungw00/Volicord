@@ -32,7 +32,9 @@ EXPECTED_TOOLS = [
     "canonical_inspect",
     "canonical_mutate",
     "candidate_inspect",
+    "candidate_manage",
     "privacy_status",
+    "background_semantic_operation",
     "document_preview",
     "guarded_interaction",
 ]
@@ -41,6 +43,29 @@ EXPECTED_TOOLS = [
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def require_codex_stdio_registration(
+    configuration: dict[str, Any],
+    *,
+    command: Path,
+    arguments: list[str],
+    environment: dict[str, str],
+    context: str,
+) -> None:
+    require(configuration.get("name") == "volicord", f"{context} server name mismatch")
+    expected_transport = {
+        "type": "stdio",
+        "command": str(command),
+        "args": arguments,
+        "env": environment,
+        "env_vars": [],
+        "cwd": None,
+    }
+    require(
+        configuration.get("transport") == expected_transport,
+        f"{context} transport mismatch: {configuration.get('transport')!r}",
+    )
 
 
 def run(
@@ -670,6 +695,9 @@ def main() -> int:
         legacy_sentinel = legacy / "DO-NOT-READ"
         legacy_sentinel.write_text("legacy sentinel\n", encoding="utf-8")
         legacy_before = (legacy_sentinel.stat().st_mtime_ns, sha256(legacy_sentinel))
+        incompatible_host = temporary / "legacy-volicord-host"
+        incompatible_host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        incompatible_host.chmod(0o700)
 
         env = base_env | {
             "HOME": str(home),
@@ -685,6 +713,36 @@ def main() -> int:
 
         version = run([codex, "--version"], env).stdout.strip()
         require(version.startswith("codex-cli "), "unexpected Codex executable")
+        run(
+            [
+                codex,
+                "mcp",
+                "add",
+                "volicord",
+                "--env",
+                f"VOLICORD_HOME={legacy}",
+                "--env",
+                "VOLICORD_LEGACY_MARKER=incompatible-registration",
+                "--",
+                str(incompatible_host),
+                "_host-launch",
+                "legacy.sock",
+            ],
+            env,
+        )
+        incompatible_registration = json.loads(
+            run([codex, "mcp", "get", "volicord", "--json"], env).stdout
+        )
+        require_codex_stdio_registration(
+            incompatible_registration,
+            command=incompatible_host,
+            arguments=["_host-launch", "legacy.sock"],
+            environment={
+                "VOLICORD_HOME": str(legacy),
+                "VOLICORD_LEGACY_MARKER": "incompatible-registration",
+            },
+            context="pre-install incompatible Codex registration",
+        )
         install = run(
             [
                 str(INSTALLER),
@@ -712,11 +770,23 @@ def main() -> int:
         )
 
         codex_get = json.loads(run([codex, "mcp", "get", "volicord", "--json"], env).stdout)
-        encoded_get = json.dumps(codex_get, sort_keys=True)
-        require(str(prefix / "bin" / "volicord-mcp") in encoded_get, "Codex command mismatch")
-        require(str(runtime) in encoded_get, "Codex runtime environment mismatch")
+        require_codex_stdio_registration(
+            codex_get,
+            command=prefix / "bin" / "volicord-mcp",
+            arguments=[],
+            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
+            context="replacement Codex registration",
+        )
         codex_list = json.loads(run([codex, "mcp", "list", "--json"], env).stdout)
-        require("volicord" in json.dumps(codex_list), "Codex did not discover Volicord")
+        listed_registrations = [entry for entry in codex_list if entry.get("name") == "volicord"]
+        require(len(listed_registrations) == 1, "Codex did not discover exactly one Volicord entry")
+        require_codex_stdio_registration(
+            listed_registrations[0],
+            command=prefix / "bin" / "volicord-mcp",
+            arguments=[],
+            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
+            context="listed replacement Codex registration",
+        )
 
         cli = prefix / "bin" / "volicord"
         initialized = json.loads(
@@ -827,7 +897,16 @@ def main() -> int:
         )
         recall_after = json.loads(run([str(cli), "recall", project_id], env).stdout)
         require(recall_after == recall_before, "reinstall changed canonical Recall")
-        require(json.loads(run([codex, "mcp", "get", "volicord", "--json"], env).stdout), "registration missing after reinstall")
+        reinstalled_registration = json.loads(
+            run([codex, "mcp", "get", "volicord", "--json"], env).stdout
+        )
+        require_codex_stdio_registration(
+            reinstalled_registration,
+            command=prefix / "bin" / "volicord-mcp",
+            arguments=[],
+            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
+            context="reinstalled Codex registration",
+        )
 
         recovery_evidence = exercise_analysis_recovery(cli, env, temporary, runtime)
 
@@ -850,6 +929,7 @@ def main() -> int:
                     "repair_reindex": recovery_evidence,
                     "reinstall_preserved_recall": True,
                     "runtime_schemas": sorted(runtime_files),
+                    "stale_codex_registration_replaced": True,
                     "status": "passed",
                 },
                 indent=2,

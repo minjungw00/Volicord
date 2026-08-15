@@ -24,7 +24,7 @@
     ],
     "codex_and_host": [
       ["V08-H01-real-codex", "harness", "codex", "real Codex executable supplies version evidence"],
-      ["V08-H02-registration", "harness", "codex", "installer registers the exact MCP command and runtime environment"],
+      ["V08-H02-registration", "harness", "codex", "installer replaces an incompatible same-name registration with the exact MCP command and runtime environment"],
       ["V08-H03-discovery", "harness", "codex", "codex mcp get and list discover Volicord"],
       ["V08-H04-product-tools", "rust", "volicord-host/mcp", "initializes_and_discovers_only_high_level_product_capabilities"],
       ["V08-H05-recall", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
