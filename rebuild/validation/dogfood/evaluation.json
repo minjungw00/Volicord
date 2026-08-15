@@ -91,9 +91,11 @@
     "rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py"
   ],
   "real_session_evidence": {
-    "mode": "verify_externally_supplied_sanitized_process_evidence",
+    "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
-    "required_process_invocations_per_cycle": 2,
+    "required_codex_sessions_per_cycle": 2,
+    "required_capture_format": "codex_rollout_jsonl",
+    "required_product_artifact": "volicord_context_bundle_v6",
     "raw_evidence_retention": "ignored_local_state_only"
   }
 }

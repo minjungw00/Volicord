@@ -12,11 +12,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 HARNESS = HERE / "harness.py"
+CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
 
 
 def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
+    event_source = CODEX_EVENTS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     tree = ast.parse(source)
     imports = {
@@ -35,10 +37,23 @@ def main() -> int:
         raise AssertionError("Phase 8 harness no longer reuses the maintained product journey")
     if "real_session_evidence" not in source or "REAL_SESSION_CHECKS" not in source:
         raise AssertionError("Phase 8 harness no longer requires real-session evidence")
+    for marker in (
+        "load_codex_capture",
+        "load_canonical_bundle",
+        "patch_apply_end",
+        "mcp__volicord",
+        "current_host_user_turn",
+    ):
+        if marker not in source and marker not in event_source:
+            raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
+    if "verified_capture" in source or "first_repository_inspection_sequence" in source:
+        raise AssertionError("the declaration-only real-session path remains active")
     if "--authorize-codex-transmission" in source:
         raise AssertionError("the superseded project-health-only Phase 8 assertion remains")
     if '"codex_transmission"' in definition or "project-health-six-real-repository-cycles" in definition:
         raise AssertionError("the superseded Phase 8 transmission contract remains")
+    if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
+        raise AssertionError("Phase 8 definition does not select content-normalized evidence")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     result = subprocess.run(
