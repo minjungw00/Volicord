@@ -638,7 +638,7 @@
         "concurrent interactive clients or hostile concurrent path replacement",
         "legacy MCP runtime schema command alias migration import backup or dual path"
       ],
-      "content_sha256": "826ee2267a9bdd5e1a60d572b984a4661e22a3a6e63830ed429a32fd58943f99",
+      "content_sha256": "1897b1412668ff55f56ea76e5a2fc2bcaeb8ea44248a7d44db9dab02963a640b",
       "origin": "Self-authored V08 requirement map with isolated deterministic Linux journeys plus a separately recorded authenticated Codex CLI product-tool probe.",
       "license": "CC0-1.0"
     }
