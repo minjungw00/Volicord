@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -595,20 +596,48 @@ def credential_audit_view(value: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def bounded_revisit_triggers(result: dict[str, Any] | None) -> list[str]:
+def revisit_evidence_view(
+    result: dict[str, Any] | None,
+) -> tuple[str, list[str] | None, dict[str, Any] | None, bool]:
     if not result:
-        return []
-    values = result.get("active_decision_revisit_triggers", [])
-    if not isinstance(values, list):
-        return []
-    return [
-        value
-        for value in values
-        if isinstance(value, str)
-        and len(value) <= 120
-        and value.startswith("Q")
-        and value.partition(":")[0][1:].replace("-", "").isalnum()
-    ][:13]
+        return "not_run", None, None, False
+    assessment = result.get("decision_revisit_trigger_assessment")
+    triggers = result.get("active_decision_revisit_triggers")
+    raw_source = result.get("decision_revisit_trigger_source")
+    if not isinstance(raw_source, dict):
+        return assessment if isinstance(assessment, str) else "invalid", None, None, False
+    source = {
+        "kind": raw_source.get("kind"),
+        "path": raw_source.get("path"),
+        "content_sha256": raw_source.get("content_sha256"),
+        "assessed_decision_ids": raw_source.get("assessed_decision_ids"),
+        "assessed_decision_count": raw_source.get("assessed_decision_count"),
+    }
+    assessed_ids = source["assessed_decision_ids"]
+    source_valid = (
+        source["kind"] == "accepted_decision_register"
+        and source["path"] == "rebuild/docs/design/open-decisions.md"
+        and isinstance(source["content_sha256"], str)
+        and re.fullmatch(r"[0-9a-f]{64}", source["content_sha256"]) is not None
+        and isinstance(assessed_ids, list)
+        and bool(assessed_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"Q[0-9]+(?:-[A-Z])?", value) for value in assessed_ids)
+        and len(assessed_ids) == len(set(assessed_ids))
+        and source["assessed_decision_count"] == len(assessed_ids)
+    )
+    triggers_valid = (
+        isinstance(triggers, list)
+        and all(isinstance(value, str) and value in assessed_ids for value in triggers)
+        and len(triggers) == len(set(triggers))
+    ) if isinstance(assessed_ids, list) else False
+    completed = (
+        assessment == "reported_by_official_v11" and source_valid and triggers_valid
+    )
+    if completed:
+        return assessment, list(triggers), source, True
+    if assessment == "official_v11_assessment_failed" and triggers is None:
+        return assessment, None, source, False
+    return assessment if isinstance(assessment, str) else "invalid", None, source, False
 
 
 def make_capsule(
@@ -628,6 +657,9 @@ def make_capsule(
 ) -> dict[str, Any]:
     final_view = final_summary_view(final_summary or {})
     counts = v11_result.get("counts", {}) if v11_result else {}
+    revisit_assessment, revisit_triggers, revisit_source, revisit_completed = (
+        revisit_evidence_view(v11_result)
+    )
     return {
         "kind": "validation_handoff_capsule",
         "validated_candidate_head": candidate_head,
@@ -667,14 +699,14 @@ def make_capsule(
         },
         "credential_retention_audit": credential_audit_view(credential_audit),
         "authenticated_codex_outcomes": authenticated_outcomes(v11_result),
-        "active_decision_revisit_triggers": bounded_revisit_triggers(v11_result),
-        "decision_revisit_trigger_assessment": (
-            "reported_by_official_v11" if v11_result and "active_decision_revisit_triggers" in v11_result
-            else "independent_documentation_review_required"
-        ),
+        "active_decision_revisit_triggers": revisit_triggers,
+        "decision_revisit_trigger_assessment": revisit_assessment,
+        "decision_revisit_trigger_source": revisit_source,
         "phase_8_ready": bool(
             v11_result
             and v11_result.get("phase_8_ready")
+            and revisit_completed
+            and revisit_triggers == []
             and credential_audit
             and credential_audit.get("status") == "passed"
             and blocking_classification is None
@@ -789,6 +821,8 @@ def orchestrate(
         and v11_result is not None
         and v11_result.get("status") == "passed"
         and v11_result.get("phase_8_ready") is True
+        and revisit_evidence_view(v11_result)[3]
+        and revisit_evidence_view(v11_result)[1] == []
     )
     audit_passed = (
         audit_execution.get("exit_code", audit_execution.get("wrapper_exit_code")) == 0

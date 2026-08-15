@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import shutil
 import stat
@@ -26,6 +27,8 @@ HERE = Path(__file__).resolve().parent
 INSTALLER = ROOT / "rebuild/install.sh"
 SMALL_FIXTURE = ROOT / "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/python"
 POLYGLOT_FIXTURE = HERE / "fixtures/polyglot-medium"
+DECISION_REGISTER = ROOT / "rebuild/docs/design/open-decisions.md"
+DECISION_REGISTER_PATH = "rebuild/docs/design/open-decisions.md"
 DOCUMENT_KINDS = (
     "project-architecture-guide",
     "decision-report",
@@ -65,6 +68,10 @@ PROVIDER_SOURCE_PATHS = {
     "small-python": "src/greeter/__init__.py",
     "polyglot-medium": "system.json",
 }
+OFFICIAL_REVISIT_ASSESSMENT = "reported_by_official_v11"
+FAILED_REVISIT_ASSESSMENT = "official_v11_assessment_failed"
+DECISION_HEADING = re.compile(r"^## \d+\. (Q[0-9]+(?:-[A-Z])?) —", re.MULTILINE)
+DECISION_ID = re.compile(r"Q[0-9]+(?:-[A-Z])?")
 
 
 def sha256(path: Path) -> str:
@@ -90,6 +97,125 @@ def tree_hash(directory: Path) -> str:
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def decision_revisit_assessment(
+    source: str,
+    *,
+    source_sha256: str,
+    source_path: str = DECISION_REGISTER_PATH,
+) -> dict[str, Any]:
+    """Read the maintained Decision register's explicit current trigger state."""
+    headings = list(DECISION_HEADING.finditer(source))
+    if not headings:
+        raise ValueError("the accepted Decision register has no Question decisions")
+    decision_ids = [match.group(1) for match in headings]
+    if len(decision_ids) != len(set(decision_ids)):
+        raise ValueError("the accepted Decision register repeats a Question decision ID")
+
+    accepted_ids: list[str] = []
+    for index, match in enumerate(headings):
+        block_end = headings[index + 1].start() if index + 1 < len(headings) else len(source)
+        block = source[match.end():block_end]
+        statuses = re.findall(r"^- 상태: `([^`]+)`$", block, re.MULTILINE)
+        if len(statuses) != 1:
+            raise ValueError(f"Decision {match.group(1)} has no unambiguous maintained status")
+        if statuses[0] == "accepted":
+            accepted_ids.append(match.group(1))
+            if block.count("- 재검토 조건:") != 1:
+                raise ValueError(
+                    f"accepted Decision {match.group(1)} has no unambiguous revisit-trigger section"
+                )
+
+    unresolved = re.findall(r"^- 미해결 필수 제품 질문: (.+)$", source, re.MULTILINE)
+    if len(unresolved) != 1:
+        raise ValueError("the Decision register has no unambiguous unresolved-question state")
+    active: list[str]
+    if unresolved[0].strip() == "없음":
+        active = []
+    else:
+        active = DECISION_ID.findall(unresolved[0])
+        normalized = re.sub(r"[` ,·]", "", unresolved[0])
+        if not active or normalized != "".join(active):
+            raise ValueError("the Decision register unresolved-question state is not a bounded ID list")
+        if len(active) != len(set(active)) or any(value not in accepted_ids for value in active):
+            raise ValueError("the Decision register names an unknown or duplicate active trigger")
+
+    return {
+        "decision_revisit_trigger_assessment": OFFICIAL_REVISIT_ASSESSMENT,
+        "active_decision_revisit_triggers": active,
+        "decision_revisit_trigger_source": {
+            "kind": "accepted_decision_register",
+            "path": source_path,
+            "content_sha256": source_sha256,
+            "assessed_decision_ids": accepted_ids,
+            "assessed_decision_count": len(accepted_ids),
+        },
+    }
+
+
+def read_decision_revisit_assessment(path: Path = DECISION_REGISTER) -> dict[str, Any]:
+    source = path.read_text(encoding="utf-8")
+    return decision_revisit_assessment(
+        source,
+        source_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        source_path=path.relative_to(ROOT).as_posix(),
+    )
+
+
+def failed_decision_revisit_assessment(path: Path = DECISION_REGISTER) -> dict[str, Any]:
+    try:
+        source_hash = sha256(path)
+    except OSError:
+        source_hash = None
+    return {
+        "decision_revisit_trigger_assessment": FAILED_REVISIT_ASSESSMENT,
+        "active_decision_revisit_triggers": None,
+        "decision_revisit_trigger_source": {
+            "kind": "accepted_decision_register",
+            "path": DECISION_REGISTER_PATH,
+            "content_sha256": source_hash,
+            "assessed_decision_ids": [],
+            "assessed_decision_count": 0,
+        },
+    }
+
+
+def make_v11_result(
+    *,
+    validated_production_head: str,
+    final_gate_artifact: str,
+    duration_ms: float,
+    repositories: list[dict[str, Any]],
+    revisit_assessment: dict[str, Any],
+) -> dict[str, Any]:
+    statuses = [
+        value["status"]
+        for repository in repositories
+        for value in repository.get("steps", {}).values()
+    ]
+    steps_passed = bool(statuses and set(statuses) == {"passed"})
+    assessment_completed = (
+        revisit_assessment.get("decision_revisit_trigger_assessment")
+        == OFFICIAL_REVISIT_ASSESSMENT
+        and isinstance(revisit_assessment.get("active_decision_revisit_triggers"), list)
+    )
+    no_active_triggers = revisit_assessment.get("active_decision_revisit_triggers") == []
+    phase_8_ready = steps_passed and assessment_completed and no_active_triggers
+    result = {
+        "schema_version": 1,
+        "validation_id": "V11",
+        "validated_production_head": validated_production_head,
+        "final_gate_artifact": final_gate_artifact,
+        "duration_ms": duration_ms,
+        "repositories": repositories,
+        "counts": {status: statuses.count(status) for status in sorted(ALLOWED_STATUS)},
+        "status": "passed" if phase_8_ready else "failed",
+        **revisit_assessment,
+        "phase_8_ready": phase_8_ready,
+    }
+    validate_result(result)
+    return result
 
 
 class Recorder:
@@ -1182,12 +1308,76 @@ def validate_result(result: dict[str, Any]) -> None:
     repositories = result.get("repositories")
     if not isinstance(repositories, list) or len(repositories) != 3:
         raise AssertionError("V11 result must contain three repositories")
+    if [repository.get("class") for repository in repositories] != [
+        "volicord", "small-python", "polyglot-medium"
+    ]:
+        raise AssertionError("V11 result has the wrong repository target contract")
+    statuses: list[str] = []
     for repository in repositories:
         if set(repository.get("steps", {})) != set(REQUIRED_STEPS):
             raise AssertionError(f"incomplete V11 steps for {repository.get('class')}")
         for value in repository["steps"].values():
             if value.get("status") not in ALLOWED_STATUS:
                 raise AssertionError("invalid per-step status")
+            statuses.append(value["status"])
+    expected_counts = {status: statuses.count(status) for status in sorted(ALLOWED_STATUS)}
+    if result.get("counts") != expected_counts:
+        raise AssertionError("V11 result status counts do not match repository steps")
+    assessment = result.get("decision_revisit_trigger_assessment")
+    triggers = result.get("active_decision_revisit_triggers")
+    source = result.get("decision_revisit_trigger_source")
+    if assessment not in {OFFICIAL_REVISIT_ASSESSMENT, FAILED_REVISIT_ASSESSMENT}:
+        raise AssertionError("V11 result has an invalid revisit-trigger assessment state")
+    if assessment == OFFICIAL_REVISIT_ASSESSMENT:
+        if not isinstance(triggers, list) or not all(
+            isinstance(value, str) and DECISION_ID.fullmatch(value) for value in triggers
+        ):
+            raise AssertionError("official V11 revisit triggers are not a bounded ID list")
+        if len(triggers) != len(set(triggers)):
+            raise AssertionError("official V11 revisit triggers are duplicated")
+    elif triggers is not None:
+        raise AssertionError("unassessable V11 revisit evidence must not become an empty list")
+    if not isinstance(source, dict):
+        raise AssertionError("V11 result is missing Decision-register source identity")
+    if source.get("kind") != "accepted_decision_register" or source.get("path") != DECISION_REGISTER_PATH:
+        raise AssertionError("V11 result has the wrong Decision-register source identity")
+    source_hash = source.get("content_sha256")
+    if source_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        raise AssertionError("V11 result has an invalid Decision-register digest")
+    assessed_ids = source.get("assessed_decision_ids")
+    if not isinstance(assessed_ids, list) or source.get("assessed_decision_count") != len(assessed_ids):
+        raise AssertionError("V11 result has incomplete assessed Decision identities")
+    if not all(isinstance(value, str) and DECISION_ID.fullmatch(value) for value in assessed_ids):
+        raise AssertionError("V11 result has invalid assessed Decision identities")
+    if len(assessed_ids) != len(set(assessed_ids)):
+        raise AssertionError("V11 result repeats an assessed Decision identity")
+    if assessment == OFFICIAL_REVISIT_ASSESSMENT and (
+        not assessed_ids
+        or source_hash is None
+        or any(value not in assessed_ids for value in triggers)
+    ):
+        raise AssertionError("official V11 revisit evidence is not grounded in its Decision source")
+    if result.get("phase_8_ready") is True and (
+        result.get("status") != "passed"
+        or assessment != OFFICIAL_REVISIT_ASSESSMENT
+        or triggers != []
+    ):
+        raise AssertionError("V11 phase readiness requires a completed no-trigger assessment")
+    if triggers and result.get("phase_8_ready") is not False:
+        raise AssertionError("an active Decision revisit trigger cannot be Phase 8 ready")
+    if (result.get("status") == "passed") != (result.get("phase_8_ready") is True):
+        raise AssertionError("V11 result status and Phase 8 readiness disagree")
+    if result.get("status") not in {"passed", "failed"}:
+        raise AssertionError("V11 result has an invalid aggregate status")
+    if result.get("status") == "passed":
+        for repository in repositories:
+            authenticated = (
+                repository["steps"]["codex_mcp_connection"]
+                .get("evidence", {})
+                .get("authenticated", {})
+            )
+            if authenticated.get("status") != "passed":
+                raise AssertionError("passed V11 result lacks authenticated target evidence")
 
 
 def assert_required_steps_are_evidence_driven(
@@ -1417,14 +1607,57 @@ def self_check() -> int:
     assert_required_step_policy_regressions()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
-    fake = {
-        "schema_version": 1,
-        "repositories": [
-            {"class": name, "steps": {key: step("skipped", "self-check") for key in REQUIRED_STEPS}}
+    assessment = read_decision_revisit_assessment()
+    if assessment["active_decision_revisit_triggers"]:
+        raise AssertionError("the maintained Decision register has an active revisit trigger")
+    active_source = DECISION_REGISTER.read_text(encoding="utf-8").replace(
+        "- 미해결 필수 제품 질문: 없음",
+        "- 미해결 필수 제품 질문: Q3",
+        1,
+    )
+    active_assessment = decision_revisit_assessment(
+        active_source,
+        source_sha256=hashlib.sha256(active_source.encode("utf-8")).hexdigest(),
+    )
+    if active_assessment["active_decision_revisit_triggers"] != ["Q3"]:
+        raise AssertionError("active Decision revisit trigger was not assessed")
+    malformed_source = DECISION_REGISTER.read_text(encoding="utf-8").replace(
+        "- 미해결 필수 제품 질문: 없음",
+        "- 미해결 필수 제품 질문: unresolved prose",
+        1,
+    )
+    try:
+        decision_revisit_assessment(
+            malformed_source,
+            source_sha256=hashlib.sha256(malformed_source.encode("utf-8")).hexdigest(),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unassessable Decision revisit evidence was accepted")
+    fake_repositories = [
+        {"class": name, "steps": {key: step("skipped", "self-check") for key in REQUIRED_STEPS}}
+        for name in ("volicord", "small-python", "polyglot-medium")
+    ]
+    make_v11_result(
+        validated_production_head="0" * 40,
+        final_gate_artifact="/synthetic/final.json",
+        duration_ms=0.0,
+        repositories=fake_repositories,
+        revisit_assessment=assessment,
+    )
+    active_result = make_v11_result(
+        validated_production_head="0" * 40,
+        final_gate_artifact="/synthetic/final.json",
+        duration_ms=0.0,
+        repositories=[
+            {"class": name, "steps": {key: step("passed", "self-check") for key in REQUIRED_STEPS}}
             for name in ("volicord", "small-python", "polyglot-medium")
         ],
-    }
-    validate_result(fake)
+        revisit_assessment=active_assessment,
+    )
+    if active_result["phase_8_ready"] is not False or active_result["status"] != "failed":
+        raise AssertionError("active Decision revisit trigger did not block Phase 8")
     print(json.dumps({
         "status": "passed",
         "required_steps": len(REQUIRED_STEPS),
@@ -1432,6 +1665,9 @@ def self_check() -> int:
         "required_step_policy_regressions": "passed",
         "authentication_lifecycle": "passed",
         "credential_retention_audit": "passed",
+        "decision_revisit_trigger_assessment": "passed",
+        "active_decision_revisit_trigger_regression": "passed",
+        "unassessable_decision_revisit_regression": "passed",
         "polyglot_hash": tree_hash(POLYGLOT_FIXTURE),
     }, indent=2))
     return 0
@@ -1492,23 +1728,23 @@ def run(args: argparse.Namespace) -> int:
                 "identity": {},
                 "steps": {name: step("failed" if name == "clean_install" else "skipped", str(error)) for name in REQUIRED_STEPS},
             })
-    statuses = [value["status"] for repository in repositories for value in repository["steps"].values()]
-    result = {
-        "schema_version": 1,
-        "validation_id": "V11",
-        "validated_production_head": args.validated_head,
-        "final_gate_artifact": str(Path(args.final_artifact).resolve()),
-        "duration_ms": round((time.monotonic_ns() - started) / 1_000_000, 3),
-        "repositories": repositories,
-        "counts": {status: statuses.count(status) for status in sorted(ALLOWED_STATUS)},
-        "status": "passed" if statuses and set(statuses) == {"passed"} else "failed",
-        "phase_8_ready": bool(statuses and set(statuses) == {"passed"}),
-    }
-    validate_result(result)
+    try:
+        revisit_assessment = read_decision_revisit_assessment()
+    except (OSError, ValueError):
+        revisit_assessment = failed_decision_revisit_assessment()
+    result = make_v11_result(
+        validated_production_head=args.validated_head,
+        final_gate_artifact=str(Path(args.final_artifact).resolve()),
+        duration_ms=round((time.monotonic_ns() - started) / 1_000_000, 3),
+        repositories=repositories,
+        revisit_assessment=revisit_assessment,
+    )
     write_json(output / "result.json", result)
     print(json.dumps({
         "status": result["status"], "phase_8_ready": result["phase_8_ready"],
         "result": str(output / "result.json"), "counts": result["counts"],
+        "decision_revisit_trigger_assessment": result["decision_revisit_trigger_assessment"],
+        "active_decision_revisit_triggers": result["active_decision_revisit_triggers"],
     }, indent=2, sort_keys=True))
     return 0 if result["status"] == "passed" else 1
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import copy
 import shutil
 import sys
 import tempfile
@@ -150,14 +151,17 @@ class Owners:
         final_passes: bool = True,
         preflight_passes: bool = True,
         v11_passes: bool = True,
+        revisit_assessment: dict[str, Any] | None = None,
     ):
         self.root = root
         self.final_passes = final_passes
         self.preflight_passes = preflight_passes
         self.v11_passes = v11_passes
+        self.revisit_assessment = revisit_assessment
         self.counts = {"final": 0, "preflight": 0, "v11": 0, "audit": 0}
         self.final_path: Path | None = None
         self.preflight_path: Path | None = None
+        self.v11_result: dict[str, Any] | None = None
 
     def final(self) -> tuple[dict[str, Any], Path]:
         self.counts["final"] += 1
@@ -205,33 +209,31 @@ class Owners:
             raise AssertionError("V11 did not receive the same-session final artifact")
         output_directory.mkdir()
         status = "passed" if self.v11_passes else "failed"
-        result = {
-            "validation_id": "V11",
-            "status": status,
-            "phase_8_ready": self.v11_passes,
-            "counts": {status: 54},
-            "active_decision_revisit_triggers": [],
-            "repositories": [
-                {
-                    "class": target,
-                    "steps": {
-                        "codex_mcp_connection": {
-                            "evidence": {
-                                "authenticated": {
-                                    "status": status,
-                                    "summary": "synthetic-secret-must-not-be-copied",
-                                }
-                            }
-                        }
-                    },
+        repositories = []
+        for target in ("volicord", "small-python", "polyglot-medium"):
+            steps = {
+                name: harness.step(status, "synthetic gate fixture")
+                for name in harness.REQUIRED_STEPS
+            }
+            steps["codex_mcp_connection"]["evidence"] = {
+                "authenticated": {
+                    "status": status,
+                    "summary": "synthetic-secret-must-not-be-copied",
                 }
-                for target in ("volicord", "small-python", "polyglot-medium")
-            ],
-            "raw_repository_source_body": SECRET_SENTINELS[3],
-            "raw_provider_payload": SECRET_SENTINELS[5],
-        }
+            }
+            repositories.append({"class": target, "steps": steps})
+        result = harness.make_v11_result(
+            validated_production_head=candidate_head,
+            final_gate_artifact=str(final_path),
+            duration_ms=1.0,
+            repositories=repositories,
+            revisit_assessment=self.revisit_assessment or harness.read_decision_revisit_assessment(),
+        )
+        result["raw_repository_source_body"] = SECRET_SENTINELS[3]
+        result["raw_provider_payload"] = SECRET_SENTINELS[5]
+        self.v11_result = result
         (output_directory / "result.json").write_text(json.dumps(result), encoding="utf-8")
-        return result, {"exit_code": 0 if self.v11_passes else 1}
+        return result, {"exit_code": 0 if result["status"] == "passed" else 1}
 
     def audit(self, _output_directory: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         self.counts["audit"] += 1
@@ -266,6 +268,28 @@ def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners) -> t
             dirty_entries=[],
         ),
     )
+
+
+def gate_consumed_result_contract(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "result_fields": sorted(
+            key for key in result
+            if key in {
+                "status", "phase_8_ready", "counts", "repositories",
+                "active_decision_revisit_triggers",
+                "decision_revisit_trigger_assessment",
+                "decision_revisit_trigger_source",
+            }
+        ),
+        "assessment_source_fields": sorted(result["decision_revisit_trigger_source"]),
+        "targets": [repository["class"] for repository in result["repositories"]],
+        "authenticated_evidence_fields": [
+            sorted(
+                repository["steps"]["codex_mcp_connection"]["evidence"]["authenticated"]
+            )
+            for repository in result["repositories"]
+        ],
+    }
 
 
 def main() -> int:
@@ -304,6 +328,28 @@ def main() -> int:
         assert owners.counts == {"final": 1, "preflight": 1, "v11": 1, "audit": 1}
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
+        assert capsule["decision_revisit_trigger_assessment"] == "reported_by_official_v11"
+        assert capsule["active_decision_revisit_triggers"] == []
+        assert capsule["decision_revisit_trigger_source"]["path"] == (
+            "rebuild/docs/design/open-decisions.md"
+        )
+        assert owners.v11_result is not None
+        real_builder_result = harness.make_v11_result(
+            validated_production_head=HEAD,
+            final_gate_artifact=str(owners.final_path),
+            duration_ms=2.0,
+            repositories=copy.deepcopy(owners.v11_result["repositories"]),
+            revisit_assessment=harness.read_decision_revisit_assessment(),
+        )
+        assert gate_consumed_result_contract(owners.v11_result) == (
+            gate_consumed_result_contract(real_builder_result)
+        )
+        assert gate_consumed_result_contract(owners.v11_result)["result_fields"] == sorted({
+            "status", "phase_8_ready", "counts", "repositories",
+            "active_decision_revisit_triggers",
+            "decision_revisit_trigger_assessment",
+            "decision_revisit_trigger_source",
+        })
         encoded = json.dumps(capsule, sort_keys=True)
         assert "synthetic-secret-must-not-be-copied" not in encoded
         assert capsule["credential_retention_audit"]["status"] == "passed"
@@ -311,6 +357,7 @@ def main() -> int:
             "validated_candidate_head", "final_aggregate", "final_summary_sha256",
             "official_v11", "required_identities", "credential_retention_audit",
             "authenticated_codex_outcomes", "active_decision_revisit_triggers",
+            "decision_revisit_trigger_assessment", "decision_revisit_trigger_source",
             "admission_checks", "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
             "gate_configuration", "phase_8_ready",
         }
@@ -353,6 +400,31 @@ def main() -> int:
         assert capsule["authenticated_codex_outcomes"] == []
         assert capsule["phase_8_ready"] is False
 
+        active_assessment = copy.deepcopy(harness.read_decision_revisit_assessment())
+        active_assessment["active_decision_revisit_triggers"] = ["Q3"]
+        owners = Owners(root / "active-trigger-owners", revisit_assessment=active_assessment)
+        capsule, counts = run_orchestration(root / "active-trigger-gate", admitted, owners)
+        assert counts["official_v11"] == 1
+        assert capsule["blocking_classification"] == "v11_failed"
+        assert capsule["active_decision_revisit_triggers"] == ["Q3"]
+        assert capsule["decision_revisit_trigger_assessment"] == "reported_by_official_v11"
+        assert capsule["phase_8_ready"] is False
+
+        owners = Owners(
+            root / "unassessable-trigger-owners",
+            revisit_assessment=harness.failed_decision_revisit_assessment(),
+        )
+        capsule, counts = run_orchestration(
+            root / "unassessable-trigger-gate", admitted, owners
+        )
+        assert counts["official_v11"] == 1
+        assert capsule["blocking_classification"] == "v11_failed"
+        assert capsule["active_decision_revisit_triggers"] is None
+        assert capsule["decision_revisit_trigger_assessment"] == (
+            "official_v11_assessment_failed"
+        )
+        assert capsule["phase_8_ready"] is False
+
         owners = Owners(root / "preflight-failure-owners", preflight_passes=False)
         capsule, counts = run_orchestration(root / "preflight-failure-gate", admitted, owners)
         assert capsule["blocking_classification"] == "v11_preflight_failed"
@@ -383,7 +455,8 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 10,
+        "scenarios": 12,
+        "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,
     }, indent=2, sort_keys=True))

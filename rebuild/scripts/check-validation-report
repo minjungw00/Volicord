@@ -418,18 +418,40 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     phase_8_ready = capsule.get("phase_8_ready")
     if not isinstance(phase_8_ready, bool):
         errors.append("capsule phase_8_ready must be a boolean")
-    triggers = sequence(
-        capsule.get("active_decision_revisit_triggers"),
-        "active_decision_revisit_triggers",
-        errors,
+    trigger_value = capsule.get("active_decision_revisit_triggers")
+    triggers_available = isinstance(trigger_value, list)
+    triggers = trigger_value if triggers_available else []
+    trigger_ids_valid = triggers_available and all(
+        isinstance(value, str) and re.fullmatch(r"Q[0-9]+(?:-[A-Z])?", value)
+        for value in triggers
     )
-    if not all(isinstance(value, str) and value for value in triggers):
-        errors.append("capsule active Decision revisit triggers must be strings")
-    nonempty_string(
-        capsule.get("decision_revisit_trigger_assessment"),
-        "decision_revisit_trigger_assessment",
-        errors,
-    )
+    if triggers_available and not trigger_ids_valid:
+        errors.append("capsule active Decision revisit triggers must be bounded Decision IDs")
+    if trigger_ids_valid and len(triggers) != len(set(triggers)):
+        errors.append("capsule active Decision revisit triggers must be unique")
+    assessment = capsule.get("decision_revisit_trigger_assessment")
+    if not isinstance(assessment, str) or not assessment:
+        errors.append("capsule decision_revisit_trigger_assessment must be a nonempty string")
+    source_value = capsule.get("decision_revisit_trigger_source")
+    source_valid = False
+    source_ids: list[Any] = []
+    if isinstance(source_value, dict):
+        source_ids_value = source_value.get("assessed_decision_ids")
+        if isinstance(source_ids_value, list):
+            source_ids = source_ids_value
+        source_ids_valid = bool(source_ids) and all(
+            isinstance(value, str) and re.fullmatch(r"Q[0-9]+(?:-[A-Z])?", value)
+            for value in source_ids
+        )
+        source_valid = (
+            source_value.get("kind") == "accepted_decision_register"
+            and source_value.get("path") == "rebuild/docs/design/open-decisions.md"
+            and isinstance(source_value.get("content_sha256"), str)
+            and SHA256.fullmatch(source_value["content_sha256"]) is not None
+            and source_ids_valid
+            and len(source_ids) == len(set(source_ids))
+            and source_value.get("assessed_decision_count") == len(source_ids)
+        )
     outcomes = sequence(capsule.get("authenticated_codex_outcomes"), "authenticated_codex_outcomes", errors)
     outcome_targets: list[str] = []
     for index, value in enumerate(outcomes):
@@ -509,6 +531,24 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
             ):
                 errors.append("capsule passed official V11 requires every authenticated target to pass")
 
+    if not official_started:
+        if assessment != "not_run" or trigger_value is not None or source_value is not None:
+            errors.append("capsule official-V11-not-run state contains revisit assessment evidence")
+    elif assessment == "reported_by_official_v11":
+        if not triggers_available or not source_valid:
+            errors.append("capsule official revisit assessment lacks bounded source-backed evidence")
+        elif any(value not in source_ids for value in triggers):
+            errors.append("capsule active revisit trigger is outside the assessed Decision source")
+        if official_status == "passed" and triggers != []:
+            errors.append("capsule passed official V11 cannot contain an active revisit trigger")
+    elif assessment == "official_v11_assessment_failed":
+        if trigger_value is not None:
+            errors.append("capsule failed revisit assessment must not project an empty trigger list")
+        if official_status == "passed":
+            errors.append("capsule passed official V11 cannot have an unassessable revisit result")
+    else:
+        errors.append("capsule started official V11 lacks an official revisit assessment state")
+
     fully_passed = (
         admission_status == "eligible"
         and blocking is None
@@ -516,7 +556,10 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         and official_status == "passed"
         and official_ready is True
         and audit_status == "passed"
-        and not triggers
+        and assessment == "reported_by_official_v11"
+        and triggers_available
+        and triggers == []
+        and source_valid
         and actual_flow == (True, True, True)
         and set(outcome_targets) == set(scopes)
         and all(
@@ -532,8 +575,8 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         errors.append("capsule fully passed unified V11 gate must mark phase_8_ready true")
     if not fully_passed and phase_8_ready is not False:
         errors.append("capsule non-passing lifecycle must mark phase_8_ready false")
-    if fully_passed and capsule.get("decision_revisit_trigger_assessment") != "reported_by_official_v11":
-        errors.append("capsule fully passed V11 requires the official revisit-trigger assessment")
+    if official_status == "passed" and assessment != "reported_by_official_v11":
+        errors.append("capsule passed V11 requires the official revisit-trigger assessment")
     return errors
 
 
@@ -595,7 +638,6 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
             tool["version"] if tool["status"] == "available" else tool["error"],
             errors,
         )
-
     configuration = capsule["gate_configuration"]
     require(commands_section, "Commands and configuration", "gate_configuration.argv", shlex.join(configuration["argv"]), errors)
     require(
@@ -688,6 +730,16 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
             capsule["decision_revisit_trigger_assessment"],
             errors,
         )
+        source = capsule.get("decision_revisit_trigger_source")
+        if isinstance(source, dict):
+            for key, value in source.items():
+                require(
+                    revisit,
+                    "Decision revisit trigger status",
+                    f"decision_revisit_trigger_source.{key}",
+                    value,
+                    errors,
+                )
     return errors
 
 
@@ -776,6 +828,13 @@ def self_test_capsule() -> dict[str, Any]:
         ],
         "active_decision_revisit_triggers": [],
         "decision_revisit_trigger_assessment": "reported_by_official_v11",
+        "decision_revisit_trigger_source": {
+            "kind": "accepted_decision_register",
+            "path": "rebuild/docs/design/open-decisions.md",
+            "content_sha256": "2" * 64,
+            "assessed_decision_ids": ["Q1", "Q2", "Q3"],
+            "assessed_decision_count": 3,
+        },
         "phase_8_ready": True,
     }
 
@@ -884,6 +943,9 @@ def self_test_report(capsule: dict[str, Any]) -> str:
         content["Decision revisit trigger status"] = "\n".join((
             f"active_decision_revisit_triggers = {scalar_text(capsule['active_decision_revisit_triggers'])}",
             f"decision_revisit_trigger_assessment = {capsule['decision_revisit_trigger_assessment']}",
+            *flat_lines(capsule["decision_revisit_trigger_source"], "decision_revisit_trigger_source"),
+            "decision_revisit_trigger_source.assessed_decision_ids = "
+            f"{scalar_text(capsule['decision_revisit_trigger_source']['assessed_decision_ids'])}",
         ))
     return "# V11 — Semantic checker self-test\n\n" + "\n\n".join(
         f"## {section}\n\n{content[section]}" for section in SECTIONS
@@ -911,10 +973,9 @@ def self_test() -> int:
             "scan_error_count": 0,
         }
         capsule["authenticated_codex_outcomes"] = []
-        capsule["active_decision_revisit_triggers"] = []
-        capsule["decision_revisit_trigger_assessment"] = (
-            "independent_documentation_review_required"
-        )
+        capsule["active_decision_revisit_triggers"] = None
+        capsule["decision_revisit_trigger_assessment"] = "not_run"
+        capsule["decision_revisit_trigger_source"] = None
         capsule["phase_8_ready"] = False
 
     admission_blocked = copy.deepcopy(fully_passed)
@@ -1000,6 +1061,38 @@ def self_test() -> int:
         self_test_report(official_failed), official_failed
     ) == []
 
+    active_trigger = copy.deepcopy(official_failed)
+    active_trigger["active_decision_revisit_triggers"] = ["Q3"]
+    assert check_capsule_semantics(
+        self_test_report(active_trigger), active_trigger
+    ) == []
+
+    unassessable = copy.deepcopy(official_failed)
+    unassessable["active_decision_revisit_triggers"] = None
+    unassessable["decision_revisit_trigger_assessment"] = (
+        "official_v11_assessment_failed"
+    )
+    unassessable["decision_revisit_trigger_source"] = {
+        "kind": "accepted_decision_register",
+        "path": "rebuild/docs/design/open-decisions.md",
+        "content_sha256": "2" * 64,
+        "assessed_decision_ids": [],
+        "assessed_decision_count": 0,
+    }
+    assert check_capsule_semantics(
+        self_test_report(unassessable), unassessable
+    ) == []
+
+    missing_revisit_evidence = copy.deepcopy(fully_passed)
+    missing_revisit_evidence["active_decision_revisit_triggers"] = None
+    missing_revisit_evidence["decision_revisit_trigger_assessment"] = (
+        "official_v11_assessment_failed"
+    )
+    assert any(
+        "revisit" in error or "assessment" in error
+        for error in capsule_contract_errors(missing_revisit_evidence)
+    )
+
     missing_version = fully_passed_report.replace(
         "cargo 1.2.3", "version omitted from report"
     )
@@ -1032,7 +1125,7 @@ def self_test() -> int:
         path = Path(directory) / "generic-report.md"
         path.write_text(fully_passed_report, encoding="utf-8")
         assert check(path) == []
-    print("validation report checker self-test passed; lifecycle scenarios: 5")
+    print("validation report checker self-test passed; lifecycle scenarios: 7")
     return 0
 
 
