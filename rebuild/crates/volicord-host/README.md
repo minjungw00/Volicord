@@ -5,6 +5,11 @@ Recall, repository understanding, Inquiry/Decision, Checkpoint, canonical and
 Candidate lifecycle, privacy, document, analysis, and Guarded interaction
 capabilities. It never exposes raw database operations or legacy methods.
 
+`context_record` preserves a bounded statement that occurs verbatim in the
+exact current-host user turn as a user-authored Context Item. It returns both
+the canonical Source and Context Item identities; a `goal` recorded this way is
+available to ordinary Recall without creating a Decision.
+
 `candidate_manage` requires `submit_question` to declare `research_required` or
 `ready_to_ask` with an explicit `research_state_basis`.
 `attach_repository_research` binds evidence to the current Project Analysis

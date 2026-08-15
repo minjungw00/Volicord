@@ -260,6 +260,28 @@ fn rejects_generated_fact_and_non_user_preference_and_keeps_support_direction(
     Ok(())
 }
 
+#[test]
+fn rejects_agent_provenance_presented_as_a_user_goal() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut store = store_with_ids(&root.path().join("context.sqlite3"), &[1, 2, 3, 4, 5, 6])?;
+    let project = store
+        .create_project(operation(24), "User Goal Provenance")?
+        .value;
+    let (repository, _, _, _) = record_sources(&mut store, &project)?;
+    let forged_goal = context_draft(
+        ContextItemRole::Goal,
+        StatementProvenanceRole::UserStatement,
+        PrincipalKind::Agent,
+        repository.id,
+    );
+    let error = store
+        .record_context_item(operation(25), project.id, forged_goal)
+        .expect_err("agent provenance must not become a user-stated Goal");
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+    assert!(error.to_string().contains("user provenance"));
+    Ok(())
+}
+
 fn question_draft(source_id: volicord_context::SourceId, prompt: &str) -> QuestionDraft {
     QuestionDraft {
         expected_project_revision: 1,

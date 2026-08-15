@@ -28,6 +28,7 @@ EXPECTED_TOOLS = [
     "repository_analyze",
     "inquiry_frontier",
     "decision_record",
+    "context_record",
     "checkpoint_record",
     "canonical_inspect",
     "canonical_mutate",

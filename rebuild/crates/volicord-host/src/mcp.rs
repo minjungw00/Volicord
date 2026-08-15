@@ -8,9 +8,9 @@ use std::{
 };
 use volicord_context::{
     AgentRecommendation, ApplicabilityScope, CanonicalRecordId, CheckpointDraft, CheckpointId,
-    CheckpointKind, Clock, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
-    DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId, Principal,
-    PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
+    CheckpointKind, Clock, ContextItemCorrectionDraft, ContextItemId, ContextItemRole,
+    CorrectionKind, DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId,
+    Principal, PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
     QuestionEvidenceFreshness, QuestionId, QuestionResearchState, SourceId, SystemClock,
     TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
     VerificationFact, VerificationState, WorkState,
@@ -34,7 +34,7 @@ use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 16] = [
+pub const HOST_TOOL_NAMES: [&str; 17] = [
     "project_initialize",
     "project_health",
     "recall",
@@ -42,6 +42,7 @@ pub const HOST_TOOL_NAMES: [&str; 16] = [
     "repository_analyze",
     "inquiry_frontier",
     "decision_record",
+    "context_record",
     "checkpoint_record",
     "canonical_inspect",
     "canonical_mutate",
@@ -150,6 +151,7 @@ impl HostAdapter {
                 "repository_analyze" => self.repository_analyze(&arguments),
                 "inquiry_frontier" => self.inquiry_frontier(&arguments),
                 "decision_record" => self.decision_record(&arguments),
+                "context_record" => self.context_record(&arguments),
                 "checkpoint_record" => self.checkpoint_record(&arguments),
                 "canonical_inspect" => self.canonical_inspect(&arguments),
                 "canonical_mutate" => self.canonical_mutate(&arguments),
@@ -412,6 +414,28 @@ impl HostAdapter {
         Ok(
             json!({"checkpoint_id":result.identity,"revision":result.revision,"user_response_source_id":source_id.to_string()}),
         )
+    }
+
+    fn context_record(&self, args: &Value) -> Result<Value, HostError> {
+        let role = context_item_role(required_str(args, "role")?)?;
+        let result = self
+            .operations
+            .record_current_host_user_context(
+                project(args)?,
+                "codex".into(),
+                self.host_session.clone(),
+                required_str(args, "user_turn")?.to_owned(),
+                role,
+                required_str(args, "statement")?.to_owned(),
+            )
+            .map_err(operation_error)?;
+        Ok(json!({
+            "project_id": project(args)?.to_string(),
+            "source_id": result.source_id.to_string(),
+            "context_item_id": result.context_item_id.to_string(),
+            "revision": result.context_item_revision,
+            "role": context_item_role_name(result.role),
+        }))
     }
 
     fn canonical_inspect(&self, args: &Value) -> Result<Value, HostError> {
@@ -1075,6 +1099,18 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     ("user_rationale", text_schema("Optional user rationale", 1, 16_384)),
                 ],
                 &["project_id", "question_id", "question_revision", "alternative_key", "user_turn"],
+            ),
+        ),
+        "context_record" => (
+            "Record one verbatim statement from the exact current-host user turn as canonical Project Context.",
+            object_schema(
+                vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("user_turn", user_turn_schema()),
+                    ("role", enum_schema("User-statement Context role", &["goal", "fact", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
+                    ("statement", text_schema("Verbatim bounded statement from the current-host user turn", 1, 16_384)),
+                ],
+                &["project_id", "user_turn", "role", "statement"],
             ),
         ),
         "checkpoint_record" => (
@@ -2101,6 +2137,33 @@ fn question_research_state(value: &str) -> Result<QuestionResearchState, HostErr
         _ => Err(HostError::new(
             "research_state must be ready_to_ask or research_required",
         )),
+    }
+}
+
+const fn context_item_role_name(role: ContextItemRole) -> &'static str {
+    match role {
+        ContextItemRole::Goal => "goal",
+        ContextItemRole::Fact => "fact",
+        ContextItemRole::Assumption => "assumption",
+        ContextItemRole::Constraint => "constraint",
+        ContextItemRole::Preference => "preference",
+        ContextItemRole::Risk => "risk",
+        ContextItemRole::Learning => "learning",
+        ContextItemRole::KnownLimit => "known_limit",
+    }
+}
+
+fn context_item_role(value: &str) -> Result<ContextItemRole, HostError> {
+    match value {
+        "goal" => Ok(ContextItemRole::Goal),
+        "fact" => Ok(ContextItemRole::Fact),
+        "assumption" => Ok(ContextItemRole::Assumption),
+        "constraint" => Ok(ContextItemRole::Constraint),
+        "preference" => Ok(ContextItemRole::Preference),
+        "risk" => Ok(ContextItemRole::Risk),
+        "learning" => Ok(ContextItemRole::Learning),
+        "known_limit" => Ok(ContextItemRole::KnownLimit),
+        _ => Err(HostError::new("unknown user Context role")),
     }
 }
 

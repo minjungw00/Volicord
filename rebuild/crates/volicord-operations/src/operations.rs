@@ -2,7 +2,7 @@ use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
     ChildProcessOutcome, Error, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
+    PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout, UserContextRecordingOutcome,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -22,10 +22,11 @@ use std::{
 };
 use volicord_context::{
     Availability, BundleComparison, BundleMerge, CanonicalReadBasis, CanonicalReadOptions,
-    CanonicalRecordId, CheckpointDraft, Clock, ContextItemCorrectionDraft, ContextItemId,
-    DecisionChoice, DecisionCorrectionDraft, DecisionId, DecisionSupersessionDraft,
-    MergeResolution, OperationId, OperationResult, Principal, PrincipalKind, ProjectId,
-    SourceDraft, SourceId, SourcePayload, Store, SystemClock, TimestampMicros, UserTurnSource,
+    CanonicalRecordId, CheckpointDraft, Clock, ContextItemCorrectionDraft, ContextItemDraft,
+    ContextItemId, ContextItemRole, DecisionChoice, DecisionCorrectionDraft, DecisionId,
+    DecisionSupersessionDraft, MergeResolution, OperationId, OperationResult, Principal,
+    PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload, StatementProvenanceRole, Store,
+    SystemClock, TimestampMicros, UserTurnSource,
 };
 use volicord_inquiry::{
     compute_frontier, record_response_batch, ApplicabilityQuery, BatchResponseItem,
@@ -1026,6 +1027,53 @@ impl LocalOperations {
             identity: source.id.to_string(),
             revision: Some(1),
             replayed: false,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_current_host_user_context(
+        &self,
+        project_id: ProjectId,
+        host: String,
+        session: String,
+        user_turn: String,
+        role: ContextItemRole,
+        statement: String,
+    ) -> Result<UserContextRecordingOutcome, Error> {
+        if !user_turn.contains(&statement) {
+            return Err(Error::new(
+                "user Context statement must occur verbatim in the exact current-host user turn",
+            ));
+        }
+        let source = self.create_user_source(project_id, host, session, user_turn)?;
+        let mut canonical = self.open_canonical()?;
+        let project = canonical
+            .get_project(project_id)
+            .map_err(|error| Error::with_source("cannot read Project", error))?;
+        let item = canonical
+            .record_context_item(
+                new_operation_id()?,
+                project_id,
+                ContextItemDraft {
+                    expected_project_revision: project.revision,
+                    role,
+                    statement,
+                    provenance_role: StatementProvenanceRole::UserStatement,
+                    author: Principal {
+                        kind: PrincipalKind::User,
+                        identity: "current-host-user".into(),
+                    },
+                    source_basis: vec![source.id],
+                    applicability: Default::default(),
+                },
+            )
+            .map_err(|error| Error::with_source("user Context recording failed", error))?
+            .value;
+        Ok(UserContextRecordingOutcome {
+            source_id: source.id,
+            context_item_id: item.id,
+            context_item_revision: item.revision,
+            role: item.role,
         })
     }
 

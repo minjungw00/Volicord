@@ -79,6 +79,11 @@ fn schema_validation_rejects_unknown_missing_and_malformed_arguments_before_muta
             "question_id is required",
         ),
         (
+            "context_record",
+            json!({"project_id":project}),
+            "user_turn is required",
+        ),
+        (
             "canonical_mutate",
             json!({"action":"forget","project_id":project,"user_turn":"forget"}),
             "does not match any allowed shape",
@@ -672,6 +677,54 @@ fn current_host_decision_and_checkpoint_calls_preserve_user_turn_sources() {
         ));
         assert_eq!(source.source.actor.kind, PrincipalKind::User);
     }
+}
+
+#[test]
+fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
+    let (_temporary, mut adapter, project) = setup();
+    let user_turn =
+        "For this work, make grounded checkpoints available to ordinary Codex sessions.";
+    let statement = "make grounded checkpoints available to ordinary Codex sessions";
+    let recorded = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":user_turn,
+            "role":"goal",
+            "statement":statement,
+        }),
+    ))
+    .clone();
+    assert_eq!(recorded["role"], "goal", "{recorded}");
+    assert_eq!(
+        recorded["source_id"].as_str().map(str::len),
+        Some(32),
+        "{recorded}"
+    );
+    assert_eq!(
+        recorded["context_item_id"].as_str().map(str::len),
+        Some(32),
+        "{recorded}"
+    );
+
+    let recall = structured(&call(&mut adapter, "recall", json!({"project_id":project}))).clone();
+    assert_eq!(recall["goals"], json!([statement]), "{recall}");
+
+    let rejected = call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"The user only stated a narrow goal.",
+            "role":"goal",
+            "statement":"An agent-authored expansion that the user did not state",
+        }),
+    );
+    assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+    assert!(structured(&rejected)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("occur verbatim")));
 }
 
 #[test]
@@ -1329,6 +1382,10 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "alternative_key",
                 "user_turn",
             ],
+        )],
+        "context_record" => vec![shape(
+            &["project_id", "user_turn", "role", "statement"],
+            &["project_id", "user_turn", "role", "statement"],
         )],
         "checkpoint_record" => vec![shape(
             &[

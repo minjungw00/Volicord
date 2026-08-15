@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use volicord_context::{LocalBinding, OperationId, Project, SourceId};
+use volicord_context::{
+    ContextItemId, ContextItemRole, LocalBinding, OperationId, Project, SourceId,
+};
 use volicord_inquiry::CandidateFreshness;
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
@@ -177,4 +179,12 @@ pub struct CanonicalMutationOutcome {
     pub identity: String,
     pub revision: Option<u64>,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserContextRecordingOutcome {
+    pub source_id: SourceId,
+    pub context_item_id: ContextItemId,
+    pub context_item_revision: u64,
+    pub role: ContextItemRole,
 }

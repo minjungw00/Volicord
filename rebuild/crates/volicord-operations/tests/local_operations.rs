@@ -1,6 +1,6 @@
 use std::{ffi::OsString, fs, time::Duration};
 use tempfile::TempDir;
-use volicord_context::ProjectId;
+use volicord_context::{ContextItemRole, PrincipalKind, ProjectId, SourcePayload};
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{HealthState, LocalOperations, OperationState, RuntimeLayout};
 
@@ -52,6 +52,69 @@ fn project_analysis_recall_and_portable_io_use_current_owners(
     let exported = operations.export_bundle(initialized.project.id, &bundle)?;
     assert_eq!(exported.project_id, initialized.project.id);
     assert!(bundle.is_file());
+    Ok(())
+}
+
+#[test]
+fn exact_current_host_goal_context_round_trips_through_recall(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let initialized = operations.initialize_project("Context Fixture", Some(&repository))?;
+    let user_turn = "The current goal is to expose exact user context to Recall.";
+    let statement = "expose exact user context to Recall";
+    let recorded = operations.record_current_host_user_context(
+        initialized.project.id,
+        "codex".into(),
+        "session-context-fixture".into(),
+        user_turn.into(),
+        ContextItemRole::Goal,
+        statement.into(),
+    )?;
+    let canonical = operations.canonical_basis(initialized.project.id)?;
+    let item = canonical
+        .context_items
+        .iter()
+        .find(|item| item.id == recorded.context_item_id)
+        .ok_or("recorded Context Item is missing")?;
+    assert_eq!(item.statement, statement);
+    assert_eq!(item.source_basis, vec![recorded.source_id]);
+    let source = canonical
+        .sources
+        .iter()
+        .find(|source| source.source.id == recorded.source_id)
+        .ok_or("recorded user Source is missing")?;
+    assert_eq!(source.source.actor.kind, PrincipalKind::User);
+    assert!(matches!(
+        source.source.payload,
+        SourcePayload::CurrentHostUserTurn { ref turn, .. } if turn == user_turn
+    ));
+    assert_eq!(
+        operations.recall(initialized.project.id)?.goals_and_why[0].statement,
+        statement
+    );
+
+    let before = operations
+        .canonical_basis(initialized.project.id)?
+        .sources
+        .len();
+    let error = operations
+        .record_current_host_user_context(
+            initialized.project.id,
+            "codex".into(),
+            "session-context-fixture".into(),
+            "The user stated only this sentence.".into(),
+            ContextItemRole::Goal,
+            "Agent-authored text outside the user turn".into(),
+        )
+        .expect_err("non-verbatim agent text must be rejected");
+    assert!(error.message().contains("occur verbatim"));
+    assert_eq!(
+        operations
+            .canonical_basis(initialized.project.id)?
+            .sources
+            .len(),
+        before
+    );
     Ok(())
 }
 

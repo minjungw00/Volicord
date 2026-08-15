@@ -26,7 +26,7 @@ pub use model::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
     ChildProcessOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    PublicationOutcome, RepairKind, RepairOutcome,
+    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
 };
 pub use operations::LocalOperations;
 pub use volicord_privacy::{
