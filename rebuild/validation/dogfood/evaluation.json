@@ -96,6 +96,18 @@
     "required_codex_sessions_per_cycle": 2,
     "required_capture_format": "codex_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
+    "task_objective": {
+      "envelope_prefix": "PHASE8_OBJECTIVE: ",
+      "maximum_utf8_bytes": 1024,
+      "required_linkage": [
+        "first_work_session_user_task_turn",
+        "work_session_git_revision",
+        "evaluated_repository_revision",
+        "checkpoint_call_goal",
+        "canonical_checkpoint_goal",
+        "fresh_session_recall_goals"
+      ]
+    },
     "raw_evidence_retention": "ignored_local_state_only"
   }
 }

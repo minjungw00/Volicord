@@ -25,6 +25,8 @@ from codex_events import (
     CanonicalBundle,
     CodexCapture,
     EvidenceError,
+    MAX_PHASE8_OBJECTIVE_BYTES,
+    PHASE8_OBJECTIVE_PREFIX,
     ToolCall,
     command_is_repository_inspection,
     decode_string_blob,
@@ -148,6 +150,21 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("Phase 8 must normalize Codex rollout and canonical product evidence")
     if evidence.get("harness_performs_or_authorizes_transmission") is not False:
         raise ValueError("the Phase 8 verifier may not claim Codex transmission authority")
+    objective = evidence.get("task_objective", {})
+    if (
+        objective.get("envelope_prefix") != PHASE8_OBJECTIVE_PREFIX
+        or objective.get("maximum_utf8_bytes") != MAX_PHASE8_OBJECTIVE_BYTES
+        or tuple(objective.get("required_linkage", []))
+        != (
+            "first_work_session_user_task_turn",
+            "work_session_git_revision",
+            "evaluated_repository_revision",
+            "checkpoint_call_goal",
+            "canonical_checkpoint_goal",
+            "fresh_session_recall_goals",
+        )
+    ):
+        raise ValueError("the Phase 8 task-objective evidence contract changed")
     return value
 
 
@@ -418,17 +435,18 @@ def checkpoint_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
     decision_id: str | None,
-) -> tuple[bool, str | None, list[str], str | None]:
+    task_objective: str | None,
+) -> tuple[bool, bool, str | None, list[str], str | None]:
     call = unique_call(work, "checkpoint_record")
     if call is None or work is None or bundle is None:
-        return False, None, [], None
+        return False, False, None, [], None
     checkpoint_id = call.result.get("checkpoint_id")
     source_id = call.result.get("user_response_source_id")
     checkpoint = bundle.one("checkpoints", id=checkpoint_id, project_id=bundle.project_id)
     turn = work.turn_for_call(call)
     source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
     if checkpoint is None or source is None or turn is None or not nonempty_string(source_id):
-        return False, None, [], None
+        return False, False, None, [], None
     changed_paths = decode_string_blob(checkpoint.get("changed_paths"))
     observed_paths = work.paths_before(call.sequence)
     bounded_paths = (
@@ -468,6 +486,11 @@ def checkpoint_facts(
         decision_id=decision_id,
     )
     next_step = checkpoint.get("next_step")
+    objective_linked = (
+        nonempty_string(task_objective)
+        and call.arguments.get("goal") == task_objective
+        and checkpoint.get("goal") == task_objective
+    )
     valid = (
         bounded_paths is not None
         and set(bounded_paths) == set(observed_paths)
@@ -480,10 +503,11 @@ def checkpoint_facts(
         and source.get("detail_two") == work.session_id
         and source.get("actor_kind") == "user"
         and call.arguments.get("project_id") == bundle.project_id
+        and objective_linked
         and call.arguments.get("next_step") == next_step
         and nonempty_string(next_step)
     )
-    return valid, str(checkpoint_id) if nonempty_string(checkpoint_id) else None, observed_paths, str(next_step) if nonempty_string(next_step) else None
+    return valid, objective_linked, str(checkpoint_id) if nonempty_string(checkpoint_id) else None, observed_paths, str(next_step) if nonempty_string(next_step) else None
 
 
 def real_session_evidence(
@@ -529,8 +553,12 @@ def real_session_evidence(
     decision_ok, decision_id, question_id, question_revision, user_source_id = decision_facts(
         work_capture, bundle
     )
-    checkpoint_ok, checkpoint_id, changed_paths, next_step = checkpoint_facts(
-        work_capture, bundle, decision_id
+    task_objective = work_capture.phase8_objective if work_capture is not None else None
+    checkpoint_ok, checkpoint_objective_ok, checkpoint_id, changed_paths, next_step = checkpoint_facts(
+        work_capture,
+        bundle,
+        decision_id,
+        task_objective.value if task_objective is not None else None,
     )
     checkpoint_call = unique_call(work_capture, "checkpoint_record")
     first_work_change = min(
@@ -544,7 +572,7 @@ def real_session_evidence(
         and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
         and all(item.sequence < checkpoint_call.sequence for item in work_capture.path_observations)
     ) if work_capture else False
-    metadata_ok = (
+    cycle_metadata_ok = (
         raw.get("kind") == "phase8_real_session_cycle_evidence"
         and raw.get("producer") == "volicord_phase8_codex_event_normalizer"
         and valid_capture_sha256(raw.get("_evidence_file_sha256"))
@@ -553,7 +581,6 @@ def real_session_evidence(
         and raw.get("repository_revision") == repository_revision
         and work_capture is not None
         and work_capture.git_revision == repository_revision
-        and ordinary_ok
     )
     baseline_ok = (
         work_capture is not None
@@ -637,6 +664,31 @@ def real_session_evidence(
         and recalled_context is not None
         and bool(recalled_context)
     )
+    recall_goals = recall_call.result.get("goals") if recall_call is not None else None
+    recalled_objective_ok = (
+        task_objective is not None
+        and isinstance(recall_goals, list)
+        and all(nonempty_string(goal) for goal in recall_goals)
+        and task_objective.value in recall_goals
+    )
+    objective_revision_ok = (
+        task_objective is not None
+        and work_capture is not None
+        and task_objective.repository_revision == work_capture.git_revision
+        and task_objective.repository_revision == repository_revision
+    )
+    objective_ok = (
+        cycle_metadata_ok
+        and work_capture is not None
+        and work_capture.phase8_objective_status == "valid"
+        and objective_revision_ok
+        and checkpoint_ok
+        and checkpoint_objective_ok
+        and invocations_ok
+        and fresh_ok
+        and recall_match_ok
+        and recalled_objective_ok
+    )
     continuation_ok = (
         recall_match_ok
         and nonempty_string(next_step)
@@ -646,7 +698,7 @@ def real_session_evidence(
     )
 
     checks = {
-        "repository_specific_objective": evidence_check(references_present, metadata_ok),
+        "repository_specific_objective": evidence_check(references_present, objective_ok),
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
         "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
@@ -675,6 +727,19 @@ def real_session_evidence(
             "work": work_capture.source_sha256 if work_capture else None,
             "resume": resume_capture.source_sha256 if resume_capture else None,
             "canonical_bundle": bundle.source_sha256 if bundle else None,
+        },
+        "objective_basis": {
+            "envelope_status": (
+                work_capture.phase8_objective_status if work_capture is not None else "unavailable"
+            ),
+            "sha256": task_objective.sha256 if task_objective is not None else None,
+            "utf8_length": task_objective.utf8_length if task_objective is not None else None,
+            "repository_revision": (
+                task_objective.repository_revision if task_objective is not None else None
+            ),
+            "repository_revision_matches": objective_revision_ok,
+            "checkpoint_call_and_canonical_goal_match": checkpoint_objective_ok,
+            "fresh_session_recall_goal_matches": recalled_objective_ok,
         },
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
@@ -1382,6 +1447,13 @@ def run_evaluation(args: argparse.Namespace) -> int:
     return 0 if replacement_pass_candidate else 1
 
 
+def fixture_task_objective(kind: str, cycle: int) -> str:
+    return (
+        f"Update src/existing.rs and tests/existing.rs for the {kind} "
+        f"Phase 8 cycle {cycle}"
+    )
+
+
 def real_session_fixture(
     kind: str,
     cycle: int,
@@ -1399,7 +1471,14 @@ def real_session_fixture(
     checkpoint = "09" * 16
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
-    decision_turn_text = "<redacted-current-host-decision>"
+    objective = fixture_task_objective(kind, cycle)
+    objective_envelope = PHASE8_OBJECTIVE_PREFIX + json.dumps(
+        {"repository_revision": revision, "objective": objective},
+        separators=(",", ":"),
+    )
+    decision_turn_text = (
+        f"{objective_envelope}\nApply the captured repository-specific correction."
+    )
     checkpoint_turn_text = "<redacted-checkpoint-request>"
     next_step = "Update src/resume.rs and verify the resumed work"
     work_paths = ["src/existing.rs", "tests/existing.rs"]
@@ -1546,7 +1625,7 @@ def real_session_fixture(
             {
                 "project_id": project,
                 "user_turn": checkpoint_turn_text,
-                "goal": "Improve the repository implementation",
+                "goal": objective,
                 "next_step": next_step,
                 "known_limits": [],
             },
@@ -1572,7 +1651,7 @@ def real_session_fixture(
             {
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
-                "goals": ["Improve the repository implementation"],
+                "goals": [objective],
                 "decisions": [{"identity": decision, "revision": 1, "state": "active", "choice": "apply", "rationale": None}],
                 "open_questions": [],
                 "known_limits": [],
@@ -1643,9 +1722,9 @@ def real_session_fixture(
         table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
         table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("apply"), null(), blob(encoded_strings([])), text("apply"), text("fixture recommendation"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
-        table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text("Improve the repository implementation"), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
+        table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(objective), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(user_source), integer(0)]]),
-        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text("Improve the repository implementation"), text("paused"), text("ordinary repository work"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
+        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(objective), text("paused"), text("ordinary repository work"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
         table("checkpoint_source_relations", ["project_id", "checkpoint_id", "relation_kind", "source_id", "position"], [[blob(project), blob(checkpoint), text("supported_by"), blob(checkpoint_source), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_one), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_two), integer(1)]]),
         table("checkpoint_decisions", ["project_id", "checkpoint_id", "decision_id", "position"], [[blob(project), blob(checkpoint), blob(decision), integer(0)]]),
     ]
@@ -1701,13 +1780,20 @@ def self_test() -> int:
         external_fixture_path.name,
         evidence_directory,
     )
-    if real_session_evidence(
+    external_result = real_session_evidence(
         loaded_fixture,
         kind="volicord",
         cycle=1,
         repository_revision=revision,
-    )["status"] != "passed":
+    )
+    if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    serialized_external_result = json.dumps(external_result, sort_keys=True)
+    if (
+        fixture_task_objective("volicord", 1) in serialized_external_result
+        or PHASE8_OBJECTIVE_PREFIX in serialized_external_result
+    ):
+        raise AssertionError("sanitized result retained the task objective or prompt envelope")
     fake_steps = {name: "passed" for name in definition["required_product_steps"]}
     valid_html = (
         "<!doctype html><html lang=\"en\"><head>"
@@ -1845,6 +1931,249 @@ def self_test() -> int:
         write_json(path, value)
         reference["sha256"] = sha256(path)
 
+    def replace_initial_task_text(
+        fixture: dict[str, Any], replacement: Callable[[str], str]
+    ) -> None:
+        path, events = capture_events(fixture, "work")
+        user_events = [
+            value
+            for value in events
+            if value.get("type") == "event_msg"
+            and value.get("payload", {}).get("type") == "user_message"
+        ]
+        if not user_events:
+            raise AssertionError("fixture has no initial user task turn")
+        old_text = user_events[0]["payload"]["message"]
+        new_text = replacement(old_text)
+        user_events[0]["payload"]["message"] = new_text
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") != "function_call" or payload.get("name") != "decision_record":
+                continue
+            arguments = json.loads(payload["arguments"])
+            if arguments.get("user_turn") == old_text:
+                arguments["user_turn"] = new_text
+                payload["arguments"] = json.dumps(arguments, separators=(",", ":"))
+        store_capture(fixture, "work", path, events)
+
+        def replace_source_locator(bundle: dict[str, Any]) -> None:
+            for table_value in bundle["payload"]["tables"]:
+                if table_value["name"] != "sources":
+                    continue
+                kind_index = table_value["columns"].index("source_kind")
+                locator_index = table_value["columns"].index("locator")
+                for row in table_value["rows"]:
+                    if (
+                        row[kind_index].get("value") == "current_host_user_turn"
+                        and row[locator_index].get("value") == old_text
+                    ):
+                        row[locator_index] = {"type": "text", "value": new_text}
+                        return
+            raise AssertionError("fixture initial user Source was not found")
+
+        mutate_bundle(fixture, replace_source_locator)
+
+    def replace_objective_line(text: str, revision_value: str, objective_value: str) -> str:
+        replacement = PHASE8_OBJECTIVE_PREFIX + json.dumps(
+            {"repository_revision": revision_value, "objective": objective_value},
+            separators=(",", ":"),
+        )
+        lines = text.splitlines()
+        matches = [index for index, line in enumerate(lines) if PHASE8_OBJECTIVE_PREFIX in line]
+        if len(matches) != 1:
+            raise AssertionError("fixture objective envelope was not unique")
+        lines[matches[0]] = replacement
+        return "\n".join(lines)
+
+    def replace_checkpoint_call_goal(fixture: dict[str, Any], goal: str) -> None:
+        path, events = capture_events(fixture, "work")
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") != "function_call" or payload.get("name") != "checkpoint_record":
+                continue
+            arguments = json.loads(payload["arguments"])
+            arguments["goal"] = goal
+            payload["arguments"] = json.dumps(arguments, separators=(",", ":"))
+            store_capture(fixture, "work", path, events)
+            return
+        raise AssertionError("fixture Checkpoint call was not found")
+
+    def replace_recall_goals(fixture: dict[str, Any], goals: list[str]) -> None:
+        path, events = capture_events(fixture, "resume")
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") != "function_call_output" or "recall-call" not in str(
+                payload.get("call_id")
+            ):
+                continue
+            output = json.loads(payload["output"])
+            output["structuredContent"]["goals"] = goals
+            payload["output"] = json.dumps(output, separators=(",", ":"))
+            store_capture(fixture, "resume", path, events)
+            return
+        raise AssertionError("fixture Recall result was not found")
+
+    def replace_canonical_goal(
+        bundle: dict[str, Any], goal: str, *, include_context: bool
+    ) -> None:
+        for table_value in bundle["payload"]["tables"]:
+            if table_value["name"] == "checkpoints":
+                goal_index = table_value["columns"].index("goal")
+                table_value["rows"][0][goal_index] = {"type": "text", "value": goal}
+            if include_context and table_value["name"] == "context_items":
+                statement_index = table_value["columns"].index("statement")
+                table_value["rows"][0][statement_index] = {"type": "text", "value": goal}
+
+    original_objective = fixture_task_objective("volicord", 1)
+
+    missing_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_initial_task_text(
+        missing_objective,
+        lambda text: "\n".join(
+            line for line in text.splitlines() if PHASE8_OBJECTIVE_PREFIX not in line
+        ),
+    )
+    missing_objective_result = real_session_evidence(
+        missing_objective, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if missing_objective_result["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("initial work turn without an objective envelope qualified")
+    if missing_objective_result["checks"]["explicit_user_decision_source"] != "passed":
+        raise AssertionError("missing-objective mutation invalidated unrelated Decision provenance")
+
+    malformed_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_initial_task_text(
+        malformed_objective,
+        lambda text: text.replace(
+            next(line for line in text.splitlines() if PHASE8_OBJECTIVE_PREFIX in line),
+            PHASE8_OBJECTIVE_PREFIX + "{malformed",
+        ),
+    )
+    if real_session_evidence(
+        malformed_objective, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("malformed objective envelope qualified")
+
+    for label, invalid_value in (
+        ("empty", ""),
+        ("oversized", "x" * (MAX_PHASE8_OBJECTIVE_BYTES + 1)),
+    ):
+        invalid_objective = real_session_fixture(
+            "volicord", 1, revision, evidence_directory
+        )
+        replace_initial_task_text(
+            invalid_objective,
+            lambda text, value=invalid_value: replace_objective_line(text, revision, value),
+        )
+        if real_session_evidence(
+            invalid_objective, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["repository_specific_objective"] != "failed":
+            raise AssertionError(f"{label} objective envelope qualified")
+
+    duplicate_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_initial_task_text(
+        duplicate_objective,
+        lambda text: text
+        + "\n"
+        + PHASE8_OBJECTIVE_PREFIX
+        + json.dumps(
+            {"repository_revision": revision, "objective": original_objective},
+            separators=(",", ":"),
+        ),
+    )
+    if real_session_evidence(
+        duplicate_objective, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("duplicate objective envelopes qualified")
+
+    wrong_revision_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_initial_task_text(
+        wrong_revision_objective,
+        lambda text: replace_objective_line(text, "1" * 40, original_objective),
+    )
+    if real_session_evidence(
+        wrong_revision_objective, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("objective for a different Git revision qualified")
+
+    substituted_task = "Replace an unrelated deployment workflow"
+    claimed_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
+    claimed_objective["objective"] = {
+        "repository_revision": revision,
+        "summary": original_objective,
+        "status": "passed",
+    }
+    replace_initial_task_text(
+        claimed_objective,
+        lambda text: replace_objective_line(text, revision, substituted_task),
+    )
+    if real_session_evidence(
+        claimed_objective, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("outer objective claim repaired a substituted captured task")
+
+    wrong_checkpoint_call = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_checkpoint_call_goal(wrong_checkpoint_call, substituted_task)
+    if real_session_evidence(
+        wrong_checkpoint_call, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("Checkpoint call with a different goal qualified")
+
+    wrong_canonical_checkpoint = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_bundle(
+        wrong_canonical_checkpoint,
+        lambda bundle: replace_canonical_goal(bundle, substituted_task, include_context=False),
+    )
+    if real_session_evidence(
+        wrong_canonical_checkpoint, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("canonical Checkpoint with a different goal qualified")
+
+    wrong_recall_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_recall_goals(wrong_recall_goal, [substituted_task])
+    if real_session_evidence(
+        wrong_recall_goal, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("Recall result with a different goal qualified")
+
+    cross_repository = real_session_fixture("volicord", 1, revision, evidence_directory)
+    cross_repository_objective = "Update another repository's deployment configuration"
+    replace_initial_task_text(
+        cross_repository,
+        lambda text: replace_objective_line(
+            text, "2" * 40, cross_repository_objective
+        ),
+    )
+    replace_checkpoint_call_goal(cross_repository, cross_repository_objective)
+    mutate_bundle(
+        cross_repository,
+        lambda bundle: replace_canonical_goal(
+            bundle, cross_repository_objective, include_context=True
+        ),
+    )
+    replace_recall_goals(cross_repository, [cross_repository_objective])
+    if real_session_evidence(
+        cross_repository, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("cross-repository objective substitution qualified")
+
+    generic_legacy = real_session_fixture("volicord", 1, revision, evidence_directory)
+    generic_goal = "Improve the repository implementation"
+    replace_initial_task_text(generic_legacy, lambda _text: generic_goal)
+    replace_checkpoint_call_goal(generic_legacy, generic_goal)
+    mutate_bundle(
+        generic_legacy,
+        lambda bundle: replace_canonical_goal(bundle, generic_goal, include_context=True),
+    )
+    replace_recall_goals(generic_legacy, [generic_goal])
+    generic_legacy["objective"] = {"repository_specific": True, "summary": generic_goal}
+    if real_session_evidence(
+        generic_legacy, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("legacy generic objective fixture without capture provenance qualified")
+
     marker_only = real_session_fixture("volicord", 1, revision, evidence_directory)
     marker_only["ordinary_work"] = {
         "status": "completed",
@@ -1888,7 +2217,8 @@ def self_test() -> int:
         for value in missing_events
         if not (
             value.get("payload", {}).get("type") == "user_message"
-            and value.get("payload", {}).get("message") == "<redacted-current-host-decision>"
+            and PHASE8_OBJECTIVE_PREFIX
+            in str(value.get("payload", {}).get("message", ""))
         )
     ]
     store_capture(missing_decision, "work", missing_path, missing_events)
@@ -2070,6 +2400,16 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "two_cycle_contract": "passed",
         "real_session_positive_path": "passed",
+        "objective_prompt_sanitization": "passed",
+        "objective_missing_malformed_duplicate_rejected": "passed",
+        "objective_empty_and_oversized_rejected": "passed",
+        "objective_revision_mismatch_rejected": "passed",
+        "objective_outer_claim_ignored": "passed",
+        "objective_checkpoint_call_mismatch_rejected": "passed",
+        "objective_canonical_checkpoint_mismatch_rejected": "passed",
+        "objective_recall_mismatch_rejected": "passed",
+        "objective_cross_repository_substitution_rejected": "passed",
+        "objective_legacy_generic_fixture_rejected": "passed",
         "v11_only_rejected": "passed",
         "synthetic_marker_work_rejected": "passed",
         "same_session_rejected": "passed",

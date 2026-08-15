@@ -43,6 +43,8 @@ def main() -> int:
         "patch_apply_end",
         "mcp__volicord",
         "current_host_user_turn",
+        "PHASE8_OBJECTIVE_PREFIX",
+        "objective_basis",
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
@@ -54,6 +56,18 @@ def main() -> int:
         raise AssertionError("the superseded Phase 8 transmission contract remains")
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
+    if '"repository_specific_objective": evidence_check(references_present, metadata_ok)' in source:
+        raise AssertionError("repository-specific objective still aliases outer metadata")
+    for linkage in (
+        "first_work_session_user_task_turn",
+        "work_session_git_revision",
+        "evaluated_repository_revision",
+        "checkpoint_call_goal",
+        "canonical_checkpoint_goal",
+        "fresh_session_recall_goals",
+    ):
+        if linkage not in definition:
+            raise AssertionError(f"Phase 8 definition is missing objective linkage {linkage}")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     result = subprocess.run(
