@@ -1,7 +1,7 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `21e7f8f77b8ecfc44be7a71b140533ad191bb683`; aggregate `succeeded` with four
+  `80dd08e8828d7159ac7b8839178ccdd9f9013851`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
@@ -22,12 +22,12 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`21e7f8f77b8ecfc44be7a71b140533ad191bb683`. Its four-command aggregate
+`80dd08e8828d7159ac7b8839178ccdd9f9013851`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`61ce1dfce9f5a349a02c200779428afd3bed8f8085e8c935dac2f956659258de`.
+`b71602f4fca42b2b87fc3be753ab6bc924dd12332b48e8ab6821c0c29d71f8bb`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `66d65c73fadb6b69437375b60642972f9f7c8661635fce7489ca3b8f8f2cbb22`.
+is `e8ce9c59882a6d97a921964b36bd8afb6dbaa7d2d6081d6569e3168cbe55a1ac`.
 All three authenticated Codex targets passed, the credential-retention audit
 passed with zero auth-named files, credential-content matches, or scan errors,
 and `phase_8_ready = true` is recorded in
@@ -79,8 +79,10 @@ uses only Project-scoped replacement-owned analysis directories.
 ## Accepted-Decision revisit triggers
 
 No accepted Q1–Q13 Decision revisit trigger is active. The sanitized capsule
-reports an empty active-trigger list, and independent documentation review of
-the accepted criteria found no trigger to open. Phase 7 retains the
+records `decision_revisit_trigger_assessment = reported_by_official_v11`, an
+empty active-trigger list, and the assessed Decision-register identity. This
+is official V11-owned evidence, not an independent documentation inference.
+Phase 7 retains the
 Project as the user-facing unit, local-first canonical authority, current-host
 user Source provenance, semantic Decision correction/supersession distinction,
 Candidate non-canonical lifecycle, explicit document adoption/publication,
