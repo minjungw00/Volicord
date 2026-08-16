@@ -28,6 +28,7 @@ from codex_events import (
     MAX_PHASE8_OBJECTIVE_BYTES,
     PHASE8_OBJECTIVE_PREFIX,
     ToolCall,
+    command_is_clean_git_status,
     command_is_repository_inspection,
     decode_string_blob,
     load_canonical_bundle,
@@ -150,6 +151,19 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("Phase 8 must normalize Codex rollout and canonical product evidence")
     if evidence.get("harness_performs_or_authorizes_transmission") is not False:
         raise ValueError("the Phase 8 verifier may not claim Codex transmission authority")
+    if (
+        evidence.get("required_capture_format")
+        != "codex_response_item_custom_tool_call_rollout_jsonl"
+        or tuple(evidence.get("bounded_call_forms", []))
+        != (
+            "tools.mcp__volicord__<operation>(literal_object)",
+            "tools.exec_command(literal_object)",
+            "tools.apply_patch(literal_string)",
+        )
+        or len(evidence.get("work_session_contract", [])) != 5
+        or len(evidence.get("bounded_parser_limitations", [])) != 3
+    ):
+        raise ValueError("the current Codex rollout evidence contract changed")
     objective = evidence.get("task_objective", {})
     if (
         objective.get("envelope_prefix") != PHASE8_OBJECTIVE_PREFIX
@@ -159,9 +173,11 @@ def load_definition() -> dict[str, Any]:
             "first_work_session_user_task_turn",
             "work_session_git_revision",
             "evaluated_repository_revision",
-            "checkpoint_call_goal",
-            "canonical_checkpoint_goal",
-            "fresh_session_recall_goals",
+            "context_record_inner_objective",
+            "context_record_exact_user_turn_source",
+            "checkpoint_goal_context_identity",
+            "canonical_checkpoint_goal_statement",
+            "fresh_session_recall_goal_identity_and_statement",
         )
     ):
         raise ValueError("the Phase 8 task-objective evidence contract changed")
@@ -431,22 +447,146 @@ def decision_facts(
     )
 
 
+def goal_facts(
+    work: CodexCapture | None,
+    bundle: CanonicalBundle | None,
+    objective: str | None,
+) -> tuple[bool, str | None, str | None]:
+    call = unique_call(work, "context_record")
+    if call is None or work is None or bundle is None or not work.user_turns:
+        return False, None, None
+    first_turn = work.user_turns[0]
+    turn = work.turn_for_call(call)
+    context_id = call.result.get("context_item_id")
+    source_id = call.result.get("source_id")
+    item = bundle.one("context_items", id=context_id, project_id=bundle.project_id)
+    source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
+    relation = bundle.one(
+        "context_item_sources",
+        project_id=bundle.project_id,
+        context_item_id=context_id,
+        source_id=source_id,
+        position=0,
+    )
+    valid = (
+        nonempty_string(objective)
+        and turn == first_turn
+        and call.arguments.get("project_id") == bundle.project_id
+        and call.arguments.get("user_turn") == first_turn.text
+        and call.arguments.get("role") == "goal"
+        and call.arguments.get("statement") == objective
+        and call.result.get("project_id") == bundle.project_id
+        and call.result.get("role") == "goal"
+        and nonempty_string(context_id)
+        and nonempty_string(source_id)
+        and item is not None
+        and item.get("role") == "goal"
+        and item.get("statement") == objective
+        and item.get("provenance_role") == "user_statement"
+        and item.get("author_kind") == "user"
+        and source is not None
+        and source.get("source_kind") == "current_host_user_turn"
+        and source.get("locator") == first_turn.text
+        and source.get("detail_one") == "codex"
+        and source.get("detail_two") == work.session_id
+        and source.get("actor_kind") == "user"
+        and relation is not None
+    )
+    return (
+        bool(valid),
+        str(context_id) if nonempty_string(context_id) else None,
+        str(source_id) if nonempty_string(source_id) else None,
+    )
+
+
+def checkpoint_verification_facts(
+    work: CodexCapture,
+    bundle: CanonicalBundle,
+    call: ToolCall,
+    checkpoint_id: str,
+) -> bool:
+    declared = call.arguments.get("verification")
+    returned_ids = call.result.get("verification_source_ids")
+    if not isinstance(declared, list) or not declared or not isinstance(returned_ids, list):
+        return False
+    rows = sorted(
+        (
+            row
+            for row in bundle.rows("checkpoint_verifications")
+            if row.get("project_id") == bundle.project_id
+            and row.get("checkpoint_id") == checkpoint_id
+        ),
+        key=lambda row: row.get("position") if isinstance(row.get("position"), int) else -1,
+    )
+    if len(rows) != len(declared):
+        return False
+    executed_ids: list[str] = []
+    for position, (claim, row) in enumerate(zip(declared, rows, strict=True)):
+        if not isinstance(claim, dict) or row.get("position") != position:
+            return False
+        state = claim.get("state")
+        if row.get("verification_state") != state or row.get("outcome") != claim.get("outcome"):
+            return False
+        if state == "not_run":
+            if set(claim) != {"state"} or row.get("source_id") is not None:
+                return False
+            continue
+        if state not in {"partial", "passed", "failed"}:
+            return False
+        label = claim.get("command_label")
+        exit_code = claim.get("exit_code")
+        termination = claim.get("termination")
+        outcome = claim.get("outcome")
+        if not nonempty_string(label) or not nonempty_string(outcome):
+            return False
+        commands = [
+            command
+            for command in work.commands
+            if command.sequence < call.sequence
+            and isinstance(command.parsed_command, dict)
+            and command.parsed_command.get("cmd") == label
+            and command.exit_code == exit_code
+            and command.termination == termination
+        ]
+        if len(commands) != 1:
+            return False
+        if state == "passed" and not (termination == "exited" and exit_code == 0):
+            return False
+        if state == "failed" and termination == "exited" and exit_code == 0:
+            return False
+        source_id = row.get("source_id")
+        source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
+        if (
+            not nonempty_string(source_id)
+            or source is None
+            or source.get("source_kind") != "command_execution"
+            or source.get("locator") != label
+            or source.get("exit_code") != exit_code
+            or source.get("termination") != termination
+            or source.get("actor_kind") != "command"
+            or source.get("observer_kind") != "agent"
+        ):
+            return False
+        executed_ids.append(str(source_id))
+    return returned_ids == executed_ids
+
+
 def checkpoint_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
     decision_id: str | None,
+    goal_context_id: str | None,
+    goal_source_id: str | None,
+    baseline_analysis_id: str | None,
     task_objective: str | None,
-) -> tuple[bool, bool, str | None, list[str], str | None]:
+) -> tuple[bool, bool, bool, str | None, list[str], str | None]:
     call = unique_call(work, "checkpoint_record")
     if call is None or work is None or bundle is None:
-        return False, False, None, [], None
+        return False, False, False, None, [], None
     checkpoint_id = call.result.get("checkpoint_id")
-    source_id = call.result.get("user_response_source_id")
     checkpoint = bundle.one("checkpoints", id=checkpoint_id, project_id=bundle.project_id)
-    turn = work.turn_for_call(call)
-    source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
-    if checkpoint is None or source is None or turn is None or not nonempty_string(source_id):
-        return False, False, None, [], None
+    if checkpoint is None or not nonempty_string(checkpoint_id):
+        return False, False, False, None, [], None
     changed_paths = decode_string_blob(checkpoint.get("changed_paths"))
     observed_paths = work.paths_before(call.sequence)
     bounded_paths = (
@@ -477,7 +617,7 @@ def checkpoint_facts(
         project_id=bundle.project_id,
         checkpoint_id=checkpoint_id,
         relation_kind="supported_by",
-        source_id=source_id,
+        source_id=goal_source_id,
     )
     decision_link = bundle.one(
         "checkpoint_decisions",
@@ -488,26 +628,40 @@ def checkpoint_facts(
     next_step = checkpoint.get("next_step")
     objective_linked = (
         nonempty_string(task_objective)
-        and call.arguments.get("goal") == task_objective
+        and call.arguments.get("goal_context_id") == goal_context_id
+        and call.result.get("goal_context_id") == goal_context_id
         and checkpoint.get("goal") == task_objective
+    )
+    applied = call.arguments.get("applied_decision_ids")
+    verification_ok = checkpoint_verification_facts(
+        work, bundle, call, str(checkpoint_id)
     )
     valid = (
         bounded_paths is not None
         and set(bounded_paths) == set(observed_paths)
         and set(bounded_paths) == source_paths
+        and call.result.get("changed_paths") == bounded_paths
         and supported is not None
         and decision_link is not None
-        and source.get("source_kind") == "current_host_user_turn"
-        and source.get("locator") == turn.text == call.arguments.get("user_turn")
-        and source.get("detail_one") == "codex"
-        and source.get("detail_two") == work.session_id
-        and source.get("actor_kind") == "user"
         and call.arguments.get("project_id") == bundle.project_id
+        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_analysis_id
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
         and objective_linked
+        and isinstance(applied, list)
+        and decision_id in applied
+        and call.result.get("applied_decision_ids") == applied
+        and verification_ok
         and call.arguments.get("next_step") == next_step
         and nonempty_string(next_step)
     )
-    return valid, objective_linked, str(checkpoint_id) if nonempty_string(checkpoint_id) else None, observed_paths, str(next_step) if nonempty_string(next_step) else None
+    return (
+        valid,
+        objective_linked,
+        verification_ok,
+        str(checkpoint_id) if nonempty_string(checkpoint_id) else None,
+        observed_paths,
+        str(next_step) if nonempty_string(next_step) else None,
+    )
 
 
 def real_session_evidence(
@@ -554,10 +708,29 @@ def real_session_evidence(
         work_capture, bundle
     )
     task_objective = work_capture.phase8_objective if work_capture is not None else None
-    checkpoint_ok, checkpoint_objective_ok, checkpoint_id, changed_paths, next_step = checkpoint_facts(
+    goal_ok, goal_context_id, goal_source_id = goal_facts(
+        work_capture,
+        bundle,
+        task_objective.value if task_objective is not None else None,
+    )
+    baseline_call = unique_call(work_capture, "repository_analyze")
+    baseline_analysis_id = (
+        baseline_call.result.get("analysis_snapshot_id") if baseline_call is not None else None
+    )
+    (
+        checkpoint_ok,
+        checkpoint_objective_ok,
+        checkpoint_verification_ok,
+        checkpoint_id,
+        changed_paths,
+        next_step,
+    ) = checkpoint_facts(
         work_capture,
         bundle,
         decision_id,
+        goal_context_id,
+        goal_source_id,
+        str(baseline_analysis_id) if nonempty_string(baseline_analysis_id) else None,
         task_objective.value if task_objective is not None else None,
     )
     checkpoint_call = unique_call(work_capture, "checkpoint_record")
@@ -582,19 +755,41 @@ def real_session_evidence(
         and work_capture is not None
         and work_capture.git_revision == repository_revision
     )
+    initialize_call = unique_call(work_capture, "project_initialize")
+    goal_call = unique_call(work_capture, "context_record")
+    clean_statuses = [
+        command
+        for command in work_capture.commands
+        if command_is_clean_git_status(command.parsed_command)
+        and command.exit_code == 0
+        and command.output_was_empty
+    ] if work_capture is not None else []
     baseline_ok = (
-        work_capture is not None
+        bundle is not None
+        and work_capture is not None
         and first_work_change is not None
         and work_capture.git_revision == repository_revision
-        and work_capture.clean_git_status_before(first_work_change)
+        and initialize_call is not None
+        and initialize_call.result.get("project_id") == bundle.project_id
+        and goal_call is not None
+        and baseline_call is not None
+        and baseline_call.arguments.get("project_id") == bundle.project_id
+        and baseline_call.result.get("project_id") == bundle.project_id
+        and nonempty_string(baseline_analysis_id)
+        and initialize_call.sequence < goal_call.sequence < baseline_call.sequence < first_work_change
+        and any(command.sequence < baseline_call.sequence for command in clean_statuses)
     )
 
     invocations_ok = (
         work_capture is not None
         and resume_capture is not None
         and work_capture.session_id != resume_capture.session_id
-        and work_capture.source in {"cli", "vscode"}
-        and resume_capture.source in {"cli", "vscode"}
+        and work_capture.source == "vscode"
+        and resume_capture.source == "vscode"
+        and work_capture.originator == "codex_vscode"
+        and resume_capture.originator == "codex_vscode"
+        and nonempty_string(work_capture.cli_version)
+        and nonempty_string(resume_capture.cli_version)
     )
     recall_call = unique_call(resume_capture, "recall")
     first_inspection = (
@@ -653,16 +848,52 @@ def real_session_evidence(
         for row in bundle.rows("checkpoint_decisions")
         if bundle is not None and row.get("checkpoint_id") == checkpoint_id
     } if bundle else set()
+    recall_checkpoint = recall_call.result.get("checkpoint") if recall_call is not None else None
+    recalled_verification = recall_checkpoint.get("verification") if isinstance(recall_checkpoint, dict) else None
+    recalled_checkpoint_decisions = (
+        recall_checkpoint.get("applied_decisions")
+        if isinstance(recall_checkpoint, dict)
+        and isinstance(recall_checkpoint.get("applied_decisions"), list)
+        and all(nonempty_string(value) for value in recall_checkpoint["applied_decisions"])
+        else None
+    )
+    canonical_verification = sorted(
+        (
+            row
+            for row in bundle.rows("checkpoint_verifications")
+            if row.get("checkpoint_id") == checkpoint_id
+        ),
+        key=lambda row: row.get("position") if isinstance(row.get("position"), int) else -1,
+    ) if bundle is not None else []
+    expected_recalled_verification = [
+        {
+            "state": row.get("verification_state"),
+            "source_id": row.get("source_id"),
+            "outcome": row.get("outcome"),
+        }
+        for row in canonical_verification
+    ]
     recall_match_ok = (
-        recall_call is not None
+        bundle is not None
+        and recall_call is not None
+        and recall_call.arguments.get("project_id") == bundle.project_id
+        and recall_call.result.get("project_id") == bundle.project_id
         and recall_call.result.get("read_only") is True
         and recalled_checkpoint_row is not None
         and recalled_checkpoint_row.get("id") == checkpoint_id
+        and isinstance(recall_checkpoint, dict)
+        and recall_checkpoint.get("identity") == checkpoint_id
+        and recall_checkpoint.get("goal") == (task_objective.value if task_objective else None)
+        and recall_checkpoint.get("changed_paths") == changed_paths
+        and recall_checkpoint.get("next_step") == next_step
+        and recalled_verification == expected_recalled_verification
+        and recalled_checkpoint_decisions is not None
+        and set(recalled_checkpoint_decisions) == checkpoint_decisions
         and recalled_decisions is not None
         and checkpoint_decisions
         and checkpoint_decisions <= set(recalled_decisions)
         and recalled_context is not None
-        and bool(recalled_context)
+        and goal_context_id in recalled_context
     )
     recall_goals = recall_call.result.get("goals") if recall_call is not None else None
     recalled_objective_ok = (
@@ -682,6 +913,7 @@ def real_session_evidence(
         and work_capture is not None
         and work_capture.phase8_objective_status == "valid"
         and objective_revision_ok
+        and goal_ok
         and checkpoint_ok
         and checkpoint_objective_ok
         and invocations_ok
@@ -716,6 +948,7 @@ def real_session_evidence(
         "changed_paths": changed_paths or [],
         "continuation_paths": continuation_paths,
         "checkpoint_id": checkpoint_id,
+        "goal_context_id": goal_context_id,
         "decision_id": decision_id,
         "question_id": question_id,
         "question_revision": question_revision,
@@ -739,6 +972,8 @@ def real_session_evidence(
             ),
             "repository_revision_matches": objective_revision_ok,
             "checkpoint_call_and_canonical_goal_match": checkpoint_objective_ok,
+            "goal_context_matches_first_user_turn": goal_ok,
+            "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_matches": recalled_objective_ok,
         },
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
@@ -1462,13 +1697,18 @@ def real_session_fixture(
 ) -> dict[str, Any]:
     project = "01" * 16
     user_source = "02" * 16
-    checkpoint_source = "03" * 16
+    goal_source = "03" * 16
     changed_source_one = "04" * 16
     changed_source_two = "05" * 16
     question = "06" * 16
     decision = "07" * 16
     context = "08" * 16
     checkpoint = "09" * 16
+    verification_source = "0a" * 16
+    baseline_analysis = "0b" * 32
+    current_analysis = "0c" * 32
+    baseline_repository = "0d" * 32
+    current_repository = "0e" * 32
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
     objective = fixture_task_objective(kind, cycle)
@@ -1479,9 +1719,9 @@ def real_session_fixture(
     decision_turn_text = (
         f"{objective_envelope}\nApply the captured repository-specific correction."
     )
-    checkpoint_turn_text = "<redacted-checkpoint-request>"
     next_step = "Update src/resume.rs and verify the resumed work"
     work_paths = ["src/existing.rs", "tests/existing.rs"]
+    verification_command = "python3 -m unittest tests.test_existing"
     work_capture = evidence_directory / f"{kind}-{cycle}-work-events.jsonl"
     resume_capture = evidence_directory / f"{kind}-{cycle}-resume-events.jsonl"
     bundle_path = evidence_directory / f"{kind}-{cycle}-context.bundle.json"
@@ -1497,12 +1737,11 @@ def real_session_fixture(
                 "session_id": session,
                 "timestamp": "2026-08-15T00:00:00Z",
                 "cwd": "/phase8/repository",
-                "originator": "codex_cli_rs",
-                "cli_version": "0.145.0",
-                "source": "cli",
+                "originator": "codex_vscode",
+                "cli_version": "0.148.0-alpha.9",
+                "source": "vscode",
                 "thread_source": "user",
                 "model_provider": "openai",
-                "history_mode": "legacy",
                 "git": {"commit_hash": revision, "branch": "phase8"},
             },
         )
@@ -1525,63 +1764,107 @@ def real_session_fixture(
             },
         )
 
-    def tool_call(turn_id: str, call_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def custom_call(turn_id: str, call_id: str, input_value: str) -> dict[str, Any]:
         return event(
             "response_item",
             {
-                "type": "function_call",
-                "id": f"item-{call_id}",
+                "type": "custom_tool_call",
+                "id": f"ctc-{call_id}",
                 "call_id": call_id,
-                "namespace": "mcp__volicord",
-                "name": name,
-                "arguments": json.dumps(arguments, separators=(",", ":")),
+                "name": "exec",
+                "status": "completed",
+                "input": input_value,
                 "internal_chat_message_metadata_passthrough": {"turn_id": turn_id},
             },
         )
 
-    def tool_output(turn_id: str, call_id: str, structured: dict[str, Any]) -> dict[str, Any]:
+    def custom_output(turn_id: str, call_id: str, structured: dict[str, Any]) -> dict[str, Any]:
         return event(
             "response_item",
             {
-                "type": "function_call_output",
-                "id": f"output-{call_id}",
+                "type": "custom_tool_call_output",
+                "id": f"ctco-{call_id}",
                 "call_id": call_id,
-                "output": json.dumps(
-                    {
-                        "content": [{"type": "text", "text": "<redacted-structured-result>"}],
-                        "structuredContent": structured,
-                        "isError": False,
-                    },
-                    separators=(",", ":"),
-                ),
+                "output": [
+                    {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                    {"type": "input_text", "text": json.dumps(structured, separators=(",", ":"))},
+                ],
                 "internal_chat_message_metadata_passthrough": {"turn_id": turn_id},
             },
+        )
+
+    def mcp_call(turn_id: str, call_id: str, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        encoded = json.dumps(arguments, separators=(",", ":"))
+        return custom_call(
+            turn_id,
+            call_id,
+            f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
+            'for(const c of (r.content||[])) if(c.type==="text") text(c.text);\n',
+        )
+
+    def command_call(turn_id: str, call_id: str, command: str) -> dict[str, Any]:
+        arguments = json.dumps(
+            {"cmd": command, "workdir": "/phase8/repository", "yield_time_ms": 30000},
+            separators=(",", ":"),
+        )
+        return custom_call(
+            turn_id,
+            call_id,
+            f"const r=await tools.exec_command({arguments});\ntext(r);\n",
         )
 
     work_turn = f"{kind}-work-turn-{cycle}"
-    checkpoint_turn = f"{kind}-checkpoint-turn-{cycle}"
+    initialize_call = f"{kind}-initialize-call-{cycle}"
+    goal_call = f"{kind}-goal-call-{cycle}"
+    status_call = f"{kind}-status-call-{cycle}"
+    baseline_call = f"{kind}-baseline-call-{cycle}"
     decision_call = f"{kind}-decision-call-{cycle}"
+    patch_call = f"{kind}-patch-call-{cycle}"
+    verification_call = f"{kind}-verification-call-{cycle}"
     checkpoint_call = f"{kind}-checkpoint-call-{cycle}"
+    patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/existing.rs\n@@\n-old\n+new\n*** Update File: /phase8/repository/tests/existing.rs\n@@\n-old\n+new\n*** End Patch"
     work_events = [
         session_meta(work_session),
         task(work_turn),
         user(work_turn, f"{kind}-user-turn-{cycle}", decision_turn_text),
-        event(
-            "event_msg",
+        mcp_call(
+            work_turn,
+            initialize_call,
+            "project_initialize",
+            {"display_name": "Phase 8 fixture", "repository": "/phase8/repository"},
+        ),
+        custom_output(work_turn, initialize_call, {"project_id": project}),
+        mcp_call(
+            work_turn,
+            goal_call,
+            "context_record",
             {
-                "type": "exec_command_end",
-                "turn_id": work_turn,
-                "call_id": f"{kind}-git-status-{cycle}",
-                "process_id": f"{kind}-work-process-{cycle}",
-                "parsed_cmd": [{"cmd": "git status --porcelain=v1 --untracked-files=all"}],
-                "interaction_input": None,
-                "aggregated_output": "",
-                "exit_code": 0,
-                "warning": None,
-                "context": {},
+                "project_id": project,
+                "user_turn": decision_turn_text,
+                "role": "goal",
+                "statement": objective,
             },
         ),
-        tool_call(
+        custom_output(
+            work_turn,
+            goal_call,
+            {
+                "project_id": project,
+                "source_id": goal_source,
+                "context_item_id": context,
+                "revision": 1,
+                "role": "goal",
+            },
+        ),
+        command_call(work_turn, status_call, "git status --short"),
+        custom_output(work_turn, status_call, {"output": "", "exit_code": 0}),
+        mcp_call(work_turn, baseline_call, "repository_analyze", {"project_id": project}),
+        custom_output(
+            work_turn,
+            baseline_call,
+            {"project_id": project, "analysis_snapshot_id": baseline_analysis},
+        ),
+        mcp_call(
             work_turn,
             decision_call,
             "decision_record",
@@ -1593,7 +1876,7 @@ def real_session_fixture(
                 "user_turn": decision_turn_text,
             },
         ),
-        tool_output(
+        custom_output(
             work_turn,
             decision_call,
             {
@@ -1602,6 +1885,11 @@ def real_session_fixture(
                 "all_succeeded": True,
                 "outcomes": [{"question_id": question, "revision": 1, "outcome": "recorded"}],
             },
+        ),
+        custom_call(
+            work_turn,
+            patch_call,
+            f"const patch={json.dumps(patch_text)};\ntext(await tools.apply_patch(patch));\n",
         ),
         event(
             "event_msg",
@@ -1612,40 +1900,79 @@ def real_session_fixture(
                 "stdout": "",
                 "stderr": "",
                 "success": True,
-                "changes": [f"/phase8/repository/{path}" for path in work_paths],
+                "changes": {
+                    f"/phase8/repository/{path}": {
+                        "type": "update",
+                        "unified_diff": "@@ -1 +1 @@\n-old\n+new\n",
+                        "move_path": None,
+                    }
+                    for path in work_paths
+                },
                 "status": "completed",
             },
         ),
-        task(checkpoint_turn),
-        user(checkpoint_turn, f"{kind}-checkpoint-user-turn-{cycle}", checkpoint_turn_text),
-        tool_call(
-            checkpoint_turn,
+        custom_output(work_turn, patch_call, {}),
+        command_call(work_turn, verification_call, verification_command),
+        custom_output(
+            work_turn,
+            verification_call,
+            {"output": "Ran focused tests\nOK\n", "exit_code": 0},
+        ),
+        mcp_call(
+            work_turn,
             checkpoint_call,
             "checkpoint_record",
             {
                 "project_id": project,
-                "user_turn": checkpoint_turn_text,
-                "goal": objective,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "kind": "handoff",
+                "work_state": "paused",
+                "state_change": "Updated the bounded implementation and test",
+                "applied_decision_ids": [decision],
+                "verification": [
+                    {
+                        "state": "passed",
+                        "command_label": verification_command,
+                        "exit_code": 0,
+                        "termination": "exited",
+                        "outcome": "focused tests passed",
+                    }
+                ],
                 "next_step": next_step,
                 "known_limits": [],
+                "handoff_to": "next Codex session",
             },
         ),
-        tool_output(
-            checkpoint_turn,
+        custom_output(
+            work_turn,
             checkpoint_call,
-            {"checkpoint_id": checkpoint, "revision": 1, "user_response_source_id": checkpoint_source},
+            {
+                "checkpoint_id": checkpoint,
+                "revision": 1,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "current_analysis_snapshot_id": current_analysis,
+                "baseline_repository_snapshot_id": baseline_repository,
+                "current_repository_snapshot_id": current_repository,
+                "changed_paths": work_paths,
+                "applied_decision_ids": [decision],
+                "verification_source_ids": [verification_source],
+            },
         ),
     ]
 
     resume_turn = f"{kind}-resume-turn-{cycle}"
     recall_call = f"{kind}-recall-call-{cycle}"
     inspect_call = f"{kind}-inspect-call-{cycle}"
+    resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
+    resume_patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/resume.rs\n@@\n+continued\n*** End Patch"
     resume_events = [
         session_meta(resume_session),
         task(resume_turn),
         user(resume_turn, f"{kind}-resume-user-turn-{cycle}", "<redacted-resume-request>"),
-        tool_call(resume_turn, recall_call, "recall", {"project_id": project}),
-        tool_output(
+        mcp_call(resume_turn, recall_call, "recall", {"project_id": project}),
+        custom_output(
             resume_turn,
             recall_call,
             {
@@ -1656,15 +1983,44 @@ def real_session_fixture(
                 "open_questions": [],
                 "known_limits": [],
                 "next_step": next_step,
+                "checkpoint": {
+                    "identity": checkpoint,
+                    "revision": 1,
+                    "kind": "handoff",
+                    "goal": objective,
+                    "work_state": "paused",
+                    "state_change": "Updated the bounded implementation and test",
+                    "source_basis": [goal_source],
+                    "changed_source_basis": [changed_source_one, changed_source_two],
+                    "changed_paths": work_paths,
+                    "applied_decisions": [decision],
+                    "verification": [
+                        {
+                            "state": "passed",
+                            "source_id": verification_source,
+                            "outcome": "focused tests passed",
+                        }
+                    ],
+                    "known_limits": [],
+                    "non_goals": [],
+                    "open_questions": [],
+                    "next_step": next_step,
+                    "handoff_to": "next Codex session",
+                },
                 "omitted_count": 0,
                 "read_only": True,
             },
         ),
-        tool_call(resume_turn, inspect_call, "repository_understanding", {"project_id": project}),
-        tool_output(
+        mcp_call(resume_turn, inspect_call, "repository_understanding", {"project_id": project}),
+        custom_output(
             resume_turn,
             inspect_call,
             {"health": "available", "overview": {}, "repository_map": {}, "decision_context_code": [], "issues": [], "read_only": True},
+        ),
+        custom_call(
+            resume_turn,
+            resume_patch_call,
+            f"const patch={json.dumps(resume_patch_text)};\ntext(await tools.apply_patch(patch));\n",
         ),
         event(
             "event_msg",
@@ -1675,10 +2031,17 @@ def real_session_fixture(
                 "stdout": "",
                 "stderr": "",
                 "success": True,
-                "changes": ["/phase8/repository/src/resume.rs"],
+                "changes": {
+                    "/phase8/repository/src/resume.rs": {
+                        "type": "update",
+                        "unified_diff": "@@ -0,0 +1 @@\n+continued\n",
+                        "move_path": None,
+                    }
+                },
                 "status": "completed",
             },
         ),
+        custom_output(resume_turn, resume_patch_call, {}),
     ]
     work_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in work_events), encoding="utf-8")
     resume_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in resume_events), encoding="utf-8")
@@ -1712,9 +2075,10 @@ def real_session_fixture(
     ]
     sources = [
         [blob(user_source), blob(project), integer(1), text("current_host_user_turn"), text(decision_turn_text), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(1)],
-        [blob(checkpoint_source), blob(project), integer(1), text("current_host_user_turn"), text(checkpoint_turn_text), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(2)],
+        [blob(goal_source), blob(project), integer(1), text("current_host_user_turn"), text(decision_turn_text), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(2)],
         [blob(changed_source_one), blob(project), integer(1), text("file"), text(work_paths[0]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(3)],
         [blob(changed_source_two), blob(project), integer(1), text("file"), text(work_paths[1]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(4)],
+        [blob(verification_source), blob(project), integer(1), text("command_execution"), text(verification_command), null(), null(), null(), integer(0), text("exited"), text("command"), text("current-host-reported-command"), text("agent"), text("codex"), text("available"), integer(5)],
     ]
     tables = [
         table("sources", source_columns, sources),
@@ -1723,10 +2087,11 @@ def real_session_fixture(
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
         table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("apply"), null(), blob(encoded_strings([])), text("apply"), text("fixture recommendation"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(objective), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
-        table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(user_source), integer(0)]]),
-        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(objective), text("paused"), text("ordinary repository work"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
-        table("checkpoint_source_relations", ["project_id", "checkpoint_id", "relation_kind", "source_id", "position"], [[blob(project), blob(checkpoint), text("supported_by"), blob(checkpoint_source), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_one), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_two), integer(1)]]),
+        table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(goal_source), integer(0)]]),
+        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(objective), text("paused"), text("Updated the bounded implementation and test"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
+        table("checkpoint_source_relations", ["project_id", "checkpoint_id", "relation_kind", "source_id", "position"], [[blob(project), blob(checkpoint), text("supported_by"), blob(goal_source), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_one), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_two), integer(1)]]),
         table("checkpoint_decisions", ["project_id", "checkpoint_id", "decision_id", "position"], [[blob(project), blob(checkpoint), blob(decision), integer(0)]]),
+        table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed")]]),
     ]
     state = {"project_id": project, "tables": tables}
     history_basis = hashlib.sha256(json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
@@ -1931,6 +2296,88 @@ def self_test() -> int:
         write_json(path, value)
         reference["sha256"] = sha256(path)
 
+    def mutate_mcp_call(
+        fixture: dict[str, Any],
+        capture: str,
+        operation: str,
+        mutation: Callable[[dict[str, Any]], None],
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        marker = f"tools.mcp__volicord__{operation}("
+        for value in events:
+            payload = value.get("payload", {})
+            input_value = payload.get("input")
+            if payload.get("type") != "custom_tool_call" or not isinstance(input_value, str) or marker not in input_value:
+                continue
+            match = re.fullmatch(
+                rf"const r=await tools\.mcp__volicord__{re.escape(operation)}\((.*)\);\n"
+                r'for\(const c of \(r\.content\|\|\[\]\)\) if\(c\.type==="text"\) text\(c\.text\);\n',
+                input_value,
+                re.DOTALL,
+            )
+            if match is None:
+                raise AssertionError("fixture MCP call does not use the current bounded wrapper")
+            arguments = json.loads(match.group(1))
+            mutation(arguments)
+            encoded = json.dumps(arguments, separators=(",", ":"))
+            payload["input"] = (
+                f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
+                'for(const c of (r.content||[])) if(c.type==="text") text(c.text);\n'
+            )
+            store_capture(fixture, capture, path, events)
+            return
+        raise AssertionError(f"fixture {operation} call was not found")
+
+    def mutate_custom_output(
+        fixture: dict[str, Any],
+        capture: str,
+        call_marker: str,
+        mutation: Callable[[dict[str, Any]], None],
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") != "custom_tool_call_output" or call_marker not in str(payload.get("call_id")):
+                continue
+            output = payload.get("output")
+            if not isinstance(output, list) or len(output) != 2:
+                raise AssertionError("fixture custom output does not use the current shape")
+            structured = json.loads(output[1]["text"])
+            mutation(structured)
+            output[1]["text"] = json.dumps(structured, separators=(",", ":"))
+            store_capture(fixture, capture, path, events)
+            return
+        raise AssertionError("fixture custom call result was not found")
+
+    def replace_custom_call_input(
+        fixture: dict[str, Any],
+        capture: str,
+        call_marker: str,
+        replacement: str,
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") == "custom_tool_call" and call_marker in str(payload.get("call_id")):
+                payload["input"] = replacement
+                store_capture(fixture, capture, path, events)
+                return
+        raise AssertionError("fixture custom call was not found")
+
+    def remove_custom_output(
+        fixture: dict[str, Any], capture: str, call_marker: str
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        events = [
+            value
+            for value in events
+            if not (
+                value.get("payload", {}).get("type") == "custom_tool_call_output"
+                and call_marker in str(value.get("payload", {}).get("call_id"))
+            )
+        ]
+        store_capture(fixture, capture, path, events)
+
     def replace_initial_task_text(
         fixture: dict[str, Any], replacement: Callable[[str], str]
     ) -> None:
@@ -1946,15 +2393,16 @@ def self_test() -> int:
         old_text = user_events[0]["payload"]["message"]
         new_text = replacement(old_text)
         user_events[0]["payload"]["message"] = new_text
-        for value in events:
-            payload = value.get("payload", {})
-            if payload.get("type") != "function_call" or payload.get("name") != "decision_record":
-                continue
-            arguments = json.loads(payload["arguments"])
-            if arguments.get("user_turn") == old_text:
-                arguments["user_turn"] = new_text
-                payload["arguments"] = json.dumps(arguments, separators=(",", ":"))
         store_capture(fixture, "work", path, events)
+        for operation in ("decision_record", "context_record"):
+            mutate_mcp_call(
+                fixture,
+                "work",
+                operation,
+                lambda arguments, old=old_text, new=new_text: arguments.update(
+                    {"user_turn": new}
+                ) if arguments.get("user_turn") == old else None,
+            )
 
         def replace_source_locator(bundle: dict[str, Any]) -> None:
             for table_value in bundle["payload"]["tables"]:
@@ -1968,8 +2416,6 @@ def self_test() -> int:
                         and row[locator_index].get("value") == old_text
                     ):
                         row[locator_index] = {"type": "text", "value": new_text}
-                        return
-            raise AssertionError("fixture initial user Source was not found")
 
         mutate_bundle(fixture, replace_source_locator)
 
@@ -1985,33 +2431,21 @@ def self_test() -> int:
         lines[matches[0]] = replacement
         return "\n".join(lines)
 
-    def replace_checkpoint_call_goal(fixture: dict[str, Any], goal: str) -> None:
-        path, events = capture_events(fixture, "work")
-        for value in events:
-            payload = value.get("payload", {})
-            if payload.get("type") != "function_call" or payload.get("name") != "checkpoint_record":
-                continue
-            arguments = json.loads(payload["arguments"])
-            arguments["goal"] = goal
-            payload["arguments"] = json.dumps(arguments, separators=(",", ":"))
-            store_capture(fixture, "work", path, events)
-            return
-        raise AssertionError("fixture Checkpoint call was not found")
+    def replace_checkpoint_call_goal(fixture: dict[str, Any], _goal: str) -> None:
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "checkpoint_record",
+            lambda arguments: arguments.update({"goal_context_id": "ff" * 16}),
+        )
 
     def replace_recall_goals(fixture: dict[str, Any], goals: list[str]) -> None:
-        path, events = capture_events(fixture, "resume")
-        for value in events:
-            payload = value.get("payload", {})
-            if payload.get("type") != "function_call_output" or "recall-call" not in str(
-                payload.get("call_id")
-            ):
-                continue
-            output = json.loads(payload["output"])
-            output["structuredContent"]["goals"] = goals
-            payload["output"] = json.dumps(output, separators=(",", ":"))
-            store_capture(fixture, "resume", path, events)
-            return
-        raise AssertionError("fixture Recall result was not found")
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
+            lambda output: output.update({"goals": goals}),
+        )
 
     def replace_canonical_goal(
         bundle: dict[str, Any], goal: str, *, include_context: bool
@@ -2025,6 +2459,55 @@ def self_test() -> int:
                 table_value["rows"][0][statement_index] = {"type": "text", "value": goal}
 
     original_objective = fixture_task_objective("volicord", 1)
+
+    for label, replacement in (
+        (
+            "arbitrary text",
+            'text("tools.mcp__volicord__decision_record({project_id:\'claimed\'})");',
+        ),
+        (
+            "computed tool name",
+            'const name="mcp__volicord__decision_record";\n'
+            'const r=await tools[name]({"project_id":"claimed"});\ntext(r);',
+        ),
+        (
+            "multiple calls",
+            'const r=await tools.mcp__volicord__decision_record({"project_id":"claimed"});\n'
+            'const s=await tools.mcp__volicord__recall({"project_id":"claimed"});\ntext(r);',
+        ),
+        (
+            "malformed call",
+            'const r=await tools.mcp__volicord__decision_record({project_id:});\ntext(r);',
+        ),
+    ):
+        invalid_call = real_session_fixture("volicord", 1, revision, evidence_directory)
+        replace_custom_call_input(
+            invalid_call, "work", "decision-call", replacement
+        )
+        if real_session_evidence(
+            invalid_call, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["explicit_user_decision_source"] != "failed":
+            raise AssertionError(f"{label} fabricated a bounded Decision call")
+
+    missing_output = real_session_fixture("volicord", 1, revision, evidence_directory)
+    remove_custom_output(missing_output, "work", "decision-call")
+    if real_session_evidence(
+        missing_output, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("supported call without a custom output qualified")
+
+    mismatched_output = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mismatch_output_path, mismatch_output_events = capture_events(mismatched_output, "work")
+    for value in mismatch_output_events:
+        payload = value.get("payload", {})
+        if payload.get("type") == "custom_tool_call_output" and "decision-call" in str(payload.get("call_id")):
+            payload["call_id"] = "mismatched-call-id"
+            break
+    store_capture(mismatched_output, "work", mismatch_output_path, mismatch_output_events)
+    if real_session_evidence(
+        mismatched_output, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("mismatched custom call output qualified")
 
     missing_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_initial_task_text(
@@ -2138,6 +2621,65 @@ def self_test() -> int:
     )["checks"]["repository_specific_objective"] != "failed":
         raise AssertionError("Recall result with a different goal qualified")
 
+    envelope_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
+    serialized_envelope = PHASE8_OBJECTIVE_PREFIX + json.dumps(
+        {"repository_revision": revision, "objective": original_objective},
+        separators=(",", ":"),
+    )
+    mutate_mcp_call(
+        envelope_goal,
+        "work",
+        "context_record",
+        lambda arguments: arguments.update({"statement": serialized_envelope}),
+    )
+    mutate_bundle(
+        envelope_goal,
+        lambda bundle: replace_canonical_goal(
+            bundle, serialized_envelope, include_context=True
+        ),
+    )
+    replace_recall_goals(envelope_goal, [serialized_envelope])
+    mutate_custom_output(
+        envelope_goal,
+        "resume",
+        "recall-call",
+        lambda output: output["checkpoint"].update({"goal": serialized_envelope}),
+    )
+    if real_session_evidence(
+        envelope_goal, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("serialized objective envelope qualified as canonical Goal text")
+
+    wrong_goal_turn = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_mcp_call(
+        wrong_goal_turn,
+        "work",
+        "context_record",
+        lambda arguments: arguments.update({"user_turn": "A different unobserved user turn"}),
+    )
+    if real_session_evidence(
+        wrong_goal_turn, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("Goal linked to a different user turn qualified")
+
+    non_user_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
+
+    def remove_goal_user_authority(bundle: dict[str, Any]) -> None:
+        for table in bundle["payload"]["tables"]:
+            if table["name"] != "sources":
+                continue
+            id_index = table["columns"].index("id")
+            actor_index = table["columns"].index("actor_kind")
+            for row in table["rows"]:
+                if row[id_index].get("value") == "03" * 16:
+                    row[actor_index] = {"type": "text", "value": "agent"}
+
+    mutate_bundle(non_user_goal, remove_goal_user_authority)
+    if real_session_evidence(
+        non_user_goal, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["repository_specific_objective"] != "failed":
+        raise AssertionError("agent-provenance Goal Source qualified")
+
     cross_repository = real_session_fixture("volicord", 1, revision, evidence_directory)
     cross_repository_objective = "Update another repository's deployment configuration"
     replace_initial_task_text(
@@ -2183,12 +2725,113 @@ def self_test() -> int:
     for value in marker_events:
         payload = value.get("payload", {})
         if payload.get("type") == "patch_apply_end":
-            payload["changes"] = ["/phase8/repository/v11-ordinary-work.txt"]
+            payload["changes"] = {
+                "/phase8/repository/v11-ordinary-work.txt": {
+                    "type": "update",
+                    "unified_diff": "@@ -0,0 +1 @@\n+marker\n",
+                    "move_path": None,
+                }
+            }
     store_capture(marker_only, "work", marker_path, marker_events)
     if real_session_evidence(
         marker_only, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["meaningful_ordinary_changes"] != "failed":
         raise AssertionError("capture containing only synthetic marker work qualified")
+
+    missing_patch = real_session_fixture("volicord", 1, revision, evidence_directory)
+    missing_patch["ordinary_work"] = {
+        "status": "passed",
+        "changed_paths": ["src/existing.rs", "tests/existing.rs"],
+    }
+    missing_patch_path, missing_patch_events = capture_events(missing_patch, "work")
+    missing_patch_events = [
+        value
+        for value in missing_patch_events
+        if value.get("payload", {}).get("type") != "patch_apply_end"
+    ]
+    store_capture(missing_patch, "work", missing_patch_path, missing_patch_events)
+    if real_session_evidence(
+        missing_patch, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("manifest patch claim hid absent rollout change evidence")
+
+    mismatched_checkpoint_paths = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_custom_output(
+        mismatched_checkpoint_paths,
+        "work",
+        "checkpoint-call",
+        lambda output: output.update({"changed_paths": ["src/claimed.rs"]}),
+    )
+    if real_session_evidence(
+        mismatched_checkpoint_paths,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("Checkpoint changed paths diverging from rollout work qualified")
+
+    unobserved_checkpoint_decision = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_mcp_call(
+        unobserved_checkpoint_decision,
+        "work",
+        "checkpoint_record",
+        lambda arguments: arguments.update({"applied_decision_ids": ["ff" * 16]}),
+    )
+    mutate_custom_output(
+        unobserved_checkpoint_decision,
+        "work",
+        "checkpoint-call",
+        lambda output: output.update({"applied_decision_ids": ["ff" * 16]}),
+    )
+    if real_session_evidence(
+        unobserved_checkpoint_decision,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("Checkpoint Decision absent from the current-host response qualified")
+
+    failed_verification = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_custom_output(
+        failed_verification,
+        "work",
+        "verification-call",
+        lambda output: output.update({"exit_code": 1}),
+    )
+    if real_session_evidence(
+        failed_verification, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("passed Checkpoint verification hid a failed rollout command")
+
+    absent_verification = real_session_fixture("volicord", 1, revision, evidence_directory)
+    absent_verification["verification"] = {"status": "passed"}
+    remove_custom_output(absent_verification, "work", "verification-call")
+    if real_session_evidence(
+        absent_verification, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("shell claim without a completed rollout execution qualified")
+
+    stdout_only_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    replace_custom_call_input(
+        stdout_only_verification,
+        "work",
+        "verification-call",
+        'const r=await tools.exec_command({"cmd":"python3 -m unittest tests.test_existing",'
+        '"workdir":"/phase8/repository","yield_time_ms":30000});\ntext(r.output);\n',
+    )
+    if real_session_evidence(
+        stdout_only_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("printed stdout without command outcome qualified passed verification")
 
     fabricated_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
     fabricated_decision["user_decision"] = {"status": "passed", "actor": "user"}
@@ -2245,18 +2888,18 @@ def self_test() -> int:
     recall_indexes = [
         index
         for index, value in enumerate(order_events)
-        if value.get("payload", {}).get("name") == "recall"
+        if "tools.mcp__volicord__recall(" in str(value.get("payload", {}).get("input", ""))
         or (
-            value.get("payload", {}).get("type") == "function_call_output"
+            value.get("payload", {}).get("type") == "custom_tool_call_output"
             and "recall-call" in str(value.get("payload", {}).get("call_id"))
         )
     ]
     inspection_indexes = [
         index
         for index, value in enumerate(order_events)
-        if value.get("payload", {}).get("name") == "repository_understanding"
+        if "tools.mcp__volicord__repository_understanding(" in str(value.get("payload", {}).get("input", ""))
         or (
-            value.get("payload", {}).get("type") == "function_call_output"
+            value.get("payload", {}).get("type") == "custom_tool_call_output"
             and "inspect-call" in str(value.get("payload", {}).get("call_id"))
         )
     ]
@@ -2279,21 +2922,64 @@ def self_test() -> int:
     mismatched_recall["resume_invocation"] = {
         "recall": {"checkpoint_id": "claimed", "decision_ids": ["claimed"], "context_ids": ["claimed"]}
     }
-    mismatch_path, mismatch_events = capture_events(mismatched_recall, "resume")
-    for value in mismatch_events:
-        payload = value.get("payload", {})
-        if payload.get("type") != "function_call_output" or "recall-call" not in str(payload.get("call_id")):
-            continue
-        output = json.loads(payload["output"])
-        output["structuredContent"]["decisions"][0]["identity"] = "ff" * 16
-        output["structuredContent"]["goals"] = ["Different recalled goal"]
-        output["structuredContent"]["next_step"] = "Different recalled next step"
-        payload["output"] = json.dumps(output, separators=(",", ":"))
-    store_capture(mismatched_recall, "resume", mismatch_path, mismatch_events)
+    def mismatch_recall_output(output: dict[str, Any]) -> None:
+        output["decisions"][0]["identity"] = "ff" * 16
+        output["goals"] = ["Different recalled goal"]
+        output["next_step"] = "Different recalled next step"
+        output["checkpoint"]["identity"] = "ee" * 16
+
+    mutate_custom_output(
+        mismatched_recall,
+        "resume",
+        "recall-call",
+        mismatch_recall_output,
+    )
     if real_session_evidence(
         mismatched_recall, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["recall_matches_checkpoint_decision_and_context"] != "failed":
         raise AssertionError("manifest Recall IDs hid mismatched Recall result content")
+
+    for label, mutation in (
+        (
+            "Checkpoint",
+            lambda output: output["checkpoint"].update({"identity": "ee" * 16}),
+        ),
+        (
+            "Decision",
+            lambda output: output["decisions"][0].update({"identity": "ff" * 16}),
+        ),
+    ):
+        mismatch = real_session_fixture("volicord", 1, revision, evidence_directory)
+        mutate_custom_output(mismatch, "resume", "recall-call", mutation)
+        if real_session_evidence(
+            mismatch, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["recall_matches_checkpoint_decision_and_context"] != "failed":
+            raise AssertionError(f"Recall {label} mismatch qualified")
+
+    continuation_before_recall = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    before_path, before_events = capture_events(continuation_before_recall, "resume")
+    continuation_indexes = [
+        index
+        for index, value in enumerate(before_events)
+        if "resume-patch-call" in str(value.get("payload", {}).get("call_id"))
+        or value.get("payload", {}).get("type") == "patch_apply_end"
+    ]
+    continuation_values = [before_events[index] for index in continuation_indexes]
+    before_events = [
+        value for index, value in enumerate(before_events) if index not in continuation_indexes
+    ]
+    before_events = before_events[:3] + continuation_values + before_events[3:]
+    store_capture(continuation_before_recall, "resume", before_path, before_events)
+    before_result = real_session_evidence(
+        continuation_before_recall,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if before_result["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("continuation before Recall qualified as resumed work")
 
     no_continuation = real_session_fixture("volicord", 1, revision, evidence_directory)
     no_continuation["resume_invocation"] = {"continuation": {"status": "passed"}}
@@ -2400,6 +3086,9 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "two_cycle_contract": "passed",
         "real_session_positive_path": "passed",
+        "current_custom_tool_call_envelope": "passed",
+        "bounded_static_call_syntax_only": "passed",
+        "missing_and_mismatched_outputs_rejected": "passed",
         "objective_prompt_sanitization": "passed",
         "objective_missing_malformed_duplicate_rejected": "passed",
         "objective_empty_and_oversized_rejected": "passed",
@@ -2410,11 +3099,17 @@ def self_test() -> int:
         "objective_recall_mismatch_rejected": "passed",
         "objective_cross_repository_substitution_rejected": "passed",
         "objective_legacy_generic_fixture_rejected": "passed",
+        "serialized_envelope_goal_rejected": "passed",
+        "wrong_and_non_user_goal_source_rejected": "passed",
         "v11_only_rejected": "passed",
         "synthetic_marker_work_rejected": "passed",
+        "missing_and_mismatched_patch_evidence_rejected": "passed",
+        "unobserved_checkpoint_decision_rejected": "passed",
+        "failed_absent_and_stdout_only_verification_rejected": "passed",
         "same_session_rejected": "passed",
         "recall_order_rejected": "passed",
         "mismatched_recall_state_rejected": "passed",
+        "continuation_before_recall_rejected": "passed",
         "missing_continuation_rejected": "passed",
         "user_decision_provenance_rejected": "passed",
         "missing_user_decision_rejected": "passed",

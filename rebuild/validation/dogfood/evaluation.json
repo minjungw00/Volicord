@@ -94,8 +94,25 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
-    "required_capture_format": "codex_rollout_jsonl",
+    "required_capture_format": "codex_response_item_custom_tool_call_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
+    "bounded_call_forms": [
+      "tools.mcp__volicord__<operation>(literal_object)",
+      "tools.exec_command(literal_object)",
+      "tools.apply_patch(literal_string)"
+    ],
+    "work_session_contract": [
+      "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
+      "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
+      "establish the repository baseline through repository_analyze before ordinary work",
+      "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
+      "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement"
+    ],
+    "bounded_parser_limitations": [
+      "only the listed static literal call forms and maintained output-forwarding wrappers are normalized",
+      "printed command stdout without an exposed exit_code is outcome-unknown and cannot qualify passed verification",
+      "unsupported or ambiguous JavaScript does not contribute qualification facts"
+    ],
     "task_objective": {
       "envelope_prefix": "PHASE8_OBJECTIVE: ",
       "maximum_utf8_bytes": 1024,
@@ -103,9 +120,11 @@
         "first_work_session_user_task_turn",
         "work_session_git_revision",
         "evaluated_repository_revision",
-        "checkpoint_call_goal",
-        "canonical_checkpoint_goal",
-        "fresh_session_recall_goals"
+        "context_record_inner_objective",
+        "context_record_exact_user_turn_source",
+        "checkpoint_goal_context_identity",
+        "canonical_checkpoint_goal_statement",
+        "fresh_session_recall_goal_identity_and_statement"
       ]
     },
     "raw_evidence_retention": "ignored_local_state_only"

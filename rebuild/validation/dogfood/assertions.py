@@ -40,8 +40,13 @@ def main() -> int:
     for marker in (
         "load_codex_capture",
         "load_canonical_bundle",
+        "custom_tool_call",
+        "custom_tool_call_output",
         "patch_apply_end",
         "mcp__volicord",
+        "context_record",
+        "baseline_analysis_snapshot_id",
+        "checkpoint_verifications",
         "current_host_user_turn",
         "PHASE8_OBJECTIVE_PREFIX",
         "objective_basis",
@@ -50,6 +55,10 @@ def main() -> int:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
     if "verified_capture" in source or "first_repository_inspection_sequence" in source:
         raise AssertionError("the declaration-only real-session path remains active")
+    if 'payload_type == "function_call"' in event_source or "eval(" in event_source:
+        raise AssertionError("the obsolete decoder or JavaScript evaluation path remains active")
+    if 'cli_version ==' in source or 'cli_version ==' in event_source:
+        raise AssertionError("Phase 8 may not dispatch capture parsing by numeric Codex version")
     if "--authorize-codex-transmission" in source:
         raise AssertionError("the superseded project-health-only Phase 8 assertion remains")
     if '"codex_transmission"' in definition or "project-health-six-real-repository-cycles" in definition:
@@ -62,9 +71,11 @@ def main() -> int:
         "first_work_session_user_task_turn",
         "work_session_git_revision",
         "evaluated_repository_revision",
-        "checkpoint_call_goal",
-        "canonical_checkpoint_goal",
-        "fresh_session_recall_goals",
+        "context_record_inner_objective",
+        "context_record_exact_user_turn_source",
+        "checkpoint_goal_context_identity",
+        "canonical_checkpoint_goal_statement",
+        "fresh_session_recall_goal_identity_and_statement",
     ):
         if linkage not in definition:
             raise AssertionError(f"Phase 8 definition is missing objective linkage {linkage}")

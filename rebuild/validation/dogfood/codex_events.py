@@ -26,9 +26,12 @@ PHASE8_OBJECTIVE_PREFIX = "PHASE8_OBJECTIVE: "
 GIT_REVISION = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 VOLICORD_NAMESPACE = "mcp__volicord"
 VOLICORD_OPERATIONS = {
+    "project_initialize",
+    "context_record",
     "decision_record",
     "checkpoint_record",
     "recall",
+    "repository_analyze",
     "repository_understanding",
 }
 
@@ -73,35 +76,6 @@ def bounded_path(value: Any, cwd: Path) -> str | None:
     if normalized in {"", "."} or any(part in {".git", ".local"} for part in candidate.parts):
         return None
     return normalized
-
-
-def parsed_json_object(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def structured_tool_result(value: Any) -> dict[str, Any] | None:
-    parsed = parsed_json_object(value)
-    if parsed is None:
-        return None
-    if parsed.get("isError") is True:
-        return None
-    structured = parsed.get("structuredContent")
-    if isinstance(structured, dict):
-        return structured
-    result = parsed.get("result")
-    if isinstance(result, dict):
-        nested = result.get("structuredContent")
-        if isinstance(nested, dict) and result.get("isError") is not True:
-            return nested
-    return parsed
 
 
 @dataclass(frozen=True)
@@ -189,9 +163,240 @@ class PathObservation:
 @dataclass(frozen=True)
 class CommandObservation:
     sequence: int
+    completion_sequence: int
     turn_id: str
     parsed_command: Any
+    exit_code: int | None
+    termination: str | None
+    output: str
     output_was_empty: bool
+
+
+@dataclass(frozen=True)
+class ParsedCustomCall:
+    tool_name: str
+    arguments: Any
+    output_mode: str
+
+
+class JsLiteralParser:
+    """Parse only JSON-like JavaScript literals used by current dogfood calls."""
+
+    def __init__(self, source: str):
+        self.source = source
+        self.offset = 0
+
+    def parse(self) -> Any:
+        value = self.value()
+        self.whitespace()
+        if self.offset != len(self.source):
+            raise EvidenceError("tool argument contains unsupported JavaScript")
+        return value
+
+    def whitespace(self) -> None:
+        while self.offset < len(self.source) and self.source[self.offset] in " \t\r\n":
+            self.offset += 1
+
+    def value(self) -> Any:
+        self.whitespace()
+        if self.offset >= len(self.source):
+            raise EvidenceError("tool argument is incomplete")
+        character = self.source[self.offset]
+        if character == '"':
+            return self.string()
+        if character == "{":
+            return self.object()
+        if character == "[":
+            return self.array()
+        for literal, value in (("true", True), ("false", False), ("null", None)):
+            if self.source.startswith(literal, self.offset):
+                self.offset += len(literal)
+                return value
+        number = re.match(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?", self.source[self.offset :])
+        if number is None:
+            raise EvidenceError("tool argument is not a supported literal")
+        token = number.group(0)
+        self.offset += len(token)
+        return float(token) if any(marker in token for marker in ".eE") else int(token)
+
+    def string(self) -> str:
+        start = self.offset
+        self.offset += 1
+        escaped = False
+        while self.offset < len(self.source):
+            character = self.source[self.offset]
+            self.offset += 1
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                token = self.source[start : self.offset]
+                try:
+                    value = json.loads(token)
+                except json.JSONDecodeError as error:
+                    raise EvidenceError("tool argument string is invalid") from error
+                if not isinstance(value, str):
+                    raise EvidenceError("tool argument string is invalid")
+                return value
+            elif ord(character) < 32:
+                raise EvidenceError("tool argument string contains a control character")
+        raise EvidenceError("tool argument string is unterminated")
+
+    def identifier(self) -> str:
+        self.whitespace()
+        match = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", self.source[self.offset :])
+        if match is None:
+            raise EvidenceError("tool object key is not static")
+        self.offset += len(match.group(0))
+        return match.group(0)
+
+    def object(self) -> dict[str, Any]:
+        self.offset += 1
+        result: dict[str, Any] = {}
+        self.whitespace()
+        if self.offset < len(self.source) and self.source[self.offset] == "}":
+            self.offset += 1
+            return result
+        while True:
+            self.whitespace()
+            key = self.string() if self.offset < len(self.source) and self.source[self.offset] == '"' else self.identifier()
+            self.whitespace()
+            if self.offset >= len(self.source) or self.source[self.offset] != ":":
+                raise EvidenceError("tool object property is malformed")
+            self.offset += 1
+            if key in result:
+                raise EvidenceError("tool object contains a duplicate property")
+            result[key] = self.value()
+            self.whitespace()
+            if self.offset >= len(self.source):
+                raise EvidenceError("tool object is unterminated")
+            delimiter = self.source[self.offset]
+            self.offset += 1
+            if delimiter == "}":
+                return result
+            if delimiter != ",":
+                raise EvidenceError("tool object delimiter is invalid")
+
+    def array(self) -> list[Any]:
+        self.offset += 1
+        result: list[Any] = []
+        self.whitespace()
+        if self.offset < len(self.source) and self.source[self.offset] == "]":
+            self.offset += 1
+            return result
+        while True:
+            result.append(self.value())
+            self.whitespace()
+            if self.offset >= len(self.source):
+                raise EvidenceError("tool array is unterminated")
+            delimiter = self.source[self.offset]
+            self.offset += 1
+            if delimiter == "]":
+                return result
+            if delimiter != ",":
+                raise EvidenceError("tool array delimiter is invalid")
+
+
+ASSIGNED_CALL = re.compile(
+    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+"
+    r"tools\.(?P<tool>[A-Za-z_$][A-Za-z0-9_$]*)\s*\((?P<argument>.*?)\)\s*;\s*"
+    r"(?P<forward>.*)\s*\Z",
+    re.DOTALL,
+)
+DIRECT_PATCH = re.compile(
+    r"\A\s*text\s*\(\s*await\s+tools\.apply_patch\s*\((?P<argument>.*)\)\s*\)\s*;\s*\Z",
+    re.DOTALL,
+)
+BOUND_PATCH = re.compile(
+    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?P<literal>\"(?:\\.|[^\"\\])*\")\s*;\s*"
+    r"text\s*\(\s*await\s+tools\.apply_patch\s*\(\s*(?P=variable)\s*\)\s*\)\s*;\s*\Z",
+    re.DOTALL,
+)
+
+
+def parse_custom_call(value: Any) -> ParsedCustomCall | None:
+    """Recognize one bounded current exec-cell call without evaluating JavaScript."""
+    if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
+        return None
+    bound_patch = BOUND_PATCH.fullmatch(value)
+    if bound_patch is not None:
+        try:
+            patch = JsLiteralParser(bound_patch.group("literal")).parse()
+        except EvidenceError:
+            return None
+        return ParsedCustomCall("apply_patch", patch, "patch") if isinstance(patch, str) else None
+    direct_patch = DIRECT_PATCH.fullmatch(value)
+    if direct_patch is not None:
+        try:
+            patch = JsLiteralParser(direct_patch.group("argument")).parse()
+        except EvidenceError:
+            return None
+        return ParsedCustomCall("apply_patch", patch, "patch") if isinstance(patch, str) else None
+
+    match = ASSIGNED_CALL.fullmatch(value)
+    if match is None:
+        return None
+    variable = re.escape(match.group("variable"))
+    tool_name = match.group("tool")
+    if tool_name == "exec_command":
+        allowed_tools = {"exec_command"}
+    elif tool_name.startswith(VOLICORD_NAMESPACE + "__"):
+        allowed_tools = {tool_name}
+    else:
+        return None
+    if tool_name not in allowed_tools:
+        return None
+    forward = match.group("forward").strip()
+    result_forward = re.fullmatch(rf"text\s*\(\s*{variable}\s*\)\s*;", forward, re.DOTALL)
+    output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
+    content_forward = re.fullmatch(
+        rf"for\s*\(\s*const\s+c\s+of\s+\(\s*{variable}\.content\s*\|\|\s*\[\s*\]\s*\)\s*\)\s*"
+        rf"if\s*\(\s*c\.type\s*===\s*\"text\"\s*\)\s*text\s*\(\s*c\.text\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    if tool_name == "exec_command" and result_forward is None and output_forward is None:
+        return None
+    if tool_name.startswith(VOLICORD_NAMESPACE + "__") and content_forward is None:
+        return None
+    try:
+        arguments = JsLiteralParser(match.group("argument")).parse()
+    except EvidenceError:
+        return None
+    if not isinstance(arguments, dict):
+        return None
+    mode = "result" if result_forward is not None else "output" if output_forward is not None else "content"
+    return ParsedCustomCall(tool_name, arguments, mode)
+
+
+CUSTOM_OUTPUT_HEADER = re.compile(
+    r"\AScript completed\nWall time [0-9]+(?:\.[0-9]+)? seconds\nOutput:\n(?P<body>.*)\Z",
+    re.DOTALL,
+)
+
+
+def custom_output_body(value: Any) -> str | None:
+    if not isinstance(value, list) or not value or len(value) > 8:
+        return None
+    parts: list[str] = []
+    for item in value:
+        if not isinstance(item, dict) or item.get("type") != "input_text" or not isinstance(item.get("text"), str):
+            return None
+        parts.append(item["text"])
+    match = CUSTOM_OUTPUT_HEADER.fullmatch("".join(parts))
+    return match.group("body") if match is not None else None
+
+
+def custom_output_object(value: Any) -> dict[str, Any] | None:
+    body = custom_output_body(value)
+    if body is None:
+        return None
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 @dataclass(frozen=True)
@@ -201,6 +406,8 @@ class CodexCapture:
     cwd: Path
     git_revision: str | None
     source: str
+    originator: str
+    cli_version: str
     thread_source: str
     fresh_user_thread: bool
     task_sequences: tuple[int, ...]
@@ -242,6 +449,7 @@ class CodexCapture:
     def clean_git_status_before(self, sequence: int) -> bool:
         return any(
             command.sequence < sequence
+            and command.exit_code == 0
             and command.output_was_empty
             and command_is_clean_git_status(command.parsed_command)
             for command in self.commands
@@ -360,8 +568,15 @@ def load_codex_capture(path: Path) -> CodexCapture:
         raise EvidenceError("Codex session cwd is not an absolute path")
     cwd = Path(cwd_value)
     source = meta.get("source")
+    originator = meta.get("originator")
+    cli_version = meta.get("cli_version")
     thread_source = meta.get("thread_source")
-    if source not in {"cli", "vscode"} or not nonempty(thread_source):
+    if (
+        source != "vscode"
+        or originator != "codex_vscode"
+        or not nonempty(cli_version)
+        or not nonempty(thread_source)
+    ):
         raise EvidenceError("Codex session source is unsupported")
     git = meta.get("git") if isinstance(meta.get("git"), dict) else {}
     git_revision = git.get("commit_hash") if nonempty(git.get("commit_hash")) else None
@@ -370,10 +585,9 @@ def load_codex_capture(path: Path) -> CodexCapture:
     task_sequences: list[int] = []
     compacted_sequences: list[int] = []
     user_turns: list[UserTurn] = []
-    calls: dict[str, tuple[int, str, str, dict[str, Any]]] = {}
-    completions: dict[str, tuple[int, dict[str, Any]]] = {}
-    path_observations: list[PathObservation] = []
-    commands: list[CommandObservation] = []
+    calls: dict[str, tuple[int, str, ParsedCustomCall]] = {}
+    completions: dict[str, tuple[int, str, Any]] = {}
+    raw_path_observations: list[tuple[int, str, tuple[str, ...]]] = []
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -393,55 +607,101 @@ def load_codex_capture(path: Path) -> CodexCapture:
             client_id = payload.get("client_id")
             if current_turn is not None and nonempty(message) and nonempty(client_id):
                 user_turns.append(UserTurn(sequence, current_turn, str(client_id), str(message)))
-        elif envelope == "response_item" and payload_type == "function_call":
-            if payload.get("namespace") != VOLICORD_NAMESPACE:
-                continue
-            operation = normalize_operation(payload.get("name"))
-            arguments = parsed_json_object(payload.get("arguments"))
+        elif envelope == "response_item" and payload_type == "custom_tool_call":
+            parsed = (
+                parse_custom_call(payload.get("input"))
+                if payload.get("name") == "exec" and payload.get("status") == "completed"
+                else None
+            )
             call_id = payload.get("call_id")
             metadata = payload.get("internal_chat_message_metadata_passthrough")
             turn_id = metadata.get("turn_id") if isinstance(metadata, dict) else None
-            if operation and arguments is not None and nonempty(call_id) and nonempty(turn_id):
-                calls[str(call_id)] = (sequence, str(turn_id), operation, arguments)
-        elif envelope == "response_item" and payload_type == "function_call_output":
+            if parsed is not None and nonempty(call_id) and nonempty(turn_id):
+                if str(call_id) in calls:
+                    raise EvidenceError("Codex capture reuses a supported custom call identity")
+                calls[str(call_id)] = (sequence, str(turn_id), parsed)
+        elif envelope == "response_item" and payload_type == "custom_tool_call_output":
             call_id = payload.get("call_id")
-            result = structured_tool_result(payload.get("output"))
-            if nonempty(call_id) and result is not None:
-                completions[str(call_id)] = (sequence, result)
+            metadata = payload.get("internal_chat_message_metadata_passthrough")
+            turn_id = metadata.get("turn_id") if isinstance(metadata, dict) else None
+            if nonempty(call_id) and nonempty(turn_id):
+                if str(call_id) in completions:
+                    raise EvidenceError("Codex capture reuses a custom call output identity")
+                completions[str(call_id)] = (sequence, str(turn_id), payload.get("output"))
         elif envelope == "event_msg" and payload_type == "patch_apply_end":
             turn_id = payload.get("turn_id")
             raw_paths = payload.get("changes")
-            if payload.get("success") is not True or not nonempty(turn_id) or not isinstance(raw_paths, list):
+            if (
+                payload.get("success") is not True
+                or payload.get("status") != "completed"
+                or not nonempty(turn_id)
+                or not isinstance(raw_paths, dict)
+            ):
                 continue
             paths = [bounded_path(value, cwd) for value in raw_paths]
             if not paths or len(paths) > MAX_PATHS or any(value is None for value in paths):
                 continue
-            path_observations.append(
-                PathObservation(sequence, str(turn_id), tuple(sorted(set(str(value) for value in paths))))
+            raw_path_observations.append(
+                (sequence, str(turn_id), tuple(sorted(set(str(value) for value in paths))))
             )
-        elif envelope == "event_msg" and payload_type == "exec_command_end":
-            turn_id = payload.get("turn_id")
-            if payload.get("exit_code") != 0 or not nonempty(turn_id):
+
+    tool_calls: list[ToolCall] = []
+    commands: list[CommandObservation] = []
+    completed_patches: list[tuple[int, int, str]] = []
+    for call_id, (sequence, turn_id, parsed) in calls.items():
+        completion = completions.get(call_id)
+        if completion is None or completion[0] <= sequence or completion[1] != turn_id:
+            continue
+        completion_sequence, _, raw_output = completion
+        if parsed.tool_name.startswith(VOLICORD_NAMESPACE + "__"):
+            operation = normalize_operation(parsed.tool_name[len(VOLICORD_NAMESPACE + "__") :])
+            result = custom_output_object(raw_output)
+            if operation is not None and result is not None:
+                tool_calls.append(
+                    ToolCall(
+                        sequence,
+                        completion_sequence,
+                        turn_id,
+                        call_id,
+                        operation,
+                        parsed.arguments,
+                        result,
+                    )
+                )
+        elif parsed.tool_name == "exec_command":
+            body = custom_output_body(raw_output)
+            if body is None:
                 continue
-            output = payload.get("aggregated_output")
+            result = custom_output_object(raw_output) if parsed.output_mode == "result" else None
+            output = result.get("output") if isinstance(result, dict) else body
+            exit_code = result.get("exit_code") if isinstance(result, dict) else None
+            if not isinstance(output, str) or (exit_code is not None and not isinstance(exit_code, int)):
+                continue
             commands.append(
                 CommandObservation(
                     sequence,
-                    str(turn_id),
-                    payload.get("parsed_cmd"),
-                    isinstance(output, str) and not output.strip(),
+                    completion_sequence,
+                    turn_id,
+                    parsed.arguments,
+                    exit_code,
+                    "exited" if isinstance(exit_code, int) else None,
+                    output,
+                    not output.strip(),
                 )
             )
+        elif parsed.tool_name == "apply_patch" and custom_output_body(raw_output) is not None:
+            completed_patches.append((sequence, completion_sequence, turn_id))
 
-    tool_calls = []
-    for call_id, (sequence, turn_id, operation, arguments) in calls.items():
-        completion = completions.get(call_id)
-        if completion is None or completion[0] <= sequence:
-            continue
-        tool_calls.append(
-            ToolCall(sequence, completion[0], turn_id, call_id, operation, arguments, completion[1])
-        )
     tool_calls.sort(key=lambda value: value.sequence)
+    commands.sort(key=lambda value: value.sequence)
+    path_observations = [
+        PathObservation(sequence, turn_id, paths)
+        for sequence, turn_id, paths in raw_path_observations
+        if any(
+            start < sequence < completion and patch_turn == turn_id
+            for start, completion, patch_turn in completed_patches
+        )
+    ]
 
     fresh_user_thread = (
         thread_source == "user"
@@ -455,6 +715,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
         cwd=cwd,
         git_revision=git_revision,
         source=str(source),
+        originator=str(originator),
+        cli_version=str(cli_version),
         thread_source=str(thread_source),
         fresh_user_thread=fresh_user_thread,
         task_sequences=tuple(task_sequences),
@@ -602,11 +864,14 @@ def relevant_context_ids(bundle: CanonicalBundle, recall_result: dict[str, Any])
 
 
 def recalled_checkpoint(bundle: CanonicalBundle, recall_result: dict[str, Any]) -> dict[str, Any] | None:
-    next_step = recall_result.get("next_step")
-    if not nonempty(next_step):
+    checkpoint = recall_result.get("checkpoint")
+    if not isinstance(checkpoint, dict) or not nonempty(checkpoint.get("identity")):
         return None
-    matches = [row for row in bundle.rows("checkpoints") if row.get("next_step") == next_step]
-    return matches[0] if len(matches) == 1 else None
+    return bundle.one(
+        "checkpoints",
+        project_id=bundle.project_id,
+        id=checkpoint["identity"],
+    )
 
 
 def recalled_decision_ids(recall_result: dict[str, Any]) -> list[str] | None:
