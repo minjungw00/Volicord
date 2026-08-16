@@ -24,12 +24,21 @@ MAX_PATHS = 256
 MAX_PHASE8_OBJECTIVE_BYTES = 1024
 PHASE8_OBJECTIVE_PREFIX = "PHASE8_OBJECTIVE: "
 GIT_REVISION = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
-VOLICORD_NAMESPACE = "mcp__volicord"
 VOLICORD_OPERATIONS = {
+    "background_semantic_operation",
+    "candidate_inspect",
+    "candidate_manage",
+    "canonical_inspect",
+    "canonical_mutate",
     "project_initialize",
+    "project_health",
     "context_record",
     "decision_record",
+    "document_preview",
+    "guarded_interaction",
+    "inquiry_frontier",
     "checkpoint_record",
+    "privacy_status",
     "recall",
     "repository_analyze",
     "repository_understanding",
@@ -151,6 +160,8 @@ class ToolCall:
     operation: str
     arguments: dict[str, Any]
     result: dict[str, Any]
+    outcome: str
+    error: str | None
 
 
 @dataclass(frozen=True)
@@ -177,6 +188,12 @@ class ParsedCustomCall:
     tool_name: str
     arguments: Any
     output_mode: str
+
+
+@dataclass(frozen=True)
+class ParsedMcpWrapper:
+    operation: str
+    arguments: dict[str, Any]
 
 
 class JsLiteralParser:
@@ -304,6 +321,12 @@ ASSIGNED_CALL = re.compile(
     r"(?P<forward>.*)\s*\Z",
     re.DOTALL,
 )
+MCP_WRAPPER = re.compile(
+    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+"
+    r"tools\.mcp__volicord__(?P<operation>[A-Za-z_$][A-Za-z0-9_$]*)\s*"
+    r"\((?P<argument>.*?)\)\s*;(?P<forward>.*)\Z",
+    re.DOTALL,
+)
 DIRECT_PATCH = re.compile(
     r"\A\s*text\s*\(\s*await\s+tools\.apply_patch\s*\((?P<argument>.*)\)\s*\)\s*;\s*\Z",
     re.DOTALL,
@@ -339,26 +362,12 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         return None
     variable = re.escape(match.group("variable"))
     tool_name = match.group("tool")
-    if tool_name == "exec_command":
-        allowed_tools = {"exec_command"}
-    elif tool_name.startswith(VOLICORD_NAMESPACE + "__"):
-        allowed_tools = {tool_name}
-    else:
-        return None
-    if tool_name not in allowed_tools:
+    if tool_name != "exec_command":
         return None
     forward = match.group("forward").strip()
     result_forward = re.fullmatch(rf"text\s*\(\s*{variable}\s*\)\s*;", forward, re.DOTALL)
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
-    content_forward = re.fullmatch(
-        rf"for\s*\(\s*const\s+c\s+of\s+\(\s*{variable}\.content\s*(?:\|\||\?\?)\s*\[\s*\]\s*\)\s*\)\s*"
-        rf"if\s*\(\s*c\.type\s*===\s*\"text\"\s*\)\s*text\s*\(\s*c\.text\s*\)\s*;",
-        forward,
-        re.DOTALL,
-    )
-    if tool_name == "exec_command" and result_forward is None and output_forward is None:
-        return None
-    if tool_name.startswith(VOLICORD_NAMESPACE + "__") and content_forward is None:
+    if result_forward is None and output_forward is None:
         return None
     try:
         arguments = JsLiteralParser(match.group("argument")).parse()
@@ -366,8 +375,56 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         return None
     if not isinstance(arguments, dict):
         return None
-    mode = "result" if result_forward is not None else "output" if output_forward is not None else "content"
+    mode = "result" if result_forward is not None else "output"
     return ParsedCustomCall(tool_name, arguments, mode)
+
+
+def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
+    """Parse only a single static Volicord invocation for completion correlation."""
+    if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
+        return None
+    match = MCP_WRAPPER.fullmatch(value)
+    if match is None or "tools.mcp__" in match.group("forward"):
+        return None
+    operation = normalize_operation(match.group("operation"))
+    if operation is None:
+        return None
+    try:
+        arguments = JsLiteralParser(match.group("argument")).parse()
+    except EvidenceError:
+        return None
+    if not isinstance(arguments, dict):
+        return None
+    return ParsedMcpWrapper(operation, arguments)
+
+
+def normalize_mcp_completion(
+    payload: dict[str, Any],
+) -> tuple[str | None, dict[str, Any] | None, dict[str, Any], str, str | None]:
+    """Normalize the current Codex MCP completion shape without reading wrapper output."""
+    invocation = payload.get("invocation")
+    if not isinstance(invocation, dict) or invocation.get("server") != "volicord":
+        return None, None, {}, "ignored", None
+    operation = normalize_operation(invocation.get("tool"))
+    arguments = invocation.get("arguments")
+    if operation is None or not isinstance(arguments, dict):
+        return operation, None, {}, "failed", "malformed_mcp_completion"
+    result = payload.get("result")
+    if not isinstance(result, dict) or len(result) != 1:
+        return operation, arguments, {}, "failed", "malformed_mcp_completion"
+    if "Err" in result:
+        raw_error = result.get("Err")
+        return operation, arguments, {}, "failed", str(raw_error) if raw_error is not None else "mcp_error"
+    ok = result.get("Ok")
+    if not isinstance(ok, dict) or not isinstance(ok.get("isError"), bool):
+        return operation, arguments, {}, "failed", "malformed_mcp_completion"
+    structured = ok.get("structuredContent")
+    if not isinstance(structured, dict):
+        return operation, arguments, {}, "failed", "malformed_mcp_completion"
+    if ok["isError"]:
+        raw_error = structured.get("error")
+        return operation, arguments, structured, "failed", str(raw_error) if nonempty(raw_error) else "mcp_error"
+    return operation, arguments, structured, "succeeded", None
 
 
 CUSTOM_OUTPUT_HEADER = re.compile(
@@ -422,6 +479,9 @@ class CodexCapture:
     def calls(self, operation: str) -> list[ToolCall]:
         return [call for call in self.tool_calls if call.operation == operation]
 
+    def successful_calls(self, operation: str) -> list[ToolCall]:
+        return [call for call in self.calls(operation) if call.outcome == "succeeded"]
+
     def turn_for_call(self, call: ToolCall) -> UserTurn | None:
         matches = [turn for turn in self.user_turns if turn.turn_id == call.turn_id]
         return matches[0] if len(matches) == 1 else None
@@ -435,7 +495,7 @@ class CodexCapture:
     def first_inspection_after(self, sequence: int) -> int | None:
         candidates = [
             call.sequence
-            for call in self.calls("repository_understanding")
+            for call in self.successful_calls("repository_understanding")
             if call.sequence > sequence
         ]
         candidates.extend(
@@ -587,6 +647,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
     user_turns: list[UserTurn] = []
     calls: dict[str, tuple[int, str, ParsedCustomCall]] = {}
     completions: dict[str, tuple[int, str, Any]] = {}
+    mcp_wrappers: dict[str, tuple[int, str, ParsedMcpWrapper]] = {}
+    mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     raw_path_observations: list[tuple[int, str, tuple[str, ...]]] = []
 
     for sequence, event in enumerate(events):
@@ -620,6 +682,15 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 if str(call_id) in calls:
                     raise EvidenceError("Codex capture reuses a supported custom call identity")
                 calls[str(call_id)] = (sequence, str(turn_id), parsed)
+            wrapper = (
+                parse_mcp_wrapper(payload.get("input"))
+                if payload.get("name") == "exec" and payload.get("status") == "completed"
+                else None
+            )
+            if wrapper is not None and nonempty(call_id) and nonempty(turn_id):
+                if str(call_id) in mcp_wrappers:
+                    raise EvidenceError("Codex capture reuses an MCP wrapper identity")
+                mcp_wrappers[str(call_id)] = (sequence, str(turn_id), wrapper)
         elif envelope == "response_item" and payload_type == "custom_tool_call_output":
             call_id = payload.get("call_id")
             metadata = payload.get("internal_chat_message_metadata_passthrough")
@@ -628,6 +699,9 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 if str(call_id) in completions:
                     raise EvidenceError("Codex capture reuses a custom call output identity")
                 completions[str(call_id)] = (sequence, str(turn_id), payload.get("output"))
+        elif envelope == "event_msg" and payload_type == "mcp_tool_call_end":
+            if current_turn is not None:
+                mcp_completions.append((sequence, current_turn, payload))
         elif envelope == "event_msg" and payload_type == "patch_apply_end":
             turn_id = payload.get("turn_id")
             raw_paths = payload.get("changes")
@@ -653,22 +727,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
             continue
         completion_sequence, _, raw_output = completion
-        if parsed.tool_name.startswith(VOLICORD_NAMESPACE + "__"):
-            operation = normalize_operation(parsed.tool_name[len(VOLICORD_NAMESPACE + "__") :])
-            result = custom_output_object(raw_output)
-            if operation is not None and result is not None:
-                tool_calls.append(
-                    ToolCall(
-                        sequence,
-                        completion_sequence,
-                        turn_id,
-                        call_id,
-                        operation,
-                        parsed.arguments,
-                        result,
-                    )
-                )
-        elif parsed.tool_name == "exec_command":
+        if parsed.tool_name == "exec_command":
             body = custom_output_body(raw_output)
             if body is None:
                 continue
@@ -691,6 +750,54 @@ def load_codex_capture(path: Path) -> CodexCapture:
             )
         elif parsed.tool_name == "apply_patch" and custom_output_body(raw_output) is not None:
             completed_patches.append((sequence, completion_sequence, turn_id))
+
+    seen_mcp_call_ids: set[str] = set()
+    correlated_wrapper_ids: set[str] = set()
+    for sequence, turn_id, payload in mcp_completions:
+        completion_call_id = payload.get("call_id")
+        if not nonempty(completion_call_id):
+            continue
+        completion_call_id = str(completion_call_id)
+        if completion_call_id in seen_mcp_call_ids:
+            raise EvidenceError("Codex capture reuses an MCP completion identity")
+        seen_mcp_call_ids.add(completion_call_id)
+        operation, arguments, result, outcome, error = normalize_mcp_completion(payload)
+        if operation is None or arguments is None or outcome == "ignored":
+            continue
+        correlated = [
+            (wrapper_id, wrapper)
+            for wrapper_id, wrapper in mcp_wrappers.items()
+            if wrapper[1] == turn_id
+            and wrapper[0] < sequence
+            and wrapper_id not in correlated_wrapper_ids
+            and (
+                wrapper_id not in completions
+                or sequence < completions[wrapper_id][0]
+            )
+        ]
+        if len(correlated) > 1:
+            outcome = "failed"
+            error = "ambiguous_mcp_wrapper_correlation"
+        elif len(correlated) == 1:
+            wrapper_id, wrapper_data = correlated[0]
+            correlated_wrapper_ids.add(wrapper_id)
+            wrapper = wrapper_data[2]
+            if wrapper.operation != operation or wrapper.arguments != arguments:
+                outcome = "failed"
+                error = "mcp_wrapper_completion_mismatch"
+        tool_calls.append(
+            ToolCall(
+                sequence,
+                sequence,
+                turn_id,
+                completion_call_id,
+                operation,
+                arguments,
+                result,
+                outcome,
+                error,
+            )
+        )
 
     tool_calls.sort(key=lambda value: value.sequence)
     commands.sort(key=lambda value: value.sequence)

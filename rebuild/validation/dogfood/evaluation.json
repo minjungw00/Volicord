@@ -94,26 +94,46 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
-    "required_capture_format": "codex_response_item_custom_tool_call_rollout_jsonl",
+    "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
-      "tools.mcp__volicord__<operation>(literal_object)",
+      "event_msg.mcp_tool_call_end with volicord invocation and structured result",
       "tools.exec_command(literal_object)",
       "tools.apply_patch(literal_string)"
     ],
+    "mcp_completion_contract": {
+      "authoritative_event": "event_msg.mcp_tool_call_end",
+      "server": "volicord",
+      "success": "result.Ok.isError is false with object structuredContent",
+      "failure": "result.Err, result.Ok.isError true, malformed completion, or correlated wrapper mismatch cannot qualify",
+      "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source"
+    },
+    "cycle_descriptor_contract": {
+      "resume_change_scope_field": "resume_change_scope",
+      "minimum_entries": 1,
+      "scope": "repository-relative source/test path or bounded prefix",
+      "excluded": "docs, generated evidence, markers, build/install output, Runtime Home, temporary paths, and paths outside the target repository",
+      "checkpoint_linkage": "the Checkpoint next step names reserved source/test scope and states an implementation/test change",
+      "work_boundary": "the work session leaves reserved scope unchanged and incomplete",
+      "resume_boundary": "the fresh resume changes reserved scope after Recall and then validates it"
+    },
     "work_session_contract": [
       "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
       "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
       "establish the repository baseline through repository_analyze before ordinary work",
       "obtain and record the exact current-host user Decision",
       "perform real repository work after the baseline",
+      "reserve descriptor resume_change_scope source/test work and do not modify that scope before the Checkpoint",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
       "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
       "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
+      "make the Checkpoint next step name the reserved resume_change_scope and require an implementation or test change",
       "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement"
     ],
     "resume_session_contract": [
-      "a fresh resume session invokes Recall before repository inspection or continued work"
+      "a fresh resume session invokes Recall before repository inspection or continued work",
+      "the resume session produces observed patch/change evidence intersecting resume_change_scope after Recall",
+      "the resume session preserves separate full-result numeric-exit validation after that change"
     ],
     "command_forwarding_contract": {
       "full_result_wrapper": "text(r)",
@@ -123,7 +143,7 @@
       "output_only_outcome": "unknown"
     },
     "bounded_parser_limitations": [
-      "only the listed static literal call forms and maintained output-forwarding wrappers are normalized",
+      "MCP semantic facts come only from current mcp_tool_call_end completion evidence; wrapper syntax is parsed only for bounded correlation",
       "text(r.output) command forwarding is outcome-unknown and cannot qualify passed or failed verification; text(r) is the maintained full-result form",
       "unsupported or ambiguous JavaScript does not contribute qualification facts"
     ],

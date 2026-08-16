@@ -641,6 +641,31 @@
       "content_sha256": "1897b1412668ff55f56ea76e5a2fc2bcaeb8ea44248a7d44db9dab02963a640b",
       "origin": "Self-authored V08 requirement map with isolated deterministic Linux journeys plus a separately recorded authenticated Codex CLI product-tool probe.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v12-current-codex-mcp-completion",
+      "validation_id": "V12",
+      "path": "rebuild/validation/dogfood/fixtures",
+      "purpose": "Exercise the current Codex Extension mcp_tool_call_end envelope as authoritative Phase 8 Volicord operation evidence while retaining a harmless JSON.stringify output wrapper only for correlation.",
+      "expected_entities": [
+        "codex-session",
+        "custom-tool-call-wrapper",
+        "volicord-mcp-completion",
+        "structured-operation-result"
+      ],
+      "expected_relations": [
+        "wrapper|correlates_with|mcp-completion",
+        "mcp-completion|authoritatively_reports|context-record",
+        "structured-result|proves|successful-operation"
+      ],
+      "expected_unsupported": [
+        "private rollout content or credentials",
+        "Codex-version dispatch or legacy completion shapes",
+        "JavaScript execution or wrapper-output success inference"
+      ],
+      "content_sha256": "23e894a67950aebd149ecb305d592275312497a902449e2969d5b09e9018413d",
+      "origin": "Sanitized self-authored representative derived from the observed current Phase 8 Codex Extension completion envelope.",
+      "license": "CC0-1.0"
     }
   ]
 }

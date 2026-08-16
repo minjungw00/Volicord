@@ -14,6 +14,7 @@ HERE = Path(__file__).resolve().parent
 HARNESS = HERE / "harness.py"
 CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
+CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 
 
 def main() -> int:
@@ -44,12 +45,16 @@ def main() -> int:
         "custom_tool_call_output",
         "patch_apply_end",
         "mcp__volicord",
+        "mcp_tool_call_end",
         "context_record",
         "baseline_analysis_snapshot_id",
         "checkpoint_verifications",
         "current_host_user_turn",
         "PHASE8_OBJECTIVE_PREFIX",
         "objective_basis",
+        "resume_change_scope",
+        "continuation_basis",
+        "check-descriptors",
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
@@ -72,13 +77,18 @@ def main() -> int:
         '"output_only_wrapper": "text(r.output)"',
         '"output_only_outcome": "unknown"',
         "a fresh resume session invokes Recall before repository inspection",
+        "event_msg.mcp_tool_call_end",
+        "the resume session produces observed patch/change evidence intersecting resume_change_scope",
+        "the resume session preserves separate full-result numeric-exit validation",
     ):
         if forwarding_requirement not in definition:
             raise AssertionError(
                 f"Phase 8 definition is missing forwarding requirement {forwarding_requirement}"
             )
-    if "(?:\\|\\||\\?\\?)" not in event_source:
-        raise AssertionError("Phase 8 MCP parser does not share the static fallback grammar")
+    if "MCP_WRAPPER" not in event_source or "normalize_mcp_completion" not in event_source:
+        raise AssertionError("Phase 8 MCP completion normalization boundary is missing")
+    if "parsed.tool_name.startswith" in event_source:
+        raise AssertionError("custom wrapper output remains an MCP semantic source")
     if '"repository_specific_objective": evidence_check(references_present, metadata_ok)' in source:
         raise AssertionError("repository-specific objective still aliases outer metadata")
     for linkage in (
@@ -95,8 +105,12 @@ def main() -> int:
             raise AssertionError(f"Phase 8 definition is missing objective linkage {linkage}")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
+    fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")
+    for marker in ("text(JSON.stringify(x))", '"type":"mcp_tool_call_end"', '"server":"volicord"'):
+        if marker not in fixture_source:
+            raise AssertionError(f"current Codex MCP completion fixture is missing {marker}")
     result = subprocess.run(
-        [sys.executable, str(HARNESS), "self-test"],
+        [sys.executable, "-B", str(HARNESS), "self-test"],
         cwd=ROOT,
         check=False,
     )

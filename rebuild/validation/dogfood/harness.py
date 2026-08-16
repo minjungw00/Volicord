@@ -33,7 +33,7 @@ from codex_events import (
     decode_string_blob,
     load_canonical_bundle,
     load_codex_capture,
-    parse_custom_call,
+    parse_mcp_wrapper,
     recalled_checkpoint,
     recalled_decision_ids,
     relevant_context_ids,
@@ -43,6 +43,7 @@ from codex_events import (
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 DEFINITION = HERE / "evaluation.json"
+CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 V11_HARNESS = ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"
 DECISION_REGISTER = ROOT / "rebuild/docs/design/open-decisions.md"
 ALLOWED_STATUS = {
@@ -78,6 +79,18 @@ OFFICIAL_SUFFIXES = {
 }
 DOCUMENT_SUFFIXES = {".md", ".markdown", ".rst", ".adoc"}
 IGNORED_PARTS = {".git", ".local", "target", "node_modules", "vendor", "dist", "build"}
+RESUME_EXCLUDED_PARTS = IGNORED_PARTS | {
+    ".cache", "artifacts", "doc", "docs", "documentation", "evidence",
+    "generated", "generated-evidence", "logs", "observations", "out", "results",
+    "runtime-home", "runtime-homes", "runtime_home", "runtime_homes", "temp", "tmp",
+}
+SOURCE_SUFFIXES = {
+    ".c", ".cc", ".cpp", ".cxx", ".go", ".h", ".hpp", ".java", ".js", ".jsx",
+    ".kt", ".kts", ".m", ".mm", ".php", ".py", ".rb", ".rs", ".scala", ".swift",
+    ".ts", ".tsx", ".zig",
+}
+SOURCE_SCOPE_PARTS = {"crates", "include", "lib", "libs", "packages", "source", "src"}
+TEST_SCOPE_PARTS = {"spec", "specs", "test", "tests"}
 SECRET_MARKERS = (
     "bearer ", "api_key", "api-key", "access_token", "refresh_token",
     "private prompt", "auth.json", "credential_content",
@@ -154,10 +167,10 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("the Phase 8 verifier may not claim Codex transmission authority")
     if (
         evidence.get("required_capture_format")
-        != "codex_response_item_custom_tool_call_rollout_jsonl"
+        != "codex_mcp_completion_rollout_jsonl"
         or tuple(evidence.get("bounded_call_forms", []))
         != (
-            "tools.mcp__volicord__<operation>(literal_object)",
+            "event_msg.mcp_tool_call_end with volicord invocation and structured result",
             "tools.exec_command(literal_object)",
             "tools.apply_patch(literal_string)",
         )
@@ -168,14 +181,18 @@ def load_definition() -> dict[str, Any]:
             "establish the repository baseline through repository_analyze before ordinary work",
             "obtain and record the exact current-host user Decision",
             "perform real repository work after the baseline",
+            "reserve descriptor resume_change_scope source/test work and do not modify that scope before the Checkpoint",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
             "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
+            "make the Checkpoint next step name the reserved resume_change_scope and require an implementation or test change",
             "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement",
         )
         or tuple(evidence.get("resume_session_contract", []))
         != (
             "a fresh resume session invokes Recall before repository inspection or continued work",
+            "the resume session produces observed patch/change evidence intersecting resume_change_scope after Recall",
+            "the resume session preserves separate full-result numeric-exit validation after that change",
         )
         or evidence.get("command_forwarding_contract")
         != {
@@ -188,6 +205,23 @@ def load_definition() -> dict[str, Any]:
         or len(evidence.get("bounded_parser_limitations", [])) != 3
     ):
         raise ValueError("the current Codex rollout evidence contract changed")
+    if evidence.get("mcp_completion_contract") != {
+        "authoritative_event": "event_msg.mcp_tool_call_end",
+        "server": "volicord",
+        "success": "result.Ok.isError is false with object structuredContent",
+        "failure": "result.Err, result.Ok.isError true, malformed completion, or correlated wrapper mismatch cannot qualify",
+        "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source",
+    }:
+        raise ValueError("the current MCP completion evidence contract changed")
+    descriptor_contract = evidence.get("cycle_descriptor_contract", {})
+    if (
+        descriptor_contract.get("resume_change_scope_field") != "resume_change_scope"
+        or descriptor_contract.get("minimum_entries") != 1
+        or "source/test" not in str(descriptor_contract.get("scope", ""))
+        or "leaves reserved scope unchanged" not in str(descriptor_contract.get("work_boundary", ""))
+        or "after Recall" not in str(descriptor_contract.get("resume_boundary", ""))
+    ):
+        raise ValueError("the Phase 8 cycle descriptor contract changed")
     objective = evidence.get("task_objective", {})
     if (
         objective.get("envelope_prefix") != PHASE8_OBJECTIVE_PREFIX
@@ -396,8 +430,116 @@ def verified_evidence_path(
 def unique_call(capture: CodexCapture | None, operation: str) -> ToolCall | None:
     if capture is None:
         return None
-    calls = capture.calls(operation)
+    calls = capture.successful_calls(operation)
     return calls[0] if len(calls) == 1 else None
+
+
+def normalized_resume_change_scope(value: Any) -> list[str] | None:
+    if not isinstance(value, list) or not value or len(value) > 32:
+        return None
+    result: list[str] = []
+    for raw in value:
+        if not nonempty_string(raw) or len(raw) > 4096 or "\\" in raw:
+            return None
+        path = Path(raw)
+        if path.is_absolute() or ".." in path.parts or path.as_posix() != raw or not path.parts:
+            return None
+        lowered_parts = {part.lower() for part in path.parts}
+        suffix = path.suffix.lower()
+        if (
+            lowered_parts & RESUME_EXCLUDED_PARTS
+            or suffix in DOCUMENT_SUFFIXES | {".json", ".log", ".marker", ".txt"}
+            or not (
+                suffix in SOURCE_SUFFIXES
+                or lowered_parts & SOURCE_SCOPE_PARTS
+                or lowered_parts & TEST_SCOPE_PARTS
+            )
+        ):
+            return None
+        result.append(raw)
+    return sorted(set(result)) if len(result) == len(set(result)) else None
+
+
+def path_intersects_scope(path: str, scope: str) -> bool:
+    return path == scope or path.startswith(scope.rstrip("/") + "/")
+
+
+def next_step_reserves_change(next_step: Any, scopes: list[str]) -> bool:
+    if not nonempty_string(next_step) or not any(scope in next_step for scope in scopes):
+        return False
+    lowered = next_step.lower()
+    return any(
+        re.search(rf"\b{verb}\b", lowered)
+        for verb in ("add", "change", "create", "extend", "fix", "implement", "modify", "refactor", "remove", "update", "write")
+    )
+
+
+def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: int | None) -> bool:
+    if capture is None or after_sequence is None:
+        return False
+    return any(
+        command.sequence > after_sequence
+        and command.termination == "exited"
+        and command.exit_code == 0
+        and not command_is_clean_git_status(command.parsed_command)
+        and not command_is_repository_inspection(command.parsed_command)
+        for command in capture.commands
+    )
+
+
+def cycle_descriptor_errors(value: Any) -> list[str]:
+    if not isinstance(value, dict) or value.get("kind") != "phase8_cycle_descriptor":
+        return ["descriptor kind must be phase8_cycle_descriptor"]
+    errors: list[str] = []
+    scopes = normalized_resume_change_scope(value.get("resume_change_scope"))
+    if scopes is None:
+        errors.append("resume_change_scope must contain unique repository-relative source/test paths")
+        scopes = []
+    next_step = value.get("checkpoint_next_step")
+    if not next_step_reserves_change(next_step, scopes):
+        errors.append("checkpoint_next_step must name reserved scope and require a source/test change")
+    work_boundary = value.get("work_session_boundary")
+    resume_boundary = value.get("resume_session_boundary")
+    if not nonempty_string(work_boundary) or not any(scope in work_boundary for scope in scopes):
+        errors.append("work_session_boundary must identify the source/test scope left for resume")
+    elif not any(marker in work_boundary.lower() for marker in ("leave", "reserve", "not complete")):
+        errors.append("work_session_boundary must leave reserved scope incomplete")
+    if not nonempty_string(resume_boundary) or not next_step_reserves_change(resume_boundary, scopes):
+        errors.append("resume_session_boundary must change reserved source/test scope")
+    work_contract = value.get("work_session_contract")
+    resume_contract = value.get("resume_session_contract")
+    if not isinstance(work_contract, list) or "resume_change_scope" not in "\n".join(
+        item for item in work_contract if isinstance(item, str)
+    ):
+        errors.append("work_session_contract must preserve resume_change_scope for the Checkpoint")
+    if not isinstance(resume_contract, list) or not all(
+        marker in "\n".join(item for item in resume_contract if isinstance(item, str))
+        for marker in ("Recall", "resume_change_scope", "patch", "numeric exit_code")
+    ):
+        errors.append("resume_session_contract must Recall, change reserved scope, and validate")
+    return errors
+
+
+def check_descriptors(paths: list[str]) -> int:
+    if not paths:
+        raise ValueError("at least one Phase 8 descriptor path is required")
+    failures: dict[str, list[str]] = {}
+    for raw_path in paths:
+        path = Path(raw_path)
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            failures[str(path)] = [f"descriptor could not be read: {error}"]
+            continue
+        errors = cycle_descriptor_errors(value)
+        if errors:
+            failures[str(path)] = errors
+    print(json.dumps({
+        "status": "failed" if failures else "passed",
+        "descriptor_count": len(paths),
+        "failures": failures,
+    }, indent=2, sort_keys=True))
+    return 1 if failures else 0
 
 
 def decision_facts(
@@ -711,6 +853,7 @@ def real_session_evidence(
     work_reference = captures.get("work")
     resume_reference = captures.get("resume")
     bundle_reference = raw.get("canonical_bundle")
+    resume_change_scope = normalized_resume_change_scope(raw.get("resume_change_scope"))
     work_path = verified_evidence_path(work_reference, evidence_directory)
     resume_path = verified_evidence_path(resume_reference, evidence_directory)
     bundle_path = verified_evidence_path(bundle_reference, evidence_directory)
@@ -768,6 +911,12 @@ def real_session_evidence(
         and not all(looks_like_synthetic_marker(path) for path in changed_paths)
         and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
         and all(item.sequence < checkpoint_call.sequence for item in work_capture.path_observations)
+        and resume_change_scope is not None
+        and not any(
+            path_intersects_scope(path, scope)
+            for path in changed_paths
+            for scope in resume_change_scope
+        )
     ) if work_capture else False
     cycle_metadata_ok = (
         raw.get("kind") == "phase8_real_session_cycle_evidence"
@@ -825,6 +974,20 @@ def real_session_evidence(
         resume_capture.paths_after(first_inspection)
         if resume_capture is not None and first_inspection is not None
         else []
+    )
+    last_continuation_sequence = max(
+        (
+            item.sequence
+            for item in resume_capture.path_observations
+            if item.sequence > (first_inspection if first_inspection is not None else -1)
+        ),
+        default=None,
+    ) if resume_capture is not None else None
+    resume_validation_ok = meaningful_resume_validation(
+        resume_capture,
+        last_continuation_sequence
+        if last_continuation_sequence is not None
+        else first_inspection,
     )
     prior_inspections = []
     if resume_capture is not None and recall_call is not None:
@@ -945,19 +1108,33 @@ def real_session_evidence(
         and recall_match_ok
         and recalled_objective_ok
     )
+    checkpoint_scope_linked = (
+        resume_change_scope is not None
+        and next_step_reserves_change(next_step, resume_change_scope)
+    )
+    reserved_resume_paths = [
+        path
+        for path in continuation_paths
+        if resume_change_scope is not None
+        and any(path_intersects_scope(path, scope) for scope in resume_change_scope)
+    ]
     continuation_ok = (
         recall_match_ok
-        and nonempty_string(next_step)
-        and bool(continuation_paths)
-        and any(path in next_step for path in continuation_paths)
-        and not all(looks_like_synthetic_marker(path) for path in continuation_paths)
+        and fresh_ok
+        and ordering_ok
+        and checkpoint_scope_linked
+        and bool(reserved_resume_paths)
+        and not all(looks_like_synthetic_marker(path) for path in reserved_resume_paths)
+        and resume_validation_ok
     )
 
     checks = {
         "repository_specific_objective": evidence_check(references_present, objective_ok),
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
-        "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
+        "source_grounded_checkpoint": evidence_check(
+            references_present, checkpoint_ok and checkpoint_scope_linked
+        ),
         "explicit_user_decision_source": evidence_check(references_present, decision_ok),
         "distinct_work_and_resume_invocations": evidence_check(references_present, invocations_ok),
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
@@ -971,6 +1148,15 @@ def real_session_evidence(
         "checks": checks,
         "changed_paths": changed_paths or [],
         "continuation_paths": continuation_paths,
+        "resume_change_scope": resume_change_scope or [],
+        "resume_paths": reserved_resume_paths,
+        "continuation_basis": {
+            "fresh_resume_session": fresh_ok,
+            "recall_before_inspection_and_continuation": ordering_ok,
+            "checkpoint_next_step_reserves_scope": checkpoint_scope_linked,
+            "observed_change_intersects_reserved_scope": bool(reserved_resume_paths),
+            "resume_numeric_exit_validation": resume_validation_ok,
+        },
         "checkpoint_id": checkpoint_id,
         "goal_context_id": goal_context_id,
         "decision_id": decision_id,
@@ -1824,15 +2010,50 @@ def real_session_fixture(
         arguments: dict[str, Any],
         *,
         fallback: str = "||",
+        json_wrapper: bool = False,
     ) -> dict[str, Any]:
         if fallback not in {"||", "??"}:
             raise AssertionError("fixture MCP fallback is not supported")
         encoded = json.dumps(arguments, separators=(",", ":"))
+        forwarding = (
+            "text(JSON.stringify(r));\n"
+            if json_wrapper
+            else f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n'
+        )
         return custom_call(
             turn_id,
             call_id,
-            f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
-            f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n',
+            f"const r=await tools.mcp__volicord__{operation}({encoded});\n{forwarding}",
+        )
+
+    def mcp_completion(
+        call_id: str,
+        operation: str,
+        arguments: dict[str, Any],
+        structured: dict[str, Any],
+        *,
+        server: str = "volicord",
+        is_error: bool = False,
+    ) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "mcp_tool_call_end",
+                "call_id": f"exec-{call_id}",
+                "invocation": {
+                    "server": server,
+                    "tool": operation,
+                    "arguments": arguments,
+                },
+                "duration": {"secs": 0, "nanos": 1},
+                "result": {
+                    "Ok": {
+                        "content": [{"type": "text", "text": json.dumps(structured)}],
+                        "structuredContent": structured,
+                        "isError": is_error,
+                    }
+                },
+            },
         )
 
     def command_call(turn_id: str, call_id: str, command: str) -> dict[str, Any]:
@@ -1845,6 +2066,41 @@ def real_session_fixture(
             call_id,
             f"const r=await tools.exec_command({arguments});\ntext(r);\n",
         )
+
+    def with_mcp_completions(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        outputs: dict[str, dict[str, Any]] = {}
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") != "custom_tool_call_output":
+                continue
+            output = payload.get("output")
+            if isinstance(output, list) and len(output) == 2:
+                try:
+                    structured = json.loads(output[1].get("text", ""))
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(structured, dict):
+                    outputs[str(payload.get("call_id"))] = structured
+        expanded: list[dict[str, Any]] = []
+        for value in events:
+            expanded.append(value)
+            payload = value.get("payload", {})
+            wrapper = (
+                parse_mcp_wrapper(payload.get("input"))
+                if payload.get("type") == "custom_tool_call"
+                else None
+            )
+            call_id = str(payload.get("call_id"))
+            if wrapper is not None and call_id in outputs:
+                expanded.append(
+                    mcp_completion(
+                        call_id,
+                        wrapper.operation,
+                        wrapper.arguments,
+                        outputs[call_id],
+                    )
+                )
+        return expanded
 
     work_turn = f"{kind}-work-turn-{cycle}"
     initialize_call = f"{kind}-initialize-call-{cycle}"
@@ -1877,6 +2133,7 @@ def real_session_fixture(
                 "role": "goal",
                 "statement": objective,
             },
+            json_wrapper=True,
         ),
         custom_output(
             work_turn,
@@ -1999,6 +2256,8 @@ def real_session_fixture(
     recall_call = f"{kind}-recall-call-{cycle}"
     inspect_call = f"{kind}-inspect-call-{cycle}"
     resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
+    resume_verification_call = f"{kind}-resume-verification-call-{cycle}"
+    resume_verification_command = "python3 -m unittest tests.test_resume"
     resume_patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/resume.rs\n@@\n+continued\n*** End Patch"
     resume_events = [
         session_meta(resume_session),
@@ -2087,7 +2346,15 @@ def real_session_fixture(
             },
         ),
         custom_output(resume_turn, resume_patch_call, {}),
+        command_call(resume_turn, resume_verification_call, resume_verification_command),
+        custom_output(
+            resume_turn,
+            resume_verification_call,
+            {"output": "Ran resumed tests\nOK\n", "exit_code": 0},
+        ),
     ]
+    work_events = with_mcp_completions(work_events)
+    resume_events = with_mcp_completions(resume_events)
     work_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in work_events), encoding="utf-8")
     resume_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in resume_events), encoding="utf-8")
 
@@ -2160,6 +2427,7 @@ def real_session_fixture(
         "repository_class": kind,
         "cycle": cycle,
         "repository_revision": revision,
+        "resume_change_scope": ["src/resume.rs"],
         "captures": {
             "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
             "resume": {"file": resume_capture.name, "sha256": sha256(resume_capture)},
@@ -2198,28 +2466,59 @@ def self_test() -> int:
     )
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    representative_capture = load_codex_capture(CURRENT_MCP_FIXTURE)
+    representative_calls = representative_capture.calls("context_record")
+    if (
+        len(representative_calls) != 1
+        or representative_calls[0].outcome != "succeeded"
+        or representative_calls[0].result.get("context_item_id") != "08" * 16
+        or b"text(JSON.stringify(x))" not in CURRENT_MCP_FIXTURE.read_bytes()
+    ):
+        raise AssertionError("current JSON.stringify wrapper fixture did not normalize from MCP completion")
+    valid_descriptor = {
+        "kind": "phase8_cycle_descriptor",
+        "resume_change_scope": ["src/resume.rs"],
+        "checkpoint_next_step": "Implement the reserved change in src/resume.rs",
+        "work_session_boundary": "Leave src/resume.rs reserved and incomplete for resume",
+        "resume_session_boundary": "After Recall, implement src/resume.rs and validate it",
+        "work_session_contract": [
+            "Do not modify resume_change_scope before the Checkpoint",
+        ],
+        "resume_session_contract": [
+            "Recall first, then apply a patch in resume_change_scope and preserve numeric exit_code validation",
+        ],
+    }
+    if cycle_descriptor_errors(valid_descriptor):
+        raise AssertionError("valid reserved-resume descriptor was rejected")
+    for label, mutation in (
+        ("missing scope", lambda value: value.pop("resume_change_scope")),
+        ("generated scope", lambda value: value.update({"resume_change_scope": ["build/result.json"]})),
+        ("build-only next step", lambda value: value.update({"checkpoint_next_step": "Build and install src/resume.rs"})),
+    ):
+        invalid_descriptor = json.loads(json.dumps(valid_descriptor))
+        mutation(invalid_descriptor)
+        if not cycle_descriptor_errors(invalid_descriptor):
+            raise AssertionError(f"{label} descriptor qualified")
     for fallback in ("||", "??"):
-        parsed = parse_custom_call(
+        parsed = parse_mcp_wrapper(
             "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
             f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n'
         )
-        if parsed is None or parsed.output_mode != "content":
-            raise AssertionError(f"static {fallback} MCP content forwarding did not parse")
-    for unsupported in (
+        if parsed is None:
+            raise AssertionError(f"static {fallback} MCP wrapper did not correlate")
+    multiple_mcp_calls = (
         "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
-        'for(const c of (r.content||fallback)) if(c.type==="text") text(c.text);\n',
-        "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
-        'for(const c of (r.content??[])) if(c.type==="text") text(transform(c.text));\n',
-    ):
-        if parse_custom_call(unsupported) is not None:
-            raise AssertionError("dynamic MCP content forwarding escaped the static grammar")
+        'text(JSON.stringify(r));\nawait tools.mcp__volicord__project_health({});\n'
+    )
+    if parse_mcp_wrapper(multiple_mcp_calls) is not None:
+        raise AssertionError("multiple MCP invocations escaped bounded wrapper correlation")
     positive_work_capture = load_codex_capture(
         evidence_directory / external_fixture["captures"]["work"]["file"]
     )
     positive_resume_path = evidence_directory / external_fixture["captures"]["resume"]["file"]
     positive_resume_capture = load_codex_capture(positive_resume_path)
-    recall_calls = positive_resume_capture.calls("recall")
-    inspection_calls = positive_resume_capture.calls("repository_understanding")
+    recall_calls = positive_resume_capture.successful_calls("recall")
+    inspection_calls = positive_resume_capture.successful_calls("repository_understanding")
     if (
         len(recall_calls) != 1
         or len(inspection_calls) != 1
@@ -2227,8 +2526,33 @@ def self_test() -> int:
         or b"r.content??[]" not in positive_resume_path.read_bytes()
     ):
         raise AssertionError("actual-style nullish MCP forwarding did not preserve Recall ordering")
-    if len(positive_work_capture.calls("repository_analyze")) != 1:
-        raise AssertionError("logical-or MCP forwarding no longer parsed through the shared grammar")
+    expected_work_operations = {
+        "project_initialize", "context_record", "repository_analyze", "decision_record",
+        "checkpoint_record",
+    }
+    observed_work_operations = {
+        call.operation for call in positive_work_capture.tool_calls if call.outcome == "succeeded"
+    }
+    if not expected_work_operations <= observed_work_operations:
+        raise AssertionError("current MCP completions did not yield the expected work operations")
+    if len(positive_work_capture.calls("context_record")) != 1:
+        raise AssertionError("wrapper and completion duplicated one semantic MCP operation")
+    decision_sequence = unique_call(positive_work_capture, "decision_record").sequence
+    checkpoint_sequence = unique_call(positive_work_capture, "checkpoint_record").sequence
+    work_patch_sequence = positive_work_capture.path_observations[0].sequence
+    resume_patch_sequence = positive_resume_capture.path_observations[0].sequence
+    resume_validation_sequence = next(
+        command.sequence
+        for command in positive_resume_capture.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd") == "python3 -m unittest tests.test_resume"
+    )
+    if not (
+        decision_sequence < work_patch_sequence < checkpoint_sequence
+        and recall_calls[0].sequence < inspection_calls[0].sequence
+        < resume_patch_sequence < resume_validation_sequence
+    ):
+        raise AssertionError("content-derived Decision/patch/Checkpoint/Recall ordering changed")
     full_result_commands = [
         command
         for command in positive_work_capture.commands
@@ -2394,22 +2718,26 @@ def self_test() -> int:
             input_value = payload.get("input")
             if payload.get("type") != "custom_tool_call" or not isinstance(input_value, str) or marker not in input_value:
                 continue
-            match = re.fullmatch(
-                rf"const r=await tools\.mcp__volicord__{re.escape(operation)}\((.*)\);\n"
-                r'for\(const c of \(r\.content(?P<fallback>\|\||\?\?)\[\]\)\) if\(c\.type==="text"\) text\(c\.text\);\n',
-                input_value,
-                re.DOTALL,
-            )
-            if match is None:
+            wrapper = parse_mcp_wrapper(input_value)
+            if wrapper is None or wrapper.operation != operation:
                 raise AssertionError("fixture MCP call does not use the current bounded wrapper")
-            arguments = json.loads(match.group(1))
+            arguments = json.loads(json.dumps(wrapper.arguments))
             mutation(arguments)
+            old_encoded = json.dumps(wrapper.arguments, separators=(",", ":"))
             encoded = json.dumps(arguments, separators=(",", ":"))
-            fallback = match.group("fallback")
-            payload["input"] = (
-                f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
-                f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n'
+            payload["input"] = input_value.replace(
+                f"tools.mcp__volicord__{operation}({old_encoded})",
+                f"tools.mcp__volicord__{operation}({encoded})",
+                1,
             )
+            call_id = str(payload.get("call_id"))
+            for completion in events:
+                completion_payload = completion.get("payload", {})
+                if (
+                    completion_payload.get("type") == "mcp_tool_call_end"
+                    and completion_payload.get("call_id") == f"exec-{call_id}"
+                ):
+                    completion_payload["invocation"]["arguments"] = arguments
             store_capture(fixture, capture, path, events)
             return
         raise AssertionError(f"fixture {operation} call was not found")
@@ -2431,6 +2759,16 @@ def self_test() -> int:
             structured = json.loads(output[1]["text"])
             mutation(structured)
             output[1]["text"] = json.dumps(structured, separators=(",", ":"))
+            call_id = str(payload.get("call_id"))
+            for completion in events:
+                completion_payload = completion.get("payload", {})
+                if (
+                    completion_payload.get("type") == "mcp_tool_call_end"
+                    and completion_payload.get("call_id") == f"exec-{call_id}"
+                ):
+                    completion_payload["result"]["Ok"]["structuredContent"] = json.loads(
+                        json.dumps(structured)
+                    )
             store_capture(fixture, capture, path, events)
             return
         raise AssertionError("fixture custom call result was not found")
@@ -2459,6 +2797,38 @@ def self_test() -> int:
             for value in events
             if not (
                 value.get("payload", {}).get("type") == "custom_tool_call_output"
+                and call_marker in str(value.get("payload", {}).get("call_id"))
+            )
+        ]
+        store_capture(fixture, capture, path, events)
+
+    def mutate_mcp_completion(
+        fixture: dict[str, Any],
+        capture: str,
+        call_marker: str,
+        mutation: Callable[[dict[str, Any]], None],
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        for value in events:
+            payload = value.get("payload", {})
+            if (
+                payload.get("type") == "mcp_tool_call_end"
+                and call_marker in str(payload.get("call_id"))
+            ):
+                mutation(payload)
+                store_capture(fixture, capture, path, events)
+                return
+        raise AssertionError("fixture MCP completion was not found")
+
+    def remove_mcp_completion(
+        fixture: dict[str, Any], capture: str, call_marker: str
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        events = [
+            value
+            for value in events
+            if not (
+                value.get("payload", {}).get("type") == "mcp_tool_call_end"
                 and call_marker in str(value.get("payload", {}).get("call_id"))
             )
         ]
@@ -2525,6 +2895,31 @@ def self_test() -> int:
             lambda arguments: arguments.update({"goal_context_id": "ff" * 16}),
         )
 
+    def replace_checkpoint_next_step(fixture: dict[str, Any], next_step: str) -> None:
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "checkpoint_record",
+            lambda arguments: arguments.update({"next_step": next_step}),
+        )
+
+        def replace_bundle_next_step(bundle: dict[str, Any]) -> None:
+            for table_value in bundle["payload"]["tables"]:
+                if table_value["name"] == "checkpoints":
+                    index = table_value["columns"].index("next_step")
+                    table_value["rows"][0][index] = {"type": "text", "value": next_step}
+
+        mutate_bundle(fixture, replace_bundle_next_step)
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
+            lambda output: (
+                output.update({"next_step": next_step}),
+                output["checkpoint"].update({"next_step": next_step}),
+            ),
+        )
+
     def replace_recall_goals(fixture: dict[str, Any], goals: list[str]) -> None:
         mutate_custom_output(
             fixture,
@@ -2546,54 +2941,92 @@ def self_test() -> int:
 
     original_objective = fixture_task_objective("volicord", 1)
 
-    for label, replacement in (
-        (
-            "arbitrary text",
-            'text("tools.mcp__volicord__decision_record({project_id:\'claimed\'})");',
-        ),
-        (
-            "computed tool name",
-            'const name="mcp__volicord__decision_record";\n'
-            'const r=await tools[name]({"project_id":"claimed"});\ntext(r);',
-        ),
-        (
-            "multiple calls",
-            'const r=await tools.mcp__volicord__decision_record({"project_id":"claimed"});\n'
-            'const s=await tools.mcp__volicord__recall({"project_id":"claimed"});\ntext(r);',
-        ),
-        (
-            "malformed call",
-            'const r=await tools.mcp__volicord__decision_record({project_id:});\ntext(r);',
-        ),
-    ):
-        invalid_call = real_session_fixture("volicord", 1, revision, evidence_directory)
-        replace_custom_call_input(
-            invalid_call, "work", "decision-call", replacement
-        )
-        if real_session_evidence(
-            invalid_call, kind="volicord", cycle=1, repository_revision=revision
-        )["checks"]["explicit_user_decision_source"] != "failed":
-            raise AssertionError(f"{label} fabricated a bounded Decision call")
-
-    missing_output = real_session_fixture("volicord", 1, revision, evidence_directory)
-    remove_custom_output(missing_output, "work", "decision-call")
+    missing_completion = real_session_fixture("volicord", 1, revision, evidence_directory)
+    remove_mcp_completion(missing_completion, "work", "decision-call")
     if real_session_evidence(
-        missing_output, kind="volicord", cycle=1, repository_revision=revision
+        missing_completion, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["explicit_user_decision_source"] != "failed":
-        raise AssertionError("supported call without a custom output qualified")
+        raise AssertionError("MCP wrapper without authoritative completion qualified")
 
-    mismatched_output = real_session_fixture("volicord", 1, revision, evidence_directory)
-    mismatch_output_path, mismatch_output_events = capture_events(mismatched_output, "work")
-    for value in mismatch_output_events:
+    wrapper_mismatch = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mismatch_path, mismatch_events = capture_events(wrapper_mismatch, "work")
+    for value in mismatch_events:
         payload = value.get("payload", {})
-        if payload.get("type") == "custom_tool_call_output" and "decision-call" in str(payload.get("call_id")):
-            payload["call_id"] = "mismatched-call-id"
+        input_value = payload.get("input")
+        if payload.get("type") == "custom_tool_call" and "decision-call" in str(payload.get("call_id")):
+            payload["input"] = str(input_value).replace(
+                "mcp__volicord__decision_record", "mcp__volicord__recall", 1
+            )
             break
-    store_capture(mismatched_output, "work", mismatch_output_path, mismatch_output_events)
+    store_capture(wrapper_mismatch, "work", mismatch_path, mismatch_events)
     if real_session_evidence(
-        mismatched_output, kind="volicord", cycle=1, repository_revision=revision
+        wrapper_mismatch, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["explicit_user_decision_source"] != "failed":
-        raise AssertionError("mismatched custom call output qualified")
+        raise AssertionError("wrapper/completion operation disagreement qualified")
+
+    completion_error = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_mcp_completion(
+        completion_error,
+        "work",
+        "decision-call",
+        lambda payload: payload.update({
+            "result": {
+                "Ok": {
+                    "content": [{"type": "text", "text": "sanitized MCP failure"}],
+                    "structuredContent": {"error": "sanitized MCP failure"},
+                    "isError": True,
+                }
+            }
+        }),
+    )
+    error_capture = load_codex_capture(
+        evidence_directory / completion_error["captures"]["work"]["file"]
+    )
+    failed_decisions = error_capture.calls("decision_record")
+    if (
+        len(failed_decisions) != 1
+        or failed_decisions[0].outcome != "failed"
+        or real_session_evidence(
+            completion_error, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["explicit_user_decision_source"] != "failed"
+    ):
+        raise AssertionError("MCP completion error did not remain a failed operation")
+
+    transport_error = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_mcp_completion(
+        transport_error,
+        "work",
+        "decision-call",
+        lambda payload: payload.update({"result": {"Err": "sanitized transport failure"}}),
+    )
+    if real_session_evidence(
+        transport_error, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("MCP transport error qualified")
+
+    unrelated_server = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_mcp_completion(
+        unrelated_server,
+        "work",
+        "decision-call",
+        lambda payload: payload["invocation"].update({"server": "unrelated"}),
+    )
+    if real_session_evidence(
+        unrelated_server, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("unrelated MCP server completion qualified as Volicord")
+
+    malformed_completion = real_session_fixture("volicord", 1, revision, evidence_directory)
+    mutate_mcp_completion(
+        malformed_completion,
+        "work",
+        "decision-call",
+        lambda payload: payload.update({"result": {"Ok": {"isError": False}}}),
+    )
+    if real_session_evidence(
+        malformed_completion, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["explicit_user_decision_source"] != "failed":
+        raise AssertionError("malformed MCP completion qualified")
 
     missing_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_initial_task_text(
@@ -3070,6 +3503,10 @@ def self_test() -> int:
             value.get("payload", {}).get("type") == "custom_tool_call_output"
             and "recall-call" in str(value.get("payload", {}).get("call_id"))
         )
+        or (
+            value.get("payload", {}).get("type") == "mcp_tool_call_end"
+            and value.get("payload", {}).get("invocation", {}).get("tool") == "recall"
+        )
     ]
     inspection_indexes = [
         index
@@ -3078,6 +3515,11 @@ def self_test() -> int:
         or (
             value.get("payload", {}).get("type") == "custom_tool_call_output"
             and "inspect-call" in str(value.get("payload", {}).get("call_id"))
+        )
+        or (
+            value.get("payload", {}).get("type") == "mcp_tool_call_end"
+            and value.get("payload", {}).get("invocation", {}).get("tool")
+            == "repository_understanding"
         )
     ]
     recall_values = [order_events[index] for index in recall_indexes]
@@ -3171,6 +3613,81 @@ def self_test() -> int:
         no_continuation, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["meaningful_recalled_continuation"] != "failed":
         raise AssertionError("manifest continuation claim hid absent post-Recall work")
+    no_continuation_result = real_session_evidence(
+        no_continuation, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if (
+        not no_continuation_result["continuation_basis"]["resume_numeric_exit_validation"]
+        or no_continuation_result["continuation_basis"]["observed_change_intersects_reserved_scope"]
+    ):
+        raise AssertionError("validation and source-change evidence were not kept separate")
+
+    no_reserved_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
+    no_reserved_scope.pop("resume_change_scope")
+    if real_session_evidence(
+        no_reserved_scope, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("cycle without reserved resume scope qualified")
+
+    build_only = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_checkpoint_next_step(
+        build_only, "Build and install the package from src/resume.rs, then verify it"
+    )
+    if real_session_evidence(
+        build_only, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("build/install-only Checkpoint next step qualified")
+
+    outside_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
+    outside_scope["resume_change_scope"] = ["tests/reserved.rs"]
+    replace_checkpoint_next_step(
+        outside_scope, "Implement the reserved continuation in tests/reserved.rs"
+    )
+    if real_session_evidence(
+        outside_scope, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("resume patch outside reserved scope qualified")
+
+    generated_only = real_session_fixture("volicord", 1, revision, evidence_directory)
+    generated_path, generated_events = capture_events(generated_only, "resume")
+    for value in generated_events:
+        payload = value.get("payload", {})
+        if payload.get("type") == "patch_apply_end":
+            payload["changes"] = {
+                "/phase8/repository/build/generated.rs": {
+                    "type": "update",
+                    "unified_diff": "@@ -0,0 +1 @@\n+generated\n",
+                    "move_path": None,
+                }
+            }
+    store_capture(generated_only, "resume", generated_path, generated_events)
+    if real_session_evidence(
+        generated_only, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("generated/build-only resume change qualified")
+
+    no_resume_validation = real_session_fixture("volicord", 1, revision, evidence_directory)
+    validation_path, validation_events = capture_events(no_resume_validation, "resume")
+    validation_events = [
+        value
+        for value in validation_events
+        if "resume-verification-call" not in str(value.get("payload", {}).get("call_id"))
+    ]
+    store_capture(no_resume_validation, "resume", validation_path, validation_events)
+    if real_session_evidence(
+        no_resume_validation, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("resume change without separate numeric-exit validation qualified")
+
+    work_consumed_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
+    work_consumed_scope["resume_change_scope"] = ["src/existing.rs"]
+    replace_checkpoint_next_step(
+        work_consumed_scope, "Update the reserved continuation in src/existing.rs"
+    )
+    if real_session_evidence(
+        work_consumed_scope, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["meaningful_ordinary_changes"] != "failed":
+        raise AssertionError("work session consumed its reserved resume scope")
 
     insufficient = real_session_fixture("volicord", 1, revision, evidence_directory)
     insufficient_path = evidence_directory / insufficient["captures"]["work"]["file"]
@@ -3263,11 +3780,16 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "two_cycle_contract": "passed",
         "real_session_positive_path": "passed",
-        "current_custom_tool_call_envelope": "passed",
-        "logical_or_and_nullish_mcp_forwarding": "passed",
-        "actual_style_nullish_recall_before_inspection": "passed",
-        "bounded_static_call_syntax_only": "passed",
-        "missing_and_mismatched_outputs_rejected": "passed",
+        "current_mcp_completion_envelope": "passed",
+        "json_stringify_wrapper_completion_authority": "passed",
+        "actual_style_recall_completion_before_inspection": "passed",
+        "bounded_wrapper_correlation_without_execution": "passed",
+        "missing_mcp_completion_rejected": "passed",
+        "wrapper_completion_mismatch_rejected": "passed",
+        "mcp_completion_error_rejected": "passed",
+        "unrelated_and_malformed_mcp_completion_rejected": "passed",
+        "wrapper_completion_deduplicated": "passed",
+        "reserved_resume_descriptor_contract": "passed",
         "objective_prompt_sanitization": "passed",
         "objective_missing_malformed_duplicate_rejected": "passed",
         "objective_empty_and_oversized_rejected": "passed",
@@ -3292,6 +3814,11 @@ def self_test() -> int:
         "mismatched_recall_state_rejected": "passed",
         "continuation_before_recall_rejected": "passed",
         "missing_continuation_rejected": "passed",
+        "missing_reserved_scope_rejected": "passed",
+        "build_install_only_next_step_rejected": "passed",
+        "outside_scope_and_generated_resume_change_rejected": "passed",
+        "resume_change_and_validation_separated": "passed",
+        "work_session_reserved_scope_preserved": "passed",
         "user_decision_provenance_rejected": "passed",
         "missing_user_decision_rejected": "passed",
         "valid_hash_insufficient_semantics_rejected": "passed",
@@ -3312,6 +3839,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("self-test")
+    descriptors = subparsers.add_parser("check-descriptors")
+    descriptors.add_argument("descriptors", nargs="+")
     run = subparsers.add_parser("run")
     run.add_argument("--candidate-head", required=True)
     run.add_argument("--repositories", required=True)
@@ -3323,6 +3852,8 @@ def main() -> int:
     args = parse_args()
     if args.command == "self-test":
         return self_test()
+    if args.command == "check-descriptors":
+        return check_descriptors(args.descriptors)
     return run_evaluation(args)
 
 
