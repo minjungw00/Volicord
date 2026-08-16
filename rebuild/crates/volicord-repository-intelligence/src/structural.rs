@@ -308,6 +308,7 @@ fn analyze_repository_inner(
     );
     let final_identity = structural_analysis_identity(
         repository.identity,
+        &analysis.repository_worktree,
         &analysis.capabilities,
         &analysis.diagnostics,
         &bases,
@@ -1737,6 +1738,7 @@ fn structural_counts(
 
 fn structural_analysis_identity(
     repository_snapshot: crate::RepositorySnapshotId,
+    repository_worktree: &crate::RepositoryWorktreeObservation,
     capabilities: &[CapabilityReport],
     diagnostics: &[AnalysisDiagnostic],
     bases: &[FileAnalysisBasis],
@@ -1745,6 +1747,7 @@ fn structural_analysis_identity(
     struct Basis<'a> {
         format_version: u32,
         repository_snapshot: crate::RepositorySnapshotId,
+        repository_worktree: &'a crate::RepositoryWorktreeObservation,
         capabilities: &'a [CapabilityReport],
         diagnostics: &'a [AnalysisDiagnostic],
         files: &'a [FileAnalysisBasis],
@@ -1752,6 +1755,7 @@ fn structural_analysis_identity(
     let bytes = serde_json::to_vec(&Basis {
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
         repository_snapshot,
+        repository_worktree,
         capabilities,
         diagnostics,
         files: bases,
@@ -1760,7 +1764,7 @@ fn structural_analysis_identity(
         StructuralAnalysisError::new(format!("analysis basis serialization failed: {error}"))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.structural_analysis_snapshot.v4",
+        b"volicord.structural_analysis_snapshot.v5",
         repository_snapshot.as_bytes(),
         &bytes,
     ]))

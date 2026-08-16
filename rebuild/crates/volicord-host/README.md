@@ -11,10 +11,13 @@ the canonical Source and Context Item identities; a `goal` recorded this way is
 available to ordinary Recall without creating a Decision.
 
 `repository_analyze` returns the existing Analysis and Repository Snapshot
-identities needed to bound an ordinary work unit. `checkpoint_record` takes the
-canonical Goal Context identity and baseline Analysis identity, observes the
-repository again, and derives changed paths only from compatible same-Project
-snapshot evidence. It validates explicit applied Decision identities through
+identities needed to bound an ordinary work unit. For Git worktrees, that exact
+Analysis Snapshot owns the machine-observed baseline dirty paths; callers do
+not submit them. `checkpoint_record` takes the canonical Goal Context identity
+and baseline Analysis identity, observes the repository again, and derives
+changed paths only from compatible same-Project snapshot evidence. A baseline-
+dirty path changed again is ambiguous and rejects canonical Checkpoint creation.
+It validates explicit applied Decision identities through
 the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative
 host evidence rather than an OS attestation. User review and acceptance remain

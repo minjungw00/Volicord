@@ -4,8 +4,8 @@ use crate::model::{
     CapabilityState, Coverage, DiagnosticSeverity, Ecosystem, EcosystemObservation,
     EcosystemObservationKind, EntryKind, EvidenceCandidate, FreshnessBasis, FreshnessState,
     GitObservation, InventoryClassification, InventoryEntry, InventorySnapshot, Language,
-    ObservationBasis, ProvenanceClass, RepositorySnapshot, Uncertainty, UncertaintyLevel,
-    ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
+    ObservationBasis, ProvenanceClass, RepositorySnapshot, RepositoryWorktreeObservation,
+    Uncertainty, UncertaintyLevel, ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
 };
 use crate::{
     AnalysisSnapshotId, CanonicalGrounding, CanonicalGroundingError, RepositorySnapshotId,
@@ -29,6 +29,7 @@ pub struct InventoryRequest<'a> {
     /// Slash-separated repository-relative paths. A directory excludes its subtree.
     pub excluded_paths: Vec<String>,
     pub(crate) canonical_grounding: CanonicalGrounding,
+    pub(crate) repository_worktree: RepositoryWorktreeObservation,
     project: CanonicalProjectRef,
     repository_source: CanonicalSourceRef,
 }
@@ -47,9 +48,15 @@ impl<'a> InventoryRequest<'a> {
             observed_at_unix_micros,
             excluded_paths: Vec::new(),
             canonical_grounding: canonical_grounding.clone(),
+            repository_worktree: RepositoryWorktreeObservation::NonGit,
             project: canonical_grounding.project_reference(),
             repository_source,
         })
+    }
+
+    pub fn with_repository_worktree(mut self, observation: RepositoryWorktreeObservation) -> Self {
+        self.repository_worktree = observation;
+        self
     }
 }
 
@@ -182,6 +189,7 @@ pub fn inventory_repository(
     );
     let analysis_identity = analysis_snapshot_identity(
         repository_identity,
+        &request.repository_worktree,
         &inventory,
         &capabilities,
         &state.diagnostics,
@@ -193,6 +201,7 @@ pub fn inventory_repository(
         repository_snapshot: repository_identity,
         project: request.project,
         repository_source: request.repository_source,
+        repository_worktree: request.repository_worktree,
         inventory,
         capabilities,
         diagnostics: state.diagnostics,
@@ -1201,6 +1210,7 @@ fn repository_snapshot_identity(
 
 fn analysis_snapshot_identity(
     repository_snapshot: RepositorySnapshotId,
+    repository_worktree: &RepositoryWorktreeObservation,
     inventory: &InventorySnapshot,
     capabilities: &[CapabilityReport],
     diagnostics: &[AnalysisDiagnostic],
@@ -1237,8 +1247,13 @@ fn analysis_snapshot_identity(
         InventoryError::new(format!("diagnostic serialization failed: {error}"))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.analysis_snapshot.v2",
+        b"volicord.analysis_snapshot.v3",
         repository_snapshot.as_bytes(),
+        &serde_json::to_vec(repository_worktree).map_err(|error| {
+            InventoryError::new(format!(
+                "worktree observation serialization failed: {error}"
+            ))
+        })?,
         &inventory_bytes,
         &capability_bytes,
         &diagnostic_bytes,

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, fs, time::Duration};
+use std::{ffi::OsString, fs, process::Command, time::Duration};
 use tempfile::TempDir;
 use volicord_context::{
     CheckpointKind, ContextItemId, ContextItemRole, PrincipalKind, ProjectId, SourcePayload,
@@ -26,6 +26,78 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
     let runtime = temporary.path().join("runtime");
     let operations = LocalOperations::new(RuntimeLayout::new(runtime)?);
     Ok((temporary, operations, repository))
+}
+
+fn grounded_draft(
+    project_id: ProjectId,
+    goal_context_id: ContextItemId,
+    baseline_analysis_snapshot_id: AnalysisSnapshotId,
+) -> GroundedCheckpointDraft {
+    GroundedCheckpointDraft {
+        project_id,
+        goal_context_id,
+        baseline_analysis_snapshot_id,
+        kind: CheckpointKind::Handoff,
+        work_state: WorkState::Paused,
+        state_change: Some("Recorded the bounded repository work".into()),
+        applied_decisions: Vec::new(),
+        decision_components: Vec::new(),
+        work_contexts: Vec::new(),
+        met_revisit_triggers: Vec::new(),
+        verification: vec![CommandVerificationDraft {
+            state: VerificationState::NotRun,
+            command_label: None,
+            exit_code: None,
+            termination: None,
+            outcome: None,
+        }],
+        known_limits: Vec::new(),
+        non_goals: Vec::new(),
+        next_step: "Continue from the grounded Checkpoint".into(),
+        handoff_to: Some("next Codex session".into()),
+    }
+}
+
+fn goal_and_baseline(
+    operations: &LocalOperations,
+    project_id: ProjectId,
+) -> Result<(ContextItemId, AnalysisSnapshotId), Box<dyn std::error::Error>> {
+    let goal = operations.record_current_host_user_context(
+        project_id,
+        "codex".into(),
+        "baseline-dirty-regression".into(),
+        "Record the bounded repository work".into(),
+        ContextItemRole::Goal,
+        "Record the bounded repository work".into(),
+    )?;
+    let baseline = operations
+        .analyze(project_id, Vec::new())?
+        .value
+        .ok_or("baseline analysis has no value")?
+        .analysis;
+    Ok((goal.context_item_id, baseline.identity))
+}
+
+#[cfg(target_os = "linux")]
+fn initialize_git(repository: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    for arguments in [
+        vec!["init", "--quiet"],
+        vec!["config", "user.email", "fixture@example.invalid"],
+        vec!["config", "user.name", "Volicord Fixture"],
+        vec!["add", "."],
+        vec!["commit", "--quiet", "-m", "fixture baseline"],
+    ] {
+        if !Command::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(arguments)
+            .status()?
+            .success()
+        {
+            return Err("Git fixture setup failed".into());
+        }
+    }
+    Ok(())
 }
 
 #[test]
@@ -59,6 +131,130 @@ fn project_analysis_recall_and_portable_io_use_current_owners(
     let exported = operations.export_bundle(initialized.project.id, &bundle)?;
     assert_eq!(exported.project_id, initialized.project.id);
     assert!(bundle.is_file());
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn clean_git_baseline_attributes_a_later_changed_file() -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Clean Git Fixture", Some(&repository))?
+        .project;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn changed() -> u32 { 43 }\n",
+    )?;
+
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn unchanged_pre_existing_dirty_path_is_not_current_work() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Dirty Git Fixture", Some(&repository))?
+        .project;
+    fs::write(repository.join("src/lib.rs"), "pub fn dirty_before() {}\n")?;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert!(checkpoint.changed_paths.is_empty());
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn pre_existing_tracked_path_changed_again_is_ambiguous() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Tracked Ambiguity Fixture", Some(&repository))?
+        .project;
+    fs::write(repository.join("src/lib.rs"), "pub fn dirty_before() {}\n")?;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+    fs::write(repository.join("src/lib.rs"), "pub fn changed_again() {}\n")?;
+
+    let before = operations.canonical_basis(project.id)?.latest_checkpoint;
+    let error = operations
+        .record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))
+        .expect_err("a baseline-dirty tracked path changed again must be ambiguous");
+    assert!(error
+        .message()
+        .contains("dirty at the baseline changed again"));
+    assert_eq!(
+        operations.canonical_basis(project.id)?.latest_checkpoint,
+        before
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn pre_existing_untracked_path_changed_again_is_ambiguous() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Untracked Ambiguity Fixture", Some(&repository))?
+        .project;
+    fs::write(repository.join("draft.rs"), "fn first_untracked() {}\n")?;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+    fs::write(repository.join("draft.rs"), "fn changed_untracked() {}\n")?;
+
+    let error = operations
+        .record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))
+        .expect_err("a baseline-untracked path changed again must be ambiguous");
+    assert!(error
+        .message()
+        .contains("dirty at the baseline changed again"));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn unrelated_clean_path_remains_attributable_with_unchanged_dirty_path(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Mixed Dirty Fixture", Some(&repository))?
+        .project;
+    fs::write(repository.join("src/lib.rs"), "pub fn dirty_before() {}\n")?;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+    fs::write(repository.join("src/new.rs"), "pub fn bounded_work() {}\n")?;
+
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert_eq!(checkpoint.changed_paths, ["src/new.rs"]);
+    Ok(())
+}
+
+#[test]
+fn non_git_repository_keeps_snapshot_delta_attribution() -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    let project = operations
+        .initialize_project("Non-Git Fixture", Some(&repository))?
+        .project;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn non_git_change() {}\n",
+    )?;
+
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
     Ok(())
 }
 

@@ -388,14 +388,62 @@ fn read_control_file(path: &Path) -> Result<String, RepositoryPathError> {
 pub struct DirtyObservation {
     dirty: bool,
     fingerprint: String,
+    dirty_paths: Vec<String>,
 }
 
 impl DirtyObservation {
-    pub fn from_porcelain_v2(bytes: &[u8]) -> Self {
-        Self {
+    pub fn from_porcelain_v2(bytes: &[u8]) -> Result<Self, RepositoryPathError> {
+        let mut records = bytes.split(|byte| *byte == 0).peekable();
+        let mut dirty_paths = Vec::new();
+        while let Some(record) = records.next() {
+            if record.is_empty() {
+                if records.peek().is_some() {
+                    return Err(RepositoryPathError(
+                        "Git porcelain v2 contains an empty record".to_owned(),
+                    ));
+                }
+                break;
+            }
+            match record.first().copied() {
+                Some(b'1') => {
+                    dirty_paths.push(porcelain_path_field(record, 8)?);
+                }
+                Some(b'2') => {
+                    let destination = porcelain_path_field(record, 9)?;
+                    let score = porcelain_field(record, 8, 9)?;
+                    let origin = records.next().ok_or_else(|| {
+                        RepositoryPathError(
+                            "Git porcelain v2 rename/copy record has no origin path".to_owned(),
+                        )
+                    })?;
+                    let origin = normalize_porcelain_path(origin)?;
+                    dirty_paths.push(destination);
+                    if score.first() == Some(&b'R') {
+                        dirty_paths.push(origin);
+                    }
+                }
+                Some(b'u') => {
+                    dirty_paths.push(porcelain_path_field(record, 10)?);
+                }
+                Some(b'?') if record.get(1) == Some(&b' ') => {
+                    dirty_paths.push(normalize_porcelain_path(&record[2..])?);
+                }
+                Some(b'!') if record.get(1) == Some(&b' ') => {}
+                Some(b'#') if record.get(1) == Some(&b' ') => {}
+                _ => {
+                    return Err(RepositoryPathError(
+                        "Git porcelain v2 contains an unsupported record".to_owned(),
+                    ));
+                }
+            }
+        }
+        dirty_paths.sort();
+        dirty_paths.dedup();
+        Ok(Self {
             dirty: !bytes.is_empty(),
             fingerprint: hash_fields(&[b"git_porcelain_v2", bytes]),
-        }
+            dirty_paths,
+        })
     }
 
     pub const fn is_dirty(&self) -> bool {
@@ -403,6 +451,9 @@ impl DirtyObservation {
     }
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
+    }
+    pub fn dirty_paths(&self) -> &[String] {
+        &self.dirty_paths
     }
 
     pub fn source_fingerprint(&self, head_oid: Option<&str>) -> SourceFingerprint {
@@ -412,6 +463,45 @@ impl DirtyObservation {
             self.fingerprint.as_bytes(),
         ]))
     }
+}
+
+fn porcelain_field(
+    record: &[u8],
+    field_index: usize,
+    field_count: usize,
+) -> Result<&[u8], RepositoryPathError> {
+    record
+        .splitn(field_count + 1, |byte| *byte == b' ')
+        .nth(field_index)
+        .filter(|field| !field.is_empty())
+        .ok_or_else(|| RepositoryPathError("Git porcelain v2 record is malformed".to_owned()))
+}
+
+fn porcelain_path_field(
+    record: &[u8],
+    path_field_index: usize,
+) -> Result<String, RepositoryPathError> {
+    let path = record
+        .splitn(path_field_index + 1, |byte| *byte == b' ')
+        .nth(path_field_index)
+        .ok_or_else(|| RepositoryPathError("Git porcelain v2 path is missing".to_owned()))?;
+    normalize_porcelain_path(path)
+}
+
+fn normalize_porcelain_path(path: &[u8]) -> Result<String, RepositoryPathError> {
+    let path = std::str::from_utf8(path)
+        .map_err(|_| RepositoryPathError("Git dirty path is not portable UTF-8".to_owned()))?;
+    if path.is_empty()
+        || path.starts_with('/')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(RepositoryPathError(
+            "Git dirty path escapes or does not identify a repository-relative path".to_owned(),
+        ));
+    }
+    Ok(path.to_owned())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

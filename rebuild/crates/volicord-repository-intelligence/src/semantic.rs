@@ -974,6 +974,7 @@ fn semantic_snapshot_identity(
     struct Basis<'a> {
         format_version: u32,
         repository_snapshot: crate::RepositorySnapshotId,
+        repository_worktree: &'a crate::RepositoryWorktreeObservation,
         capabilities: &'a [CapabilityReport],
         diagnostics: &'a [AnalysisDiagnostic],
         structural_bases: &'a [FileAnalysisBasis],
@@ -995,6 +996,7 @@ fn semantic_snapshot_identity(
     let bytes = serde_json::to_vec(&Basis {
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
         repository_snapshot: analysis.repository_snapshot,
+        repository_worktree: &analysis.repository_worktree,
         capabilities: &analysis.capabilities,
         diagnostics: &analysis.diagnostics,
         structural_bases: &analysis.structural_bases,
@@ -1008,7 +1010,7 @@ fn semantic_snapshot_identity(
         ))
     })?;
     Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.semantic_analysis_snapshot.v4",
+        b"volicord.semantic_analysis_snapshot.v5",
         analysis.repository_snapshot.as_bytes(),
         &bytes,
     ]))

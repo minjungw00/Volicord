@@ -30,7 +30,10 @@ relations, resolves overloads only when scope and arity identify one target,
 and preserves unresolved targets, incomplete-build diagnostics, and usable
 remainder. It has a separate adapter/analyzer identity and `semantic_result`
 provenance from Tree-sitter structural facts. The current Analysis Snapshot
-writer is format version 4 and remains deterministically rebuildable.
+writer is format version 5 and remains deterministically rebuildable. Each
+snapshot also preserves the repository-owned Git dirty-path observation made by
+Local Operations at analysis time; non-Git repositories keep the ordinary
+snapshot-delta contract without requiring Git metadata.
 
 `CanonicalGrounding` derives an immutable identity-and-basis index from
 Canonical Context's `CanonicalReadBasis`. Repository Sources must exist in the

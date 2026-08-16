@@ -321,6 +321,11 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
 - file content, declared dependency, recognized build context와 adapter contract basis를
   기록하고 `file_content`, `dependency`, `build_context`, `adapter_contract`,
   `prior_failure` 등 명시적 category로 bounded refresh 또는 reuse를 설명한다.
+- Local Operations가 Analysis 생성 시점에 machine-readable Git status로 관찰한
+  repository-relative dirty path와 status fingerprint를 exact Analysis Snapshot의
+  Derived repository observation으로 보존한다. Non-Git repository에는 Git metadata를
+  요구하지 않으며 Checkpoint는 이후 current state에서 baseline dirty set을 재계산하지
+  않는다.
 - local search result에 Source/range, capability, coverage, diagnostic, provenance와
   freshness를 포함하고 historical range를 current navigation으로 표시하지 않는다.
 - parser execution과 search를 process 내부 local operation으로 유지하며 repository
@@ -329,7 +334,7 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
 이 책임은 semantic resolution, compiler/LSP child process, provider annotation 또는
 canonical mutation을 포함하지 않는다. Analysis Snapshot current writer는 structural과
 semantic basis, invalidation, refresh metadata와 Project-scoped canonical target basis가 포함된
-format version 4만 생성하며 이 derived
+format version 5만 생성하며 이 derived
 format은 source basis에서 rebuild하는 책임을 가진다. Maintained V01 report는 이 Production
 boundary에서 seven-language structural gate를 passed로 판정하며 large-repository scaling과
 complete macro/generated coverage는 주장하지 않는다.

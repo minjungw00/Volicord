@@ -367,6 +367,22 @@ fn canonical_links_are_project_scoped_basis_bound_and_stable() -> Result<(), Box
     let decoded: volicord_repository_intelligence::AnalysisSnapshot =
         serde_json::from_slice(&canonical_json(&first)?)?;
     assert_eq!(decoded, first);
+    assert_eq!(
+        serde_json::to_value(&first)?["repository_worktree"]["kind"],
+        json!("non_git")
+    );
+    let mut invalid_worktree = serde_json::to_value(&first)?;
+    invalid_worktree["repository_worktree"] = json!({
+        "kind": "git",
+        "status_fingerprint": format!("sha256:{}", "ab".repeat(32)),
+        "dirty_paths": ["../outside.rs"]
+    });
+    assert!(
+        serde_json::from_value::<volicord_repository_intelligence::AnalysisSnapshot>(
+            invalid_worktree
+        )
+        .is_err()
+    );
     let mut previous_format = serde_json::to_value(&first)?;
     previous_format["format_version"] = json!(ANALYSIS_SNAPSHOT_FORMAT_VERSION - 1);
     assert!(

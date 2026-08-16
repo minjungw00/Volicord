@@ -31,11 +31,12 @@ pub use model::{
     GroundingEvidence, GroundingGap, GroundingStatementClass, InvalidationCategory,
     InvalidationRecord, InventoryClassification, InventoryEntry, InventorySnapshot, Language,
     LanguageExtension, ObservationBasis, ProvenanceClass, RangeMeaning, RefreshAction,
-    RelationTarget, RepositorySnapshot, SearchHit, SearchResultKind, SemanticAnalysisResult,
-    SemanticAnnotation, SemanticProvenance, SemanticRefresh, SemanticRelation,
-    SemanticRelationKind, SourcePosition, SourceRange, StructuralFact, StructuralProvenance,
-    StructuralRefresh, StructuralRelation, StructuralRelationKind, Uncertainty, UncertaintyLevel,
-    UnresolvedTarget, ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
+    RelationTarget, RepositorySnapshot, RepositoryWorktreeObservation, SearchHit, SearchResultKind,
+    SemanticAnalysisResult, SemanticAnnotation, SemanticProvenance, SemanticRefresh,
+    SemanticRelation, SemanticRelationKind, SourcePosition, SourceRange, StructuralFact,
+    StructuralProvenance, StructuralRefresh, StructuralRelation, StructuralRelationKind,
+    Uncertainty, UncertaintyLevel, UnresolvedTarget, ANALYSIS_SNAPSHOT_FORMAT_VERSION,
+    ANALYSIS_SNAPSHOT_KIND,
 };
 pub use search::search_local;
 pub use semantic::{

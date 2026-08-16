@@ -132,15 +132,45 @@ fn separate_clone_keeps_a_distinct_local_coordinate() {
 
 #[test]
 fn dirty_and_source_fingerprints_change_without_claiming_project_identity() {
-    let clean = DirtyObservation::from_porcelain_v2(b"");
-    let dirty = DirtyObservation::from_porcelain_v2(b"1 .M N... tracked.txt\0");
+    let clean = DirtyObservation::from_porcelain_v2(b"").expect("clean status");
+    let dirty = DirtyObservation::from_porcelain_v2(
+        b"1 .M N... 100644 100644 100644 abcdef abcdef tracked.txt\0\
+2 R. N... 100644 100644 100644 abcdef abcdef R100 renamed.txt\0original.txt\0\
+2 C. N... 100644 100644 100644 abcdef abcdef C100 copied.txt\0source.txt\0\
+1 D. N... 100644 000000 000000 abcdef 000000 deleted.txt\0\
+? untracked/nested.txt\0",
+    )
+    .expect("dirty status");
     assert!(!clean.is_dirty());
     assert!(dirty.is_dirty());
+    assert_eq!(
+        dirty.dirty_paths(),
+        [
+            "copied.txt",
+            "deleted.txt",
+            "original.txt",
+            "renamed.txt",
+            "tracked.txt",
+            "untracked/nested.txt",
+        ]
+    );
     assert_ne!(clean.fingerprint(), dirty.fingerprint());
     assert_ne!(
         clean.source_fingerprint(Some("abc")),
         dirty.source_fingerprint(Some("abc"))
     );
+}
+
+#[test]
+fn dirty_observation_rejects_non_portable_or_malformed_paths() {
+    for value in [
+        b"? ../outside.txt\0".as_slice(),
+        b"? /absolute.txt\0".as_slice(),
+        b"2 R. N... 100644 100644 100644 abcdef abcdef R100 renamed.txt\0".as_slice(),
+        b"unexpected\0".as_slice(),
+    ] {
+        assert!(DirtyObservation::from_porcelain_v2(value).is_err());
+    }
 }
 
 #[test]

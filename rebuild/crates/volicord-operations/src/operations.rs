@@ -41,9 +41,10 @@ use volicord_inquiry::{
     SubmissionOutcome,
 };
 use volicord_local_platform::{
-    publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, GitWorktreeLayout,
-    NoReplacePublicationOutcome, ProcessCompletion, ProcessRequest, ProcessStopTrigger,
-    ProcessTermination, ProcessTreeCleanup, RepositoryPathState, RepositoryRoot,
+    publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, DirtyObservation,
+    GitWorktreeLayout, NoReplacePublicationOutcome, ProcessCompletion, ProcessRequest,
+    ProcessStopTrigger, ProcessTermination, ProcessTreeCleanup, RepositoryPathState,
+    RepositoryRoot,
 };
 use volicord_privacy::{
     BackgroundSemanticProvider, BackgroundSemanticRequest, BackgroundSource, PreparationOutcome,
@@ -60,7 +61,7 @@ use volicord_projections::{
 use volicord_repository_intelligence::{
     analyze_repository, AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding, CapabilityState,
     EntryKind, InventoryClassification, InventoryEntry, InventoryRequest,
-    StructuralAnalysisRequest,
+    RepositoryWorktreeObservation, StructuralAnalysisRequest,
 };
 
 pub struct LocalOperations {
@@ -72,6 +73,7 @@ struct PreparedAnalysisBasis {
     requested_path: PathBuf,
     canonical: CanonicalReadBasis,
     repository_source: SourceId,
+    repository_worktree: RepositoryWorktreeObservation,
 }
 
 impl LocalOperations {
@@ -273,9 +275,58 @@ impl LocalOperations {
             prepared.requested_path,
             prepared.canonical,
             prepared.repository_source,
+            prepared.repository_worktree,
             excluded_paths,
             false,
         )
+    }
+
+    fn observe_repository_worktree(
+        &self,
+        root: &Path,
+    ) -> Result<RepositoryWorktreeObservation, Error> {
+        if GitWorktreeLayout::resolve(root)
+            .map_err(|error| Error::with_source("cannot resolve Git worktree for analysis", error))?
+            .is_none()
+        {
+            return Ok(RepositoryWorktreeObservation::NonGit);
+        }
+        let result = self.run_child(
+            "git",
+            [
+                OsString::from("--no-optional-locks"),
+                OsString::from("status"),
+                OsString::from("--porcelain=v2"),
+                OsString::from("-z"),
+                OsString::from("--untracked-files=all"),
+            ],
+            Some(root),
+            vec!["git_worktree_status".into()],
+            Duration::from_secs(30),
+            CancellationFlag::default(),
+        )?;
+        if result.state != OperationState::Succeeded {
+            return Err(Error::new(format!(
+                "Git worktree status observation failed; operation {}; diagnostic: {}",
+                result.operation_id,
+                result
+                    .diagnostic
+                    .as_deref()
+                    .unwrap_or("process did not exit successfully")
+            )));
+        }
+        let outcome = result.value.ok_or_else(|| {
+            Error::new("Git worktree status observation has no preserved process result")
+        })?;
+        let bytes = fs::read(outcome.stdout.path()).map_err(|error| {
+            Error::with_source("cannot read preserved Git worktree status stdout", error)
+        })?;
+        let observation = DirtyObservation::from_porcelain_v2(&bytes)
+            .map_err(|error| Error::with_source("cannot parse Git worktree status", error))?;
+        Ok(RepositoryWorktreeObservation::Git {
+            status_fingerprint: observation.fingerprint().to_owned(),
+            dirty_paths: observation.dirty_paths().to_vec(),
+        })
     }
 
     fn prepare_analysis_basis(
@@ -292,6 +343,7 @@ impl LocalOperations {
         })?;
         let root = RepositoryRoot::open(&binding.absolute_path)
             .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
+        let repository_worktree = self.observe_repository_worktree(root.canonical_path())?;
         let revision =
             repository_observation_basis(root.canonical_path(), observed_at.as_unix_micros())?;
         let source = canonical
@@ -323,6 +375,7 @@ impl LocalOperations {
             requested_path: binding.absolute_path,
             canonical: basis,
             repository_source: source.value.id,
+            repository_worktree,
         })
     }
 
@@ -336,6 +389,7 @@ impl LocalOperations {
         requested_path: PathBuf,
         basis: CanonicalReadBasis,
         repository_source: SourceId,
+        repository_worktree: RepositoryWorktreeObservation,
         excluded_paths: Vec<String>,
         replace_existing: bool,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
@@ -348,7 +402,8 @@ impl LocalOperations {
             repository_source,
             started_at.as_unix_micros(),
         )
-        .map_err(|error| Error::with_source("cannot create repository inventory request", error))?;
+        .map_err(|error| Error::with_source("cannot create repository inventory request", error))?
+        .with_repository_worktree(repository_worktree);
         inventory.excluded_paths = excluded_paths;
         let (repository, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory))
             .map_err(|error| Error::with_source("repository analysis failed", error))?;
@@ -424,6 +479,7 @@ impl LocalOperations {
             prepared.requested_path,
             prepared.canonical,
             prepared.repository_source,
+            prepared.repository_worktree,
             excluded_paths,
             true,
         )
@@ -1391,7 +1447,7 @@ impl LocalOperations {
         let repository_work = RepositoryWorkBasis {
             baseline: &baseline,
             current: &current_outcome.analysis,
-            pre_existing_dirty_paths: Vec::new(),
+            pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
         };
         let changed_paths = match attribute_repository_changes(draft.project_id, &repository_work) {
             ChangeAttribution::Attributed { changed_paths, .. } => changed_paths,

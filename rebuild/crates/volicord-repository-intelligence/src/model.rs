@@ -7,7 +7,7 @@ use std::fmt;
 use volicord_context::{CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId};
 
 pub const ANALYSIS_SNAPSHOT_KIND: &str = "volicord.repository_analysis";
-pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 4;
+pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct CanonicalProjectRef {
@@ -287,6 +287,25 @@ pub struct GitObservation {
     pub reference: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum RepositoryWorktreeObservation {
+    Git {
+        status_fingerprint: String,
+        dirty_paths: Vec<String>,
+    },
+    NonGit,
+}
+
+impl RepositoryWorktreeObservation {
+    pub fn dirty_paths(&self) -> &[String] {
+        match self {
+            Self::Git { dirty_paths, .. } => dirty_paths,
+            Self::NonGit => &[],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AnalysisSnapshot {
     pub format_kind: String,
@@ -296,6 +315,8 @@ pub struct AnalysisSnapshot {
     pub repository_snapshot: RepositorySnapshotId,
     pub project: CanonicalProjectRef,
     pub repository_source: CanonicalSourceRef,
+    /// Repository-owned baseline evidence captured with this exact analysis.
+    pub repository_worktree: RepositoryWorktreeObservation,
     pub inventory: InventorySnapshot,
     pub capabilities: Vec<CapabilityReport>,
     pub diagnostics: Vec<AnalysisDiagnostic>,
@@ -320,6 +341,7 @@ struct AnalysisSnapshotWire {
     repository_snapshot: RepositorySnapshotId,
     project: CanonicalProjectRef,
     repository_source: CanonicalSourceRef,
+    repository_worktree: RepositoryWorktreeObservation,
     inventory: InventorySnapshot,
     capabilities: Vec<CapabilityReport>,
     diagnostics: Vec<AnalysisDiagnostic>,
@@ -354,6 +376,8 @@ impl<'de> Deserialize<'de> for AnalysisSnapshot {
                 wire.format_version, ANALYSIS_SNAPSHOT_FORMAT_VERSION
             )));
         }
+        validate_repository_worktree(&wire.repository_worktree)
+            .map_err(serde::de::Error::custom)?;
         Ok(Self {
             format_kind: wire.format_kind,
             format_version: wire.format_version,
@@ -361,6 +385,7 @@ impl<'de> Deserialize<'de> for AnalysisSnapshot {
             repository_snapshot: wire.repository_snapshot,
             project: wire.project,
             repository_source: wire.repository_source,
+            repository_worktree: wire.repository_worktree,
             inventory: wire.inventory,
             capabilities: wire.capabilities,
             diagnostics: wire.diagnostics,
@@ -377,6 +402,36 @@ impl<'de> Deserialize<'de> for AnalysisSnapshot {
             freshness: wire.freshness,
         })
     }
+}
+
+fn validate_repository_worktree(value: &RepositoryWorktreeObservation) -> Result<(), &'static str> {
+    let RepositoryWorktreeObservation::Git {
+        status_fingerprint,
+        dirty_paths,
+    } = value
+    else {
+        return Ok(());
+    };
+    if !status_fingerprint.starts_with("sha256:")
+        || status_fingerprint.len() != "sha256:".len() + 64
+        || !status_fingerprint["sha256:".len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err("Git worktree observation has an invalid status fingerprint");
+    }
+    if dirty_paths.windows(2).any(|pair| pair[0] >= pair[1])
+        || dirty_paths.iter().any(|path| {
+            path.is_empty()
+                || path.starts_with('/')
+                || path
+                    .split('/')
+                    .any(|part| part.is_empty() || part == "." || part == "..")
+        })
+    {
+        return Err("Git worktree observation has non-canonical dirty paths");
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
