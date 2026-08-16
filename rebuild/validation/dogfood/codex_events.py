@@ -351,7 +351,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     result_forward = re.fullmatch(rf"text\s*\(\s*{variable}\s*\)\s*;", forward, re.DOTALL)
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
     content_forward = re.fullmatch(
-        rf"for\s*\(\s*const\s+c\s+of\s+\(\s*{variable}\.content\s*\|\|\s*\[\s*\]\s*\)\s*\)\s*"
+        rf"for\s*\(\s*const\s+c\s+of\s+\(\s*{variable}\.content\s*(?:\|\||\?\?)\s*\[\s*\]\s*\)\s*\)\s*"
         rf"if\s*\(\s*c\.type\s*===\s*\"text\"\s*\)\s*text\s*\(\s*c\.text\s*\)\s*;",
         forward,
         re.DOTALL,

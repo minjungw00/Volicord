@@ -105,12 +105,26 @@
       "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
       "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
       "establish the repository baseline through repository_analyze before ordinary work",
+      "obtain and record the exact current-host user Decision",
+      "perform real repository work after the baseline",
+      "commands used only for incidental inspection need not become Checkpoint verification facts",
+      "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
       "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
       "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement"
     ],
+    "resume_session_contract": [
+      "a fresh resume session invokes Recall before repository inspection or continued work"
+    ],
+    "command_forwarding_contract": {
+      "full_result_wrapper": "text(r)",
+      "output_only_wrapper": "text(r.output)",
+      "incidental_inspection": "may remain an observed command without becoming a Checkpoint verification fact",
+      "checkpoint_verification": "passed or failed facts require a captured full structured result with numeric exit_code",
+      "output_only_outcome": "unknown"
+    },
     "bounded_parser_limitations": [
       "only the listed static literal call forms and maintained output-forwarding wrappers are normalized",
-      "printed command stdout without an exposed exit_code is outcome-unknown and cannot qualify passed verification",
+      "text(r.output) command forwarding is outcome-unknown and cannot qualify passed or failed verification; text(r) is the maintained full-result form",
       "unsupported or ambiguous JavaScript does not contribute qualification facts"
     ],
     "task_objective": {

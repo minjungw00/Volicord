@@ -65,6 +65,20 @@ def main() -> int:
         raise AssertionError("the superseded Phase 8 transmission contract remains")
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
+    for forwarding_requirement in (
+        "commands used only for incidental inspection",
+        "full-result text(r) forwarding",
+        '"full_result_wrapper": "text(r)"',
+        '"output_only_wrapper": "text(r.output)"',
+        '"output_only_outcome": "unknown"',
+        "a fresh resume session invokes Recall before repository inspection",
+    ):
+        if forwarding_requirement not in definition:
+            raise AssertionError(
+                f"Phase 8 definition is missing forwarding requirement {forwarding_requirement}"
+            )
+    if "(?:\\|\\||\\?\\?)" not in event_source:
+        raise AssertionError("Phase 8 MCP parser does not share the static fallback grammar")
     if '"repository_specific_objective": evidence_check(references_present, metadata_ok)' in source:
         raise AssertionError("repository-specific objective still aliases outer metadata")
     for linkage in (

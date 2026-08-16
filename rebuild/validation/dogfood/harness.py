@@ -33,6 +33,7 @@ from codex_events import (
     decode_string_blob,
     load_canonical_bundle,
     load_codex_capture,
+    parse_custom_call,
     recalled_checkpoint,
     recalled_decision_ids,
     relevant_context_ids,
@@ -160,7 +161,30 @@ def load_definition() -> dict[str, Any]:
             "tools.exec_command(literal_object)",
             "tools.apply_patch(literal_string)",
         )
-        or len(evidence.get("work_session_contract", [])) != 5
+        or tuple(evidence.get("work_session_contract", []))
+        != (
+            "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
+            "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
+            "establish the repository baseline through repository_analyze before ordinary work",
+            "obtain and record the exact current-host user Decision",
+            "perform real repository work after the baseline",
+            "commands used only for incidental inspection need not become Checkpoint verification facts",
+            "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
+            "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
+            "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement",
+        )
+        or tuple(evidence.get("resume_session_contract", []))
+        != (
+            "a fresh resume session invokes Recall before repository inspection or continued work",
+        )
+        or evidence.get("command_forwarding_contract")
+        != {
+            "full_result_wrapper": "text(r)",
+            "output_only_wrapper": "text(r.output)",
+            "incidental_inspection": "may remain an observed command without becoming a Checkpoint verification fact",
+            "checkpoint_verification": "passed or failed facts require a captured full structured result with numeric exit_code",
+            "output_only_outcome": "unknown",
+        }
         or len(evidence.get("bounded_parser_limitations", [])) != 3
     ):
         raise ValueError("the current Codex rollout evidence contract changed")
@@ -1793,13 +1817,22 @@ def real_session_fixture(
             },
         )
 
-    def mcp_call(turn_id: str, call_id: str, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def mcp_call(
+        turn_id: str,
+        call_id: str,
+        operation: str,
+        arguments: dict[str, Any],
+        *,
+        fallback: str = "||",
+    ) -> dict[str, Any]:
+        if fallback not in {"||", "??"}:
+            raise AssertionError("fixture MCP fallback is not supported")
         encoded = json.dumps(arguments, separators=(",", ":"))
         return custom_call(
             turn_id,
             call_id,
             f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
-            'for(const c of (r.content||[])) if(c.type==="text") text(c.text);\n',
+            f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n',
         )
 
     def command_call(turn_id: str, call_id: str, command: str) -> dict[str, Any]:
@@ -1971,7 +2004,13 @@ def real_session_fixture(
         session_meta(resume_session),
         task(resume_turn),
         user(resume_turn, f"{kind}-resume-user-turn-{cycle}", "<redacted-resume-request>"),
-        mcp_call(resume_turn, recall_call, "recall", {"project_id": project}),
+        mcp_call(
+            resume_turn,
+            recall_call,
+            "recall",
+            {"project_id": project},
+            fallback="??",
+        ),
         custom_output(
             resume_turn,
             recall_call,
@@ -2011,7 +2050,13 @@ def real_session_fixture(
                 "read_only": True,
             },
         ),
-        mcp_call(resume_turn, inspect_call, "repository_understanding", {"project_id": project}),
+        mcp_call(
+            resume_turn,
+            inspect_call,
+            "repository_understanding",
+            {"project_id": project},
+            fallback="??",
+        ),
         custom_output(
             resume_turn,
             inspect_call,
@@ -2153,6 +2198,46 @@ def self_test() -> int:
     )
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    for fallback in ("||", "??"):
+        parsed = parse_custom_call(
+            "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
+            f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n'
+        )
+        if parsed is None or parsed.output_mode != "content":
+            raise AssertionError(f"static {fallback} MCP content forwarding did not parse")
+    for unsupported in (
+        "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
+        'for(const c of (r.content||fallback)) if(c.type==="text") text(c.text);\n',
+        "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
+        'for(const c of (r.content??[])) if(c.type==="text") text(transform(c.text));\n',
+    ):
+        if parse_custom_call(unsupported) is not None:
+            raise AssertionError("dynamic MCP content forwarding escaped the static grammar")
+    positive_work_capture = load_codex_capture(
+        evidence_directory / external_fixture["captures"]["work"]["file"]
+    )
+    positive_resume_path = evidence_directory / external_fixture["captures"]["resume"]["file"]
+    positive_resume_capture = load_codex_capture(positive_resume_path)
+    recall_calls = positive_resume_capture.calls("recall")
+    inspection_calls = positive_resume_capture.calls("repository_understanding")
+    if (
+        len(recall_calls) != 1
+        or len(inspection_calls) != 1
+        or recall_calls[0].sequence >= inspection_calls[0].sequence
+        or b"r.content??[]" not in positive_resume_path.read_bytes()
+    ):
+        raise AssertionError("actual-style nullish MCP forwarding did not preserve Recall ordering")
+    if len(positive_work_capture.calls("repository_analyze")) != 1:
+        raise AssertionError("logical-or MCP forwarding no longer parsed through the shared grammar")
+    full_result_commands = [
+        command
+        for command in positive_work_capture.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_existing"
+    ]
+    if len(full_result_commands) != 1 or full_result_commands[0].exit_code != 0:
+        raise AssertionError("full-result command forwarding did not expose exit code zero")
     serialized_external_result = json.dumps(external_result, sort_keys=True)
     if (
         fixture_task_objective("volicord", 1) in serialized_external_result
@@ -2311,7 +2396,7 @@ def self_test() -> int:
                 continue
             match = re.fullmatch(
                 rf"const r=await tools\.mcp__volicord__{re.escape(operation)}\((.*)\);\n"
-                r'for\(const c of \(r\.content\|\|\[\]\)\) if\(c\.type==="text"\) text\(c\.text\);\n',
+                r'for\(const c of \(r\.content(?P<fallback>\|\||\?\?)\[\]\)\) if\(c\.type==="text"\) text\(c\.text\);\n',
                 input_value,
                 re.DOTALL,
             )
@@ -2320,9 +2405,10 @@ def self_test() -> int:
             arguments = json.loads(match.group(1))
             mutation(arguments)
             encoded = json.dumps(arguments, separators=(",", ":"))
+            fallback = match.group("fallback")
             payload["input"] = (
                 f"const r=await tools.mcp__volicord__{operation}({encoded});\n"
-                'for(const c of (r.content||[])) if(c.type==="text") text(c.text);\n'
+                f'for(const c of (r.content{fallback}[])) if(c.type==="text") text(c.text);\n'
             )
             store_capture(fixture, capture, path, events)
             return
@@ -2795,6 +2881,62 @@ def self_test() -> int:
     )["checks"]["source_grounded_checkpoint"] != "failed":
         raise AssertionError("Checkpoint Decision absent from the current-host response qualified")
 
+    def mark_verification_failed(fixture: dict[str, Any]) -> None:
+        verification_source_id = "0a" * 16
+        mutate_custom_output(
+            fixture,
+            "work",
+            "verification-call",
+            lambda output: output.update({"exit_code": 1}),
+        )
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "checkpoint_record",
+            lambda arguments: arguments["verification"][0].update(
+                {
+                    "state": "failed",
+                    "exit_code": 1,
+                    "outcome": "focused tests failed",
+                }
+            ),
+        )
+
+        def mutate_verification_rows(bundle: dict[str, Any]) -> None:
+            for table_value in bundle["payload"]["tables"]:
+                columns = table_value["columns"]
+                if table_value["name"] == "sources":
+                    id_index = columns.index("id")
+                    exit_index = columns.index("exit_code")
+                    for row in table_value["rows"]:
+                        if row[id_index].get("value") == verification_source_id:
+                            row[exit_index] = {"type": "integer", "value": 1}
+                elif table_value["name"] == "checkpoint_verifications":
+                    state_index = columns.index("verification_state")
+                    outcome_index = columns.index("outcome")
+                    table_value["rows"][0][state_index] = {
+                        "type": "text",
+                        "value": "failed",
+                    }
+                    table_value["rows"][0][outcome_index] = {
+                        "type": "text",
+                        "value": "focused tests failed",
+                    }
+
+        mutate_bundle(fixture, mutate_verification_rows)
+
+    matching_failed_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mark_verification_failed(matching_failed_verification)
+    if real_session_evidence(
+        matching_failed_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "passed":
+        raise AssertionError("full-result non-zero exit did not qualify matching failed verification")
+
     failed_verification = real_session_fixture("volicord", 1, revision, evidence_directory)
     mutate_custom_output(
         failed_verification,
@@ -2832,6 +2974,41 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["source_grounded_checkpoint"] != "failed":
         raise AssertionError("printed stdout without command outcome qualified passed verification")
+    stdout_only_capture = load_codex_capture(
+        evidence_directory / stdout_only_verification["captures"]["work"]["file"]
+    )
+    stdout_only_commands = [
+        command
+        for command in stdout_only_capture.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_existing"
+    ]
+    if (
+        len(stdout_only_commands) != 1
+        or stdout_only_commands[0].exit_code is not None
+        or stdout_only_commands[0].termination is not None
+    ):
+        raise AssertionError("output-only command was not preserved as outcome-unknown")
+
+    stdout_only_failed_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mark_verification_failed(stdout_only_failed_verification)
+    replace_custom_call_input(
+        stdout_only_failed_verification,
+        "work",
+        "verification-call",
+        'const r=await tools.exec_command({"cmd":"python3 -m unittest tests.test_existing",'
+        '"workdir":"/phase8/repository","yield_time_ms":30000});\ntext(r.output);\n',
+    )
+    if real_session_evidence(
+        stdout_only_failed_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("printed stdout without command outcome qualified failed verification")
 
     fabricated_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
     fabricated_decision["user_decision"] = {"status": "passed", "actor": "user"}
@@ -3087,6 +3264,8 @@ def self_test() -> int:
         "two_cycle_contract": "passed",
         "real_session_positive_path": "passed",
         "current_custom_tool_call_envelope": "passed",
+        "logical_or_and_nullish_mcp_forwarding": "passed",
+        "actual_style_nullish_recall_before_inspection": "passed",
         "bounded_static_call_syntax_only": "passed",
         "missing_and_mismatched_outputs_rejected": "passed",
         "objective_prompt_sanitization": "passed",
@@ -3106,6 +3285,8 @@ def self_test() -> int:
         "missing_and_mismatched_patch_evidence_rejected": "passed",
         "unobserved_checkpoint_decision_rejected": "passed",
         "failed_absent_and_stdout_only_verification_rejected": "passed",
+        "full_result_passed_and_failed_verification": "passed",
+        "output_only_command_outcome_unknown": "passed",
         "same_session_rejected": "passed",
         "recall_order_rejected": "passed",
         "mismatched_recall_state_rejected": "passed",
