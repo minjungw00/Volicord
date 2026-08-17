@@ -68,7 +68,11 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("repository was explicitly authorized"));
     assert!(first_512.contains("first project-scoped request"));
     assert!(first_512.contains("before repository inspection or edits"));
+    assert!(first_512.contains("resolve the current repository first"));
     assert!(first_512.contains("Recall precedes repository inspection or continuation"));
+    assert!(first_512.contains("No Project means explicit initialization"));
+    assert!(first_512.contains("current-host Goal"));
+    assert!(first_512.contains("repository baseline"));
     assert!(first_512.contains("explicit current-host user response"));
     assert!(first_512.contains("Non-project requests require no Volicord ceremony"));
     assert!(instructions.contains("Recall precedes repository inspection"));
