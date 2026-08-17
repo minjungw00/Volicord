@@ -544,8 +544,8 @@ def load_definition() -> dict[str, Any]:
         )
         or tuple(evidence.get("work_session_contract", []))
         != (
-            "the first user turn exactly matches the descriptor plain work_user_task",
-            "after Project initialization source canonical goal Context from that exact first user turn",
+            "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
+            "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
             "submit, source-ground research, mark ready, and promote the material Question Candidate through candidate_manage before inquiry_frontier",
             "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
@@ -557,12 +557,22 @@ def load_definition() -> dict[str, Any]:
         )
         or tuple(evidence.get("resume_session_contract", []))
         != (
-            "the first user turn exactly matches the descriptor plain fresh_resume_user_task and does not disclose Recall",
+            "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
             "the resume session preserves separate full-result numeric-exit validation after that change",
         )
+        or evidence.get("codex_user_turn_transport_identity")
+        != {
+            "captured_text_allowance": (
+                "exact text or removal of at most one terminal LF or one terminal CRLF"
+            ),
+            "descriptor_task_mutated": False,
+            "raw_capture_mutated": False,
+            "evidence_sha256_mutated": False,
+            "other_whitespace_normalized": False,
+        }
         or evidence.get("command_forwarding_contract")
         != {
             "full_result_wrapper": "text(r)",
@@ -621,7 +631,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(goal.get("required_linkage", []))
         != (
             "descriptor_plain_work_user_task",
-            "first_work_session_user_task_turn_exact_match",
+            "first_work_session_user_task_turn_transport_identity_match",
             "evaluated_repository_revision",
             "context_record_exact_user_turn_source",
             "canonical_goal_identity_and_statement",
@@ -827,6 +837,21 @@ def unique_call(capture: CodexCapture | None, operation: str) -> ToolCall | None
 
 def normalized_prompt_text(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def codex_user_turn_transport_identity_matches(
+    captured_user_turn: Any,
+    descriptor_task: Any,
+) -> bool:
+    if not isinstance(captured_user_turn, str) or not isinstance(descriptor_task, str):
+        return False
+    if captured_user_turn == descriptor_task:
+        return True
+    if captured_user_turn.endswith("\r\n"):
+        return captured_user_turn[:-2] == descriptor_task
+    if captured_user_turn.endswith("\n"):
+        return captured_user_turn[:-1] == descriptor_task
+    return False
 
 
 def plain_user_task_error(value: Any, field: str) -> str | None:
@@ -1071,7 +1096,10 @@ def build_work_blocker_result(
         or capture.originator != "codex_vscode"
         or not capture.fresh_user_thread
         or not capture.user_turns
-        or capture.user_turns[0].text != descriptor.get("work_user_task")
+        or not codex_user_turn_transport_identity_matches(
+            capture.user_turns[0].text,
+            descriptor.get("work_user_task"),
+        )
     ):
         raise ValueError("work capture does not match the descriptor and fresh VS Code Codex contract")
     if (
@@ -1323,6 +1351,7 @@ def decision_facts(
 def goal_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
+    descriptor_task: Any,
 ) -> tuple[bool, str | None, str | None, str | None]:
     call = unique_call(work, "context_record")
     if call is None or work is None or bundle is None or not work.user_turns:
@@ -1342,10 +1371,11 @@ def goal_facts(
     )
     statement = call.arguments.get("statement")
     valid = (
-        nonempty_string(statement)
+        nonempty_string(descriptor_task)
+        and statement == descriptor_task
         and turn == first_turn
         and call.arguments.get("project_id") == bundle.project_id
-        and call.arguments.get("user_turn") == first_turn.text
+        and call.arguments.get("user_turn") == descriptor_task
         and call.arguments.get("role") == "goal"
         and call.result.get("project_id") == bundle.project_id
         and call.result.get("role") == "goal"
@@ -1358,7 +1388,7 @@ def goal_facts(
         and item.get("author_kind") == "user"
         and source is not None
         and source.get("source_kind") == "current_host_user_turn"
-        and source.get("locator") == first_turn.text
+        and source.get("locator") == descriptor_task
         and source.get("detail_one") == "codex"
         and source.get("detail_two") == work.session_id
         and source.get("actor_kind") == "user"
@@ -1775,7 +1805,7 @@ def real_session_evidence(
         work_capture, bundle
     )
     goal_ok, goal_context_id, goal_source_id, goal_statement = goal_facts(
-        work_capture, bundle
+        work_capture, bundle, work_user_task
     )
     baseline_call = unique_call(work_capture, "repository_analyze")
     baseline_analysis_id = (
@@ -1835,8 +1865,14 @@ def real_session_evidence(
         and nonempty_string(resume_user_task)
         and bool(work_capture.user_turns)
         and bool(resume_capture.user_turns)
-        and work_capture.user_turns[0].text == work_user_task
-        and resume_capture.user_turns[0].text == resume_user_task
+        and codex_user_turn_transport_identity_matches(
+            work_capture.user_turns[0].text,
+            work_user_task,
+        )
+        and codex_user_turn_transport_identity_matches(
+            resume_capture.user_turns[0].text,
+            resume_user_task,
+        )
     )
     prompt_integrity_ok = (
         not descriptor_errors
@@ -2114,10 +2150,10 @@ def real_session_evidence(
                 if nonempty_string(resume_user_task)
                 else None
             ),
-            "first_turns_match_descriptor_tasks": task_turns_ok,
+            "first_turns_match_descriptor_transport_identity": task_turns_ok,
             "repository_revision_matches": task_revision_ok,
             "checkpoint_call_and_canonical_goal_match": checkpoint_goal_ok,
-            "goal_context_matches_first_user_turn": goal_ok,
+            "goal_context_matches_descriptor_task": goal_ok,
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
@@ -3886,6 +3922,24 @@ def expect_rejected(result: dict[str, Any], definition: dict[str, Any], message:
 def self_test() -> int:
     definition = load_definition()
     v11 = load_v11()
+    descriptor_task = "Preserve exact prompt identity."
+    transport_identity_cases = (
+        ("exact text", descriptor_task, True),
+        ("one terminal LF", descriptor_task + "\n", True),
+        ("one terminal CRLF", descriptor_task + "\r\n", True),
+        ("two terminal newlines", descriptor_task + "\n\n", False),
+        ("trailing space", descriptor_task + " ", False),
+        ("space before terminal LF", descriptor_task + " \n", False),
+        ("leading whitespace", " " + descriptor_task, False),
+        ("interior difference", descriptor_task.replace("exact", "altered"), False),
+        ("terminal tab", descriptor_task + "\t", False),
+        ("terminal Unicode whitespace", descriptor_task + "\u00a0", False),
+    )
+    for label, captured, expected in transport_identity_cases:
+        if codex_user_turn_transport_identity_matches(captured, descriptor_task) is not expected:
+            raise AssertionError(f"Codex user-turn transport identity mishandled {label}")
+    if codex_user_turn_transport_identity_matches(descriptor_task, None):
+        raise AssertionError("non-text descriptor qualified as Codex user-turn identity")
     revision = "0" * 40
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
@@ -4289,6 +4343,34 @@ def self_test() -> int:
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
     ):
         raise AssertionError("zero-Volicord completed work capture was not a terminal blocker")
+    transport_blocker_events = json.loads(json.dumps(zero_workflow_events))
+    for value in transport_blocker_events:
+        payload = value.get("payload", {})
+        if value.get("type") == "event_msg" and payload.get("type") == "user_message":
+            payload["message"] = str(payload.get("message", "")) + "\n"
+            break
+    else:
+        raise AssertionError("work-blocker fixture has no initial user turn")
+    transport_blocker_path = evidence_directory / "transport-lf-zero-volicord-work.jsonl"
+    transport_blocker_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in transport_blocker_events
+        ),
+        encoding="utf-8",
+    )
+    transport_blocker_sha256 = sha256(transport_blocker_path)
+    transport_blocker_result = build_work_blocker_result(
+        revision,
+        external_fixture,
+        descriptor_identity,
+        load_codex_capture(transport_blocker_path),
+    )
+    if (
+        transport_blocker_result["failed_checks"] != list(WORK_BLOCKER_CHECKS)
+        or sha256(transport_blocker_path) != transport_blocker_sha256
+    ):
+        raise AssertionError("work-blocker transport LF regression did not qualify immutably")
     serialized_blocker = json.dumps(blocker_result, sort_keys=True)
     if any(
         hidden in serialized_blocker
@@ -4639,6 +4721,20 @@ def self_test() -> int:
         )
         fixture["evidence"]["captures"][name]["sha256"] = sha256(path)
 
+    def append_initial_task_transport(
+        fixture: dict[str, Any],
+        capture: str,
+        suffix: str,
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        for value in events:
+            payload = value.get("payload", {})
+            if value.get("type") == "event_msg" and payload.get("type") == "user_message":
+                payload["message"] = str(payload.get("message", "")) + suffix
+                store_capture(fixture, capture, path, events)
+                return
+        raise AssertionError("fixture has no initial user task turn")
+
     def mutate_bundle(fixture: dict[str, Any], mutation: Callable[[dict[str, Any]], None]) -> None:
         reference = fixture["evidence"]["canonical_bundle"]
         path = evidence_directory / reference["file"]
@@ -4907,6 +5003,66 @@ def self_test() -> int:
         user_events[0]["payload"]["message"] = task_text
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
+
+    transport_fixture = real_session_fixture(
+        "small-python", 2, revision, evidence_directory
+    )
+    append_initial_task_transport(transport_fixture, "work", "\n")
+    append_initial_task_transport(transport_fixture, "resume", "\r\n")
+    transport_descriptor_tasks = (
+        transport_fixture["work_user_task"],
+        transport_fixture["fresh_resume_user_task"],
+    )
+    transport_references = json.loads(json.dumps(transport_fixture["evidence"]))
+    transport_paths = [
+        evidence_directory / transport_fixture["evidence"]["captures"][name]["file"]
+        for name in ("work", "resume")
+    ]
+    transport_hashes = [sha256(path) for path in transport_paths]
+    transport_result = real_session_evidence(
+        transport_fixture,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )
+    if (
+        transport_result["status"] != "passed"
+        or transport_result["checks"]["naturalistic_prompt_integrity"] != "passed"
+        or transport_result["checks"]["plain_task_goal_linkage"] != "passed"
+    ):
+        raise AssertionError("single Codex transport line endings did not qualify full work/resume identity")
+    if (
+        transport_descriptor_tasks
+        != (
+            transport_fixture["work_user_task"],
+            transport_fixture["fresh_resume_user_task"],
+        )
+        or transport_references != transport_fixture["evidence"]
+        or transport_hashes != [sha256(path) for path in transport_paths]
+    ):
+        raise AssertionError("Codex transport identity qualification mutated source evidence")
+
+    for label, capture, suffix in (
+        ("two terminal work newlines", "work", "\n\n"),
+        ("work trailing space", "work", " "),
+        ("two terminal resume newlines", "resume", "\r\n\r\n"),
+        ("resume trailing space", "resume", "\t"),
+    ):
+        rejected_transport = real_session_fixture(
+            "small-python", 2, revision, evidence_directory
+        )
+        append_initial_task_transport(rejected_transport, capture, suffix)
+        rejected_result = real_session_evidence(
+            rejected_transport,
+            kind="small-python",
+            cycle=2,
+            repository_revision=revision,
+        )
+        if (
+            rejected_result["checks"]["naturalistic_prompt_integrity"] != "failed"
+            or rejected_result["checks"]["plain_task_goal_linkage"] != "failed"
+        ):
+            raise AssertionError(f"{label} qualified full prompt identity")
 
     original_task = fixture_work_user_task("volicord", 1)
 

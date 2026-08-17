@@ -170,9 +170,16 @@
       "prompt_boundary": "user tasks state repository outcomes and ordinary safety or scope constraints without solution choreography",
       "continuation_boundary": "the Checkpoint identifies the next meaningful state and actual post-Recall work is evaluated against that state"
     },
+    "codex_user_turn_transport_identity": {
+      "captured_text_allowance": "exact text or removal of at most one terminal LF or one terminal CRLF",
+      "descriptor_task_mutated": false,
+      "raw_capture_mutated": false,
+      "evidence_sha256_mutated": false,
+      "other_whitespace_normalized": false
+    },
     "work_session_contract": [
-      "the first user turn exactly matches the descriptor plain work_user_task",
-      "after Project initialization source canonical goal Context from that exact first user turn",
+      "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
+      "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
       "submit, source-ground research, mark ready, and promote the material Question Candidate through candidate_manage before inquiry_frontier",
       "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
@@ -183,7 +190,7 @@
       "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step"
     ],
     "resume_session_contract": [
-      "the first user turn exactly matches the descriptor plain fresh_resume_user_task and does not disclose Recall",
+      "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
       "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
@@ -205,7 +212,7 @@
       "maximum_utf8_bytes": 8192,
       "required_linkage": [
         "descriptor_plain_work_user_task",
-        "first_work_session_user_task_turn_exact_match",
+        "first_work_session_user_task_turn_transport_identity_match",
         "evaluated_repository_revision",
         "context_record_exact_user_turn_source",
         "canonical_goal_identity_and_statement",

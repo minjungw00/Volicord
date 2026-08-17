@@ -119,6 +119,19 @@ def main() -> int:
         is not False
     ):
         raise AssertionError("Phase 8 accessible-name qualification definition is incomplete")
+    transport_identity = definition_value.get("real_session_evidence", {}).get(
+        "codex_user_turn_transport_identity", {}
+    )
+    if transport_identity != {
+        "captured_text_allowance": (
+            "exact text or removal of at most one terminal LF or one terminal CRLF"
+        ),
+        "descriptor_task_mutated": False,
+        "raw_capture_mutated": False,
+        "evidence_sha256_mutated": False,
+        "other_whitespace_normalized": False,
+    }:
+        raise AssertionError("Phase 8 Codex user-turn transport identity contract changed")
     for marker in (
         "control_has_accessible_name",
         "aria-labelledby",
@@ -132,6 +145,7 @@ def main() -> int:
         "failed_document_export_created_unowned_destination",
         "unexplained_cumulative_growth_observed",
         "universal_product_ceiling_applied",
+        "codex_user_turn_transport_identity_matches",
     ):
         if marker not in source:
             raise AssertionError(f"Phase 8 qualification support is missing {marker}")
@@ -141,7 +155,7 @@ def main() -> int:
         '"full_result_wrapper": "text(r)"',
         '"output_only_wrapper": "text(r.output)"',
         '"output_only_outcome": "unknown"',
-        "the first user turn exactly matches the descriptor plain work_user_task",
+        "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
@@ -159,7 +173,7 @@ def main() -> int:
         raise AssertionError("custom wrapper output remains an MCP semantic source")
     for linkage in (
         "descriptor_plain_work_user_task",
-        "first_work_session_user_task_turn_exact_match",
+        "first_work_session_user_task_turn_transport_identity_match",
         "evaluated_repository_revision",
         "context_record_exact_user_turn_source",
         "canonical_goal_identity_and_statement",
