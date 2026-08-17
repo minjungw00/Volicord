@@ -26,14 +26,15 @@ use volicord_operations::{
     CommandVerificationDraft, ConfirmationDecision, ConfirmationRejection, ConfirmationRequestId,
     FilterOutcome, GroundedCheckpointDraft, GuardedOperationId, GuardedOperationOutcome,
     GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
-    HealthState, LocalOperations, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
-    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
+    HealthState, LocalOperations, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
+    ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
 };
 use volicord_projections::{
     DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 17] = [
+pub const HOST_TOOL_NAMES: [&str; 18] = [
+    "project_resolve",
     "project_initialize",
     "project_health",
     "recall",
@@ -130,7 +131,7 @@ impl HostAdapter {
             "protocolVersion": params.and_then(|value| value.get("protocolVersion")).and_then(Value::as_str).unwrap_or("2025-06-18"),
             "capabilities":{"tools":{"listChanged":false}},
             "serverInfo":{"name":"volicord","version":env!("CARGO_PKG_VERSION")},
-            "instructions":"Use high-level Project capabilities. User Decisions and Guarded confirmations require an explicit current-host user turn."
+            "instructions":"For a project-scoped repository request without a known Project identity, resolve the current repository before deciding whether explicit initialization is needed. If an existing Project is resolved in a fresh session, Recall precedes repository inspection or continued work. For a new Project, preserve the exact current-host goal as Context, establish the repository baseline through analysis, and submit, research, then promote material Question Candidates with candidate_manage before reading inquiry_frontier. Record a Decision only from an explicit current-host user response, never from an agent recommendation or implementation preference. Meaningful completed or paused work uses a source-grounded Checkpoint with truthful verification evidence. Unrelated greetings and non-project requests do not trigger this Project workflow."
         }))
     }
 
@@ -143,6 +144,7 @@ impl HostAdapter {
             .unwrap_or_else(|| json!({}));
         let result = match tool_contract(name) {
             Some(contract) => contract.validate(&arguments).and_then(|()| match name {
+                "project_resolve" => self.project_resolve(&arguments),
                 "project_initialize" => self.project_initialize(&arguments),
                 "project_health" => self.project_health(&arguments),
                 "recall" => self.recall(&arguments),
@@ -190,6 +192,35 @@ impl HostAdapter {
         Ok(
             json!({"project_id":value.project.id.to_string(),"display_name":value.project.display_name,"binding":value.binding.map(|binding| binding.binding.absolute_path)}),
         )
+    }
+
+    fn project_resolve(&self, args: &Value) -> Result<Value, HostError> {
+        let value = self
+            .operations
+            .resolve_project(&PathBuf::from(required_str(args, "repository")?))
+            .map_err(operation_error)?;
+        Ok(match value {
+            ProjectResolution::Found { project, binding } => json!({
+                "status":"found",
+                "project_id":project.id.to_string(),
+                "display_name":project.display_name,
+                "project_revision":project.revision,
+                "binding":{
+                    "binding_id":binding.binding.id.to_string(),
+                    "revision":binding.binding.revision,
+                    "canonical_repository_path":binding.binding.absolute_path,
+                    "availability":format!("{:?}", binding.binding.availability).to_lowercase(),
+                    "clone_identity":binding.clone_identity,
+                    "worktree_identity":binding.worktree_identity,
+                }
+            }),
+            ProjectResolution::NotFound {
+                canonical_repository_path,
+            } => json!({
+                "status":"not_found",
+                "canonical_repository_path":canonical_repository_path,
+            }),
+        })
     }
 
     fn project_health(&self, args: &Value) -> Result<Value, HostError> {
@@ -1054,8 +1085,15 @@ impl ToolContract {
 
 fn tool_contract(name: &str) -> Option<ToolContract> {
     let (description, input_schema) = match name {
+        "project_resolve" => (
+            "Read-only resolve the existing Volicord Project bound to an absolute local repository path. Use this for a project-scoped repository request when the Project identity is unknown; initialize explicitly only after a not_found result.",
+            object_schema(
+                vec![("repository", text_schema("Absolute local repository path to canonicalize and resolve", 1, 4096))],
+                &["repository"],
+            ),
+        ),
         "project_initialize" => (
-            "Initialize and optionally bind a clean current Volicord Project.",
+            "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding.",
             object_schema(
                 vec![
                     ("display_name", text_schema("Project display name", 1, 1024)),
@@ -1072,7 +1110,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ),
         ),
         "recall" => (
-            "Read a bounded source-grounded Project resume brief.",
+            "Read a bounded source-grounded Project resume brief; in a fresh resolved Project session use before repository inspection or continued work.",
             project_schema(),
         ),
         "repository_understanding" => (
@@ -1090,7 +1128,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ),
         ),
         "inquiry_frontier" => (
-            "Read current material Questions and choices.",
+            "Read current promoted material Questions and choices; submit, research, and promote Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1100,7 +1138,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ),
         ),
         "decision_record" => (
-            "Record one exact current-host user response against one current Question revision.",
+            "Record one explicit current-host user response against one current Question revision; an agent recommendation or implementation preference is not a user Decision.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

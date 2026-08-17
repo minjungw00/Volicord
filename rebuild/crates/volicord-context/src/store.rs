@@ -83,6 +83,52 @@ impl Store {
         Self::open_with(path, SystemIdGenerator, SystemClock)
     }
 
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let path = path.as_ref();
+        if path.as_os_str().is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "store path must be explicitly supplied",
+            ));
+        }
+        if !path.try_exists().map_err(|error| {
+            Error::with_source(
+                ErrorKind::StorageUnavailable,
+                format!("cannot inspect store path {}", path.display()),
+                error,
+            )
+        })? {
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("canonical store {} was not found", path.display()),
+            ));
+        }
+        let connection = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_FULL_MUTEX,
+        )
+        .map_err(|error| {
+            map_open_error(
+                error,
+                format!("cannot open store {} read-only", path.display()),
+            )
+        })?;
+        connection.busy_timeout(Duration::ZERO).map_err(|error| {
+            Error::with_source(
+                ErrorKind::StorageUnavailable,
+                "cannot configure canonical reader timeout",
+                error,
+            )
+        })?;
+        validate_existing_schema(&connection)?;
+        Ok(Self {
+            connection,
+            ids: Box::new(SystemIdGenerator),
+            clock: Box::new(SystemClock),
+            path: path.to_path_buf(),
+        })
+    }
+
     pub fn open_with(
         path: impl AsRef<Path>,
         ids: impl IdGenerator + 'static,
@@ -468,6 +514,28 @@ impl Store {
     pub fn get_local_binding(&self, project_id: ProjectId) -> Result<LocalBinding, Error> {
         load_binding_optional(&self.connection, project_id)?
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "local clone binding was not found"))
+    }
+
+    pub fn resolve_local_binding(
+        &self,
+        absolute_path: &Path,
+    ) -> Result<Option<LocalBinding>, Error> {
+        if !absolute_path.is_absolute() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "local clone binding lookup path must be absolute",
+            ));
+        }
+        let path_text = absolute_path.to_str().ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                "local clone binding lookup path must be valid UTF-8",
+            )
+        })?;
+        let Some(project_id) = binding_path_owner(&self.connection, path_text)? else {
+            return Ok(None);
+        };
+        load_binding_optional(&self.connection, project_id)
     }
 
     pub fn record_source(

@@ -55,6 +55,95 @@ fn initializes_and_discovers_only_high_level_product_capabilities() {
 }
 
 #[test]
+fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boundaries() {
+    let (_temporary, mut adapter, _project) = setup();
+    let initialized = adapter
+        .handle(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}))
+        .expect("initialize response");
+    let instructions = initialized["result"]["instructions"]
+        .as_str()
+        .expect("server instructions");
+    assert!(instructions.contains("resolve the current repository"));
+    assert!(instructions.contains("Recall precedes repository inspection"));
+    assert!(instructions.contains("explicit current-host user response"));
+    assert!(instructions.contains("candidate_manage"));
+    assert!(instructions.contains("Unrelated greetings"));
+
+    let listed = adapter
+        .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
+        .expect("tools response");
+    let descriptions = listed["result"]["tools"]
+        .as_array()
+        .expect("tool array")
+        .iter()
+        .map(|tool| {
+            (
+                tool["name"].as_str().expect("tool name"),
+                tool["description"].as_str().expect("tool description"),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert!(descriptions["project_resolve"]
+        .to_lowercase()
+        .contains("read-only"));
+    assert!(descriptions["project_initialize"].contains("after resolution"));
+    assert!(descriptions["recall"].contains("before repository inspection"));
+    assert!(descriptions["inquiry_frontier"].contains("candidate_manage"));
+    assert!(descriptions["decision_record"].contains("not a user Decision"));
+}
+
+#[test]
+fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
+    let temporary = tempdir().expect("temporary directory");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository).expect("repository");
+    let operations = LocalOperations::new(
+        RuntimeLayout::new(temporary.path().join("runtime")).expect("runtime layout"),
+    );
+    operations.initialize_runtime().expect("initialize runtime");
+    let mut adapter = HostAdapter::new(operations);
+
+    let not_found = call(
+        &mut adapter,
+        "project_resolve",
+        json!({"repository":repository}),
+    );
+    assert_eq!(not_found["result"]["isError"], false, "{not_found}");
+    assert_eq!(structured(&not_found)["status"], "not_found");
+
+    let initialized = call(
+        &mut adapter,
+        "project_initialize",
+        json!({"display_name":"Resolved Project","repository":repository}),
+    );
+    let project = structured(&initialized)["project_id"]
+        .as_str()
+        .expect("Project identity")
+        .to_owned();
+    let project_id = parse_project(&project);
+    let before = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("before resolution");
+    let found = call(
+        &mut adapter,
+        "project_resolve",
+        json!({"repository":repository}),
+    );
+    assert_eq!(found["result"]["isError"], false, "{found}");
+    assert_eq!(structured(&found)["status"], "found");
+    assert_eq!(structured(&found)["project_id"], project);
+    assert_eq!(structured(&found)["binding"]["revision"], 1);
+    assert_eq!(
+        before,
+        adapter
+            .operations()
+            .canonical_basis(project_id)
+            .expect("after resolution")
+    );
+}
+
+#[test]
 fn schema_validation_rejects_unknown_missing_and_malformed_arguments_before_mutation() {
     let (_temporary, mut adapter, project) = setup();
     let project_id = parse_project(&project);
@@ -1588,6 +1677,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
         )
     };
     match name {
+        "project_resolve" => vec![shape(&["repository"], &["repository"])],
         "project_initialize" => vec![shape(&["display_name", "repository"], &["display_name"])],
         "project_health" => vec![shape(&["project_id"], &[])],
         "recall"

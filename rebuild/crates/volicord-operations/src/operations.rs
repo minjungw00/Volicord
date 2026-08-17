@@ -3,7 +3,8 @@ use crate::{
     ChildProcessOutcome, CommandVerificationDraft, Error, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout, UserContextRecordingOutcome,
+    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
+    UserContextRecordingOutcome,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -133,6 +134,39 @@ impl LocalOperations {
             expected_binding_revision,
             repository,
         )
+    }
+
+    pub fn resolve_project(&self, repository: &Path) -> Result<ProjectResolution, Error> {
+        let root = RepositoryRoot::open(repository)
+            .map_err(|error| Error::with_source("repository resolution path is invalid", error))?;
+        let canonical_repository_path = root.canonical_path().to_path_buf();
+        let canonical = Store::open_read_only(self.layout.canonical_store()).map_err(|error| {
+            Error::with_source("cannot open canonical store for Project resolution", error)
+        })?;
+        let Some(binding) = canonical
+            .resolve_local_binding(&canonical_repository_path)
+            .map_err(|error| Error::with_source("cannot resolve repository binding", error))?
+        else {
+            return Ok(ProjectResolution::NotFound {
+                canonical_repository_path,
+            });
+        };
+        let project = canonical
+            .get_project(binding.project_id)
+            .map_err(|error| Error::with_source("cannot read resolved Project", error))?;
+        let layout = GitWorktreeLayout::resolve(root.canonical_path())
+            .map_err(|error| Error::with_source("cannot observe repository identity", error))?;
+        let coordinate = layout.as_ref().map(GitWorktreeLayout::coordinate);
+        Ok(ProjectResolution::Found {
+            project,
+            binding: BindingOutcome {
+                binding,
+                clone_identity: coordinate
+                    .as_ref()
+                    .map(|value| value.clone_identity().to_owned()),
+                worktree_identity: coordinate.map(|value| value.worktree_identity().to_owned()),
+            },
+        })
     }
 
     fn bind_with_store(

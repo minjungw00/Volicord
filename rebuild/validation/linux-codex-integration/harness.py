@@ -21,6 +21,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "rebuild/install.sh"
 EXPECTED_TOOLS = [
+    "project_resolve",
     "project_initialize",
     "project_health",
     "recall",
@@ -297,6 +298,10 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
     catalog = rpc(process, request_id + 1, "tools/list", {})["result"]["tools"]
     names = [entry["name"] for entry in catalog]
     require(names == EXPECTED_TOOLS, "high-level MCP catalog changed")
+    instructions = initialized["result"].get("instructions", "")
+    require("resolve the current repository" in instructions, "Project resolution guidance missing")
+    require("Recall precedes repository inspection" in instructions, "fresh-session Recall boundary missing")
+    require("explicit current-host user response" in instructions, "user Decision boundary missing")
     return catalog
 
 
@@ -820,6 +825,14 @@ def main() -> int:
 
         host = start_host(prefix / "bin" / "volicord-mcp", env)
         catalog = initialize_host(host, 1)
+        resolved = tool(host, 90, "project_resolve", {"repository": str(repository)})
+        require(
+            resolved.get("status") == "found"
+            and resolved.get("project_id") == project_id
+            and resolved.get("binding", {}).get("canonical_repository_path")
+            == str(repository.resolve()),
+            "repository-bound Project resolution mismatch",
+        )
         health = tool(host, 3, "project_health", {"project_id": project_id})
         require(health["connection"] == "connected", "MCP connection not reported connected")
         require(health["capability_state"] == "healthy", "clean Project is not healthy")

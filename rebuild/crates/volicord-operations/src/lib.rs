@@ -27,7 +27,7 @@ pub use model::{
     ChildProcessOutcome, CommandVerificationDraft, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
+    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
 };
 pub use operations::LocalOperations;
 pub use volicord_privacy::{

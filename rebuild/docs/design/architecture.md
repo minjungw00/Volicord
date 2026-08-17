@@ -346,6 +346,11 @@ Repository Intelligence가 Candidate를 기록해도 Canonical Context를 직접
 ### 1. Project initialization과 local clone binding
 
 Host and User Adapter가 explicit init/bind intent를 Local Operations에 전달한다.
+Project identity를 모르는 repository-scoped host interaction에서는 Adapter가 현재 local
+repository path를 Local Operations에 전달해 같은 canonical binding identity로 existing
+Project를 read-only resolve할 수 있다. 이 lookup은 canonical/local binding state를
+create, bind 또는 revise하지 않으며 match가 없으면 explicit not-found를 반환하고
+initialization은 별도의 explicit intent로 남긴다.
 Canonical Context Kernel이 path와 독립적인 Project identity와 portable Source
 meaning을 만들고, Local Operations가 현재 clone과의 local binding을 소유한다.
 Canonical mutation이 commit된 뒤 binding result를 별도로 확정하며 한쪽 실패를 다른

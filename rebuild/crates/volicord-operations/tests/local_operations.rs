@@ -7,7 +7,7 @@ use volicord_context::{
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
     CommandVerificationDraft, GroundedCheckpointDraft, HealthState, LocalOperations,
-    OperationState, RuntimeLayout,
+    OperationState, ProjectResolution, RuntimeLayout,
 };
 use volicord_repository_intelligence::AnalysisSnapshotId;
 
@@ -76,6 +76,54 @@ fn goal_and_baseline(
         .ok_or("baseline analysis has no value")?
         .analysis;
     Ok((goal.context_item_id, baseline.identity))
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_bound_project_resolution_is_normalized_explicit_and_read_only(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::symlink;
+
+    let (temporary, operations, repository) = fixture()?;
+    operations.initialize_runtime()?;
+    let canonical_store = operations.layout().canonical_store();
+
+    assert_eq!(
+        operations.resolve_project(&repository)?,
+        ProjectResolution::NotFound {
+            canonical_repository_path: fs::canonicalize(&repository)?,
+        }
+    );
+
+    let unbound = operations.initialize_project("Unbound", None)?.project;
+    assert!(matches!(
+        operations.resolve_project(&repository)?,
+        ProjectResolution::NotFound { .. }
+    ));
+    let before_binding = fs::read(&canonical_store)?;
+    let bound = operations.bind_project(unbound.id, None, &repository)?;
+    let before_resolution = operations.canonical_basis(unbound.id)?;
+    let store_bytes_before_resolution = fs::read(&canonical_store)?;
+
+    let alias = temporary.path().join("repository-alias");
+    symlink(&repository, &alias)?;
+    let resolved = operations.resolve_project(&alias)?;
+    let ProjectResolution::Found { project, binding } = resolved else {
+        return Err("bound repository was not resolved".into());
+    };
+    assert_eq!(project.id, unbound.id);
+    assert_eq!(binding.binding.id, bound.binding.id);
+    assert_eq!(binding.binding.revision, bound.binding.revision);
+    assert_eq!(
+        binding.binding.absolute_path,
+        fs::canonicalize(&repository)?
+    );
+
+    let after_resolution = operations.canonical_basis(unbound.id)?;
+    assert_eq!(before_resolution, after_resolution);
+    assert_eq!(store_bytes_before_resolution, fs::read(&canonical_store)?);
+    assert_ne!(before_binding, store_bytes_before_resolution);
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

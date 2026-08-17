@@ -101,6 +101,17 @@ pub struct BindingOutcome {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProjectResolution {
+    Found {
+        project: Project,
+        binding: BindingOutcome,
+    },
+    NotFound {
+        canonical_repository_path: PathBuf,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AnalysisOutcome {
     pub repository: RepositorySnapshot,
     pub analysis: AnalysisSnapshot,
