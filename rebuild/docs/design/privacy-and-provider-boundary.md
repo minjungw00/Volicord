@@ -30,6 +30,12 @@ Local Project binding은 interactive host authority가 아니고, host가 source
 다른 Project의 opt-in, provider credential 존재나 일반 privacy notice를 background
 authority로 재사용하지 않는다.
 
+Codex repository authorization은 그 repository에서 local Volicord MCP와 activation
+context를 노출할 host-integration authority일 뿐 background provider opt-in이 아니다.
+Binary/runtime install, 다른 repository의 authorization, Codex project trust 또는
+SessionStart 실행을 source transmission consent로 재사용하지 않는다. Authorization
+hook 자체는 Runtime Home, canonical Project data와 repository content를 읽지 않는다.
+
 Adapter와 Local Operations는 authority kind를 손실 없이 전달한다. Repository
 Intelligence만 Optional Semantic Provider Boundary를 통해 background analysis를
 요청하며 provider result는 canonical write authority나 user provenance를 얻지 않는다.

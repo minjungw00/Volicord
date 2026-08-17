@@ -6,7 +6,7 @@ use crate::{
 use serde_json::{json, Value};
 use std::{
     ffi::{OsStr, OsString},
-    io::Write,
+    io::{Read, Write},
     path::PathBuf,
 };
 use volicord_context::{
@@ -42,7 +42,20 @@ where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
 {
-    match execute(args.into_iter().map(Into::into).collect(), stdout) {
+    run_cli_with_input(args, &mut std::io::empty(), stdout, stderr)
+}
+
+pub fn run_cli_with_input<I, S>(
+    args: I,
+    input: &mut dyn Read,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> CliExit
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    match execute(args.into_iter().map(Into::into).collect(), input, stdout) {
         Ok(()) => CliExit::SUCCESS,
         Err(error) => {
             let _ = writeln!(stderr, "{}", error.message());
@@ -55,7 +68,11 @@ where
     }
 }
 
-fn execute(mut args: Vec<OsString>, stdout: &mut dyn Write) -> Result<(), Error> {
+fn execute(
+    mut args: Vec<OsString>,
+    input: &mut dyn Read,
+    stdout: &mut dyn Write,
+) -> Result<(), Error> {
     let runtime = if args
         .first()
         .is_some_and(|value| value == OsStr::new("--runtime"))
@@ -69,9 +86,20 @@ fn execute(mut args: Vec<OsString>, stdout: &mut dyn Write) -> Result<(), Error>
     } else {
         RuntimeLayout::from_environment()?
     };
-    let operations = LocalOperations::new(runtime);
     let mut cursor = Cursor::new(args);
     let command = cursor.next("command")?;
+    if command == "codex" {
+        let rendered = crate::codex::execute(runtime, &mut cursor, input)?;
+        cursor.done()?;
+        if let Some(value) = rendered {
+            serde_json::to_writer_pretty(&mut *stdout, &value)
+                .map_err(|error| Error::with_source("cannot render CLI result", error))?;
+            writeln!(stdout)
+                .map_err(|error| Error::with_source("cannot write CLI result", error))?;
+        }
+        return Ok(());
+    }
+    let operations = LocalOperations::new(runtime);
     let value = match command.as_str() {
         "project" => project(&operations, &mut cursor)?,
         "health" => health(&operations, &mut cursor)?,
@@ -98,9 +126,9 @@ fn execute(mut args: Vec<OsString>, stdout: &mut dyn Write) -> Result<(), Error>
     Ok(())
 }
 
-const USAGE: &str = "volicord [--runtime ABSOLUTE_PATH] <project|health|analyze|rebuild|reindex|repair|portable|canonical|candidates|privacy|recall|documents|inquiry|checkpoint|guarded> ...";
+const USAGE: &str = "volicord [--runtime ABSOLUTE_PATH] <project|health|analyze|rebuild|reindex|repair|portable|canonical|candidates|privacy|recall|documents|inquiry|checkpoint|guarded|codex> ...";
 
-fn usage(detail: &str) -> Error {
+pub(crate) fn usage(detail: &str) -> Error {
     Error::new(format!("usage: {USAGE}\n{detail}"))
 }
 
@@ -928,7 +956,7 @@ fn debug_name(value: impl std::fmt::Debug) -> String {
     format!("{value:?}").to_lowercase()
 }
 
-struct Cursor {
+pub(crate) struct Cursor {
     args: Vec<OsString>,
     index: usize,
     previous: Option<String>,
@@ -941,7 +969,7 @@ impl Cursor {
             previous: None,
         }
     }
-    fn next(&mut self, label: &str) -> Result<String, Error> {
+    pub(crate) fn next(&mut self, label: &str) -> Result<String, Error> {
         let value = self
             .args
             .get(self.index)
@@ -981,7 +1009,7 @@ impl Cursor {
     fn has_remaining(&self) -> bool {
         self.index < self.args.len()
     }
-    fn done(&self) -> Result<(), Error> {
+    pub(crate) fn done(&self) -> Result<(), Error> {
         if self.index == self.args.len() {
             Ok(())
         } else {

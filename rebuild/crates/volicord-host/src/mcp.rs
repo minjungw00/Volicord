@@ -54,6 +54,8 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
     "guarded_interaction",
 ];
 
+const SERVER_INSTRUCTIONS: &str = "Volicord is active only because this repository was explicitly authorized. On the first project-scoped request, use Volicord before repository inspection or edits: resolve the current repository first. If a Project exists, Recall precedes repository inspection or continuation. If none exists, initialize explicitly, preserve the current-host Goal, and establish the repository baseline. Record a material user-owned Decision only from an explicit current-host user response. Unrelated greetings and non-project requests require no Volicord ceremony. Submit, research, and explicitly promote material Question Candidates with candidate_manage before reading inquiry_frontier. Never substitute an agent recommendation or implementation preference for a user Decision. Meaningful completed or paused work uses a source-grounded Checkpoint with truthful verification evidence.";
+
 #[derive(Debug)]
 pub struct HostError {
     message: String,
@@ -131,7 +133,7 @@ impl HostAdapter {
             "protocolVersion": params.and_then(|value| value.get("protocolVersion")).and_then(Value::as_str).unwrap_or("2025-06-18"),
             "capabilities":{"tools":{"listChanged":false}},
             "serverInfo":{"name":"volicord","version":env!("CARGO_PKG_VERSION")},
-            "instructions":"For a project-scoped repository request without a known Project identity, resolve the current repository before deciding whether explicit initialization is needed. If an existing Project is resolved in a fresh session, Recall precedes repository inspection or continued work. For a new Project, preserve the exact current-host goal as Context, establish the repository baseline through analysis, and submit, research, then promote material Question Candidates with candidate_manage before reading inquiry_frontier. Record a Decision only from an explicit current-host user response, never from an agent recommendation or implementation preference. Meaningful completed or paused work uses a source-grounded Checkpoint with truthful verification evidence. Unrelated greetings and non-project requests do not trigger this Project workflow."
+            "instructions":SERVER_INSTRUCTIONS
         }))
     }
 

@@ -5,13 +5,14 @@
 //! and portable-format meaning to their existing subsystem owners.
 
 mod cli;
+mod codex;
 mod error;
 mod guarded;
 mod layout;
 mod model;
 mod operations;
 
-pub use cli::{run_cli, CliExit};
+pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
 pub use guarded::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,

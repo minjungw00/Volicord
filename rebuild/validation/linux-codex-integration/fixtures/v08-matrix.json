@@ -24,17 +24,21 @@
     ],
     "codex_and_host": [
       ["V08-H01-real-codex", "harness", "codex", "real Codex executable supplies version evidence"],
-      ["V08-H02-registration", "harness", "codex", "installer replaces an incompatible same-name registration with the exact MCP command and runtime environment"],
-      ["V08-H03-discovery", "harness", "codex", "codex mcp get and list discover Volicord"],
+      ["V08-H02-install-no-global", "harness", "codex", "binary and Runtime Home installation creates no user-global Volicord MCP registration"],
+      ["V08-H03-repository-activation", "harness", "codex", "explicit repository enable writes one required project MCP server and SessionStart matcher"],
       ["V08-H04-product-tools", "rust", "volicord-host/mcp", "initializes_and_discovers_only_high_level_product_capabilities"],
       ["V08-H05-recall", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
-      ["V08-H06-decision", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
-      ["V08-H07-checkpoint", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
-      ["V08-H08-user-source-linkage", "rust", "volicord-host/mcp", "current_host_decision_and_checkpoint_calls_preserve_user_turn_sources"],
+      ["V08-H06-decision", "rust", "volicord-host/mcp", "supported_candidate_path_requires_explicit_promotion_and_current_host_decision"],
+      ["V08-H07-checkpoint", "rust", "volicord-host/mcp", "grounded_checkpoint_preserves_repository_decision_verification_and_restart_readback"],
+      ["V08-H08-user-source-linkage", "rust", "volicord-host/mcp", "current_host_goal_context_is_canonical_and_recalled_from_exact_user_text"],
       ["V08-H09-document-preview", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
       ["V08-H10-canonical-inspection", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
       ["V08-H11-candidate-inspection", "rust", "volicord-host/mcp", "recall_documents_and_inspection_are_read_only_host_calls"],
-      ["V08-H12-authenticated-tool-selection", "codex_probe", "codex-exec", "authenticated Codex selects and completes volicord project_health from discovered metadata"]
+      ["V08-H12-naturalistic-activation", "codex_probe", "codex-exec", "a plain authenticated repository task enters Volicord through project_resolve then Recall before repository inspection"],
+      ["V08-H13-unauthorized-repository", "harness", "codex", "a second unauthorized repository receives no project-local Volicord state"],
+      ["V08-H14-disable-owned-only", "harness", "codex", "disable removes the exact owned repository integration before binary uninstall"],
+      ["V08-H15-owned-merge-conflicts", "assertion", "source", "repository integration tests preserve unrelated config and reject tracked or unowned conflicts"],
+      ["V08-H16-hook-isolation", "assertion", "source", "SessionStart tests cover startup resume clear compact and nonmatching cwd without Runtime Home access"]
     ],
     "viewer_http": [
       ["V08-V01-real-listener", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
@@ -107,9 +111,9 @@
   "environment_dependent": {
     "required_when_suitable": [
       "real Codex version and authenticated status",
-      "isolated Codex MCP registration and discovery",
-      "bounded codex exec turn",
-      "successful agent-selected Volicord product-tool event"
+      "isolated project trust and repository-scoped Codex activation",
+      "bounded plain repository codex exec turn",
+      "successful project_resolve and Recall events before repository inspection"
     ],
     "unavailable_outcome": "Record the probe skipped or blocked and do not report V08 or the Phase 8 gate fully ready"
   },

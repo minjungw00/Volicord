@@ -591,7 +591,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - binary path와 permissions
 - Runtime Home init
 - Project init/bind
-- Codex MCP setup
+- install-only global-registration exclusion과 explicit repository-scoped Codex enable/disable
+- trusted-project-owned setup과 `startup|resume|clear|compact` SessionStart activation
 - Guarded confirmation의 current-host transport와 elicitation-unavailable fallback
 - host restart
 - health degraded/failure
@@ -608,11 +609,20 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - process cleanup
 - locale rendering
 - no legacy dependency or runtime access
+- unauthorized second repository에 project-local Volicord config/hook이 없음
+- hook matching/nonmatching execution 모두 Runtime Home과 canonical state를 touch하지 않음
 
 ### 통과 조건
 
 - documented command로 clean install과 first Project journey가 가능하다.
+- install만으로 user-global Volicord MCP가 생기지 않고, explicit enable 뒤 authorized
+  trusted repository에서만 required MCP와 SessionStart hook이 발견된다.
+- unrelated config/hook 보존, tracked/unowned conflict rejection과 exact disable removal을
+  deterministic하게 검증한다.
 - Codex가 high-level MCP surface를 발견하고 Recall/Decision/Checkpoint를 호출할 수 있다.
+- authenticated activation probe의 plain repository request가 repository inspection 전에
+  `project_resolve`와 existing-Project `recall`로 진입한다. Explicit `project_health`
+  connection probe는 별도 deterministic subject로 유지한다.
 - 연결 실패와 degraded capability를 구분한다.
 - Current host가 Guarded response를 받을 수 있고, 받을 수 없으면 local viewer/CLI가
   같은 logical confirmation identity/revision과 Source linkage를 유지한다.
@@ -727,6 +737,7 @@ Official V11 실행은 3.1의 admission과 exact final을 통과한 같은 gate 
 
 ```text
 clean Linux install
+→ test-owned project trust와 repository-scoped Codex enable
 → Codex connection
 → Project init/bind
 → inventory and capability analysis

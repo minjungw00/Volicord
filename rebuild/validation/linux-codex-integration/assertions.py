@@ -61,6 +61,7 @@ EXPECTED_COMMITS = {
         "fix: authenticate local viewer mutations",
     ),
 }
+CURRENT_ENTRY_BASELINE = "1c9aaed51374b60693d9acec5bdd0410c87eb018"
 
 
 def require(condition: bool, message: str) -> None:
@@ -119,7 +120,7 @@ def main() -> int:
         require(subject == expected_subject, f"{role} Production commit subject changed")
 
     changed_since_production = run(
-        ["git", "diff", "--name-only", EXPECTED_COMMITS["viewer_request_trust"][0]],
+        ["git", "diff", "--name-only", CURRENT_ENTRY_BASELINE],
         capture=True,
     ).stdout.splitlines()
     production_drift = [
@@ -136,7 +137,23 @@ def main() -> int:
             "rebuild/docs/linux-codex-setup.md",
         }
     ]
-    require(not production_drift, f"V08 contains Production drift: {production_drift}")
+    permitted_activation_drift = {
+        "rebuild/Cargo.toml",
+        "rebuild/Cargo.lock",
+        "rebuild/install.sh",
+        "rebuild/docs/linux-codex-setup.md",
+        "rebuild/crates/volicord-operations/Cargo.toml",
+        "rebuild/crates/volicord-operations/src/cli.rs",
+        "rebuild/crates/volicord-operations/src/codex.rs",
+        "rebuild/crates/volicord-operations/src/lib.rs",
+        "rebuild/crates/volicord-operations/src/main.rs",
+        "rebuild/crates/volicord-host/README.md",
+        "rebuild/crates/volicord-host/src/mcp.rs",
+    }
+    require(
+        not set(production_drift) - permitted_activation_drift,
+        f"V08 contains unrelated Production drift: {sorted(set(production_drift) - permitted_activation_drift)}",
+    )
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     v08_entries = [
@@ -233,6 +250,20 @@ def main() -> int:
     installer_text = (ROOT / "rebuild/install.sh").read_text(encoding="utf-8")
     for forbidden in ("VOLICORD_HOME", ".volicord", "migrate", "import", "backup"):
         require(forbidden not in installer_text, f"installer contains active legacy path token: {forbidden}")
+    require("--setup-codex" not in installer_text, "installer retains the global Codex setup mode")
+    require("codex mcp" not in installer_text, "installer retains global MCP registration")
+    codex_source = (
+        ROOT / "rebuild/crates/volicord-operations/src/codex.rs"
+    ).read_text(encoding="utf-8")
+    for required in (
+        "mcp_servers",
+        "SessionStart",
+        "startup|resume|clear|compact",
+        "required",
+        "volicord-integration.json",
+        "Codex integration conflict",
+    ):
+        require(required in codex_source, f"repository Codex integration is missing {required}")
     host_text = (ROOT / "rebuild/crates/volicord-host/src/mcp.rs").read_text(encoding="utf-8")
     for forbidden in ("volicord_mcp_protocol", "write_ticket", "final_acceptance", '"intake"'):
         require(forbidden not in host_text, f"host contains legacy MCP surface: {forbidden}")

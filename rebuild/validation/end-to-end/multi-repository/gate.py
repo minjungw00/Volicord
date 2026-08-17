@@ -42,7 +42,7 @@ DEPENDENCY_INPUTS = {
 EXTERNAL_TRANSMISSION = {
     "required": True,
     "destination": "OpenAI Codex service used by the installed Codex CLI",
-    "purpose": "three authenticated turns that select the installed Volicord project_health MCP tool",
+    "purpose": "three authenticated turns that select each repository-scoped Volicord project_health MCP tool",
     "scope": ["volicord", "small-python", "polyglot-medium"],
     "source_scope": "bounded V11 prompt, Project identity, and project_health tool result; no intended repository source body",
     "authorization_assertion": AUTHORIZATION_ASSERTION,

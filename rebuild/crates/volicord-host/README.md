@@ -36,11 +36,16 @@ canonical Question transition, and `dismiss`/`delete` remain Candidate-local.
 basis; an explicit current-host answer continues separately through
 `decision_record` and its Question-revision/User-Source linkage.
 
-Register an installed server with the current Codex CLI:
+Authorize an installed server for one repository:
 
 ```text
-codex mcp add volicord --env VOLICORD_RUNTIME_DIR=/absolute/runtime -- /absolute/bin/volicord-mcp
+volicord --runtime /absolute/runtime codex enable /absolute/repository
 ```
+
+This writes only repository-local Codex MCP and SessionStart configuration.
+Codex project and hook trust remain explicit user-controlled host state. Use
+`volicord codex disable /absolute/repository` before removing the installed
+binaries; disabling leaves Runtime Home and canonical Project data untouched.
 
 When the current host does not advertise elicitation, `guarded_interaction`
 returns viewer and CLI fallback arguments for the same request identity,

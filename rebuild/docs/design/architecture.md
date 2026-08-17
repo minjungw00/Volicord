@@ -198,6 +198,15 @@ input/output을 logical use case로 번역한다. Adapter는 user turn, agent se
 confirmation과 display context를 손실 없이 전달하고 subsystem 결과를 host에
 맞게 표현한다.
 
+Codex adapter activation은 user-global registration이 아니라 explicit repository
+authorization으로 시작한다. 설치된 CLI가 trusted project의 `.codex/config.toml`에서
+정확히 한 `mcp_servers.volicord` stdio server와 `startup|resume|clear|compact`를 포괄하는
+`SessionStart` hook을 소유한다. Hook은 reported cwd가 authorized repository 또는 그
+하위인지 확인한 뒤 첫 project-scoped 요청의 resolve/Recall/init 경계를 developer
+context로 전달할 뿐, 직접 MCP를 호출하거나 Project/Runtime Home/repository content를
+읽지 않는다. Project와 hook trust는 Codex와 user의 authority이며 adapter가 대신
+설정하지 않는다. 다른 repository에는 이 project layer의 authority가 없다.
+
 현재 host의 explicit Guarded confirmation request/response transport는 Host and User
 Adapters가 소유한다. Host가 confirmation을 elicitation할 수 없으면 같은 logical
 contract를 local viewer 또는 CLI로 전달하는 fallback을 제공한다. Fallback은 weaker

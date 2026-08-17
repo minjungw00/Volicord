@@ -502,7 +502,7 @@ def authenticated_codex(
     if not auth.is_file():
         return step("environment_blocked", "Codex authentication is unavailable")
     prompt = (
-        "Use the registered Volicord MCP server's project_health tool for Project "
+        "Use this repository's Volicord MCP server project_health tool for Project "
         f"{project_id}. Do not run shell commands. Report its returned connection and capability state."
     )
     try:
@@ -515,7 +515,7 @@ def authenticated_codex(
             result = recorder.run(
                 "authenticated-codex",
                 [
-                    codex, "--ask-for-approval", "never", "--config",
+                    codex, "--dangerously-bypass-hook-trust", "--ask-for-approval", "never", "--config",
                     'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
                     "exec", "--ephemeral", "--json", "--sandbox", "read-only",
                     "--skip-git-repo-check", "-C", str(repository), prompt,
@@ -582,11 +582,19 @@ def rehearse_target(
     steps: dict[str, dict[str, Any]] = {}
 
     install = recorder.run(
-        "install", [str(INSTALLER), "--prefix", str(prefix), "--runtime-dir", str(runtime), "--setup-codex"], env
+        "install", [str(INSTALLER), "--prefix", str(prefix), "--runtime-dir", str(runtime)], env
     )
     cli = prefix / "bin/volicord"
     mcp_binary = prefix / "bin/volicord-mcp"
-    installed = install["exit_code"] == 0 and all(
+    installation_only = install["exit_code"] == 0 and not (codex_home / "config.toml").exists()
+    activation = recorder.run(
+        "codex-enable", [str(cli), "codex", "enable", str(repository)], env
+    ) if installation_only else {"exit_code": None}
+    codex_home.joinpath("config.toml").write_text(
+        f'[projects.{json.dumps(str(repository.resolve()))}]\ntrust_level = "trusted"\n',
+        encoding="utf-8",
+    )
+    installed = installation_only and activation["exit_code"] == 0 and all(
         path.is_file() and path.stat().st_mode & stat.S_IXUSR
         for path in (cli, prefix / "bin/volicord-viewer", mcp_binary)
     )
@@ -594,6 +602,8 @@ def rehearse_target(
         "passed" if installed else "failed",
         "isolated replacement install completed" if installed else "isolated install failed",
         operation=install,
+        repository_activation=activation,
+        installation_created_global_registration=not installation_only,
     )
     if not installed:
         for name in REQUIRED_STEPS[1:]:
@@ -1446,7 +1456,7 @@ def assert_authenticated_codex_lifecycle() -> None:
         registered_codex_home = retained / "work" / "synthetic" / "home" / ".codex"
         registered_codex_home.mkdir(parents=True)
         (registered_codex_home / "config.toml").write_text(
-            '[mcp_servers.volicord]\ncommand = "synthetic-volicord-mcp"\n',
+            '[projects."/synthetic/repository"]\ntrust_level = "trusted"\n',
             encoding="utf-8",
         )
         source_auth = root / "source-auth.json"

@@ -712,18 +712,17 @@ def main() -> int:
         prefix = temporary / "prefix"
         runtime = temporary / "runtime"
         repository = temporary / "repository"
+        unauthorized_repository = temporary / "unauthorized-repository"
         legacy = temporary / "legacy-runtime"
         codex_home = home / ".codex"
-        for path in (home, repository, legacy, codex_home):
+        for path in (home, repository, unauthorized_repository, legacy, codex_home):
             path.mkdir(parents=True)
         (repository / "README.md").write_text("# V08 clean repository\n", encoding="utf-8")
+        for git_repository in (repository, unauthorized_repository):
+            run(["git", "-C", str(git_repository), "init", "--quiet"], base_env)
         legacy_sentinel = legacy / "DO-NOT-READ"
         legacy_sentinel.write_text("legacy sentinel\n", encoding="utf-8")
         legacy_before = (legacy_sentinel.stat().st_mtime_ns, sha256(legacy_sentinel))
-        incompatible_host = temporary / "legacy-volicord-host"
-        incompatible_host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        incompatible_host.chmod(0o700)
-
         env = base_env | {
             "HOME": str(home),
             "XDG_DATA_HOME": str(home / ".local/share"),
@@ -738,36 +737,6 @@ def main() -> int:
 
         version = run([codex, "--version"], env).stdout.strip()
         require(version.startswith("codex-cli "), "unexpected Codex executable")
-        run(
-            [
-                codex,
-                "mcp",
-                "add",
-                "volicord",
-                "--env",
-                f"VOLICORD_HOME={legacy}",
-                "--env",
-                "VOLICORD_LEGACY_MARKER=incompatible-registration",
-                "--",
-                str(incompatible_host),
-                "_host-launch",
-                "legacy.sock",
-            ],
-            env,
-        )
-        incompatible_registration = json.loads(
-            run([codex, "mcp", "get", "volicord", "--json"], env).stdout
-        )
-        require_codex_stdio_registration(
-            incompatible_registration,
-            command=incompatible_host,
-            arguments=["_host-launch", "legacy.sock"],
-            environment={
-                "VOLICORD_HOME": str(legacy),
-                "VOLICORD_LEGACY_MARKER": "incompatible-registration",
-            },
-            context="pre-install incompatible Codex registration",
-        )
         install = run(
             [
                 str(INSTALLER),
@@ -775,7 +744,6 @@ def main() -> int:
                 str(prefix),
                 "--runtime-dir",
                 str(runtime),
-                "--setup-codex",
             ],
             env,
         )
@@ -794,26 +762,34 @@ def main() -> int:
             "clean replacement runtime schemas were not initialized",
         )
 
-        codex_get = json.loads(run([codex, "mcp", "get", "volicord", "--json"], env).stdout)
-        require_codex_stdio_registration(
-            codex_get,
-            command=prefix / "bin" / "volicord-mcp",
-            arguments=[],
-            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
-            context="replacement Codex registration",
-        )
         codex_list = json.loads(run([codex, "mcp", "list", "--json"], env).stdout)
         listed_registrations = [entry for entry in codex_list if entry.get("name") == "volicord"]
-        require(len(listed_registrations) == 1, "Codex did not discover exactly one Volicord entry")
-        require_codex_stdio_registration(
-            listed_registrations[0],
-            command=prefix / "bin" / "volicord-mcp",
-            arguments=[],
-            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
-            context="listed replacement Codex registration",
-        )
+        require(not listed_registrations, "binary installation created a global Volicord MCP entry")
 
         cli = prefix / "bin" / "volicord"
+        repository_status_before_enable = run(
+            ["git", "-C", str(repository), "status", "--short"], env
+        ).stdout
+        enabled = json.loads(
+            run([str(cli), "codex", "enable", str(repository)], env).stdout
+        )
+        require(enabled["project_trust"] == "user_controlled", "Volicord claimed project trust")
+        project_config = (repository / ".codex/config.toml").read_text(encoding="utf-8")
+        require("[mcp_servers.volicord]" in project_config, "project MCP table missing")
+        require(str(prefix / "bin/volicord-mcp") in project_config, "project MCP path mismatch")
+        require(str(runtime) in project_config, "project Runtime Home mismatch")
+        require("required = true" in project_config, "project MCP server is not required")
+        require("[[hooks.SessionStart]]" in project_config, "SessionStart hook missing")
+        require("startup|resume|clear|compact" in project_config, "SessionStart matcher incomplete")
+        require(
+            not (unauthorized_repository / ".codex").exists(),
+            "unauthorized repository received project-local Codex state",
+        )
+        require(
+            run(["git", "-C", str(repository), "status", "--short"], env).stdout
+            == repository_status_before_enable,
+            "Volicord-created project integration is visible to Git",
+        )
         initialized = json.loads(
             run(
                 [str(cli), "project", "init", "V08 Project", "--repository", str(repository)],
@@ -933,6 +909,11 @@ def main() -> int:
         recall_before = json.loads(run([str(cli), "recall", project_id], env).stdout)
         canonical = runtime / "canonical.sqlite3"
         canonical_size = canonical.stat().st_size
+        disabled = json.loads(
+            run([str(cli), "codex", "disable", str(repository)], env).stdout
+        )
+        require(disabled["changed"] is True, "repository Codex integration was not disabled")
+        require(not (repository / ".codex/config.toml").exists(), "disable left owned config")
         run(
             [
                 str(INSTALLER),
@@ -946,9 +927,6 @@ def main() -> int:
         )
         require(not any(binary.exists() for binary in binaries), "uninstall left a product binary")
         require(canonical.exists() and canonical.stat().st_size == canonical_size, "uninstall changed canonical data")
-        removed_registration = run([codex, "mcp", "get", "volicord", "--json"], env, expected=1)
-        require(removed_registration.returncode == 1, "uninstall left Codex registration")
-
         run(
             [
                 str(INSTALLER),
@@ -956,22 +934,12 @@ def main() -> int:
                 str(prefix),
                 "--runtime-dir",
                 str(runtime),
-                "--setup-codex",
             ],
             env,
         )
         recall_after = json.loads(run([str(cli), "recall", project_id], env).stdout)
         require(recall_after == recall_before, "reinstall changed canonical Recall")
-        reinstalled_registration = json.loads(
-            run([codex, "mcp", "get", "volicord", "--json"], env).stdout
-        )
-        require_codex_stdio_registration(
-            reinstalled_registration,
-            command=prefix / "bin" / "volicord-mcp",
-            arguments=[],
-            environment={"VOLICORD_RUNTIME_DIR": str(runtime)},
-            context="reinstalled Codex registration",
-        )
+        run([str(cli), "codex", "enable", str(repository)], env)
 
         recovery_evidence = exercise_analysis_recovery(cli, env, temporary, runtime)
 
@@ -983,7 +951,7 @@ def main() -> int:
                 {
                     "binaries": [binary.name for binary in binaries],
                     "codex": version,
-                    "codex_registration": "discovered",
+                    "codex_activation": "repository_scoped",
                     "connection_failure": connection_failure,
                     "degraded_capability": degraded["capability_state"],
                     "legacy_runtime": "untouched",
@@ -994,7 +962,8 @@ def main() -> int:
                     "repair_reindex": recovery_evidence,
                     "reinstall_preserved_recall": True,
                     "runtime_schemas": sorted(runtime_files),
-                    "stale_codex_registration_replaced": True,
+                    "installation_created_global_registration": False,
+                    "unauthorized_repository": "unchanged",
                     "status": "passed",
                 },
                 indent=2,

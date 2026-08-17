@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one bounded authenticated Codex turn against an isolated Volicord MCP registration."""
+"""Run one plain repository task through isolated project-scoped Codex activation."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "rebuild/install.sh"
-TOOL_NAMES = {"project_health", "recall"}
+TOOL_NAMES = {"project_resolve", "recall"}
 
 
 def report_blocked(reason: str, **details: Any) -> int:
@@ -68,6 +68,30 @@ def tool_call(event: Any, *, require_success: bool = False) -> tuple[str, str] |
     return None
 
 
+def repository_inspection(event: Any) -> bool:
+    if isinstance(event, list):
+        return any(repository_inspection(value) for value in event)
+    if not isinstance(event, dict):
+        return False
+    kind = event.get("type")
+    name = event.get("name") or event.get("tool_name")
+    if kind in {"command_execution", "file_read", "file_search"}:
+        return True
+    if isinstance(name, str) and name in {
+        "exec_command",
+        "apply_patch",
+        "read_file",
+        "list_directory",
+        "search_files",
+    }:
+        return True
+    return any(
+        repository_inspection(value)
+        for value in event.values()
+        if isinstance(value, (dict, list))
+    )
+
+
 def main() -> int:
     codex = shutil.which("codex")
     if codex is None:
@@ -87,6 +111,7 @@ def main() -> int:
         codex_home.mkdir(parents=True)
         repository.mkdir()
         (repository / "README.md").write_text("# Codex product-tool probe\n", encoding="utf-8")
+        run(["git", "-C", str(repository), "init", "--quiet"], os.environ.copy())
         isolated_auth = codex_home / "auth.json"
         shutil.copy2(source_auth, isolated_auth)
         isolated_auth.chmod(0o600)
@@ -114,13 +139,9 @@ def main() -> int:
                     str(prefix),
                     "--runtime-dir",
                     str(runtime),
-                    "--setup-codex",
                 ],
                 env,
             )
-            registration = json.loads(run([codex, "mcp", "get", "volicord", "--json"], env).stdout)
-            if str(prefix / "bin" / "volicord-mcp") not in json.dumps(registration):
-                raise RuntimeError("isolated Codex registration points at the wrong MCP executable")
             initialized = json.loads(
                 run(
                     [
@@ -134,28 +155,30 @@ def main() -> int:
                     env,
                 ).stdout
             )
+            run([str(prefix / "bin" / "volicord"), "codex", "enable", str(repository)], env)
+            codex_home.joinpath("config.toml").write_text(
+                f'[projects.{json.dumps(str(repository.resolve()))}]\ntrust_level = "trusted"\n',
+                encoding="utf-8",
+            )
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             return report_blocked("isolated setup could not reach the authenticated turn", error=str(error))
 
         project_id = initialized["project_id"]
-        prompt = (
-            "Use the registered Volicord MCP server's read-only Project health capability for "
-            f"Project {project_id}. Do not run shell commands and do not infer the result. "
-            "You must call the Volicord product tool using its advertised input schema, then "
-            "briefly report the returned connection and capability state."
-        )
+        prompt = "Summarize this repository's purpose and current work context. Do not make changes."
         command = [
             codex,
+            "--dangerously-bypass-hook-trust",
             "--ask-for-approval",
             "never",
             "--config",
-            'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
+            'mcp_servers.volicord.tools.project_resolve.approval_mode="approve"',
+            "--config",
+            'mcp_servers.volicord.tools.recall.approval_mode="approve"',
             "exec",
             "--ephemeral",
             "--json",
             "--sandbox",
             "read-only",
-            "--skip-git-repo-check",
             "-C",
             str(repository),
             prompt,
@@ -220,16 +243,29 @@ def main() -> int:
             for event in events
             if (found := tool_call(event, require_success=True)) is not None
         ]
-        if not calls:
+        called_tools = [tool for _, tool in calls]
+        first_resolve = next(
+            (
+                index
+                for index, event in enumerate(events)
+                if tool_call(event, require_success=True) == ("volicord", "project_resolve")
+            ),
+            None,
+        )
+        inspected_before_resolve = first_resolve is None or any(
+            repository_inspection(event) for event in events[:first_resolve]
+        )
+        if called_tools[:2] != ["project_resolve", "recall"] or inspected_before_resolve:
             print(
                 json.dumps(
                     {
                         "status": "failed",
-                        "reason": "Codex completed without a successful observable Volicord product-tool call",
+                        "reason": "plain repository task did not enter Volicord through resolve then Recall",
                         "selected_product_tool_calls": [
                             {"server": server, "tool": tool}
                             for server, tool in sorted(set(selected_calls))
                         ],
+                        "repository_inspection_before_resolve": inspected_before_resolve,
                         "child": child_result,
                     },
                     indent=2,
@@ -243,7 +279,8 @@ def main() -> int:
                     "status": "passed",
                     "codex": version,
                     "authenticated": True,
-                    "isolated_registration": True,
+                    "project_scoped_activation": True,
+                    "plain_repository_prompt": True,
                     "project_id": project_id,
                     "observed_product_tool_calls": [
                         {"server": server, "tool": tool}
