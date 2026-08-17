@@ -55,6 +55,11 @@ def main() -> int:
         "work_user_task",
         "fresh_resume_user_task",
         "decision_oracle",
+        "work_task_materiality_basis",
+        "project_resolve",
+        "repository_bound_project_resolution",
+        "qualify-work-blocker",
+        "phase8_dogfood_blocker_result",
         "naturalistic_prompt_integrity",
         "task_goal_basis",
         "question_relevance_review",
@@ -85,7 +90,17 @@ def main() -> int:
         raise AssertionError("the superseded Phase 8 transmission contract remains")
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
-    if definition_value["real_session_evidence"].get("required_codex_sessions_per_cycle") != 2:
+    real_session = definition_value["real_session_evidence"]
+    if (
+        real_session.get("required_codex_sessions_per_cycle") != 2
+        or real_session.get("full_replacement_session_count") != 12
+        or definition_value.get("candidate_cycle_count") != 2
+        or len(definition_value.get("repository_classes", {})) != 3
+        or len(definition_value["repository_classes"])
+        * definition_value["candidate_cycle_count"]
+        * real_session["required_codex_sessions_per_cycle"]
+        != 12
+    ):
         raise AssertionError("Phase 8 no longer requires twelve distinct real Codex sessions")
     resources = definition_value.get("resource_qualification", {})
     if (
@@ -128,7 +143,8 @@ def main() -> int:
         '"output_only_outcome": "unknown"',
         "the first user turn exactly matches the descriptor plain work_user_task",
         "does not disclose Recall",
-        "a fresh resume session invokes Recall before repository inspection",
+        "resolves the repository-bound existing Project through project_resolve before Recall",
+        "a fresh resume session invokes Recall after project_resolve",
         "event_msg.mcp_tool_call_end",
         "meaningful observed repository changes relevant to the recalled Checkpoint",
         "the resume session preserves separate full-result numeric-exit validation",
@@ -153,6 +169,7 @@ def main() -> int:
         if linkage not in definition:
             raise AssertionError(f"Phase 8 definition is missing plain-task Goal linkage {linkage}")
     for oracle_field in (
+        "work_task_materiality_basis",
         "user_owned_dimension",
         "established_repository_facts",
         "why_repository_inspection_cannot_decide",
@@ -162,6 +179,17 @@ def main() -> int:
     ):
         if oracle_field not in definition:
             raise AssertionError(f"Phase 8 definition is missing hidden oracle field {oracle_field}")
+    blocker_contract = real_session.get("work_blocker_qualification", {})
+    if blocker_contract != {
+        "subcommand": "qualify-work-blocker",
+        "result_kind": "phase8_dogfood_blocker_result",
+        "failure_only": True,
+        "campaign_complete": False,
+        "replacement_pass_candidate": False,
+        "phase_9_ready": False,
+        "later_evidence_status": "not_run",
+    }:
+        raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")

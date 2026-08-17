@@ -28,6 +28,7 @@ VOLICORD_OPERATIONS = {
     "canonical_inspect",
     "canonical_mutate",
     "project_initialize",
+    "project_resolve",
     "project_health",
     "context_record",
     "decision_record",
@@ -409,6 +410,7 @@ class CodexCapture:
     thread_source: str
     fresh_user_thread: bool
     task_sequences: tuple[int, ...]
+    completed_task_sequences: tuple[int, ...]
     compacted_sequences: tuple[int, ...]
     user_turns: tuple[UserTurn, ...]
     tool_calls: tuple[ToolCall, ...]
@@ -582,6 +584,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
 
     current_turn: str | None = None
     task_sequences: list[int] = []
+    completed_task_sequences: list[int] = []
     compacted_sequences: list[int] = []
     user_turns: list[UserTurn] = []
     calls: dict[str, tuple[int, str, ParsedCustomCall]] = {}
@@ -601,6 +604,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
             if nonempty(turn_id):
                 current_turn = str(turn_id)
                 task_sequences.append(sequence)
+        elif envelope == "event_msg" and payload_type in {"task_complete", "task_completed"}:
+            completed_task_sequences.append(sequence)
         elif envelope == "event_msg" and payload_type == "context_compacted":
             compacted_sequences.append(sequence)
         elif envelope == "event_msg" and payload_type == "user_message":
@@ -765,6 +770,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         thread_source=str(thread_source),
         fresh_user_thread=fresh_user_thread,
         task_sequences=tuple(task_sequences),
+        completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),
         user_turns=tuple(user_turns),
         tool_calls=tuple(tool_calls),

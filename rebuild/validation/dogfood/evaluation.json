@@ -142,6 +142,7 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
+    "full_replacement_session_count": 12,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
@@ -173,6 +174,7 @@
       "the first user turn exactly matches the descriptor plain work_user_task",
       "after Project initialization source canonical goal Context from that exact first user turn",
       "establish the repository baseline through repository_analyze before ordinary work",
+      "submit, source-ground research, mark ready, and promote the material Question Candidate through candidate_manage before inquiry_frontier",
       "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
       "obtain and record the exact current-host user Decision",
       "perform real repository work after the baseline",
@@ -182,7 +184,8 @@
     ],
     "resume_session_contract": [
       "the first user turn exactly matches the descriptor plain fresh_resume_user_task and does not disclose Recall",
-      "a fresh resume session invokes Recall before repository inspection or continued work",
+      "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
+      "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
       "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
       "the resume session preserves separate full-result numeric-exit validation after that change"
     ],
@@ -212,6 +215,7 @@
     },
     "hidden_decision_oracle": {
       "required_fields": [
+        "work_task_materiality_basis",
         "user_owned_dimension",
         "established_repository_facts",
         "why_repository_inspection_cannot_decide",
@@ -220,12 +224,24 @@
         "material_consequence"
       ],
       "visibility": "evaluator_input_only",
+      "materiality_basis_normalization": "casefold_and_collapse_whitespace",
+      "materiality_basis_location": "normalized basis must occur in work_user_task; fresh_resume_user_task alone is insufficient",
+      "materiality_basis_hidden_content_exclusion": "must not disclose alternatives, recommendation, or expected choice",
       "question_relevance_result": "manual_observation_independent_from_deterministic_journey_success"
     },
     "naturalistic_prompt_integrity": {
       "rejects_harness_choreography": true,
       "ordinary_repository_paths_and_public_api_names_allowed": true
     },
-    "raw_evidence_retention": "ignored_local_state_only"
+    "raw_evidence_retention": "ignored_local_state_only",
+    "work_blocker_qualification": {
+      "subcommand": "qualify-work-blocker",
+      "result_kind": "phase8_dogfood_blocker_result",
+      "failure_only": true,
+      "campaign_complete": false,
+      "replacement_pass_candidate": false,
+      "phase_9_ready": false,
+      "later_evidence_status": "not_run"
+    }
   }
 }
