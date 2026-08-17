@@ -85,25 +85,46 @@ fn repository_bound_project_resolution_is_normalized_explicit_and_read_only(
     use std::os::unix::fs::symlink;
 
     let (temporary, operations, repository) = fixture()?;
-    operations.initialize_runtime()?;
+    let runtime_root = operations.layout().root().to_path_buf();
     let canonical_store = operations.layout().canonical_store();
 
+    assert!(!runtime_root.exists());
     assert_eq!(
         operations.resolve_project(&repository)?,
         ProjectResolution::NotFound {
             canonical_repository_path: fs::canonicalize(&repository)?,
         }
     );
+    assert!(!runtime_root.exists());
+    for runtime_state in [
+        canonical_store.clone(),
+        operations.layout().candidate_store(),
+        operations.layout().privacy_store(),
+        operations.layout().guarded_store(),
+        operations.layout().derived_dir(),
+        operations.layout().artifacts_dir(),
+    ] {
+        assert!(
+            !runtime_state.exists(),
+            "{} was created",
+            runtime_state.display()
+        );
+    }
 
-    let unbound = operations.initialize_project("Unbound", None)?.project;
-    assert!(matches!(
-        operations.resolve_project(&repository)?,
-        ProjectResolution::NotFound { .. }
-    ));
-    let before_binding = fs::read(&canonical_store)?;
-    let bound = operations.bind_project(unbound.id, None, &repository)?;
-    let before_resolution = operations.canonical_basis(unbound.id)?;
+    let initialized = operations.initialize_project("Bound", Some(&repository))?;
+    let bound = initialized.binding.ok_or("Project was not bound")?;
+    let before_resolution = operations.canonical_basis(initialized.project.id)?;
     let store_bytes_before_resolution = fs::read(&canonical_store)?;
+
+    let unbound_repository = temporary.path().join("unbound-repository");
+    fs::create_dir(&unbound_repository)?;
+    assert_eq!(
+        operations.resolve_project(&unbound_repository)?,
+        ProjectResolution::NotFound {
+            canonical_repository_path: fs::canonicalize(&unbound_repository)?,
+        }
+    );
+    assert_eq!(store_bytes_before_resolution, fs::read(&canonical_store)?);
 
     let alias = temporary.path().join("repository-alias");
     symlink(&repository, &alias)?;
@@ -111,18 +132,16 @@ fn repository_bound_project_resolution_is_normalized_explicit_and_read_only(
     let ProjectResolution::Found { project, binding } = resolved else {
         return Err("bound repository was not resolved".into());
     };
-    assert_eq!(project.id, unbound.id);
-    assert_eq!(binding.binding.id, bound.binding.id);
-    assert_eq!(binding.binding.revision, bound.binding.revision);
+    assert_eq!(project, initialized.project);
+    assert_eq!(binding, bound);
     assert_eq!(
         binding.binding.absolute_path,
         fs::canonicalize(&repository)?
     );
 
-    let after_resolution = operations.canonical_basis(unbound.id)?;
+    let after_resolution = operations.canonical_basis(initialized.project.id)?;
     assert_eq!(before_resolution, after_resolution);
     assert_eq!(store_bytes_before_resolution, fs::read(&canonical_store)?);
-    assert_ne!(before_binding, store_bytes_before_resolution);
     Ok(())
 }
 

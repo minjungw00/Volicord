@@ -100,9 +100,9 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     let operations = LocalOperations::new(
         RuntimeLayout::new(temporary.path().join("runtime")).expect("runtime layout"),
     );
-    operations.initialize_runtime().expect("initialize runtime");
     let mut adapter = HostAdapter::new(operations);
 
+    assert!(!adapter.operations().layout().root().exists());
     let not_found = call(
         &mut adapter,
         "project_resolve",
@@ -110,12 +110,32 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     );
     assert_eq!(not_found["result"]["isError"], false, "{not_found}");
     assert_eq!(structured(&not_found)["status"], "not_found");
+    assert_eq!(
+        structured(&not_found)["canonical_repository_path"],
+        json!(fs::canonicalize(&repository).expect("canonical repository path"))
+    );
+    assert!(!adapter.operations().layout().root().exists());
+    for runtime_state in [
+        adapter.operations().layout().canonical_store(),
+        adapter.operations().layout().candidate_store(),
+        adapter.operations().layout().privacy_store(),
+        adapter.operations().layout().guarded_store(),
+        adapter.operations().layout().derived_dir(),
+        adapter.operations().layout().artifacts_dir(),
+    ] {
+        assert!(
+            !runtime_state.exists(),
+            "{} was created",
+            runtime_state.display()
+        );
+    }
 
     let initialized = call(
         &mut adapter,
         "project_initialize",
         json!({"display_name":"Resolved Project","repository":repository}),
     );
+    assert_eq!(initialized["result"]["isError"], false, "{initialized}");
     let project = structured(&initialized)["project_id"]
         .as_str()
         .expect("Project identity")
@@ -134,6 +154,10 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     assert_eq!(structured(&found)["status"], "found");
     assert_eq!(structured(&found)["project_id"], project);
     assert_eq!(structured(&found)["binding"]["revision"], 1);
+    assert_eq!(
+        structured(&found)["binding"]["canonical_repository_path"],
+        json!(fs::canonicalize(&repository).expect("canonical repository path"))
+    );
     assert_eq!(
         before,
         adapter

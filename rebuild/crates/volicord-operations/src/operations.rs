@@ -140,9 +140,20 @@ impl LocalOperations {
         let root = RepositoryRoot::open(repository)
             .map_err(|error| Error::with_source("repository resolution path is invalid", error))?;
         let canonical_repository_path = root.canonical_path().to_path_buf();
-        let canonical = Store::open_read_only(self.layout.canonical_store()).map_err(|error| {
-            Error::with_source("cannot open canonical store for Project resolution", error)
-        })?;
+        let canonical = match Store::open_read_only(self.layout.canonical_store()) {
+            Ok(canonical) => canonical,
+            Err(error) if error.kind() == volicord_context::ErrorKind::NotFound => {
+                return Ok(ProjectResolution::NotFound {
+                    canonical_repository_path,
+                });
+            }
+            Err(error) => {
+                return Err(Error::with_source(
+                    "cannot open canonical store for Project resolution",
+                    error,
+                ));
+            }
+        };
         let Some(binding) = canonical
             .resolve_local_binding(&canonical_repository_path)
             .map_err(|error| Error::with_source("cannot resolve repository binding", error))?
