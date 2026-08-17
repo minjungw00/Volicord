@@ -102,6 +102,49 @@ structured result only below ignored `rebuild/.local/`, and classifies missing
 public product paths as `unsupported` instead of substituting validation-only
 domain behavior.
 
+## Scripted conformance and naturalistic dogfood
+
+V11 is the maintained scripted conformance boundary. Its deterministic journey
+proves the installed product path and remains the reusable Phase 8 regression;
+it is not evidence that an agent independently discovered and used the accepted
+experience in a real repository session.
+
+Phase 8 real sessions are naturalistic behavioral dogfood. Each cycle
+descriptor carries the exact plain work user task, the exact plain fresh-resume
+user task, repository/cycle/revision identity, hidden evaluation material, and
+the bounded capture and canonical-bundle references used for qualification.
+The user tasks state a real repository outcome and ordinary safety or scope
+constraints. They do not prescribe the material Question, alternatives,
+recommendation, expected choice, Volicord operation order, Checkpoint contents,
+a path reserved for the next session, or an instruction to perform Recall.
+
+When a latent material Decision needs a stable review basis, its user-owned
+dimension, established repository facts, reason inspection cannot decide the
+choice, viable alternatives, recommendation, and material consequence live in
+the hidden decision oracle. The oracle is evaluator input only. The observed
+Question is still compared with those facts and the user-owned dimension, and
+that comparison does not automatically pass the subjective Question-relevance
+observation.
+
+Work-session research, Inquiry, current-host Decision provenance, ordinary
+work, numeric-exit verification, and Checkpoint creation are observed from the
+actual Codex rollout and canonical bundle rather than disclosed as prompt
+choreography. The first work turn is bound directly to the canonical Goal
+Source and identity. The Checkpoint references that Goal identity and supplies
+the next meaningful state or step; post-Recall continuation is judged from the
+observed repository change and separate validation, not from a predeclared
+reserved path.
+
+The fresh-resume task is likewise ordinary user language and does not mention
+Recall. Qualification still requires the fresh session to perform the accepted
+automatic Recall before repository inspection or continued work, and derives
+context recovery from that Recall result. Deterministic journey success remains
+independent from manual Question relevance, Decision comprehension,
+interruption cost, and document fidelity/usefulness observations.
+
+This distinction does not change admission, exact final, official V11, gate
+ownership, or the capsule lifecycle described below.
+
 The current maintained conclusion is recorded in `dogfood/report.md` and
 summarized in `phase-8-summary.md`: `replacement_gate = failed` and
 `phase_9_ready = false`. The repeated dogfood candidate is
