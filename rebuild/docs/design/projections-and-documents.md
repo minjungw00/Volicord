@@ -91,11 +91,14 @@ Selection은 Project/scope relevance, active applicability, recency of meaningfu
 Checkpoint, open material Question와 declared risk를 사용할 수 있다. Access frequency는
 ordering input이 될 수 있지만 Decision validity나 Question outcome을 바꾸지 않는다.
 
-각 candidate item은 최소 `included` 또는 `omitted`로 판정되고 omitted item에는
+각 candidate item은 최소 `included` 또는 `omitted`로 판정되고 omission에는
 budget, scope, superseded/history, unavailable basis 또는 user filter 같은 reason을
-연결한다. 사용자와 agent view는 같은 item identity에 대해 같은 inclusion/omission
-basis를 사용한다. 더 깊은 view는 omitted item을 펼칠 수 있지만 hidden memory를
-새 authority로 사용하지 않는다.
+연결한다. Deterministic section bound로 생긴 omission은 omitted identity를
+하나씩 projection에 복제하지 않고 bounded scope, exact omitted count와 reason을
+하나의 stable report로 표현한다. 사용자와 agent view는 같은 input scope에
+대해 같은 inclusion/omission basis와 count를 사용한다. 더 깊은 view는
+authoritative input과 scope를 다시 읽어 omitted item을 펼칠 수 있지만 aggregated
+report나 hidden memory를 identity authority로 사용하지 않는다.
 
 동일한 input state, scope와 bound에서는 stable tie-breaker로 reproducible selection을
 만든다. Ranking/model의 concrete algorithm은 V09 evidence 뒤의 implementation choice다.
@@ -249,7 +252,7 @@ verification state, omissions와 source availability를 포함한다.
 - capability별 language/area coverage
 - excluded, unsupported, unavailable, partial, failed와 stale scope
 - known gaps, uncertainty와 explicit inference marker
-- omitted record/source count, reason와 user-specified scope
+- bounded scope별 exact omitted record/source count, reason와 user-specified scope
 - output document type, language와 requested destination basis
 
 Metadata는 claim마다 필요한 direct Source reference를 대체하지 않는다. Core claim은
@@ -367,7 +370,7 @@ V09는 다음을 검증해야 한다.
 
 - unrelated greeting과 first project-scoped trigger 구분
 - bounded Resume Brief의 goal/rationale/state/open Question/risk/next-step recovery
-- deterministic selection, omitted count/reason과 expandable basis
+- deterministic selection, scope별 exact omitted count/reason과 authoritative expansion basis
 - user/agent projection의 identity/source/freshness/uncertainty/supersession/omission 일치
 - Recall no-mutation property와 Checkpoint non-frontier authority
 - stale Source, superseded Decision, unrelated dirty change와 verification state 표현

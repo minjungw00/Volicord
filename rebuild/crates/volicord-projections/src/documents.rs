@@ -10,7 +10,7 @@ use volicord_repository_intelligence::{
 };
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 1;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -734,8 +734,8 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             identity: format!("omission:{}:{}", issue.affected_scope, issue.identity),
             class: ClaimClass::RepositoryObservation,
             text: format!(
-                "{}: {} ({:?})",
-                issue.affected_scope, issue.reason, issue.kind
+                "{}: {} ({:?}; omitted_count={})",
+                issue.affected_scope, issue.reason, issue.kind, issue.omitted_count
             ),
             source_basis: projection
                 .source_catalog
@@ -1166,7 +1166,12 @@ fn metadata_pairs(metadata: &DocumentMetadata) -> Vec<(&'static str, String)> {
             metadata
                 .omissions
                 .iter()
-                .map(|issue| format!("{}:{}", issue.affected_scope, issue.reason))
+                .map(|issue| {
+                    format!(
+                        "{}:{}:omitted_count={}",
+                        issue.affected_scope, issue.reason, issue.omitted_count
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("; "),
         ),

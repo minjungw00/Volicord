@@ -124,6 +124,9 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   read state가 필요하다.
 - Regeneration은 adopted user edits나 historical Source identity를 overwrite하는
   metadata upgrade가 아니다.
+- Omission metadata가 per-identity list에서 bounded scope와 exact count로 바뀌는
+  것처럼 durable meaning/shape가 바뀌면 current writer version을 올리고 하나의
+  current representation만 쓴다. Compatibility를 위한 dual writer/reader를 두지 않는다.
 
 ## 8. Read-time version checks
 

@@ -3,29 +3,30 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use volicord_context::{
-    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadOptions, CheckpointDraft,
-    CheckpointKind, ContextItemDraft, ContextItemRole, DecisionSupersessionDraft,
-    DeterministicIdGenerator, ExplicitQuestionResponse, FixedClock, NonUserQuestionOutcome,
-    OperationId, Principal, PrincipalKind, Project, QuestionAlternative, QuestionDraft,
-    QuestionMateriality, QuestionResearchState, QuestionResponseDraft, Source, SourceDraft,
-    SourcePayload, StatementProvenanceRole, Store, TimestampMicros, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState, WorkState,
+    AgentRecommendation, ApplicabilityScope, Availability, CanonicalReadBasis,
+    CanonicalReadOptions, CheckpointDraft, CheckpointKind, ContextItemDraft, ContextItemRole,
+    DecisionSupersessionDraft, DeterministicIdGenerator, ExplicitQuestionResponse, FixedClock,
+    NonUserQuestionOutcome, OperationId, Principal, PrincipalKind, Project, ProjectId,
+    QuestionAlternative, QuestionDraft, QuestionMateriality, QuestionResearchState,
+    QuestionResponseDraft, Source, SourceDraft, SourcePayload, StatementProvenanceRole, Store,
+    TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact, UserReviewState,
+    UserTurnSource, VerificationFact, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     ApplicabilityQuery, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
-    CandidateDraft, CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention,
-    CandidateStore, SubmissionOutcome,
+    CandidateDraft, CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateReadBasis,
+    CandidateRetention, CandidateStore, SubmissionOutcome,
 };
 use volicord_projections::{
     build_project_projection, generate_documents, BriefDecisionState, CandidateContentAccess,
     CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, FixedLocale,
-    GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjectionInputs, ProjectionBound,
-    ProjectionHealth, RequestedDestination,
+    GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjection, ProjectProjectionInputs,
+    ProjectionBound, ProjectionHealth, ProjectionIssueKind, RequestedDestination,
+    GENERATED_DOCUMENT_METADATA_VERSION,
 };
 use volicord_repository_intelligence::{
-    analyze_repository_semantics, AgentInterpretation, CanonicalGrounding, Capability,
-    CapabilityState, InventoryRequest, ProvenanceClass, SemanticAnalysisRequest,
+    analyze_repository_semantics, AgentInterpretation, AnalysisSnapshot, CanonicalGrounding,
+    Capability, CapabilityState, InventoryRequest, ProvenanceClass, SemanticAnalysisRequest,
     StructuralAnalysisRequest, Uncertainty, UncertaintyLevel,
 };
 
@@ -105,6 +106,31 @@ fn files_under(root: &Path) -> BTreeSet<PathBuf> {
         }
     }
     files
+}
+
+fn build_projection_fixture(
+    canonical: &CanonicalReadBasis,
+    candidates: &CandidateReadBasis,
+    analysis: &AnalysisSnapshot,
+    project_id: ProjectId,
+    bound: ProjectionBound,
+) -> ProjectProjection {
+    build_project_projection(ProjectProjectionInputs {
+        canonical,
+        analyses: &[analysis],
+        applicability: ApplicabilityQuery {
+            project_id,
+            paths: vec!["src".to_owned()],
+            components: vec!["MarkdownGuide".to_owned()],
+            work_contexts: vec!["documents".to_owned()],
+            current_assumptions: vec!["local-first".to_owned()],
+            met_revisit_triggers: Vec::new(),
+        },
+        candidates: Some(candidates),
+        candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
+        observed_at: TimestampMicros::from_unix_micros(30_000),
+        bound,
+    })
 }
 
 #[test]
@@ -375,27 +401,23 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     }
     let candidates = candidate_store.read_basis(project.id)?;
     let candidates_before = candidates.clone();
-    let analyses = [&analysis];
-    let build = || {
-        build_project_projection(ProjectProjectionInputs {
-            canonical: &canonical,
-            analyses: &analyses,
-            applicability: ApplicabilityQuery {
-                project_id: project.id,
-                paths: vec!["src".to_owned()],
-                components: vec!["MarkdownGuide".to_owned()],
-                work_contexts: vec!["documents".to_owned()],
-                current_assumptions: vec!["local-first".to_owned()],
-                met_revisit_triggers: Vec::new(),
-            },
-            candidates: Some(&candidates),
-            candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
-            observed_at: TimestampMicros::from_unix_micros(30_000),
-            bound: ProjectionBound::default(),
-        })
-    };
-    let projection = build();
-    assert_eq!(projection, build());
+    let projection = build_projection_fixture(
+        &canonical,
+        &candidates,
+        &analysis,
+        project.id,
+        ProjectionBound::default(),
+    );
+    assert_eq!(
+        projection,
+        build_projection_fixture(
+            &canonical,
+            &candidates,
+            &analysis,
+            project.id,
+            ProjectionBound::default(),
+        )
+    );
     assert_eq!(projection.overview.project_id, project.id);
     assert_ne!(projection.health, ProjectionHealth::Complete);
     assert!(!projection.repository_map.entities.is_empty());
@@ -518,6 +540,104 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     );
     assert!(!explicit_destination.exists());
     assert_eq!(files_under(&repository_root), before_files);
+
+    let template_fact = analysis
+        .structural_facts
+        .first()
+        .cloned()
+        .ok_or("structural fact missing")?;
+    let mut scaling_counts = Vec::new();
+    for cardinality in [32_usize, 4_096] {
+        let mut scaled_analysis = analysis.clone();
+        scaled_analysis.structural_facts = (0..cardinality)
+            .map(|index| {
+                let mut fact = template_fact.clone();
+                let entity_identity = format!("scale:entity:{index:08}");
+                fact.entity.identity = entity_identity.clone();
+                fact.entity.display_name = Some(entity_identity.clone());
+                fact.entity.qualified_name = Some(entity_identity.clone());
+                for (relation_index, relation) in fact.relations.iter_mut().enumerate() {
+                    relation.identity = format!("scale:relation:{index:08}:{relation_index:04}");
+                    relation.source_entity = entity_identity.clone();
+                }
+                fact
+            })
+            .collect();
+        let scaled_projection = build_projection_fixture(
+            &canonical,
+            &candidates,
+            &scaled_analysis,
+            project.id,
+            ProjectionBound {
+                max_items_per_section: 4,
+            },
+        );
+        let entity_omission = scaled_projection
+            .issues
+            .iter()
+            .find(|issue| issue.affected_scope == "repository_map.entity")
+            .ok_or("entity omission missing")?;
+        assert_eq!(entity_omission.kind, ProjectionIssueKind::Bound);
+        assert_eq!(entity_omission.identity, "bound:repository_map.entity");
+        assert_eq!(entity_omission.omitted_count, cardinality - 4);
+        assert_eq!(scaled_projection.repository_map.entities.len(), 4);
+        assert!(scaled_projection.issues.iter().any(|issue| {
+            issue.kind == ProjectionIssueKind::PartialCapability && issue.omitted_count == 0
+        }));
+
+        let scaled_documents = generate_documents(&scaled_projection, &request)?;
+        let scaled_document = &scaled_documents.project_architecture_guide;
+        assert_eq!(
+            scaled_document.metadata.format_version,
+            GENERATED_DOCUMENT_METADATA_VERSION
+        );
+        assert_eq!(
+            scaled_document
+                .metadata
+                .omissions
+                .iter()
+                .find(|issue| issue.affected_scope == "repository_map.entity")
+                .map(|issue| issue.omitted_count),
+            Some(cardinality - 4)
+        );
+        let gap_claim_count = scaled_document
+            .body
+            .sections
+            .iter()
+            .find(|section| section.key == "gaps")
+            .ok_or("gap section missing")?
+            .claims
+            .len();
+        let exact_count_marker = format!(
+            "{} items omitted by deterministic projection bound",
+            cardinality - 4
+        );
+        assert!(scaled_document
+            .markdown
+            .content
+            .contains(&exact_count_marker));
+        assert!(scaled_document.html.content.contains(&exact_count_marker));
+        scaling_counts.push((
+            scaled_projection
+                .issues
+                .iter()
+                .filter(|issue| issue.kind == ProjectionIssueKind::Bound)
+                .count(),
+            gap_claim_count,
+            scaled_document.metadata.omissions.len(),
+            scaled_document
+                .markdown
+                .content
+                .matches("items omitted by deterministic projection bound")
+                .count(),
+            scaled_document
+                .html
+                .content
+                .matches("items omitted by deterministic projection bound")
+                .count(),
+        ));
+    }
+    assert_eq!(scaling_counts[0], scaling_counts[1]);
 
     let attribute_language = "fr-CA\" data-unsafe=\"<&";
     let attribute_safe = generate_documents(

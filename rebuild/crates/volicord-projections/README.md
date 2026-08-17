@@ -19,7 +19,9 @@ documents.
 - Project projection adds overview, Repository Map, Decision–Context–Code links,
   a Checkpoint timeline with independent work/verification/review/acceptance
   facts, canonical inspection, capability gaps, and Candidate Inspection
-  aggregation. Analysis and Source degradation stays explicit.
+  aggregation. Deterministic section-bound omissions are represented once per
+  affected scope with an exact omitted count; Analysis and Source degradation
+  stays explicit and retains its concrete identity.
 - Document generation produces Project & Architecture Guide, Decision Report,
   Implementation Plan, and Handoff / Resume bodies. Structural Fact, Semantic
   Result, and explicit Agent Interpretation claims remain distinct and carry

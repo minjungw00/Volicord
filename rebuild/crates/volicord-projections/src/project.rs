@@ -64,6 +64,9 @@ pub struct ProjectionIssue {
     pub identity: String,
     pub affected_scope: String,
     pub reason: String,
+    /// Exact number of items omitted by a deterministic bound. Non-bound
+    /// issues retain their concrete identity and report zero here.
+    pub omitted_count: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -251,13 +254,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     let canonical_inspection = build_canonical_inspection(inputs.canonical, limit, &mut issues);
     let mut source_catalog = inputs.canonical.sources.clone();
     source_catalog.sort_by_key(|source| source.source.id);
-    bound(
-        &mut source_catalog,
-        limit,
-        "source_catalog",
-        |source| source.source.id.to_string(),
-        &mut issues,
-    );
+    bound(&mut source_catalog, limit, "source_catalog", &mut issues);
     let candidate_inspection = inputs.candidates.map_or_else(Vec::new, |basis| {
         let mut identities = basis
             .candidates
@@ -266,14 +263,10 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
             .collect::<Vec<_>>();
         identities.sort();
         if identities.len() > limit {
-            for identity in &identities[limit..] {
-                issues.push(ProjectionIssue {
-                    kind: ProjectionIssueKind::Bound,
-                    identity: identity.to_string(),
-                    affected_scope: "candidate_inspection".to_owned(),
-                    reason: "Candidate omitted by the projection bound".to_owned(),
-                });
-            }
+            issues.push(bound_issue(
+                "candidate_inspection",
+                identities.len() - limit,
+            ));
             identities.truncate(limit);
         }
         identities
@@ -291,6 +284,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
                         identity: identity.to_string(),
                         affected_scope: "candidate_inspection".to_owned(),
                         reason: format!("Candidate inspection is {:?}", inspection.health),
+                        omitted_count: 0,
                     });
                 }
                 inspection
@@ -310,7 +304,6 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         &mut current_goals,
         limit,
         "project_overview.goal",
-        |(identity, _)| identity.to_string(),
         &mut issues,
     );
     issues.sort_by(|left, right| {
@@ -379,6 +372,7 @@ fn build_repository_map(
                 identity: analysis.identity.to_string(),
                 affected_scope: "analysis_snapshot".to_owned(),
                 reason: "Analysis Snapshot belongs to another Project".to_owned(),
+                omitted_count: 0,
             });
             continue;
         }
@@ -510,46 +504,21 @@ fn build_repository_map(
                 &right.area,
             ))
     });
-    bound(
-        &mut entities,
-        limit,
-        "repository_map.entity",
-        |item| item.identity.clone(),
-        issues,
-    );
-    bound(
-        &mut relations,
-        limit,
-        "repository_map.relation",
-        |item| item.identity.clone(),
-        issues,
-    );
+    bound(&mut entities, limit, "repository_map.entity", issues);
+    bound(&mut relations, limit, "repository_map.relation", issues);
     bound(
         &mut agent_interpretations,
         limit,
         "repository_map.agent_interpretation",
-        |item| item.identity.clone(),
         issues,
     );
     bound(
         &mut capabilities,
         limit,
         "repository_map.capability",
-        |item| {
-            format!(
-                "{}:{:?}:{:?}",
-                item.area.path, item.language, item.capability
-            )
-        },
         issues,
     );
-    bound(
-        &mut gaps,
-        limit,
-        "repository_map.gap",
-        |item| format!("{}:{:?}:{:?}", item.area, item.language, item.capability),
-        issues,
-    );
+    bound(&mut gaps, limit, "repository_map.gap", issues);
     let health = if gaps.iter().any(|gap| {
         matches!(
             gap.state,
@@ -591,13 +560,7 @@ fn build_decision_links(
         .map(|lifecycle| decision_link(canonical, lifecycle, repository_map, &brief_states))
         .collect::<Vec<_>>();
     values.sort_by_key(|value| value.decision_id);
-    bound(
-        &mut values,
-        limit,
-        "decision_context_code",
-        |item| item.decision_id.to_string(),
-        issues,
-    );
+    bound(&mut values, limit, "decision_context_code", issues);
     values
 }
 
@@ -721,13 +684,7 @@ fn build_timeline(
             checkpoint,
         })
         .collect::<Vec<_>>();
-    bound(
-        &mut values,
-        limit,
-        "checkpoint_timeline",
-        |item| item.checkpoint.id.to_string(),
-        issues,
-    );
+    bound(&mut values, limit, "checkpoint_timeline", issues);
     values
 }
 
@@ -839,13 +796,7 @@ fn build_canonical_inspection(
         (inspection_priority(left.kind), &left.identity)
             .cmp(&(inspection_priority(right.kind), &right.identity))
     });
-    bound(
-        &mut values,
-        limit,
-        "canonical_inspection",
-        |item| item.identity.clone(),
-        issues,
-    );
+    bound(&mut values, limit, "canonical_inspection", issues);
     values
 }
 
@@ -889,6 +840,7 @@ fn source_issues(canonical: &CanonicalReadBasis) -> Vec<ProjectionIssue> {
             identity: source.source.id.to_string(),
             affected_scope: "canonical_source".to_owned(),
             reason: reason.to_owned(),
+            omitted_count: 0,
         })
         .collect()
 }
@@ -945,6 +897,7 @@ fn capability_issue(
             .reason
             .clone()
             .unwrap_or_else(|| "capability is not fully available".to_owned()),
+        omitted_count: 0,
     }
 }
 
@@ -991,23 +944,22 @@ fn revision_for(canonical: &CanonicalReadBasis, kind: &str, identity: &str) -> u
         .unwrap_or(1)
 }
 
-fn bound<T>(
-    values: &mut Vec<T>,
-    limit: usize,
-    scope: &str,
-    identity: impl Fn(&T) -> String,
-    issues: &mut Vec<ProjectionIssue>,
-) {
+fn bound<T>(values: &mut Vec<T>, limit: usize, scope: &str, issues: &mut Vec<ProjectionIssue>) {
     if values.len() <= limit {
         return;
     }
-    issues.extend(values[limit..].iter().map(|item| ProjectionIssue {
-        kind: ProjectionIssueKind::Bound,
-        identity: identity(item),
-        affected_scope: scope.to_owned(),
-        reason: "item omitted by deterministic projection bound".to_owned(),
-    }));
+    issues.push(bound_issue(scope, values.len() - limit));
     values.truncate(limit);
+}
+
+fn bound_issue(scope: &str, omitted_count: usize) -> ProjectionIssue {
+    ProjectionIssue {
+        kind: ProjectionIssueKind::Bound,
+        identity: format!("bound:{scope}"),
+        affected_scope: scope.to_owned(),
+        reason: format!("{omitted_count} items omitted by deterministic projection bound"),
+        omitted_count,
+    }
 }
 
 fn health_from_issues(issues: &[ProjectionIssue]) -> ProjectionHealth {
@@ -1049,5 +1001,29 @@ const fn canonical_kind_name(kind: volicord_context::CanonicalRecordKind) -> &'s
         volicord_context::CanonicalRecordKind::Decision => "decision",
         volicord_context::CanonicalRecordKind::ContextItem => "context_item",
         volicord_context::CanonicalRecordKind::Checkpoint => "checkpoint",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bound, health_from_issues, ProjectionHealth, ProjectionIssueKind};
+
+    #[test]
+    fn deterministic_bound_keeps_one_scoped_issue_as_cardinality_grows() {
+        let limit = 8;
+        for cardinality in [9, 100_008] {
+            let mut values = (0..cardinality).collect::<Vec<_>>();
+            let mut issues = Vec::new();
+
+            bound(&mut values, limit, "repository_map.entity", &mut issues);
+
+            assert_eq!(values.len(), limit);
+            assert_eq!(issues.len(), 1);
+            assert_eq!(issues[0].kind, ProjectionIssueKind::Bound);
+            assert_eq!(issues[0].identity, "bound:repository_map.entity");
+            assert_eq!(issues[0].affected_scope, "repository_map.entity");
+            assert_eq!(issues[0].omitted_count, cardinality - limit);
+            assert_eq!(health_from_issues(&issues), ProjectionHealth::Partial);
+        }
     }
 }
