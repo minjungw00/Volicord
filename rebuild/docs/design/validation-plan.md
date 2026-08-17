@@ -753,6 +753,71 @@ action/target/effect/scope/revision/expiration match, user-response Source, sing
 rejection, no-dispatch-before-valid-confirmation, ordinary-action non-blocking 및
 indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한다.
 
+### Phase 8 naturalistic Dogfood qualification
+
+Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification
+이다. 하나의 current candidate에 대해 `volicord`, `small-python`, `polyglot-medium` 세
+actual repository class에서 두 cycle씩 실행하고, 각 cycle은 globally distinct한 fresh
+VS Code Codex work session과 fresh resume session을 사용한다. 따라서 full passage에는
+`3 repositories × 2 cycles × 2 sessions = 12`개의 distinct real session이 필요하다. 이
+complete `run` path만 `campaign_complete = true`, `replacement_pass_candidate = true` 또는
+`phase_9_ready = true`를 만들 수 있으며 required automatic, manual, resource와
+accessibility evidence가 하나라도 빠지면 passage가 아니다.
+
+각 cycle descriptor의 hidden decision oracle은 bounded
+`work_task_materiality_basis`를 포함한다. 이 값은 hidden user-owned dimension이 현재 work
+outcome에 material한 이유를 만드는 ordinary user-task text의 exact bounded fragment다.
+Case-folding하고 whitespace를 collapse해 normalize한 basis가 같은 방식으로
+normalize한 `work_user_task` 안에 반드시 나타나야 한다. `fresh_resume_user_task`에만
+나타나는 basis는 invalid하며, basis는 hidden alternative, recommendation 또는 expected
+choice를 disclose해서는 안 된다. Work/resume prompt는 Volicord operation order, 물어야 할
+Question, Checkpoint content 또는 Recall을 지시하지 않는다.
+
+Qualifying work session은 exact first work task를 current-host Goal Context의 Source로
+보존하고, repository analysis로 baseline을 만든 뒤 ordinary work를 시작한다. Material
+user-owned uncertainty는 `candidate_manage`로 Question Candidate를 submit하고 repository
+research를 연결한 뒤 reviewed `material` Candidate를 canonical Question으로 promote한다.
+`inquiry_frontier`는 이미 promoted된 current frontier를 읽을 뿐 Question을 생성하지
+않는다. User Decision은 displayed Question revision에 대한 explicit current-host user
+response에서만 기록하며 agent recommendation이나 implementation preference를 response로
+사용하지 않는다. Meaningful completion/pause는 Goal, baseline, applicable Decision, actual
+changed basis와 numeric-exit verification을 연결한 source-grounded Checkpoint를 요구한다.
+
+Fresh resume session의 exact first task에는 Project ID가 포함되지 않는다. Repository
+inspection 또는 continued work 전에 current repository path로 `project_resolve`가
+`found`를 성공적으로 반환하고, 그 result의 Project identity가 cycle canonical bundle의
+Project와 같으며 current binding identity/revision을 포함해야 한다. 같은 session의
+Recall은 이 successful resolution 뒤, repository inspection/continuation 전에 발생한다.
+Resume session은 identity를 얻기 위해 `project_initialize`로 replacement Project를
+만들 수 없다. Work/resume session의 global distinctness 조건은 그대로 유지한다.
+
+Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
+보존하기 위한 failure-only command를 제공한다.
+
+```text
+python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
+  --candidate-head <current-candidate-head> \
+  --descriptor <one-cycle-descriptor.json> \
+  --work-capture <completed-work-rollout.jsonl> \
+  --output <blocker-result.json>
+```
+
+이 path는 current candidate, valid descriptor와 completed capture의 repository class,
+cycle, revision, `source=vscode`, `originator=codex_vscode`, fresh thread와 exact first
+`work_user_task`를 먼저 검증한다. Completed work capture에 required high-level Project,
+Goal, baseline, material Question Candidate/promotion, current-host user Decision 또는 grounded
+Checkpoint operation이 없으면 later resume이 그 operation을 work session에 retroactively
+추가할 수 없으므로 terminal blocker다. 반대로 capture만으로 required semantic fact를
+증명할 수 없으면 blocker를 추측하지 않고 full qualification을 요구한다. 모든 required
+work-session condition을 충족한 positive capture는 early-stop failure로 변환할 수 없다.
+
+Early-stop output은 `kind = phase8_dogfood_blocker_result`이며 항상
+`campaign_complete = false`, `replacement_pass_candidate = false`,
+`phase_9_ready = false`다. Candidate, repository class, cycle, revision, failed check,
+completed capture SHA-256와 later required session/check의 `not_run` 상태만 보존한다. Plain
+task text, hidden oracle, source body, credential과 raw provider content는 보존하지 않는다.
+이 result는 full passage, Phase 8 completion 또는 Phase 9 readiness의 evidence가 아니다.
+
 ## 16. Architecture 확정 gate
 
 다음이 완료되면 production architecture 문서를 확정할 수 있다.

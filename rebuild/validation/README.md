@@ -136,11 +136,57 @@ observed repository change and separate validation, not from a predeclared
 reserved path.
 
 The fresh-resume task is likewise ordinary user language and does not mention
-Recall. Qualification still requires the fresh session to perform the accepted
-automatic Recall before repository inspection or continued work, and derives
-context recovery from that Recall result. Deterministic journey success remains
-independent from manual Question relevance, Decision comprehension,
-interruption cost, and document fidelity/usefulness observations.
+Recall or contain a Project ID. Qualification requires successful
+`project_resolve` from the current repository binding to the canonical bundle's
+same Project before Recall. Recall must then precede repository inspection or
+continued work, and the resume session must not initialize a replacement
+Project merely to obtain an identity. Context recovery is derived from that
+Recall result. Deterministic journey success remains independent from manual
+Question relevance, Decision comprehension, interruption cost, and document
+fidelity/usefulness observations.
+
+The hidden decision oracle includes one bounded
+`work_task_materiality_basis`: exact ordinary user-task text that makes the
+user-owned dimension material to the work outcome. After case-folding and
+whitespace-collapse normalization, that basis must occur in `work_user_task` itself; an
+occurrence only in `fresh_resume_user_task` is invalid. The basis must not
+disclose hidden alternatives, the recommendation, or the expected choice.
+
+The work capture must show Candidate submission, source-grounded repository
+research, and reviewed material promotion through `candidate_manage` before
+the resulting Question can appear in `inquiry_frontier`. Only an explicit
+current-host user response can qualify `decision_record`; the agent's own
+recommendation or implementation preference cannot.
+
+Full replacement qualification remains the `run` path: three repository
+classes, two cycles per class, and two globally distinct fresh VS Code Codex
+sessions per cycle, for twelve distinct real sessions, plus every required
+automatic, manual, resource, and accessibility check. Only this complete path
+may set campaign completion, replacement passage, or Phase 9 readiness true.
+
+A completed work session with a machine-observable terminal work blocker may
+be classified without executing later qualifying sessions:
+
+```text
+python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
+  --candidate-head <current-candidate-head> \
+  --descriptor <one-cycle-descriptor.json> \
+  --work-capture <completed-work-rollout.jsonl> \
+  --output <blocker-result.json>
+```
+
+The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
+required high-level Project, Goal Context, repository baseline, material
+Question Candidate/promotion, explicit current-host Decision, or grounded
+Checkpoint operations are terminal when absent from a completed work capture;
+a later resume cannot retroactively put them in that session. If the capture
+cannot prove a required semantic fact, the harness requires normal full
+qualification instead of inventing a blocker. A positive work session cannot
+be converted into an early failure. The result always records
+`campaign_complete = false`, `replacement_pass_candidate = false`, and
+`phase_9_ready = false`, identifies later sessions/checks as `not_run`, and
+retains only bounded identities, failed checks, and the capture hash—not task
+text, the hidden oracle, source bodies, credentials, or raw provider content.
 
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
