@@ -3,7 +3,7 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current pre-Dogfood production/test candidate:
-  `e249aaae380c90b7b2d9b7d4022ae795176db053`
+  `972a0af7436091a822f689668a64e0f03195bb59`
 - Exact-final/V11 state: `passed`; `phase_8_ready = true`
 - Naturalistic Dogfood for the current candidate: `not_run`
 - `replacement_pass_candidate = false`
@@ -18,7 +18,7 @@ revisit trigger.
 
 This is entry eligibility only. No naturalistic activation, Question relevance,
 Decision comprehension, interruption cost, document usefulness, accessibility,
-or sustained-resource result exists for candidate `e249aaae`. The replacement
+or sustained-resource result exists for candidate `972a0af`. The replacement
 gate therefore remains pending and Phase 9 may not begin.
 
 The earlier `a1efc336` campaign and its `387b7b52` repeated-dogfood candidate

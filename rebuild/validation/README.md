@@ -194,7 +194,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `e249aaae380c90b7b2d9b7d4022ae795176db053`,
+production/test candidate `972a0af7436091a822f689668a64e0f03195bb59`,
 official V11 reported no active accepted-Decision revisit trigger, and the
 candidate is eligible for a fresh naturalistic Dogfood campaign. No Dogfood
 result exists for this corrected candidate, so this evidence does not establish
