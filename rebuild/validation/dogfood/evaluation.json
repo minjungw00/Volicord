@@ -71,6 +71,25 @@
     "derived_state_bytes",
     "peak_memory_bytes"
   ],
+  "resource_qualification": {
+    "supported_operating_system": "Linux",
+    "peak_memory_mechanism": "linux_procfs_process_tree_rss_sampling",
+    "peak_memory_sampling_interval_ms": 10,
+    "repeated_resource_repetition_count": 4,
+    "repeated_operations": [
+      "repository_analysis",
+      "document_projection",
+      "derived_analysis_repair"
+    ],
+    "measured_storage_classes": [
+      "runtime_home_bytes",
+      "derived_state_bytes",
+      "document_output_bytes"
+    ],
+    "cumulative_growth_basis": "after one warm-up round, a measured storage class increases on every remaining fixed-input, fixed-destination round",
+    "universal_product_ceiling_applied": false,
+    "raw_evidence_retention": "ignored_local_state_only"
+  },
   "accessibility_checks": [
     "keyboard_reachability",
     "visible_focus",
@@ -80,6 +99,35 @@
     "korean_english_fixed_ui",
     "document_html_language"
   ],
+  "accessibility_machine_contract": {
+    "hidden_controls_excluded": [
+      "input_type_hidden",
+      "hidden_attribute",
+      "aria_hidden_true",
+      "inline_display_none",
+      "inline_visibility_hidden"
+    ],
+    "visible_form_control_names": [
+      "associated_label",
+      "enclosing_label",
+      "aria_label",
+      "aria_labelledby"
+    ],
+    "button_names": [
+      "meaningful_visible_text",
+      "associated_label",
+      "enclosing_label",
+      "aria_label",
+      "aria_labelledby"
+    ],
+    "deterministic_failures": [
+      "unlabeled_visible_control",
+      "invalid_heading_order",
+      "missing_required_html_language",
+      "wrong_required_html_language"
+    ],
+    "manual_observation_may_override_deterministic_failure": false
+  },
   "permitted_accessibility_observations": [
     "keyboard_reachability",
     "visible_focus",

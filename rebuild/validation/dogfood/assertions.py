@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -21,6 +22,7 @@ def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
     event_source = CODEX_EVENTS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
+    definition_value = json.loads(definition)
     tree = ast.parse(source)
     imports = {
         alias.name
@@ -70,6 +72,38 @@ def main() -> int:
         raise AssertionError("the superseded Phase 8 transmission contract remains")
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
+    if definition_value["real_session_evidence"].get("required_codex_sessions_per_cycle") != 2:
+        raise AssertionError("Phase 8 no longer requires twelve distinct real Codex sessions")
+    resources = definition_value.get("resource_qualification", {})
+    if (
+        resources.get("supported_operating_system") != "Linux"
+        or resources.get("peak_memory_mechanism")
+        != "linux_procfs_process_tree_rss_sampling"
+        or resources.get("repeated_resource_repetition_count", 0) < 3
+        or resources.get("universal_product_ceiling_applied") is not False
+    ):
+        raise AssertionError("Phase 8 resource qualification definition is incomplete")
+    accessibility = definition_value.get("accessibility_machine_contract", {})
+    if (
+        "meaningful_visible_text" not in accessibility.get("button_names", [])
+        or "aria_labelledby" not in accessibility.get("visible_form_control_names", [])
+        or accessibility.get("manual_observation_may_override_deterministic_failure")
+        is not False
+    ):
+        raise AssertionError("Phase 8 accessible-name qualification definition is incomplete")
+    for marker in (
+        "control_has_accessible_name",
+        "aria-labelledby",
+        "aria-label",
+        "hidden_control_count",
+        "unlabeled_control_count",
+        "LinuxProcessTreePeakRss",
+        "repeated_resource_rehearsal",
+        "unexplained_cumulative_growth_observed",
+        "universal_product_ceiling_applied",
+    ):
+        if marker not in source:
+            raise AssertionError(f"Phase 8 qualification support is missing {marker}")
     for forwarding_requirement in (
         "commands used only for incidental inspection",
         "full-result text(r) forwarding",

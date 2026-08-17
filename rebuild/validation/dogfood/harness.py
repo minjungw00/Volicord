@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any, Callable
 
@@ -50,6 +51,16 @@ ALLOWED_STATUS = {
     "passed", "failed", "partial", "unsupported", "skipped", "environment_blocked"
 }
 CLASSES = ("volicord", "small-python", "polyglot-medium")
+RESOURCE_OPERATIONS = (
+    "repository_analysis",
+    "document_projection",
+    "derived_analysis_repair",
+)
+RESOURCE_STORAGE_METRICS = (
+    "runtime_home_bytes",
+    "derived_state_bytes",
+    "document_output_bytes",
+)
 REAL_SESSION_CHECKS = (
     "repository_specific_objective",
     "clean_bounded_baseline",
@@ -138,6 +149,242 @@ def directory_bytes(path: Path) -> int:
     return total
 
 
+class LinuxProcessTreePeakRss:
+    """Observe the harness and its descendants without changing child execution."""
+
+    def __init__(self, sampling_interval_ms: int) -> None:
+        self.sampling_interval_ms = sampling_interval_ms
+        self.peak_bytes = 0
+        self.sample_count = 0
+        self.observed_process_count = 0
+        self.error: str | None = None
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._page_size = int(os.sysconf("SC_PAGE_SIZE"))
+
+    def _process_tree_rss(self) -> tuple[int, int]:
+        root_pid = os.getpid()
+        pending = [root_pid]
+        observed: set[int] = set()
+        total = 0
+        while pending:
+            process_id = pending.pop()
+            if process_id in observed:
+                continue
+            observed.add(process_id)
+            process_root = Path("/proc") / str(process_id)
+            try:
+                fields = (process_root / "statm").read_text(encoding="ascii").split()
+                total += int(fields[1]) * self._page_size
+                children = (
+                    process_root / "task" / str(process_id) / "children"
+                ).read_text(encoding="ascii")
+            except FileNotFoundError:
+                if process_id == root_pid:
+                    raise
+                continue
+            pending.extend(int(value) for value in children.split())
+        return total, len(observed)
+
+    def _sample(self) -> None:
+        try:
+            rss_bytes, process_count = self._process_tree_rss()
+        except (OSError, ValueError, IndexError) as error:
+            self.error = type(error).__name__
+            self._stop.set()
+            return
+        self.peak_bytes = max(self.peak_bytes, rss_bytes)
+        self.observed_process_count = max(self.observed_process_count, process_count)
+        self.sample_count += 1
+
+    def _observe(self) -> None:
+        while not self._stop.wait(self.sampling_interval_ms / 1000):
+            self._sample()
+
+    def start(self) -> None:
+        if platform.system() != "Linux" or not Path("/proc/self/statm").is_file():
+            self.error = "linux_procfs_unavailable"
+            return
+        self._sample()
+        if self.error is None:
+            self._thread = threading.Thread(target=self._observe, daemon=True)
+            self._thread.start()
+
+    def stop(self) -> dict[str, Any]:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if self.error is None:
+            self._sample()
+        status = (
+            "passed"
+            if self.error is None and self.sample_count > 0 and self.peak_bytes > 0
+            else "environment_blocked"
+        )
+        return {
+            "status": status,
+            "peak_memory_bytes": self.peak_bytes if status == "passed" else None,
+            "mechanism": "linux_procfs_process_tree_rss_sampling",
+            "sampling_interval_ms": self.sampling_interval_ms,
+            "sample_count": self.sample_count,
+            "maximum_observed_process_count": self.observed_process_count,
+            "measurement_error": self.error,
+            "scope": "dogfood_harness_and_descendant_processes",
+        }
+
+
+def bounded_process_result(value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "outcome": value.get("outcome"),
+        "exit_code": value.get("exit_code"),
+        "termination": value.get("termination"),
+        "spawn_failed": value.get("spawn_error") is not None,
+        "duration_ms": value.get("duration_ms"),
+    }
+
+
+def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]:
+    if len(rounds) < 3:
+        return {
+            "status": "unsupported",
+            "conclusion": "insufficient_repeated_observations",
+            "unexplained_cumulative_growth_observed": None,
+            "metric_deltas_bytes": {},
+        }
+    if any(
+        set(round_value.get("operations", {})) != set(RESOURCE_OPERATIONS)
+        for round_value in rounds
+    ):
+        return {
+            "status": "unsupported",
+            "conclusion": "repeated_operation_evidence_incomplete",
+            "unexplained_cumulative_growth_observed": None,
+            "metric_deltas_bytes": {},
+        }
+    if any(
+        operation.get("exit_code") != 0 or operation.get("termination") is not None
+        for round_value in rounds
+        for operation in round_value.get("operations", {}).values()
+    ):
+        return {
+            "status": "failed",
+            "conclusion": "repeated_operation_failed",
+            "unexplained_cumulative_growth_observed": None,
+            "metric_deltas_bytes": {},
+        }
+    if any(
+        not isinstance(round_value.get(name), int)
+        for round_value in rounds
+        for name in RESOURCE_STORAGE_METRICS
+    ):
+        return {
+            "status": "unsupported",
+            "conclusion": "resource_measurement_unavailable",
+            "unexplained_cumulative_growth_observed": None,
+            "metric_deltas_bytes": {},
+        }
+    deltas = {
+        name: [
+            rounds[index][name] - rounds[index - 1][name]
+            for index in range(1, len(rounds))
+        ]
+        for name in RESOURCE_STORAGE_METRICS
+    }
+    post_warmup = {name: values[1:] for name, values in deltas.items()}
+    cumulative = [
+        name for name, values in post_warmup.items()
+        if values and all(value > 0 for value in values)
+    ]
+    stable = all(all(value == 0 for value in values) for values in post_warmup.values())
+    return {
+        "status": "failed" if cumulative else "passed",
+        "conclusion": (
+            "unexplained_cumulative_growth_observed"
+            if cumulative else
+            "stable_after_warmup"
+            if stable else
+            "bounded_variation_without_cumulative_growth"
+        ),
+        "unexplained_cumulative_growth_observed": bool(cumulative),
+        "cumulative_growth_metrics": cumulative,
+        "metric_deltas_bytes": deltas,
+    }
+
+
+def repeated_resource_rehearsal(
+    kind: str,
+    cycle_root: Path,
+    recorder: Any,
+    base_env: dict[str, str],
+    project_id: str | None,
+    repetition_count: int,
+) -> dict[str, Any]:
+    target_root = cycle_root / "work" / kind
+    cli = target_root / "prefix/bin/volicord"
+    if not project_id or not cli.is_file():
+        return {
+            "status": "environment_blocked",
+            "conclusion": "product_prerequisite_unavailable",
+            "unexplained_cumulative_growth_observed": None,
+            "repetition_count": 0,
+            "rounds": [],
+        }
+    home = target_root / "home"
+    runtime = target_root / "runtime"
+    environment = base_env | {
+        "HOME": str(home),
+        "XDG_DATA_HOME": str(home / ".local/share"),
+        "CODEX_HOME": str(home / ".codex"),
+        "VOLICORD_RUNTIME_DIR": str(runtime),
+        "VOLICORD_HOME": str(target_root / "legacy-runtime"),
+        "PATH": f"{target_root / 'prefix/bin'}:{base_env.get('PATH', '')}",
+    }
+    repeated_document = target_root / "repeated-resource/project-architecture-guide.html"
+    repeated_document.parent.mkdir(parents=True, exist_ok=True)
+    rounds: list[dict[str, Any]] = []
+    for repetition in range(1, repetition_count + 1):
+        analysis = recorder.run(
+            f"resource-{repetition}-analyze",
+            [str(cli), "analyze", project_id],
+            environment,
+        )
+        document = recorder.run(
+            f"resource-{repetition}-document",
+            [
+                str(cli), "documents", "export", project_id,
+                "project-architecture-guide", "html", str(repeated_document), "en",
+            ],
+            environment,
+        )
+        repair = recorder.run(
+            f"resource-{repetition}-repair",
+            [str(cli), "repair", project_id, "derived-analysis"],
+            environment,
+        )
+        rounds.append({
+            "round": repetition,
+            "operations": {
+                "repository_analysis": bounded_process_result(analysis),
+                "document_projection": bounded_process_result(document),
+                "derived_analysis_repair": bounded_process_result(repair),
+            },
+            "runtime_home_bytes": directory_bytes(runtime),
+            "derived_state_bytes": directory_bytes(runtime / "analysis"),
+            "document_output_bytes": (
+                repeated_document.stat().st_size if repeated_document.is_file() else None
+            ),
+        })
+    conclusion = repeated_resource_conclusion(rounds)
+    return {
+        **conclusion,
+        "repetition_count": repetition_count,
+        "operations_per_round": list(RESOURCE_OPERATIONS),
+        "fixed_input_and_destination": True,
+        "universal_product_ceiling_applied": False,
+        "rounds": rounds,
+    }
+
+
 def load_v11() -> Any:
     spec = importlib.util.spec_from_file_location("volicord_phase8_v11", V11_HARNESS)
     if spec is None or spec.loader is None:
@@ -165,6 +412,37 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("Phase 8 must normalize Codex rollout and canonical product evidence")
     if evidence.get("harness_performs_or_authorizes_transmission") is not False:
         raise ValueError("the Phase 8 verifier may not claim Codex transmission authority")
+    resources = value.get("resource_qualification", {})
+    if (
+        resources.get("supported_operating_system") != "Linux"
+        or resources.get("peak_memory_mechanism")
+        != "linux_procfs_process_tree_rss_sampling"
+        or not isinstance(resources.get("peak_memory_sampling_interval_ms"), int)
+        or resources.get("peak_memory_sampling_interval_ms", 0) <= 0
+        or resources.get("repeated_resource_repetition_count", 0) < 3
+        or tuple(resources.get("repeated_operations", [])) != RESOURCE_OPERATIONS
+        or tuple(resources.get("measured_storage_classes", []))
+        != RESOURCE_STORAGE_METRICS
+        or resources.get("universal_product_ceiling_applied") is not False
+        or resources.get("raw_evidence_retention") != "ignored_local_state_only"
+    ):
+        raise ValueError("the Phase 8 bounded resource qualification contract changed")
+    accessibility = value.get("accessibility_machine_contract", {})
+    if (
+        tuple(accessibility.get("visible_form_control_names", []))
+        != (
+            "associated_label",
+            "enclosing_label",
+            "aria_label",
+            "aria_labelledby",
+        )
+        or "meaningful_visible_text" not in accessibility.get("button_names", [])
+        or "unlabeled_visible_control"
+        not in accessibility.get("deterministic_failures", [])
+        or accessibility.get("manual_observation_may_override_deterministic_failure")
+        is not False
+    ):
+        raise ValueError("the Phase 8 accessibility machine contract changed")
     if (
         evidence.get("required_capture_format")
         != "codex_mcp_completion_rollout_jsonl"
@@ -1218,56 +1496,154 @@ def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, s
     return result
 
 
+VOID_HTML_ELEMENTS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+}
+
+
+def normalized_text(parts: list[str]) -> str:
+    return " ".join(" ".join(parts).split())
+
+
 class AccessibilityParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.html_lang: str | None = None
         self.heading_levels: list[int] = []
-        self.controls = 0
-        self.labels = 0
+        self.controls: list[dict[str, Any]] = []
+        self.labels: list[dict[str, Any]] = []
+        self.element_text: dict[str, list[str]] = {}
+        self.stack: list[dict[str, Any]] = []
         self.links = 0
         self.viewport = False
         self.styles: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
+        attributes = {name: value for name, value in attrs}
+        parent_hidden = bool(self.stack and self.stack[-1]["hidden"])
+        inline_style = (attributes.get("style") or "").replace(" ", "").lower()
+        hidden = parent_hidden or "hidden" in attributes or attributes.get("aria-hidden", "").lower() == "true"
+        hidden = hidden or "display:none" in inline_style or "visibility:hidden" in inline_style
+        if tag == "input" and (attributes.get("type") or "text").lower() == "hidden":
+            hidden = True
+        node: dict[str, Any] = {
+            "tag": tag,
+            "hidden": hidden,
+            "element_id": attributes.get("id"),
+            "label_index": None,
+            "control_index": None,
+        }
         if tag == "html":
             self.html_lang = attributes.get("lang")
-        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"} and not hidden:
             self.heading_levels.append(int(tag[1]))
         if tag in {"input", "select", "textarea", "button"}:
-            self.controls += 1
+            enclosing_labels = [
+                int(item["label_index"])
+                for item in self.stack
+                if item["label_index"] is not None
+            ]
+            node["control_index"] = len(self.controls)
+            self.controls.append({
+                "tag": tag,
+                "attributes": attributes,
+                "hidden": hidden,
+                "enclosing_labels": enclosing_labels,
+                "text": [],
+            })
         if tag == "label":
-            self.labels += 1
+            node["label_index"] = len(self.labels)
+            self.labels.append({"for": attributes.get("for"), "text": []})
         if tag == "a" and attributes.get("href"):
             self.links += 1
         if tag == "meta" and attributes.get("name") == "viewport":
             self.viewport = True
+        if node["element_id"]:
+            self.element_text.setdefault(str(node["element_id"]), [])
+        if tag not in VOID_HTML_ELEMENTS:
+            self.stack.append(node)
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index]["tag"] == tag:
+                del self.stack[index:]
+                return
 
     def handle_data(self, data: str) -> None:
         if ":root{" in data or "@media" in data or ":focus" in data:
             self.styles.append(data)
+        if not data.strip() or (self.stack and self.stack[-1]["hidden"]):
+            return
+        for node in self.stack:
+            if node["element_id"]:
+                self.element_text[str(node["element_id"])].append(data)
+            if node["label_index"] is not None:
+                self.labels[int(node["label_index"])]["text"].append(data)
+            control_index = node["control_index"]
+            if control_index is not None and self.controls[int(control_index)]["tag"] == "button":
+                self.controls[int(control_index)]["text"].append(data)
+
+    def control_has_accessible_name(self, control: dict[str, Any]) -> bool:
+        attributes = control["attributes"]
+        labelled_by = (attributes.get("aria-labelledby") or "").split()
+        if labelled_by and normalized_text([
+            normalized_text(self.element_text.get(element_id, []))
+            for element_id in labelled_by
+        ]):
+            return True
+        if (attributes.get("aria-label") or "").strip():
+            return True
+        control_id = attributes.get("id")
+        label_indexes = set(control["enclosing_labels"])
+        if control_id:
+            label_indexes.update(
+                index for index, label in enumerate(self.labels) if label["for"] == control_id
+            )
+        if any(normalized_text(self.labels[index]["text"]) for index in label_indexes):
+            return True
+        return control["tag"] == "button" and bool(normalized_text(control["text"]))
+
+    def control_summary(self) -> dict[str, int]:
+        visible = [control for control in self.controls if not control["hidden"]]
+        named = [control for control in visible if self.control_has_accessible_name(control)]
+        return {
+            "visible_control_count": len(visible),
+            "hidden_control_count": len(self.controls) - len(visible),
+            "named_control_count": len(named),
+            "unlabeled_control_count": len(visible) - len(named),
+        }
 
 
 def parse_accessibility_html(content: str, *, expected_language: str | None) -> dict[str, Any]:
     parser = AccessibilityParser()
     parser.feed(content)
+    parser.close()
     style = "\n".join(parser.styles)
     heading_order = all(next_level <= current + 1 for current, next_level in zip(parser.heading_levels, parser.heading_levels[1:]))
+    controls = parser.control_summary()
+    headings_and_labels = bool(
+        parser.heading_levels
+        and heading_order
+        and controls["unlabeled_control_count"] == 0
+    )
+    actual_language = parser.html_lang.strip().lower() if parser.html_lang else None
+    required_language = expected_language.strip().lower() if expected_language else None
     checks = {
-        "keyboard_reachability": "passed" if parser.links + parser.controls > 0 else "partial",
+        "keyboard_reachability": "passed" if parser.links + controls["visible_control_count"] > 0 else "partial",
         "visible_focus": "passed" if re.search(r":focus(?:-visible)?", style) else "partial",
         "not_color_only": "partial",
-        "headings_and_labels": "passed" if parser.heading_levels and heading_order and parser.labels >= parser.controls else "partial",
+        "headings_and_labels": "passed" if headings_and_labels else "failed",
         "narrow_and_zoomed_presentation": "partial" if parser.viewport else "failed",
-        "document_html_language": "passed" if expected_language is None or parser.html_lang == expected_language else "failed",
+        "document_html_language": "passed" if required_language is None or actual_language == required_language else "failed",
     }
     return {
         "checks": checks,
         "html_language": parser.html_lang,
         "heading_count": len(parser.heading_levels),
-        "control_count": parser.controls,
-        "label_count": parser.labels,
+        "heading_order_valid": heading_order,
+        **controls,
+        "label_count": len(parser.labels),
         "viewport": parser.viewport,
     }
 
@@ -1424,6 +1800,8 @@ def sanitized_cycle(
     duration_ms: float,
     repository_revision: str | None,
     real_session_raw: dict[str, Any] | None,
+    peak_memory: dict[str, Any],
+    repeated_resources: dict[str, Any],
     manual_observations: dict[str, Any] | None = None,
     accessibility_observations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1443,8 +1821,8 @@ def sanitized_cycle(
         "portable_bundle_bytes": bundle.stat().st_size if bundle.is_file() else None,
         "runtime_home_bytes": directory_bytes(target_root / "runtime"),
         "derived_state_bytes": directory_bytes(analysis_store),
-        "peak_memory_bytes": None,
-        "peak_memory_status": "unsupported",
+        "peak_memory_bytes": peak_memory.get("peak_memory_bytes"),
+        "peak_memory_status": peak_memory.get("status", "environment_blocked"),
     }
     accessibility = (
         live_viewer_accessibility(target_root, raw["project_id"])
@@ -1486,12 +1864,21 @@ def sanitized_cycle(
         repository_revision=repository_revision,
     )
     deterministic_status = status_from_steps(step_statuses)
+    resource_qualification = {
+        "status": status_from_steps({
+            "peak_memory": peak_memory.get("status", "environment_blocked"),
+            "repeated_resources": repeated_resources.get("status", "unsupported"),
+        }),
+        "peak_memory": peak_memory,
+        "repeated_resources": repeated_resources,
+    }
     return {
         "cycle": cycle,
         "status": status_from_steps(
             {
                 "deterministic_v11": deterministic_status,
                 "real_session_dogfood": actual["status"],
+                "resource_qualification": resource_qualification["status"],
             }
         ),
         "project_identity": raw.get("project_id"),
@@ -1509,7 +1896,37 @@ def sanitized_cycle(
         "real_session_dogfood": actual,
         "quality_observations": quality,
         "measurements": metrics,
+        "resource_qualification": resource_qualification,
         "accessibility": accessibility,
+    }
+
+
+def aggregate_resource_qualification(repositories: list[dict[str, Any]]) -> dict[str, Any]:
+    observations = [
+        cycle.get("resource_qualification", {})
+        for repository in repositories
+        for cycle in repository.get("cycles", [])
+    ]
+    statuses = {
+        f"observation_{index}": observation.get("status", "unsupported")
+        for index, observation in enumerate(observations)
+    }
+    peaks = [
+        observation.get("peak_memory", {}).get("peak_memory_bytes")
+        for observation in observations
+        if isinstance(observation.get("peak_memory", {}).get("peak_memory_bytes"), int)
+    ]
+    conclusions = Counter(
+        observation.get("repeated_resources", {}).get("conclusion", "unobserved")
+        for observation in observations
+    )
+    return {
+        "status": status_from_steps(statuses),
+        "observation_count": len(observations),
+        "measured_peak_count": len(peaks),
+        "maximum_observed_peak_memory_bytes": max(peaks) if peaks else None,
+        "repeated_resource_conclusions": dict(sorted(conclusions.items())),
+        "universal_product_ceiling_applied": False,
     }
 
 
@@ -1557,6 +1974,23 @@ def sanitize_check(value: Any) -> None:
     if re.search(r"/(?:home|tmp)/[^\s\"']+", encoded):
         raise ValueError("sanitized result contains an absolute local path")
 
+    prohibited_fields = {
+        "command_log", "raw_command_log", "source_body", "stdout", "stderr",
+        "credential", "credentials", "private_prompt",
+    }
+
+    def inspect(item: Any) -> None:
+        if isinstance(item, dict):
+            if prohibited_fields & set(item):
+                raise ValueError("sanitized result contains a prohibited raw evidence field")
+            for child in item.values():
+                inspect(child)
+        elif isinstance(item, list):
+            for child in item:
+                inspect(child)
+
+    inspect(value)
+
 
 def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     if result.get("kind") != "phase8_dogfood_result":
@@ -1590,12 +2024,61 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 raise ValueError("real-session dogfood evidence checks are incomplete")
             if not set(actual["checks"].values()) <= ALLOWED_STATUS:
                 raise ValueError("real-session dogfood evidence contains an unknown status")
+            if set(cycle.get("measurements", {})) != set(definition["measurements"]) | {
+                "cycle_duration_ms",
+                "peak_memory_status",
+            }:
+                raise ValueError("dogfood cycle measurements are incomplete")
+            resources = cycle.get("resource_qualification", {})
+            if resources.get("status") not in ALLOWED_STATUS:
+                raise ValueError("dogfood cycle has an invalid resource qualification status")
+            peak = resources.get("peak_memory", {})
+            repeated = resources.get("repeated_resources", {})
+            if peak.get("status") not in ALLOWED_STATUS or repeated.get("status") not in ALLOWED_STATUS:
+                raise ValueError("dogfood cycle has an invalid resource evidence status")
+            if resources.get("status") != status_from_steps({
+                "peak_memory": peak["status"],
+                "repeated_resources": repeated["status"],
+            }):
+                raise ValueError("dogfood cycle resource status does not match its evidence")
+            if peak.get("status") == "passed" and not (
+                isinstance(peak.get("peak_memory_bytes"), int)
+                and peak["peak_memory_bytes"] > 0
+            ):
+                raise ValueError("passed peak-memory evidence has no measured peak")
+            if repeated.get("status") == "passed" and (
+                repeated.get("unexplained_cumulative_growth_observed") is not False
+                or repeated.get("universal_product_ceiling_applied") is not False
+                or repeated.get("fixed_input_and_destination") is not True
+                or tuple(repeated.get("operations_per_round", []))
+                != RESOURCE_OPERATIONS
+                or repeated.get("repetition_count")
+                != definition["resource_qualification"][
+                    "repeated_resource_repetition_count"
+                ]
+                or len(repeated.get("rounds", []))
+                != repeated.get("repetition_count")
+            ):
+                raise ValueError("passed repeated-resource evidence is not bounded and measured")
             real_invocations.extend(
                 [
                     actual.get("work_session_id"),
                     actual.get("resume_session_id"),
                 ]
             )
+    aggregate_resources = result.get("resource_qualification", {})
+    if (
+        aggregate_resources != aggregate_resource_qualification(repositories)
+        or aggregate_resources.get("status") not in ALLOWED_STATUS
+        or aggregate_resources.get("observation_count") != len(CLASSES) * definition["candidate_cycle_count"]
+        or aggregate_resources.get("universal_product_ceiling_applied") is not False
+        or (
+            aggregate_resources.get("status") == "passed"
+            and aggregate_resources.get("measured_peak_count")
+            != aggregate_resources.get("observation_count")
+        )
+    ):
+        raise ValueError("dogfood aggregate resource qualification is incomplete")
     if result.get("replacement_pass_candidate") is True:
         if result.get("status") != "passed" or result.get("blockers"):
             raise ValueError("replacement pass cannot have a non-pass status or blocker")
@@ -1607,6 +2090,8 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             raise ValueError("replacement pass requires current structural/fallback regression")
         if result.get("accessibility", {}).get("status") != "passed":
             raise ValueError("replacement pass requires passed accessibility evaluation")
+        if result.get("resource_qualification", {}).get("status") != "passed":
+            raise ValueError("replacement pass requires passed resource qualification")
         accessibility_checks = result.get("accessibility", {}).get("checks", {})
         if set(accessibility_checks) != set(definition["accessibility_checks"]) or any(
             status != "passed" for status in accessibility_checks.values()
@@ -1630,6 +2115,8 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                     for observation in cycle.get("quality_observations", {}).values()
                 ):
                     raise ValueError("replacement pass contains an unqualified quality observation")
+                if cycle.get("resource_qualification", {}).get("status") != "passed":
+                    raise ValueError("replacement pass contains unqualified resource evidence")
         if (
             any(not nonempty_string(identity) for identity in real_invocations)
             or len(set(real_invocations)) != len(real_invocations)
@@ -1638,8 +2125,18 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     sanitize_check(result)
 
 
-def aggregate_status(repositories: list[dict[str, Any]], regression: dict[str, Any], accessibility: dict[str, Any], blockers: list[str]) -> str:
-    statuses = [regression.get("status", "failed"), accessibility.get("status", "failed")]
+def aggregate_status(
+    repositories: list[dict[str, Any]],
+    regression: dict[str, Any],
+    accessibility: dict[str, Any],
+    resources: dict[str, Any],
+    blockers: list[str],
+) -> str:
+    statuses = [
+        regression.get("status", "failed"),
+        accessibility.get("status", "failed"),
+        resources.get("status", "failed"),
+    ]
     statuses.extend(repository.get("status", "failed") for repository in repositories)
     if "failed" in statuses:
         return "failed"
@@ -1717,6 +2214,10 @@ def run_evaluation(args: argparse.Namespace) -> int:
                     cycle_root.mkdir()
                     recorder = v11.Recorder(cycle_root)
                     cycle_started = time.monotonic_ns()
+                    peak_observer = LinuxProcessTreePeakRss(
+                        definition["resource_qualification"]["peak_memory_sampling_interval_ms"]
+                    )
+                    peak_observer.start()
                     try:
                         raw = v11.rehearse_target(kind, cycle_root, recorder, base_env, None)
                     except (AssertionError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
@@ -1728,6 +2229,27 @@ def run_evaluation(args: argparse.Namespace) -> int:
                                 for name in definition["required_product_steps"]
                             },
                         }
+                    try:
+                        repeated_resources = repeated_resource_rehearsal(
+                            kind,
+                            cycle_root,
+                            recorder,
+                            base_env,
+                            raw.get("project_id"),
+                            definition["resource_qualification"][
+                                "repeated_resource_repetition_count"
+                            ],
+                        )
+                    except (OSError, RuntimeError, ValueError) as error:
+                        repeated_resources = {
+                            "status": "failed",
+                            "conclusion": "resource_rehearsal_error",
+                            "unexplained_cumulative_growth_observed": None,
+                            "error_class": type(error).__name__,
+                            "repetition_count": 0,
+                            "rounds": [],
+                        }
+                    peak_memory = peak_observer.stop()
                     write_json(cycle_root / "raw-cycle-result.json", raw)
                     cycles.append(sanitized_cycle(
                         kind,
@@ -1740,6 +2262,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
                             specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
                             repository_manifest.parent,
                         ),
+                        peak_memory,
+                        repeated_resources,
                         specs[kind].get("manual_observations", {}).get(str(cycle_number)),
                         specs[kind].get("accessibility_observations", {}).get(str(cycle_number)),
                     ))
@@ -1773,7 +2297,26 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         "real_session_dogfood": actual,
                         "quality_observations": quality_observations(skipped),
                         "measurements": {
-                            name: None for name in definition["measurements"]
+                            **{name: None for name in definition["measurements"]},
+                            "cycle_duration_ms": None,
+                            "peak_memory_status": "environment_blocked",
+                        },
+                        "resource_qualification": {
+                            "status": "environment_blocked",
+                            "peak_memory": {
+                                "status": "environment_blocked",
+                                "peak_memory_bytes": None,
+                                "mechanism": definition["resource_qualification"][
+                                    "peak_memory_mechanism"
+                                ],
+                            },
+                            "repeated_resources": {
+                                "status": "environment_blocked",
+                                "conclusion": "repository_prerequisite_unavailable",
+                                "unexplained_cumulative_growth_observed": None,
+                                "repetition_count": 0,
+                                "rounds": [],
+                            },
                         },
                         "accessibility": {"status": "skipped", "checks": {}},
                     })
@@ -1791,6 +2334,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
         v11.prepare_repository = original_prepare
     regression = run_fixture_regression(v11, raw_root, base_env, definition)
     accessibility = aggregate_accessibility(repository_results)
+    resource_qualification = aggregate_resource_qualification(repository_results)
     try:
         maintained_decisions = v11.read_decision_revisit_assessment(DECISION_REGISTER)
     except (OSError, ValueError):
@@ -1811,6 +2355,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
         blockers.append("dogfood evidence activates one or more accepted Decision revisit triggers")
     if accessibility.get("status") != "passed":
         blockers.append("accessibility evaluation has a blocker or unqualified criterion")
+    if resource_qualification.get("status") != "passed":
+        blockers.append("peak-memory or repeated-resource qualification did not pass")
     for repository in repository_results:
         if repository["status"] != "passed":
             blockers.append(f"{repository['class']} repeated journey did not pass")
@@ -1831,7 +2377,13 @@ def run_evaluation(args: argparse.Namespace) -> int:
                 )
     if regression["status"] != "passed":
         blockers.append("maintained structural/fallback regression did not pass")
-    status = aggregate_status(repository_results, regression, accessibility, blockers)
+    status = aggregate_status(
+        repository_results,
+        regression,
+        accessibility,
+        resource_qualification,
+        blockers,
+    )
     replacement_pass_candidate = status == "passed" and not blockers
     result = {
         "kind": "phase8_dogfood_result",
@@ -1852,6 +2404,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
         "repositories": repository_results,
         "fixture_regression": regression,
         "accessibility": accessibility,
+        "resource_qualification": resource_qualification,
         "privacy_and_transmission": {
             "evidence_mode": definition["real_session_evidence"]["mode"],
             "harness_performed_or_authorized_codex_transmission": False,
@@ -1868,7 +2421,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
         },
         "known_limits": [
             "Question relevance, decision comprehension, interruption cost, and document usefulness include agent-observed rather than human-subject evidence.",
-            "Peak memory is unsupported because the reused maintained child runner does not expose a reliable per-operation peak measurement.",
+            "Peak RSS is an observed Linux process-tree sample for each dogfood cycle, not a universal product memory ceiling.",
+            "Repeated-resource qualification is a bounded fixed-input rehearsal and does not claim indefinite-duration stability.",
             "A successful unavailable-provider recovery path is not commercial semantic-provider qualification.",
         ],
         "raw_evidence_retention": "ignored_phase8_raw_state_only",
@@ -2446,9 +3000,103 @@ def expect_rejected(result: dict[str, Any], definition: dict[str, Any], message:
 
 def self_test() -> int:
     definition = load_definition()
+    v11 = load_v11()
     revision = "0" * 40
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
+    process_recorder = v11.Recorder(evidence_directory / "resource-processes")
+    observer = LinuxProcessTreePeakRss(
+        definition["resource_qualification"]["peak_memory_sampling_interval_ms"]
+    )
+    observer.start()
+    successful_process = process_recorder.run(
+        "successful-capture",
+        [
+            sys.executable,
+            "-c",
+            "import sys,time; x=bytearray(16*1024*1024); "
+            "sys.stdout.buffer.write(b'complete stdout\\n'); "
+            "sys.stderr.buffer.write(b'complete stderr\\n'); time.sleep(.12)",
+        ],
+        os.environ.copy(),
+        cwd=ROOT,
+    )
+    failed_process = process_recorder.run(
+        "failed-capture",
+        [sys.executable, "-c", "raise SystemExit(23)"],
+        os.environ.copy(),
+        cwd=ROOT,
+    )
+    terminated_process = process_recorder.run(
+        "terminated-capture",
+        [
+            sys.executable,
+            "-c",
+            "import os,signal; os.kill(os.getpid(), signal.SIGTERM)",
+        ],
+        os.environ.copy(),
+        cwd=ROOT,
+    )
+    after_failure_process = process_recorder.run(
+        "after-failure",
+        [sys.executable, "-c", "print('continued')"],
+        os.environ.copy(),
+        cwd=ROOT,
+    )
+    process_peak = observer.stop()
+    if platform.system() == "Linux" and process_peak["status"] != "passed":
+        raise AssertionError("Linux process-tree peak RSS was not measured")
+    if (
+        Path(successful_process["stdout"]).read_bytes() != b"complete stdout\n"
+        or Path(successful_process["stderr"]).read_bytes() != b"complete stderr\n"
+        or successful_process["exit_code"] != 0
+        or failed_process["exit_code"] != 23
+        or terminated_process["termination"] != {"kind": "signal", "number": 15}
+        or after_failure_process["exit_code"] != 0
+    ):
+        raise AssertionError("resource observation changed process output, exit, or non-fail-fast truth")
+    stable_rounds = [
+        {
+            "operations": {
+                name: {"exit_code": 0, "termination": None}
+                for name in RESOURCE_OPERATIONS
+            },
+            "runtime_home_bytes": runtime,
+            "derived_state_bytes": derived,
+            "document_output_bytes": document,
+        }
+        for runtime, derived, document in (
+            (100, 20, 10),
+            (120, 24, 10),
+            (120, 24, 10),
+            (120, 24, 10),
+        )
+    ]
+    stable_resources = repeated_resource_conclusion(stable_rounds)
+    if (
+        stable_resources["status"] != "passed"
+        or stable_resources["unexplained_cumulative_growth_observed"] is not False
+    ):
+        raise AssertionError("stable repeated resources did not qualify")
+    growing_rounds = json.loads(json.dumps(stable_rounds))
+    for index, round_value in enumerate(growing_rounds):
+        round_value["runtime_home_bytes"] = 100 + (index * 10)
+    growing_resources = repeated_resource_conclusion(growing_rounds)
+    if (
+        growing_resources["status"] != "failed"
+        or growing_resources["unexplained_cumulative_growth_observed"] is not True
+    ):
+        raise AssertionError("unexplained cumulative resource growth qualified")
+    if repeated_resource_conclusion(stable_rounds[:2])["status"] != "unsupported":
+        raise AssertionError("unobserved repeated resources were treated as measured")
+    incomplete_rounds = json.loads(json.dumps(stable_rounds))
+    incomplete_rounds[0]["operations"].pop("document_projection")
+    if repeated_resource_conclusion(incomplete_rounds)["status"] != "unsupported":
+        raise AssertionError("incomplete repeated-operation evidence qualified")
+    failed_rounds = json.loads(json.dumps(stable_rounds))
+    failed_rounds[1]["operations"]["repository_analysis"]["exit_code"] = 7
+    if repeated_resource_conclusion(failed_rounds)["status"] != "failed":
+        raise AssertionError("failed repeated resource operation qualified")
     external_fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
     external_fixture.pop("_evidence_file_sha256")
     external_fixture.pop("_evidence_directory")
@@ -2573,9 +3221,39 @@ def self_test() -> int:
         "<!doctype html><html lang=\"en\"><head>"
         "<meta name=\"viewport\" content=\"width=device-width\">"
         "<style>:focus{outline:2px solid}</style></head>"
-        "<body><h1>x</h1><a href=\"/\">x</a><label>y<input></label></body></html>"
+        "<body><h1>Project</h1><a href=\"/\">Overview</a>"
+        "<form><input type=\"hidden\" name=\"csrf\">"
+        "<label>Kind <select name=\"kind\"><option>Guide</option></select></label>"
+        "<label for=\"destination\">Destination</label><input id=\"destination\">"
+        "<textarea aria-label=\"Current user turn\"></textarea>"
+        "<span id=\"alternative-name\">Alternative</span>"
+        "<input aria-labelledby=\"alternative-name\">"
+        "<button type=\"submit\">Export document</button></form></body></html>"
     )
     parsed = parse_accessibility_html(valid_html, expected_language="en")
+    if (
+        parsed["checks"]["headings_and_labels"] != "passed"
+        or parsed["visible_control_count"] != 5
+        or parsed["hidden_control_count"] != 1
+        or parsed["named_control_count"] != 5
+    ):
+        raise AssertionError("viewer-shaped label, ARIA, hidden-input, and button names did not qualify")
+    unlabeled = parse_accessibility_html(
+        "<!doctype html><html lang=\"en\"><body><h1>Project</h1>"
+        "<input name=\"unlabeled\"><button></button></body></html>",
+        expected_language="en",
+    )
+    if (
+        unlabeled["checks"]["headings_and_labels"] != "failed"
+        or unlabeled["unlabeled_control_count"] != 2
+    ):
+        raise AssertionError("unlabeled visible controls qualified")
+    malformed_heading = parse_accessibility_html(
+        "<!doctype html><html lang=\"en\"><body><h1>Project</h1><h3>Skipped</h3></body></html>",
+        expected_language="en",
+    )
+    if malformed_heading["checks"]["headings_and_labels"] != "failed":
+        raise AssertionError("malformed heading hierarchy qualified")
     parsed["checks"]["korean_english_fixed_ui"] = "passed"
     parsed["status"] = status_from_steps(parsed["checks"])
     accessibility = qualify_accessibility(
@@ -2599,6 +3277,26 @@ def self_test() -> int:
     )
     if accessibility_aggregate["status"] != "passed":
         raise AssertionError("qualified parser evidence did not reach aggregate accessibility pass")
+
+    synthetic_repeated_resources = {
+        **stable_resources,
+        "repetition_count": 4,
+        "operations_per_round": list(RESOURCE_OPERATIONS),
+        "fixed_input_and_destination": True,
+        "universal_product_ceiling_applied": False,
+        "rounds": stable_rounds,
+    }
+    synthetic_resource_qualification = {
+        "status": "passed",
+        "peak_memory": process_peak,
+        "repeated_resources": synthetic_repeated_resources,
+    }
+    synthetic_measurements = {
+        **{name: None for name in definition["measurements"]},
+        "cycle_duration_ms": 1.0,
+        "peak_memory_bytes": process_peak["peak_memory_bytes"],
+        "peak_memory_status": "passed",
+    }
 
     repositories = []
     for index, kind in enumerate(CLASSES):
@@ -2632,7 +3330,8 @@ def self_test() -> int:
                     name: {"status": "passed", "basis": "bounded observation"}
                     for name in definition["quality_observations"]
                 },
-                "measurements": {},
+                "measurements": synthetic_measurements,
+                "resource_qualification": synthetic_resource_qualification,
                 "accessibility": accessibility,
             })
         repositories.append({
@@ -2651,6 +3350,7 @@ def self_test() -> int:
         "candidate_worktree": {"clean_before": True, "clean_after": True},
         "fixture_regression": {"status": "passed"},
         "accessibility": accessibility_aggregate,
+        "resource_qualification": aggregate_resource_qualification(repositories),
         "decision_revisit": {"observed_active_triggers": []},
     }
     validate_result(result, definition)
@@ -2663,6 +3363,12 @@ def self_test() -> int:
     leaked = json.loads(json.dumps(blocked))
     leaked["private_prompt"] = "private prompt body"
     expect_rejected(leaked, definition, "sanitizer accepted private prompt content")
+    raw_log_leak = json.loads(json.dumps(blocked))
+    raw_log_leak["resource_qualification"]["command_log"] = "raw.log"
+    expect_rejected(raw_log_leak, definition, "sanitizer accepted a raw resource command log")
+    local_path_leak = json.loads(json.dumps(blocked))
+    local_path_leak["resource_qualification"]["artifact"] = "/tmp/private/resource.json"
+    expect_rejected(local_path_leak, definition, "sanitizer accepted a local resource path")
     active = json.loads(json.dumps(result))
     active["decision_revisit"]["observed_active_triggers"] = [{"decision_id": "Q5"}]
     expect_rejected(active, definition, "replacement pass accepted a Decision revisit trigger")
@@ -3734,6 +4440,23 @@ def self_test() -> int:
     )
     if wrong_qualified["checks"]["document_html_language"] != "failed":
         raise AssertionError("observations hid wrong HTML language")
+    missing_viewport = parse_accessibility_html(
+        "<!doctype html><html lang=\"en\"><body><h1>Project</h1></body></html>",
+        expected_language="en",
+    )
+    missing_viewport["status"] = status_from_steps(missing_viewport["checks"])
+    viewport_qualified = qualify_accessibility(
+        missing_viewport,
+        {
+            "narrow_and_zoomed_presentation": {
+                "status": "passed",
+                "basis": "bounded observation",
+            },
+        },
+        set(definition["permitted_accessibility_observations"]),
+    )
+    if viewport_qualified["checks"]["narrow_and_zoomed_presentation"] != "failed":
+        raise AssertionError("manual observation hid deterministic viewport failure")
 
     unavailable_viewer = {
         "status": "environment_blocked",
@@ -3823,10 +4546,21 @@ def self_test() -> int:
         "missing_user_decision_rejected": "passed",
         "valid_hash_insufficient_semantics_rejected": "passed",
         "arbitrary_event_label_rejected": "passed",
-        "accessibility_real_parser_success": "passed",
+        "accessibility_viewer_shaped_names": "passed",
+        "accessibility_hidden_controls_excluded": "passed",
+        "accessibility_button_text_and_aria_names": "passed",
+        "accessibility_unlabeled_controls_rejected": "passed",
+        "accessibility_heading_order_rejected": "passed",
         "accessibility_machine_failure_authority": "passed",
         "viewer_environment_blocking": "passed",
         "manual_override_boundary": "passed",
+        "linux_process_tree_peak_rss": process_peak["status"],
+        "resource_process_truth_preserved": "passed",
+        "repeated_resource_stability": "passed",
+        "repeated_resource_growth_rejected": "passed",
+        "repeated_resource_operation_failure_rejected": "passed",
+        "repeated_resource_incomplete_evidence_unsupported": "passed",
+        "unobserved_resource_state_preserved": "passed",
         "sanitization_regressions": "passed",
         "decision_revisit_blocking": "passed",
         "v11_reuse_route": str(V11_HARNESS.relative_to(ROOT)),
