@@ -1,14 +1,15 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `80dd08e8828d7159ac7b8839178ccdd9f9013851`; aggregate `succeeded` with four
+  `e249aaae380c90b7b2d9b7d4022ae795176db053`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
 - Scope: qualified local platform primitives, source-grounded Project
-  projections and documents, Project-scoped provider privacy, Local Operations,
-  exact Guarded confirmation, live local viewer, clean Linux installation, and
-  discoverable high-level Codex/MCP integration
+  projections and documents, repository-bound read-only Project discovery,
+  Project-scoped provider privacy, Local Operations, exact Guarded confirmation,
+  live local viewer, clean Linux installation, and discoverable high-level
+  Codex/MCP integration
 - Excluded claim: this summary does not claim Phase 8 dogfood quality, Phase 9
   cutover, or legacy deletion
 
@@ -22,12 +23,12 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`80dd08e8828d7159ac7b8839178ccdd9f9013851`. Its four-command aggregate
+`e249aaae380c90b7b2d9b7d4022ae795176db053`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`b71602f4fca42b2b87fc3be753ab6bc924dd12332b48e8ab6821c0c29d71f8bb`.
+`3e0fd3a7e5c5d5347f4d6b99c7f2d30d31bdddb47551fe9580a1b88435998f6c`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `e8ce9c59882a6d97a921964b36bd8afb6dbaa7d2d6081d6569e3168cbe55a1ac`.
+is `75e213e78e8c84a5a3dcdc3af711f867e435efa9f0404e4ed913e22e9c639d5a`.
 All three authenticated Codex targets passed, the credential-retention audit
 passed with zero auth-named files, credential-content matches, or scan errors,
 and `phase_8_ready = true` is recorded in
@@ -51,12 +52,17 @@ an untrusted Host cannot retrieve the page value, and the value is absent from
 URLs and durable outputs. Stale, mismatched, reused, malformed, and unsupported
 requests retain their existing rejection behavior.
 
-The actual installed MCP server advertises 16 closed concrete schemas. A
-maintained client-side interpreter constructs representative Recall, Checkpoint,
-and Guarded calls from `tools/list`; missing and additional arguments are
-rejected consistently. A bounded authenticated `codex exec` turn selected and
-completed `volicord.project_health` using the advertised `project_id` shape and
-received connected/healthy structured state.
+The actual installed MCP server advertises 18 closed concrete schemas. The
+`project_resolve` surface canonicalizes an absolute repository path and reads
+the existing canonical binding without creating or revising a Project; it
+returns either the matching Project and current binding identity/revision or an
+explicit `not_found`. Host guidance requires this resolution before Recall in
+a fresh repository-scoped session and keeps explicit initialization separate.
+A maintained client-side interpreter constructs representative Recall,
+Checkpoint, and Guarded calls from `tools/list`; missing and additional
+arguments are rejected consistently. A bounded authenticated `codex exec` turn
+selected and completed `volicord.project_health` using the advertised
+`project_id` shape and received connected/healthy structured state.
 
 Supported `repair derived-analysis` and `reindex` now have a two-Project CLI
 journey. Controlled Project-owned corruption degrades visibly. Repository
@@ -103,10 +109,12 @@ background-provider authority.
   latency, accessibility, or long-duration resource ceilings.
 - V06 narrative quality, V07 commercial-provider behavior, and V10 platform
   portability retain the known limits in their individual reports.
-- Official V11 establishes entry eligibility for Phase 8. Phase 8 may begin,
-  but V11 does not establish its dogfood quality or completion. Phase 8 must
-  still evaluate repeated use, document usefulness, size, latency,
-  accessibility, and sustained resource behavior under its maintained plan.
+- Official V11 establishes entry eligibility for a fresh Phase 8 naturalistic
+  Dogfood campaign. It does not establish dogfood quality or completion. Phase
+  8 must still evaluate naturalistic activation, Question relevance, Decision
+  comprehension, repeated use, interruption cost, document usefulness, size,
+  latency, accessibility, and sustained resource behavior under its maintained
+  plan.
 - The unavailable production provider path proved exact Guarded confirmation,
   terminal cleanup, truthful no-transmission failure, and unaffected local
   operation. It did not qualify a commercial provider or successful external

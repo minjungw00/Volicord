@@ -191,21 +191,25 @@ text, the hidden oracle, source bodies, credentials, or raw provider content.
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
 
-The current maintained conclusion is recorded in `dogfood/report.md` and
-summarized in `phase-8-summary.md`: `replacement_gate = failed` and
-`phase_9_ready = false`. The repeated dogfood candidate is
-`387b7b527ac588c9061120f6e295508a4bd92c81`; all six actual-repository cycles
-were environment-blocked at the Codex/MCP step, four user-facing quality
-criteria remained partial in every cycle, and failed generated-document HTML
-language checks activated the accepted Q5 revisit trigger. Final admission and
-the gate were skipped, exact-final and official V11 invocation counts are zero,
-and no current final capsule or sealed Phase 8 candidate exists.
+The current maintained pre-Dogfood entry state is summarized in
+`phase-8-summary.md`: `replacement_gate = pending` and
+`phase_9_ready = false`. Exact final and same-session official V11 passed for
+production/test candidate `e249aaae380c90b7b2d9b7d4022ae795176db053`,
+official V11 reported no active accepted-Decision revisit trigger, and the
+candidate is eligible for a fresh naturalistic Dogfood campaign. No Dogfood
+result exists for this corrected candidate, so this evidence does not establish
+naturalistic activation, repeated-use quality, replacement passage, or Phase 9
+readiness.
 
-The earlier `end-to-end/multi-repository/report.md` and `phase-7-summary.md`
-remain the Phase 7 entry evidence. Their exact final/V11 candidate
-`80dd08e8828d7159ac7b8839178ccdd9f9013851` opened Phase 8 only; it does not
-seal the later dogfood candidate or establish Phase 8 completion. The Phase 8
-documentation conclusion is also outside exact final.
+The prior `a1efc336` campaign, its `387b7b52` repeated-dogfood candidate, and
+the raw `dogfood/report.md` remain nonqualifying evidence for an earlier product
+surface. Their ignored descriptors, workspaces, rollouts, bundles, and
+observations must not be reused for the corrected candidate. The maintained
+`end-to-end/multi-repository/report.md` and `phase-7-summary.md` now record the
+current exact-final/V11 entry evidence. A fresh campaign must generate new
+descriptors satisfying `work_task_materiality_basis`, and each fresh-resume
+session must resolve the repository-bound Project before Recall. This later
+documentation-only conclusion remains outside exact final.
 
 ## Admission, authorization, and handoff
 
