@@ -27,11 +27,11 @@ from codex_events import (
     CanonicalBundle,
     CodexCapture,
     EvidenceError,
-    MAX_PHASE8_OBJECTIVE_BYTES,
-    PHASE8_OBJECTIVE_PREFIX,
     ToolCall,
     command_is_clean_git_status,
     command_is_repository_inspection,
+    decode_established_fact_statements,
+    decode_question_alternatives,
     decode_string_blob,
     load_canonical_bundle,
     load_codex_capture,
@@ -63,8 +63,10 @@ RESOURCE_STORAGE_METRICS = (
     "document_output_bytes",
 )
 REAL_SESSION_CHECKS = (
-    "repository_specific_objective",
+    "naturalistic_prompt_integrity",
+    "plain_task_goal_linkage",
     "clean_bounded_baseline",
+    "researched_material_question",
     "meaningful_ordinary_changes",
     "source_grounded_checkpoint",
     "explicit_user_decision_source",
@@ -74,6 +76,7 @@ REAL_SESSION_CHECKS = (
     "recall_matches_checkpoint_decision_and_context",
     "meaningful_recalled_continuation",
 )
+MAX_USER_TASK_BYTES = 8192
 OFFICIAL_SUFFIXES = {
     ".java": "Java",
     ".py": "Python",
@@ -91,18 +94,6 @@ OFFICIAL_SUFFIXES = {
 }
 DOCUMENT_SUFFIXES = {".md", ".markdown", ".rst", ".adoc"}
 IGNORED_PARTS = {".git", ".local", "target", "node_modules", "vendor", "dist", "build"}
-RESUME_EXCLUDED_PARTS = IGNORED_PARTS | {
-    ".cache", "artifacts", "doc", "docs", "documentation", "evidence",
-    "generated", "generated-evidence", "logs", "observations", "out", "results",
-    "runtime-home", "runtime-homes", "runtime_home", "runtime_homes", "temp", "tmp",
-}
-SOURCE_SUFFIXES = {
-    ".c", ".cc", ".cpp", ".cxx", ".go", ".h", ".hpp", ".java", ".js", ".jsx",
-    ".kt", ".kts", ".m", ".mm", ".php", ".py", ".rb", ".rs", ".scala", ".swift",
-    ".ts", ".tsx", ".zig",
-}
-SOURCE_SCOPE_PARTS = {"crates", "include", "lib", "libs", "packages", "source", "src"}
-TEST_SCOPE_PARTS = {"spec", "specs", "test", "tests"}
 SECRET_MARKERS = (
     "bearer ", "api_key", "api-key", "access_token", "refresh_token",
     "private prompt", "auth.json", "credential_content",
@@ -552,22 +543,21 @@ def load_definition() -> dict[str, Any]:
         )
         or tuple(evidence.get("work_session_contract", []))
         != (
-            "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
-            "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
+            "the first user turn exactly matches the descriptor plain work_user_task",
+            "after Project initialization source canonical goal Context from that exact first user turn",
             "establish the repository baseline through repository_analyze before ordinary work",
+            "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
             "obtain and record the exact current-host user Decision",
             "perform real repository work after the baseline",
-            "reserve descriptor resume_change_scope source/test work and do not modify that scope before the Checkpoint",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
-            "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
-            "make the Checkpoint next step name the reserved resume_change_scope and require an implementation or test change",
-            "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement",
+            "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step",
         )
         or tuple(evidence.get("resume_session_contract", []))
         != (
+            "the first user turn exactly matches the descriptor plain fresh_resume_user_task and does not disclose Recall",
             "a fresh resume session invokes Recall before repository inspection or continued work",
-            "the resume session produces observed patch/change evidence intersecting resume_change_scope after Recall",
+            "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
             "the resume session preserves separate full-result numeric-exit validation after that change",
         )
         or evidence.get("command_forwarding_contract")
@@ -591,30 +581,29 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("the current MCP completion evidence contract changed")
     descriptor_contract = evidence.get("cycle_descriptor_contract", {})
     if (
-        descriptor_contract.get("resume_change_scope_field") != "resume_change_scope"
-        or descriptor_contract.get("minimum_entries") != 1
-        or "source/test" not in str(descriptor_contract.get("scope", ""))
-        or "leaves reserved scope unchanged" not in str(descriptor_contract.get("work_boundary", ""))
-        or "after Recall" not in str(descriptor_contract.get("resume_boundary", ""))
+        descriptor_contract.get("work_user_task_field") != "work_user_task"
+        or descriptor_contract.get("fresh_resume_user_task_field") != "fresh_resume_user_task"
+        or descriptor_contract.get("hidden_decision_oracle_field") != "decision_oracle"
+        or tuple(descriptor_contract.get("identity_fields", []))
+        != ("repository_class", "cycle", "repository_revision")
+        or descriptor_contract.get("evidence_reference_field") != "evidence"
     ):
         raise ValueError("the Phase 8 cycle descriptor contract changed")
-    objective = evidence.get("task_objective", {})
+    goal = evidence.get("plain_task_goal", {})
     if (
-        objective.get("envelope_prefix") != PHASE8_OBJECTIVE_PREFIX
-        or objective.get("maximum_utf8_bytes") != MAX_PHASE8_OBJECTIVE_BYTES
-        or tuple(objective.get("required_linkage", []))
+        goal.get("maximum_utf8_bytes") != MAX_USER_TASK_BYTES
+        or tuple(goal.get("required_linkage", []))
         != (
-            "first_work_session_user_task_turn",
-            "work_session_git_revision",
+            "descriptor_plain_work_user_task",
+            "first_work_session_user_task_turn_exact_match",
             "evaluated_repository_revision",
-            "context_record_inner_objective",
             "context_record_exact_user_turn_source",
+            "canonical_goal_identity_and_statement",
             "checkpoint_goal_context_identity",
-            "canonical_checkpoint_goal_statement",
-            "fresh_session_recall_goal_identity_and_statement",
+            "fresh_session_recall_same_goal_identity_and_materially_consistent_statement",
         )
     ):
-        raise ValueError("the Phase 8 task-objective evidence contract changed")
+        raise ValueError("the Phase 8 plain-task Goal evidence contract changed")
     return value
 
 
@@ -810,44 +799,116 @@ def unique_call(capture: CodexCapture | None, operation: str) -> ToolCall | None
     return calls[0] if len(calls) == 1 else None
 
 
-def normalized_resume_change_scope(value: Any) -> list[str] | None:
-    if not isinstance(value, list) or not value or len(value) > 32:
-        return None
-    result: list[str] = []
-    for raw in value:
-        if not nonempty_string(raw) or len(raw) > 4096 or "\\" in raw:
-            return None
-        path = Path(raw)
-        if path.is_absolute() or ".." in path.parts or path.as_posix() != raw or not path.parts:
-            return None
-        lowered_parts = {part.lower() for part in path.parts}
-        suffix = path.suffix.lower()
+def normalized_prompt_text(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def plain_user_task_error(value: Any, field: str) -> str | None:
+    if not nonempty_string(value) or value != value.strip():
+        return f"{field} must be a non-empty exact plain user task"
+    encoded = value.encode("utf-8")
+    if len(encoded) > MAX_USER_TASK_BYTES or any(ord(character) < 32 and character not in "\n\t" for character in value):
+        return f"{field} exceeds the bounded plain-task contract"
+    return None
+
+
+def decision_oracle_errors(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["decision_oracle must be hidden evaluator material"]
+    errors: list[str] = []
+    for field in (
+        "user_owned_dimension",
+        "why_repository_inspection_cannot_decide",
+        "recommendation",
+        "material_consequence",
+    ):
+        if not nonempty_string(value.get(field)):
+            errors.append(f"decision_oracle.{field} must be non-empty")
+    for field, minimum in (("established_repository_facts", 1), ("viable_alternatives", 2)):
+        items = value.get(field)
         if (
-            lowered_parts & RESUME_EXCLUDED_PARTS
-            or suffix in DOCUMENT_SUFFIXES | {".json", ".log", ".marker", ".txt"}
-            or not (
-                suffix in SOURCE_SUFFIXES
-                or lowered_parts & SOURCE_SCOPE_PARTS
-                or lowered_parts & TEST_SCOPE_PARTS
-            )
+            not isinstance(items, list)
+            or len(items) < minimum
+            or len(items) > 32
+            or not all(nonempty_string(item) for item in items)
+            or len(items) != len(set(items))
         ):
-            return None
-        result.append(raw)
-    return sorted(set(result)) if len(result) == len(set(result)) else None
+            errors.append(f"decision_oracle.{field} must contain unique bounded text entries")
+    return errors
 
 
-def path_intersects_scope(path: str, scope: str) -> bool:
-    return path == scope or path.startswith(scope.rstrip("/") + "/")
-
-
-def next_step_reserves_change(next_step: Any, scopes: list[str]) -> bool:
-    if not nonempty_string(next_step) or not any(scope in next_step for scope in scopes):
-        return False
-    lowered = next_step.lower()
-    return any(
-        re.search(rf"\b{verb}\b", lowered)
-        for verb in ("add", "change", "create", "extend", "fix", "implement", "modify", "refactor", "remove", "update", "write")
+def naturalistic_prompt_errors(work_task: Any, resume_task: Any, oracle: Any) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(work_task, str) or not isinstance(resume_task, str) or not isinstance(oracle, dict):
+        return ["naturalistic prompt integrity requires both plain tasks and a hidden oracle"]
+    prompts = (("work_user_task", work_task), ("fresh_resume_user_task", resume_task))
+    operation_names = (
+        "project_initialize",
+        "repository_analyze",
+        "context_record",
+        "checkpoint_record",
     )
+    for field, prompt in prompts:
+        lowered = normalized_prompt_text(prompt)
+        if "phase8_objective" in lowered or "resume_change_scope" in lowered:
+            errors.append(f"{field} exposes a Phase 8 harness marker")
+        for operation in operation_names:
+            if re.search(rf"(?<![a-z0-9_]){re.escape(operation)}(?![a-z0-9_])", lowered):
+                errors.append(f"{field} prescribes the {operation} domain operation")
+        if re.search(r"\bask (?:the )?user\b|\bquestion (?:to ask|for the user)\b", lowered):
+            errors.append(f"{field} prescribes the Question to ask")
+        if re.search(r"\b(recall first|invoke recall|call recall|use recall|perform recall|run recall)\b", lowered):
+            errors.append(f"{field} prescribes Recall")
+    if re.search(r"\brecall\b", normalized_prompt_text(resume_task)):
+        errors.append("fresh_resume_user_task discloses the automatic Recall expectation")
+
+    hidden_values = [
+        *oracle.get("viable_alternatives", []),
+        oracle.get("recommendation"),
+    ]
+    for hidden in hidden_values:
+        if not nonempty_string(hidden):
+            continue
+        hidden_text = normalized_prompt_text(hidden)
+        for field, prompt in prompts:
+            if hidden_text in normalized_prompt_text(prompt):
+                errors.append(f"{field} discloses an exact hidden alternative or recommendation")
+
+    path_pattern = r"(?:^|\s)(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+"
+    for field, prompt in prompts:
+        lowered = normalized_prompt_text(prompt)
+        reserves_future_work = (
+            re.search(r"\b(leave|reserve|keep)\b", lowered)
+            or re.search(r"\bdo not (?:change|modify|complete|finish)\b", lowered)
+        )
+        if reserves_future_work and re.search(r"\b(next|later|resume|continuation)\s+(?:work\s+)?session\b", lowered) and re.search(path_pattern, prompt):
+            errors.append(f"{field} reserves a named path for a later session")
+    return sorted(set(errors))
+
+
+def evidence_reference_shape(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and nonempty_string(value.get("file"))
+        and valid_capture_sha256(value.get("sha256"))
+    )
+
+
+def relevant_continuation_paths(paths: list[str], next_step: Any) -> list[str]:
+    if not nonempty_string(next_step):
+        return []
+    lowered = normalized_prompt_text(next_step)
+    generic = {"src", "source", "test", "tests", "lib", "crates", "file", "code"}
+    result: list[str] = []
+    for path in paths:
+        if looks_like_synthetic_marker(path) or Path(path).suffix.lower() in {".txt", ".marker"}:
+            continue
+        candidate = Path(path)
+        terms = {path.casefold(), candidate.name.casefold(), candidate.stem.casefold()}
+        terms.update(part.casefold() for part in candidate.parts if len(part) >= 4)
+        if any(term not in generic and term in lowered for term in terms):
+            result.append(path)
+    return sorted(set(result))
 
 
 def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: int | None) -> bool:
@@ -867,32 +928,38 @@ def cycle_descriptor_errors(value: Any) -> list[str]:
     if not isinstance(value, dict) or value.get("kind") != "phase8_cycle_descriptor":
         return ["descriptor kind must be phase8_cycle_descriptor"]
     errors: list[str] = []
-    scopes = normalized_resume_change_scope(value.get("resume_change_scope"))
-    if scopes is None:
-        errors.append("resume_change_scope must contain unique repository-relative source/test paths")
-        scopes = []
-    next_step = value.get("checkpoint_next_step")
-    if not next_step_reserves_change(next_step, scopes):
-        errors.append("checkpoint_next_step must name reserved scope and require a source/test change")
-    work_boundary = value.get("work_session_boundary")
-    resume_boundary = value.get("resume_session_boundary")
-    if not nonempty_string(work_boundary) or not any(scope in work_boundary for scope in scopes):
-        errors.append("work_session_boundary must identify the source/test scope left for resume")
-    elif not any(marker in work_boundary.lower() for marker in ("leave", "reserve", "not complete")):
-        errors.append("work_session_boundary must leave reserved scope incomplete")
-    if not nonempty_string(resume_boundary) or not next_step_reserves_change(resume_boundary, scopes):
-        errors.append("resume_session_boundary must change reserved source/test scope")
-    work_contract = value.get("work_session_contract")
-    resume_contract = value.get("resume_session_contract")
-    if not isinstance(work_contract, list) or "resume_change_scope" not in "\n".join(
-        item for item in work_contract if isinstance(item, str)
-    ):
-        errors.append("work_session_contract must preserve resume_change_scope for the Checkpoint")
-    if not isinstance(resume_contract, list) or not all(
-        marker in "\n".join(item for item in resume_contract if isinstance(item, str))
-        for marker in ("Recall", "resume_change_scope", "patch", "numeric exit_code")
-    ):
-        errors.append("resume_session_contract must Recall, change reserved scope, and validate")
+    for obsolete in ("objective", "resume_change_scope", "work_session_contract", "resume_session_contract"):
+        if obsolete in value:
+            errors.append(f"descriptor does not support obsolete field {obsolete}")
+    if value.get("repository_class") not in CLASSES:
+        errors.append("repository_class must identify a Phase 8 repository class")
+    if not isinstance(value.get("cycle"), int) or value.get("cycle") not in {1, 2}:
+        errors.append("cycle must identify one of the two independent repetitions")
+    revision = value.get("repository_revision")
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision) is None:
+        errors.append("repository_revision must be a full Git object identity")
+    for field in ("work_user_task", "fresh_resume_user_task"):
+        error = plain_user_task_error(value.get(field), field)
+        if error:
+            errors.append(error)
+    oracle = value.get("decision_oracle")
+    errors.extend(decision_oracle_errors(oracle))
+    if not decision_oracle_errors(oracle):
+        errors.extend(
+            naturalistic_prompt_errors(
+                value.get("work_user_task"), value.get("fresh_resume_user_task"), oracle
+            )
+        )
+    evidence = value.get("evidence")
+    if evidence is not None:
+        captures = evidence.get("captures") if isinstance(evidence, dict) else None
+        if (
+            not isinstance(captures, dict)
+            or not evidence_reference_shape(captures.get("work"))
+            or not evidence_reference_shape(captures.get("resume"))
+            or not evidence_reference_shape(evidence.get("canonical_bundle"))
+        ):
+            errors.append("evidence must contain bounded work, resume, and canonical bundle references")
     return errors
 
 
@@ -992,11 +1059,10 @@ def decision_facts(
 def goal_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
-    objective: str | None,
-) -> tuple[bool, str | None, str | None]:
+) -> tuple[bool, str | None, str | None, str | None]:
     call = unique_call(work, "context_record")
     if call is None or work is None or bundle is None or not work.user_turns:
-        return False, None, None
+        return False, None, None, None
     first_turn = work.user_turns[0]
     turn = work.turn_for_call(call)
     context_id = call.result.get("context_item_id")
@@ -1010,20 +1076,20 @@ def goal_facts(
         source_id=source_id,
         position=0,
     )
+    statement = call.arguments.get("statement")
     valid = (
-        nonempty_string(objective)
+        nonempty_string(statement)
         and turn == first_turn
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("user_turn") == first_turn.text
         and call.arguments.get("role") == "goal"
-        and call.arguments.get("statement") == objective
         and call.result.get("project_id") == bundle.project_id
         and call.result.get("role") == "goal"
         and nonempty_string(context_id)
         and nonempty_string(source_id)
         and item is not None
         and item.get("role") == "goal"
-        and item.get("statement") == objective
+        and item.get("statement") == statement
         and item.get("provenance_role") == "user_statement"
         and item.get("author_kind") == "user"
         and source is not None
@@ -1038,7 +1104,125 @@ def goal_facts(
         bool(valid),
         str(context_id) if nonempty_string(context_id) else None,
         str(source_id) if nonempty_string(source_id) else None,
+        str(statement) if nonempty_string(statement) else None,
     )
+
+
+def question_review_facts(
+    work: CodexCapture | None,
+    bundle: CanonicalBundle | None,
+    question_id: str | None,
+    question_revision: int | None,
+    decision_oracle: Any,
+    baseline_call: ToolCall | None,
+) -> tuple[bool, dict[str, Any]]:
+    if (
+        work is None
+        or bundle is None
+        or not nonempty_string(question_id)
+        or not isinstance(question_revision, int)
+        or not isinstance(decision_oracle, dict)
+        or baseline_call is None
+    ):
+        return False, {}
+    decision_call = unique_call(work, "decision_record")
+    revision = bundle.one(
+        "question_revisions",
+        project_id=bundle.project_id,
+        question_id=question_id,
+        revision=question_revision,
+    )
+    alternatives = (
+        decode_question_alternatives(revision.get("alternatives"))
+        if revision is not None
+        else None
+    )
+    established_facts = (
+        decode_established_fact_statements(revision.get("established_facts"))
+        if revision is not None
+        else None
+    )
+    frontier_calls = [
+        call
+        for call in work.successful_calls("inquiry_frontier")
+        if any(
+            isinstance(question, dict)
+            and question.get("identity") == question_id
+            and question.get("revision") == question_revision
+            for question in call.result.get("questions", [])
+        )
+    ]
+    frontier_call = frontier_calls[0] if len(frontier_calls) == 1 else None
+    material_scope = decode_string_blob(revision.get("material_scope")) if revision else None
+    prompt_fields = [
+        revision.get("prompt_basis") if revision else None,
+        revision.get("why_it_matters_now") if revision else None,
+        *(material_scope or []),
+    ]
+    observed_question_text = "\n".join(
+        value for value in prompt_fields if nonempty_string(value)
+    )
+    oracle_facts = decision_oracle.get("established_repository_facts", [])
+    oracle_alternatives = decision_oracle.get("viable_alternatives", [])
+    observed_alternative_texts = {
+        normalized_prompt_text(value)
+        for alternative in alternatives or []
+        for value in (
+            alternative.get("label", ""),
+            alternative.get("consequence", ""),
+            f"{alternative.get('label', '')}: {alternative.get('consequence', '')}",
+        )
+        if nonempty_string(value)
+    }
+    facts_matched = sum(
+        normalized_prompt_text(value)
+        in {normalized_prompt_text(item) for item in established_facts or []}
+        for value in oracle_facts
+    )
+    alternatives_matched = sum(
+        normalized_prompt_text(value) in observed_alternative_texts
+        for value in oracle_alternatives
+    )
+    dimension = decision_oracle.get("user_owned_dimension")
+    recommendation = decision_oracle.get("recommendation")
+    basis = {
+        "canonical_question_present": revision is not None,
+        "canonical_materiality": revision.get("materiality") if revision else None,
+        "repository_facts_observed_count": len(established_facts or []),
+        "oracle_repository_fact_count": len(oracle_facts) if isinstance(oracle_facts, list) else 0,
+        "exact_repository_fact_matches": facts_matched,
+        "observed_alternative_count": len(alternatives or []),
+        "oracle_alternative_count": len(oracle_alternatives) if isinstance(oracle_alternatives, list) else 0,
+        "exact_alternative_matches": alternatives_matched,
+        "user_owned_dimension_present_in_observed_question": (
+            nonempty_string(dimension)
+            and normalized_prompt_text(dimension)
+            in normalized_prompt_text(observed_question_text)
+        ),
+        "recommendation_matches_hidden_oracle": (
+            nonempty_string(recommendation)
+            and revision is not None
+            and normalized_prompt_text(recommendation)
+            == normalized_prompt_text(str(revision.get("recommendation_rationale", "")))
+        ),
+        "automatic_relevance_conclusion": None,
+        "manual_review_required": True,
+    }
+    valid = (
+        revision is not None
+        and revision.get("materiality") == "material"
+        and nonempty_string(revision.get("prompt_basis"))
+        and nonempty_string(revision.get("why_it_matters_now"))
+        and established_facts is not None
+        and alternatives is not None
+        and len(alternatives) >= 2
+        and nonempty_string(revision.get("recommendation_rationale"))
+        and frontier_call is not None
+        and decision_call is not None
+        and baseline_call.completion_sequence < frontier_call.sequence
+        and frontier_call.completion_sequence < decision_call.sequence
+    )
+    return valid, basis
 
 
 def checkpoint_verification_facts(
@@ -1120,7 +1304,7 @@ def checkpoint_facts(
     goal_context_id: str | None,
     goal_source_id: str | None,
     baseline_analysis_id: str | None,
-    task_objective: str | None,
+    goal_statement: str | None,
 ) -> tuple[bool, bool, bool, str | None, list[str], str | None]:
     call = unique_call(work, "checkpoint_record")
     if call is None or work is None or bundle is None:
@@ -1168,11 +1352,11 @@ def checkpoint_facts(
         decision_id=decision_id,
     )
     next_step = checkpoint.get("next_step")
-    objective_linked = (
-        nonempty_string(task_objective)
+    goal_linked = (
+        nonempty_string(goal_statement)
         and call.arguments.get("goal_context_id") == goal_context_id
         and call.result.get("goal_context_id") == goal_context_id
-        and checkpoint.get("goal") == task_objective
+        and checkpoint.get("goal") == goal_statement
     )
     applied = call.arguments.get("applied_decision_ids")
     verification_ok = checkpoint_verification_facts(
@@ -1188,7 +1372,7 @@ def checkpoint_facts(
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("baseline_analysis_snapshot_id") == baseline_analysis_id
         and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
-        and objective_linked
+        and goal_linked
         and isinstance(applied, list)
         and decision_id in applied
         and call.result.get("applied_decision_ids") == applied
@@ -1198,7 +1382,7 @@ def checkpoint_facts(
     )
     return (
         valid,
-        objective_linked,
+        goal_linked,
         verification_ok,
         str(checkpoint_id) if nonempty_string(checkpoint_id) else None,
         observed_paths,
@@ -1225,11 +1409,15 @@ def real_session_evidence(
     evidence_directory = (
         Path(evidence_directory_value) if nonempty_string(evidence_directory_value) else None
     )
-    captures = raw.get("captures") if isinstance(raw.get("captures"), dict) else {}
+    descriptor_errors = cycle_descriptor_errors(raw)
+    evidence = raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {}
+    captures = evidence.get("captures") if isinstance(evidence.get("captures"), dict) else {}
     work_reference = captures.get("work")
     resume_reference = captures.get("resume")
-    bundle_reference = raw.get("canonical_bundle")
-    resume_change_scope = normalized_resume_change_scope(raw.get("resume_change_scope"))
+    bundle_reference = evidence.get("canonical_bundle")
+    work_user_task = raw.get("work_user_task")
+    resume_user_task = raw.get("fresh_resume_user_task")
+    decision_oracle = raw.get("decision_oracle")
     work_path = verified_evidence_path(work_reference, evidence_directory)
     resume_path = verified_evidence_path(resume_reference, evidence_directory)
     bundle_path = verified_evidence_path(bundle_reference, evidence_directory)
@@ -1250,11 +1438,8 @@ def real_session_evidence(
     decision_ok, decision_id, question_id, question_revision, user_source_id = decision_facts(
         work_capture, bundle
     )
-    task_objective = work_capture.phase8_objective if work_capture is not None else None
-    goal_ok, goal_context_id, goal_source_id = goal_facts(
-        work_capture,
-        bundle,
-        task_objective.value if task_objective is not None else None,
+    goal_ok, goal_context_id, goal_source_id, goal_statement = goal_facts(
+        work_capture, bundle
     )
     baseline_call = unique_call(work_capture, "repository_analyze")
     baseline_analysis_id = (
@@ -1262,7 +1447,7 @@ def real_session_evidence(
     )
     (
         checkpoint_ok,
-        checkpoint_objective_ok,
+        checkpoint_goal_ok,
         checkpoint_verification_ok,
         checkpoint_id,
         changed_paths,
@@ -1274,7 +1459,15 @@ def real_session_evidence(
         goal_context_id,
         goal_source_id,
         str(baseline_analysis_id) if nonempty_string(baseline_analysis_id) else None,
-        task_objective.value if task_objective is not None else None,
+        goal_statement,
+    )
+    question_ok, question_review_basis = question_review_facts(
+        work_capture,
+        bundle,
+        question_id,
+        question_revision,
+        decision_oracle,
+        baseline_call,
     )
     checkpoint_call = unique_call(work_capture, "checkpoint_record")
     first_work_change = min(
@@ -1287,15 +1480,10 @@ def real_session_evidence(
         and not all(looks_like_synthetic_marker(path) for path in changed_paths)
         and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
         and all(item.sequence < checkpoint_call.sequence for item in work_capture.path_observations)
-        and resume_change_scope is not None
-        and not any(
-            path_intersects_scope(path, scope)
-            for path in changed_paths
-            for scope in resume_change_scope
-        )
     ) if work_capture else False
     cycle_metadata_ok = (
-        raw.get("kind") == "phase8_real_session_cycle_evidence"
+        not descriptor_errors
+        and raw.get("kind") == "phase8_cycle_descriptor"
         and raw.get("producer") == "volicord_phase8_codex_event_normalizer"
         and valid_capture_sha256(raw.get("_evidence_file_sha256"))
         and raw.get("repository_class") == kind
@@ -1303,6 +1491,21 @@ def real_session_evidence(
         and raw.get("repository_revision") == repository_revision
         and work_capture is not None
         and work_capture.git_revision == repository_revision
+    )
+    task_turns_ok = (
+        work_capture is not None
+        and resume_capture is not None
+        and nonempty_string(work_user_task)
+        and nonempty_string(resume_user_task)
+        and bool(work_capture.user_turns)
+        and bool(resume_capture.user_turns)
+        and work_capture.user_turns[0].text == work_user_task
+        and resume_capture.user_turns[0].text == resume_user_task
+    )
+    prompt_integrity_ok = (
+        not descriptor_errors
+        and not naturalistic_prompt_errors(work_user_task, resume_user_task, decision_oracle)
+        and task_turns_ok
     )
     initialize_call = unique_call(work_capture, "project_initialize")
     goal_call = unique_call(work_capture, "context_record")
@@ -1446,7 +1649,7 @@ def real_session_evidence(
         and recalled_checkpoint_row.get("id") == checkpoint_id
         and isinstance(recall_checkpoint, dict)
         and recall_checkpoint.get("identity") == checkpoint_id
-        and recall_checkpoint.get("goal") == (task_objective.value if task_objective else None)
+        and recall_checkpoint.get("goal") == goal_statement
         and recall_checkpoint.get("changed_paths") == changed_paths
         and recall_checkpoint.get("next_step") == next_step
         and recalled_verification == expected_recalled_verification
@@ -1459,58 +1662,47 @@ def real_session_evidence(
         and goal_context_id in recalled_context
     )
     recall_goals = recall_call.result.get("goals") if recall_call is not None else None
-    recalled_objective_ok = (
-        task_objective is not None
+    recalled_goal_ok = (
+        nonempty_string(goal_statement)
         and isinstance(recall_goals, list)
         and all(nonempty_string(goal) for goal in recall_goals)
-        and task_objective.value in recall_goals
+        and goal_statement in recall_goals
+        and recalled_context is not None
+        and goal_context_id in recalled_context
     )
-    objective_revision_ok = (
-        task_objective is not None
-        and work_capture is not None
-        and task_objective.repository_revision == work_capture.git_revision
-        and task_objective.repository_revision == repository_revision
+    task_revision_ok = (
+        work_capture is not None
+        and raw.get("repository_revision") == work_capture.git_revision
+        and raw.get("repository_revision") == repository_revision
     )
-    objective_ok = (
+    task_goal_ok = (
         cycle_metadata_ok
-        and work_capture is not None
-        and work_capture.phase8_objective_status == "valid"
-        and objective_revision_ok
+        and task_turns_ok
+        and task_revision_ok
         and goal_ok
         and checkpoint_ok
-        and checkpoint_objective_ok
+        and checkpoint_goal_ok
         and invocations_ok
         and fresh_ok
         and recall_match_ok
-        and recalled_objective_ok
+        and recalled_goal_ok
     )
-    checkpoint_scope_linked = (
-        resume_change_scope is not None
-        and next_step_reserves_change(next_step, resume_change_scope)
-    )
-    reserved_resume_paths = [
-        path
-        for path in continuation_paths
-        if resume_change_scope is not None
-        and any(path_intersects_scope(path, scope) for scope in resume_change_scope)
-    ]
+    relevant_resume_paths = relevant_continuation_paths(continuation_paths, next_step)
     continuation_ok = (
         recall_match_ok
         and fresh_ok
         and ordering_ok
-        and checkpoint_scope_linked
-        and bool(reserved_resume_paths)
-        and not all(looks_like_synthetic_marker(path) for path in reserved_resume_paths)
+        and bool(relevant_resume_paths)
         and resume_validation_ok
     )
 
     checks = {
-        "repository_specific_objective": evidence_check(references_present, objective_ok),
+        "naturalistic_prompt_integrity": evidence_check(references_present, prompt_integrity_ok),
+        "plain_task_goal_linkage": evidence_check(references_present, task_goal_ok),
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
+        "researched_material_question": evidence_check(references_present, question_ok),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
-        "source_grounded_checkpoint": evidence_check(
-            references_present, checkpoint_ok and checkpoint_scope_linked
-        ),
+        "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
         "explicit_user_decision_source": evidence_check(references_present, decision_ok),
         "distinct_work_and_resume_invocations": evidence_check(references_present, invocations_ok),
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
@@ -1524,13 +1716,12 @@ def real_session_evidence(
         "checks": checks,
         "changed_paths": changed_paths or [],
         "continuation_paths": continuation_paths,
-        "resume_change_scope": resume_change_scope or [],
-        "resume_paths": reserved_resume_paths,
+        "relevant_resume_paths": relevant_resume_paths,
         "continuation_basis": {
             "fresh_resume_session": fresh_ok,
             "recall_before_inspection_and_continuation": ordering_ok,
-            "checkpoint_next_step_reserves_scope": checkpoint_scope_linked,
-            "observed_change_intersects_reserved_scope": bool(reserved_resume_paths),
+            "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
+            "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
         },
         "checkpoint_id": checkpoint_id,
@@ -1547,21 +1738,28 @@ def real_session_evidence(
             "resume": resume_capture.source_sha256 if resume_capture else None,
             "canonical_bundle": bundle.source_sha256 if bundle else None,
         },
-        "objective_basis": {
-            "envelope_status": (
-                work_capture.phase8_objective_status if work_capture is not None else "unavailable"
+        "task_goal_basis": {
+            "work_user_task_sha256": (
+                hashlib.sha256(work_user_task.encode("utf-8")).hexdigest()
+                if nonempty_string(work_user_task)
+                else None
             ),
-            "sha256": task_objective.sha256 if task_objective is not None else None,
-            "utf8_length": task_objective.utf8_length if task_objective is not None else None,
-            "repository_revision": (
-                task_objective.repository_revision if task_objective is not None else None
+            "work_user_task_utf8_length": (
+                len(work_user_task.encode("utf-8")) if nonempty_string(work_user_task) else None
             ),
-            "repository_revision_matches": objective_revision_ok,
-            "checkpoint_call_and_canonical_goal_match": checkpoint_objective_ok,
+            "fresh_resume_user_task_sha256": (
+                hashlib.sha256(resume_user_task.encode("utf-8")).hexdigest()
+                if nonempty_string(resume_user_task)
+                else None
+            ),
+            "first_turns_match_descriptor_tasks": task_turns_ok,
+            "repository_revision_matches": task_revision_ok,
+            "checkpoint_call_and_canonical_goal_match": checkpoint_goal_ok,
             "goal_context_matches_first_user_turn": goal_ok,
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
-            "fresh_session_recall_goal_matches": recalled_objective_ok,
+            "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
+        "question_relevance_review": question_review_basis,
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
 
@@ -2544,11 +2742,29 @@ def run_evaluation(args: argparse.Namespace) -> int:
     return 0 if replacement_pass_candidate else 1
 
 
-def fixture_task_objective(kind: str, cycle: int) -> str:
+def fixture_work_user_task(kind: str, cycle: int) -> str:
     return (
-        f"Update src/existing.rs and tests/existing.rs for the {kind} "
-        f"Phase 8 cycle {cycle}"
+        f"Improve error reporting in the {kind} validation adapter and add focused tests "
+        f"for cycle {cycle}. Keep the change local and do not add dependencies."
     )
+
+
+def fixture_decision_oracle() -> dict[str, Any]:
+    return {
+        "user_owned_dimension": "operator-facing detail versus stable concise output",
+        "established_repository_facts": [
+            "The adapter already distinguishes internal diagnostics from its public error string."
+        ],
+        "why_repository_inspection_cannot_decide": (
+            "Repository structure cannot determine which error detail operators want in normal output."
+        ),
+        "viable_alternatives": [
+            "Keep public errors concise and expose details only in diagnostics",
+            "Include the actionable cause in every public error",
+        ],
+        "recommendation": "Keep public errors concise and expose details only in diagnostics",
+        "material_consequence": "The choice changes output stability and troubleshooting usefulness.",
+    }
 
 
 def real_session_fixture(
@@ -2573,15 +2789,12 @@ def real_session_fixture(
     current_repository = "0e" * 32
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
-    objective = fixture_task_objective(kind, cycle)
-    objective_envelope = PHASE8_OBJECTIVE_PREFIX + json.dumps(
-        {"repository_revision": revision, "objective": objective},
-        separators=(",", ":"),
-    )
-    decision_turn_text = (
-        f"{objective_envelope}\nApply the captured repository-specific correction."
-    )
-    next_step = "Update src/resume.rs and verify the resumed work"
+    work_user_task = fixture_work_user_task(kind, cycle)
+    decision_oracle = fixture_decision_oracle()
+    decision_turn_text = "Keep the normal output concise; diagnostics can carry the actionable cause."
+    resume_user_task = "Continue the validation-adapter improvement from the current project state."
+    question_prompt = "Which error-detail boundary should the validation adapter expose to operators?"
+    next_step = "Update src/resume.rs to carry the chosen concise diagnostic boundary and verify it"
     work_paths = ["src/existing.rs", "tests/existing.rs"]
     verification_command = "python3 -m unittest tests.test_existing"
     work_capture = evidence_directory / f"{kind}-{cycle}-work-events.jsonl"
@@ -2755,10 +2968,12 @@ def real_session_fixture(
         return expanded
 
     work_turn = f"{kind}-work-turn-{cycle}"
+    decision_turn = f"{kind}-decision-turn-{cycle}"
     initialize_call = f"{kind}-initialize-call-{cycle}"
     goal_call = f"{kind}-goal-call-{cycle}"
     status_call = f"{kind}-status-call-{cycle}"
     baseline_call = f"{kind}-baseline-call-{cycle}"
+    inquiry_call = f"{kind}-inquiry-call-{cycle}"
     decision_call = f"{kind}-decision-call-{cycle}"
     patch_call = f"{kind}-patch-call-{cycle}"
     verification_call = f"{kind}-verification-call-{cycle}"
@@ -2767,7 +2982,7 @@ def real_session_fixture(
     work_events = [
         session_meta(work_session),
         task(work_turn),
-        user(work_turn, f"{kind}-user-turn-{cycle}", decision_turn_text),
+        user(work_turn, f"{kind}-user-turn-{cycle}", work_user_task),
         mcp_call(
             work_turn,
             initialize_call,
@@ -2781,9 +2996,9 @@ def real_session_fixture(
             "context_record",
             {
                 "project_id": project,
-                "user_turn": decision_turn_text,
+                "user_turn": work_user_task,
                 "role": "goal",
-                "statement": objective,
+                "statement": work_user_task,
             },
             json_wrapper=True,
         ),
@@ -2808,18 +3023,41 @@ def real_session_fixture(
         ),
         mcp_call(
             work_turn,
+            inquiry_call,
+            "inquiry_frontier",
+            {"project_id": project},
+        ),
+        custom_output(
+            work_turn,
+            inquiry_call,
+            {
+                "project_id": project,
+                "questions": [
+                    {
+                        "identity": question,
+                        "revision": 1,
+                        "prompt": question_prompt,
+                    }
+                ],
+                "diagnostics": [],
+            },
+        ),
+        task(decision_turn),
+        user(decision_turn, f"{kind}-decision-user-turn-{cycle}", decision_turn_text),
+        mcp_call(
+            decision_turn,
             decision_call,
             "decision_record",
             {
                 "project_id": project,
                 "question_id": question,
                 "question_revision": 1,
-                "alternative_key": "apply",
+                "alternative_key": "concise",
                 "user_turn": decision_turn_text,
             },
         ),
         custom_output(
-            work_turn,
+            decision_turn,
             decision_call,
             {
                 "project_id": project,
@@ -2829,7 +3067,7 @@ def real_session_fixture(
             },
         ),
         custom_call(
-            work_turn,
+            decision_turn,
             patch_call,
             f"const patch={json.dumps(patch_text)};\ntext(await tools.apply_patch(patch));\n",
         ),
@@ -2838,7 +3076,7 @@ def real_session_fixture(
             {
                 "type": "patch_apply_end",
                 "call_id": f"{kind}-work-patch-{cycle}",
-                "turn_id": work_turn,
+                "turn_id": decision_turn,
                 "stdout": "",
                 "stderr": "",
                 "success": True,
@@ -2853,15 +3091,15 @@ def real_session_fixture(
                 "status": "completed",
             },
         ),
-        custom_output(work_turn, patch_call, {}),
-        command_call(work_turn, verification_call, verification_command),
+        custom_output(decision_turn, patch_call, {}),
+        command_call(decision_turn, verification_call, verification_command),
         custom_output(
-            work_turn,
+            decision_turn,
             verification_call,
             {"output": "Ran focused tests\nOK\n", "exit_code": 0},
         ),
         mcp_call(
-            work_turn,
+            decision_turn,
             checkpoint_call,
             "checkpoint_record",
             {
@@ -2887,7 +3125,7 @@ def real_session_fixture(
             },
         ),
         custom_output(
-            work_turn,
+            decision_turn,
             checkpoint_call,
             {
                 "checkpoint_id": checkpoint,
@@ -2914,7 +3152,7 @@ def real_session_fixture(
     resume_events = [
         session_meta(resume_session),
         task(resume_turn),
-        user(resume_turn, f"{kind}-resume-user-turn-{cycle}", "<redacted-resume-request>"),
+        user(resume_turn, f"{kind}-resume-user-turn-{cycle}", resume_user_task),
         mcp_call(
             resume_turn,
             recall_call,
@@ -2928,8 +3166,8 @@ def real_session_fixture(
             {
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
-                "goals": [objective],
-                "decisions": [{"identity": decision, "revision": 1, "state": "active", "choice": "apply", "rationale": None}],
+                "goals": [work_user_task],
+                "decisions": [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}],
                 "open_questions": [],
                 "known_limits": [],
                 "next_step": next_step,
@@ -2937,7 +3175,7 @@ def real_session_fixture(
                     "identity": checkpoint,
                     "revision": 1,
                     "kind": "handoff",
-                    "goal": objective,
+                    "goal": work_user_task,
                     "work_state": "paused",
                     "state_change": "Updated the bounded implementation and test",
                     "source_basis": [goal_source],
@@ -3029,6 +3267,31 @@ def real_session_fixture(
             raw += len(encoded).to_bytes(8, "big") + encoded
         return raw.hex()
 
+    def framed(value: bytes) -> bytes:
+        return len(value).to_bytes(8, "big") + value
+
+    def encoded_source_ids(values: list[str]) -> bytes:
+        return len(values).to_bytes(8, "big") + b"".join(
+            framed(bytes.fromhex(value)) for value in values
+        )
+
+    def encoded_alternatives(values: list[str]) -> str:
+        raw = len(values).to_bytes(8, "big")
+        for index, value in enumerate(values):
+            raw += framed(("concise" if index == 0 else "detailed").encode())
+            raw += framed(value.encode())
+            raw += framed(f"Consequence for {value}".encode())
+        return raw.hex()
+
+    def encoded_established_facts(values: list[str]) -> str:
+        raw = len(values).to_bytes(8, "big")
+        for value in values:
+            raw += framed(value.encode())
+            raw += framed(encoded_source_ids([goal_source]))
+            raw += b"\x01" + framed(b"structural")
+            raw += framed(b"current")
+        return raw.hex()
+
     def table(name: str, columns: list[str], rows: list[list[dict[str, Any]]]) -> dict[str, Any]:
         return {"columns": columns, "name": name, "rows": rows}
 
@@ -3039,7 +3302,7 @@ def real_session_fixture(
     ]
     sources = [
         [blob(user_source), blob(project), integer(1), text("current_host_user_turn"), text(decision_turn_text), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(1)],
-        [blob(goal_source), blob(project), integer(1), text("current_host_user_turn"), text(decision_turn_text), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(2)],
+        [blob(goal_source), blob(project), integer(1), text("current_host_user_turn"), text(work_user_task), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(2)],
         [blob(changed_source_one), blob(project), integer(1), text("file"), text(work_paths[0]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(3)],
         [blob(changed_source_two), blob(project), integer(1), text("file"), text(work_paths[1]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(4)],
         [blob(verification_source), blob(project), integer(1), text("command_execution"), text(verification_command), null(), null(), null(), integer(0), text("exited"), text("command"), text("current-host-reported-command"), text("agent"), text("codex"), text("available"), integer(5)],
@@ -3047,12 +3310,13 @@ def real_session_fixture(
     tables = [
         table("sources", source_columns, sources),
         table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]]),
+        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(decision_oracle["viable_alternatives"])), text("concise"), text(decision_oracle["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([decision_oracle["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([decision_oracle["user_owned_dimension"]])), text("material"), integer(1), text(decision_oracle["material_consequence"]), blob(encoded_established_facts(decision_oracle["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
         table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
-        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("apply"), null(), blob(encoded_strings([])), text("apply"), text("fixture recommendation"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
-        table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(objective), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
+        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(decision_oracle["viable_alternatives"])), text("concise"), text(decision_oracle["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
+        table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(work_user_task), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(goal_source), integer(0)]]),
-        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(objective), text("paused"), text("Updated the bounded implementation and test"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
+        table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(work_user_task), text("paused"), text("Updated the bounded implementation and test"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
         table("checkpoint_source_relations", ["project_id", "checkpoint_id", "relation_kind", "source_id", "position"], [[blob(project), blob(checkpoint), text("supported_by"), blob(goal_source), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_one), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_two), integer(1)]]),
         table("checkpoint_decisions", ["project_id", "checkpoint_id", "decision_id", "position"], [[blob(project), blob(checkpoint), blob(decision), integer(0)]]),
         table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed")]]),
@@ -3072,19 +3336,23 @@ def real_session_fixture(
     }
     write_json(bundle_path, bundle)
     return {
-        "kind": "phase8_real_session_cycle_evidence",
+        "kind": "phase8_cycle_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
         "_evidence_file_sha256": "0" * 64,
         "_evidence_directory": str(evidence_directory),
         "repository_class": kind,
         "cycle": cycle,
         "repository_revision": revision,
-        "resume_change_scope": ["src/resume.rs"],
-        "captures": {
-            "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
-            "resume": {"file": resume_capture.name, "sha256": sha256(resume_capture)},
+        "work_user_task": work_user_task,
+        "fresh_resume_user_task": resume_user_task,
+        "decision_oracle": decision_oracle,
+        "evidence": {
+            "captures": {
+                "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
+                "resume": {"file": resume_capture.name, "sha256": sha256(resume_capture)},
+            },
+            "canonical_bundle": {"file": bundle_path.name, "sha256": sha256(bundle_path)},
         },
-        "canonical_bundle": {"file": bundle_path.name, "sha256": sha256(bundle_path)},
     }
 
 
@@ -3324,6 +3592,23 @@ def self_test() -> int:
     )
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    if (
+        "recall" in external_fixture["fresh_resume_user_task"].casefold()
+        or external_result["checks"]["recall_precedes_inspection_and_continuation"]
+        != "passed"
+    ):
+        raise AssertionError("automatic Recall was not observed from a plain resume request")
+    if (
+        external_result["question_relevance_review"].get("automatic_relevance_conclusion")
+        is not None
+        or external_result["question_relevance_review"].get("manual_review_required")
+        is not True
+        or external_result["question_relevance_review"].get("exact_repository_fact_matches")
+        != 1
+        or external_result["question_relevance_review"].get("exact_alternative_matches")
+        != 2
+    ):
+        raise AssertionError("hidden oracle review was absent or automatically declared Question quality")
     representative_capture = load_codex_capture(CURRENT_MCP_FIXTURE)
     representative_calls = representative_capture.calls("context_record")
     if (
@@ -3335,23 +3620,25 @@ def self_test() -> int:
         raise AssertionError("current JSON.stringify wrapper fixture did not normalize from MCP completion")
     valid_descriptor = {
         "kind": "phase8_cycle_descriptor",
-        "resume_change_scope": ["src/resume.rs"],
-        "checkpoint_next_step": "Implement the reserved change in src/resume.rs",
-        "work_session_boundary": "Leave src/resume.rs reserved and incomplete for resume",
-        "resume_session_boundary": "After Recall, implement src/resume.rs and validate it",
-        "work_session_contract": [
-            "Do not modify resume_change_scope before the Checkpoint",
-        ],
-        "resume_session_contract": [
-            "Recall first, then apply a patch in resume_change_scope and preserve numeric exit_code validation",
-        ],
+        "repository_class": "volicord",
+        "cycle": 1,
+        "repository_revision": revision,
+        "work_user_task": fixture_work_user_task("volicord", 1),
+        "fresh_resume_user_task": (
+            "Continue the validation-adapter improvement from the current project state."
+        ),
+        "decision_oracle": fixture_decision_oracle(),
     }
     if cycle_descriptor_errors(valid_descriptor):
-        raise AssertionError("valid reserved-resume descriptor was rejected")
+        raise AssertionError("valid naturalistic plain-task descriptor was rejected")
     for label, mutation in (
-        ("missing scope", lambda value: value.pop("resume_change_scope")),
-        ("generated scope", lambda value: value.update({"resume_change_scope": ["build/result.json"]})),
-        ("build-only next step", lambda value: value.update({"checkpoint_next_step": "Build and install src/resume.rs"})),
+        ("missing work task", lambda value: value.pop("work_user_task")),
+        ("missing oracle", lambda value: value.pop("decision_oracle")),
+        (
+            "scripted resume",
+            lambda value: value.update({"fresh_resume_user_task": "Invoke Recall before continuing."}),
+        ),
+        ("obsolete reserved scope", lambda value: value.update({"resume_change_scope": ["src/resume.rs"]})),
     ):
         invalid_descriptor = json.loads(json.dumps(valid_descriptor))
         mutation(invalid_descriptor)
@@ -3371,9 +3658,11 @@ def self_test() -> int:
     if parse_mcp_wrapper(multiple_mcp_calls) is not None:
         raise AssertionError("multiple MCP invocations escaped bounded wrapper correlation")
     positive_work_capture = load_codex_capture(
-        evidence_directory / external_fixture["captures"]["work"]["file"]
+        evidence_directory / external_fixture["evidence"]["captures"]["work"]["file"]
     )
-    positive_resume_path = evidence_directory / external_fixture["captures"]["resume"]["file"]
+    positive_resume_path = (
+        evidence_directory / external_fixture["evidence"]["captures"]["resume"]["file"]
+    )
     positive_resume_capture = load_codex_capture(positive_resume_path)
     recall_calls = positive_resume_capture.successful_calls("recall")
     inspection_calls = positive_resume_capture.successful_calls("repository_understanding")
@@ -3385,7 +3674,7 @@ def self_test() -> int:
     ):
         raise AssertionError("actual-style nullish MCP forwarding did not preserve Recall ordering")
     expected_work_operations = {
-        "project_initialize", "context_record", "repository_analyze", "decision_record",
+        "project_initialize", "context_record", "repository_analyze", "inquiry_frontier", "decision_record",
         "checkpoint_record",
     }
     observed_work_operations = {
@@ -3421,11 +3710,13 @@ def self_test() -> int:
     if len(full_result_commands) != 1 or full_result_commands[0].exit_code != 0:
         raise AssertionError("full-result command forwarding did not expose exit code zero")
     serialized_external_result = json.dumps(external_result, sort_keys=True)
-    if (
-        fixture_task_objective("volicord", 1) in serialized_external_result
-        or PHASE8_OBJECTIVE_PREFIX in serialized_external_result
-    ):
-        raise AssertionError("sanitized result retained the task objective or prompt envelope")
+    hidden_values = [
+        fixture_work_user_task("volicord", 1),
+        *fixture_decision_oracle()["viable_alternatives"],
+        fixture_decision_oracle()["recommendation"],
+    ]
+    if any(value in serialized_external_result for value in hidden_values):
+        raise AssertionError("sanitized result retained a plain task or hidden oracle text")
     fake_steps = {name: "passed" for name in definition["required_product_steps"]}
     valid_html = (
         "<!doctype html><html lang=\"en\"><head>"
@@ -3639,7 +3930,7 @@ def self_test() -> int:
     expect_rejected(v11_only, definition, "V11-only evidence qualified as real dogfood")
 
     def capture_events(fixture: dict[str, Any], name: str) -> tuple[Path, list[dict[str, Any]]]:
-        reference = fixture["captures"][name]
+        reference = fixture["evidence"]["captures"][name]
         path = evidence_directory / reference["file"]
         return path, [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
@@ -3650,10 +3941,10 @@ def self_test() -> int:
             "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in events),
             encoding="utf-8",
         )
-        fixture["captures"][name]["sha256"] = sha256(path)
+        fixture["evidence"]["captures"][name]["sha256"] = sha256(path)
 
     def mutate_bundle(fixture: dict[str, Any], mutation: Callable[[dict[str, Any]], None]) -> None:
-        reference = fixture["canonical_bundle"]
+        reference = fixture["evidence"]["canonical_bundle"]
         path = evidence_directory / reference["file"]
         value = json.loads(path.read_text(encoding="utf-8"))
         mutation(value)
@@ -3840,18 +4131,6 @@ def self_test() -> int:
 
         mutate_bundle(fixture, replace_source_locator)
 
-    def replace_objective_line(text: str, revision_value: str, objective_value: str) -> str:
-        replacement = PHASE8_OBJECTIVE_PREFIX + json.dumps(
-            {"repository_revision": revision_value, "objective": objective_value},
-            separators=(",", ":"),
-        )
-        lines = text.splitlines()
-        matches = [index for index, line in enumerate(lines) if PHASE8_OBJECTIVE_PREFIX in line]
-        if len(matches) != 1:
-            raise AssertionError("fixture objective envelope was not unique")
-        lines[matches[0]] = replacement
-        return "\n".join(lines)
-
     def replace_checkpoint_call_goal(fixture: dict[str, Any], _goal: str) -> None:
         mutate_mcp_call(
             fixture,
@@ -3904,7 +4183,36 @@ def self_test() -> int:
                 statement_index = table_value["columns"].index("statement")
                 table_value["rows"][0][statement_index] = {"type": "text", "value": goal}
 
-    original_objective = fixture_task_objective("volicord", 1)
+    def replace_work_task(fixture: dict[str, Any], task_text: str) -> None:
+        replace_initial_task_text(fixture, lambda _text: task_text)
+        fixture["work_user_task"] = task_text
+        mutate_bundle(
+            fixture,
+            lambda bundle: replace_canonical_goal(bundle, task_text, include_context=True),
+        )
+        replace_recall_goals(fixture, [task_text])
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
+            lambda output: output["checkpoint"].update({"goal": task_text}),
+        )
+
+    def replace_resume_task(fixture: dict[str, Any], task_text: str) -> None:
+        path, events = capture_events(fixture, "resume")
+        user_events = [
+            value
+            for value in events
+            if value.get("type") == "event_msg"
+            and value.get("payload", {}).get("type") == "user_message"
+        ]
+        if len(user_events) != 1:
+            raise AssertionError("fixture resume capture does not have one user task")
+        user_events[0]["payload"]["message"] = task_text
+        store_capture(fixture, "resume", path, events)
+        fixture["fresh_resume_user_task"] = task_text
+
+    original_task = fixture_work_user_task("volicord", 1)
 
     missing_completion = real_session_fixture("volicord", 1, revision, evidence_directory)
     remove_mcp_completion(missing_completion, "work", "decision-call")
@@ -3945,7 +4253,7 @@ def self_test() -> int:
         }),
     )
     error_capture = load_codex_capture(
-        evidence_directory / completion_error["captures"]["work"]["file"]
+        evidence_directory / completion_error["evidence"]["captures"]["work"]["file"]
     )
     failed_decisions = error_capture.calls("decision_record")
     if (
@@ -3993,97 +4301,58 @@ def self_test() -> int:
     )["checks"]["explicit_user_decision_source"] != "failed":
         raise AssertionError("malformed MCP completion qualified")
 
-    missing_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
-    replace_initial_task_text(
-        missing_objective,
-        lambda text: "\n".join(
-            line for line in text.splitlines() if PHASE8_OBJECTIVE_PREFIX not in line
+    substituted_task = "Replace an unrelated deployment workflow."
+    mismatched_task = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_initial_task_text(mismatched_task, lambda _text: substituted_task)
+    mismatched_task_result = real_session_evidence(
+        mismatched_task, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if mismatched_task_result["checks"]["plain_task_goal_linkage"] != "failed":
+        raise AssertionError("captured task different from the descriptor plain task qualified")
+    if mismatched_task_result["checks"]["explicit_user_decision_source"] != "passed":
+        raise AssertionError("task mismatch invalidated unrelated current-host Decision provenance")
+
+    scripted_prompts = (
+        ("objective envelope", "PHASE8_OBJECTIVE: scripted"),
+        (
+            "hidden alternative",
+            original_task + " Choose: " + fixture_decision_oracle()["viable_alternatives"][0],
+        ),
+        (
+            "hidden recommendation",
+            original_task + " Follow this recommendation: " + fixture_decision_oracle()["recommendation"],
+        ),
+        ("prescribed question", original_task + " Ask the user whether concise output is preferred."),
+        (
+            "operation order",
+            original_task + " Run project_initialize, repository_analyze, context_record, then checkpoint_record.",
+        ),
+        (
+            "reserved path",
+            original_task + " Leave src/resume.rs unchanged for the next session.",
         ),
     )
-    missing_objective_result = real_session_evidence(
-        missing_objective, kind="volicord", cycle=1, repository_revision=revision
-    )
-    if missing_objective_result["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("initial work turn without an objective envelope qualified")
-    if missing_objective_result["checks"]["explicit_user_decision_source"] != "passed":
-        raise AssertionError("missing-objective mutation invalidated unrelated Decision provenance")
-
-    malformed_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
-    replace_initial_task_text(
-        malformed_objective,
-        lambda text: text.replace(
-            next(line for line in text.splitlines() if PHASE8_OBJECTIVE_PREFIX in line),
-            PHASE8_OBJECTIVE_PREFIX + "{malformed",
-        ),
-    )
-    if real_session_evidence(
-        malformed_objective, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("malformed objective envelope qualified")
-
-    for label, invalid_value in (
-        ("empty", ""),
-        ("oversized", "x" * (MAX_PHASE8_OBJECTIVE_BYTES + 1)),
-    ):
-        invalid_objective = real_session_fixture(
-            "volicord", 1, revision, evidence_directory
+    for label, prompt in scripted_prompts:
+        scripted = real_session_fixture("volicord", 1, revision, evidence_directory)
+        replace_work_task(scripted, prompt)
+        scripted_result = real_session_evidence(
+            scripted, kind="volicord", cycle=1, repository_revision=revision
         )
-        replace_initial_task_text(
-            invalid_objective,
-            lambda text, value=invalid_value: replace_objective_line(text, revision, value),
-        )
-        if real_session_evidence(
-            invalid_objective, kind="volicord", cycle=1, repository_revision=revision
-        )["checks"]["repository_specific_objective"] != "failed":
-            raise AssertionError(f"{label} objective envelope qualified")
+        if scripted_result["checks"]["naturalistic_prompt_integrity"] != "failed":
+            raise AssertionError(f"{label} choreography qualified as naturalistic")
 
-    duplicate_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
-    replace_initial_task_text(
-        duplicate_objective,
-        lambda text: text
-        + "\n"
-        + PHASE8_OBJECTIVE_PREFIX
-        + json.dumps(
-            {"repository_revision": revision, "objective": original_objective},
-            separators=(",", ":"),
-        ),
-    )
+    explicit_recall = real_session_fixture("volicord", 1, revision, evidence_directory)
+    replace_resume_task(explicit_recall, "Recall first, then continue the adapter improvement.")
     if real_session_evidence(
-        duplicate_objective, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("duplicate objective envelopes qualified")
-
-    wrong_revision_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
-    replace_initial_task_text(
-        wrong_revision_objective,
-        lambda text: replace_objective_line(text, "1" * 40, original_objective),
-    )
-    if real_session_evidence(
-        wrong_revision_objective, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("objective for a different Git revision qualified")
-
-    substituted_task = "Replace an unrelated deployment workflow"
-    claimed_objective = real_session_fixture("volicord", 1, revision, evidence_directory)
-    claimed_objective["objective"] = {
-        "repository_revision": revision,
-        "summary": original_objective,
-        "status": "passed",
-    }
-    replace_initial_task_text(
-        claimed_objective,
-        lambda text: replace_objective_line(text, revision, substituted_task),
-    )
-    if real_session_evidence(
-        claimed_objective, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("outer objective claim repaired a substituted captured task")
+        explicit_recall, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["naturalistic_prompt_integrity"] != "failed":
+        raise AssertionError("resume prompt explicitly instructing Recall qualified")
 
     wrong_checkpoint_call = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_checkpoint_call_goal(wrong_checkpoint_call, substituted_task)
     if real_session_evidence(
         wrong_checkpoint_call, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
+    )["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("Checkpoint call with a different goal qualified")
 
     wrong_canonical_checkpoint = real_session_fixture(
@@ -4095,44 +4364,15 @@ def self_test() -> int:
     )
     if real_session_evidence(
         wrong_canonical_checkpoint, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
+    )["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("canonical Checkpoint with a different goal qualified")
 
     wrong_recall_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_recall_goals(wrong_recall_goal, [substituted_task])
     if real_session_evidence(
         wrong_recall_goal, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
+    )["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("Recall result with a different goal qualified")
-
-    envelope_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
-    serialized_envelope = PHASE8_OBJECTIVE_PREFIX + json.dumps(
-        {"repository_revision": revision, "objective": original_objective},
-        separators=(",", ":"),
-    )
-    mutate_mcp_call(
-        envelope_goal,
-        "work",
-        "context_record",
-        lambda arguments: arguments.update({"statement": serialized_envelope}),
-    )
-    mutate_bundle(
-        envelope_goal,
-        lambda bundle: replace_canonical_goal(
-            bundle, serialized_envelope, include_context=True
-        ),
-    )
-    replace_recall_goals(envelope_goal, [serialized_envelope])
-    mutate_custom_output(
-        envelope_goal,
-        "resume",
-        "recall-call",
-        lambda output: output["checkpoint"].update({"goal": serialized_envelope}),
-    )
-    if real_session_evidence(
-        envelope_goal, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("serialized objective envelope qualified as canonical Goal text")
 
     wrong_goal_turn = real_session_fixture("volicord", 1, revision, evidence_directory)
     mutate_mcp_call(
@@ -4143,7 +4383,7 @@ def self_test() -> int:
     )
     if real_session_evidence(
         wrong_goal_turn, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
+    )["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("Goal linked to a different user turn qualified")
 
     non_user_goal = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -4161,44 +4401,8 @@ def self_test() -> int:
     mutate_bundle(non_user_goal, remove_goal_user_authority)
     if real_session_evidence(
         non_user_goal, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
+    )["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("agent-provenance Goal Source qualified")
-
-    cross_repository = real_session_fixture("volicord", 1, revision, evidence_directory)
-    cross_repository_objective = "Update another repository's deployment configuration"
-    replace_initial_task_text(
-        cross_repository,
-        lambda text: replace_objective_line(
-            text, "2" * 40, cross_repository_objective
-        ),
-    )
-    replace_checkpoint_call_goal(cross_repository, cross_repository_objective)
-    mutate_bundle(
-        cross_repository,
-        lambda bundle: replace_canonical_goal(
-            bundle, cross_repository_objective, include_context=True
-        ),
-    )
-    replace_recall_goals(cross_repository, [cross_repository_objective])
-    if real_session_evidence(
-        cross_repository, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("cross-repository objective substitution qualified")
-
-    generic_legacy = real_session_fixture("volicord", 1, revision, evidence_directory)
-    generic_goal = "Improve the repository implementation"
-    replace_initial_task_text(generic_legacy, lambda _text: generic_goal)
-    replace_checkpoint_call_goal(generic_legacy, generic_goal)
-    mutate_bundle(
-        generic_legacy,
-        lambda bundle: replace_canonical_goal(bundle, generic_goal, include_context=True),
-    )
-    replace_recall_goals(generic_legacy, [generic_goal])
-    generic_legacy["objective"] = {"repository_specific": True, "summary": generic_goal}
-    if real_session_evidence(
-        generic_legacy, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["repository_specific_objective"] != "failed":
-        raise AssertionError("legacy generic objective fixture without capture provenance qualified")
 
     marker_only = real_session_fixture("volicord", 1, revision, evidence_directory)
     marker_only["ordinary_work"] = {
@@ -4373,7 +4577,8 @@ def self_test() -> int:
     )["checks"]["source_grounded_checkpoint"] != "failed":
         raise AssertionError("printed stdout without command outcome qualified passed verification")
     stdout_only_capture = load_codex_capture(
-        evidence_directory / stdout_only_verification["captures"]["work"]["file"]
+        evidence_directory
+        / stdout_only_verification["evidence"]["captures"]["work"]["file"]
     )
     stdout_only_commands = [
         command
@@ -4435,8 +4640,7 @@ def self_test() -> int:
         for value in missing_events
         if not (
             value.get("payload", {}).get("type") == "user_message"
-            and PHASE8_OBJECTIVE_PREFIX
-            in str(value.get("payload", {}).get("message", ""))
+            and "decision-user-turn" in str(value.get("payload", {}).get("client_id", ""))
         )
     ]
     store_capture(missing_decision, "work", missing_path, missing_events)
@@ -4501,6 +4705,13 @@ def self_test() -> int:
         no_recall_first, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["recall_precedes_inspection_and_continuation"] != "failed":
         raise AssertionError("manifest order claim hid inspection before Recall")
+
+    absent_recall = real_session_fixture("volicord", 1, revision, evidence_directory)
+    remove_mcp_completion(absent_recall, "resume", "recall-call")
+    if real_session_evidence(
+        absent_recall, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["recall_precedes_inspection_and_continuation"] != "failed":
+        raise AssertionError("fresh session without observed automatic Recall qualified")
 
     mismatched_recall = real_session_fixture("volicord", 1, revision, evidence_directory)
     mismatched_recall["resume_invocation"] = {
@@ -4583,35 +4794,18 @@ def self_test() -> int:
     )
     if (
         not no_continuation_result["continuation_basis"]["resume_numeric_exit_validation"]
-        or no_continuation_result["continuation_basis"]["observed_change_intersects_reserved_scope"]
+        or no_continuation_result["continuation_basis"]["observed_change_relevant_to_checkpoint_next_step"]
     ):
         raise AssertionError("validation and source-change evidence were not kept separate")
 
-    no_reserved_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
-    no_reserved_scope.pop("resume_change_scope")
-    if real_session_evidence(
-        no_reserved_scope, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["meaningful_recalled_continuation"] != "failed":
-        raise AssertionError("cycle without reserved resume scope qualified")
-
-    build_only = real_session_fixture("volicord", 1, revision, evidence_directory)
+    irrelevant_continuation = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_checkpoint_next_step(
-        build_only, "Build and install the package from src/resume.rs, then verify it"
+        irrelevant_continuation, "Update tests/reserved.rs for a different component"
     )
     if real_session_evidence(
-        build_only, kind="volicord", cycle=1, repository_revision=revision
+        irrelevant_continuation, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["meaningful_recalled_continuation"] != "failed":
-        raise AssertionError("build/install-only Checkpoint next step qualified")
-
-    outside_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
-    outside_scope["resume_change_scope"] = ["tests/reserved.rs"]
-    replace_checkpoint_next_step(
-        outside_scope, "Implement the reserved continuation in tests/reserved.rs"
-    )
-    if real_session_evidence(
-        outside_scope, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["meaningful_recalled_continuation"] != "failed":
-        raise AssertionError("resume patch outside reserved scope qualified")
+        raise AssertionError("resume change unrelated to the recalled Checkpoint qualified")
 
     generated_only = real_session_fixture("volicord", 1, revision, evidence_directory)
     generated_path, generated_events = capture_events(generated_only, "resume")
@@ -4644,20 +4838,12 @@ def self_test() -> int:
     )["checks"]["meaningful_recalled_continuation"] != "failed":
         raise AssertionError("resume change without separate numeric-exit validation qualified")
 
-    work_consumed_scope = real_session_fixture("volicord", 1, revision, evidence_directory)
-    work_consumed_scope["resume_change_scope"] = ["src/existing.rs"]
-    replace_checkpoint_next_step(
-        work_consumed_scope, "Update the reserved continuation in src/existing.rs"
-    )
-    if real_session_evidence(
-        work_consumed_scope, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["meaningful_ordinary_changes"] != "failed":
-        raise AssertionError("work session consumed its reserved resume scope")
-
     insufficient = real_session_fixture("volicord", 1, revision, evidence_directory)
-    insufficient_path = evidence_directory / insufficient["captures"]["work"]["file"]
+    insufficient_path = (
+        evidence_directory / insufficient["evidence"]["captures"]["work"]["file"]
+    )
     insufficient_path.write_text('{"event":"work"}\n', encoding="utf-8")
-    insufficient["captures"]["work"]["sha256"] = sha256(insufficient_path)
+    insufficient["evidence"]["captures"]["work"]["sha256"] = sha256(insufficient_path)
     insufficient["ordinary_work"] = {"status": "passed", "changed_paths": ["src/claimed.rs"]}
     insufficient_result = real_session_evidence(
         insufficient, kind="volicord", cycle=1, repository_revision=revision
@@ -4771,18 +4957,17 @@ def self_test() -> int:
         "mcp_completion_error_rejected": "passed",
         "unrelated_and_malformed_mcp_completion_rejected": "passed",
         "wrapper_completion_deduplicated": "passed",
-        "reserved_resume_descriptor_contract": "passed",
-        "objective_prompt_sanitization": "passed",
-        "objective_missing_malformed_duplicate_rejected": "passed",
-        "objective_empty_and_oversized_rejected": "passed",
-        "objective_revision_mismatch_rejected": "passed",
-        "objective_outer_claim_ignored": "passed",
-        "objective_checkpoint_call_mismatch_rejected": "passed",
-        "objective_canonical_checkpoint_mismatch_rejected": "passed",
-        "objective_recall_mismatch_rejected": "passed",
-        "objective_cross_repository_substitution_rejected": "passed",
-        "objective_legacy_generic_fixture_rejected": "passed",
-        "serialized_envelope_goal_rejected": "passed",
+        "naturalistic_plain_task_descriptor_contract": "passed",
+        "plain_task_and_hidden_oracle_sanitization": "passed",
+        "descriptor_and_captured_task_mismatch_rejected": "passed",
+        "scripted_objective_marker_rejected": "passed",
+        "hidden_alternatives_and_recommendation_rejected": "passed",
+        "prescribed_question_and_operation_order_rejected": "passed",
+        "explicit_resume_recall_instruction_rejected": "passed",
+        "reserved_later_session_path_rejected": "passed",
+        "plain_task_checkpoint_call_mismatch_rejected": "passed",
+        "plain_task_canonical_checkpoint_mismatch_rejected": "passed",
+        "plain_task_recall_mismatch_rejected": "passed",
         "wrong_and_non_user_goal_source_rejected": "passed",
         "v11_only_rejected": "passed",
         "synthetic_marker_work_rejected": "passed",
@@ -4792,15 +4977,15 @@ def self_test() -> int:
         "full_result_passed_and_failed_verification": "passed",
         "output_only_command_outcome_unknown": "passed",
         "same_session_rejected": "passed",
+        "resume_without_recall_word_qualified": "passed",
+        "absent_recall_rejected": "passed",
         "recall_order_rejected": "passed",
         "mismatched_recall_state_rejected": "passed",
         "continuation_before_recall_rejected": "passed",
         "missing_continuation_rejected": "passed",
-        "missing_reserved_scope_rejected": "passed",
-        "build_install_only_next_step_rejected": "passed",
-        "outside_scope_and_generated_resume_change_rejected": "passed",
+        "irrelevant_and_generated_resume_change_rejected": "passed",
         "resume_change_and_validation_separated": "passed",
-        "work_session_reserved_scope_preserved": "passed",
+        "checkpoint_owned_continuation_relevance": "passed",
         "user_decision_provenance_rejected": "passed",
         "missing_user_decision_rejected": "passed",
         "valid_hash_insufficient_semantics_rejected": "passed",

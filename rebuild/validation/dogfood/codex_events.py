@@ -21,9 +21,6 @@ from typing import Any
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
-MAX_PHASE8_OBJECTIVE_BYTES = 1024
-PHASE8_OBJECTIVE_PREFIX = "PHASE8_OBJECTIVE: "
-GIT_REVISION = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 VOLICORD_OPERATIONS = {
     "background_semantic_operation",
     "candidate_inspect",
@@ -93,62 +90,6 @@ class UserTurn:
     turn_id: str
     user_turn_id: str
     text: str
-
-
-@dataclass(frozen=True)
-class Phase8Objective:
-    repository_revision: str
-    value: str
-    sha256: str
-    utf8_length: int
-
-
-def phase8_objective_from_turns(
-    turns: tuple[UserTurn, ...],
-) -> tuple[str, Phase8Objective | None]:
-    """Extract the one current objective envelope without returning its prompt."""
-    occurrences = [
-        (turn_index, line)
-        for turn_index, turn in enumerate(turns)
-        for line in turn.text.splitlines()
-        if PHASE8_OBJECTIVE_PREFIX in line
-    ]
-    if not occurrences:
-        return "missing", None
-    if len(occurrences) != 1:
-        return "duplicate", None
-    turn_index, line = occurrences[0]
-    if turn_index != 0 or not line.startswith(PHASE8_OBJECTIVE_PREFIX):
-        return "malformed", None
-    encoded = line[len(PHASE8_OBJECTIVE_PREFIX) :]
-    try:
-        envelope = json.loads(encoded)
-    except json.JSONDecodeError:
-        return "malformed", None
-    if not isinstance(envelope, dict) or set(envelope) != {"repository_revision", "objective"}:
-        return "malformed", None
-    repository_revision = envelope.get("repository_revision")
-    objective = envelope.get("objective")
-    if (
-        not isinstance(repository_revision, str)
-        or GIT_REVISION.fullmatch(repository_revision) is None
-        or not nonempty(objective)
-        or objective != objective.strip()
-        or any(ord(character) < 32 for character in objective)
-    ):
-        return "malformed", None
-    encoded_objective = objective.encode("utf-8")
-    if len(encoded_objective) > MAX_PHASE8_OBJECTIVE_BYTES:
-        return "malformed", None
-    return (
-        "valid",
-        Phase8Objective(
-            repository_revision=repository_revision,
-            value=objective,
-            sha256=sha256_bytes(encoded_objective),
-            utf8_length=len(encoded_objective),
-        ),
-    )
 
 
 @dataclass(frozen=True)
@@ -470,8 +411,6 @@ class CodexCapture:
     task_sequences: tuple[int, ...]
     compacted_sequences: tuple[int, ...]
     user_turns: tuple[UserTurn, ...]
-    phase8_objective_status: str
-    phase8_objective: Phase8Objective | None
     tool_calls: tuple[ToolCall, ...]
     path_observations: tuple[PathObservation, ...]
     commands: tuple[CommandObservation, ...]
@@ -815,7 +754,6 @@ def load_codex_capture(path: Path) -> CodexCapture:
         and meta.get("forked_from_id") in {None, ""}
         and not compacted_sequences
     )
-    objective_status, objective = phase8_objective_from_turns(tuple(user_turns))
     return CodexCapture(
         source_sha256=sha256_bytes(raw_bytes),
         session_id=str(session_id),
@@ -829,8 +767,6 @@ def load_codex_capture(path: Path) -> CodexCapture:
         task_sequences=tuple(task_sequences),
         compacted_sequences=tuple(compacted_sequences),
         user_turns=tuple(user_turns),
-        phase8_objective_status=objective_status,
-        phase8_objective=objective,
         tool_calls=tuple(tool_calls),
         path_observations=tuple(path_observations),
         commands=tuple(commands),
@@ -950,6 +886,88 @@ def decode_string_blob(value: Any) -> list[str] | None:
         except UnicodeDecodeError:
             return None
         offset = end
+    return result if offset == len(raw) else None
+
+
+def decoded_blob(value: Any) -> bytes | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return bytes.fromhex(value)
+    except ValueError:
+        return None
+
+
+def framed_bytes(raw: bytes, offset: int) -> tuple[bytes, int] | None:
+    if offset + 8 > len(raw):
+        return None
+    length = int.from_bytes(raw[offset : offset + 8], "big")
+    start = offset + 8
+    end = start + length
+    return (raw[start:end], end) if end <= len(raw) else None
+
+
+def decode_question_alternatives(value: Any) -> list[dict[str, str]] | None:
+    """Decode the current portable Question alternative blob for bounded review."""
+    raw = decoded_blob(value)
+    if raw is None or len(raw) < 8:
+        return None
+    count = int.from_bytes(raw[:8], "big")
+    if count > MAX_PATHS:
+        return None
+    offset = 8
+    result: list[dict[str, str]] = []
+    for _ in range(count):
+        values: list[str] = []
+        for _field in range(3):
+            framed = framed_bytes(raw, offset)
+            if framed is None:
+                return None
+            field, offset = framed
+            try:
+                values.append(field.decode("utf-8"))
+            except UnicodeDecodeError:
+                return None
+        result.append(dict(zip(("key", "label", "consequence"), values, strict=True)))
+    return result if offset == len(raw) else None
+
+
+def decode_established_fact_statements(value: Any) -> list[str] | None:
+    """Decode statements while validating the complete current portable fact blob."""
+    raw = decoded_blob(value)
+    if raw is None or len(raw) < 8:
+        return None
+    count = int.from_bytes(raw[:8], "big")
+    if count > MAX_PATHS:
+        return None
+    offset = 8
+    result: list[str] = []
+    for _ in range(count):
+        statement = framed_bytes(raw, offset)
+        if statement is None:
+            return None
+        statement_bytes, offset = statement
+        source_ids = framed_bytes(raw, offset)
+        if source_ids is None:
+            return None
+        _, offset = source_ids
+        if offset >= len(raw) or raw[offset] not in {0, 1}:
+            return None
+        has_capability = raw[offset] == 1
+        offset += 1
+        if has_capability:
+            capability = framed_bytes(raw, offset)
+            if capability is None:
+                return None
+            _, offset = capability
+        freshness = framed_bytes(raw, offset)
+        if freshness is None:
+            return None
+        _, offset = freshness
+        try:
+            result.append(statement_bytes.decode("utf-8"))
+        except UnicodeDecodeError:
+            return None
     return result if offset == len(raw) else None
 
 

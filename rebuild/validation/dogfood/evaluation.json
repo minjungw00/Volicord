@@ -157,30 +157,33 @@
       "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source"
     },
     "cycle_descriptor_contract": {
-      "resume_change_scope_field": "resume_change_scope",
-      "minimum_entries": 1,
-      "scope": "repository-relative source/test path or bounded prefix",
-      "excluded": "docs, generated evidence, markers, build/install output, Runtime Home, temporary paths, and paths outside the target repository",
-      "checkpoint_linkage": "the Checkpoint next step names reserved source/test scope and states an implementation/test change",
-      "work_boundary": "the work session leaves reserved scope unchanged and incomplete",
-      "resume_boundary": "the fresh resume changes reserved scope after Recall and then validates it"
+      "work_user_task_field": "work_user_task",
+      "fresh_resume_user_task_field": "fresh_resume_user_task",
+      "hidden_decision_oracle_field": "decision_oracle",
+      "identity_fields": [
+        "repository_class",
+        "cycle",
+        "repository_revision"
+      ],
+      "evidence_reference_field": "evidence",
+      "prompt_boundary": "user tasks state repository outcomes and ordinary safety or scope constraints without solution choreography",
+      "continuation_boundary": "the Checkpoint identifies the next meaningful state and actual post-Recall work is evaluated against that state"
     },
     "work_session_contract": [
-      "the first user turn carries exactly one PHASE8_OBJECTIVE envelope",
-      "after Project initialization record the inner objective from that exact first turn as canonical goal Context",
+      "the first user turn exactly matches the descriptor plain work_user_task",
+      "after Project initialization source canonical goal Context from that exact first user turn",
       "establish the repository baseline through repository_analyze before ordinary work",
+      "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
       "obtain and record the exact current-host user Decision",
       "perform real repository work after the baseline",
-      "reserve descriptor resume_change_scope source/test work and do not modify that scope before the Checkpoint",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
       "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
-      "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next step",
-      "make the Checkpoint next step name the reserved resume_change_scope and require an implementation or test change",
-      "never use the serialized PHASE8_OBJECTIVE envelope as the Goal statement"
+      "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step"
     ],
     "resume_session_contract": [
+      "the first user turn exactly matches the descriptor plain fresh_resume_user_task and does not disclose Recall",
       "a fresh resume session invokes Recall before repository inspection or continued work",
-      "the resume session produces observed patch/change evidence intersecting resume_change_scope after Recall",
+      "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
       "the resume session preserves separate full-result numeric-exit validation after that change"
     ],
     "command_forwarding_contract": {
@@ -195,19 +198,33 @@
       "text(r.output) command forwarding is outcome-unknown and cannot qualify passed or failed verification; text(r) is the maintained full-result form",
       "unsupported or ambiguous JavaScript does not contribute qualification facts"
     ],
-    "task_objective": {
-      "envelope_prefix": "PHASE8_OBJECTIVE: ",
-      "maximum_utf8_bytes": 1024,
+    "plain_task_goal": {
+      "maximum_utf8_bytes": 8192,
       "required_linkage": [
-        "first_work_session_user_task_turn",
-        "work_session_git_revision",
+        "descriptor_plain_work_user_task",
+        "first_work_session_user_task_turn_exact_match",
         "evaluated_repository_revision",
-        "context_record_inner_objective",
         "context_record_exact_user_turn_source",
+        "canonical_goal_identity_and_statement",
         "checkpoint_goal_context_identity",
-        "canonical_checkpoint_goal_statement",
-        "fresh_session_recall_goal_identity_and_statement"
+        "fresh_session_recall_same_goal_identity_and_materially_consistent_statement"
       ]
+    },
+    "hidden_decision_oracle": {
+      "required_fields": [
+        "user_owned_dimension",
+        "established_repository_facts",
+        "why_repository_inspection_cannot_decide",
+        "viable_alternatives",
+        "recommendation",
+        "material_consequence"
+      ],
+      "visibility": "evaluator_input_only",
+      "question_relevance_result": "manual_observation_independent_from_deterministic_journey_success"
+    },
+    "naturalistic_prompt_integrity": {
+      "rejects_harness_choreography": true,
+      "ordinary_repository_paths_and_public_api_names_allowed": true
     },
     "raw_evidence_retention": "ignored_local_state_only"
   }

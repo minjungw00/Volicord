@@ -52,9 +52,12 @@ def main() -> int:
         "baseline_analysis_snapshot_id",
         "checkpoint_verifications",
         "current_host_user_turn",
-        "PHASE8_OBJECTIVE_PREFIX",
-        "objective_basis",
-        "resume_change_scope",
+        "work_user_task",
+        "fresh_resume_user_task",
+        "decision_oracle",
+        "naturalistic_prompt_integrity",
+        "task_goal_basis",
+        "question_relevance_review",
         "continuation_basis",
         "check-descriptors",
     ):
@@ -66,6 +69,16 @@ def main() -> int:
         raise AssertionError("the obsolete decoder or JavaScript evaluation path remains active")
     if 'cli_version ==' in source or 'cli_version ==' in event_source:
         raise AssertionError("Phase 8 may not dispatch capture parsing by numeric Codex version")
+    for obsolete in (
+        "PHASE8_OBJECTIVE_PREFIX",
+        "MAX_PHASE8_OBJECTIVE_BYTES",
+        "phase8_objective_from_turns",
+        "Phase8Objective",
+        "normalized_resume_change_scope",
+        "next_step_reserves_change",
+    ):
+        if obsolete in source or obsolete in event_source:
+            raise AssertionError(f"obsolete scripted Phase 8 mechanism remains active: {obsolete}")
     if "--authorize-codex-transmission" in source:
         raise AssertionError("the superseded project-health-only Phase 8 assertion remains")
     if '"codex_transmission"' in definition or "project-health-six-real-repository-cycles" in definition:
@@ -113,9 +126,11 @@ def main() -> int:
         '"full_result_wrapper": "text(r)"',
         '"output_only_wrapper": "text(r.output)"',
         '"output_only_outcome": "unknown"',
+        "the first user turn exactly matches the descriptor plain work_user_task",
+        "does not disclose Recall",
         "a fresh resume session invokes Recall before repository inspection",
         "event_msg.mcp_tool_call_end",
-        "the resume session produces observed patch/change evidence intersecting resume_change_scope",
+        "meaningful observed repository changes relevant to the recalled Checkpoint",
         "the resume session preserves separate full-result numeric-exit validation",
     ):
         if forwarding_requirement not in definition:
@@ -126,20 +141,27 @@ def main() -> int:
         raise AssertionError("Phase 8 MCP completion normalization boundary is missing")
     if "parsed.tool_name.startswith" in event_source:
         raise AssertionError("custom wrapper output remains an MCP semantic source")
-    if '"repository_specific_objective": evidence_check(references_present, metadata_ok)' in source:
-        raise AssertionError("repository-specific objective still aliases outer metadata")
     for linkage in (
-        "first_work_session_user_task_turn",
-        "work_session_git_revision",
+        "descriptor_plain_work_user_task",
+        "first_work_session_user_task_turn_exact_match",
         "evaluated_repository_revision",
-        "context_record_inner_objective",
         "context_record_exact_user_turn_source",
+        "canonical_goal_identity_and_statement",
         "checkpoint_goal_context_identity",
-        "canonical_checkpoint_goal_statement",
-        "fresh_session_recall_goal_identity_and_statement",
+        "fresh_session_recall_same_goal_identity_and_materially_consistent_statement",
     ):
         if linkage not in definition:
-            raise AssertionError(f"Phase 8 definition is missing objective linkage {linkage}")
+            raise AssertionError(f"Phase 8 definition is missing plain-task Goal linkage {linkage}")
+    for oracle_field in (
+        "user_owned_dimension",
+        "established_repository_facts",
+        "why_repository_inspection_cannot_decide",
+        "viable_alternatives",
+        "recommendation",
+        "material_consequence",
+    ):
+        if oracle_field not in definition:
+            raise AssertionError(f"Phase 8 definition is missing hidden oracle field {oracle_field}")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")
