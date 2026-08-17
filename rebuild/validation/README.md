@@ -194,17 +194,17 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `972a0af7436091a822f689668a64e0f03195bb59`,
+production/test candidate `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`,
 official V11 reported no active accepted-Decision revisit trigger, and the
 candidate is eligible for a fresh naturalistic Dogfood campaign. No Dogfood
-result exists for this corrected candidate, so this evidence does not establish
+result exists for this current candidate, so this evidence does not establish
 naturalistic activation, repeated-use quality, replacement passage, or Phase 9
 readiness.
 
 The prior `a1efc336` campaign, its `387b7b52` repeated-dogfood candidate, and
 the raw `dogfood/report.md` remain nonqualifying evidence for an earlier product
 surface. Their ignored descriptors, workspaces, rollouts, bundles, and
-observations must not be reused for the corrected candidate. The maintained
+observations must not be reused for the current candidate. The maintained
 `end-to-end/multi-repository/report.md` and `phase-7-summary.md` now record the
 current exact-final/V11 entry evidence. A fresh campaign must generate new
 descriptors satisfying `work_task_materiality_basis`, and each fresh-resume

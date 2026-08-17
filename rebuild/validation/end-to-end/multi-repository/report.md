@@ -3,7 +3,7 @@
 ## Status
 
 Passed. The official V11 gate completed all 54 required steps for exact-final
-production/test candidate HEAD `972a0af7436091a822f689668a64e0f03195bb59`.
+production/test candidate HEAD `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`.
 All 54 steps passed, no blocking classification was reported, and
 `phase_8_ready = true`. Phase 8 may begin; this result does not claim that
 Phase 8 itself has passed.
@@ -35,7 +35,7 @@ retaining no reusable Codex authentication material in V11 evidence.
 
 | Class | Validated identity | Capsule-recorded outcome |
 | --- | --- | --- |
-| Volicord reconstruction repository | `validated_candidate_head = 972a0af7436091a822f689668a64e0f03195bb59` | authenticated Codex target `volicord`: status `passed`, classification `passed` |
+| Volicord reconstruction repository | `validated_candidate_head = d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6` | authenticated Codex target `volicord`: status `passed`, classification `passed` |
 | Small Python application | fixture `v01-python` (V01), SHA-256 `7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867` | authenticated Codex target `small-python`: status `passed`, classification `passed` |
 | Medium polyglot repository | fixture `v11-polyglot-medium` (V11), SHA-256 `7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb` | authenticated Codex target `polyglot-medium`: status `passed`, classification `passed` |
 
@@ -43,9 +43,9 @@ The capsule's dependency and required-fixture identities are:
 
 | Capsule field | Path or identity | Status | SHA-256 |
 | --- | --- | --- | --- |
-| `cargo_lock` | `rebuild/Cargo.lock` | `cargo_lock.status = available` | `cargo_lock.sha256 = 4c162c8e223870db156e252407fa03c41d817c79595cc1755b9a37860ca45a35` |
+| `cargo_lock` | `rebuild/Cargo.lock` | `cargo_lock.status = available` | `cargo_lock.sha256 = 074effacfeb85218101c1c612f79ef2f3be49c32195c41c5a2ba2757938524a6` |
 | `workspace_manifest` | `rebuild/Cargo.toml` | `workspace_manifest.status = available` | `workspace_manifest.sha256 = 4b3a0552a71547385b4246ea9b3ec5103581a436ef2b14650014b78efb28a670` |
-| `fixture_manifest` | `rebuild/validation/shared/fixture-manifest.json` | `fixture_manifest.status = available` | `fixture_manifest.sha256 = c8f535601e49ba0ee4999b6f29ed3e5ff45a4de53a842deabf03d3fab82140d9` |
+| `fixture_manifest` | `rebuild/validation/shared/fixture-manifest.json` | `fixture_manifest.status = available` | `fixture_manifest.sha256 = 2a236580a05054c10ba104347e30bfc25c27675bf1404a299bbe48fdf2c330c3` |
 
 - `fixture.id = v01-python`; `fixture.content_sha256 = 7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867`.
 - `fixture.id = v11-polyglot-medium`; `fixture.content_sha256 = 7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb`.
@@ -58,7 +58,7 @@ starting HEAD all identify the same commit.
 
 Admission status was `eligible`. Immediately before exact final, the gate
 observed a clean worktree with zero dirty entries and confirmed that HEAD was
-unchanged at `972a0af7436091a822f689668a64e0f03195bb59`.
+unchanged at `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`.
 
 | Capsule field | Value |
 | --- | --- |
@@ -94,13 +94,13 @@ zero failures. Its sealed command evidence is:
 | Command evidence | Value |
 | --- | --- |
 | `final_command.cargo_metadata` | `cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1` |
-| `final_command.cargo_metadata.outcome`; `final_command.cargo_metadata.exit_code`; `final_command.cargo_metadata.termination`; `final_command.cargo_metadata.spawn_error`; `final_command.cargo_metadata.duration_ms` | `succeeded`; `0`; `null`; `false`; `11.828` |
+| `final_command.cargo_metadata.outcome`; `final_command.cargo_metadata.exit_code`; `final_command.cargo_metadata.termination`; `final_command.cargo_metadata.spawn_error`; `final_command.cargo_metadata.duration_ms` | `succeeded`; `0`; `null`; `false`; `15.358` |
 | `final_command.cargo_fmt` | `cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check` |
-| `final_command.cargo_fmt.outcome`; `final_command.cargo_fmt.exit_code`; `final_command.cargo_fmt.termination`; `final_command.cargo_fmt.spawn_error`; `final_command.cargo_fmt.duration_ms` | `succeeded`; `0`; `null`; `false`; `430.113` |
+| `final_command.cargo_fmt.outcome`; `final_command.cargo_fmt.exit_code`; `final_command.cargo_fmt.termination`; `final_command.cargo_fmt.spawn_error`; `final_command.cargo_fmt.duration_ms` | `succeeded`; `0`; `null`; `false`; `440.206` |
 | `final_command.cargo_clippy` | `cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features` |
-| `final_command.cargo_clippy.outcome`; `final_command.cargo_clippy.exit_code`; `final_command.cargo_clippy.termination`; `final_command.cargo_clippy.spawn_error`; `final_command.cargo_clippy.duration_ms` | `succeeded`; `0`; `null`; `false`; `7714.197` |
+| `final_command.cargo_clippy.outcome`; `final_command.cargo_clippy.exit_code`; `final_command.cargo_clippy.termination`; `final_command.cargo_clippy.spawn_error`; `final_command.cargo_clippy.duration_ms` | `succeeded`; `0`; `null`; `false`; `7564.881` |
 | `final_command.cargo_test` | `cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features` |
-| `final_command.cargo_test.outcome`; `final_command.cargo_test.exit_code`; `final_command.cargo_test.termination`; `final_command.cargo_test.spawn_error`; `final_command.cargo_test.duration_ms` | `succeeded`; `0`; `null`; `false`; `14830.004` |
+| `final_command.cargo_test.outcome`; `final_command.cargo_test.exit_code`; `final_command.cargo_test.termination`; `final_command.cargo_test.spawn_error`; `final_command.cargo_test.duration_ms` | `succeeded`; `0`; `null`; `false`; `14602.54` |
 
 - `gate_configuration.argv = rebuild/scripts/validate gate --external-network available --authorize-external-transmission v11-openai-codex-project-health-three-targets`
 - `gate_configuration.argv_status = complete`
@@ -113,7 +113,7 @@ zero failures. Its sealed command evidence is:
   `final_aggregate.failure_count = 0`.
 
 The exact-final summary SHA-256 is
-`final_summary_sha256 = 077bb1d95971a00f693fd26ea5ac723d77fa36344aa8bc5c36ef3150c7f68cfd`.
+`final_summary_sha256 = 509ee8e0829b477d6058dda9334a5fc37c310dddc839b4ced097fcd8a906c296`.
 Final and official V11 were run by the immediately preceding gate session and
 are not rerun for this documentation conclusion.
 
@@ -122,9 +122,9 @@ are not rerun for this documentation conclusion.
 Official V11 reported `official_v11.status = passed`,
 `official_v11.required_step_count = 54`, and
 `official_v11.phase_8_ready = true`. Its result SHA-256 is
-`official_v11.result_sha256 = 3f9aa54167c6c129316730de43fa446e38a58ebff0c61246f2704ce363cd3c96`.
+`official_v11.result_sha256 = 42eab852aca3d9bf63054b62a6b2ed6f8c824b2e1140047cf0bbdf4c920bb401`.
 The final-validated and V11-validated candidate HEAD is
-`972a0af7436091a822f689668a64e0f03195bb59`.
+`d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`.
 
 ## Coverage and failures
 
@@ -144,8 +144,8 @@ skipped, or environment-blocked step.
 
 ## Performance and resource observations
 
-The capsule records exact-final command durations of 11.828 ms, 430.113 ms,
-7714.197 ms, and 14830.004 ms. It does not project official V11 per-step
+The capsule records exact-final command durations of 15.358 ms, 440.206 ms,
+7564.881 ms, and 14602.54 ms. It does not project official V11 per-step
 timings, output sizes, or peak-resource measurements, so this conclusion makes
 no broader performance claim.
 
@@ -154,7 +154,7 @@ no broader performance claim.
 The bounded transmission configuration was
 `external_transmission.required = true`, with
 `external_transmission.destination = OpenAI Codex service used by the installed Codex CLI`,
-`external_transmission.purpose = three authenticated turns that select the installed Volicord project_health MCP tool`,
+`external_transmission.purpose = three authenticated turns that select each repository-scoped Volicord project_health MCP tool`,
 and
 `external_transmission.source_scope = bounded V11 prompt, Project identity, and project_health tool result; no intended repository source body`.
 The target records are `external_transmission.scope = volicord`,
@@ -268,9 +268,9 @@ satisfied.
 
 - Supplied sanitized evidence kind: `validation_handoff_capsule`.
 - Exact-final summary SHA-256:
-  `077bb1d95971a00f693fd26ea5ac723d77fa36344aa8bc5c36ef3150c7f68cfd`.
+  `509ee8e0829b477d6058dda9334a5fc37c310dddc839b4ced097fcd8a906c296`.
 - Official V11 result SHA-256:
-  `3f9aa54167c6c129316730de43fa446e38a58ebff0c61246f2704ce363cd3c96`.
+  `42eab852aca3d9bf63054b62a6b2ed6f8c824b2e1140047cf0bbdf4c920bb401`.
 - Maintained inputs: this report, `harness.py`, fixture
   `v11-polyglot-medium`, reused fixture `v01-python`, and
   `rebuild/validation/shared/fixture-manifest.json`.
