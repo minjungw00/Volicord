@@ -98,7 +98,10 @@ def main() -> int:
         "hidden_control_count",
         "unlabeled_control_count",
         "LinuxProcessTreePeakRss",
+        "linux_process_tree_procfs_unavailability",
         "repeated_resource_rehearsal",
+        "rehearsal_destination_preexisting",
+        "failed_document_export_created_unowned_destination",
         "unexplained_cumulative_growth_observed",
         "universal_product_ceiling_applied",
     ):

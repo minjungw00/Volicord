@@ -15,6 +15,7 @@ from pathlib import Path
 import platform
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -149,6 +150,44 @@ def directory_bytes(path: Path) -> int:
     return total
 
 
+def linux_process_tree_procfs_unavailability() -> str | None:
+    """Return why the required Linux process-tree procfs interface cannot be used."""
+
+    system = platform.system()
+    if system != "Linux":
+        return f"unsupported_operating_system:{system or 'unknown'}"
+    process_id = os.getpid()
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, TypeError, ValueError) as error:
+        return f"linux_page_size_unavailable:{type(error).__name__}"
+    if page_size <= 0:
+        return "linux_page_size_invalid"
+    try:
+        statm_fields = (Path("/proc") / str(process_id) / "statm").read_text(
+            encoding="ascii"
+        ).split()
+    except OSError as error:
+        return f"linux_procfs_statm_unavailable:{type(error).__name__}"
+    if len(statm_fields) < 2:
+        return "linux_procfs_statm_malformed"
+    try:
+        int(statm_fields[1])
+    except ValueError:
+        return "linux_procfs_statm_malformed"
+    try:
+        children = (
+            Path("/proc") / str(process_id) / "task" / str(process_id) / "children"
+        ).read_text(encoding="ascii")
+    except OSError as error:
+        return f"linux_procfs_children_unavailable:{type(error).__name__}"
+    try:
+        [int(value) for value in children.split()]
+    except ValueError:
+        return "linux_procfs_children_malformed"
+    return None
+
+
 class LinuxProcessTreePeakRss:
     """Observe the harness and its descendants without changing child execution."""
 
@@ -190,7 +229,7 @@ class LinuxProcessTreePeakRss:
         try:
             rss_bytes, process_count = self._process_tree_rss()
         except (OSError, ValueError, IndexError) as error:
-            self.error = type(error).__name__
+            self.error = f"linux_procfs_process_tree_sampling_failed:{type(error).__name__}"
             self._stop.set()
             return
         self.peak_bytes = max(self.peak_bytes, rss_bytes)
@@ -202,8 +241,9 @@ class LinuxProcessTreePeakRss:
             self._sample()
 
     def start(self) -> None:
-        if platform.system() != "Linux" or not Path("/proc/self/statm").is_file():
-            self.error = "linux_procfs_unavailable"
+        unavailability = linux_process_tree_procfs_unavailability()
+        if unavailability is not None:
+            self.error = unavailability
             return
         self._sample()
         if self.error is None:
@@ -342,7 +382,28 @@ def repeated_resource_rehearsal(
     repeated_document = target_root / "repeated-resource/project-architecture-guide.html"
     repeated_document.parent.mkdir(parents=True, exist_ok=True)
     rounds: list[dict[str, Any]] = []
+
+    def destination_present() -> bool:
+        return repeated_document.exists() or repeated_document.is_symlink()
+
+    def failed_rehearsal(conclusion: str) -> dict[str, Any]:
+        return {
+            "status": "failed",
+            "conclusion": conclusion,
+            "unexplained_cumulative_growth_observed": None,
+            "repetition_count": repetition_count,
+            "operations_per_round": list(RESOURCE_OPERATIONS),
+            "fixed_input_and_destination": True,
+            "universal_product_ceiling_applied": False,
+            "rounds": rounds,
+        }
+
+    if destination_present():
+        return failed_rehearsal("rehearsal_destination_preexisting")
+
     for repetition in range(1, repetition_count + 1):
+        if destination_present():
+            return failed_rehearsal("rehearsal_destination_ownership_ambiguous")
         analysis = recorder.run(
             f"resource-{repetition}-analyze",
             [str(cli), "analyze", project_id],
@@ -356,6 +417,27 @@ def repeated_resource_rehearsal(
             ],
             environment,
         )
+        document_output_bytes: int | None = None
+        document_identity: tuple[int, int] | None = None
+        ownership_failure: str | None = None
+        document_succeeded = (
+            document.get("exit_code") == 0
+            and document.get("termination") is None
+            and document.get("spawn_error") is None
+        )
+        if document_succeeded:
+            try:
+                output_stat = repeated_document.lstat()
+            except OSError:
+                ownership_failure = "successful_document_output_unavailable"
+            else:
+                if not stat.S_ISREG(output_stat.st_mode):
+                    ownership_failure = "successful_document_output_not_regular"
+                else:
+                    document_output_bytes = output_stat.st_size
+                    document_identity = (output_stat.st_dev, output_stat.st_ino)
+        elif destination_present():
+            ownership_failure = "failed_document_export_created_unowned_destination"
         repair = recorder.run(
             f"resource-{repetition}-repair",
             [str(cli), "repair", project_id, "derived-analysis"],
@@ -370,10 +452,26 @@ def repeated_resource_rehearsal(
             },
             "runtime_home_bytes": directory_bytes(runtime),
             "derived_state_bytes": directory_bytes(runtime / "analysis"),
-            "document_output_bytes": (
-                repeated_document.stat().st_size if repeated_document.is_file() else None
-            ),
+            "document_output_bytes": document_output_bytes,
         })
+        if document_identity is not None:
+            try:
+                cleanup_stat = repeated_document.lstat()
+            except OSError:
+                ownership_failure = "rehearsal_owned_output_cleanup_unavailable"
+            else:
+                if (cleanup_stat.st_dev, cleanup_stat.st_ino) != document_identity:
+                    ownership_failure = "rehearsal_owned_output_replaced_before_cleanup"
+                else:
+                    try:
+                        repeated_document.unlink()
+                    except OSError:
+                        ownership_failure = "rehearsal_owned_output_cleanup_failed"
+                    else:
+                        if destination_present():
+                            ownership_failure = "rehearsal_destination_reappeared_after_cleanup"
+        if ownership_failure is not None:
+            return failed_rehearsal(ownership_failure)
     conclusion = repeated_resource_conclusion(rounds)
     return {
         **conclusion,
@@ -3005,6 +3103,7 @@ def self_test() -> int:
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
+    procfs_unavailability = linux_process_tree_procfs_unavailability()
     observer = LinuxProcessTreePeakRss(
         definition["resource_qualification"]["peak_memory_sampling_interval_ms"]
     )
@@ -3044,8 +3143,18 @@ def self_test() -> int:
         cwd=ROOT,
     )
     process_peak = observer.stop()
-    if platform.system() == "Linux" and process_peak["status"] != "passed":
-        raise AssertionError("Linux process-tree peak RSS was not measured")
+    if procfs_unavailability is None:
+        if (
+            process_peak["status"] != "passed"
+            or not isinstance(process_peak["peak_memory_bytes"], int)
+            or process_peak["peak_memory_bytes"] <= 0
+        ):
+            raise AssertionError("capable Linux procfs did not produce measured peak RSS")
+    elif (
+        process_peak["status"] != "environment_blocked"
+        or process_peak["measurement_error"] != procfs_unavailability
+    ):
+        raise AssertionError("unavailable process-tree procfs was not truthfully classified")
     if (
         Path(successful_process["stdout"]).read_bytes() != b"complete stdout\n"
         or Path(successful_process["stderr"]).read_bytes() != b"complete stderr\n"
@@ -3097,6 +3206,107 @@ def self_test() -> int:
     failed_rounds[1]["operations"]["repository_analysis"]["exit_code"] = 7
     if repeated_resource_conclusion(failed_rounds)["status"] != "failed":
         raise AssertionError("failed repeated resource operation qualified")
+
+    def install_no_replace_resource_fake(cycle_root: Path, kind: str) -> Path:
+        fake = cycle_root / "work" / kind / "prefix/bin/volicord"
+        fake.parent.mkdir(parents=True, exist_ok=True)
+        fake.write_text(
+            f"#!{sys.executable}\n"
+            "import os\n"
+            "from pathlib import Path\n"
+            "import sys\n"
+            "if sys.argv[1:3] == ['documents', 'export']:\n"
+            "    destination = Path(sys.argv[-2])\n"
+            "    try:\n"
+            "        with destination.open('xb') as output:\n"
+            "            output.write(b'fixed no-replace document\\n')\n"
+            "    except FileExistsError:\n"
+            "        raise SystemExit(17)\n"
+            "    if os.environ.get('PHASE8_FAKE_DOCUMENT_FAIL_AFTER_CREATE') == '1':\n"
+            "        raise SystemExit(19)\n"
+            "raise SystemExit(0)\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        return fake
+
+    rehearsal_root = evidence_directory / "rehearsal-pass"
+    install_no_replace_resource_fake(rehearsal_root, "volicord")
+    rehearsal = repeated_resource_rehearsal(
+        "volicord",
+        rehearsal_root,
+        v11.Recorder(evidence_directory / "rehearsal-pass-processes"),
+        os.environ.copy(),
+        "11" * 16,
+        definition["resource_qualification"]["repeated_resource_repetition_count"],
+    )
+    rehearsal_destination = (
+        rehearsal_root
+        / "work/volicord/repeated-resource/project-architecture-guide.html"
+    )
+    if (
+        rehearsal["status"] != "passed"
+        or len(rehearsal["rounds"]) != 4
+        or any(
+            round_value["operations"]["document_projection"]["exit_code"] != 0
+            or not isinstance(round_value["document_output_bytes"], int)
+            or round_value["document_output_bytes"] <= 0
+            for round_value in rehearsal["rounds"]
+        )
+        or rehearsal_destination.exists()
+        or rehearsal_destination.is_symlink()
+    ):
+        raise AssertionError("actual repeated no-replace rehearsal did not pass every round")
+
+    preexisting_root = evidence_directory / "rehearsal-preexisting"
+    install_no_replace_resource_fake(preexisting_root, "small-python")
+    preexisting_destination = (
+        preexisting_root
+        / "work/small-python/repeated-resource/project-architecture-guide.html"
+    )
+    preexisting_destination.parent.mkdir(parents=True, exist_ok=True)
+    preexisting_destination.write_bytes(b"pre-existing destination\n")
+    preexisting_recorder = v11.Recorder(evidence_directory / "rehearsal-preexisting-processes")
+    preexisting = repeated_resource_rehearsal(
+        "small-python",
+        preexisting_root,
+        preexisting_recorder,
+        os.environ.copy(),
+        "22" * 16,
+        definition["resource_qualification"]["repeated_resource_repetition_count"],
+    )
+    if (
+        preexisting["status"] != "failed"
+        or preexisting["conclusion"] != "rehearsal_destination_preexisting"
+        or preexisting_recorder.sequence != 0
+        or preexisting_destination.read_bytes() != b"pre-existing destination\n"
+    ):
+        raise AssertionError("pre-existing rehearsal destination was not preserved and rejected")
+
+    failed_export_root = evidence_directory / "rehearsal-failed-export"
+    install_no_replace_resource_fake(failed_export_root, "polyglot-medium")
+    failed_export_environment = os.environ.copy()
+    failed_export_environment["PHASE8_FAKE_DOCUMENT_FAIL_AFTER_CREATE"] = "1"
+    failed_export = repeated_resource_rehearsal(
+        "polyglot-medium",
+        failed_export_root,
+        v11.Recorder(evidence_directory / "rehearsal-failed-export-processes"),
+        failed_export_environment,
+        "33" * 16,
+        definition["resource_qualification"]["repeated_resource_repetition_count"],
+    )
+    failed_export_destination = (
+        failed_export_root
+        / "work/polyglot-medium/repeated-resource/project-architecture-guide.html"
+    )
+    if (
+        failed_export["status"] != "failed"
+        or failed_export["conclusion"]
+        != "failed_document_export_created_unowned_destination"
+        or not failed_export_destination.is_file()
+    ):
+        raise AssertionError("failed export incorrectly acquired rehearsal cleanup ownership")
+
     external_fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
     external_fixture.pop("_evidence_file_sha256")
     external_fixture.pop("_evidence_directory")
@@ -3286,15 +3496,27 @@ def self_test() -> int:
         "universal_product_ceiling_applied": False,
         "rounds": stable_rounds,
     }
+    qualifying_peak = {
+        "status": "passed",
+        "peak_memory_bytes": 1024,
+        "mechanism": "linux_procfs_process_tree_rss_sampling",
+        "sampling_interval_ms": definition["resource_qualification"][
+            "peak_memory_sampling_interval_ms"
+        ],
+        "sample_count": 1,
+        "maximum_observed_process_count": 1,
+        "measurement_error": None,
+        "scope": "dogfood_harness_and_descendant_processes",
+    }
     synthetic_resource_qualification = {
         "status": "passed",
-        "peak_memory": process_peak,
+        "peak_memory": qualifying_peak,
         "repeated_resources": synthetic_repeated_resources,
     }
     synthetic_measurements = {
         **{name: None for name in definition["measurements"]},
         "cycle_duration_ms": 1.0,
-        "peak_memory_bytes": process_peak["peak_memory_bytes"],
+        "peak_memory_bytes": qualifying_peak["peak_memory_bytes"],
         "peak_memory_status": "passed",
     }
 
@@ -3354,6 +3576,43 @@ def self_test() -> int:
         "decision_revisit": {"observed_active_triggers": []},
     }
     validate_result(result, definition)
+
+    unavailable_peak = {
+        **qualifying_peak,
+        "status": "environment_blocked",
+        "peak_memory_bytes": None,
+        "sample_count": 0,
+        "maximum_observed_process_count": 0,
+        "measurement_error": "linux_procfs_children_unavailable:PermissionError",
+    }
+    unavailable_resources = json.loads(json.dumps(result))
+    unavailable_resources["status"] = "environment_blocked"
+    unavailable_resources["replacement_pass_candidate"] = False
+    unavailable_resources["blockers"] = ["required peak-memory measurement unavailable"]
+    for repository in unavailable_resources["repositories"]:
+        repository["status"] = "environment_blocked"
+        for cycle in repository["cycles"]:
+            cycle["status"] = "environment_blocked"
+            cycle["measurements"]["peak_memory_bytes"] = None
+            cycle["measurements"]["peak_memory_status"] = "environment_blocked"
+            cycle["resource_qualification"] = {
+                "status": "environment_blocked",
+                "peak_memory": unavailable_peak,
+                "repeated_resources": synthetic_repeated_resources,
+            }
+    unavailable_resources["resource_qualification"] = aggregate_resource_qualification(
+        unavailable_resources["repositories"]
+    )
+    validate_result(unavailable_resources, definition)
+    unavailable_as_pass = json.loads(json.dumps(unavailable_resources))
+    unavailable_as_pass["status"] = "passed"
+    unavailable_as_pass["replacement_pass_candidate"] = True
+    unavailable_as_pass["blockers"] = []
+    expect_rejected(
+        unavailable_as_pass,
+        definition,
+        "environment-blocked required resource measurement qualified replacement",
+    )
 
     blocked = json.loads(json.dumps(result))
     blocked["status"] = "environment_blocked"
@@ -4555,7 +4814,12 @@ def self_test() -> int:
         "viewer_environment_blocking": "passed",
         "manual_override_boundary": "passed",
         "linux_process_tree_peak_rss": process_peak["status"],
+        "linux_process_tree_environment_classification": "passed",
+        "resource_measurement_unavailable_blocks_qualification": "passed",
         "resource_process_truth_preserved": "passed",
+        "repeated_resource_no_replace_rounds": "passed",
+        "repeated_resource_preexisting_destination_rejected": "passed",
+        "repeated_resource_failed_export_not_owned": "passed",
         "repeated_resource_stability": "passed",
         "repeated_resource_growth_rejected": "passed",
         "repeated_resource_operation_failure_rejected": "passed",
