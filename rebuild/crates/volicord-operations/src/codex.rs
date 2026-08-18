@@ -17,7 +17,7 @@ const CONFIG_NAME: &str = "config.toml";
 const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
-const ACTIVATION_CONTEXT: &str = "This repository is explicitly authorized for Volicord. On the first project-scoped request, use Volicord before repository inspection or edits: resolve the repository first. If a Project exists, Recall precedes inspection or continuation. If it is not found, initialize explicitly, preserve the current-host Goal, and establish the repository baseline. Material user-owned choices require an explicit current-host response before recording a Decision. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests require no Volicord ceremony.";
+const ACTIVATION_CONTEXT: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, record the current-host Goal, and establish a repository baseline. Repository/environment facts are research, not user Questions. When research cannot decide a material choice that changes user-visible behavior, API/compatibility behavior, privacy/security posture, maintenance policy, or another user-owned outcome, STOP before implementing it. Submit a Question Candidate, attach source-grounded repository research, review materiality, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, then record and apply the Decision. An agent recommendation is never a user Decision. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct OwnershipManifest {
@@ -886,6 +886,25 @@ mod tests {
                 output["hookSpecificOutput"]["additionalContext"],
                 ACTIVATION_CONTEXT
             );
+            let context = output["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .expect("activation context text");
+            assert!(context.contains("STOP before repository inspection, edits, or continuation"));
+            assert!(context
+                .contains("successfully Recall before inspecting, editing, or continuing work"));
+            assert!(
+                context.contains("Repository/environment facts are research, not user Questions")
+            );
+            assert!(context.contains("STOP before implementing it"));
+            assert!(context.contains("attach source-grounded repository research"));
+            assert!(context.contains("explicitly promote it"));
+            assert!(
+                context.contains("present its actual alternatives, recommendation, and trade-offs")
+            );
+            assert!(context.contains("explicit current-host user response"));
+            assert!(context
+                .contains("same actually observed command execution with a numeric exit status"));
+            assert!(context.contains("output-only text is insufficient"));
         }
         let encoded = event(&unauthorized, "startup");
         let mut input = encoded.as_slice();

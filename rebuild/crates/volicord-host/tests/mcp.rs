@@ -63,22 +63,38 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     let instructions = initialized["result"]["instructions"]
         .as_str()
         .expect("server instructions");
-    assert!(instructions.contains("resolve the current repository"));
+    assert!(instructions.contains("call project_resolve first"));
     let first_512 = &instructions[..512];
     assert!(first_512.contains("repository was explicitly authorized"));
-    assert!(first_512.contains("first project-scoped request"));
-    assert!(first_512.contains("before repository inspection or edits"));
-    assert!(first_512.contains("resolve the current repository first"));
-    assert!(first_512.contains("Recall precedes repository inspection or continuation"));
-    assert!(first_512.contains("No Project means explicit initialization"));
+    assert!(first_512.contains("every fresh project-scoped session"));
+    assert!(first_512.contains("STOP before repository inspection, edits, or continuation"));
+    assert!(first_512.contains("call project_resolve first"));
+    assert!(first_512.contains("recall must succeed before inspecting, editing, or continuing"));
+    assert!(first_512.contains("not_found result requires explicit project_initialize"));
     assert!(first_512.contains("current-host Goal"));
     assert!(first_512.contains("repository baseline"));
-    assert!(first_512.contains("explicit current-host user response"));
-    assert!(first_512.contains("Non-project requests require no Volicord ceremony"));
-    assert!(instructions.contains("Recall precedes repository inspection"));
+    assert!(instructions
+        .contains("Repository/environment-resolvable facts are research, not user Questions"));
+    assert!(instructions.contains("STOP before implementation"));
+    assert!(instructions.contains("user-visible behavior, API/compatibility behavior"));
+    assert!(instructions.contains("privacy/security posture, maintenance policy"));
+    assert!(instructions.contains("attach source-grounded repository research"));
+    assert!(instructions.contains("review materiality, mark it ready, and explicitly promote it"));
+    assert!(
+        instructions.contains("present the actual alternatives, recommendation, and trade-offs")
+    );
     assert!(instructions.contains("explicit current-host user response"));
     assert!(instructions.contains("candidate_manage"));
-    assert!(instructions.contains("Unrelated greetings"));
+    assert!(instructions.contains("only then apply that Decision"));
+    assert!(instructions.contains("repository_analyze is authorized local analysis"));
+    assert!(instructions
+        .contains("background_semantic_operation is the separate explicit provider boundary"));
+    assert!(instructions
+        .contains("same actually observed command execution with a numeric exit status"));
+    assert!(instructions.contains("output-only text is insufficient"));
+    assert!(instructions
+        .contains("Incidental inspection commands need not become Checkpoint verification facts"));
+    assert!(instructions.contains("Non-project requests and unrelated greetings"));
 
     let listed = adapter
         .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
@@ -98,9 +114,93 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .to_lowercase()
         .contains("read-only"));
     assert!(descriptions["project_initialize"].contains("after resolution"));
-    assert!(descriptions["recall"].contains("before repository inspection"));
+    assert!(descriptions["recall"].contains("Recall must succeed before repository inspection"));
     assert!(descriptions["inquiry_frontier"].contains("candidate_manage"));
+    assert!(descriptions["inquiry_frontier"].contains("present each actual alternative"));
     assert!(descriptions["decision_record"].contains("not a user Decision"));
+    assert!(descriptions["repository_analyze"].contains("authorized local repository"));
+    assert!(descriptions["repository_analyze"]
+        .contains("no background-provider or network transmission"));
+    assert!(descriptions["repository_analyze"].contains("local Runtime Home"));
+    assert!(descriptions["repository_analyze"].contains("background_semantic_operation"));
+    assert!(descriptions["checkpoint_record"].contains("numeric exit status"));
+    assert!(descriptions["checkpoint_record"].contains("output-only text is insufficient"));
+}
+
+#[test]
+fn tool_annotations_match_the_pinned_mcp_effect_and_world_contract() {
+    let (_temporary, mut adapter, _project) = setup();
+    let listed = adapter
+        .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
+        .expect("tools response");
+    let tools = listed["result"]["tools"]
+        .as_array()
+        .expect("tool array")
+        .iter()
+        .map(|tool| (tool["name"].as_str().expect("tool name"), tool))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    for name in [
+        "project_resolve",
+        "project_health",
+        "recall",
+        "repository_understanding",
+        "inquiry_frontier",
+        "canonical_inspect",
+        "candidate_inspect",
+        "privacy_status",
+        "document_preview",
+    ] {
+        assert_eq!(
+            tools[name]["annotations"],
+            json!({"readOnlyHint":true,"openWorldHint":false}),
+            "{name}"
+        );
+    }
+    for name in [
+        "project_initialize",
+        "repository_analyze",
+        "decision_record",
+        "context_record",
+        "checkpoint_record",
+        "guarded_interaction",
+    ] {
+        assert_eq!(
+            tools[name]["annotations"],
+            json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":false}),
+            "{name}"
+        );
+    }
+    for name in ["canonical_mutate", "candidate_manage"] {
+        assert_eq!(
+            tools[name]["annotations"],
+            json!({"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        tools["background_semantic_operation"]["annotations"],
+        json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":true})
+    );
+
+    for tool in tools.values() {
+        for key in tool["annotations"]
+            .as_object()
+            .expect("tool annotations")
+            .keys()
+        {
+            assert!(
+                [
+                    "readOnlyHint",
+                    "destructiveHint",
+                    "idempotentHint",
+                    "openWorldHint"
+                ]
+                .contains(&key.as_str()),
+                "unsupported pinned annotation: {key}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -935,6 +1035,34 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         unexecuted_pass["result"]["isError"], true,
         "{unexecuted_pass}"
     );
+    let output_only_failure = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline_id,
+            "kind":"handoff",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "verification":[{
+                "state":"failed",
+                "command_label":"cargo test -p focused",
+                "termination":"exited",
+                "outcome":"test output reported a failure but no exit status was observed"
+            }],
+            "next_step":"Continue",
+            "handoff_to":"next Codex session"
+        }),
+    );
+    assert_eq!(
+        output_only_failure["result"]["isError"], true,
+        "{output_only_failure}"
+    );
+    assert!(output_only_failure["result"]["content"][0]["text"]
+        .as_str()
+        .expect("Checkpoint error text")
+        .contains("does not match any allowed shape"));
 
     fs::write(repository.join("implemented.rs"), "pub fn grounded() {}\n")
         .expect("ordinary work change");

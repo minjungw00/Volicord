@@ -54,7 +54,7 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
     "guarded_interaction",
 ];
 
-const SERVER_INSTRUCTIONS: &str = "Volicord is active because this repository was explicitly authorized. On the first project-scoped request, use Volicord before repository inspection or edits: resolve the current repository first. If a Project exists, Recall precedes repository inspection or continuation. No Project means explicit initialization plus the current-host Goal and repository baseline. A material user-owned Decision requires an explicit current-host user response. Non-project requests require no Volicord ceremony. Unrelated greetings are non-project. Submit, research, and explicitly promote material Question Candidates with candidate_manage before reading inquiry_frontier. Never substitute an agent recommendation or implementation preference for a user Decision. Meaningful completed or paused work uses a source-grounded Checkpoint with truthful verification evidence.";
+const SERVER_INSTRUCTIONS: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize, a current-host Goal through context_record, and a repository baseline through repository_analyze. Repository/environment-resolvable facts are research, not user Questions. When research cannot decide a material choice that changes user-visible behavior, API/compatibility behavior, privacy/security posture, maintenance policy, or another user-owned outcome, STOP before implementation. Use candidate_manage to submit the Question Candidate, attach source-grounded repository research, review materiality, mark it ready, and explicitly promote it. Then read inquiry_frontier, present the actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, call decision_record, and only then apply that Decision. Never substitute an agent recommendation or implementation preference for a user Decision. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
 
 #[derive(Debug)]
 pub struct HostError {
@@ -1067,6 +1067,7 @@ fn tool_catalog() -> Vec<Value> {
                 "name": contract.name,
                 "description": contract.description,
                 "inputSchema": contract.input_schema,
+                "annotations": contract.behavior.annotations(),
             })
         })
         .collect()
@@ -1076,6 +1077,44 @@ struct ToolContract {
     name: &'static str,
     description: &'static str,
     input_schema: Value,
+    behavior: ToolBehavior,
+}
+
+#[derive(Clone, Copy)]
+enum ToolBehavior {
+    ReadOnlyClosed,
+    AdditiveClosed,
+    DestructiveClosed,
+    AdditiveOpen,
+}
+
+impl ToolBehavior {
+    fn annotations(self) -> Value {
+        match self {
+            Self::ReadOnlyClosed => json!({
+                "readOnlyHint": true,
+                "openWorldHint": false,
+            }),
+            Self::AdditiveClosed => json!({
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false,
+            }),
+            Self::DestructiveClosed => json!({
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false,
+            }),
+            Self::AdditiveOpen => json!({
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": true,
+            }),
+        }
+    }
 }
 
 impl ToolContract {
@@ -1086,13 +1125,14 @@ impl ToolContract {
 }
 
 fn tool_contract(name: &str) -> Option<ToolContract> {
-    let (description, input_schema) = match name {
+    let (description, input_schema, behavior) = match name {
         "project_resolve" => (
-            "Read-only resolve the existing Volicord Project bound to an absolute local repository path. Use this for a project-scoped repository request when the Project identity is unknown; initialize explicitly only after a not_found result.",
+            "Read-only resolve the existing Volicord Project bound to an absolute local repository path. In a fresh project-scoped session do this before repository inspection, edits, or continuation; after a found result, Recall must succeed before that work. Initialize explicitly only after a not_found result.",
             object_schema(
                 vec![("repository", text_schema("Absolute local repository path to canonicalize and resolve", 1, 4096))],
                 &["repository"],
             ),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "project_initialize" => (
             "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding.",
@@ -1103,6 +1143,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["display_name"],
             ),
+            ToolBehavior::AdditiveClosed,
         ),
         "project_health" => (
             "Distinguish MCP connection from Project capability health.",
@@ -1110,17 +1151,20 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 vec![("project_id", identity_schema("Optional Project identity"))],
                 &[],
             ),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "recall" => (
-            "Read a bounded source-grounded Project resume brief; in a fresh resolved Project session use before repository inspection or continued work.",
+            "Read a bounded source-grounded Project resume brief. In every fresh session with a successfully resolved Project, Recall must succeed before repository inspection, edits, or continued work.",
             project_schema(),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
             "Read the Project overview, repository map, Decision-context-code links, gaps, and degraded states.",
             project_schema(),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (
-            "Run local repository inventory and structural analysis.",
+            "Run authorized local repository inventory and structural analysis. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; it performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1128,9 +1172,10 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id"],
             ),
+            ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read current promoted material Questions and choices; submit, research, and promote Question Candidates through candidate_manage first.",
+            "Read current promoted material Questions. Before implementation, present each actual alternative, recommendation, and trade-off and obtain an explicit current-host response. Repository-resolvable facts remain research; submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1138,6 +1183,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id"],
             ),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "decision_record" => (
             "Record one explicit current-host user response against one current Question revision; an agent recommendation or implementation preference is not a user Decision.",
@@ -1152,6 +1198,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id", "question_id", "question_revision", "alternative_key", "user_turn"],
             ),
+            ToolBehavior::AdditiveClosed,
         ),
         "context_record" => (
             "Record one verbatim statement from the exact current-host user turn as canonical Project Context.",
@@ -1164,9 +1211,10 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id", "user_turn", "role", "statement"],
             ),
+            ToolBehavior::AdditiveClosed,
         ),
         "checkpoint_record" => (
-            "Record a grounded Checkpoint from a canonical Goal, repository baseline/current analysis, applicable Decisions, and truthful verification evidence.",
+            "Record a grounded Checkpoint from a canonical Goal, repository baseline/current analysis, applicable Decisions, and truthful verification evidence. A passed or failed verification requires the numeric exit status from the same actually observed command execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1187,30 +1235,37 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id", "goal_context_id", "baseline_analysis_snapshot_id", "kind", "work_state", "applied_decision_ids", "verification", "next_step"],
             ),
+            ToolBehavior::AdditiveClosed,
         ),
         "canonical_inspect" => (
             "Inspect canonical memory without mutation.",
             project_schema(),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "canonical_mutate" => (
             "Correct, supersede, or forget canonical memory through Local Operations using an explicit current-host user turn.",
             json!({"oneOf": canonical_mutation_schemas()}),
+            ToolBehavior::DestructiveClosed,
         ),
         "candidate_inspect" => (
             "Inspect bounded Candidate lifecycle state without mutation.",
             project_schema(),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "candidate_manage" => (
             "Explicitly submit and research an agent Question Candidate, promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision.",
             json!({"oneOf": candidate_management_schemas()}),
+            ToolBehavior::DestructiveClosed,
         ),
         "privacy_status" => (
             "Inspect Project background-provider consent and local-only state.",
             project_schema(),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "background_semantic_operation" => (
             "Prepare, Guarded-dispatch, or durably inspect one privacy-authorized background semantic-provider operation.",
             json!({"oneOf": background_semantic_operation_schemas()}),
+            ToolBehavior::AdditiveOpen,
         ),
         "document_preview" => (
             "Preview one of four grounded documents without repository write or adoption.",
@@ -1224,10 +1279,12 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ],
                 &["project_id", "kind"],
             ),
+            ToolBehavior::ReadOnlyClosed,
         ),
         "guarded_interaction" => (
             "Inspect or answer one exact Guarded request/revision; returns viewer/CLI fallback when host elicitation is unavailable.",
             json!({"oneOf": guarded_interaction_schemas()}),
+            ToolBehavior::AdditiveClosed,
         ),
         _ => return None,
     };
@@ -1238,6 +1295,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             .find(|candidate| *candidate == name)?,
         description,
         input_schema,
+        behavior,
     })
 }
 
@@ -1787,13 +1845,23 @@ fn checkpoint_verification_schema() -> Value {
                 ),
                 object_schema(
                     vec![
-                        ("state", enum_schema("Executed verification state", &["partial", "passed", "failed"])),
+                        ("state", enum_schema("Incomplete observed verification state", &["partial"])),
                         ("command_label", text_schema("Bounded cooperative command label", 1, 1024)),
                         ("exit_code", unsigned_schema("Actual process exit code when termination is exited", 0)),
                         ("termination", enum_schema("Actual command termination", &["exited", "signaled", "spawn_failed", "indeterminate"])),
                         ("outcome", text_schema("Observed verification outcome", 1, 16_384)),
                     ],
                     &["state", "command_label", "termination", "outcome"],
+                ),
+                object_schema(
+                    vec![
+                        ("state", enum_schema("Executed verification state with a numeric observed exit status", &["passed", "failed"])),
+                        ("command_label", text_schema("Bounded cooperative command label", 1, 1024)),
+                        ("exit_code", unsigned_schema("Numeric exit status from this same observed command execution", 0)),
+                        ("termination", enum_schema("Observed command termination", &["exited"])),
+                        ("outcome", text_schema("Observed verification outcome; output text alone is insufficient", 1, 16_384)),
+                    ],
+                    &["state", "command_label", "exit_code", "termination", "outcome"],
                 ),
             ]
         }
