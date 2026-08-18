@@ -193,23 +193,22 @@ ownership, or the capsule lifecycle described below.
 
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
-`phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`,
-official V11 reported no active accepted-Decision revisit trigger, and the
-candidate is eligible for a fresh naturalistic Dogfood campaign. No Dogfood
-result exists for this current candidate, so this evidence does not establish
-naturalistic activation, repeated-use quality, replacement passage, or Phase 9
-readiness.
+`phase_9_ready = false`. The current production/test candidate is
+`7ab5e5c4d5695373d680e026e36b43cba4088cd2`. Admission passed with status
+`eligible`, but the maintained gate process did not start because execution
+approval for its bounded authenticated V11 transmission was denied. Exact
+final, official V11, the accepted-Decision revisit-trigger assessment, and the
+sanitized gate capsule are therefore `not_run` or `not_created`, and
+`phase_8_ready = false`. This candidate is not eligible for naturalistic
+Dogfood; its Dogfood state is `not_run`.
 
-The prior `a1efc336` campaign, its `387b7b52` repeated-dogfood candidate, and
-the raw `dogfood/report.md` remain nonqualifying evidence for an earlier product
-surface. Their ignored descriptors, workspaces, rollouts, bundles, and
-observations must not be reused for the current candidate. The maintained
-`end-to-end/multi-repository/report.md` and `phase-7-summary.md` now record the
-current exact-final/V11 entry evidence. A fresh campaign must generate new
-descriptors satisfying `work_task_materiality_basis`, and each fresh-resume
-session must resolve the repository-bound Project before Recall. This later
-documentation-only conclusion remains outside exact final.
+The passed exact-final/V11 evidence in
+`end-to-end/multi-repository/report.md` and `phase-7-summary.md` belongs only to
+predecessor candidate `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`. That
+candidate's failed naturalistic campaign, descriptors, captures, Runtime
+Homes, workspaces, bundles, and observations are non-reusable and must not be
+relabeled for `7ab5e5c4`. Replacement passage remains false, and Phase 9 may
+not begin.
 
 ## Admission, authorization, and handoff
 
