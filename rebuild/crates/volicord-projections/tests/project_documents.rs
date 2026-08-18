@@ -523,7 +523,10 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                     || !claim.analysis_basis.is_empty()
                     || claim.explicit_inference
             );
-            assert!(document.markdown.content.contains(&claim.identity));
+            assert!(document
+                .markdown
+                .content
+                .contains(&claim.identity.replace('_', "\\_")));
             assert!(document.html.content.contains(&claim.identity));
             if claim.class == ClaimClass::AgentInterpretation {
                 assert!(claim.explicit_inference);
@@ -608,10 +611,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             .ok_or("gap section missing")?
             .claims
             .len();
-        let exact_count_marker = format!(
-            "{} items omitted by deterministic projection bound",
-            cardinality - 4
-        );
+        let exact_count_marker = format!("exact omitted count={}", cardinality - 4);
         assert!(scaled_document
             .markdown
             .content
@@ -628,16 +628,95 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             scaled_document
                 .markdown
                 .content
-                .matches("items omitted by deterministic projection bound")
+                .matches("exact omitted count=")
                 .count(),
             scaled_document
                 .html
                 .content
-                .matches("items omitted by deterministic projection bound")
+                .matches("exact omitted count=")
                 .count(),
         ));
     }
     assert_eq!(scaling_counts[0], scaling_counts[1]);
+
+    let template_report = projection
+        .repository_map
+        .capabilities
+        .first()
+        .cloned()
+        .ok_or("capability report missing")?;
+    let template_gap = projection
+        .repository_map
+        .gaps
+        .first()
+        .cloned()
+        .ok_or("capability gap missing")?;
+    let template_issue = projection
+        .issues
+        .first()
+        .cloned()
+        .ok_or("projection issue missing")?;
+    let mut metadata_heavy = projection.clone();
+    metadata_heavy.repository_map.capabilities = (0..512)
+        .map(|index| {
+            let mut report = template_report.clone();
+            report.area.path = format!("bounded-area-{index:04}");
+            report
+        })
+        .collect();
+    metadata_heavy.repository_map.gaps = (0..512)
+        .map(|index| {
+            let mut gap = template_gap.clone();
+            gap.area = format!("bounded-gap-{index:04}");
+            gap.reason = format!("bounded gap reason {index:04}");
+            gap
+        })
+        .collect();
+    metadata_heavy.issues = (0..512)
+        .map(|index| {
+            let mut issue = template_issue.clone();
+            issue.identity = format!("bounded-issue-{index:04}");
+            issue.reason = format!("bounded issue reason {index:04}");
+            issue.omitted_count = 0;
+            issue
+        })
+        .collect();
+    let metadata_heavy_documents = generate_documents(&metadata_heavy, &request)?;
+    let rendered = &metadata_heavy_documents.project_architecture_guide;
+    assert_eq!(rendered.metadata.capability_coverage.len(), 512);
+    assert_eq!(rendered.metadata.capability_gaps.len(), 512);
+    assert_eq!(rendered.metadata.omissions.len(), 512);
+    assert!(rendered
+        .metadata
+        .capability_gaps
+        .iter()
+        .any(|gap| gap.reason == "bounded gap reason 0511"));
+    assert!(!rendered
+        .markdown
+        .content
+        .contains("bounded gap reason 0511"));
+    assert!(rendered
+        .markdown
+        .content
+        .contains("504 additional items omitted from rendered metadata"));
+    assert!(rendered
+        .body
+        .sections
+        .iter()
+        .all(|section| section.claims.len() <= 13));
+    assert!(rendered
+        .body
+        .sections
+        .iter()
+        .find(|section| section.key == "gaps")
+        .is_some_and(|section| section
+            .claims
+            .iter()
+            .any(|claim| claim.identity == "render-bound:gaps")));
+    // Fixture-specific output regression: typed grounding may grow without
+    // turning the portable rendering into a hardware or product ceiling.
+    assert!(rendered.markdown.content.len() < 80_000);
+    assert!(rendered.html.content.len() < 120_000);
 
     let attribute_language = "fr-CA\" data-unsafe=\"<&";
     let attribute_safe = generate_documents(
@@ -676,6 +755,16 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .markdown
         .content
         .contains("프로젝트 및 아키텍처 가이드"));
+    assert!(korean
+        .project_architecture_guide
+        .markdown
+        .content
+        .contains("일부 가능"));
+    assert!(!korean
+        .project_architecture_guide
+        .markdown
+        .content
+        .contains("state=Partial"));
     assert!(korean
         .project_architecture_guide
         .html

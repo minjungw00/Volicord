@@ -4,10 +4,17 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error as StdError;
 use std::fmt;
-use volicord_context::{DecisionId, ProjectId, SourceFreshness, SourceId, TimestampMicros};
-use volicord_repository_intelligence::{
-    AnalysisSnapshotId, CapabilityReport, RepositorySnapshotId,
+use volicord_context::{
+    ContextItemRole, DecisionChoice, DecisionId, ProjectId, SourceFreshness, SourceId,
+    TimestampMicros, UserAcceptanceState, UserReviewState, VerificationState, WorkState,
 };
+use volicord_repository_intelligence::{
+    AnalysisSnapshotId, Capability, CapabilityReport, CapabilityState, CodeEntityKind, Language,
+    RepositorySnapshotId,
+};
+
+const RENDERED_BODY_CLAIM_LIMIT: usize = 12;
+const RENDERED_METADATA_ITEM_LIMIT: usize = 8;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
 pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 2;
@@ -264,12 +271,14 @@ fn build_body(
     projection: &ProjectProjection,
     locale: FixedLocale,
 ) -> DocumentBody {
-    match kind {
+    let mut body = match kind {
         DocumentKind::ProjectArchitectureGuide => architecture_body(projection, locale),
         DocumentKind::DecisionReport => decision_body(projection, locale),
         DocumentKind::ImplementationPlan => implementation_body(projection, locale),
         DocumentKind::HandoffResume => handoff_body(projection, locale),
-    }
+    };
+    bound_rendered_body(&mut body, locale);
+    body
 }
 
 fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
@@ -308,8 +317,10 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             identity: format!("entity:{}", entity.identity),
             class: ClaimClass::StructuralFact,
             text: format!(
-                "{} ({:?}, {:?})",
-                entity.display_name, entity.kind, entity.language
+                "{} ({}, {})",
+                entity.display_name,
+                code_entity_kind_label(&entity.kind, locale),
+                language_label(&entity.language, locale)
             ),
             source_basis: vec![entity.source_id],
             decision_basis: Vec::new(),
@@ -391,15 +402,24 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             identity: format!("decision:{}", decision.decision_id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "{:?}: {:?}; rationale={}; applicability={:?}",
-                decision.state,
-                decision.choice,
-                decision.user_rationale.as_deref().unwrap_or("not recorded"),
+                "{}: {}; {}={}; {}={}",
+                brief_decision_state_label(decision.state, locale),
+                decision_choice_label(&decision.choice, locale),
+                fixed(locale, "rationale", "근거"),
+                decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not recorded",
+                    "기록되지 않음"
+                )),
+                fixed(locale, "applicability", "적용 범위"),
                 projection
                     .decision_context_code
                     .iter()
                     .find(|link| link.decision_id == decision.decision_id)
-                    .map(|link| (&link.declared_paths, &link.declared_components))
+                    .map_or_else(
+                        || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
+                        |link| format_scope(&link.declared_paths, &link.declared_components)
+                    )
             ),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
@@ -459,19 +479,38 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                 identity: format!("decision:{}", decision.decision_id),
                 class: ClaimClass::CanonicalContext,
                 text: format!(
-                    "state={:?}; choice={:?}; user rationale={}; agent recommendation={}; assumptions={:?}; revisit triggers={:?}; scope={:?}; code links={:?}",
-                    decision.state,
-                    decision.choice,
-                    decision.user_rationale.as_deref().unwrap_or("not recorded"),
-                    decision.recommendation_rationale,
-                    decision.assumptions,
-                    decision.revisit_triggers,
-                    link.map(|value| (
-                        &value.declared_paths,
-                        &value.declared_components,
-                        &value.declared_work_contexts
+                    "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
+                    fixed(locale, "state", "상태"),
+                    brief_decision_state_label(decision.state, locale),
+                    fixed(locale, "choice", "선택"),
+                    decision_choice_label(&decision.choice, locale),
+                    fixed(locale, "user rationale", "사용자 근거"),
+                    decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
+                        locale,
+                        "not recorded",
+                        "기록되지 않음"
                     )),
-                    link.map(|value| &value.related_code_entities),
+                    fixed(locale, "agent recommendation", "에이전트 권고"),
+                    decision.recommendation_rationale,
+                    fixed(locale, "assumptions", "가정"),
+                    display_strings(&decision.assumptions, locale),
+                    fixed(locale, "revisit triggers", "재검토 조건"),
+                    display_strings(&decision.revisit_triggers, locale),
+                    fixed(locale, "scope", "범위"),
+                    link.map_or_else(
+                        || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
+                        |value| format!(
+                            "{}; {}={}",
+                            format_scope(&value.declared_paths, &value.declared_components),
+                            fixed(locale, "work context", "작업 맥락"),
+                            display_strings(&value.declared_work_contexts, locale)
+                        )
+                    ),
+                    fixed(locale, "code links", "코드 연결"),
+                    link.map_or_else(
+                        || fixed(locale, "none", "없음").to_owned(),
+                        |value| display_strings(&value.related_code_entities, locale)
+                    ),
                 ),
                 source_basis: decision.source_basis.clone(),
                 decision_basis: vec![decision.decision_id],
@@ -510,11 +549,15 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
             identity: format!("question:{}", question.question_id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "Resolve '{}' (frontier={}, unlocks={:?}, blocked={:?})",
+                "{} '{}' ({}={}, {}={}, {}={})",
+                fixed(locale, "Resolve", "해결"),
                 question.prompt,
-                question.on_current_frontier,
-                question.what_the_answer_unlocks,
-                question.blocked_basis
+                fixed(locale, "current frontier", "현재 프런티어"),
+                yes_no(question.on_current_frontier, locale),
+                fixed(locale, "unlocks", "해제되는 작업"),
+                display_strings(&question.what_the_answer_unlocks, locale),
+                fixed(locale, "blocked by", "차단 근거"),
+                display_strings(&question.blocked_basis, locale)
             ),
             source_basis: question.source_basis.clone(),
             decision_basis: Vec::new(),
@@ -528,11 +571,20 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
             identity: format!("checkpoint-next:{}", checkpoint.id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "Next step: {}; affected paths={:?}; verification={:?}; known limits={:?}",
+                "{}: {}; {}={}; {}={}; {}={}",
+                fixed(locale, "Next step", "다음 단계"),
                 checkpoint.next_step,
-                checkpoint.changed_paths,
-                checkpoint.verification,
-                checkpoint.known_limits
+                fixed(locale, "affected paths", "변경 경로"),
+                display_strings(&checkpoint.changed_paths, locale),
+                fixed(locale, "verification", "검증"),
+                checkpoint
+                    .verification
+                    .iter()
+                    .map(|fact| verification_fact_label(fact, locale))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                fixed(locale, "known limits", "알려진 한계"),
+                display_strings(&checkpoint.known_limits, locale)
             ),
             source_basis: checkpoint.source_basis.clone(),
             decision_basis: checkpoint.applied_decisions.clone(),
@@ -586,7 +638,11 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
             .map(|item| GeneratedDocumentClaim {
                 identity: format!("context:{}", item.identity),
                 class: ClaimClass::CanonicalContext,
-                text: format!("{:?}: {}", item.role, item.statement),
+                text: format!(
+                    "{}: {}",
+                    context_role_label(item.role, locale),
+                    item.statement
+                ),
                 source_basis: item.source_basis.clone(),
                 decision_basis: Vec::new(),
                 analysis_basis: Vec::new(),
@@ -602,11 +658,14 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
             identity: format!("question:{}", question.question_id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "{} (frontier={}, blocked={:?}, unlocks={:?})",
+                "{} ({}={}, {}={}, {}={})",
                 question.prompt,
-                question.on_current_frontier,
-                question.blocked_basis,
-                question.what_the_answer_unlocks
+                fixed(locale, "current frontier", "현재 프런티어"),
+                yes_no(question.on_current_frontier, locale),
+                fixed(locale, "blocked by", "차단 근거"),
+                display_strings(&question.blocked_basis, locale),
+                fixed(locale, "unlocks", "해제되는 작업"),
+                display_strings(&question.what_the_answer_unlocks, locale)
             ),
             source_basis: question.source_basis.clone(),
             decision_basis: Vec::new(),
@@ -672,13 +731,25 @@ fn timeline_section(projection: &ProjectProjection, locale: FixedLocale) -> Docu
             identity: format!("checkpoint:{}", entry.checkpoint.id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "goal={}; work={:?}; verification={:?}; user review={:?}; user acceptance={:?}; changes={:?}; next={}",
+                "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
+                fixed(locale, "goal", "목표"),
                 entry.checkpoint.goal,
-                entry.work_state,
-                entry.verification,
-                entry.user_review,
-                entry.user_acceptance,
-                entry.checkpoint.changed_paths,
+                fixed(locale, "work", "작업"),
+                work_state_label(entry.work_state, locale),
+                fixed(locale, "verification", "검증"),
+                entry
+                    .verification
+                    .iter()
+                    .map(|fact| verification_fact_label(fact, locale))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                fixed(locale, "user review", "사용자 검토"),
+                user_review_label(entry.user_review.state, locale),
+                fixed(locale, "user acceptance", "사용자 수락"),
+                user_acceptance_label(entry.user_acceptance.state, locale),
+                fixed(locale, "changes", "변경"),
+                display_strings(&entry.checkpoint.changed_paths, locale),
+                fixed(locale, "next", "다음 단계"),
                 entry.checkpoint.next_step,
             ),
             source_basis: entry.checkpoint.source_basis.clone(),
@@ -702,19 +773,35 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
         .iter()
         .map(|gap| GeneratedDocumentClaim {
             identity: format!(
-                "gap:{}:{:?}:{:?}:{}",
-                gap.analysis_snapshot, gap.capability, gap.language, gap.area
+                "gap:{}:{}:{}:{}",
+                gap.analysis_snapshot,
+                capability_key(gap.capability),
+                gap.language
+                    .as_ref()
+                    .map_or("all_languages".to_owned(), language_key),
+                gap.area
             ),
             class: ClaimClass::RepositoryObservation,
             text: format!(
-                "state={:?}; capability={:?}; language={:?}; area={}; reason={}; affected={:?}; usable remainder={:?}",
-                gap.state,
-                gap.capability,
-                gap.language,
+                "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
+                fixed(locale, "state", "상태"),
+                capability_state_label(gap.state, locale),
+                fixed(locale, "capability", "기능"),
+                capability_label(gap.capability, locale),
+                fixed(locale, "language", "언어"),
+                optional_language_label(gap.language.as_ref(), locale),
+                fixed(locale, "area", "영역"),
                 gap.area,
+                fixed(locale, "reason", "이유"),
                 gap.reason,
-                gap.affected_areas,
-                gap.usable_remainder
+                fixed(locale, "affected", "영향 범위"),
+                display_strings(&gap.affected_areas, locale),
+                fixed(locale, "usable remainder", "사용 가능한 나머지"),
+                gap.usable_remainder.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not reported",
+                    "보고되지 않음"
+                ))
             ),
             source_basis: projection
                 .source_catalog
@@ -734,8 +821,13 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             identity: format!("omission:{}:{}", issue.affected_scope, issue.identity),
             class: ClaimClass::RepositoryObservation,
             text: format!(
-                "{}: {} ({:?}; omitted_count={})",
-                issue.affected_scope, issue.reason, issue.kind, issue.omitted_count
+                "{}: {} ({}={}; {}={})",
+                issue.affected_scope,
+                issue.reason,
+                fixed(locale, "kind", "종류"),
+                projection_issue_kind_label(issue.kind, locale),
+                fixed(locale, "omitted count", "생략 수"),
+                issue.omitted_count
             ),
             source_basis: projection
                 .source_catalog
@@ -784,6 +876,34 @@ fn section(key: &str, title: &str, claims: Vec<GeneratedDocumentClaim>) -> Docum
         key: key.to_owned(),
         title: title.to_owned(),
         claims,
+    }
+}
+
+fn bound_rendered_body(body: &mut DocumentBody, locale: FixedLocale) {
+    for section in &mut body.sections {
+        if section.claims.len() <= RENDERED_BODY_CLAIM_LIMIT {
+            continue;
+        }
+        let omitted_count = section.claims.len() - RENDERED_BODY_CLAIM_LIMIT;
+        section.claims.truncate(RENDERED_BODY_CLAIM_LIMIT);
+        section.claims.push(inference_claim(
+            format!("render-bound:{}", section.key),
+            format!(
+                "{} {} {}.",
+                omitted_count,
+                fixed(
+                    locale,
+                    "additional grounded items are omitted from this rendered section",
+                    "개의 추가 grounded 항목을 이 렌더링 섹션에서 생략했습니다"
+                ),
+                fixed(
+                    locale,
+                    "Full typed grounding remains available to internal callers",
+                    "전체 typed grounding은 내부 호출자에게 계속 제공됩니다"
+                )
+            ),
+            Vec::new(),
+        ));
     }
 }
 
@@ -878,6 +998,27 @@ fn build_metadata(
                 .iter()
                 .map(|entity| entity.repository_snapshot),
         )
+        .chain(
+            projection
+                .repository_map
+                .relations
+                .iter()
+                .map(|relation| relation.repository_snapshot),
+        )
+        .chain(
+            projection
+                .repository_map
+                .gaps
+                .iter()
+                .map(|gap| gap.repository_snapshot),
+        )
+        .chain(
+            projection
+                .repository_map
+                .capabilities
+                .iter()
+                .map(|report| report.repository_snapshot),
+        )
         .collect::<Vec<_>>();
     repository_snapshots.sort();
     repository_snapshots.dedup();
@@ -886,6 +1027,34 @@ fn build_metadata(
         .iter()
         .flat_map(|section| &section.claims)
         .flat_map(|claim| claim.analysis_basis.iter().copied())
+        .chain(
+            projection
+                .resume
+                .snapshots
+                .iter()
+                .map(|snapshot| snapshot.analysis_snapshot),
+        )
+        .chain(
+            projection
+                .repository_map
+                .entities
+                .iter()
+                .map(|entity| entity.analysis_snapshot),
+        )
+        .chain(
+            projection
+                .repository_map
+                .relations
+                .iter()
+                .map(|relation| relation.analysis_snapshot),
+        )
+        .chain(
+            projection
+                .repository_map
+                .gaps
+                .iter()
+                .map(|gap| gap.analysis_snapshot),
+        )
         .collect::<Vec<_>>();
     analysis_snapshots.sort();
     analysis_snapshots.dedup();
@@ -926,7 +1095,13 @@ fn build_metadata(
         .requested_destinations
         .iter()
         .filter(|destination| destination.document_kind == kind)
-        .map(|destination| format!("{:?}:{}", destination.output_format, destination.path))
+        .map(|destination| {
+            format!(
+                "{}:{}",
+                output_format_key(destination.output_format),
+                destination.path
+            )
+        })
         .collect();
     DocumentMetadata {
         format_kind: GENERATED_DOCUMENT_FORMAT_KIND.to_owned(),
@@ -969,10 +1144,12 @@ fn render_markdown(
         }
         for claim in &section.claims {
             output.push_str("- **[");
-            output.push_str(claim_class_label(claim.class));
+            output.push_str(claim_class_label(claim.class, locale));
             output.push_str("]** ");
             if claim.explicit_inference {
-                output.push_str("**[Inference]** ");
+                output.push_str("**[");
+                output.push_str(fixed(locale, "Inference", "추론"));
+                output.push_str("]** ");
             }
             output.push_str(&escape_markdown(&claim.text));
             output.push_str("  \n  ");
@@ -1018,10 +1195,12 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
             output.push_str("<article class=\"claim\" data-claim-id=\"");
             output.push_str(&escape_html(&claim.identity));
             output.push_str("\"><strong>[");
-            output.push_str(claim_class_label(claim.class));
+            output.push_str(claim_class_label(claim.class, locale));
             output.push_str("]</strong> ");
             if claim.explicit_inference {
-                output.push_str("<span class=\"inference\">[Inference]</span> ");
+                output.push_str("<span class=\"inference\">[");
+                output.push_str(&escape_html(fixed(locale, "Inference", "추론")));
+                output.push_str("]</span> ");
             }
             output.push_str(&escape_html(&claim.text));
             output.push_str("<div class=\"basis\">");
@@ -1044,7 +1223,7 @@ fn render_metadata_markdown(output: &mut String, metadata: &DocumentMetadata, lo
     output.push_str("## ");
     output.push_str(fixed(locale, "Grounding metadata", "Grounding 메타데이터"));
     output.push_str("\n\n");
-    for (label, value) in metadata_pairs(metadata) {
+    for (label, value) in metadata_pairs(metadata, locale) {
         output.push_str("- **");
         output.push_str(label);
         output.push_str(":** ");
@@ -1062,7 +1241,7 @@ fn render_metadata_html(output: &mut String, metadata: &DocumentMetadata, locale
         "Grounding 메타데이터",
     )));
     output.push_str("</h2><dl>");
-    for (label, value) in metadata_pairs(metadata) {
+    for (label, value) in metadata_pairs(metadata, locale) {
         output.push_str("<dt>");
         output.push_str(&escape_html(label));
         output.push_str("</dt><dd>");
@@ -1072,112 +1251,105 @@ fn render_metadata_html(output: &mut String, metadata: &DocumentMetadata, locale
     output.push_str("</dl></section>");
 }
 
-fn metadata_pairs(metadata: &DocumentMetadata) -> Vec<(&'static str, String)> {
+fn metadata_pairs(metadata: &DocumentMetadata, locale: FixedLocale) -> Vec<(&'static str, String)> {
+    let repository_snapshots = metadata
+        .repository_snapshots
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let analysis_snapshots = metadata
+        .analysis_snapshots
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let decisions = metadata
+        .included_decisions
+        .iter()
+        .map(|decision| {
+            format!(
+                "{}@{}:{}",
+                decision.decision_id,
+                decision.revision,
+                brief_decision_state_label(decision.state, locale)
+            )
+        })
+        .collect::<Vec<_>>();
+    let sources = metadata
+        .used_sources
+        .iter()
+        .map(|source| {
+            format!(
+                "{}:{}",
+                source.source_id,
+                source_freshness_label(source.freshness, locale)
+            )
+        })
+        .collect::<Vec<_>>();
     vec![
         (
-            "format",
+            fixed(locale, "format", "형식"),
             format!("{}@{}", metadata.format_kind, metadata.format_version),
         ),
-        ("document", format!("{:?}", metadata.document_kind)),
-        ("project", metadata.project_id.to_string()),
         (
-            "canonical revision",
+            fixed(locale, "document", "문서"),
+            document_kind_label(metadata.document_kind, locale).to_owned(),
+        ),
+        (
+            fixed(locale, "project", "프로젝트"),
+            metadata.project_id.to_string(),
+        ),
+        (
+            fixed(locale, "canonical revision", "정식 리비전"),
             metadata.canonical_revision.to_string(),
         ),
         (
-            "generated at",
+            fixed(locale, "generated at", "생성 시각"),
             metadata.generated_at.as_unix_micros().to_string(),
         ),
         (
-            "generator",
+            fixed(locale, "generator", "생성기"),
             format!(
-                "{}; agent={:?}; model={:?}",
-                metadata.generator.generator, metadata.generator.agent, metadata.generator.model
+                "{}; agent={}; model={}",
+                metadata.generator.generator,
+                metadata.generator.agent.as_deref().unwrap_or("—"),
+                metadata.generator.model.as_deref().unwrap_or("—")
             ),
         ),
-        ("requested language", metadata.requested_language.clone()),
         (
-            "repository snapshots",
-            join_display(&metadata.repository_snapshots),
+            fixed(locale, "requested language", "요청 언어"),
+            metadata.requested_language.clone(),
         ),
         (
-            "analysis snapshots",
-            join_display(&metadata.analysis_snapshots),
+            fixed(locale, "repository snapshots", "저장소 스냅샷"),
+            bounded_rendered_list(&repository_snapshots, locale),
         ),
         (
-            "included Decisions",
-            metadata
-                .included_decisions
-                .iter()
-                .map(|decision| {
-                    format!(
-                        "{}@{}:{:?}",
-                        decision.decision_id, decision.revision, decision.state
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
+            fixed(locale, "analysis snapshots", "분석 스냅샷"),
+            bounded_rendered_list(&analysis_snapshots, locale),
         ),
         (
-            "used Sources",
-            metadata
-                .used_sources
-                .iter()
-                .map(|source| format!("{}:{:?}", source.source_id, source.freshness))
-                .collect::<Vec<_>>()
-                .join(", "),
+            fixed(locale, "included Decisions", "포함된 결정"),
+            bounded_rendered_list(&decisions, locale),
         ),
         (
-            "capability coverage",
-            metadata
-                .capability_coverage
-                .iter()
-                .map(|report| {
-                    format!(
-                        "{:?}/{:?}/{}={:?} files:{} entities:{} relations:{}",
-                        report.language,
-                        report.capability,
-                        report.area.path,
-                        report.state,
-                        report.coverage.covered_file_count,
-                        report.coverage.covered_entity_count,
-                        report.coverage.covered_relation_count
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; "),
+            fixed(locale, "used Sources", "사용한 Source"),
+            bounded_rendered_list(&sources, locale),
         ),
         (
-            "known gaps",
-            metadata
-                .capability_gaps
-                .iter()
-                .map(|gap| {
-                    format!(
-                        "{:?}/{:?}/{}: {}",
-                        gap.language, gap.capability, gap.area, gap.reason
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; "),
+            fixed(locale, "capability coverage", "기능 범위"),
+            coverage_summary(&metadata.capability_coverage, locale),
         ),
         (
-            "omissions",
-            metadata
-                .omissions
-                .iter()
-                .map(|issue| {
-                    format!(
-                        "{}:{}:omitted_count={}",
-                        issue.affected_scope, issue.reason, issue.omitted_count
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; "),
+            fixed(locale, "known gaps", "알려진 빈틈"),
+            gap_summary(&metadata.capability_gaps, locale),
         ),
         (
-            "requested destinations",
-            metadata.requested_destination_basis.join(", "),
+            fixed(locale, "omissions", "생략"),
+            omission_summary(&metadata.omissions, locale),
+        ),
+        (
+            fixed(locale, "requested destinations", "요청 대상"),
+            bounded_rendered_list(&metadata.requested_destination_basis, locale),
         ),
     ]
 }
@@ -1206,6 +1378,13 @@ fn destination(
         .map(|destination| destination.path.clone())
 }
 
+const fn output_format_key(format: OutputFormat) -> &'static str {
+    match format {
+        OutputFormat::Markdown => "markdown",
+        OutputFormat::Html => "html",
+    }
+}
+
 fn take_document(
     values: &mut BTreeMap<DocumentKind, GeneratedDocument>,
     kind: DocumentKind,
@@ -1223,13 +1402,383 @@ fn join_display<T: fmt::Display>(values: &[T]) -> String {
         .join(", ")
 }
 
-const fn claim_class_label(class: ClaimClass) -> &'static str {
+fn bounded_rendered_list(values: &[String], locale: FixedLocale) -> String {
+    if values.is_empty() {
+        return fixed(locale, "none", "없음").to_owned();
+    }
+    let mut rendered = values
+        .iter()
+        .take(RENDERED_METADATA_ITEM_LIMIT)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let omitted = values.len().saturating_sub(RENDERED_METADATA_ITEM_LIMIT);
+    if omitted > 0 {
+        rendered.push_str(&format!(
+            "; {} {}",
+            omitted,
+            fixed(
+                locale,
+                "additional items omitted from rendered metadata",
+                "개 추가 항목을 렌더링 메타데이터에서 생략"
+            )
+        ));
+    }
+    rendered
+}
+
+fn coverage_summary(reports: &[CapabilityReport], locale: FixedLocale) -> String {
+    let values = reports
+        .iter()
+        .map(|report| {
+            format!(
+                "{}/{}/{}={} files:{} entities:{} relations:{}",
+                optional_language_label(report.language.as_ref(), locale),
+                capability_label(report.capability, locale),
+                report.area.path,
+                capability_state_label(report.state, locale),
+                report.coverage.covered_file_count,
+                report.coverage.covered_entity_count,
+                report.coverage.covered_relation_count
+            )
+        })
+        .collect::<Vec<_>>();
+    bounded_rendered_list(&values, locale)
+}
+
+fn gap_summary(gaps: &[CapabilityGap], locale: FixedLocale) -> String {
+    let values = gaps
+        .iter()
+        .map(|gap| {
+            format!(
+                "{}/{}/{}={}: {}",
+                optional_language_label(gap.language.as_ref(), locale),
+                capability_label(gap.capability, locale),
+                gap.area,
+                capability_state_label(gap.state, locale),
+                gap.reason
+            )
+        })
+        .collect::<Vec<_>>();
+    bounded_rendered_list(&values, locale)
+}
+
+fn omission_summary(issues: &[ProjectionIssue], locale: FixedLocale) -> String {
+    let bounded = issues
+        .iter()
+        .filter(|issue| issue.omitted_count > 0)
+        .map(|issue| {
+            format!(
+                "{}: {}={}",
+                issue.affected_scope,
+                fixed(locale, "exact omitted count", "정확한 생략 수"),
+                issue.omitted_count
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut other_counts = BTreeMap::<&'static str, usize>::new();
+    for issue in issues.iter().filter(|issue| issue.omitted_count == 0) {
+        *other_counts
+            .entry(projection_issue_kind_label(issue.kind, locale))
+            .or_default() += 1;
+    }
+    let mut values = bounded;
+    values.extend(other_counts.into_iter().map(|(kind, count)| {
+        format!(
+            "{}: {} {}",
+            kind,
+            count,
+            fixed(locale, "reported issues", "건의 보고된 문제")
+        )
+    }));
+    if values.is_empty() {
+        return fixed(locale, "none", "없음").to_owned();
+    }
+    values.join("; ")
+}
+
+const fn claim_class_label(class: ClaimClass, locale: FixedLocale) -> &'static str {
     match class {
-        ClaimClass::CanonicalContext => "Canonical Context",
-        ClaimClass::RepositoryObservation => "Repository Observation",
-        ClaimClass::StructuralFact => "Structural Fact",
-        ClaimClass::SemanticResult => "Semantic Result",
-        ClaimClass::AgentInterpretation => "Agent Interpretation",
+        ClaimClass::CanonicalContext => fixed(locale, "Canonical Context", "정식 맥락"),
+        ClaimClass::RepositoryObservation => fixed(locale, "Repository Observation", "저장소 관찰"),
+        ClaimClass::StructuralFact => fixed(locale, "Structural Fact", "구조 사실"),
+        ClaimClass::SemanticResult => fixed(locale, "Semantic Result", "의미 분석 결과"),
+        ClaimClass::AgentInterpretation => fixed(locale, "Agent Interpretation", "에이전트 해석"),
+    }
+}
+
+const fn document_kind_label(kind: DocumentKind, locale: FixedLocale) -> &'static str {
+    match kind {
+        DocumentKind::ProjectArchitectureGuide => fixed(
+            locale,
+            "Project & Architecture Guide",
+            "프로젝트 및 아키텍처 가이드",
+        ),
+        DocumentKind::DecisionReport => fixed(locale, "Decision Report", "결정 보고서"),
+        DocumentKind::ImplementationPlan => fixed(locale, "Implementation Plan", "구현 계획"),
+        DocumentKind::HandoffResume => fixed(locale, "Handoff / Resume", "인계 / 재개"),
+    }
+}
+
+fn decision_choice_label(choice: &DecisionChoice, locale: FixedLocale) -> String {
+    match choice {
+        DecisionChoice::Alternative { alternative_key } => format!(
+            "{}: {}",
+            fixed(locale, "alternative", "대안"),
+            alternative_key
+        ),
+        DecisionChoice::Delegation { delegate_to } => format!(
+            "{}: {}",
+            fixed(locale, "delegated to", "위임 대상"),
+            delegate_to
+        ),
+    }
+}
+
+const fn brief_decision_state_label(
+    state: BriefDecisionState,
+    locale: FixedLocale,
+) -> &'static str {
+    match state {
+        BriefDecisionState::Current => fixed(locale, "current", "현재 적용"),
+        BriefDecisionState::StaleBasis => fixed(locale, "stale basis", "오래된 근거"),
+        BriefDecisionState::ReviewRequired => fixed(locale, "review required", "검토 필요"),
+        BriefDecisionState::Superseded => fixed(locale, "superseded", "대체됨"),
+        BriefDecisionState::UnavailableBasis => {
+            fixed(locale, "basis unavailable", "근거 사용 불가")
+        }
+    }
+}
+
+const fn source_freshness_label(state: SourceFreshness, locale: FixedLocale) -> &'static str {
+    match state {
+        SourceFreshness::Current => fixed(locale, "current", "현재"),
+        SourceFreshness::Stale => fixed(locale, "stale", "오래됨"),
+        SourceFreshness::Unavailable => fixed(locale, "unavailable", "사용 불가"),
+        SourceFreshness::Unknown => fixed(locale, "unknown", "알 수 없음"),
+    }
+}
+
+const fn capability_label(capability: Capability, locale: FixedLocale) -> &'static str {
+    match capability {
+        Capability::Inventory => fixed(locale, "inventory", "목록"),
+        Capability::AgentAssisted => fixed(locale, "agent-assisted", "에이전트 보조"),
+        Capability::Structural => fixed(locale, "structural", "구조 분석"),
+        Capability::Semantic => fixed(locale, "semantic", "의미 분석"),
+        Capability::Ecosystem => fixed(locale, "ecosystem", "생태계 분석"),
+    }
+}
+
+const fn capability_key(capability: Capability) -> &'static str {
+    match capability {
+        Capability::Inventory => "inventory",
+        Capability::AgentAssisted => "agent_assisted",
+        Capability::Structural => "structural",
+        Capability::Semantic => "semantic",
+        Capability::Ecosystem => "ecosystem",
+    }
+}
+
+const fn capability_state_label(state: CapabilityState, locale: FixedLocale) -> &'static str {
+    match state {
+        CapabilityState::Available => fixed(locale, "available", "사용 가능"),
+        CapabilityState::Unavailable => fixed(locale, "unavailable", "사용 불가"),
+        CapabilityState::Unsupported => fixed(locale, "unsupported", "지원하지 않음"),
+        CapabilityState::Partial => fixed(locale, "partial", "일부 가능"),
+        CapabilityState::Failed => fixed(locale, "failed", "실패"),
+        CapabilityState::Stale => fixed(locale, "stale", "오래됨"),
+    }
+}
+
+fn optional_language_label(language: Option<&Language>, locale: FixedLocale) -> String {
+    language.map_or_else(
+        || fixed(locale, "all languages", "모든 언어").to_owned(),
+        |value| language_label(value, locale),
+    )
+}
+
+fn language_label(language: &Language, locale: FixedLocale) -> String {
+    match language {
+        Language::Java => "Java".to_owned(),
+        Language::Python => "Python".to_owned(),
+        Language::JavaScript => "JavaScript".to_owned(),
+        Language::TypeScript => "TypeScript".to_owned(),
+        Language::C => "C".to_owned(),
+        Language::Cpp => "C++".to_owned(),
+        Language::Rust => "Rust".to_owned(),
+        Language::Markdown => "Markdown".to_owned(),
+        Language::Json => "JSON".to_owned(),
+        Language::Yaml => "YAML".to_owned(),
+        Language::Toml => "TOML".to_owned(),
+        Language::Xml => "XML".to_owned(),
+        Language::Shell => fixed(locale, "Shell", "셸").to_owned(),
+        Language::Go => "Go".to_owned(),
+        Language::OtherText(name) => name.clone(),
+        Language::UnknownText => fixed(locale, "unknown text", "알 수 없는 텍스트").to_owned(),
+    }
+}
+
+fn language_key(language: &Language) -> String {
+    match language {
+        Language::Java => "java".to_owned(),
+        Language::Python => "python".to_owned(),
+        Language::JavaScript => "javascript".to_owned(),
+        Language::TypeScript => "typescript".to_owned(),
+        Language::C => "c".to_owned(),
+        Language::Cpp => "cpp".to_owned(),
+        Language::Rust => "rust".to_owned(),
+        Language::Markdown => "markdown".to_owned(),
+        Language::Json => "json".to_owned(),
+        Language::Yaml => "yaml".to_owned(),
+        Language::Toml => "toml".to_owned(),
+        Language::Xml => "xml".to_owned(),
+        Language::Shell => "shell".to_owned(),
+        Language::Go => "go".to_owned(),
+        Language::OtherText(value) => format!("other:{value}"),
+        Language::UnknownText => "unknown_text".to_owned(),
+    }
+}
+
+fn code_entity_kind_label(kind: &CodeEntityKind, locale: FixedLocale) -> String {
+    match kind {
+        CodeEntityKind::Repository => fixed(locale, "repository", "저장소").to_owned(),
+        CodeEntityKind::Package => fixed(locale, "package", "패키지").to_owned(),
+        CodeEntityKind::Module => fixed(locale, "module", "모듈").to_owned(),
+        CodeEntityKind::Namespace => fixed(locale, "namespace", "네임스페이스").to_owned(),
+        CodeEntityKind::File => fixed(locale, "file", "파일").to_owned(),
+        CodeEntityKind::Class => fixed(locale, "class", "클래스").to_owned(),
+        CodeEntityKind::Interface => fixed(locale, "interface", "인터페이스").to_owned(),
+        CodeEntityKind::Trait => "trait".to_owned(),
+        CodeEntityKind::Struct => "struct".to_owned(),
+        CodeEntityKind::Enum => "enum".to_owned(),
+        CodeEntityKind::Type => fixed(locale, "type", "타입").to_owned(),
+        CodeEntityKind::Function => fixed(locale, "function", "함수").to_owned(),
+        CodeEntityKind::Method => fixed(locale, "method", "메서드").to_owned(),
+        CodeEntityKind::Field => fixed(locale, "field", "필드").to_owned(),
+        CodeEntityKind::Test => fixed(locale, "test", "테스트").to_owned(),
+        CodeEntityKind::Configuration => fixed(locale, "configuration", "설정").to_owned(),
+        CodeEntityKind::Document => fixed(locale, "document", "문서").to_owned(),
+        CodeEntityKind::LanguageSpecific(name) => name.clone(),
+    }
+}
+
+const fn context_role_label(role: ContextItemRole, locale: FixedLocale) -> &'static str {
+    match role {
+        ContextItemRole::Goal => fixed(locale, "goal", "목표"),
+        ContextItemRole::Fact => fixed(locale, "fact", "사실"),
+        ContextItemRole::Assumption => fixed(locale, "assumption", "가정"),
+        ContextItemRole::Constraint => fixed(locale, "constraint", "제약"),
+        ContextItemRole::Preference => fixed(locale, "preference", "선호"),
+        ContextItemRole::Risk => fixed(locale, "risk", "위험"),
+        ContextItemRole::Learning => fixed(locale, "learning", "학습"),
+        ContextItemRole::KnownLimit => fixed(locale, "known limit", "알려진 한계"),
+    }
+}
+
+const fn work_state_label(state: WorkState, locale: FixedLocale) -> &'static str {
+    match state {
+        WorkState::InProgress => fixed(locale, "in progress", "진행 중"),
+        WorkState::Paused => fixed(locale, "paused", "일시 중지"),
+        WorkState::Completed => fixed(locale, "completed", "완료"),
+        WorkState::Abandoned => fixed(locale, "abandoned", "중단"),
+        WorkState::Superseded => fixed(locale, "superseded", "대체됨"),
+    }
+}
+
+const fn verification_state_label(state: VerificationState, locale: FixedLocale) -> &'static str {
+    match state {
+        VerificationState::NotRun => fixed(locale, "not run", "실행하지 않음"),
+        VerificationState::Partial => fixed(locale, "partial", "일부 검증"),
+        VerificationState::Passed => fixed(locale, "passed", "통과"),
+        VerificationState::Failed => fixed(locale, "failed", "실패"),
+    }
+}
+
+fn verification_fact_label(
+    fact: &volicord_context::VerificationFact,
+    locale: FixedLocale,
+) -> String {
+    let mut value = verification_state_label(fact.state, locale).to_owned();
+    if let Some(outcome) = &fact.outcome {
+        value.push_str(": ");
+        value.push_str(outcome);
+    }
+    if let Some(source) = fact.source_id {
+        value.push_str(&format!(" (Source {source})"));
+    }
+    value
+}
+
+const fn user_review_label(state: UserReviewState, locale: FixedLocale) -> &'static str {
+    match state {
+        UserReviewState::NotRequested => fixed(locale, "not requested", "요청하지 않음"),
+        UserReviewState::Pending => fixed(locale, "pending", "대기 중"),
+        UserReviewState::Reviewed => fixed(locale, "reviewed", "검토됨"),
+    }
+}
+
+const fn user_acceptance_label(state: UserAcceptanceState, locale: FixedLocale) -> &'static str {
+    match state {
+        UserAcceptanceState::NotRequested => fixed(locale, "not requested", "요청하지 않음"),
+        UserAcceptanceState::Pending => fixed(locale, "pending", "대기 중"),
+        UserAcceptanceState::Accepted => fixed(locale, "accepted", "수락됨"),
+        UserAcceptanceState::Rejected => fixed(locale, "rejected", "거부됨"),
+    }
+}
+
+const fn projection_issue_kind_label(
+    kind: crate::ProjectionIssueKind,
+    locale: FixedLocale,
+) -> &'static str {
+    match kind {
+        crate::ProjectionIssueKind::Bound => fixed(locale, "bounded omission", "범위 제한 생략"),
+        crate::ProjectionIssueKind::WrongProject => fixed(locale, "wrong Project", "다른 프로젝트"),
+        crate::ProjectionIssueKind::PartialCapability => {
+            fixed(locale, "partial capability", "일부 기능")
+        }
+        crate::ProjectionIssueKind::UnavailableCapability => {
+            fixed(locale, "unavailable capability", "사용 불가 기능")
+        }
+        crate::ProjectionIssueKind::UnsupportedCapability => {
+            fixed(locale, "unsupported capability", "미지원 기능")
+        }
+        crate::ProjectionIssueKind::FailedCapability => {
+            fixed(locale, "failed capability", "실패한 기능")
+        }
+        crate::ProjectionIssueKind::StaleCapability => {
+            fixed(locale, "stale capability", "오래된 기능")
+        }
+        crate::ProjectionIssueKind::SourceUnavailable => {
+            fixed(locale, "Source unavailable", "Source 사용 불가")
+        }
+        crate::ProjectionIssueKind::SourceStale => fixed(locale, "Source stale", "Source 오래됨"),
+        crate::ProjectionIssueKind::CandidateInspection => {
+            fixed(locale, "Candidate inspection", "후보 검사")
+        }
+    }
+}
+
+fn format_scope(paths: &[String], components: &[String]) -> String {
+    format!(
+        "paths=[{}]; components=[{}]",
+        paths.join(", "),
+        components.join(", ")
+    )
+}
+
+fn display_strings(values: &[String], locale: FixedLocale) -> String {
+    if values.is_empty() {
+        fixed(locale, "none", "없음").to_owned()
+    } else {
+        values.join(", ")
+    }
+}
+
+const fn yes_no(value: bool, locale: FixedLocale) -> &'static str {
+    if value {
+        fixed(locale, "yes", "예")
+    } else {
+        fixed(locale, "no", "아니요")
     }
 }
 

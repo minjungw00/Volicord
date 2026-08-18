@@ -4,8 +4,8 @@ use crate::{
 };
 use std::collections::BTreeMap;
 use volicord_context::{
-    CanonicalReadBasis, Checkpoint, ContextItemRole, DecisionId, DecisionLifecycle, ProjectId,
-    QuestionState, SourceFreshness, SourceId, TimestampMicros,
+    CanonicalReadBasis, Checkpoint, ContextItemRole, DecisionChoice, DecisionId, DecisionLifecycle,
+    ProjectId, QuestionState, SourceFreshness, SourceId, SourcePayload, TimestampMicros, WorkState,
 };
 use volicord_inquiry::{ApplicabilityQuery, CandidateReadBasis};
 use volicord_repository_intelligence::{
@@ -283,7 +283,10 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
                         kind: ProjectionIssueKind::CandidateInspection,
                         identity: identity.to_string(),
                         affected_scope: "candidate_inspection".to_owned(),
-                        reason: format!("Candidate inspection is {:?}", inspection.health),
+                        reason: format!(
+                            "Candidate inspection is {}",
+                            inspection_health_key(inspection.health)
+                        ),
                         omitted_count: 0,
                     });
                 }
@@ -710,9 +713,9 @@ fn build_canonical_inspection(
                 kind: CanonicalInspectionKind::Source,
                 identity: basis.source.id.to_string(),
                 revision: revision_for(canonical, "source", &basis.source.id.to_string()),
-                lifecycle_state: format!("{:?}", basis.freshness),
-                statement_role: Some(format!("{:?}", basis.source.actor.kind)),
-                summary: format!("{:?}", basis.source.payload),
+                lifecycle_state: source_freshness_key(basis.freshness).to_owned(),
+                statement_role: Some("source_basis".to_owned()),
+                summary: source_summary(&basis.source.payload),
                 source_basis: vec![basis.source.id],
             }),
     );
@@ -725,7 +728,7 @@ fn build_canonical_inspection(
                 kind: CanonicalInspectionKind::Question,
                 identity: question.id.to_string(),
                 revision: question.revision,
-                lifecycle_state: format!("{:?}", question.state),
+                lifecycle_state: question_state_key(question.state).to_owned(),
                 statement_role: Some("material_question".to_owned()),
                 summary: question.prompt_basis.clone(),
                 source_basis: question.source_basis.clone(),
@@ -748,7 +751,7 @@ fn build_canonical_inspection(
                     "active".to_owned()
                 },
                 statement_role: Some("user_judgment".to_owned()),
-                summary: format!("{:?}", lifecycle.decision.choice),
+                summary: decision_choice_summary(&lifecycle.decision.choice),
                 source_basis: {
                     let mut sources = lifecycle
                         .decision
@@ -769,7 +772,7 @@ fn build_canonical_inspection(
                 identity: item.id.to_string(),
                 revision: item.revision,
                 lifecycle_state: "current".to_owned(),
-                statement_role: Some(format!("{:?}/{:?}", item.role, item.provenance_role)),
+                statement_role: Some(context_role_key(item.role).to_owned()),
                 summary: item.statement.clone(),
                 source_basis: item.source_basis.clone(),
             }),
@@ -786,7 +789,7 @@ fn build_canonical_inspection(
                 kind: CanonicalInspectionKind::Checkpoint,
                 identity: checkpoint.id.to_string(),
                 revision: checkpoint.revision,
-                lifecycle_state: format!("{:?}", checkpoint.work_state),
+                lifecycle_state: work_state_key(checkpoint.work_state).to_owned(),
                 statement_role: Some("source_grounded_checkpoint".to_owned()),
                 summary: checkpoint.goal.clone(),
                 source_basis: checkpoint.source_basis.clone(),
@@ -798,6 +801,119 @@ fn build_canonical_inspection(
     });
     bound(&mut values, limit, "canonical_inspection", issues);
     values
+}
+
+fn source_summary(payload: &SourcePayload) -> String {
+    match payload {
+        SourcePayload::RepositorySnapshot { revision } => {
+            format!("Repository snapshot {revision}")
+        }
+        SourcePayload::RepositoryCommit { commit } => format!("Repository commit {commit}"),
+        SourcePayload::File { locator, snapshot } => format!("File {locator} @ {snapshot}"),
+        SourcePayload::Symbol { locator, snapshot } => format!("Symbol {locator} @ {snapshot}"),
+        SourcePayload::CommandExecution {
+            command_label,
+            outcome,
+        } => match outcome.exit_code {
+            Some(exit_code) => format!("Command {command_label} (exit {exit_code})"),
+            None => format!("Command {command_label} (no exit code)"),
+        },
+        SourcePayload::CurrentHostUserTurn { host, turn, .. } => {
+            format!("User input on {host}: {turn}")
+        }
+        SourcePayload::Url { url } => format!("URL {url}"),
+        SourcePayload::AdoptedArtifact { locator, revision } => {
+            format!("Adopted artifact {locator} @ {revision}")
+        }
+    }
+}
+
+fn decision_choice_summary(choice: &DecisionChoice) -> String {
+    match choice {
+        DecisionChoice::Alternative { alternative_key } => {
+            format!("Alternative: {alternative_key}")
+        }
+        DecisionChoice::Delegation { delegate_to } => format!("Delegated to: {delegate_to}"),
+    }
+}
+
+const fn source_freshness_key(freshness: SourceFreshness) -> &'static str {
+    match freshness {
+        SourceFreshness::Current => "current",
+        SourceFreshness::Stale => "stale",
+        SourceFreshness::Unavailable => "unavailable",
+        SourceFreshness::Unknown => "unknown",
+    }
+}
+
+const fn question_state_key(state: QuestionState) -> &'static str {
+    match state {
+        QuestionState::Open => "open",
+        QuestionState::Terminal(_) => "terminal",
+    }
+}
+
+const fn context_role_key(role: ContextItemRole) -> &'static str {
+    match role {
+        ContextItemRole::Goal => "goal",
+        ContextItemRole::Fact => "fact",
+        ContextItemRole::Assumption => "assumption",
+        ContextItemRole::Constraint => "constraint",
+        ContextItemRole::Preference => "preference",
+        ContextItemRole::Risk => "risk",
+        ContextItemRole::Learning => "learning",
+        ContextItemRole::KnownLimit => "known_limit",
+    }
+}
+
+const fn work_state_key(state: WorkState) -> &'static str {
+    match state {
+        WorkState::InProgress => "in_progress",
+        WorkState::Paused => "paused",
+        WorkState::Completed => "completed",
+        WorkState::Abandoned => "abandoned",
+        WorkState::Superseded => "superseded",
+    }
+}
+
+const fn inspection_health_key(health: crate::InspectionHealth) -> &'static str {
+    match health {
+        crate::InspectionHealth::Complete => "complete",
+        crate::InspectionHealth::Partial => "partial",
+        crate::InspectionHealth::Degraded => "degraded",
+        crate::InspectionHealth::NotFound => "not_found",
+    }
+}
+
+const fn capability_key(capability: Capability) -> &'static str {
+    match capability {
+        Capability::Inventory => "inventory",
+        Capability::AgentAssisted => "agent_assisted",
+        Capability::Structural => "structural",
+        Capability::Semantic => "semantic",
+        Capability::Ecosystem => "ecosystem",
+    }
+}
+
+fn language_key(language: &Language) -> String {
+    match language {
+        Language::Java => "java".to_owned(),
+        Language::Python => "python".to_owned(),
+        Language::JavaScript => "javascript".to_owned(),
+        Language::TypeScript => "typescript".to_owned(),
+        Language::C => "c".to_owned(),
+        Language::Cpp => "cpp".to_owned(),
+        Language::Rust => "rust".to_owned(),
+        Language::Markdown => "markdown".to_owned(),
+        Language::Json => "json".to_owned(),
+        Language::Yaml => "yaml".to_owned(),
+        Language::Toml => "toml".to_owned(),
+        Language::Xml => "xml".to_owned(),
+        Language::Shell => "shell".to_owned(),
+        Language::Go => "go".to_owned(),
+        Language::OtherText(value) => format!("other:{value}"),
+        Language::UnknownText => "unknown_text".to_owned(),
+    }
 }
 
 fn source_status(canonical: &CanonicalReadBasis) -> SourceStatusSummary {
@@ -890,8 +1006,13 @@ fn capability_issue(
         kind,
         identity: analysis_snapshot.to_string(),
         affected_scope: format!(
-            "{}:{:?}:{:?}",
-            report.area.path, report.language, report.capability
+            "{}:{}:{}",
+            report.area.path,
+            report
+                .language
+                .as_ref()
+                .map_or("all_languages".to_owned(), language_key),
+            capability_key(report.capability)
         ),
         reason: report
             .reason

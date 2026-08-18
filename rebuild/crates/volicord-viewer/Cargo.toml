@@ -15,9 +15,11 @@ path = "src/main.rs"
 [dependencies]
 getrandom = { version = "0.3.4", features = ["std"] }
 volicord-context = { path = "../volicord-context" }
+volicord-inquiry = { path = "../volicord-inquiry" }
 volicord-operations = { path = "../volicord-operations" }
 volicord-privacy = { path = "../volicord-privacy" }
 volicord-projections = { path = "../volicord-projections" }
+volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
 
 [dev-dependencies]
 tempfile = "3.20.0"

@@ -745,9 +745,11 @@ dependencies = [
  "getrandom 0.3.4",
  "tempfile",
  "volicord-context",
+ "volicord-inquiry",
  "volicord-operations",
  "volicord-privacy",
  "volicord-projections",
+ "volicord-repository-intelligence",
 ]
 
 [[package]]
