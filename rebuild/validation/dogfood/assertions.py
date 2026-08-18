@@ -151,17 +151,18 @@ def main() -> int:
             raise AssertionError(f"Phase 8 qualification support is missing {marker}")
     for forwarding_requirement in (
         "commands used only for incidental inspection",
-        "full-result text(r) forwarding",
-        '"full_result_wrapper": "text(r)"',
-        '"output_only_wrapper": "text(r.output)"',
+        "numeric exit_code from the same captured command result",
+        '"complete_result_evidence"',
+        '"correlated_split_evidence"',
         '"output_only_outcome": "unknown"',
+        '"uncorrelated_or_synthesized_status_outcome": "unknown"',
         "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
         "event_msg.mcp_tool_call_end",
         "meaningful observed repository changes relevant to the recalled Checkpoint",
-        "the resume session preserves separate full-result numeric-exit validation",
+        "the resume session preserves separate same-command numeric-exit validation",
     ):
         if forwarding_requirement not in definition:
             raise AssertionError(
@@ -169,6 +170,8 @@ def main() -> int:
             )
     if "MCP_WRAPPER" not in event_source or "normalize_mcp_completion" not in event_source:
         raise AssertionError("Phase 8 MCP completion normalization boundary is missing")
+    if "correlated_split" not in event_source or "custom_correlated_command_result" not in event_source:
+        raise AssertionError("Phase 8 correlated command-result normalization boundary is missing")
     if "parsed.tool_name.startswith" in event_source:
         raise AssertionError("custom wrapper output remains an MCP semantic source")
     for linkage in (

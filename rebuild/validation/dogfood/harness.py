@@ -35,6 +35,7 @@ from codex_events import (
     decode_string_blob,
     load_canonical_bundle,
     load_codex_capture,
+    parse_custom_call,
     parse_mcp_wrapper,
     recalled_checkpoint,
     recalled_decision_ids,
@@ -552,7 +553,7 @@ def load_definition() -> dict[str, Any]:
             "obtain and record the exact current-host user Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
-            "every command referenced by checkpoint_record passed or failed verification uses full-result text(r) forwarding that exposes numeric exit_code; text(r.output) is outcome-unknown",
+            "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
             "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step",
         )
         or tuple(evidence.get("resume_session_contract", []))
@@ -561,7 +562,7 @@ def load_definition() -> dict[str, Any]:
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
-            "the resume session preserves separate full-result numeric-exit validation after that change",
+            "the resume session preserves separate same-command numeric-exit validation after that change",
         )
         or evidence.get("codex_user_turn_transport_identity")
         != {
@@ -575,11 +576,12 @@ def load_definition() -> dict[str, Any]:
         }
         or evidence.get("command_forwarding_contract")
         != {
-            "full_result_wrapper": "text(r)",
-            "output_only_wrapper": "text(r.output)",
+            "complete_result_evidence": "one statically bound exec_command result forwards its complete structured result",
+            "correlated_split_evidence": "one statically bound exec_command result forwards its output and an exact numeric exit_code projection from that same result",
             "incidental_inspection": "may remain an observed command without becoming a Checkpoint verification fact",
-            "checkpoint_verification": "passed or failed facts require a captured full structured result with numeric exit_code",
+            "checkpoint_verification": "passed or failed facts require a numeric exit_code correlated to the same captured command observation",
             "output_only_outcome": "unknown",
+            "uncorrelated_or_synthesized_status_outcome": "unknown",
         }
         or len(evidence.get("bounded_parser_limitations", [])) != 3
     ):
@@ -4264,6 +4266,46 @@ def self_test() -> int:
     )
     if parse_mcp_wrapper(multiple_mcp_calls) is not None:
         raise AssertionError("multiple MCP invocations escaped bounded wrapper correlation")
+    command_arguments = (
+        '{"cmd":"python3 -m unittest tests.test_existing",'
+        '"workdir":"/phase8/repository","yield_time_ms":30000}'
+    )
+    complete_result_wrapper = (
+        f"const r=await tools.exec_command({command_arguments});\ntext(r);\n"
+    )
+    correlated_split_wrapper = (
+        f"const r=await tools.exec_command({command_arguments});\n"
+        "text(r.output); text(JSON.stringify({exit_code:r.exit_code}));\n"
+    )
+    complete_parsed = parse_custom_call(complete_result_wrapper)
+    correlated_parsed = parse_custom_call(correlated_split_wrapper)
+    if complete_parsed is None or complete_parsed.output_mode != "result":
+        raise AssertionError("complete command result forwarding is no longer supported")
+    if correlated_parsed is None or correlated_parsed.output_mode != "correlated_split":
+        raise AssertionError("same-result correlated command forwarding was not recognized")
+    unsupported_split_wrappers = {
+        "literal exit status": (
+            f"const r=await tools.exec_command({command_arguments});\n"
+            'text(r.output); text("{\\"exit_code\\":0}");\n'
+        ),
+        "detached exit status": (
+            f"const r=await tools.exec_command({command_arguments});\n"
+            "const status=r.exit_code; text(r.output); "
+            "text(JSON.stringify({exit_code:status}));\n"
+        ),
+        "multiple command results": (
+            f"const r=await tools.exec_command({command_arguments});\n"
+            f"const other=await tools.exec_command({command_arguments});\n"
+            "text(r.output); text(JSON.stringify({exit_code:r.exit_code}));\n"
+        ),
+        "unsupported template forwarding": (
+            f"const r=await tools.exec_command({command_arguments});\n"
+            "text(r.output); text(`exit=${r.exit_code}`);\n"
+        ),
+    }
+    for label, wrapper in unsupported_split_wrappers.items():
+        if parse_custom_call(wrapper) is not None:
+            raise AssertionError(f"{label} escaped command result correlation")
     positive_work_capture = load_codex_capture(
         evidence_directory / external_fixture["evidence"]["captures"]["work"]["file"]
     )
@@ -4478,7 +4520,7 @@ def self_test() -> int:
         == "python3 -m unittest tests.test_existing"
     ]
     if len(full_result_commands) != 1 or full_result_commands[0].exit_code != 0:
-        raise AssertionError("full-result command forwarding did not expose exit code zero")
+        raise AssertionError("complete-result command forwarding did not expose exit code zero")
     serialized_external_result = json.dumps(external_result, sort_keys=True)
     hidden_values = [
         fixture_work_user_task("volicord", 1),
@@ -4835,6 +4877,55 @@ def self_test() -> int:
                 store_capture(fixture, capture, path, events)
                 return
         raise AssertionError("fixture custom call was not found")
+
+    def replace_command_observation(
+        fixture: dict[str, Any],
+        capture: str,
+        call_marker: str,
+        wrapper: str,
+        output_text: str,
+        status_text: str,
+        *,
+        remove_mcp_completion: bool = False,
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        matched_call_ids: set[str] = set()
+        matched_output_ids: set[str] = set()
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") == "custom_tool_call" and call_marker in str(payload.get("call_id")):
+                payload["input"] = wrapper
+                matched_call_ids.add(str(payload.get("call_id")))
+        for value in events:
+            payload = value.get("payload", {})
+            if (
+                payload.get("type") == "custom_tool_call_output"
+                and str(payload.get("call_id")) in matched_call_ids
+            ):
+                payload["output"] = [
+                    {
+                        "type": "input_text",
+                        "text": "Script completed\nWall time 0.1 seconds\nOutput:\n",
+                    },
+                    {"type": "input_text", "text": output_text},
+                    {"type": "input_text", "text": status_text},
+                ]
+                matched_output_ids.add(str(payload.get("call_id")))
+        if len(matched_call_ids) != 1:
+            raise AssertionError("fixture command call was not uniquely found")
+        if matched_output_ids != matched_call_ids:
+            raise AssertionError("fixture command output was not uniquely found")
+        if remove_mcp_completion:
+            events = [
+                value
+                for value in events
+                if not (
+                    value.get("payload", {}).get("type") == "mcp_tool_call_end"
+                    and value.get("payload", {}).get("call_id")
+                    in {f"exec-{call_id}" for call_id in matched_call_ids}
+                )
+            ]
+        store_capture(fixture, capture, path, events)
 
     def remove_custom_output(
         fixture: dict[str, Any], capture: str, call_marker: str
@@ -5389,7 +5480,137 @@ def self_test() -> int:
         cycle=1,
         repository_revision=revision,
     )["checks"]["source_grounded_checkpoint"] != "passed":
-        raise AssertionError("full-result non-zero exit did not qualify matching failed verification")
+        raise AssertionError("complete-result non-zero exit did not qualify matching failed verification")
+
+    correlated_passed_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    replace_command_observation(
+        correlated_passed_verification,
+        "work",
+        "verification-call",
+        correlated_split_wrapper,
+        "Ran focused tests\nOK\n",
+        '{"exit_code":0}',
+    )
+    if real_session_evidence(
+        correlated_passed_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "passed":
+        raise AssertionError("same-result split forwarding did not qualify matching passed verification")
+    correlated_passed_capture = load_codex_capture(
+        evidence_directory
+        / correlated_passed_verification["evidence"]["captures"]["work"]["file"]
+    )
+    correlated_passed_commands = [
+        command
+        for command in correlated_passed_capture.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_existing"
+    ]
+    if (
+        len(correlated_passed_commands) != 1
+        or correlated_passed_commands[0].exit_code != 0
+        or correlated_passed_commands[0].termination != "exited"
+        or correlated_passed_commands[0].output != "Ran focused tests\nOK\n"
+    ):
+        raise AssertionError("same-result split forwarding lost its correlated command observation")
+
+    correlated_failed_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mark_verification_failed(correlated_failed_verification)
+    replace_command_observation(
+        correlated_failed_verification,
+        "work",
+        "verification-call",
+        correlated_split_wrapper,
+        "Ran focused tests\nFAILED\n",
+        '{"exit_code":1}',
+    )
+    if real_session_evidence(
+        correlated_failed_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "passed":
+        raise AssertionError("same-result split forwarding did not qualify matching failed verification")
+
+    for label, wrapper in unsupported_split_wrappers.items():
+        uncorrelated = real_session_fixture("volicord", 1, revision, evidence_directory)
+        replace_command_observation(
+            uncorrelated,
+            "work",
+            "verification-call",
+            wrapper,
+            "Ran focused tests\nOK\n",
+            '{"exit_code":0}',
+        )
+        if real_session_evidence(
+            uncorrelated, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["source_grounded_checkpoint"] != "failed":
+            raise AssertionError(f"{label} qualified passed verification")
+
+    for label, status_text in {
+        "non-numeric correlated status": '{"exit_code":"0"}',
+        "correlated status with an extra field": '{"exit_code":0,"session_id":null}',
+        "correlated status literal": "exit_code=0",
+    }.items():
+        malformed_correlated = real_session_fixture(
+            "volicord", 1, revision, evidence_directory
+        )
+        replace_command_observation(
+            malformed_correlated,
+            "work",
+            "verification-call",
+            correlated_split_wrapper,
+            "Ran focused tests\nOK\n",
+            status_text,
+        )
+        if real_session_evidence(
+            malformed_correlated,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )["checks"]["source_grounded_checkpoint"] != "failed":
+            raise AssertionError(f"{label} qualified passed verification")
+
+    correlated_inspection = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    inspection_arguments = (
+        '{"cmd":"sed -n 1,120p src/resume.rs",'
+        '"workdir":"/phase8/repository","yield_time_ms":10000}'
+    )
+    inspection_wrapper = (
+        f"const result=await tools.exec_command({inspection_arguments});\n"
+        "text(result.output); text(JSON.stringify({exit_code:result.exit_code}));\n"
+    )
+    replace_command_observation(
+        correlated_inspection,
+        "resume",
+        "inspect-call",
+        inspection_wrapper,
+        "current resume source\n",
+        '{"exit_code":0}',
+        remove_mcp_completion=True,
+    )
+    correlated_inspection_result = real_session_evidence(
+        correlated_inspection,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        correlated_inspection_result["checks"][
+            "recall_precedes_inspection_and_continuation"
+        ]
+        != "passed"
+    ):
+        raise AssertionError("same-result split command could not establish post-Recall inspection")
 
     failed_verification = real_session_fixture("volicord", 1, revision, evidence_directory)
     mutate_custom_output(
@@ -5884,7 +6105,9 @@ def self_test() -> int:
         "missing_and_mismatched_patch_evidence_rejected": "passed",
         "unobserved_checkpoint_decision_rejected": "passed",
         "failed_absent_and_stdout_only_verification_rejected": "passed",
-        "full_result_passed_and_failed_verification": "passed",
+        "complete_result_passed_and_failed_verification": "passed",
+        "correlated_split_passed_and_failed_verification": "passed",
+        "uncorrelated_and_synthesized_split_status_rejected": "passed",
         "output_only_command_outcome_unknown": "passed",
         "same_session_rejected": "passed",
         "resume_repository_resolution_required": "passed",
@@ -5892,6 +6115,7 @@ def self_test() -> int:
         "resume_without_recall_word_qualified": "passed",
         "absent_recall_rejected": "passed",
         "recall_order_rejected": "passed",
+        "correlated_split_repository_inspection_ordering": "passed",
         "mismatched_recall_state_rejected": "passed",
         "continuation_before_recall_rejected": "passed",
         "missing_continuation_rejected": "passed",

@@ -309,7 +309,14 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     forward = match.group("forward").strip()
     result_forward = re.fullmatch(rf"text\s*\(\s*{variable}\s*\)\s*;", forward, re.DOTALL)
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
-    if result_forward is None and output_forward is None:
+    correlated_split_forward = re.fullmatch(
+        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
+        rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{\s*exit_code\s*:\s*"
+        rf"{variable}\.exit_code\s*\}}\s*\)\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    if result_forward is None and output_forward is None and correlated_split_forward is None:
         return None
     try:
         arguments = JsLiteralParser(match.group("argument")).parse()
@@ -317,7 +324,13 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         return None
     if not isinstance(arguments, dict):
         return None
-    mode = "result" if result_forward is not None else "output"
+    mode = (
+        "result"
+        if result_forward is not None
+        else "correlated_split"
+        if correlated_split_forward is not None
+        else "output"
+    )
     return ParsedCustomCall(tool_name, arguments, mode)
 
 
@@ -376,6 +389,14 @@ CUSTOM_OUTPUT_HEADER = re.compile(
 
 
 def custom_output_body(value: Any) -> str | None:
+    parts = custom_output_parts(value)
+    if parts is None:
+        return None
+    match = CUSTOM_OUTPUT_HEADER.fullmatch("".join(parts))
+    return match.group("body") if match is not None else None
+
+
+def custom_output_parts(value: Any) -> list[str] | None:
     if not isinstance(value, list) or not value or len(value) > 8:
         return None
     parts: list[str] = []
@@ -383,8 +404,26 @@ def custom_output_body(value: Any) -> str | None:
         if not isinstance(item, dict) or item.get("type") != "input_text" or not isinstance(item.get("text"), str):
             return None
         parts.append(item["text"])
-    match = CUSTOM_OUTPUT_HEADER.fullmatch("".join(parts))
-    return match.group("body") if match is not None else None
+    return parts
+
+
+def custom_correlated_command_result(value: Any) -> tuple[str, int] | None:
+    parts = custom_output_parts(value)
+    if parts is None or len(parts) != 3:
+        return None
+    header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
+    if header is None or header.group("body"):
+        return None
+    try:
+        status = json.loads(parts[2])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(status, dict) or set(status) != {"exit_code"}:
+        return None
+    exit_code = status["exit_code"]
+    if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not 0 <= exit_code <= 2_147_483_647:
+        return None
+    return parts[1], exit_code
 
 
 def custom_output_object(value: Any) -> dict[str, Any] | None:
@@ -675,10 +714,32 @@ def load_codex_capture(path: Path) -> CodexCapture:
             body = custom_output_body(raw_output)
             if body is None:
                 continue
+            correlated = (
+                custom_correlated_command_result(raw_output)
+                if parsed.output_mode == "correlated_split"
+                else None
+            )
+            if parsed.output_mode == "correlated_split" and correlated is None:
+                continue
             result = custom_output_object(raw_output) if parsed.output_mode == "result" else None
-            output = result.get("output") if isinstance(result, dict) else body
-            exit_code = result.get("exit_code") if isinstance(result, dict) else None
-            if not isinstance(output, str) or (exit_code is not None and not isinstance(exit_code, int)):
+            output = (
+                correlated[0]
+                if correlated is not None
+                else result.get("output")
+                if isinstance(result, dict)
+                else body
+            )
+            exit_code = (
+                correlated[1]
+                if correlated is not None
+                else result.get("exit_code")
+                if isinstance(result, dict)
+                else None
+            )
+            if not isinstance(output, str) or (
+                exit_code is not None
+                and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
+            ):
                 continue
             commands.append(
                 CommandObservation(
