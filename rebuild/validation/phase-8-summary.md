@@ -3,7 +3,7 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current pre-Dogfood production/test candidate:
-  `4b1c87e31caec9ef88865467610c9ddc8a20c14e`
+  `3b8a3c0e882af863d8bfdb562e5c20327889fdf6`
 - Technical entry state: `eligible`; `phase_8_ready = true`
 - Admission state: `eligible`
 - Exact-final state: `succeeded`; `failure_count = 0`
@@ -12,9 +12,9 @@
 - Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q13
   trigger reported
 - Sanitized gate capsule: `verified`; SHA-256
-  `2fc6197dbf16ef8e05418785a6a1bf1f067df46521a8beb396404cff3cccaa51`
+  `c9ee66f462ca490e4c15f1380451afe0873a1412d690506e1d6bcb0e78698201`
 - Sanitized evidence archive: `verified`; SHA-256
-  `63a5de01a26cb4566d28f0491357e26d2fc2477085e35cf6d96870f306db8d75`
+  `83929c166783098205e450bd6dc259894f383bac2f227f0b6f70851e54007a7f`
 - Naturalistic Dogfood for the current candidate: `not_run`
 - `replacement_pass_candidate = false`
 
@@ -38,10 +38,14 @@ reused for this candidate.
 
 ## Current entry boundary
 
-The fresh campaign must begin from zero and retain the maintained three-class,
-two-cycle, distinct work/resume-session, automatic, manual, resource, and
-accessibility qualification contract. The documentation-only conclusion commit
-is not part of the sealed production/test candidate.
+The fresh campaign must begin from zero in a separate clean worktree whose
+actual Git `HEAD` is exactly the sealed production/test candidate
+`3b8a3c0e882af863d8bfdb562e5c20327889fdf6`. It must retain the maintained
+three-class, two-cycle, distinct work/resume-session, automatic, manual,
+resource, and accessibility qualification contract. The documentation-only
+conclusion commit is not part of the sealed production/test candidate and must
+not be used for qualification by supplying the sealed commit only as a harness
+candidate argument.
 
 ## Remaining Phase 8 risks
 

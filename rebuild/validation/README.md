@@ -237,7 +237,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `4b1c87e31caec9ef88865467610c9ddc8a20c14e`:
+production/test candidate `3b8a3c0e882af863d8bfdb562e5c20327889fdf6`:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger
@@ -249,6 +249,10 @@ Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for this candidate.
 Replacement passage remains pending/false, and Phase 9 may not begin. The
 documentation-only conclusion is outside the sealed production/test candidate.
+Qualifying Dogfood must run from a separate clean worktree whose actual Git
+`HEAD` is exactly that sealed candidate. A later documentation-only branch HEAD
+cannot qualify by passing the sealed commit only as a harness
+`--candidate-head` argument.
 
 ## Admission, authorization, and handoff
 
