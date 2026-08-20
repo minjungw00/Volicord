@@ -12,9 +12,10 @@ use volicord_operations::{
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
-    BriefDecisionState, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
-    DocumentSet, FixedLocale, GeneratorIdentity, InspectionHealth, MapRelationClass, OutputFormat,
-    ProjectProjection, ProjectionHealth, ProjectionIssueKind, RequestedDestination,
+    BriefDecisionState, CandidateDependencyState, CanonicalInspectionKind, ClaimClass,
+    DocumentKind, DocumentRequest, DocumentSet, FixedLocale, GeneratorIdentity, InspectionHealth,
+    MapRelationClass, OutputFormat, ProjectProjection, ProjectionHealth, ProjectionIssueKind,
+    RequestedDestination,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -938,7 +939,39 @@ fn render_candidates(html: &mut String, request: &ViewerRequest, projection: &Pr
         "candidates",
         text(request.locale, "Candidate inspection", "후보 검사"),
     );
-    if projection.candidate_inspection.is_empty() {
+    if projection.candidate_dependency != CandidateDependencyState::Available {
+        let detail = projection
+            .issues
+            .iter()
+            .find(|issue| {
+                issue.affected_scope == "candidate_inspection"
+                    && issue.kind != ProjectionIssueKind::CandidateInspection
+            })
+            .map(|issue| issue.reason.as_str())
+            .unwrap_or_else(|| {
+                text(
+                    request.locale,
+                    "Candidate data is unavailable.",
+                    "후보 데이터를 사용할 수 없습니다.",
+                )
+            });
+        html.push_str(&format!(
+            "<p class=\"warning\"><strong>{}:</strong> {} {}</p>",
+            escape(text(
+                request.locale,
+                "Candidate data omitted",
+                "후보 데이터 생략"
+            )),
+            escape(candidate_dependency_label(
+                projection.candidate_dependency,
+                request.locale
+            )),
+            escape(detail)
+        ));
+    }
+    if projection.candidate_inspection.is_empty()
+        && projection.candidate_dependency == CandidateDependencyState::Available
+    {
         empty_state(
             html,
             text(
@@ -947,7 +980,7 @@ fn render_candidates(html: &mut String, request: &ViewerRequest, projection: &Pr
                 "세션 후보가 없습니다.",
             ),
         );
-    } else {
+    } else if !projection.candidate_inspection.is_empty() {
         html.push_str("<ul class=\"cards candidate-list\">");
         let limit = level_limit(request.explanation_level);
         for candidate in projection.candidate_inspection.iter().take(limit) {
@@ -1727,6 +1760,37 @@ const fn projection_issue_kind_label(
         ProjectionIssueKind::CandidateInspection => {
             text(locale, "Candidate inspection", "후보 검사")
         }
+        ProjectionIssueKind::CandidateUnavailable => text(
+            locale,
+            "Candidate data unavailable",
+            "후보 데이터 사용 불가",
+        ),
+        ProjectionIssueKind::CandidateUnsupported => {
+            text(locale, "Candidate data unsupported", "후보 데이터 미지원")
+        }
+        ProjectionIssueKind::CandidateCorrupt => {
+            text(locale, "Candidate data corrupt", "후보 데이터 손상")
+        }
+        ProjectionIssueKind::CandidateRepairRequired => {
+            text(locale, "Candidate repair required", "후보 복구 필요")
+        }
+        ProjectionIssueKind::CandidateFailed => {
+            text(locale, "Candidate read failed", "후보 읽기 실패")
+        }
+    }
+}
+
+const fn candidate_dependency_label(
+    state: CandidateDependencyState,
+    locale: ViewerLocale,
+) -> &'static str {
+    match state {
+        CandidateDependencyState::Available => text(locale, "available", "사용 가능"),
+        CandidateDependencyState::Unavailable => text(locale, "unavailable", "사용 불가"),
+        CandidateDependencyState::Unsupported => text(locale, "unsupported", "미지원"),
+        CandidateDependencyState::Corrupt => text(locale, "corrupt", "손상됨"),
+        CandidateDependencyState::RepairRequired => text(locale, "repair required", "복구 필요"),
+        CandidateDependencyState::Failed => text(locale, "failed", "실패"),
     }
 }
 

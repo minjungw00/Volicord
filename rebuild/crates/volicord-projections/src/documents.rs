@@ -841,7 +841,19 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             uncertainty: vec![issue.reason.clone()],
         }
     }));
-    claims.sort_by(|left, right| left.identity.cmp(&right.identity));
+    claims.sort_by(|left, right| {
+        let left_priority = usize::from(
+            !left
+                .identity
+                .starts_with("omission:candidate_inspection:candidate_dependency:"),
+        );
+        let right_priority = usize::from(
+            !right
+                .identity
+                .starts_with("omission:candidate_inspection:candidate_dependency:"),
+        );
+        (left_priority, &left.identity).cmp(&(right_priority, &right.identity))
+    });
     claims.dedup_by(|left, right| left.identity == right.identity);
     section(
         "gaps",
@@ -1754,6 +1766,23 @@ const fn projection_issue_kind_label(
         crate::ProjectionIssueKind::SourceStale => fixed(locale, "Source stale", "Source 오래됨"),
         crate::ProjectionIssueKind::CandidateInspection => {
             fixed(locale, "Candidate inspection", "후보 검사")
+        }
+        crate::ProjectionIssueKind::CandidateUnavailable => fixed(
+            locale,
+            "Candidate data unavailable",
+            "후보 데이터 사용 불가",
+        ),
+        crate::ProjectionIssueKind::CandidateUnsupported => {
+            fixed(locale, "Candidate data unsupported", "후보 데이터 미지원")
+        }
+        crate::ProjectionIssueKind::CandidateCorrupt => {
+            fixed(locale, "Candidate data corrupt", "후보 데이터 손상")
+        }
+        crate::ProjectionIssueKind::CandidateRepairRequired => {
+            fixed(locale, "Candidate repair required", "후보 복구 필요")
+        }
+        crate::ProjectionIssueKind::CandidateFailed => {
+            fixed(locale, "Candidate read failed", "후보 읽기 실패")
         }
     }
 }

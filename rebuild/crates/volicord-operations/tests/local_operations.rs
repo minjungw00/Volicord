@@ -1,3 +1,4 @@
+use rusqlite::Connection;
 use std::{ffi::OsString, fs, process::Command, time::Duration};
 use tempfile::TempDir;
 use volicord_context::{
@@ -9,6 +10,7 @@ use volicord_operations::{
     CommandVerificationDraft, GroundedCheckpointDraft, HealthState, LocalOperations,
     OperationState, ProjectResolution, RuntimeLayout,
 };
+use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
 use volicord_repository_intelligence::AnalysisSnapshotId;
 
 #[cfg(target_os = "linux")]
@@ -29,6 +31,86 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
     let runtime = temporary.path().join("runtime");
     let operations = LocalOperations::new(RuntimeLayout::new(runtime)?);
     Ok((temporary, operations, repository))
+}
+
+#[test]
+fn candidate_store_states_remain_typed_in_partial_project_projections(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_healthy_root, healthy, healthy_repository) = fixture()?;
+    let healthy_project = healthy
+        .initialize_project("Healthy empty Candidates", Some(&healthy_repository))?
+        .project
+        .id;
+    assert!(healthy
+        .candidate_basis(healthy_project)?
+        .candidates
+        .is_empty());
+    let healthy_projection = healthy.project_projection(healthy_project)?;
+    assert_eq!(
+        healthy_projection.candidate_dependency,
+        CandidateDependencyState::Available
+    );
+    assert_eq!(healthy_projection.health, ProjectionHealth::Complete);
+    assert!(healthy_projection.candidate_inspection.is_empty());
+
+    let (_unsupported_root, unsupported, unsupported_repository) = fixture()?;
+    let unsupported_project = unsupported
+        .initialize_project("Unsupported Candidates", Some(&unsupported_repository))?
+        .project
+        .id;
+    Connection::open(unsupported.layout().candidate_store())?.execute(
+        "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
+        [],
+    )?;
+    assert!(unsupported.candidate_basis(unsupported_project).is_err());
+    assert_candidate_dependency(
+        &unsupported.project_projection(unsupported_project)?,
+        CandidateDependencyState::Unsupported,
+        ProjectionIssueKind::CandidateUnsupported,
+    );
+
+    let (_corrupt_root, corrupt, corrupt_repository) = fixture()?;
+    let corrupt_project = corrupt
+        .initialize_project("Corrupt Candidates", Some(&corrupt_repository))?
+        .project
+        .id;
+    Connection::open(corrupt.layout().candidate_store())?.execute("DROP TABLE candidates", [])?;
+    assert!(corrupt.candidate_basis(corrupt_project).is_err());
+    assert_candidate_dependency(
+        &corrupt.project_projection(corrupt_project)?,
+        CandidateDependencyState::Corrupt,
+        ProjectionIssueKind::CandidateCorrupt,
+    );
+
+    let (_unavailable_root, unavailable, unavailable_repository) = fixture()?;
+    let unavailable_project = unavailable
+        .initialize_project("Unavailable Candidates", Some(&unavailable_repository))?
+        .project
+        .id;
+    let candidate_path = unavailable.layout().candidate_store();
+    fs::remove_file(&candidate_path)?;
+    fs::create_dir(&candidate_path)?;
+    assert!(unavailable.candidate_basis(unavailable_project).is_err());
+    assert_candidate_dependency(
+        &unavailable.project_projection(unavailable_project)?,
+        CandidateDependencyState::Unavailable,
+        ProjectionIssueKind::CandidateUnavailable,
+    );
+    Ok(())
+}
+
+fn assert_candidate_dependency(
+    projection: &volicord_projections::ProjectProjection,
+    state: CandidateDependencyState,
+    issue_kind: ProjectionIssueKind,
+) {
+    assert_eq!(projection.candidate_dependency, state);
+    assert_eq!(projection.health, ProjectionHealth::Degraded);
+    assert!(projection.candidate_inspection.is_empty());
+    assert!(!projection.canonical_inspection.is_empty());
+    assert!(projection.issues.iter().any(|issue| {
+        issue.kind == issue_kind && issue.affected_scope == "candidate_inspection"
+    }));
 }
 
 #[cfg(target_os = "linux")]

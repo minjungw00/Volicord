@@ -30,7 +30,8 @@ use volicord_operations::{
     ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
 };
 use volicord_projections::{
-    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
+    CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
+    OutputFormat,
 };
 
 pub const HOST_TOOL_NAMES: [&str; 18] = [
@@ -281,6 +282,7 @@ impl HostAdapter {
             .map_err(operation_error)?;
         Ok(json!({
             "health":format!("{:?}",projection.health).to_lowercase(),
+            "candidate_dependency":candidate_dependency_key(projection.candidate_dependency),
             "overview":{"name":projection.overview.project_name,"goals":projection.overview.current_goals,"active_decisions":projection.overview.active_decision_count,"open_questions":projection.overview.open_question_count},
             "repository_map":{"entity_count":projection.repository_map.entities.len(),"relation_count":projection.repository_map.relations.len(),"entities":projection.repository_map.entities.into_iter().take(64).map(|value| json!({"identity":value.identity,"name":value.display_name,"kind":format!("{:?}",value.kind),"language":format!("{:?}",value.language),"source_id":value.source_id.to_string(),"freshness":format!("{:?}",value.freshness.state)})).collect::<Vec<_>>(),"gaps":projection.repository_map.gaps.into_iter().map(|value| json!({"state":format!("{:?}",value.state).to_lowercase(),"capability":format!("{:?}",value.capability).to_lowercase(),"area":value.area,"reason":value.reason})).collect::<Vec<_>>()},
             "decision_context_code":projection.decision_context_code.into_iter().map(|value| json!({"decision_id":value.decision_id.to_string(),"revision":value.decision_revision,"paths":value.declared_paths,"code_entities":value.related_code_entities,"uncertainty":value.missing_or_uncertain_links})).collect::<Vec<_>>(),
@@ -586,6 +588,18 @@ impl HostAdapter {
             .project_projection(project(args)?)
             .map_err(operation_error)?;
         Ok(json!({
+            "health": candidate_dependency_key(projection.candidate_dependency),
+            "issues": projection
+                .issues
+                .iter()
+                .filter(|issue| issue.affected_scope == "candidate_inspection")
+                .map(|issue| json!({
+                    "kind": format!("{:?}", issue.kind).to_lowercase(),
+                    "scope": issue.affected_scope,
+                    "reason": issue.reason,
+                    "omitted_count": issue.omitted_count,
+                }))
+                .collect::<Vec<_>>(),
             "candidates": projection
                 .candidate_inspection
                 .into_iter()
@@ -1029,6 +1043,17 @@ impl HostAdapter {
         Ok(
             json!({"confirmation_request_id":response.confirmation_request_identity.to_string(),"request_revision":response.request_revision,"effect_fingerprint":response.effect_fingerprint,"decision":format!("{:?}",response.decision).to_lowercase(),"user_response_source_id":response.user_response_source_id.to_string()}),
         )
+    }
+}
+
+const fn candidate_dependency_key(state: CandidateDependencyState) -> &'static str {
+    match state {
+        CandidateDependencyState::Available => "available",
+        CandidateDependencyState::Unavailable => "unavailable",
+        CandidateDependencyState::Unsupported => "unsupported",
+        CandidateDependencyState::Corrupt => "corrupt",
+        CandidateDependencyState::RepairRequired => "repair_required",
+        CandidateDependencyState::Failed => "failed",
     }
 }
 

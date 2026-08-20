@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
     collections::BTreeSet,
+    error::Error as StdError,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     io::Write,
@@ -58,8 +59,9 @@ use volicord_privacy::{
     ProviderRequestRecord, SourceClass,
 };
 use volicord_projections::{
-    build_project_projection, generate_documents, CandidateContentAccess, DocumentKind,
-    DocumentRequest, DocumentSet, GeneratedDocument, OutputFormat, ProjectProjection,
+    build_project_projection, generate_documents, CandidateContentAccess,
+    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateProjectionInput,
+    DocumentKind, DocumentRequest, DocumentSet, GeneratedDocument, OutputFormat, ProjectProjection,
     ProjectProjectionInputs, ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
 };
 use volicord_repository_intelligence::{
@@ -1149,12 +1151,63 @@ impl LocalOperations {
         let canonical = self.canonical_basis(project_id)?;
         let analyses = self.load_analyses(project_id)?;
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
-        let candidates = self.candidate_basis(project_id).ok();
+        let mut candidate_basis = None;
+        let candidate_failure;
+        match self.incomplete_committed_invalidations(project_id) {
+            Ok(invalidations) => {
+                match CandidateStore::open(self.layout.candidate_store()).and_then(|store| {
+                    store.read_basis_with_invalidations(project_id, &invalidations)
+                }) {
+                    Ok(basis) => {
+                        candidate_basis = Some(basis);
+                        candidate_failure = (!invalidations.is_empty()).then(|| {
+                            CandidateDependencyFailure {
+                                kind: CandidateDependencyFailureKind::RepairRequired,
+                                affected_scope: "candidate_inspection".to_owned(),
+                                reason: format!(
+                                    "Candidate data is partially unavailable while {} canonical forgetting operation(s) require repair",
+                                    invalidations.len()
+                                ),
+                            }
+                        });
+                    }
+                    Err(error) => {
+                        candidate_failure = Some(CandidateDependencyFailure {
+                            kind: candidate_dependency_failure_from_inquiry(error.kind()),
+                            affected_scope: "candidate_inspection".to_owned(),
+                            reason: error.to_string(),
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                candidate_failure = Some(CandidateDependencyFailure {
+                    kind: candidate_dependency_failure_from_error(&error),
+                    affected_scope: "candidate_inspection".to_owned(),
+                    reason: error.to_string(),
+                });
+            }
+        }
+        let candidates = match (candidate_basis.as_ref(), candidate_failure) {
+            (basis, Some(failure)) => CandidateProjectionInput::Degraded {
+                usable_basis: basis,
+                failure,
+            },
+            (Some(basis), None) => CandidateProjectionInput::Available(basis),
+            (None, None) => CandidateProjectionInput::Degraded {
+                usable_basis: None,
+                failure: CandidateDependencyFailure {
+                    kind: CandidateDependencyFailureKind::Failed,
+                    affected_scope: "candidate_inspection".to_owned(),
+                    reason: "Candidate read completed without a readable basis".to_owned(),
+                },
+            },
+        };
         Ok(build_project_projection(ProjectProjectionInputs {
             canonical: &canonical,
             analyses: &analysis_refs,
             applicability: empty_applicability(project_id),
-            candidates: candidates.as_ref(),
+            candidates,
             candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
             observed_at: now_micros()?,
             bound: ProjectionBound::default(),
@@ -2164,6 +2217,50 @@ impl LocalOperations {
         }
         Ok(value)
     }
+}
+
+fn candidate_dependency_failure_from_inquiry(
+    kind: volicord_inquiry::ErrorKind,
+) -> CandidateDependencyFailureKind {
+    match kind {
+        volicord_inquiry::ErrorKind::UnsupportedVersion => {
+            CandidateDependencyFailureKind::Unsupported
+        }
+        volicord_inquiry::ErrorKind::CorruptState => CandidateDependencyFailureKind::Corrupt,
+        volicord_inquiry::ErrorKind::StorageUnavailable | volicord_inquiry::ErrorKind::NotFound => {
+            CandidateDependencyFailureKind::Unavailable
+        }
+        _ => CandidateDependencyFailureKind::Failed,
+    }
+}
+
+fn candidate_dependency_failure_from_error(error: &Error) -> CandidateDependencyFailureKind {
+    let mut current: Option<&(dyn StdError + 'static)> = Some(error);
+    while let Some(cause) = current {
+        if let Some(candidate) = cause.downcast_ref::<volicord_inquiry::Error>() {
+            return candidate_dependency_failure_from_inquiry(candidate.kind());
+        }
+        if let Some(canonical) = cause.downcast_ref::<volicord_context::Error>() {
+            return match canonical.kind() {
+                volicord_context::ErrorKind::UnsupportedVersion => {
+                    CandidateDependencyFailureKind::Unsupported
+                }
+                volicord_context::ErrorKind::CorruptState => {
+                    CandidateDependencyFailureKind::Corrupt
+                }
+                volicord_context::ErrorKind::RepairRequired => {
+                    CandidateDependencyFailureKind::RepairRequired
+                }
+                volicord_context::ErrorKind::StorageUnavailable
+                | volicord_context::ErrorKind::NotFound => {
+                    CandidateDependencyFailureKind::Unavailable
+                }
+                _ => CandidateDependencyFailureKind::Failed,
+            };
+        }
+        current = cause.source();
+    }
+    CandidateDependencyFailureKind::Failed
 }
 
 fn validate_verification_drafts(values: &[CommandVerificationDraft]) -> Result<(), Error> {

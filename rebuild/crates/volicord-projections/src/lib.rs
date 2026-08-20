@@ -22,10 +22,12 @@ pub use documents::{
     GENERATED_DOCUMENT_METADATA_VERSION,
 };
 pub use project::{
-    build_project_projection, CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap,
-    CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation,
-    MapRelationClass, ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectionBound,
-    ProjectionHealth, ProjectionIssue, ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
+    build_project_projection, CandidateDependencyFailure, CandidateDependencyFailureKind,
+    CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionItem,
+    CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink,
+    MapEntity, MapInterpretation, MapRelation, MapRelationClass, ProjectOverview,
+    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssue,
+    ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
     build_resume_brief, BriefContextItem, BriefDecision, BriefDecisionState, BriefQuestion,

@@ -22,6 +22,7 @@ volicord-projections = { path = "../volicord-projections" }
 volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
 
 [dev-dependencies]
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 tempfile = "3.20.0"
 
 [lints]

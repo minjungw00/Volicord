@@ -1,3 +1,4 @@
+use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, process::Command};
 use tempfile::tempdir;
@@ -22,6 +23,90 @@ fn setup() -> (tempfile::TempDir, HostAdapter, String) {
         .id
         .to_string();
     (temporary, HostAdapter::new(operations), project)
+}
+
+#[test]
+fn candidate_inspection_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies() {
+    let (_healthy_root, mut healthy, healthy_project) = setup();
+    let healthy_response = call(
+        &mut healthy,
+        "candidate_inspect",
+        json!({"project_id":healthy_project}),
+    );
+    let healthy_result = structured(&healthy_response);
+    assert_eq!(healthy_result["health"], "available");
+    assert_eq!(healthy_result["candidates"], json!([]));
+    assert_eq!(healthy_result["issues"], json!([]));
+
+    let (_unsupported_root, mut unsupported, unsupported_project) = setup();
+    Connection::open(unsupported.operations().layout().candidate_store())
+        .expect("open Candidate store")
+        .execute(
+            "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
+            [],
+        )
+        .expect("set unsupported Candidate schema");
+    assert_candidate_mcp_dependency(&mut unsupported, &unsupported_project, "unsupported");
+
+    let (_corrupt_root, mut corrupt, corrupt_project) = setup();
+    Connection::open(corrupt.operations().layout().candidate_store())
+        .expect("open Candidate store")
+        .execute("DROP TABLE candidates", [])
+        .expect("remove required Candidate table");
+    assert_candidate_mcp_dependency(&mut corrupt, &corrupt_project, "corrupt");
+
+    let (_unavailable_root, mut unavailable, unavailable_project) = setup();
+    let candidate_path = unavailable.operations().layout().candidate_store();
+    fs::remove_file(&candidate_path).expect("remove Candidate store");
+    fs::create_dir(&candidate_path).expect("replace Candidate store with unavailable path");
+    assert_candidate_mcp_dependency(&mut unavailable, &unavailable_project, "unavailable");
+}
+
+fn assert_candidate_mcp_dependency(adapter: &mut HostAdapter, project: &str, expected: &str) {
+    let response = call(adapter, "candidate_inspect", json!({"project_id":project}));
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let result = structured(&response);
+    assert_eq!(result["health"], expected, "{result}");
+    assert_eq!(result["candidates"], json!([]), "{result}");
+    assert!(
+        result["issues"]
+            .as_array()
+            .is_some_and(|issues| issues.iter().any(|issue| {
+                issue["scope"] == "candidate_inspection"
+                    && issue["kind"]
+                        .as_str()
+                        .is_some_and(|kind| kind.contains(expected))
+            })),
+        "{result}"
+    );
+
+    let understanding_response = call(
+        adapter,
+        "repository_understanding",
+        json!({"project_id":project}),
+    );
+    let understanding = structured(&understanding_response);
+    assert_eq!(understanding["health"], "degraded", "{understanding}");
+    assert_eq!(understanding["candidate_dependency"], expected);
+
+    let preview_response = call(
+        adapter,
+        "document_preview",
+        json!({
+            "project_id":project,
+            "kind":"handoff-resume",
+            "format":"markdown",
+            "language":"en",
+            "locale":"en"
+        }),
+    );
+    let preview = structured(&preview_response);
+    assert!(
+        preview["content"]
+            .as_str()
+            .is_some_and(|content| content.to_lowercase().contains(expected)),
+        "{preview}"
+    );
 }
 
 #[test]

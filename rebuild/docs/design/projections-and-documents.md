@@ -176,6 +176,12 @@ Candidate source/body가 privacy boundary로 unavailable하거나 일부 Candida
 Inspection failure는 projection degradation일 뿐 Candidate나 canonical record를
 promote, delete, rewrite 또는 reinterpret하지 않는다. Direct scoped inspection이나
 later retry path를 제공하되 hidden cache를 더 높은 authority로 사용하지 않는다.
+Candidate dependency read 자체가 실패하면 `unavailable`, `unsupported`, `corrupt`,
+`repair_required` 또는 `failed` 원인과 `candidate_inspection` affected scope를 안정적으로
+보존하고, 안전한 canonical 및 repository section은 계속 제공한다. Candidate가 없다는
+empty success는 current Candidate dependency를 성공적으로 읽은 경우에만 표시한다.
+Canonical forgetting cleanup의 read barrier가 남아 있으면 usable Candidate metadata가
+있더라도 projection은 `repair_required` degradation과 content omission을 함께 표시한다.
 
 ## 6. Decision–Context–Code map
 

@@ -19,10 +19,11 @@ use volicord_inquiry::{
 };
 use volicord_projections::{
     build_project_projection, generate_documents, BriefDecisionState, CandidateContentAccess,
-    CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, FixedLocale,
-    GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjection, ProjectProjectionInputs,
-    ProjectionBound, ProjectionHealth, ProjectionIssueKind, RequestedDestination,
-    GENERATED_DOCUMENT_METADATA_VERSION,
+    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateDependencyState,
+    CandidateProjectionInput, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
+    FixedLocale, GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjection,
+    ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssueKind,
+    RequestedDestination, GENERATED_DOCUMENT_METADATA_VERSION,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AgentInterpretation, AnalysisSnapshot, CanonicalGrounding,
@@ -126,7 +127,7 @@ fn build_projection_fixture(
             current_assumptions: vec!["local-first".to_owned()],
             met_revisit_triggers: Vec::new(),
         },
-        candidates: Some(candidates),
+        candidates: CandidateProjectionInput::Available(candidates),
         candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
         observed_at: TimestampMicros::from_unix_micros(30_000),
         bound,
@@ -479,6 +480,78 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             path: explicit_destination.display().to_string(),
         }],
     };
+    let candidate_failures = [
+        (
+            CandidateDependencyState::Unavailable,
+            CandidateDependencyFailureKind::Unavailable,
+            ProjectionIssueKind::CandidateUnavailable,
+            "Candidate storage is unavailable",
+        ),
+        (
+            CandidateDependencyState::Unsupported,
+            CandidateDependencyFailureKind::Unsupported,
+            ProjectionIssueKind::CandidateUnsupported,
+            "Candidate storage version is unsupported",
+        ),
+        (
+            CandidateDependencyState::Corrupt,
+            CandidateDependencyFailureKind::Corrupt,
+            ProjectionIssueKind::CandidateCorrupt,
+            "Candidate storage is corrupt",
+        ),
+        (
+            CandidateDependencyState::RepairRequired,
+            CandidateDependencyFailureKind::RepairRequired,
+            ProjectionIssueKind::CandidateRepairRequired,
+            "Candidate cleanup requires repair",
+        ),
+    ];
+    for (state, failure_kind, issue_kind, reason) in candidate_failures {
+        let degraded = build_project_projection(ProjectProjectionInputs {
+            canonical: &canonical,
+            analyses: &[&analysis],
+            applicability: ApplicabilityQuery {
+                project_id: project.id,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+            candidates: CandidateProjectionInput::Degraded {
+                usable_basis: (state == CandidateDependencyState::RepairRequired)
+                    .then_some(&candidates),
+                failure: CandidateDependencyFailure {
+                    kind: failure_kind,
+                    affected_scope: "candidate_inspection".to_owned(),
+                    reason: reason.to_owned(),
+                },
+            },
+            candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
+            observed_at: TimestampMicros::from_unix_micros(30_000),
+            bound: ProjectionBound::default(),
+        });
+        assert_eq!(degraded.candidate_dependency, state);
+        assert_eq!(degraded.health, ProjectionHealth::Degraded);
+        assert!(!degraded.canonical_inspection.is_empty());
+        assert!(degraded.issues.iter().any(|issue| {
+            issue.kind == issue_kind
+                && issue.affected_scope == "candidate_inspection"
+                && issue.reason == reason
+        }));
+        if state != CandidateDependencyState::RepairRequired {
+            assert!(degraded.candidate_inspection.is_empty());
+        }
+        let degraded_documents = generate_documents(&degraded, &request)?;
+        let document = &degraded_documents.handoff_resume;
+        assert!(document
+            .metadata
+            .omissions
+            .iter()
+            .any(|issue| issue.kind == issue_kind && issue.reason == reason));
+        assert!(document.markdown.content.contains(reason));
+        assert!(document.html.content.contains(reason));
+    }
     let documents = generate_documents(&projection, &request)?;
     assert_eq!(documents, generate_documents(&projection, &request)?);
     let all = [

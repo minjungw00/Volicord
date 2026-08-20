@@ -1,3 +1,4 @@
+use rusqlite::Connection;
 use std::fs;
 use tempfile::tempdir;
 use volicord_context::{
@@ -24,6 +25,61 @@ fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
         .expect("initialize Project");
     let project = initialized.project.id;
     (temporary, ViewerAdapter::new(operations), project)
+}
+
+#[test]
+fn candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies() {
+    let (_healthy_root, healthy, healthy_project) = setup();
+    let healthy_page = render_deep(&healthy, healthy_project);
+    assert!(healthy_page.contains("No Session Candidates."));
+    assert!(!healthy_page.contains("Candidate data omitted"));
+
+    let (_unsupported_root, unsupported, unsupported_project) = setup();
+    Connection::open(unsupported.operations().layout().candidate_store())
+        .expect("open Candidate store")
+        .execute(
+            "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
+            [],
+        )
+        .expect("set unsupported Candidate schema");
+    assert_candidate_view_dependency(&unsupported, unsupported_project, "unsupported");
+
+    let (_corrupt_root, corrupt, corrupt_project) = setup();
+    Connection::open(corrupt.operations().layout().candidate_store())
+        .expect("open Candidate store")
+        .execute("DROP TABLE candidates", [])
+        .expect("remove required Candidate table");
+    assert_candidate_view_dependency(&corrupt, corrupt_project, "corrupt");
+
+    let (_unavailable_root, unavailable, unavailable_project) = setup();
+    let candidate_path = unavailable.operations().layout().candidate_store();
+    fs::remove_file(&candidate_path).expect("remove Candidate store");
+    fs::create_dir(&candidate_path).expect("replace Candidate store with unavailable path");
+    assert_candidate_view_dependency(&unavailable, unavailable_project, "unavailable");
+}
+
+fn render_deep(viewer: &ViewerAdapter, project: ProjectId) -> String {
+    viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Deep,
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("render viewer")
+        .html
+}
+
+fn assert_candidate_view_dependency(viewer: &ViewerAdapter, project: ProjectId, expected: &str) {
+    let page = render_deep(viewer, project);
+    assert!(page.contains("Candidate data omitted"), "{page}");
+    assert!(page.contains(expected), "{page}");
+    assert!(!page.contains("No Session Candidates."), "{page}");
+    assert!(page.contains("Canonical context"), "{page}");
 }
 
 #[test]

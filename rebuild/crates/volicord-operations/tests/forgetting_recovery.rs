@@ -18,7 +18,9 @@ use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
     PrivacyStore, ProviderDeletionOutcome,
 };
-use volicord_projections::CandidateContentOmission;
+use volicord_projections::{
+    CandidateContentOmission, CandidateDependencyState, ProjectionIssueKind,
+};
 
 const RELATED_CANDIDATE_SENTINEL: &str = "FORGET-RELATED-CANDIDATE-9af4";
 const RELATED_DERIVED_SENTINEL: &str = "FORGET-RELATED-DERIVED-2c81";
@@ -153,6 +155,14 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
         .and_then(|candidate| candidate.content.as_ref())
         .is_none());
     let projected = fixture.operations.project_projection(fixture.project_id)?;
+    assert_eq!(
+        projected.candidate_dependency,
+        CandidateDependencyState::RepairRequired
+    );
+    assert!(projected.issues.iter().any(|issue| {
+        issue.kind == ProjectionIssueKind::CandidateRepairRequired
+            && issue.affected_scope == "candidate_inspection"
+    }));
     assert_eq!(
         projected
             .candidate_inspection

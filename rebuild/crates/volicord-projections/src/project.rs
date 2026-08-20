@@ -31,10 +31,44 @@ pub struct ProjectProjectionInputs<'a> {
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
     pub applicability: ApplicabilityQuery,
-    pub candidates: Option<&'a CandidateReadBasis>,
+    pub candidates: CandidateProjectionInput<'a>,
     pub candidate_content_access: CandidateContentAccess,
     pub observed_at: TimestampMicros,
     pub bound: ProjectionBound,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CandidateDependencyState {
+    Available,
+    Unavailable,
+    Unsupported,
+    Corrupt,
+    RepairRequired,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CandidateDependencyFailureKind {
+    Unavailable,
+    Unsupported,
+    Corrupt,
+    RepairRequired,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CandidateDependencyFailure {
+    pub kind: CandidateDependencyFailureKind,
+    pub affected_scope: String,
+    pub reason: String,
+}
+
+pub enum CandidateProjectionInput<'a> {
+    Available(&'a CandidateReadBasis),
+    Degraded {
+        usable_basis: Option<&'a CandidateReadBasis>,
+        failure: CandidateDependencyFailure,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,6 +90,11 @@ pub enum ProjectionIssueKind {
     SourceUnavailable,
     SourceStale,
     CandidateInspection,
+    CandidateUnavailable,
+    CandidateUnsupported,
+    CandidateCorrupt,
+    CandidateRepairRequired,
+    CandidateFailed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -219,6 +258,7 @@ pub struct ProjectProjection {
     pub checkpoint_timeline: Vec<CheckpointTimelineEntry>,
     pub canonical_inspection: Vec<CanonicalInspectionItem>,
     pub candidate_inspection: Vec<CandidateInspection>,
+    pub candidate_dependency: CandidateDependencyState,
     pub source_catalog: Vec<volicord_context::SourceReadBasis>,
     pub issues: Vec<ProjectionIssue>,
     pub health: ProjectionHealth,
@@ -255,7 +295,20 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     let mut source_catalog = inputs.canonical.sources.clone();
     source_catalog.sort_by_key(|source| source.source.id);
     bound(&mut source_catalog, limit, "source_catalog", &mut issues);
-    let candidate_inspection = inputs.candidates.map_or_else(Vec::new, |basis| {
+    let (candidate_basis, candidate_dependency) = match inputs.candidates {
+        CandidateProjectionInput::Available(basis) => {
+            (Some(basis), CandidateDependencyState::Available)
+        }
+        CandidateProjectionInput::Degraded {
+            usable_basis,
+            failure,
+        } => {
+            let state = candidate_dependency_failure_state(failure.kind);
+            issues.push(candidate_dependency_issue(failure));
+            (usable_basis, state)
+        }
+    };
+    let candidate_inspection = candidate_basis.map_or_else(Vec::new, |basis| {
         let mut identities = basis
             .candidates
             .iter()
@@ -351,9 +404,54 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         checkpoint_timeline,
         canonical_inspection,
         candidate_inspection,
+        candidate_dependency,
         source_catalog,
         issues,
         health,
+    }
+}
+
+fn candidate_dependency_issue(failure: CandidateDependencyFailure) -> ProjectionIssue {
+    let kind = match failure.kind {
+        CandidateDependencyFailureKind::Unavailable => ProjectionIssueKind::CandidateUnavailable,
+        CandidateDependencyFailureKind::Unsupported => ProjectionIssueKind::CandidateUnsupported,
+        CandidateDependencyFailureKind::Corrupt => ProjectionIssueKind::CandidateCorrupt,
+        CandidateDependencyFailureKind::RepairRequired => {
+            ProjectionIssueKind::CandidateRepairRequired
+        }
+        CandidateDependencyFailureKind::Failed => ProjectionIssueKind::CandidateFailed,
+    };
+    ProjectionIssue {
+        kind,
+        identity: format!(
+            "candidate_dependency:{}",
+            candidate_dependency_failure_key(failure.kind)
+        ),
+        affected_scope: failure.affected_scope,
+        reason: failure.reason,
+        omitted_count: 0,
+    }
+}
+
+const fn candidate_dependency_failure_state(
+    kind: CandidateDependencyFailureKind,
+) -> CandidateDependencyState {
+    match kind {
+        CandidateDependencyFailureKind::Unavailable => CandidateDependencyState::Unavailable,
+        CandidateDependencyFailureKind::Unsupported => CandidateDependencyState::Unsupported,
+        CandidateDependencyFailureKind::Corrupt => CandidateDependencyState::Corrupt,
+        CandidateDependencyFailureKind::RepairRequired => CandidateDependencyState::RepairRequired,
+        CandidateDependencyFailureKind::Failed => CandidateDependencyState::Failed,
+    }
+}
+
+const fn candidate_dependency_failure_key(kind: CandidateDependencyFailureKind) -> &'static str {
+    match kind {
+        CandidateDependencyFailureKind::Unavailable => "unavailable",
+        CandidateDependencyFailureKind::Unsupported => "unsupported",
+        CandidateDependencyFailureKind::Corrupt => "corrupt",
+        CandidateDependencyFailureKind::RepairRequired => "repair_required",
+        CandidateDependencyFailureKind::Failed => "failed",
     }
 }
 
@@ -1093,6 +1191,11 @@ fn health_from_issues(issues: &[ProjectionIssue]) -> ProjectionHealth {
                 | ProjectionIssueKind::StaleCapability
                 | ProjectionIssueKind::SourceUnavailable
                 | ProjectionIssueKind::CandidateInspection
+                | ProjectionIssueKind::CandidateUnavailable
+                | ProjectionIssueKind::CandidateUnsupported
+                | ProjectionIssueKind::CandidateCorrupt
+                | ProjectionIssueKind::CandidateRepairRequired
+                | ProjectionIssueKind::CandidateFailed
         )
     }) {
         ProjectionHealth::Degraded
