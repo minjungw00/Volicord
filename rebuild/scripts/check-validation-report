@@ -415,6 +415,45 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     for key in ("auth_named_file_count", "credential_content_match_count", "scan_error_count"):
         if not isinstance(audit.get(key), int) or audit.get(key, -1) < 0:
             errors.append(f"capsule credential audit count must be an integer: {key}")
+    evidence_archive = mapping(capsule.get("evidence_archive"), "evidence_archive", errors)
+    archive_status = evidence_archive.get("status")
+    if archive_status not in {
+        "not_run", "pending", "creation_failed", "verification_failed", "verified"
+    }:
+        errors.append("capsule evidence_archive.status is invalid")
+    archive_prerequisites = evidence_archive.get("prerequisites_passed")
+    if not isinstance(archive_prerequisites, bool):
+        errors.append("capsule evidence_archive.prerequisites_passed must be a boolean")
+    archive_candidate = optional_digest(
+        evidence_archive.get("candidate_head"), "evidence_archive.candidate_head", errors, HEAD
+    )
+    if archive_candidate != candidate_head:
+        errors.append("capsule evidence archive candidate does not match validated_candidate_head")
+    archive_verified = archive_status == "verified"
+    if archive_verified:
+        filename = nonempty_string(
+            evidence_archive.get("filename"), "evidence_archive.filename", errors
+        )
+        if filename is not None and ("/" in filename or "\\" in filename):
+            errors.append("capsule evidence archive filename must be portable")
+        digest(evidence_archive.get("sha256"), "evidence_archive.sha256", errors)
+        for key in ("size_bytes", "member_count"):
+            if not isinstance(evidence_archive.get(key), int) or evidence_archive.get(key, 0) <= 0:
+                errors.append(f"capsule evidence_archive.{key} must be a positive integer")
+        if evidence_archive.get("verification_status") != "passed":
+            errors.append("capsule verified evidence archive requires independent verification")
+    elif archive_status == "not_run":
+        if any(
+            evidence_archive.get(key) is not None
+            for key in ("filename", "sha256", "size_bytes", "member_count")
+        ) or evidence_archive.get("verification_status") != "not_run":
+            errors.append("capsule evidence archive not-run state contains archive evidence")
+    elif archive_status == "creation_failed":
+        if evidence_archive.get("verification_status") != "not_run":
+            errors.append("capsule archive creation failure contains verification evidence")
+    elif archive_status == "verification_failed":
+        if evidence_archive.get("verification_status") != "failed":
+            errors.append("capsule archive verification failure lacks failed verification state")
     phase_8_ready = capsule.get("phase_8_ready")
     if not isinstance(phase_8_ready, bool):
         errors.append("capsule phase_8_ready must be a boolean")
@@ -522,7 +561,14 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     else:
         if audit_status == "not_run":
             errors.append("capsule official V11 start requires credential-audit evidence")
-        if blocking not in {None, "v11_failed", "credential_retention_audit_failed"}:
+        if blocking not in {
+            None,
+            "v11_failed",
+            "credential_retention_audit_failed",
+            "evidence_archive_pending",
+            "evidence_archive_creation_failed",
+            "evidence_archive_verification_failed",
+        }:
             errors.append("capsule official V11 blocker classification is invalid")
         if official_status == "passed":
             if set(outcome_targets) != set(scopes) or any(
@@ -556,6 +602,8 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         and official_status == "passed"
         and official_ready is True
         and audit_status == "passed"
+        and archive_verified
+        and archive_prerequisites is True
         and assessment == "reported_by_official_v11"
         and triggers_available
         and triggers == []
@@ -577,6 +625,28 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         errors.append("capsule non-passing lifecycle must mark phase_8_ready false")
     if official_status == "passed" and assessment != "reported_by_official_v11":
         errors.append("capsule passed V11 requires the official revisit-trigger assessment")
+    technical_prerequisites_passed = (
+        admission_status == "eligible"
+        and final_passed
+        and official_status == "passed"
+        and official_ready is True
+        and audit_status == "passed"
+        and assessment == "reported_by_official_v11"
+        and triggers_available
+        and triggers == []
+        and source_valid
+        and actual_flow == (True, True, True)
+    )
+    if archive_prerequisites is not technical_prerequisites_passed:
+        errors.append("capsule evidence archive prerequisite state is inconsistent")
+    if technical_prerequisites_passed and not archive_verified:
+        expected_blocker = {
+            "pending": "evidence_archive_pending",
+            "creation_failed": "evidence_archive_creation_failed",
+            "verification_failed": "evidence_archive_verification_failed",
+        }.get(archive_status)
+        if expected_blocker is None or blocking != expected_blocker:
+            errors.append("capsule post-V11 archive stage lacks its truthful blocker")
     return errors
 
 
@@ -694,6 +764,14 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
     require(acceptance, "Acceptance results", "admission_status", capsule.get("admission_status"), errors)
     require(acceptance, "Acceptance results", "blocking_classification", capsule.get("blocking_classification"), errors)
     require(acceptance, "Acceptance results", "phase_8_ready", capsule["phase_8_ready"], errors)
+    for key, value in capsule["evidence_archive"].items():
+        require(
+            acceptance,
+            "Acceptance results",
+            f"evidence_archive.{key}",
+            value,
+            errors,
+        )
     for admission_check in capsule["admission_checks"]:
         require(
             acceptance,
@@ -835,6 +913,16 @@ def self_test_capsule() -> dict[str, Any]:
             "assessed_decision_ids": ["Q1", "Q2", "Q3"],
             "assessed_decision_count": 3,
         },
+        "evidence_archive": {
+            "status": "verified",
+            "prerequisites_passed": True,
+            "candidate_head": head,
+            "filename": "validation-evidence-aaaaaaaaaaaa.tar.gz",
+            "sha256": "3" * 64,
+            "size_bytes": 4096,
+            "member_count": 8,
+            "verification_status": "passed",
+        },
         "phase_8_ready": True,
     }
 
@@ -915,6 +1003,7 @@ def self_test_report(capsule: dict[str, Any]) -> str:
         *flat_lines({
             "admission_status": capsule["admission_status"],
             "blocking_classification": capsule["blocking_classification"],
+            "evidence_archive": capsule["evidence_archive"],
             "phase_8_ready": capsule["phase_8_ready"],
         }),
         *(
@@ -976,6 +1065,7 @@ def self_test() -> int:
         capsule["active_decision_revisit_triggers"] = None
         capsule["decision_revisit_trigger_assessment"] = "not_run"
         capsule["decision_revisit_trigger_source"] = None
+        capsule["evidence_archive"]["prerequisites_passed"] = False
         capsule["phase_8_ready"] = False
 
     admission_blocked = copy.deepcopy(fully_passed)
@@ -1056,6 +1146,7 @@ def self_test() -> int:
         {"target": "volicord", "status": "passed", "classification": "passed"},
         {"target": "small-python", "status": "failed", "classification": "failed"},
     ]
+    official_failed["evidence_archive"]["prerequisites_passed"] = False
     official_failed["phase_8_ready"] = False
     assert check_capsule_semantics(
         self_test_report(official_failed), official_failed
@@ -1091,6 +1182,21 @@ def self_test() -> int:
     assert any(
         "revisit" in error or "assessment" in error
         for error in capsule_contract_errors(missing_revisit_evidence)
+    )
+
+    archive_failed = copy.deepcopy(fully_passed)
+    archive_failed["blocking_classification"] = "evidence_archive_verification_failed"
+    archive_failed["evidence_archive"]["status"] = "verification_failed"
+    archive_failed["evidence_archive"]["verification_status"] = "failed"
+    archive_failed["phase_8_ready"] = False
+    assert check_capsule_semantics(
+        self_test_report(archive_failed), archive_failed
+    ) == []
+    missing_archive = copy.deepcopy(fully_passed)
+    missing_archive.pop("evidence_archive")
+    assert any(
+        "evidence_archive" in error
+        for error in capsule_contract_errors(missing_archive)
     )
 
     missing_version = fully_passed_report.replace(

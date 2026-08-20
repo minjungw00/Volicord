@@ -18,10 +18,12 @@ surface, not a Volicord product command or production architecture.
   checks clean, initially dirty, and admission-generated dirty candidates
   without invoking the real exact final or official V11.
 - `rebuild/scripts/validate evidence-archive-self-test` builds a synthetic
-  sanitized review archive and proves positive verification plus rejection of
-  tampered content, missing members, changed POSIX modes, candidate mismatch,
-  and credential-like prohibited content. It invokes neither exact final nor
-  official V11.
+  gate/V11 artifact tree and exercises result discovery, logical repository and
+  V11 target cwd projection, argv sanitization, archive creation, and independent
+  verification. It also rejects unknown external cwd values, retained prompts or
+  absolute host paths, tampered content, missing members, changed POSIX modes,
+  candidate mismatch, repository source bodies, and credential-like prohibited
+  content. It invokes neither exact final nor official V11.
 - `rebuild/scripts/verify-validation-archive <archive> [--expected-candidate
   <HEAD>]` independently verifies archive membership, content hashes, bounded
   size, candidate agreement, tracked/executable identities, tar modes, and the
@@ -46,7 +48,8 @@ surface, not a Volicord product command or production architecture.
   an immediate live clean-worktree/HEAD recheck, invokes the existing ordered
   four-command final owner exactly once, passes only the returned summary to
   V11 preflight, invokes official V11 at most once, runs the V11
-  credential-retention audit, and prints the sanitized handoff capsule.
+  credential-retention audit, creates and independently verifies the sanitized
+  evidence archive, and only then prints a fully ready sanitized handoff capsule.
   Direct `rebuild/scripts/validate final` invocation is refused so an exact
   aggregate cannot bypass admission or become detached from V11.
 - `rebuild/scripts/check-architecture-contracts` checks the nine active Phase 3
@@ -280,17 +283,29 @@ reports the archive path and SHA-256 on stderr. A reviewer may copy that
 archive out of ignored local state and verify it with
 `rebuild/scripts/verify-validation-archive`.
 
+Before archive verification completes, the retained capsule and gate result are
+non-passing and identify the archive as pending. A successful exact final,
+official V11, and credential audit therefore cannot become consumer-visible as
+a passed top-level gate by themselves. Archive creation or verification failure
+publishes a corresponding blocked capsule with `phase_8_ready = false`; no final
+or V11 retry is performed.
+
 The portable archive is a bounded structured projection, not a replacement for
 the gate's ignored execution truth. Complete stdout/stderr, detailed V11 local
 artifacts, and raw command evidence remain under `rebuild/.local/validation/`.
 The archive contains only the capsule, sanitized admission/gate/final/process
 records, candidate-bound tracked validation-tool identities and executable
 modes, plus a member hash and POSIX-mode manifest. Repository-root cwd is
-represented exactly as the logical `.` root so a private absolute home path is
-not copied. The structured records retain argv, timestamps, duration,
-exit/wrapper status, termination, and spawn state. The capsule retains the
-original final-summary hash, dependency/fixture identities, official-V11
-state, credential audit, and same-session ownership.
+represented as logical `.`, and maintained official-V11 repository/clone
+execution roots are represented by bounded target/root identities. Arbitrary
+external cwd values are rejected. Portable argv retains the inspectable command
+shape while projecting recognized paths and replacing private prompts, inline
+programs, opaque identities, and unclassified payloads. It explicitly reports
+sanitization and that exact raw argv remains only in ignored local evidence.
+The structured records retain timestamps, duration, exit/wrapper status,
+termination, and spawn state. The capsule retains the original final-summary
+hash, dependency/fixture identities, official-V11 state, credential audit,
+same-session ownership, and verified archive identity.
 
 The archive excludes stdout/stderr bodies, detailed provider artifacts,
 environment dumps, repository source bodies, prompts, `auth.json` contents,
@@ -321,7 +336,9 @@ Its bounded cross-session evidence is:
   and official V11;
 - official V11 status/result hash and status counts, authenticated target
   classifications, credential-audit result/counts, `phase_8_ready`, and active
-  Decision revisit-trigger state.
+  Decision revisit-trigger state;
+- sanitized evidence archive identity, size/member count, prerequisite state,
+  and independent verifier outcome.
 
 It excludes environment-variable or home-directory dumps, usernames,
 credentials, `auth.json` contents, reusable credential fingerprints, source
@@ -337,7 +354,8 @@ evidence. A V11-preflight failure requires the successful same-gate final and
 preflight consumption but no official result. An official-V11 failure requires
 the successful final, same-session ownership, actual V11 result/status, and
 only the authenticated targets attempted. Full success additionally requires
-all maintained targets, the credential audit, and every artifact-flow fact.
+all maintained targets, the credential audit, every artifact-flow fact, and a
+successfully created and independently verified sanitized evidence archive.
 Only that final state may set `phase_8_ready = true`.
 
 Generic maintained reports keep the one-argument shape check. A V11 conclusion

@@ -22,6 +22,7 @@ SECRET_PATTERNS = (
     re.compile(rb"Bearer[ \t]+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE),
     re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 )
+ABSOLUTE_HOST_PATH = re.compile(rb'(?<![A-Za-z0-9_.-])/(?:home|Users|private|tmp|var/tmp)/[^\s"\\]+')
 PROHIBITED_KEYS = {
     "api_key",
     "access_token",
@@ -76,6 +77,64 @@ def inspect_keys(value: Any, location: str) -> None:
             inspect_keys(child, location)
 
 
+def verify_portable_execution(value: Any, location: str) -> None:
+    if not isinstance(value, dict):
+        fail(f"invalid portable execution in {location}")
+    argv = value.get("argv")
+    if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
+        fail(f"portable execution argv is invalid in {location}")
+    if value.get("argv_completeness") != "sanitized_portable_projection":
+        fail(f"portable execution falsely claims unsanitized argv in {location}")
+    if value.get("raw_argv_retained_locally") is not True:
+        fail(f"portable execution does not distinguish local raw argv in {location}")
+    applied = value.get("sanitization_applied")
+    count = value.get("sanitized_argument_count")
+    sanitizations = value.get("sanitizations")
+    if (
+        not isinstance(applied, bool)
+        or not isinstance(count, int)
+        or count < 0
+        or not isinstance(sanitizations, list)
+        or count != len(sanitizations)
+        or applied != (count > 0)
+    ):
+        fail(f"portable argv sanitization accounting is invalid in {location}")
+    for entry in sanitizations:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("argument_index"), int)
+            or entry["argument_index"] < 0
+            or entry["argument_index"] >= len(argv)
+            or not isinstance(entry.get("reason"), str)
+            or not entry["reason"]
+        ):
+            fail(f"portable argv sanitization entry is invalid in {location}")
+    executable = Path(argv[0]).name
+    if executable == "codex" and "exec" in argv and not argv[-1].startswith("<redacted:"):
+        fail(f"portable Codex execution retains a prompt-bearing argument in {location}")
+    if executable.startswith("python") and "-c" in argv:
+        code_index = argv.index("-c") + 1
+        if code_index >= len(argv) or not argv[code_index].startswith("<redacted:"):
+            fail(f"portable Python execution retains an inline program in {location}")
+
+
+def verify_process_payloads(contents: dict[str, bytes]) -> None:
+    processes = load_json(contents, f"{ROOT}/processes.json")
+    if processes.get("kind") != "sanitized_gate_processes" or not isinstance(
+        processes.get("processes"), list
+    ):
+        fail("invalid sanitized process evidence")
+    for index, process in enumerate(processes["processes"]):
+        verify_portable_execution(process, f"processes.json.processes[{index}]")
+    final_name = f"{ROOT}/final-summary.json"
+    if final_name in contents:
+        final = load_json(contents, final_name)
+        if final.get("kind") != "sanitized_exact_final_summary" or not isinstance(
+            final.get("commands"), list
+        ):
+            fail("invalid sanitized final summary")
+        for index, command in enumerate(final["commands"]):
+            verify_portable_execution(command, f"final-summary.json.commands[{index}]")
 def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     if path.stat().st_size > MAX_ARCHIVE_BYTES:
         fail("archive exceeds the bounded size")
@@ -152,7 +211,11 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
         for pattern in SECRET_PATTERNS:
             if pattern.search(body):
                 fail(f"credential-like prohibited content in {name}")
+        if ABSOLUTE_HOST_PATH.search(body):
+            fail(f"absolute host path is prohibited in {name}")
         inspect_keys(load_json(contents, member_name), name)
+
+    verify_process_payloads(contents)
 
     capsule = load_json(contents, f"{ROOT}/capsule.json")
     admission = load_json(contents, f"{ROOT}/admission.json")
@@ -166,6 +229,15 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     }
     if candidates != {candidate}:
         fail("candidate identities disagree inside the archive")
+    evidence = capsule.get("evidence_archive")
+    if (
+        capsule.get("phase_8_ready") is not False
+        or not isinstance(evidence, dict)
+        or evidence.get("status") != "pending"
+        or gate_result.get("status") != "blocked"
+        or gate_result.get("evidence_archive_status") != "pending"
+    ):
+        fail("archive does not contain a truthful pre-verification gate snapshot")
     capsule_bytes = contents[f"{ROOT}/capsule.json"]
     if manifest.get("capsule_sha256") != hashlib.sha256(capsule_bytes).hexdigest():
         fail("capsule hash does not match the archive manifest")

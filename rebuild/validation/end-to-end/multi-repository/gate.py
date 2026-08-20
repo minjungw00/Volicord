@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -702,6 +703,16 @@ def make_capsule(
         "active_decision_revisit_triggers": revisit_triggers,
         "decision_revisit_trigger_assessment": revisit_assessment,
         "decision_revisit_trigger_source": revisit_source,
+        "evidence_archive": {
+            "status": "not_run",
+            "prerequisites_passed": False,
+            "candidate_head": candidate_head,
+            "filename": None,
+            "sha256": None,
+            "size_bytes": None,
+            "member_count": None,
+            "verification_status": "not_run",
+        },
         "phase_8_ready": bool(
             v11_result
             and v11_result.get("phase_8_ready")
@@ -712,6 +723,75 @@ def make_capsule(
             and blocking_classification is None
         ),
     }
+
+
+def stage_evidence_archive(capsule: dict[str, Any]) -> dict[str, Any]:
+    staged = copy.deepcopy(capsule)
+    prerequisites_passed = staged.get("phase_8_ready") is True
+    staged["evidence_archive"] = {
+        "status": "pending",
+        "prerequisites_passed": prerequisites_passed,
+        "candidate_head": staged.get("validated_candidate_head"),
+        "filename": None,
+        "sha256": None,
+        "size_bytes": None,
+        "member_count": None,
+        "verification_status": "not_run",
+    }
+    if prerequisites_passed:
+        staged["blocking_classification"] = "evidence_archive_pending"
+    staged["phase_8_ready"] = False
+    return staged
+
+
+def complete_evidence_archive(
+    capsule: dict[str, Any],
+    archive_identity: dict[str, Any],
+    verification: dict[str, Any],
+) -> dict[str, Any]:
+    completed = copy.deepcopy(capsule)
+    evidence = completed.get("evidence_archive", {})
+    candidate_head = completed.get("validated_candidate_head")
+    if (
+        evidence.get("status") != "pending"
+        or archive_identity.get("candidate_head") != candidate_head
+        or verification.get("candidate_head") != candidate_head
+        or verification.get("status") != "passed"
+        or archive_identity.get("sha256") != verification.get("archive_sha256")
+    ):
+        raise ValueError("evidence archive completion identities are inconsistent")
+    prerequisites_passed = evidence.get("prerequisites_passed") is True
+    completed["evidence_archive"] = {
+        "status": "verified",
+        "prerequisites_passed": prerequisites_passed,
+        "candidate_head": candidate_head,
+        "filename": Path(str(archive_identity["path"])).name,
+        "sha256": archive_identity.get("sha256"),
+        "size_bytes": archive_identity.get("size_bytes"),
+        "member_count": archive_identity.get("member_count"),
+        "verification_status": "passed",
+    }
+    if prerequisites_passed:
+        completed["blocking_classification"] = None
+        completed["phase_8_ready"] = True
+    return completed
+
+
+def fail_evidence_archive(capsule: dict[str, Any], stage: str) -> dict[str, Any]:
+    if stage not in {"creation", "verification"}:
+        raise ValueError("unknown evidence archive failure stage")
+    failed = copy.deepcopy(capsule)
+    evidence = failed.get("evidence_archive", {})
+    prerequisites_passed = evidence.get("prerequisites_passed") is True
+    failed["evidence_archive"] = {
+        **evidence,
+        "status": f"{stage}_failed",
+        "verification_status": "failed" if stage == "verification" else "not_run",
+    }
+    if prerequisites_passed:
+        failed["blocking_classification"] = f"evidence_archive_{stage}_failed"
+    failed["phase_8_ready"] = False
+    return failed
 
 
 def run_json_command(

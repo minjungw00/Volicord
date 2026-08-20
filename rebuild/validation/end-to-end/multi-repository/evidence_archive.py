@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tarfile
 from typing import Any
@@ -26,6 +27,12 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/end-to-end/multi-repository/harness.py",
     "rebuild/scripts/check-fixture-manifest",
 )
+V11_TARGETS = {"volicord", "small-python", "polyglot-medium"}
+V11_EXECUTION_ROOTS = {"repository", "clone"}
+OPAQUE_ARGUMENT = re.compile(
+    r"(?:[0-9a-fA-F]{32,}|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})"
+)
+SAFE_ARGUMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]*")
 
 
 def utc_now() -> str:
@@ -40,21 +47,124 @@ def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def normalized_working_directory(value: object, repository_root: Path) -> dict[str, str]:
-    if value != str(repository_root):
-        raise ValueError("review archive only accepts the exact repository-root working directory")
-    return {"kind": "repository_root", "path": "."}
+def path_within(path: Path, parent: Path) -> Path | None:
+    try:
+        return path.resolve(strict=False).relative_to(parent.resolve(strict=False))
+    except ValueError:
+        return None
 
 
-def sanitized_execution(value: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+def official_v11_path(path: Path, gate_directory: Path) -> dict[str, str] | None:
+    relative = path_within(path, gate_directory / "official-v11" / "work")
+    if relative is None or len(relative.parts) < 2:
+        return None
+    target, execution_root, *remainder = relative.parts
+    if target not in V11_TARGETS or execution_root not in V11_EXECUTION_ROOTS:
+        return None
+    return {
+        "kind": "official_v11_target",
+        "target": target,
+        "execution_root": execution_root,
+        "path": Path(*remainder).as_posix() if remainder else ".",
+    }
+
+
+def normalized_working_directory(
+    value: object, repository_root: Path, gate_directory: Path
+) -> dict[str, str]:
+    if not isinstance(value, str):
+        raise ValueError("execution record has invalid working directory")
+    path = Path(value)
+    if path == repository_root:
+        return {"kind": "repository_root", "path": "."}
+    projected = official_v11_path(path, gate_directory)
+    if projected is not None:
+        return projected
+    raise ValueError("review archive rejected an unrecognized external working directory")
+
+
+def projected_path_argument(
+    value: str, repository_root: Path, gate_directory: Path
+) -> tuple[str, str] | None:
+    path = Path(value)
+    if not path.is_absolute():
+        return None
+    official = official_v11_path(path, gate_directory)
+    if official is not None:
+        suffix = "" if official["path"] == "." else f"/{official['path']}"
+        return (
+            f"<official-v11:{official['target']}:{official['execution_root']}>{suffix}",
+            "official_v11_path",
+        )
+    gate_relative = path_within(path, gate_directory)
+    if gate_relative is not None:
+        suffix = gate_relative.as_posix()
+        return ("<gate-artifact>" + (f"/{suffix}" if suffix != "." else ""), "gate_path")
+    repository_relative = path_within(path, repository_root)
+    if repository_relative is not None:
+        suffix = repository_relative.as_posix()
+        return ("." if suffix == "." else f"./{suffix}", "repository_path")
+    return ("<redacted:absolute-path>", "external_absolute_path")
+
+
+def sanitized_argv(
+    argv: list[str], repository_root: Path, gate_directory: Path
+) -> dict[str, Any]:
+    projected: list[str] = []
+    sanitizations: list[dict[str, Any]] = []
+    redact_next = False
+    codex_exec_seen = False
+    for index, argument in enumerate(argv):
+        replacement = argument
+        reason: str | None = None
+        path_projection = projected_path_argument(argument, repository_root, gate_directory)
+        if index == 0:
+            if path_projection is not None:
+                replacement = Path(argument).name
+                reason = "executable_path"
+        elif redact_next:
+            replacement = "<redacted:argument-payload>"
+            reason = "flag_payload"
+            redact_next = False
+        elif path_projection is not None:
+            replacement, reason = path_projection
+        elif argument in {"-c", "--config", "-m", "--message"}:
+            redact_next = True
+        elif argument == "exec" and any(Path(value).name == "codex" for value in argv[:1]):
+            codex_exec_seen = True
+        elif codex_exec_seen and index == len(argv) - 1:
+            replacement = "<redacted:private-prompt>"
+            reason = "private_prompt"
+        elif OPAQUE_ARGUMENT.fullmatch(argument):
+            replacement = "<redacted:opaque-identity>"
+            reason = "opaque_identity"
+        elif not argument.startswith("-") and not SAFE_ARGUMENT.fullmatch(argument):
+            replacement = "<redacted:argument-payload>"
+            reason = "unclassified_payload"
+        projected.append(replacement)
+        if reason is not None:
+            sanitizations.append({"argument_index": index, "reason": reason})
+    return {
+        "argv": projected,
+        "argv_completeness": "sanitized_portable_projection",
+        "raw_argv_retained_locally": True,
+        "sanitization_applied": bool(sanitizations),
+        "sanitized_argument_count": len(sanitizations),
+        "sanitizations": sanitizations,
+    }
+
+
+def sanitized_execution(
+    value: dict[str, Any], repository_root: Path, gate_directory: Path
+) -> dict[str, Any]:
     argv = value.get("argv")
     if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
         raise ValueError("execution record has invalid argv")
     spawn_error = value.get("spawn_error")
     return {
-        "argv": argv,
+        **sanitized_argv(argv, repository_root, gate_directory),
         "working_directory": normalized_working_directory(
-            value.get("working_directory"), repository_root
+            value.get("working_directory"), repository_root, gate_directory
         ),
         "started_at": value.get("started_at"),
         "ended_at": value.get("ended_at"),
@@ -75,7 +185,7 @@ def sanitized_execution(value: dict[str, Any], repository_root: Path) -> dict[st
 
 
 def sanitized_final_summary(
-    summary: dict[str, Any], repository_root: Path
+    summary: dict[str, Any], repository_root: Path, gate_directory: Path
 ) -> dict[str, Any]:
     commands = summary.get("commands")
     if not isinstance(commands, list):
@@ -83,7 +193,7 @@ def sanitized_final_summary(
     return {
         "kind": "sanitized_exact_final_summary",
         "working_directory": normalized_working_directory(
-            summary.get("working_directory"), repository_root
+            summary.get("working_directory"), repository_root, gate_directory
         ),
         "started_at": summary.get("started_at"),
         "ended_at": summary.get("ended_at"),
@@ -91,7 +201,10 @@ def sanitized_final_summary(
         "command_count": summary.get("command_count"),
         "failure_count": summary.get("failure_count"),
         "outcome": summary.get("outcome"),
-        "commands": [sanitized_execution(command, repository_root) for command in commands],
+        "commands": [
+            sanitized_execution(command, repository_root, gate_directory)
+            for command in commands
+        ],
     }
 
 
@@ -129,7 +242,7 @@ def collected_processes(gate_directory: Path, repository_root: Path) -> dict[str
         processes.append(
             {
                 "artifact": path.relative_to(gate_directory).as_posix(),
-                **sanitized_execution(value, repository_root),
+                **sanitized_execution(value, repository_root, gate_directory),
             }
         )
     return {"kind": "sanitized_gate_processes", "processes": processes}
@@ -273,7 +386,7 @@ def create_review_archive(
     }
     if final_summary is not None:
         payloads["final-summary.json"] = sanitized_final_summary(
-            final_summary, repository_root
+            final_summary, repository_root, gate_directory
         )
     archive_path = gate_directory / f"validation-evidence-{candidate_head[:12]}.tar.gz"
     return write_archive(

@@ -328,6 +328,35 @@ def main() -> int:
         assert owners.counts == {"final": 1, "preflight": 1, "v11": 1, "audit": 1}
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
+        pending_capsule = gate.stage_evidence_archive(capsule)
+        assert pending_capsule["phase_8_ready"] is False
+        assert pending_capsule["blocking_classification"] == "evidence_archive_pending"
+        assert pending_capsule["evidence_archive"]["status"] == "pending"
+        archive_failed = gate.fail_evidence_archive(pending_capsule, "verification")
+        assert archive_failed["phase_8_ready"] is False
+        assert archive_failed["blocking_classification"] == (
+            "evidence_archive_verification_failed"
+        )
+        assert archive_failed["evidence_archive"]["status"] == "verification_failed"
+        archive_identity = {
+            "candidate_head": HEAD,
+            "path": str(root / "synthetic-evidence.tar.gz"),
+            "sha256": "9" * 64,
+            "size_bytes": 512,
+            "member_count": 8,
+        }
+        archive_verified = gate.complete_evidence_archive(
+            pending_capsule,
+            archive_identity,
+            {
+                "status": "passed",
+                "candidate_head": HEAD,
+                "archive_sha256": "9" * 64,
+            },
+        )
+        assert archive_verified["phase_8_ready"] is True
+        assert archive_verified["blocking_classification"] is None
+        assert archive_verified["evidence_archive"]["status"] == "verified"
         assert capsule["decision_revisit_trigger_assessment"] == "reported_by_official_v11"
         assert capsule["active_decision_revisit_triggers"] == []
         assert capsule["decision_revisit_trigger_source"]["path"] == (
@@ -360,6 +389,7 @@ def main() -> int:
             "decision_revisit_trigger_assessment", "decision_revisit_trigger_source",
             "admission_checks", "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
             "gate_configuration", "phase_8_ready",
+            "evidence_archive",
         }
         assert required_capsule_keys <= capsule.keys()
         assert capsule["pre_final_candidate_check"]["status"] == "passed"
@@ -455,7 +485,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 12,
+        "scenarios": 15,
         "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

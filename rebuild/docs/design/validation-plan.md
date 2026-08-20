@@ -95,6 +95,7 @@ implementation and focused checks
 → admission gate
 → exact final once
 → same-session V11 once
+→ sanitized evidence archive creation and independent verification
 → sanitized evidence capsule
 → independent documentation-only conclusion
 ```
@@ -128,6 +129,12 @@ path와 HEAD를 existing V11 preflight에 전달한다. Preflight가 통과한 �
 V11을 정확히 한 번 실행하고 credential-retention audit을 수행한다. Final failure는
 final retry 또는 V11을 만들지 않고, V11 failure는 final retry를 만들지 않는다. Direct
 `rebuild/scripts/validate final` invocation은 이 lifecycle을 우회할 수 없도록 거부한다.
+어느 stage까지 진행됐든 candidate identity가 있으면 gate는 bounded sanitized evidence
+archive를 만들고 independent verifier로 검사한다. Exact final, V11과 credential audit
+성공은 필요조건일 뿐이며 archive creation/verification까지 성공한 뒤에만 top-level gate와
+handoff가 full readiness를 표시한다. Archive stage 전에는 retained capsule과 gate result가
+`evidence_archive_pending`과 `phase_8_ready = false`를 기록하고, creation 또는 verification
+failure는 대응하는 blocker를 보존한다.
 
 Exact final은 그 HEAD의 production code와 tests가 통과한 candidate라는 사실을
 봉인한다. 이후 V11과 credential audit이 acceptance evidence를 만들며, 나중의
@@ -155,6 +162,8 @@ stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 �
 - V11 status/result SHA-256, fixture identity, required-step/status count,
   `phase_8_ready`, credential-audit count/result, target별 authenticated Codex
   classification과 reported active Decision revisit-trigger ID
+- sanitized evidence archive filename/SHA-256/size/member count, independent verification
+  status와 archive 이전 prerequisite completion state
 
 Version probe는 fixed non-secret command만 사용하며 environment variable, home content,
 username 또는 unrelated host metadata를 수집하지 않는다. Capsule은 Credential/API/session
@@ -184,7 +193,8 @@ artifact-flow fact로 판정하고 다음 evidence를 조건부로 요구한다.
 - official V11이 시작된 뒤 실패하면 successful final과 same-session ownership, 실제 V11
   result/status/count, attempted target outcome과 credential-audit evidence만 요구한다.
 - fully passed이면 exact final, 세 target, official V11, credential audit과 모든 artifact-flow
-  fact가 완전할 때만 `phase_8_ready = true`를 허용한다.
+  fact에 더해 sanitized archive identity와 independent verification이 완전할 때만
+  `phase_8_ready = true`를 허용한다.
 
 아직 시작하지 않은 stage의 hash, command, authenticated target 또는 consumption evidence는
 요구하지 않는다. 반대로 earlier-stage failure와 later-stage success를 함께 주장하거나,
