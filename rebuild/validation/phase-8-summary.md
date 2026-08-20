@@ -3,7 +3,7 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current pre-Dogfood production/test candidate:
-  `f2f17efaca7ac47be52181c96f0470fef63710ee`
+  `4b1c87e31caec9ef88865467610c9ddc8a20c14e`
 - Technical entry state: `eligible`; `phase_8_ready = true`
 - Admission state: `eligible`
 - Exact-final state: `succeeded`; `failure_count = 0`
@@ -11,7 +11,10 @@
 - Credential-retention audit: `passed`; all recorded counts are zero
 - Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q13
   trigger reported
-- Sanitized gate capsule: `created`
+- Sanitized gate capsule: `verified`; SHA-256
+  `2fc6197dbf16ef8e05418785a6a1bf1f067df46521a8beb396404cff3cccaa51`
+- Sanitized evidence archive: `verified`; SHA-256
+  `63a5de01a26cb4566d28f0491357e26d2fc2477085e35cf6d96870f306db8d75`
 - Naturalistic Dogfood for the current candidate: `not_run`
 - `replacement_pass_candidate = false`
 

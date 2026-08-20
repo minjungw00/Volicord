@@ -222,11 +222,12 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `f2f17efaca7ac47be52181c96f0470fef63710ee`:
+production/test candidate `4b1c87e31caec9ef88865467610c9ddc8a20c14e`:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger
-was reported, and `phase_8_ready = true`. This candidate is eligible for a
+was reported, the sanitized evidence archive was independently verified, and
+`phase_8_ready = true`. This candidate is eligible for a
 fresh naturalistic Dogfood campaign, but its Dogfood state is `not_run`.
 
 Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
