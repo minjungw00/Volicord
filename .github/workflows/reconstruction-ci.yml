@@ -1,0 +1,57 @@
+name: Reconstruction CI
+
+on:
+  pull_request:
+    paths:
+      - "rebuild/**"
+      - ".github/workflows/reconstruction-ci.yml"
+  push:
+    paths:
+      - "rebuild/**"
+      - ".github/workflows/reconstruction-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_VERSION: "1.85.0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  reconstruction:
+    name: Reconstruction workspace (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install supported Rust
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+          rustup component add rustfmt clippy
+
+      - name: Inspect reconstruction workspace metadata
+        run: cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1
+
+      - name: Check reconstruction formatting
+        run: cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check
+
+      - name: Lint reconstruction workspace
+        run: cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features
+
+      - name: Test reconstruction workspace
+        run: cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features
+
+      - name: Check deterministic validation infrastructure
+        run: |
+          rebuild/scripts/validate self-test
+          rebuild/scripts/validate gate-self-test
+          rebuild/scripts/validate gate-entrypoint-self-test
+          rebuild/scripts/validate evidence-archive-self-test
+          rebuild/scripts/check-validation-report --self-test
+
+      - name: Exercise deterministic Linux platform probe
+        run: python3 rebuild/validation/local-platform-primitives/assertions.py
