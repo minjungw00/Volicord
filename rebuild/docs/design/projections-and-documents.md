@@ -329,6 +329,18 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   강제하지 않는다.
 - Markdown과 HTML은 같은 grounding metadata, identity, omission과 uncertainty basis를
   보존한다.
+- Generated-content language request는 allowlist 없는 사용자 지시로 그대로 보존하고,
+  HTML `lang` syntax metadata와 분리한다. `lang`은 보수적으로 검증·정규화한 language
+  tag만 사용하며 요청을 tag로 표현할 수 없으면 bundled fixed locale의 안전한 `en` 또는
+  `ko` fallback을 쓴다. Fallback은 generated-content language request를 변경하지 않는다.
+- Markdown/HTML renderer는 claim, diagnostic, name과 metadata의 각 동적 field에 같은
+  deterministic UTF-8 byte policy를 적용한다. 한 field가 bound를 넘으면 일부 text를
+  semantic content처럼 잘라 쓰지 않고 field 전체를 exact source byte count, field kind와
+  render bound가 있는 omission marker로 대체한다.
+- Section별 claim 수, rendered metadata item 수와 per-field bound를 함께 적용해 output
+  format별 deterministic total byte contract를 만든다. 이 contract는 authoritative typed
+  projection이나 repository 전체 크기의 상한이 아니며, 더 깊은 inspection은 source
+  projection을 다시 읽는다.
 - PDF와 DOCX는 initial required output이 아니다.
 
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer

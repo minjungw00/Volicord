@@ -19,7 +19,8 @@ pub use documents::{
     DocumentKind, DocumentMetadata, DocumentRequest, DocumentSection, DocumentSet,
     DocumentSourceBasis, FixedLocale, GeneratedDocument, GeneratedDocumentClaim, GeneratorIdentity,
     OutputFormat, PublicationArtifact, RequestedDestination, GENERATED_DOCUMENT_FORMAT_KIND,
-    GENERATED_DOCUMENT_METADATA_VERSION,
+    GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
     build_project_projection, CandidateDependencyFailure, CandidateDependencyFailureKind,

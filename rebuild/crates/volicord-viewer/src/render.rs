@@ -1143,10 +1143,12 @@ fn render_documents(
     for kind in DocumentKind::ALL {
         let document = select_document(documents, kind);
         html.push_str(&format!(
-            "<details class=\"document-preview\"><summary>{}</summary><dl class=\"preview-meta\"><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div></dl>",
+            "<details class=\"document-preview\"><summary>{}</summary><dl class=\"preview-meta\"><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div></dl>",
             escape(document_kind_label(document.metadata.document_kind, request.locale)),
-            escape(text(request.locale, "Language", "언어")),
+            escape(text(request.locale, "Requested language", "요청 언어")),
             escape(&document.metadata.requested_language),
+            escape(text(request.locale, "HTML language tag", "HTML 언어 태그")),
+            escape(&document.metadata.html_language_tag),
             escape(text(request.locale, "Canonical basis", "정식 근거")),
             document.metadata.canonical_revision,
             escape(text(request.locale, "Analysis snapshots", "분석 스냅샷")),

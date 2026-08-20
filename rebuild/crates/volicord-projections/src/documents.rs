@@ -15,9 +15,12 @@ use volicord_repository_intelligence::{
 
 const RENDERED_BODY_CLAIM_LIMIT: usize = 12;
 const RENDERED_METADATA_ITEM_LIMIT: usize = 8;
+pub const RENDERED_DOCUMENT_FIELD_BYTE_LIMIT: usize = 4_096;
+pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
+pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 2;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -73,8 +76,8 @@ pub struct RequestedDestination {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentRequest {
-    /// Arbitrary BCP-47-like or user-provided language label. It is recorded
-    /// and never checked against an allowlist.
+    /// Arbitrary user-provided generated-content language instruction. It is
+    /// recorded exactly and never checked against a natural-language allowlist.
     pub requested_language: String,
     pub fixed_locale: FixedLocale,
     pub generated_at: TimestampMicros,
@@ -139,6 +142,9 @@ pub struct DocumentMetadata {
     pub generated_at: TimestampMicros,
     pub generator: GeneratorIdentity,
     pub requested_language: String,
+    /// Conservative normalized syntax metadata for the HTML `lang`
+    /// attribute. This never replaces the generated-content language request.
+    pub html_language_tag: String,
     pub fixed_locale: FixedLocale,
     pub repository_snapshots: Vec<RepositorySnapshotId>,
     pub analysis_snapshots: Vec<AnalysisSnapshotId>,
@@ -210,6 +216,8 @@ pub fn generate_documents(
         let metadata = build_metadata(kind, projection, request, &body);
         let markdown_content = render_markdown(&metadata, &body, request.fixed_locale);
         let html_content = render_html(&metadata, &body, request.fixed_locale);
+        validate_rendered_size(OutputFormat::Markdown, &markdown_content)?;
+        validate_rendered_size(OutputFormat::Html, &html_content)?;
         let document = GeneratedDocument {
             markdown: PublicationArtifact {
                 format: OutputFormat::Markdown,
@@ -262,6 +270,20 @@ fn validate_request(request: &DocumentRequest) -> Result<(), DocumentError> {
                 "each document format may have at most one requested destination",
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_rendered_size(format: OutputFormat, content: &str) -> Result<(), DocumentError> {
+    let limit = match format {
+        OutputFormat::Markdown => RENDERED_MARKDOWN_BYTE_LIMIT,
+        OutputFormat::Html => RENDERED_HTML_BYTE_LIMIT,
+    };
+    if content.len() > limit {
+        return Err(DocumentError::new(format!(
+            "bounded {} rendering exceeded its deterministic byte contract",
+            output_format_key(format)
+        )));
     }
     Ok(())
 }
@@ -1124,6 +1146,10 @@ fn build_metadata(
         generated_at: request.generated_at,
         generator: request.generator.clone(),
         requested_language: request.requested_language.clone(),
+        html_language_tag: normalized_html_language_tag(
+            &request.requested_language,
+            request.fixed_locale,
+        ),
         fixed_locale: request.fixed_locale,
         repository_snapshots,
         analysis_snapshots,
@@ -1143,12 +1169,20 @@ fn render_markdown(
 ) -> String {
     let mut output = String::new();
     output.push_str("# ");
-    output.push_str(&escape_markdown(&body.title));
+    output.push_str(&escape_markdown(&bounded_rendered_field(
+        &body.title,
+        "document title",
+        locale,
+    )));
     output.push_str("\n\n");
     render_metadata_markdown(&mut output, metadata, locale);
     for section in &body.sections {
         output.push_str("## ");
-        output.push_str(&escape_markdown(&section.title));
+        output.push_str(&escape_markdown(&bounded_rendered_field(
+            &section.title,
+            "section title",
+            locale,
+        )));
         output.push_str("\n\n");
         if section.claims.is_empty() {
             output.push_str(fixed(locale, "No grounded items.", "grounded 항목 없음."));
@@ -1163,12 +1197,24 @@ fn render_markdown(
                 output.push_str(fixed(locale, "Inference", "추론"));
                 output.push_str("]** ");
             }
-            output.push_str(&escape_markdown(&claim.text));
+            output.push_str(&escape_markdown(&bounded_rendered_field(
+                &claim.text,
+                "claim text",
+                locale,
+            )));
             output.push_str("  \n  ");
-            output.push_str(&escape_markdown(&claim_basis(claim)));
+            output.push_str(&escape_markdown(&bounded_rendered_field(
+                &claim_basis(claim),
+                "claim basis",
+                locale,
+            )));
             if !claim.uncertainty.is_empty() {
                 output.push_str("  \n  uncertainty: ");
-                output.push_str(&escape_markdown(&claim.uncertainty.join("; ")));
+                output.push_str(&escape_markdown(&bounded_rendered_field(
+                    &claim.uncertainty.join("; "),
+                    "claim uncertainty",
+                    locale,
+                )));
             }
             output.push('\n');
         }
@@ -1179,20 +1225,36 @@ fn render_markdown(
 
 fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLocale) -> String {
     let mut output = String::from("<!doctype html><html lang=\"");
-    output.push_str(&escape_html(&metadata.requested_language));
+    output.push_str(&metadata.html_language_tag);
     output.push_str(
         "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}code{overflow-wrap:anywhere}</style><title>",
     );
-    output.push_str(&escape_html(&body.title));
+    output.push_str(&escape_html(&bounded_rendered_field(
+        &body.title,
+        "document title",
+        locale,
+    )));
     output.push_str("</title></head><body><main><h1>");
-    output.push_str(&escape_html(&body.title));
+    output.push_str(&escape_html(&bounded_rendered_field(
+        &body.title,
+        "document title",
+        locale,
+    )));
     output.push_str("</h1>");
     render_metadata_html(&mut output, metadata, locale);
     for section in &body.sections {
         output.push_str("<section data-section=\"");
-        output.push_str(&escape_html(&section.key));
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &section.key,
+            "section identity",
+            locale,
+        )));
         output.push_str("\"><h2>");
-        output.push_str(&escape_html(&section.title));
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &section.title,
+            "section title",
+            locale,
+        )));
         output.push_str("</h2>");
         if section.claims.is_empty() {
             output.push_str("<p>");
@@ -1205,7 +1267,11 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
         }
         for claim in &section.claims {
             output.push_str("<article class=\"claim\" data-claim-id=\"");
-            output.push_str(&escape_html(&claim.identity));
+            output.push_str(&escape_html(&bounded_rendered_field(
+                &claim.identity,
+                "claim identity",
+                locale,
+            )));
             output.push_str("\"><strong>[");
             output.push_str(claim_class_label(claim.class, locale));
             output.push_str("]</strong> ");
@@ -1214,13 +1280,25 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
                 output.push_str(&escape_html(fixed(locale, "Inference", "추론")));
                 output.push_str("]</span> ");
             }
-            output.push_str(&escape_html(&claim.text));
+            output.push_str(&escape_html(&bounded_rendered_field(
+                &claim.text,
+                "claim text",
+                locale,
+            )));
             output.push_str("<div class=\"basis\">");
-            output.push_str(&escape_html(&claim_basis(claim)));
+            output.push_str(&escape_html(&bounded_rendered_field(
+                &claim_basis(claim),
+                "claim basis",
+                locale,
+            )));
             output.push_str("</div>");
             if !claim.uncertainty.is_empty() {
                 output.push_str("<div class=\"uncertainty\">uncertainty: ");
-                output.push_str(&escape_html(&claim.uncertainty.join("; ")));
+                output.push_str(&escape_html(&bounded_rendered_field(
+                    &claim.uncertainty.join("; "),
+                    "claim uncertainty",
+                    locale,
+                )));
                 output.push_str("</div>");
             }
             output.push_str("</article>");
@@ -1239,7 +1317,11 @@ fn render_metadata_markdown(output: &mut String, metadata: &DocumentMetadata, lo
         output.push_str("- **");
         output.push_str(label);
         output.push_str(":** ");
-        output.push_str(&escape_markdown(&value));
+        output.push_str(&escape_markdown(&bounded_rendered_field(
+            &value,
+            "metadata value",
+            locale,
+        )));
         output.push('\n');
     }
     output.push('\n');
@@ -1257,7 +1339,11 @@ fn render_metadata_html(output: &mut String, metadata: &DocumentMetadata, locale
         output.push_str("<dt>");
         output.push_str(&escape_html(label));
         output.push_str("</dt><dd>");
-        output.push_str(&escape_html(&value));
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &value,
+            "metadata value",
+            locale,
+        )));
         output.push_str("</dd>");
     }
     output.push_str("</dl></section>");
@@ -1330,6 +1416,10 @@ fn metadata_pairs(metadata: &DocumentMetadata, locale: FixedLocale) -> Vec<(&'st
         (
             fixed(locale, "requested language", "요청 언어"),
             metadata.requested_language.clone(),
+        ),
+        (
+            fixed(locale, "HTML language tag", "HTML 언어 태그"),
+            metadata.html_language_tag.clone(),
         ),
         (
             fixed(locale, "repository snapshots", "저장소 스냅샷"),
@@ -1412,6 +1502,67 @@ fn join_display<T: fmt::Display>(values: &[T]) -> String {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn bounded_rendered_field(value: &str, field: &str, locale: FixedLocale) -> String {
+    if value.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT {
+        return value.to_owned();
+    }
+    format!(
+        "[{}: {}; {}={}; {}={}]",
+        fixed(locale, "omitted oversized field", "크기 초과 필드 생략"),
+        field,
+        fixed(locale, "exact UTF-8 bytes", "정확한 UTF-8 바이트"),
+        value.len(),
+        fixed(locale, "rendered byte limit", "렌더링 바이트 제한"),
+        RENDERED_DOCUMENT_FIELD_BYTE_LIMIT
+    )
+}
+
+fn normalized_html_language_tag(requested: &str, locale: FixedLocale) -> String {
+    let fallback = match locale {
+        FixedLocale::English => "en",
+        FixedLocale::Korean => "ko",
+    };
+    let candidate = requested.trim().replace('_', "-");
+    if candidate.is_empty() || candidate.len() > 63 || !candidate.is_ascii() {
+        return fallback.to_owned();
+    }
+    let subtags = candidate.split('-').collect::<Vec<_>>();
+    let Some(language) = subtags.first() else {
+        return fallback.to_owned();
+    };
+    if !(2..=8).contains(&language.len())
+        || !language.bytes().all(|byte| byte.is_ascii_alphabetic())
+    {
+        return fallback.to_owned();
+    }
+    if subtags.iter().skip(1).any(|subtag| {
+        subtag.is_empty()
+            || subtag.len() > 8
+            || !subtag.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    }) || subtags.last().is_some_and(|subtag| subtag.len() == 1)
+    {
+        return fallback.to_owned();
+    }
+
+    let mut normalized = Vec::with_capacity(subtags.len());
+    normalized.push(language.to_ascii_lowercase());
+    for subtag in subtags.into_iter().skip(1) {
+        let value = if subtag.len() == 4 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+            let mut value = subtag.to_ascii_lowercase();
+            value.replace_range(0..1, &subtag[0..1].to_ascii_uppercase());
+            value
+        } else if (subtag.len() == 2 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic()))
+            || (subtag.len() == 3 && subtag.bytes().all(|byte| byte.is_ascii_digit()))
+        {
+            subtag.to_ascii_uppercase()
+        } else {
+            subtag.to_ascii_lowercase()
+        };
+        normalized.push(value);
+    }
+    normalized.join("-")
 }
 
 fn bounded_rendered_list(values: &[String], locale: FixedLocale) -> String {

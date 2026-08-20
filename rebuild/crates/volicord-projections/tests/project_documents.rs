@@ -23,7 +23,8 @@ use volicord_projections::{
     CandidateProjectionInput, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
     FixedLocale, GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjection,
     ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssueKind,
-    RequestedDestination, GENERATED_DOCUMENT_METADATA_VERSION,
+    RequestedDestination, GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AgentInterpretation, AnalysisSnapshot, CanonicalGrounding,
@@ -573,6 +574,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     assert!(architecture_classes.contains(&ClaimClass::AgentInterpretation));
     for document in all {
         assert_eq!(document.metadata.requested_language, "fr-CA");
+        assert_eq!(document.metadata.html_language_tag, "fr-CA");
         assert_eq!(document.metadata.project_id, project.id);
         assert!(!document.metadata.included_decisions.is_empty());
         assert!(!document.metadata.capability_coverage.is_empty());
@@ -804,7 +806,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .project_architecture_guide
         .html
         .content
-        .starts_with("<!doctype html><html lang=\"fr-CA&quot; data-unsafe=&quot;&lt;&amp;\">"));
+        .starts_with("<!doctype html><html lang=\"en\">"));
     assert_eq!(
         attribute_safe
             .project_architecture_guide
@@ -812,6 +814,116 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             .requested_language,
         attribute_language
     );
+    assert_eq!(
+        attribute_safe
+            .project_architecture_guide
+            .metadata
+            .html_language_tag,
+        "en"
+    );
+    assert!(!attribute_safe
+        .project_architecture_guide
+        .html
+        .content
+        .starts_with("<!doctype html><html lang=\"fr-CA"));
+
+    let normalized_language = generate_documents(
+        &projection,
+        &DocumentRequest {
+            requested_language: "ZH_hant_tw".to_owned(),
+            requested_destinations: Vec::new(),
+            ..request.clone()
+        },
+    )?;
+    assert_eq!(
+        normalized_language
+            .handoff_resume
+            .metadata
+            .requested_language,
+        "ZH_hant_tw"
+    );
+    assert_eq!(
+        normalized_language
+            .handoff_resume
+            .metadata
+            .html_language_tag,
+        "zh-Hant-TW"
+    );
+    assert!(normalized_language
+        .handoff_resume
+        .html
+        .content
+        .starts_with("<!doctype html><html lang=\"zh-Hant-TW\">"));
+
+    let huge_claim = "OVERSIZED-CLAIM-".repeat(400);
+    let huge_name = "OVERSIZED-NAME-".repeat(400);
+    let huge_diagnostic = "OVERSIZED-DIAGNOSTIC-".repeat(300);
+    let huge_metadata = "OVERSIZED-METADATA-".repeat(300);
+    for value in [&huge_claim, &huge_name, &huge_diagnostic, &huge_metadata] {
+        assert!(value.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT);
+    }
+    let mut pathological = projection.clone();
+    pathological.resume.goals_and_why[0].statement = huge_claim.clone();
+    pathological.repository_map.entities[0].display_name = huge_name.clone();
+    pathological.repository_map.gaps[0].reason = huge_diagnostic.clone();
+    let pathological_request = DocumentRequest {
+        requested_language: "Klingon in Latin script".to_owned(),
+        fixed_locale: FixedLocale::English,
+        generated_at: request.generated_at,
+        generator: GeneratorIdentity {
+            generator: huge_metadata.clone(),
+            agent: Some(huge_metadata.clone()),
+            model: Some(huge_metadata.clone()),
+        },
+        requested_destinations: vec![RequestedDestination {
+            document_kind: DocumentKind::ProjectArchitectureGuide,
+            output_format: OutputFormat::Html,
+            path: huge_metadata.clone(),
+        }],
+    };
+    let pathological_documents = generate_documents(&pathological, &pathological_request)?;
+    assert_eq!(
+        pathological_documents,
+        generate_documents(&pathological, &pathological_request)?
+    );
+    let pathological_document = &pathological_documents.project_architecture_guide;
+    assert_eq!(
+        pathological_document.metadata.generator.generator,
+        huge_metadata
+    );
+    assert_eq!(
+        pathological_document.metadata.requested_language,
+        "Klingon in Latin script"
+    );
+    assert_eq!(pathological_document.metadata.html_language_tag, "en");
+    assert!(pathological_document
+        .body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .any(|claim| claim.text.contains(&huge_claim)));
+    for sentinel in [
+        "OVERSIZED-CLAIM-OVERSIZED-CLAIM-",
+        "OVERSIZED-NAME-OVERSIZED-NAME-",
+        "OVERSIZED-DIAGNOSTIC-OVERSIZED-DIAGNOSTIC-",
+        "OVERSIZED-METADATA-OVERSIZED-METADATA-",
+    ] {
+        assert!(!pathological_document.markdown.content.contains(sentinel));
+        assert!(!pathological_document.html.content.contains(sentinel));
+    }
+    for field in ["claim text", "claim uncertainty", "metadata value"] {
+        assert!(pathological_document.markdown.content.contains(&format!(
+            "omitted oversized field: {field}; exact UTF-8 bytes="
+        )));
+        assert!(pathological_document.html.content.contains(&format!(
+            "omitted oversized field: {field}; exact UTF-8 bytes="
+        )));
+    }
+    assert!(pathological_document.markdown.content.contains(&format!(
+        "rendered byte limit={RENDERED_DOCUMENT_FIELD_BYTE_LIMIT}"
+    )));
+    assert!(pathological_document.markdown.content.len() <= RENDERED_MARKDOWN_BYTE_LIMIT);
+    assert!(pathological_document.html.content.len() <= RENDERED_HTML_BYTE_LIMIT);
 
     let korean = generate_documents(
         &projection,

@@ -590,6 +590,23 @@ fn recall_documents_and_inspection_are_read_only_host_calls() {
     assert!(structured(&response)["content"]
         .as_str()
         .is_some_and(|value| value.contains("ja")));
+    let unsafe_language = "fr-CA\" data-unsafe=\"<&";
+    let response = call(
+        &mut adapter,
+        "document_preview",
+        json!({
+            "project_id":project,
+            "kind":"handoff-resume",
+            "format":"html",
+            "language":unsafe_language
+        }),
+    );
+    let content = structured(&response)["content"]
+        .as_str()
+        .expect("HTML document preview");
+    assert!(content.starts_with("<!doctype html><html lang=\"en\">"));
+    assert!(!content.starts_with("<!doctype html><html lang=\"fr-CA"));
+    assert!(content.contains("fr-CA&quot; data-unsafe=&quot;&lt;&amp;"));
     let after = adapter
         .operations()
         .canonical_basis(parse_project(&project))

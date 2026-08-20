@@ -181,10 +181,37 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
         assert!(page.html.contains("프로젝트 개요"));
         assert!(page.html.contains("저장소 지도"));
         assert!(page.html.contains("문서 미리보기 / 내보내기"));
+        assert!(page.html.contains("HTML 언어 태그"));
+        assert!(page.html.contains("<dd>ko</dd>"));
         assert!(page.html.contains("사용 가능한 기능"));
         assert!(!page.html.contains("NeverEnabled"));
         assert!(!page.html.contains("Projection: <strong>Complete"));
     }
+}
+
+#[test]
+fn arbitrary_generated_language_instruction_cannot_become_html_language_syntax() {
+    let (_temporary, viewer, project) = setup();
+    let requested_language = "fr-CA\" data-unsafe=\"<&";
+    let page = viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Deep,
+                requested_language: requested_language.into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("render viewer");
+    assert!(page.html.starts_with("<!doctype html><html lang=\"en\">"));
+    assert!(page.html.contains("HTML language tag"));
+    assert!(page.html.contains("<dd>en</dd>"));
+    assert!(page
+        .html
+        .contains("fr-CA&quot; data-unsafe=&quot;&lt;&amp;"));
+    assert!(!page.html.contains("lang=\"fr-CA&quot;"));
 }
 
 #[test]
