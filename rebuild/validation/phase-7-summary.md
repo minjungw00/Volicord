@@ -1,7 +1,7 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`; aggregate `succeeded` with four
+  `f2f17efaca7ac47be52181c96f0470fef63710ee`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
@@ -23,12 +23,12 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`. Its four-command aggregate
+`f2f17efaca7ac47be52181c96f0470fef63710ee`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`509ee8e0829b477d6058dda9334a5fc37c310dddc839b4ced097fcd8a906c296`.
+`2fac3d266ed98c62938dc3609992b18a0dba542127e7ebe1dd74f9ca7a23d398`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `42eab852aca3d9bf63054b62a6b2ed6f8c824b2e1140047cf0bbdf4c920bb401`.
+is `59d30057eccbcadd015205f89b953c40528a882842e06fa6074f15039055e172`.
 All three authenticated Codex targets passed, the credential-retention audit
 passed with zero auth-named files, credential-content matches, or scan errors,
 and `phase_8_ready = true` is recorded in

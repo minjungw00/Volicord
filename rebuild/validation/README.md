@@ -193,22 +193,18 @@ ownership, or the capsule lifecycle described below.
 
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
-`phase_9_ready = false`. The current production/test candidate is
-`7ab5e5c4d5695373d680e026e36b43cba4088cd2`. Admission passed with status
-`eligible`, but the maintained gate process did not start because execution
-approval for its bounded authenticated V11 transmission was denied. Exact
-final, official V11, the accepted-Decision revisit-trigger assessment, and the
-sanitized gate capsule are therefore `not_run` or `not_created`, and
-`phase_8_ready = false`. This candidate is not eligible for naturalistic
-Dogfood; its Dogfood state is `not_run`.
+`phase_9_ready = false`. Exact final and same-session official V11 passed for
+production/test candidate `f2f17efaca7ac47be52181c96f0470fef63710ee`:
+admission was `eligible`, exact final succeeded with zero failures, all 54
+required V11 steps passed, the credential-retention audit passed with zero
+recorded findings or scan errors, no active accepted-Decision revisit trigger
+was reported, and `phase_8_ready = true`. This candidate is eligible for a
+fresh naturalistic Dogfood campaign, but its Dogfood state is `not_run`.
 
-The passed exact-final/V11 evidence in
-`end-to-end/multi-repository/report.md` and `phase-7-summary.md` belongs only to
-predecessor candidate `d0f87f0376cbc6c9d8fe54e8d6ce17a4eabf93c6`. That
-candidate's failed naturalistic campaign, descriptors, captures, Runtime
-Homes, workspaces, bundles, and observations are non-reusable and must not be
-relabeled for `7ab5e5c4`. Replacement passage remains false, and Phase 9 may
-not begin.
+Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
+observations, and session identities remain non-reusable for this candidate.
+Replacement passage remains pending/false, and Phase 9 may not begin. The
+documentation-only conclusion is outside the sealed production/test candidate.
 
 ## Admission, authorization, and handoff
 
