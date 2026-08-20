@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Independently verify one sanitized validation evidence archive."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path, PurePosixPath
+import re
+import sys
+import tarfile
+from typing import Any
+
+
+ROOT = "validation-evidence"
+MAX_ARCHIVE_BYTES = 512 * 1024
+MAX_MEMBER_BYTES = 256 * 1024
+SHA256 = re.compile(r"[0-9a-f]{64}")
+SECRET_PATTERNS = (
+    re.compile(rb"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(rb"Bearer[ \t]+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE),
+    re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+)
+PROHIBITED_KEYS = {
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "authorization_header",
+    "credential_value",
+    "credential_fingerprint",
+    "auth_json_contents",
+    "environment_variables",
+    "environment_dump",
+    "source_body",
+    "raw_repository_source_body",
+    "raw_prompt",
+    "private_prompt",
+    "prompt_body",
+    "raw_provider_payload",
+    "full_command_log",
+}
+REQUIRED_PAYLOADS = {
+    "admission.json",
+    "capsule.json",
+    "file-modes.json",
+    "gate-result.json",
+    "processes.json",
+    "tracked-files.json",
+}
+OPTIONAL_PAYLOADS = {"final-summary.json"}
+
+
+def fail(message: str) -> None:
+    raise ValueError(message)
+
+
+def load_json(contents: dict[str, bytes], name: str) -> Any:
+    try:
+        return json.loads(contents[name])
+    except KeyError:
+        fail(f"missing archive member: {name}")
+    except json.JSONDecodeError as error:
+        fail(f"invalid JSON in {name}: {error.msg}")
+
+
+def inspect_keys(value: Any, location: str) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key).lower() in PROHIBITED_KEYS:
+                fail(f"prohibited content key in {location}: {key}")
+            inspect_keys(child, location)
+    elif isinstance(value, list):
+        for child in value:
+            inspect_keys(child, location)
+
+
+def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
+    if path.stat().st_size > MAX_ARCHIVE_BYTES:
+        fail("archive exceeds the bounded size")
+    contents: dict[str, bytes] = {}
+    observed_modes: dict[str, tuple[str, str]] = {}
+    with tarfile.open(path, "r:*") as archive:
+        for member in archive.getmembers():
+            pure = PurePosixPath(member.name)
+            if pure.is_absolute() or ".." in pure.parts or not pure.parts or pure.parts[0] != ROOT:
+                fail(f"unsafe archive member path: {member.name}")
+            if member.name in observed_modes:
+                fail(f"duplicate archive member: {member.name}")
+            if member.isdir():
+                observed_modes[member.name] = ("directory", f"{member.mode & 0o7777:04o}")
+                continue
+            if not member.isfile():
+                fail(f"unsupported archive member type: {member.name}")
+            if member.size > MAX_MEMBER_BYTES:
+                fail(f"archive member exceeds its bound: {member.name}")
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                fail(f"could not read archive member: {member.name}")
+            value = extracted.read(MAX_MEMBER_BYTES + 1)
+            if len(value) != member.size:
+                fail(f"archive member size mismatch: {member.name}")
+            contents[member.name] = value
+            observed_modes[member.name] = ("file", f"{member.mode & 0o7777:04o}")
+
+    manifest_name = f"{ROOT}/archive-manifest.json"
+    modes_name = f"{ROOT}/file-modes.json"
+    manifest = load_json(contents, manifest_name)
+    modes = load_json(contents, modes_name)
+    if manifest.get("kind") != "validation_evidence_archive_manifest":
+        fail("invalid archive manifest kind")
+    candidate = manifest.get("candidate_head")
+    if not isinstance(candidate, str) or re.fullmatch(r"[0-9a-f]{40}", candidate) is None:
+        fail("archive manifest candidate is invalid")
+    if expected_candidate is not None and candidate != expected_candidate:
+        fail("archive candidate does not match the expected candidate")
+
+    expected_modes: dict[str, tuple[str, str]] = {}
+    if modes.get("kind") != "archive_file_modes" or not isinstance(modes.get("entries"), list):
+        fail("invalid file-mode manifest")
+    for entry in modes["entries"]:
+        if not isinstance(entry, dict):
+            fail("invalid file-mode manifest entry")
+        item = (entry.get("type"), entry.get("mode"))
+        name = entry.get("path")
+        if not isinstance(name, str) or name in expected_modes:
+            fail("invalid or duplicate file-mode manifest path")
+        expected_modes[name] = item
+    if observed_modes != expected_modes:
+        fail("archive members or POSIX modes do not match the file-mode manifest")
+
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        fail("archive manifest file identities are invalid")
+    names = set(files)
+    if not REQUIRED_PAYLOADS <= names or not names <= REQUIRED_PAYLOADS | OPTIONAL_PAYLOADS:
+        fail("archive payload names do not match the bounded evidence contract")
+    expected_files = {manifest_name, *[f"{ROOT}/{name}" for name in files]}
+    if set(contents) != expected_files:
+        fail("archive payload is incomplete or has unlisted files")
+    for name, identity in files.items():
+        member_name = f"{ROOT}/{name}"
+        body = contents[member_name]
+        if (
+            not isinstance(identity, dict)
+            or identity.get("size_bytes") != len(body)
+            or identity.get("mode") != "0644"
+            or identity.get("sha256") != hashlib.sha256(body).hexdigest()
+        ):
+            fail(f"archive payload identity mismatch: {name}")
+        for pattern in SECRET_PATTERNS:
+            if pattern.search(body):
+                fail(f"credential-like prohibited content in {name}")
+        inspect_keys(load_json(contents, member_name), name)
+
+    capsule = load_json(contents, f"{ROOT}/capsule.json")
+    admission = load_json(contents, f"{ROOT}/admission.json")
+    gate_result = load_json(contents, f"{ROOT}/gate-result.json")
+    tracked = load_json(contents, f"{ROOT}/tracked-files.json")
+    candidates = {
+        capsule.get("validated_candidate_head"),
+        admission.get("candidate_head"),
+        gate_result.get("candidate_head"),
+        tracked.get("candidate_head"),
+    }
+    if candidates != {candidate}:
+        fail("candidate identities disagree inside the archive")
+    capsule_bytes = contents[f"{ROOT}/capsule.json"]
+    if manifest.get("capsule_sha256") != hashlib.sha256(capsule_bytes).hexdigest():
+        fail("capsule hash does not match the archive manifest")
+    if manifest.get("source_final_summary_sha256") != capsule.get("final_summary_sha256"):
+        fail("source final-summary hash does not match the capsule")
+    final_was_run = capsule.get("final_summary_sha256") is not None
+    if final_was_run != ("final-summary.json" in names):
+        fail("sanitized final-summary presence disagrees with the capsule")
+
+    tracked_files = tracked.get("files")
+    if tracked.get("kind") != "candidate_tracked_file_modes" or not isinstance(tracked_files, list):
+        fail("invalid tracked-file mode evidence")
+    for entry in tracked_files:
+        mode = entry.get("git_mode") if isinstance(entry, dict) else None
+        if (
+            entry.get("tracked") is not True
+            or mode not in {"100644", "100755"}
+            or entry.get("executable") != (mode == "100755")
+            or re.fullmatch(r"[0-9a-f]{40}", str(entry.get("git_object_id"))) is None
+            or not SHA256.fullmatch(str(entry.get("sha256")))
+        ):
+            fail("invalid tracked/executable file-mode evidence")
+
+    return {
+        "kind": "validation_evidence_archive_verification",
+        "status": "passed",
+        "candidate_head": candidate,
+        "archive_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "archive_size_bytes": path.stat().st_size,
+        "member_count": len(observed_modes),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("archive", type=Path)
+    parser.add_argument("--expected-candidate")
+    arguments = parser.parse_args()
+    try:
+        result = verify(arguments.archive, arguments.expected_candidate)
+    except (OSError, tarfile.TarError, ValueError) as error:
+        print(f"validation evidence archive verification failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

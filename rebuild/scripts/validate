@@ -32,6 +32,13 @@ GATE_SELF_TEST = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_sel
 GATE_ENTRYPOINT_SELF_TEST = (
     REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_entrypoint_self_test.py"
 )
+EVIDENCE_ARCHIVE_MODULE_PATH = (
+    REBUILD_ROOT / "validation/end-to-end/multi-repository/evidence_archive.py"
+)
+EVIDENCE_ARCHIVE_SELF_TEST = (
+    REBUILD_ROOT / "validation/end-to-end/multi-repository/evidence_archive_self_test.py"
+)
+EVIDENCE_ARCHIVE_VERIFIER = REBUILD_ROOT / "scripts/verify-validation-archive"
 FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
     (
         "cargo",
@@ -325,6 +332,17 @@ def load_gate_module() -> object:
     return module
 
 
+def load_evidence_archive_module() -> object:
+    spec = importlib.util.spec_from_file_location(
+        "volicord_validation_evidence_archive", EVIDENCE_ARCHIVE_MODULE_PATH
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("validation evidence archive module could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def lifecycle_options(arguments: Sequence[str]) -> tuple[str, str | None]:
     external_network = "unknown"
     authorization = None
@@ -365,6 +383,7 @@ def run_admission(arguments: Sequence[str]) -> int:
 
 def run_gate(arguments: Sequence[str]) -> int:
     gate = load_gate_module()
+    evidence_archive = load_evidence_archive_module()
     external_network, authorization = lifecycle_options(arguments)
     run_directory = new_run_directory("v11-gate")
     admission = gate.evaluate_admission(
@@ -376,8 +395,12 @@ def run_gate(arguments: Sequence[str]) -> int:
     )
     write_json(run_directory / "admission.json", admission)
 
+    final_summary: dict[str, object] | None = None
+
     def final_owner() -> tuple[dict[str, object], Path]:
+        nonlocal final_summary
         summary, directory = run_aggregate("final", FINAL_COMMANDS)
+        final_summary = summary
         return summary, directory / "summary.json"
 
     def preflight_owner(candidate_head: str, final_path: Path) -> tuple[dict[str, object] | None, dict[str, object]]:
@@ -424,14 +447,49 @@ def run_gate(arguments: Sequence[str]) -> int:
         audit_owner=audit_owner,
     )
     write_json(run_directory / "capsule.json", capsule)
-    write_json(run_directory / "gate-result.json", {
+    gate_result = {
         "kind": "validation_gate_result",
+        "candidate_head": capsule.get("validated_candidate_head"),
         "status": "passed" if capsule["phase_8_ready"] else "blocked",
         "blocking_classification": capsule["blocking_classification"],
         "invocation_counts": invocation_counts,
-    })
+    }
+    write_json(run_directory / "gate-result.json", gate_result)
+    archive_identity = None
+    candidate_head = capsule.get("validated_candidate_head")
+    if isinstance(candidate_head, str) and candidate_head:
+        archive_identity = evidence_archive.create_review_archive(
+            repository_root=REPOSITORY_ROOT,
+            gate_directory=run_directory,
+            candidate_head=candidate_head,
+            admission=admission,
+            capsule=capsule,
+            gate_result=gate_result,
+            final_summary=final_summary,
+        )
+        verification, verification_directory = run_focused(
+            "evidence-archive-verification",
+            (
+                str(EVIDENCE_ARCHIVE_VERIFIER),
+                str(archive_identity["path"]),
+                "--expected-candidate",
+                candidate_head,
+            ),
+        )
+        if verification["wrapper_exit_code"] != 0:
+            raise RuntimeError(
+                "sanitized validation evidence archive verification failed; "
+                f"artifacts: {verification_directory}"
+            )
+        write_json(run_directory / "evidence-archive.json", archive_identity)
     print(json.dumps(capsule, indent=2, sort_keys=True))
     print(f"evidence capsule: {run_directory / 'capsule.json'}", file=sys.stderr)
+    if archive_identity is not None:
+        print(
+            "sanitized evidence archive: "
+            f"{archive_identity['path']}; sha256={archive_identity['sha256']}",
+            file=sys.stderr,
+        )
     return 0 if capsule["phase_8_ready"] else 1
 
 
@@ -441,6 +499,7 @@ def usage() -> int:
         "  rebuild/scripts/validate self-test\n"
         "  rebuild/scripts/validate gate-self-test\n"
         "  rebuild/scripts/validate gate-entrypoint-self-test\n"
+        "  rebuild/scripts/validate evidence-archive-self-test\n"
         "  rebuild/scripts/validate focused <label> -- <command> [arguments...]\n"
         "  rebuild/scripts/validate final  # gate-owned; direct invocation is refused\n"
         "  rebuild/scripts/validate admission [--external-network <state>] "
@@ -466,6 +525,12 @@ def main(arguments: Sequence[str]) -> int:
     if arguments == ("gate-entrypoint-self-test",) or list(arguments) == ["gate-entrypoint-self-test"]:
         result, run_directory = run_focused(
             "gate-entrypoint-self-test", (str(GATE_ENTRYPOINT_SELF_TEST),)
+        )
+        print_result(result, run_directory)
+        return int(result["wrapper_exit_code"])
+    if arguments == ("evidence-archive-self-test",) or list(arguments) == ["evidence-archive-self-test"]:
+        result, run_directory = run_focused(
+            "evidence-archive-self-test", (str(EVIDENCE_ARCHIVE_SELF_TEST),)
         )
         print_result(result, run_directory)
         return int(result["wrapper_exit_code"])

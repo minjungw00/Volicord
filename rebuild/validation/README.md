@@ -17,6 +17,15 @@ surface, not a Volicord product command or production architecture.
   admission/gate entry point into isolated temporary Git repositories and
   checks clean, initially dirty, and admission-generated dirty candidates
   without invoking the real exact final or official V11.
+- `rebuild/scripts/validate evidence-archive-self-test` builds a synthetic
+  sanitized review archive and proves positive verification plus rejection of
+  tampered content, missing members, changed POSIX modes, candidate mismatch,
+  and credential-like prohibited content. It invokes neither exact final nor
+  official V11.
+- `rebuild/scripts/verify-validation-archive <archive> [--expected-candidate
+  <HEAD>]` independently verifies archive membership, content hashes, bounded
+  size, candidate agreement, tracked/executable identities, tar modes, and the
+  prohibited-content boundary without extracting the archive.
 - `rebuild/scripts/check-validation-report --self-test` proves generic report
   compatibility plus positive and negative capsule-backed semantics for
   admission-blocked, final-failed, V11-preflight-failed,
@@ -265,7 +274,32 @@ rebuild/scripts/validate gate \
 Admission writes its current structured result to the path reported on
 stderr. The gate writes `admission.json`, `gate-result.json`, and `capsule.json`
 under the reported ignored run directory and prints the complete capsule to
-stdout so it can be copied before that directory disappears.
+stdout so it can be copied before that directory disappears. It also builds
+and independently verifies `validation-evidence-<candidate-prefix>.tar.gz`, then
+reports the archive path and SHA-256 on stderr. A reviewer may copy that
+archive out of ignored local state and verify it with
+`rebuild/scripts/verify-validation-archive`.
+
+The portable archive is a bounded structured projection, not a replacement for
+the gate's ignored execution truth. Complete stdout/stderr, detailed V11 local
+artifacts, and raw command evidence remain under `rebuild/.local/validation/`.
+The archive contains only the capsule, sanitized admission/gate/final/process
+records, candidate-bound tracked validation-tool identities and executable
+modes, plus a member hash and POSIX-mode manifest. Repository-root cwd is
+represented exactly as the logical `.` root so a private absolute home path is
+not copied. The structured records retain argv, timestamps, duration,
+exit/wrapper status, termination, and spawn state. The capsule retains the
+original final-summary hash, dependency/fixture identities, official-V11
+state, credential audit, and same-session ownership.
+
+The archive excludes stdout/stderr bodies, detailed provider artifacts,
+environment dumps, repository source bodies, prompts, `auth.json` contents,
+credentials and reusable credential fingerprints. The verifier reads members
+in memory, refuses unsafe or unexpected member types and paths, and rejects
+missing or additional files, hash/size/mode drift, internal or caller-supplied
+candidate mismatch, invalid tracked/executable evidence, and prohibited keys
+or credential-like values. Tar member modes are preserved and checked; the
+archive file itself is created mode `0600` in ignored local state.
 
 The versionless current capsule has `kind = validation_handoff_capsule`. It is
 one stage-dependent contract rather than separate success and failure schemas.

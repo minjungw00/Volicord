@@ -16,6 +16,8 @@ from typing import Any, Sequence
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 RUNNER = ROOT / "rebuild/scripts/validate"
+EVIDENCE_ARCHIVE = HERE / "evidence_archive.py"
+EVIDENCE_ARCHIVE_VERIFIER = ROOT / "rebuild/scripts/verify-validation-archive"
 GATE = HERE / "gate.py"
 RESOURCE_ESTIMATE = HERE / "resource-estimate.json"
 HARNESS = HERE / "harness.py"
@@ -58,11 +60,15 @@ def bytecode_artifacts(candidate: Path) -> list[str]:
 def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     candidate = parent / "candidate"
     runner = candidate / "rebuild/scripts/validate"
+    evidence_archive = candidate / "rebuild/validation/end-to-end/multi-repository/evidence_archive.py"
+    evidence_archive_verifier = candidate / "rebuild/scripts/verify-validation-archive"
     gate = candidate / "rebuild/validation/end-to-end/multi-repository/gate.py"
     resource_estimate = candidate / "rebuild/validation/end-to-end/multi-repository/resource-estimate.json"
     runner.parent.mkdir(parents=True)
     gate.parent.mkdir(parents=True)
     shutil.copy2(RUNNER, runner)
+    shutil.copy2(EVIDENCE_ARCHIVE, evidence_archive)
+    shutil.copy2(EVIDENCE_ARCHIVE_VERIFIER, evidence_archive_verifier)
     shutil.copy2(GATE, gate)
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
 
