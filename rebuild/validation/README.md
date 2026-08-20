@@ -299,10 +299,14 @@ records, candidate-bound tracked validation-tool identities and executable
 modes, plus a member hash and POSIX-mode manifest. Repository-root cwd is
 represented as logical `.`, and maintained official-V11 repository/clone
 execution roots are represented by bounded target/root identities. Arbitrary
-external cwd values are rejected. Portable argv retains the inspectable command
-shape while projecting recognized paths and replacing private prompts, inline
-programs, opaque identities, and unclassified payloads. It explicitly reports
-sanitization and that exact raw argv remains only in ignored local evidence.
+external cwd values are rejected. Portable argv retains only executable,
+command, subcommand, flag, closed-value, and owned-path roles that an explicit
+command-family policy classifies as structural. Recognized paths are projected;
+private prompts, inline programs, config/message bodies, identities, content
+operands, and every unknown role are redacted regardless of lexical shape. Each
+argument records whether it is structural, projected, or redacted. The vector
+is labeled as a sanitized portable projection, while exact raw argv remains
+only in ignored local evidence.
 The structured records retain timestamps, duration, exit/wrapper status,
 termination, and spawn state. The capsule retains the original final-summary
 hash, dependency/fixture identities, official-V11 state, credential audit,
@@ -346,7 +350,10 @@ credentials, `auth.json` contents, reusable credential fingerprints, source
 bodies, full command logs, raw provider payloads, and private prompt bodies. A
 later documentation-only session uses the copied capsule and maintained tracked
 inputs; it never needs, searches for, or substitutes an ignored final or V11
-artifact from another session.
+artifact from another session. Capsule-backed semantic checking resolves the
+provided input and refuses capsules in any Git-ignored repository-local runtime
+area, including `rebuild/.local`; the operator must pass an explicit copy from
+an external handoff location.
 
 Capsule semantic checking follows the stages actually reached. A blocked
 admission or pre-final check requires its supporting check outcome and no later

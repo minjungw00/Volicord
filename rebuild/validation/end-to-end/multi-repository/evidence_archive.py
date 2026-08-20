@@ -9,7 +9,6 @@ import io
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import tarfile
 from typing import Any
@@ -29,10 +28,91 @@ TRACKED_EVIDENCE_PATHS = (
 )
 V11_TARGETS = {"volicord", "small-python", "polyglot-medium"}
 V11_EXECUTION_ROOTS = {"repository", "clone"}
-OPAQUE_ARGUMENT = re.compile(
-    r"(?:[0-9a-fA-F]{32,}|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})"
+KNOWN_EXECUTABLES = {
+    "bash",
+    "cargo",
+    "check-fixture-manifest",
+    "codex",
+    "git",
+    "harness.py",
+    "install.sh",
+    "python",
+    "python3",
+    "sh",
+    "validate",
+    "verify-validation-archive",
+    "volicord",
+    "zsh",
+}
+CARGO_SHAPES = (
+    (
+        ("metadata", "--manifest-path", None, "--no-deps", "--format-version", "1"),
+        {2},
+    ),
+    (("fmt", "--manifest-path", None, "--all", "--", "--check"), {2}),
+    (
+        (
+            "clippy",
+            "--manifest-path",
+            None,
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+        ),
+        {2},
+    ),
+    (
+        (
+            "test",
+            "--manifest-path",
+            None,
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+        ),
+        {2},
+    ),
+    (
+        (
+            "test",
+            "--manifest-path",
+            None,
+            "-p",
+            "volicord-operations",
+            "--test",
+            "v11_fixture_control",
+            "--all-features",
+            "--",
+            "--exact",
+            "seed_and_inspect_v11_forgetting_control",
+            "--nocapture",
+        ),
+        {2},
+    ),
 )
-SAFE_ARGUMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]*")
+VOLICORD_SHAPES = (
+    (("codex", "enable"), 3, {}, {2}),
+    (("project", "init"), 5, {3: "--repository"}, {4}),
+    (("project", "bind"), 4, {}, {3}),
+    (("analyze",), 2, {}, set()),
+    (("canonical", "user-source"), 6, {}, set()),
+    (("privacy", "enable"), 7, {}, set()),
+    (("checkpoint", "record"), 8, {}, set()),
+    (("recall",), 2, {}, set()),
+    (("portable", "export"), 4, {}, {3}),
+    (("portable", "import"), 3, {}, {2}),
+    (("canonical", "supersede-decision"), 7, {}, set()),
+    (("portable", "compare"), 5, {3: "--base"}, {2, 4}),
+    (("portable", "resolve"), 9, {7: "--base"}, {2, 8}),
+    (("canonical", "correct-decision"), 7, {}, set()),
+    (("canonical", "forget"), 6, {}, set()),
+    (("canonical", "inspect"), 3, {}, set()),
+    (("documents", "export"), 7, {}, {5}),
+    (("privacy", "status"), 3, {}, set()),
+    (("health",), 2, {}, set()),
+    (("repair",), 3, {}, set()),
+    (("candidates",), 2, {}, set()),
+)
 
 
 def utc_now() -> str:
@@ -84,73 +164,312 @@ def normalized_working_directory(
 
 
 def projected_path_argument(
-    value: str, repository_root: Path, gate_directory: Path
-) -> tuple[str, str] | None:
+    value: str,
+    repository_root: Path,
+    gate_directory: Path,
+    working_directory: Path,
+) -> tuple[str, str, str]:
     path = Path(value)
     if not path.is_absolute():
-        return None
+        if ".." in path.parts:
+            return ("<redacted:path>", "redacted", "escaping_relative_path")
+        resolved = working_directory / path
+        official = official_v11_path(resolved, gate_directory)
+        if official is not None:
+            suffix = "" if official["path"] == "." else f"/{official['path']}"
+            return (
+                f"<official-v11:{official['target']}:{official['execution_root']}>{suffix}",
+                "projected",
+                "official_v11_path",
+            )
+        repository_relative = path_within(resolved, repository_root)
+        if repository_relative is not None:
+            suffix = repository_relative.as_posix()
+            return (
+                "." if suffix == "." else f"./{suffix}",
+                "projected",
+                "repository_path",
+            )
+        return ("<redacted:path>", "redacted", "unrecognized_relative_path")
     official = official_v11_path(path, gate_directory)
     if official is not None:
         suffix = "" if official["path"] == "." else f"/{official['path']}"
         return (
             f"<official-v11:{official['target']}:{official['execution_root']}>{suffix}",
+            "projected",
             "official_v11_path",
         )
     gate_relative = path_within(path, gate_directory)
     if gate_relative is not None:
         suffix = gate_relative.as_posix()
-        return ("<gate-artifact>" + (f"/{suffix}" if suffix != "." else ""), "gate_path")
+        return (
+            "<gate-artifact>" + (f"/{suffix}" if suffix != "." else ""),
+            "projected",
+            "gate_path",
+        )
     repository_relative = path_within(path, repository_root)
     if repository_relative is not None:
         suffix = repository_relative.as_posix()
-        return ("." if suffix == "." else f"./{suffix}", "repository_path")
-    return ("<redacted:absolute-path>", "external_absolute_path")
+        local_parts = Path(suffix).parts
+        if local_parts[:3] == ("rebuild", ".local", "validation"):
+            remainder = Path(*local_parts[3:]).as_posix() if len(local_parts) > 3 else "."
+            return (
+                "<local-validation-artifact>"
+                + (f"/{remainder}" if remainder != "." else ""),
+                "projected",
+                "local_validation_path",
+            )
+        return (
+            "." if suffix == "." else f"./{suffix}",
+            "projected",
+            "repository_path",
+        )
+    return ("<redacted:absolute-path>", "redacted", "external_absolute_path")
+
+
+def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
+    roles = [
+        {"classification": "redacted", "role": "unknown_operand"}
+        for _argument in argv
+    ]
+    if not argv:
+        return roles
+    executable = Path(argv[0]).name
+    if executable not in KNOWN_EXECUTABLES:
+        roles[0] = {"classification": "redacted", "role": "unknown_executable"}
+        return roles
+
+    def structural(index: int, role: str = "structural_token") -> None:
+        if 0 <= index < len(roles):
+            roles[index] = {"classification": "structural", "role": role}
+
+    def path(index: int) -> None:
+        if 0 <= index < len(roles):
+            roles[index] = {"classification": "path", "role": "owned_path"}
+
+    def redact(index: int, role: str) -> None:
+        if 0 <= index < len(roles):
+            roles[index] = {"classification": "redacted", "role": role}
+
+    structural(0, "executable")
+
+    if executable in {"python", "python3", "bash", "sh", "zsh"}:
+        if len(argv) >= 2 and argv[1] in {"-c", "-m"}:
+            structural(1, "payload_flag")
+            if len(argv) >= 3:
+                redact(2, "inline_program" if argv[1] == "-c" else "module_operand")
+            for index in range(3, len(argv)):
+                redact(index, "program_argument")
+        return roles
+
+    if executable == "codex":
+        fixed = {
+            1: "--dangerously-bypass-hook-trust",
+            2: "--ask-for-approval",
+            3: "never",
+            4: "--config",
+            6: "exec",
+            7: "--ephemeral",
+            8: "--json",
+            9: "--sandbox",
+            10: "read-only",
+            11: "--skip-git-repo-check",
+            12: "-C",
+        }
+        if len(argv) == 15 and all(argv[index] == value for index, value in fixed.items()):
+            for index in fixed:
+                structural(index, "subcommand" if argv[index] == "exec" else "structural_token")
+            redact(5, "config_payload")
+            path(13)
+            redact(14, "private_prompt")
+        return roles
+
+    if executable == "cargo":
+        arguments = tuple(argv[1:])
+        for shape, path_indexes in CARGO_SHAPES:
+            if len(arguments) != len(shape) or any(
+                expected is not None and arguments[index] != expected
+                for index, expected in enumerate(shape)
+            ):
+                continue
+            for relative, expected in enumerate(shape):
+                absolute = relative + 1
+                if relative in path_indexes:
+                    path(absolute)
+                elif expected is not None:
+                    structural(
+                        absolute,
+                        "subcommand" if relative == 0 else (
+                            "flag" if expected.startswith("-") else "closed_structural_value"
+                        ),
+                    )
+            break
+        return roles
+
+    if executable == "git":
+        index = 1
+        while index + 1 < len(argv) and argv[index] == "-c":
+            structural(index, "config_flag")
+            redact(index + 1, "config_payload")
+            index += 2
+        if index >= len(argv) or argv[index] not in {"add", "clone", "commit", "init", "rev-parse"}:
+            return roles
+        subcommand = argv[index]
+        structural(index, "subcommand")
+        if subcommand == "clone" and argv[index + 1 : index + 3] == ["--quiet", "--no-hardlinks"] and len(argv) == index + 5:
+            structural(index + 1, "flag")
+            structural(index + 2, "flag")
+            path(index + 3)
+            path(index + 4)
+        elif subcommand == "rev-parse" and argv[index + 1 :] == ["HEAD"]:
+            structural(index + 1, "closed_structural_value")
+        elif subcommand == "init" and argv[index + 1 :] in ([], ["--quiet"]):
+            if len(argv) == index + 2:
+                structural(index + 1, "flag")
+        elif subcommand == "add" and len(argv) == index + 2:
+            path(index + 1)
+        elif subcommand == "commit" and argv[index + 1 : index + 3] == ["--quiet", "-m"] and len(argv) == index + 4:
+            structural(index + 1, "flag")
+            structural(index + 2, "flag")
+            redact(index + 3, "message_payload")
+        return roles
+
+    if executable == "volicord":
+        offset = 1
+        if len(argv) >= 3 and argv[1] == "--runtime":
+            structural(1, "flag")
+            path(2)
+            offset = 3
+        arguments = argv[offset:]
+        for prefix, expected_length, fixed, path_indexes in VOLICORD_SHAPES:
+            if len(arguments) != expected_length or tuple(arguments[: len(prefix)]) != prefix:
+                continue
+            for relative in range(len(prefix)):
+                structural(offset + relative, "subcommand" if relative else "command")
+            fixed_match = all(
+                arguments[relative] == expected for relative, expected in fixed.items()
+            )
+            if fixed_match:
+                for relative in fixed:
+                    structural(offset + relative, "flag")
+                for relative in path_indexes:
+                    path(offset + relative)
+            for relative in range(len(prefix), len(arguments)):
+                absolute = offset + relative
+                if roles[absolute]["classification"] == "redacted":
+                    redact(absolute, "sensitive_operand")
+            return roles
+        return roles
+
+    if executable == "harness.py":
+        shapes = {
+            "self-check": (2, {}, set()),
+            "credential-audit": (4, {2: "--artifact-dir"}, {3}),
+            "preflight": (
+                6,
+                {2: "--validated-head", 4: "--final-artifact"},
+                {5},
+            ),
+            "run": (
+                8,
+                {
+                    2: "--validated-head",
+                    4: "--final-artifact",
+                    6: "--output-dir",
+                },
+                {5, 7},
+            ),
+        }
+        subcommand = argv[1] if len(argv) >= 2 else None
+        shape = shapes.get(subcommand)
+        if shape is not None and len(argv) == shape[0] and all(
+            argv[index] == value for index, value in shape[1].items()
+        ):
+            structural(1, "subcommand")
+            for index, argument in shape[1].items():
+                structural(index, "flag")
+                if argument == "--validated-head":
+                    redact(index + 1, "candidate_identity")
+            for index in shape[2]:
+                path(index)
+        return roles
+
+    if executable == "verify-validation-archive":
+        if len(argv) == 4 and argv[2] == "--expected-candidate":
+            path(1)
+            structural(2, "flag")
+            redact(3, "candidate_identity")
+        return roles
+
+    if executable == "check-fixture-manifest":
+        if len(argv) == 2:
+            path(1)
+        return roles
+
+    if executable == "install.sh":
+        if len(argv) == 5 and argv[1] == "--prefix" and argv[3] == "--runtime-dir":
+            structural(1, "flag")
+            path(2)
+            structural(3, "flag")
+            path(4)
+        return roles
+
+    if executable == "validate":
+        if len(argv) == 2 and argv[1] in {
+            "evidence-archive-self-test",
+            "gate-entrypoint-self-test",
+            "gate-self-test",
+            "self-test",
+        }:
+            structural(1, "subcommand")
+        return roles
+
+    return roles
 
 
 def sanitized_argv(
-    argv: list[str], repository_root: Path, gate_directory: Path
+    argv: list[str],
+    repository_root: Path,
+    gate_directory: Path,
+    working_directory: Path | None = None,
 ) -> dict[str, Any]:
+    if not argv:
+        raise ValueError("execution record has empty argv")
+    roles = semantic_argument_roles(argv)
     projected: list[str] = []
     sanitizations: list[dict[str, Any]] = []
-    redact_next = False
-    codex_exec_seen = False
-    for index, argument in enumerate(argv):
+    argument_classifications: list[str] = []
+    for index, (argument, decision) in enumerate(zip(argv, roles)):
+        classification = decision["classification"]
+        role = decision["role"]
         replacement = argument
-        reason: str | None = None
-        path_projection = projected_path_argument(argument, repository_root, gate_directory)
-        if index == 0:
-            if path_projection is not None:
-                replacement = Path(argument).name
-                reason = "executable_path"
-        elif redact_next:
-            replacement = "<redacted:argument-payload>"
-            reason = "flag_payload"
-            redact_next = False
-        elif path_projection is not None:
-            replacement, reason = path_projection
-        elif argument in {"-c", "--config", "-m", "--message"}:
-            redact_next = True
-        elif argument == "exec" and any(Path(value).name == "codex" for value in argv[:1]):
-            codex_exec_seen = True
-        elif codex_exec_seen and index == len(argv) - 1:
-            replacement = "<redacted:private-prompt>"
-            reason = "private_prompt"
-        elif OPAQUE_ARGUMENT.fullmatch(argument):
-            replacement = "<redacted:opaque-identity>"
-            reason = "opaque_identity"
-        elif not argument.startswith("-") and not SAFE_ARGUMENT.fullmatch(argument):
-            replacement = "<redacted:argument-payload>"
-            reason = "unclassified_payload"
+        if index == 0 and classification == "structural":
+            replacement = Path(argument).name
+            if replacement != argument:
+                classification = "projected"
+                role = "executable_path"
+        elif classification == "path":
+            replacement, classification, role = projected_path_argument(
+                argument,
+                repository_root,
+                gate_directory,
+                working_directory or repository_root,
+            )
+        elif classification == "redacted":
+            replacement = f"<redacted:{role.replace('_', '-')}>"
         projected.append(replacement)
-        if reason is not None:
-            sanitizations.append({"argument_index": index, "reason": reason})
+        argument_classifications.append(classification)
+        if classification != "structural":
+            sanitizations.append({"argument_index": index, "reason": role})
     return {
         "argv": projected,
         "argv_completeness": "sanitized_portable_projection",
+        "argv_projection_policy": "explicit_semantic_argument_roles",
         "raw_argv_retained_locally": True,
         "sanitization_applied": bool(sanitizations),
         "sanitized_argument_count": len(sanitizations),
         "sanitizations": sanitizations,
+        "argument_classifications": argument_classifications,
     }
 
 
@@ -162,7 +481,12 @@ def sanitized_execution(
         raise ValueError("execution record has invalid argv")
     spawn_error = value.get("spawn_error")
     return {
-        **sanitized_argv(argv, repository_root, gate_directory),
+        **sanitized_argv(
+            argv,
+            repository_root,
+            gate_directory,
+            Path(str(value.get("working_directory"))),
+        ),
         "working_directory": normalized_working_directory(
             value.get("working_directory"), repository_root, gate_directory
         ),

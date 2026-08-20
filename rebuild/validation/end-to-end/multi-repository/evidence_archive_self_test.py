@@ -20,6 +20,18 @@ BUILDER = HERE / "evidence_archive.py"
 VERIFIER = ROOT / "rebuild/scripts/verify-validation-archive"
 HEAD = "a" * 40
 PROMPT_SENTINEL = "PROMPT_SENTINEL_MUST_NOT_SURVIVE_7f91"
+SENSITIVE_OPERANDS = (
+    "SECRETWORD",
+    "internal_name",
+    "foo-bar",
+    "abc123",
+    "x",
+    "-looks-like-a-flag",
+    "multi word private content",
+    "550e8400-e29b-41d4-a716-446655440000",
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "/home/private-user/source/repository.rs",
+)
 sys.dont_write_bytecode = True
 
 
@@ -103,6 +115,176 @@ def execution(argv: list[str], cwd: Path) -> dict[str, object]:
     }
 
 
+def codex_argv(repository: Path, prompt: str) -> list[str]:
+    return [
+        "/opt/codex/bin/codex",
+        "--dangerously-bypass-hook-trust",
+        "--ask-for-approval",
+        "never",
+        "--config",
+        'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
+        "exec",
+        "--ephemeral",
+        "--json",
+        "--sandbox",
+        "read-only",
+        "--skip-git-repo-check",
+        "-C",
+        str(repository),
+        prompt,
+    ]
+
+
+def assert_semantic_policy(root: Path, gate: Path) -> None:
+    for payload in SENSITIVE_OPERANDS:
+        command = [
+            "volicord",
+            "canonical",
+            "user-source",
+            "project-identity",
+            "codex",
+            "v11",
+            payload,
+        ]
+        projected = builder.sanitized_argv(command, ROOT, gate)
+        assert projected["argv"][:3] == ["volicord", "canonical", "user-source"]
+        assert projected["argv"][-1] == "<redacted:sensitive-operand>"
+        assert projected["argument_classifications"][-1] == "redacted"
+        assert projected["sanitizations"][-1]["reason"] == "sensitive_operand"
+
+        privacy = builder.sanitized_argv(
+            [
+                "volicord",
+                "privacy",
+                "enable",
+                "project-identity",
+                "provider",
+                "model",
+                "decision-identity",
+                payload,
+            ],
+            ROOT,
+            gate,
+        )
+        assert privacy["argv"][-1] == "<redacted:sensitive-operand>"
+
+    current_codex = builder.sanitized_argv(codex_argv(root, PROMPT_SENTINEL), ROOT, gate)
+    assert current_codex["argv"][1:5] == [
+        "--dangerously-bypass-hook-trust",
+        "--ask-for-approval",
+        "never",
+        "--config",
+    ]
+    assert current_codex["argv"][5] == "<redacted:config-payload>"
+    assert current_codex["argv"][-1] == "<redacted:private-prompt>"
+
+    for command, sensitive_index in (
+        (["python3", "-c", "SECRETWORD"], 2),
+        (["sh", "-c", "internal_name"], 2),
+        (["git", "-c", "user.name=foo-bar", "commit", "--quiet", "-m", "abc123"], 2),
+        (["git", "-c", "user.name=foo-bar", "commit", "--quiet", "-m", "abc123"], 6),
+    ):
+        projected = builder.sanitized_argv(command, ROOT, gate)
+        assert projected["argv"][sensitive_index].startswith("<redacted:")
+
+    unknown = builder.sanitized_argv(
+        ["unrecognized-command", "--flag", "SECRETWORD"], ROOT, gate
+    )
+    assert all(argument.startswith("<redacted:") for argument in unknown["argv"])
+
+    exact_final = builder.sanitized_argv(
+        [
+            "cargo",
+            "test",
+            "--manifest-path",
+            "rebuild/Cargo.toml",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+        ],
+        ROOT,
+        gate,
+    )
+    assert exact_final["argv"] == [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "./rebuild/Cargo.toml",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+    ]
+    assert exact_final["argv_projection_policy"] == "explicit_semantic_argument_roles"
+
+    family_shapes = (
+        ([str(ROOT / "rebuild/scripts/validate"), "self-test"], ["validate", "self-test"]),
+        (
+            [
+                str(ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"),
+                "run",
+                "--validated-head",
+                "a" * 40,
+                "--final-artifact",
+                str(gate / "final" / "summary.json"),
+                "--output-dir",
+                str(gate / "official-v11"),
+            ],
+            ["harness.py", "run", "--validated-head"],
+        ),
+        (
+            [
+                str(ROOT / "rebuild/scripts/check-fixture-manifest"),
+                "rebuild/validation/shared/fixture-manifest.json",
+            ],
+            ["check-fixture-manifest", "./rebuild/validation/shared/fixture-manifest.json"],
+        ),
+        (
+            [
+                str(ROOT / "rebuild/install.sh"),
+                "--prefix",
+                str(gate / "official-v11/work/small-python/prefix"),
+                "--runtime-dir",
+                str(gate / "official-v11/work/small-python/runtime"),
+            ],
+            ["install.sh", "--prefix"],
+        ),
+        (
+            [
+                str(VERIFIER),
+                str(gate / "validation-evidence.tar.gz"),
+                "--expected-candidate",
+                "b" * 40,
+            ],
+            ["verify-validation-archive", "<gate-artifact>/validation-evidence.tar.gz"],
+        ),
+        (
+            ["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(root)],
+            ["git", "clone", "--quiet", "--no-hardlinks", "."],
+        ),
+        (
+            [
+                "cargo",
+                "test",
+                "--manifest-path",
+                "rebuild/Cargo.toml",
+                "-p",
+                "volicord-operations",
+                "--test",
+                "v11_fixture_control",
+                "--all-features",
+                "--",
+                "--exact",
+                "seed_and_inspect_v11_forgetting_control",
+                "--nocapture",
+            ],
+            ["cargo", "test", "--manifest-path", "./rebuild/Cargo.toml"],
+        ),
+    )
+    for command, expected_prefix in family_shapes:
+        projected = builder.sanitized_argv(command, ROOT, gate)
+        assert projected["argv"][: len(expected_prefix)] == expected_prefix
+
+
 def integration_archive(root: Path) -> tuple[Path, str]:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
@@ -110,23 +292,70 @@ def integration_archive(root: Path) -> tuple[Path, str]:
     gate = root / "synthetic-gate"
     repository_result = gate / "admission-checks" / "runner" / "result.json"
     target = gate / "official-v11" / "work" / "small-python" / "repository"
-    target_result = gate / "official-v11" / "operations" / "result.json"
+    operations = gate / "official-v11" / "operations"
     target.mkdir(parents=True)
     repository_result.parent.mkdir(parents=True)
-    target_result.parent.mkdir(parents=True)
+    operations.mkdir(parents=True)
+    assert_semantic_policy(root, gate)
     repository_result.write_text(
-        json.dumps(execution(["cargo", "test", "--workspace"], ROOT)), encoding="utf-8"
-    )
-    target_result.write_text(
         json.dumps(
             execution(
                 [
-                    "/opt/codex/bin/codex",
-                    "exec",
-                    "--ephemeral",
-                    "-C",
-                    str(target),
-                    PROMPT_SENTINEL,
+                    "cargo",
+                    "test",
+                    "--manifest-path",
+                    "rebuild/Cargo.toml",
+                    "--workspace",
+                    "--all-targets",
+                    "--all-features",
+                ],
+                ROOT,
+            )
+        ),
+        encoding="utf-8",
+    )
+    codex_result = operations / "001-authenticated-codex" / "result.json"
+    codex_result.parent.mkdir()
+    codex_result.write_text(
+        json.dumps(
+            execution(codex_argv(target, PROMPT_SENTINEL), target)
+        ),
+        encoding="utf-8",
+    )
+    for index, payload in enumerate(SENSITIVE_OPERANDS, start=2):
+        (operations / f"{index:03d}-user-source" / "result.json").parent.mkdir()
+        (operations / f"{index:03d}-user-source" / "result.json").write_text(
+            json.dumps(
+                execution(
+                    [
+                        "volicord",
+                        "canonical",
+                        "user-source",
+                        "project-identity",
+                        "codex",
+                        "v11",
+                        payload,
+                    ],
+                    target,
+                )
+            ),
+            encoding="utf-8",
+        )
+    config_result = operations / "020-git-config" / "result.json"
+    config_result.parent.mkdir()
+    config_result.write_text(
+        json.dumps(
+            execution(
+                [
+                    "git",
+                    "-c",
+                    "user.name=SECRETWORD",
+                    "-c",
+                    "user.email=internal_name",
+                    "commit",
+                    "--quiet",
+                    "-m",
+                    "foo-bar",
                 ],
                 target,
             )
@@ -141,7 +370,20 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         "command_count": 1,
         "failure_count": 0,
         "outcome": "succeeded",
-        "commands": [execution(["cargo", "test", "--workspace"], ROOT)],
+        "commands": [
+            execution(
+                [
+                    "cargo",
+                    "test",
+                    "--manifest-path",
+                    "rebuild/Cargo.toml",
+                    "--workspace",
+                    "--all-targets",
+                    "--all-features",
+                ],
+                ROOT,
+            )
+        ],
     }
     final_hash = "1" * 64
     admission = {
@@ -187,6 +429,10 @@ def integration_archive(root: Path) -> tuple[Path, str]:
             retained.extractfile("validation-evidence/processes.json").read()
         )
     assert PROMPT_SENTINEL.encode() not in bodies
+    for payload in SENSITIVE_OPERANDS:
+        if len(payload) > 1:
+            assert payload.encode() not in bodies
+    assert b'"x"' not in bodies
     assert str(ROOT).encode() not in bodies
     assert str(root).encode() not in bodies
     target_process = next(
@@ -202,7 +448,13 @@ def integration_archive(root: Path) -> tuple[Path, str]:
     }
     assert target_process["argv"][-1] == "<redacted:private-prompt>"
     assert target_process["argv_completeness"] == "sanitized_portable_projection"
+    assert target_process["argv_projection_policy"] == "explicit_semantic_argument_roles"
     assert target_process["raw_argv_retained_locally"] is True
+    assert PROMPT_SENTINEL in codex_result.read_text(encoding="utf-8")
+    for index, payload in enumerate(SENSITIVE_OPERANDS, start=2):
+        assert payload in (
+            operations / f"{index:03d}-user-source" / "result.json"
+        ).read_text(encoding="utf-8")
 
     unknown = gate / "unknown" / "result.json"
     unknown.parent.mkdir()
@@ -317,18 +569,16 @@ def main() -> int:
         assert "prohibited" in credential_failure.stderr
 
         prompt_payloads = payloads()
+        leaked_prompt = builder.sanitized_execution(
+            execution(codex_argv(ROOT, PROMPT_SENTINEL), ROOT), ROOT, root
+        )
+        leaked_prompt["argv"][-1] = PROMPT_SENTINEL
+        leaked_prompt["argument_classifications"][-1] = "structural"
+        leaked_prompt["sanitizations"] = leaked_prompt["sanitizations"][:-1]
+        leaked_prompt["sanitized_argument_count"] -= 1
         prompt_payloads["processes.json"] = {
             "kind": "sanitized_gate_processes",
-            "processes": [
-                {
-                    **execution(["codex", "exec", PROMPT_SENTINEL], ROOT),
-                    "argv_completeness": "sanitized_portable_projection",
-                    "raw_argv_retained_locally": True,
-                    "sanitization_applied": False,
-                    "sanitized_argument_count": 0,
-                    "sanitizations": [],
-                }
-            ],
+            "processes": [leaked_prompt],
         }
         prompt_archive = root / "prompt-retained.tar.gz"
         builder.write_archive(
@@ -372,6 +622,16 @@ def main() -> int:
             "logical_official_v11_working_directory",
             "unknown_external_working_directory",
             "private_prompt_sanitization",
+            "semantic_role_payload_regressions",
+            "flag_shaped_content_operand",
+            "shell_python_git_config_payloads",
+            "exact_final_command_shape",
+            "official_v11_harness_shape",
+            "volicord_product_path_shapes",
+            "verifier_execution_shape",
+            "owned_path_projection",
+            "unknown_command_conservative_redaction",
+            "raw_local_argv_preservation",
             "absolute_path_rejection",
             "repository_source_body_rejection",
             "tampered_content",

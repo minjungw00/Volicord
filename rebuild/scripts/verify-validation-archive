@@ -51,6 +51,142 @@ REQUIRED_PAYLOADS = {
     "tracked-files.json",
 }
 OPTIONAL_PAYLOADS = {"final-summary.json"}
+PORTABLE_STRUCTURAL_ARGUMENTS = {
+    "--",
+    "--all",
+    "--all-features",
+    "--all-targets",
+    "--artifact-dir",
+    "--ask-for-approval",
+    "--base",
+    "--check",
+    "--config",
+    "--dangerously-bypass-hook-trust",
+    "--ephemeral",
+    "--exact",
+    "--expected-candidate",
+    "--final-artifact",
+    "--format-version",
+    "--json",
+    "--manifest-path",
+    "--no-deps",
+    "--no-hardlinks",
+    "--nocapture",
+    "--output-dir",
+    "--prefix",
+    "--quiet",
+    "--repository",
+    "--runtime",
+    "--runtime-dir",
+    "--sandbox",
+    "--skip-git-repo-check",
+    "--test",
+    "--validated-head",
+    "--workspace",
+    "-C",
+    "-c",
+    "-m",
+    "-p",
+    "1",
+    "HEAD",
+    "add",
+    "analyze",
+    "bash",
+    "bind",
+    "candidates",
+    "canonical",
+    "cargo",
+    "check-fixture-manifest",
+    "checkpoint",
+    "clippy",
+    "clone",
+    "codex",
+    "commit",
+    "compare",
+    "correct-decision",
+    "credential-audit",
+    "documents",
+    "enable",
+    "evidence-archive-self-test",
+    "exec",
+    "export",
+    "fmt",
+    "forget",
+    "gate-entrypoint-self-test",
+    "gate-self-test",
+    "git",
+    "harness.py",
+    "health",
+    "import",
+    "init",
+    "inspect",
+    "install.sh",
+    "metadata",
+    "never",
+    "portable",
+    "preflight",
+    "privacy",
+    "project",
+    "python",
+    "python3",
+    "read-only",
+    "recall",
+    "record",
+    "repair",
+    "resolve",
+    "rev-parse",
+    "run",
+    "self-check",
+    "self-test",
+    "seed_and_inspect_v11_forgetting_control",
+    "sh",
+    "status",
+    "supersede-decision",
+    "test",
+    "user-source",
+    "v11_fixture_control",
+    "validate",
+    "verify-validation-archive",
+    "volicord",
+    "volicord-operations",
+    "zsh",
+}
+PORTABLE_ROLE_CLASSIFICATIONS = {"projected", "redacted", "structural"}
+PORTABLE_ROLES = {
+    "candidate_identity",
+    "closed_structural_value",
+    "command",
+    "config_flag",
+    "config_payload",
+    "escaping_relative_path",
+    "executable",
+    "executable_path",
+    "external_absolute_path",
+    "flag",
+    "gate_path",
+    "inline_program",
+    "local_validation_path",
+    "message_payload",
+    "module_operand",
+    "official_v11_path",
+    "owned_path",
+    "payload_flag",
+    "private_prompt",
+    "program_argument",
+    "repository_path",
+    "sensitive_operand",
+    "structural_token",
+    "subcommand",
+    "unknown_executable",
+    "unknown_operand",
+    "unrecognized_relative_path",
+}
+PORTABLE_PATH_PREFIXES = (
+    "./",
+    "<gate-artifact>",
+    "<local-validation-artifact>",
+    "<official-v11:",
+)
 
 
 def fail(message: str) -> None:
@@ -85,31 +221,60 @@ def verify_portable_execution(value: Any, location: str) -> None:
         fail(f"portable execution argv is invalid in {location}")
     if value.get("argv_completeness") != "sanitized_portable_projection":
         fail(f"portable execution falsely claims unsanitized argv in {location}")
+    if value.get("argv_projection_policy") != "explicit_semantic_argument_roles":
+        fail(f"portable execution lacks the semantic argument-role policy in {location}")
     if value.get("raw_argv_retained_locally") is not True:
         fail(f"portable execution does not distinguish local raw argv in {location}")
     applied = value.get("sanitization_applied")
     count = value.get("sanitized_argument_count")
     sanitizations = value.get("sanitizations")
+    argument_classifications = value.get("argument_classifications")
     if (
         not isinstance(applied, bool)
         or not isinstance(count, int)
         or count < 0
         or not isinstance(sanitizations, list)
+        or not isinstance(argument_classifications, list)
+        or len(argument_classifications) != len(argv)
         or count != len(sanitizations)
         or applied != (count > 0)
     ):
         fail(f"portable argv sanitization accounting is invalid in {location}")
+    sanitization_by_index: dict[int, str] = {}
     for entry in sanitizations:
         if (
             not isinstance(entry, dict)
             or not isinstance(entry.get("argument_index"), int)
-            or entry["argument_index"] < 0
-            or entry["argument_index"] >= len(argv)
-            or not isinstance(entry.get("reason"), str)
-            or not entry["reason"]
+            or entry["argument_index"] in sanitization_by_index
+            or entry.get("reason") not in PORTABLE_ROLES
         ):
             fail(f"portable argv sanitization entry is invalid in {location}")
-    executable = Path(argv[0]).name
+        sanitization_by_index[entry["argument_index"]] = entry["reason"]
+    expected_sanitized_indexes: set[int] = set()
+    for index, classification in enumerate(argument_classifications):
+        if classification not in PORTABLE_ROLE_CLASSIFICATIONS:
+            fail(f"portable argv classification is invalid in {location}")
+        role = sanitization_by_index.get(index)
+        argument = argv[index]
+        if classification == "structural":
+            if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
+                fail(f"portable argv retains an unapproved structural value in {location}")
+        elif classification == "redacted":
+            expected_marker = f"<redacted:{str(role).replace('_', '-')}>"
+            if argument != expected_marker:
+                fail(f"portable argv redaction marker is invalid in {location}")
+        elif role == "executable_path":
+            if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
+                fail(f"portable projected executable is unapproved in {location}")
+        elif argument != "." and not argument.startswith(PORTABLE_PATH_PREFIXES):
+            fail(f"portable projected path is invalid in {location}")
+        if classification != "structural":
+            expected_sanitized_indexes.add(index)
+            if role is None:
+                fail(f"portable argv projection lacks its semantic role in {location}")
+    if set(sanitization_by_index) != expected_sanitized_indexes:
+        fail(f"portable argv sanitization metadata disagrees with argument roles in {location}")
+    executable = argv[0]
     if executable == "codex" and "exec" in argv and not argv[-1].startswith("<redacted:"):
         fail(f"portable Codex execution retains a prompt-bearing argument in {location}")
     if executable.startswith("python") and "-c" in argv:
@@ -135,6 +300,8 @@ def verify_process_payloads(contents: dict[str, bytes]) -> None:
             fail("invalid sanitized final summary")
         for index, command in enumerate(final["commands"]):
             verify_portable_execution(command, f"final-summary.json.commands[{index}]")
+
+
 def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     if path.stat().st_size > MAX_ARCHIVE_BYTES:
         fail("archive exceeds the bounded size")

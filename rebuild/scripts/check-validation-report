@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 from typing import Any, Sequence
@@ -62,6 +63,7 @@ FLOW_KEYS = (
 )
 SHA256 = re.compile(r"[0-9a-f]{64}")
 HEAD = re.compile(r"[0-9a-f]{40}")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def report_sections(text: str) -> dict[str, str]:
@@ -107,6 +109,31 @@ def check_shape_text(text: str) -> list[str]:
 
 def check(path: Path) -> list[str]:
     return check_shape_text(path.read_text(encoding="utf-8"))
+
+
+def copied_capsule(path: Path) -> dict[str, Any]:
+    resolved = path.resolve(strict=True)
+    try:
+        resolved.relative_to(REPOSITORY_ROOT)
+    except ValueError:
+        pass
+    else:
+        ignored = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--no-index", "--", str(resolved)],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+        )
+        if ignored.returncode not in {0, 1}:
+            raise ValueError("could not establish the capsule's ignored-path state")
+        if ignored.returncode == 0:
+            raise ValueError(
+                "capsule-backed documentation validation requires an explicit copy "
+                "outside ignored repository runtime evidence"
+            )
+    value = json.loads(resolved.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("capsule root must be an object")
+    return value
 
 
 def mapping(value: Any, label: str, errors: list[str]) -> dict[str, Any]:
@@ -1231,7 +1258,30 @@ def self_test() -> int:
         path = Path(directory) / "generic-report.md"
         path.write_text(fully_passed_report, encoding="utf-8")
         assert check(path) == []
-    print("validation report checker self-test passed; lifecycle scenarios: 7")
+        external_capsule = Path(directory) / "copied-capsule.json"
+        capsule_bytes = (json.dumps(fully_passed, sort_keys=True) + "\n").encode("utf-8")
+        external_capsule.write_bytes(capsule_bytes)
+        external_value = copied_capsule(external_capsule)
+        assert external_value == fully_passed
+        assert check_capsule_semantics(fully_passed_report, external_value) == []
+        ignored_parent = REPOSITORY_ROOT / "rebuild/.local/validation"
+        ignored_parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="report-capsule-boundary-self-test-", dir=ignored_parent
+        ) as ignored_directory:
+            ignored_capsule = Path(ignored_directory) / "capsule.json"
+            ignored_capsule.write_bytes(capsule_bytes)
+            assert ignored_capsule.read_bytes() == external_capsule.read_bytes()
+            try:
+                copied_capsule(ignored_capsule)
+            except ValueError as error:
+                assert "explicit copy" in str(error)
+            else:
+                raise AssertionError("ignored local capsule was accepted")
+    print(
+        "validation report checker self-test passed; lifecycle scenarios: 7; "
+        "copied-capsule boundary: passed"
+    )
     return 0
 
 
@@ -1269,12 +1319,9 @@ def main(arguments: Sequence[str]) -> int:
             print(f"capsule does not exist: {args.capsule}", file=sys.stderr)
             return 2
         try:
-            capsule = json.loads(args.capsule.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            print(f"capsule is not valid JSON: {error}", file=sys.stderr)
-            return 2
-        if not isinstance(capsule, dict):
-            print("capsule root must be an object", file=sys.stderr)
+            capsule = copied_capsule(args.capsule)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"capsule input is invalid: {error}", file=sys.stderr)
             return 2
         errors.extend(check_capsule_semantics(args.report.read_text(encoding="utf-8"), capsule))
     if errors:
