@@ -11,6 +11,9 @@ use volicord_operations::{
 };
 use volicord_repository_intelligence::AnalysisSnapshotId;
 
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::{symlink, PermissionsExt};
+
 fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
     let repository = temporary.path().join("repository");
@@ -26,6 +29,56 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
     let runtime = temporary.path().join("runtime");
     let operations = LocalOperations::new(RuntimeLayout::new(runtime)?);
     Ok((temporary, operations, repository))
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn runtime_initialization_enforces_private_managed_paths() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (temporary, operations, _repository) = fixture()?;
+    fs::create_dir(operations.layout().root())?;
+    fs::set_permissions(
+        operations.layout().root(),
+        fs::Permissions::from_mode(0o777),
+    )?;
+    operations.initialize_runtime()?;
+
+    for directory in [
+        operations.layout().root().to_path_buf(),
+        operations.layout().derived_dir(),
+        operations.layout().analysis_dir(),
+        operations.layout().artifacts_dir(),
+    ] {
+        assert_eq!(
+            fs::symlink_metadata(&directory)?.permissions().mode() & 0o7777,
+            0o700,
+            "{}",
+            directory.display()
+        );
+    }
+    for file in [
+        operations.layout().canonical_store(),
+        operations.layout().candidate_store(),
+        operations.layout().privacy_store(),
+        operations.layout().guarded_store(),
+        operations.layout().mutation_lock(),
+    ] {
+        assert_eq!(
+            fs::symlink_metadata(&file)?.permissions().mode() & 0o7777,
+            0o600,
+            "{}",
+            file.display()
+        );
+    }
+
+    let unsafe_runtime = temporary.path().join("unsafe-runtime");
+    let target = temporary.path().join("unsafe-target");
+    fs::create_dir(&target)?;
+    symlink(&target, &unsafe_runtime)?;
+    let unsafe_operations = LocalOperations::new(RuntimeLayout::new(&unsafe_runtime)?);
+    assert_eq!(unsafe_operations.health(None).state, HealthState::Failed);
+    assert!(!target.join("canonical.sqlite3").exists());
+    Ok(())
 }
 
 fn grounded_draft(

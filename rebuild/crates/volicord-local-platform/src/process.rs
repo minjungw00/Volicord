@@ -14,6 +14,9 @@ use std::{
 };
 
 #[cfg(target_os = "linux")]
+use std::os::unix::fs::OpenOptionsExt;
+
+#[cfg(target_os = "linux")]
 use rustix::{
     fs::{fcntl_getfl, fcntl_setfl, OFlags},
     io::Errno,
@@ -232,7 +235,11 @@ fn start_error(started: Instant, detail: impl Into<String>) -> ProcessStartError
 }
 
 fn create_artifact(path: &Path) -> io::Result<File> {
-    OpenOptions::new().write(true).create_new(true).open(path)
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(target_os = "linux")]
+    options.mode(0o600);
+    options.open(path)
 }
 
 #[cfg(not(target_os = "linux"))]

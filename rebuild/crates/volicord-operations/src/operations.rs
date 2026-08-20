@@ -14,6 +14,8 @@ use crate::{
     GuardedProviderPreparationOutcome, GuardedRisk, GuardedStore,
 };
 use sha2::{Digest, Sha256};
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     collections::BTreeSet,
     ffi::{OsStr, OsString},
@@ -86,19 +88,21 @@ impl LocalOperations {
     }
 
     pub fn initialize_runtime(&self) -> Result<(), Error> {
-        fs::create_dir_all(self.layout.analysis_dir()).map_err(|error| {
-            Error::with_source("cannot create analysis runtime directory", error)
-        })?;
-        fs::create_dir_all(self.layout.artifacts_dir()).map_err(|error| {
-            Error::with_source("cannot create operation artifact directory", error)
-        })?;
-        Store::open(self.layout.canonical_store())
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.initialize_runtime_unlocked()
+    }
+
+    fn initialize_runtime_unlocked(&self) -> Result<(), Error> {
+        self.layout.prepare_private_paths()?;
+        let canonical = Store::open(self.layout.canonical_store())
             .map_err(|error| Error::with_source("cannot initialize canonical store", error))?;
-        CandidateStore::open(self.layout.candidate_store())
+        let candidates = CandidateStore::open(self.layout.candidate_store())
             .map_err(|error| Error::with_source("cannot initialize Candidate store", error))?;
-        PrivacyStore::open(self.layout.privacy_store())
+        let privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot initialize privacy store", error))?;
-        GuardedStore::open(self.layout.guarded_store())?;
+        let guarded = GuardedStore::open(self.layout.guarded_store())?;
+        self.layout.enforce_private_store_files()?;
+        drop((canonical, candidates, privacy, guarded));
         Ok(())
     }
 
@@ -107,7 +111,8 @@ impl LocalOperations {
         display_name: impl Into<String>,
         repository: Option<&Path>,
     ) -> Result<ProjectInitialization, Error> {
-        self.initialize_runtime()?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.initialize_runtime_unlocked()?;
         let mut canonical = self.open_canonical()?;
         let created = canonical
             .create_project(new_operation_id()?, display_name)
@@ -127,6 +132,7 @@ impl LocalOperations {
         expected_binding_revision: Option<u64>,
         repository: &Path,
     ) -> Result<BindingOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         self.bind_with_store(
             &mut canonical,
@@ -212,6 +218,23 @@ impl LocalOperations {
 
     pub fn health(&self, project_id: Option<ProjectId>) -> HealthReport {
         let mut issues = Vec::new();
+        if let Err(error) = self.initialize_runtime() {
+            issues.push(HealthIssue {
+                kind: HealthIssueKind::Failed,
+                scope: "runtime_access".into(),
+                detail: error.to_string(),
+            });
+            return HealthReport {
+                state: HealthState::Failed,
+                runtime_root: self.layout.root().to_path_buf(),
+                canonical_available: false,
+                candidate_available: false,
+                privacy_available: false,
+                guarded_available: false,
+                repository_available: None,
+                issues,
+            };
+        }
         let canonical = Store::open(self.layout.canonical_store());
         let candidates = CandidateStore::open(self.layout.candidate_store());
         let privacy = PrivacyStore::open(self.layout.privacy_store());
@@ -379,18 +402,32 @@ impl LocalOperations {
         project_id: ProjectId,
         observed_at: TimestampMicros,
     ) -> Result<PreparedAnalysisBasis, Error> {
-        let mut canonical = self.open_canonical()?;
-        let project = canonical
-            .get_project(project_id)
-            .map_err(|error| Error::with_source("cannot read Project for analysis", error))?;
+        let canonical = self.open_canonical()?;
         let binding = canonical.get_local_binding(project_id).map_err(|error| {
             Error::with_source("Project has no usable repository binding", error)
         })?;
         let root = RepositoryRoot::open(&binding.absolute_path)
             .map_err(|error| Error::with_source("bound repository is unavailable", error))?;
+        drop(canonical);
         let repository_worktree = self.observe_repository_worktree(root.canonical_path())?;
         let revision =
             repository_observation_basis(root.canonical_path(), observed_at.as_unix_micros())?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let mut canonical = self.open_canonical()?;
+        let project = canonical
+            .get_project(project_id)
+            .map_err(|error| Error::with_source("cannot refresh Project for analysis", error))?;
+        let current_binding = canonical.get_local_binding(project_id).map_err(|error| {
+            Error::with_source(
+                "Project binding changed during repository observation",
+                error,
+            )
+        })?;
+        if current_binding.absolute_path != binding.absolute_path {
+            return Err(Error::new(
+                "Project binding changed during repository observation; analyze again",
+            ));
+        }
         let source = canonical
             .record_source(
                 new_operation_id()?,
@@ -589,8 +626,11 @@ impl LocalOperations {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let operation_dir = self.layout.artifacts_dir().join(operation_id.to_string());
-        fs::create_dir(&operation_dir).map_err(|error| {
-            Error::with_source("cannot create child-process artifact directory", error)
+        volicord_local_platform::ensure_private_directory(&operation_dir).map_err(|error| {
+            Error::with_source(
+                "cannot create private child-process artifact directory",
+                error,
+            )
         })?;
         let mut request = ProcessRequest::new(
             program,
@@ -658,6 +698,7 @@ impl LocalOperations {
         project_id: ProjectId,
         destination: &Path,
     ) -> Result<volicord_context::BundleExport, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         canonical
             .export_bundle(project_id, destination)
@@ -666,6 +707,7 @@ impl LocalOperations {
 
     pub fn import_bundle(&self, source: &Path) -> Result<volicord_context::BundleImport, Error> {
         self.initialize_runtime()?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         canonical
             .import_bundle(new_operation_id()?, source)
@@ -689,6 +731,7 @@ impl LocalOperations {
         incoming: &Path,
         resolution: Option<MergeResolution>,
     ) -> Result<OperationResult<BundleMerge>, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         self.open_canonical()?
             .merge_bundle(new_operation_id()?, common_base, incoming, None, resolution)
             .map_err(|error| Error::with_source("portable merge failed", error))
@@ -713,6 +756,7 @@ impl LocalOperations {
 
     pub fn submit_candidate(&self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
         self.initialize_runtime()?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let _ = self.canonical_basis(draft.project_id)?;
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| store.submit(draft))
@@ -739,6 +783,7 @@ impl LocalOperations {
             sufficient: draft.sufficient,
             limits: draft.limits,
         };
+        let _mutation = self.layout.acquire_mutation_lock()?;
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| {
                 store.attach_repository_research(
@@ -757,6 +802,7 @@ impl LocalOperations {
         project_id: ProjectId,
         candidate_id: CandidateId,
     ) -> Result<CandidateRecord, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let _ = self.canonical_basis(project_id)?;
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| {
@@ -774,6 +820,7 @@ impl LocalOperations {
         project_id: ProjectId,
         candidate_id: CandidateId,
     ) -> Result<PromotionResult, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         let basis = canonical
             .read_canonical_basis(
@@ -796,6 +843,7 @@ impl LocalOperations {
         candidate_id: CandidateId,
         reason: impl Into<String>,
     ) -> Result<CandidateRecord, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let _ = self.canonical_basis(project_id)?;
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| store.dismiss(project_id, candidate_id, reason))
@@ -808,6 +856,7 @@ impl LocalOperations {
         candidate_id: CandidateId,
         basis: impl Into<String>,
     ) -> Result<CandidateRecord, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let _ = self.canonical_basis(project_id)?;
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| store.delete_candidate(project_id, candidate_id, basis))
@@ -825,6 +874,7 @@ impl LocalOperations {
         policy: ProviderOptInPolicy,
         intent: ProviderIntentProvenance,
     ) -> Result<ProviderOptInEvent, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(policy.project_id)?;
         let mut privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot open privacy store", error))?;
@@ -838,6 +888,7 @@ impl LocalOperations {
         project_id: ProjectId,
         intent: ProviderIntentProvenance,
     ) -> Result<ProviderOptInEvent, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project_id)?;
         let mut privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot open privacy store", error))?;
@@ -851,6 +902,7 @@ impl LocalOperations {
         project_id: ProjectId,
         intent: ProviderIntentProvenance,
     ) -> Result<ProviderOptInEvent, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project_id)?;
         let mut privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot open privacy store", error))?;
@@ -892,6 +944,7 @@ impl LocalOperations {
             sources.push(background_source(&root, &analysis, locator)?);
         }
 
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot open privacy store", error))?;
         let preparation = privacy
@@ -918,7 +971,7 @@ impl LocalOperations {
             }
         };
         let provider_request = authorized.record().clone();
-        let candidate = self.create_guarded_request(GuardedEffectDraft {
+        let candidate = self.create_guarded_request_unlocked(GuardedEffectDraft {
             project_id: draft.project_id,
             exact_action: "transmit_source_for_background_semantic_processing".into(),
             target: format!(
@@ -1118,6 +1171,7 @@ impl LocalOperations {
         project_id: ProjectId,
         responses: Vec<BatchResponseItem>,
     ) -> Result<BatchResponseResult, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         Ok(record_response_batch(&mut canonical, project_id, responses))
     }
@@ -1129,6 +1183,7 @@ impl LocalOperations {
         session: String,
         turn: String,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let source = self.create_user_source(project_id, host, session, turn)?;
         Ok(CanonicalMutationOutcome {
             record_kind: "source".into(),
@@ -1153,6 +1208,7 @@ impl LocalOperations {
                 "user Context statement must occur verbatim in the exact current-host user turn",
             ));
         }
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let source = self.create_user_source(project_id, host, session, user_turn)?;
         let mut canonical = self.open_canonical()?;
         let project = canonical
@@ -1190,6 +1246,14 @@ impl LocalOperations {
         draft: GuardedEffectDraft,
     ) -> Result<GuardedEffectCandidate, Error> {
         self.initialize_runtime()?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.create_guarded_request_unlocked(draft)
+    }
+
+    fn create_guarded_request_unlocked(
+        &self,
+        draft: GuardedEffectDraft,
+    ) -> Result<GuardedEffectCandidate, Error> {
         GuardedStore::open(self.layout.guarded_store())?.create_request(draft, now_micros()?)
     }
 
@@ -1199,6 +1263,7 @@ impl LocalOperations {
         expected_revision: u64,
         draft: GuardedEffectDraft,
     ) -> Result<GuardedEffectCandidate, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         GuardedStore::open(self.layout.guarded_store())?.revise_request(
             request,
             expected_revision,
@@ -1225,6 +1290,7 @@ impl LocalOperations {
         session: String,
         user_turn: String,
     ) -> Result<ConfirmationResponse, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut guarded = GuardedStore::open(self.layout.guarded_store())?;
         let request = guarded.current_request(request_identity)?;
         if request.request_revision != request_revision
@@ -1247,6 +1313,7 @@ impl LocalOperations {
         expectation: &DispatchExpectation,
         dispatcher: &mut dyn GuardedEffectDispatcher,
     ) -> Result<GuardedOperationResult, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let request = self.guarded_request(request_identity)?;
         let canonical = self.canonical_basis(request.project_id)?;
         GuardedStore::open(self.layout.guarded_store())?.dispatch(
@@ -1265,6 +1332,7 @@ impl LocalOperations {
         item_id: ContextItemId,
         draft: ContextItemCorrectionDraft,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         let result = canonical
             .correct_context_item(new_operation_id()?, project_id, item_id, draft)
@@ -1283,6 +1351,7 @@ impl LocalOperations {
         decision_id: DecisionId,
         draft: DecisionCorrectionDraft,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         let result = canonical
             .correct_decision(new_operation_id()?, project_id, decision_id, draft)
@@ -1296,6 +1365,15 @@ impl LocalOperations {
     }
 
     pub fn supersede_decision(
+        &self,
+        project_id: ProjectId,
+        draft: DecisionSupersessionDraft,
+    ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.supersede_decision_unlocked(project_id, draft)
+    }
+
+    fn supersede_decision_unlocked(
         &self,
         project_id: ProjectId,
         draft: DecisionSupersessionDraft,
@@ -1320,6 +1398,7 @@ impl LocalOperations {
         alternative_key: String,
         user_rationale: Option<String>,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project_id)?;
         let previous = canonical
             .active_decisions
@@ -1327,7 +1406,7 @@ impl LocalOperations {
             .chain(canonical.superseded_decisions.iter())
             .find(|lifecycle| lifecycle.decision.id == previous_decision_id)
             .ok_or_else(|| Error::new("previous Decision was not found"))?;
-        self.supersede_decision(
+        self.supersede_decision_unlocked(
             project_id,
             DecisionSupersessionDraft {
                 expected_project_revision: canonical.project.revision,
@@ -1348,6 +1427,7 @@ impl LocalOperations {
         record: CanonicalRecordId,
         authorization: SourceId,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         let operation = new_operation_id()?;
         let result = match record {
@@ -1387,6 +1467,7 @@ impl LocalOperations {
         project_id: ProjectId,
         draft: CheckpointDraft,
     ) -> Result<CanonicalMutationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
         let result = canonical
             .record_checkpoint(new_operation_id()?, project_id, draft)
@@ -1530,6 +1611,9 @@ impl LocalOperations {
             }
         }
 
+        // Repository observation and analysis may be long-running. Serialize
+        // only the final durable Source and Checkpoint publication.
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let mut verification = Vec::with_capacity(draft.verification.len());
         let mut verification_source_ids = Vec::new();
         for fact in &draft.verification {
@@ -1648,8 +1732,12 @@ impl LocalOperations {
     }
 
     fn open_canonical(&self) -> Result<Store, Error> {
-        Store::open(self.layout.canonical_store())
-            .map_err(|error| Error::with_source("cannot open canonical store", error))
+        let path = self.layout.canonical_store();
+        let store = Store::open(&path)
+            .map_err(|error| Error::with_source("cannot open canonical store", error))?;
+        volicord_local_platform::ensure_private_file(&path)
+            .map_err(|error| Error::with_source("canonical store is not private", error))?;
+        Ok(store)
     }
 
     fn create_user_source(
@@ -1690,11 +1778,12 @@ impl LocalOperations {
     }
 
     fn store_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let directory = self
             .layout
             .analysis_project_dir(analysis.project.identity());
-        fs::create_dir_all(&directory).map_err(|error| {
-            Error::with_source("cannot create Project analysis directory", error)
+        volicord_local_platform::ensure_private_directory(&directory).map_err(|error| {
+            Error::with_source("cannot create private Project analysis directory", error)
         })?;
         let bytes = serde_json::to_vec_pretty(analysis)
             .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
@@ -1704,6 +1793,7 @@ impl LocalOperations {
     }
 
     fn replace_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
         let project_id = analysis.project.identity();
         let base = self.layout.analysis_dir();
         fs::create_dir_all(&base)
@@ -1711,8 +1801,8 @@ impl LocalOperations {
         let destination = self.layout.analysis_project_dir(project_id);
         let staging = base.join(format!(".staging-{project_id}-{}", analysis.identity));
         let replaced = base.join(format!(".replaced-{project_id}-{}", analysis.identity));
-        fs::create_dir(&staging).map_err(|error| {
-            Error::with_source("cannot stage Project analysis replacement", error)
+        volicord_local_platform::ensure_private_directory(&staging).map_err(|error| {
+            Error::with_source("cannot stage private Project analysis replacement", error)
         })?;
         let bytes = serde_json::to_vec_pretty(analysis)
             .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
@@ -2119,9 +2209,11 @@ fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<Publicat
     fs::create_dir_all(parent)
         .map_err(|error| Error::with_source("cannot create publication directory", error))?;
     let temporary = parent.join(format!(".volicord-publish-{}.tmp", new_operation_id()?));
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(target_os = "linux")]
+    options.mode(0o600);
+    let mut file = options
         .open(&temporary)
         .map_err(|error| Error::with_source("cannot create publication temporary file", error))?;
     if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {

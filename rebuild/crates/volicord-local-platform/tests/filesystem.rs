@@ -7,9 +7,13 @@ use std::{
 
 use tempfile::tempdir;
 use volicord_local_platform::{
-    publish_file_no_replace, DirectoryEntryDurability, DirtyObservation, GitWorktreeLayout,
+    ensure_private_directory, ensure_private_file, publish_file_no_replace,
+    DirectoryEntryDurability, DirtyObservation, GitWorktreeLayout, MutationLockGuard,
     NoReplacePublicationOutcome, RepositoryPathState, RepositoryRoot, SourceFingerprint,
 };
+
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::{symlink, PermissionsExt};
 
 #[test]
 fn paths_normalize_missing_state_and_reject_symlink_escape() {
@@ -245,6 +249,134 @@ fn concurrent_publishers_choose_exactly_one_complete_file() {
     );
     let bytes = fs::read(destination).expect("published bytes");
     assert!(bytes == b"first" || bytes == b"second");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn private_runtime_paths_repair_owned_modes_and_reject_symlinks() {
+    let temporary = tempdir().expect("temporary directory");
+    let directory = temporary.path().join("runtime");
+    let file = directory.join("state.sqlite3");
+    fs::create_dir(&directory).expect("runtime");
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).expect("directory mode");
+    fs::write(&file, b"state").expect("state");
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o666)).expect("file mode");
+
+    ensure_private_directory(&directory).expect("private directory");
+    ensure_private_file(&file).expect("private file");
+    assert_eq!(
+        fs::symlink_metadata(&directory)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777,
+        0o700
+    );
+    assert_eq!(
+        fs::symlink_metadata(&file).unwrap().permissions().mode() & 0o7777,
+        0o600
+    );
+
+    let linked_file = directory.join("linked");
+    symlink(&file, &linked_file).expect("symlink");
+    assert!(ensure_private_file(&linked_file).is_err());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn private_runtime_creation_probe() {
+    let Some(root) = std::env::var_os("VOLICORD_TEST_PRIVATE_RUNTIME") else {
+        return;
+    };
+    let root = std::path::PathBuf::from(root);
+    ensure_private_directory(&root).expect("private runtime");
+    ensure_private_file(&root.join("state")).expect("private state");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn private_runtime_creation_is_independent_of_permissive_umask() {
+    let temporary = tempdir().expect("temporary directory");
+    let runtime = temporary.path().join("nested/runtime");
+    let executable = std::env::current_exe().expect("current test executable");
+    let status = Command::new("sh")
+        .args([
+            "-c",
+            "umask 000; exec \"$1\" --exact private_runtime_creation_probe --nocapture",
+            "private-runtime-probe",
+        ])
+        .arg(executable)
+        .env("VOLICORD_TEST_PRIVATE_RUNTIME", &runtime)
+        .status()
+        .expect("private runtime probe");
+    assert!(status.success());
+    assert_eq!(
+        fs::symlink_metadata(&runtime).unwrap().permissions().mode() & 0o7777,
+        0o700
+    );
+    assert_eq!(
+        fs::symlink_metadata(runtime.join("state"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777,
+        0o600
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mutation_lock_excludes_another_open_description() {
+    let temporary = tempdir().expect("temporary directory");
+    let runtime = temporary.path().join("runtime");
+    ensure_private_directory(&runtime).expect("runtime");
+    let path = runtime.join("mutation.lock");
+    let first = MutationLockGuard::acquire(&path).expect("first lock");
+    assert!(MutationLockGuard::try_acquire(&path)
+        .expect("contended observation")
+        .is_none());
+    drop(first);
+    assert!(MutationLockGuard::try_acquire(&path)
+        .expect("released observation")
+        .is_some());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mutation_lock_process_probe() {
+    let Some(path) = std::env::var_os("VOLICORD_TEST_MUTATION_LOCK") else {
+        return;
+    };
+    let acquired = MutationLockGuard::try_acquire(std::path::Path::new(&path))
+        .expect("process lock probe")
+        .is_some();
+    let expected =
+        std::env::var_os("VOLICORD_TEST_LOCK_EXPECTED").expect("expected state") == "acquired";
+    assert_eq!(acquired, expected);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mutation_lock_excludes_a_separate_process() {
+    let temporary = tempdir().expect("temporary directory");
+    let runtime = temporary.path().join("runtime");
+    ensure_private_directory(&runtime).expect("runtime");
+    let path = runtime.join("mutation.lock");
+    let parent = MutationLockGuard::acquire(&path).expect("parent lock");
+    run_lock_probe(&path, "contended");
+    drop(parent);
+    run_lock_probe(&path, "acquired");
+}
+
+#[cfg(target_os = "linux")]
+fn run_lock_probe(path: &std::path::Path, expected: &str) {
+    let status = Command::new(std::env::current_exe().expect("current test executable"))
+        .args(["--exact", "mutation_lock_process_probe", "--nocapture"])
+        .env("VOLICORD_TEST_MUTATION_LOCK", path)
+        .env("VOLICORD_TEST_LOCK_EXPECTED", expected)
+        .status()
+        .expect("lock probe process");
+    assert!(status.success());
 }
 
 fn git(repository: &std::path::Path, arguments: &[&str]) {
