@@ -313,8 +313,12 @@ impl HostAdapter {
             .value
             .as_ref()
             .map(|value| value.repository.identity.to_string());
+        let repository_source_id = result
+            .value
+            .as_ref()
+            .map(|value| value.analysis.repository_source.identity().to_string());
         Ok(
-            json!({"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
+            json!({"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
         )
     }
 
@@ -1164,7 +1168,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (
-            "Run authorized local repository inventory and structural analysis. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; it performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
+            "Run authorized local repository inventory and structural analysis. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. It performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

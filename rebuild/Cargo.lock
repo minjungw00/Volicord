@@ -653,6 +653,7 @@ dependencies = [
  "volicord-operations",
  "volicord-privacy",
  "volicord-projections",
+ "volicord-repository-intelligence",
 ]
 
 [[package]]

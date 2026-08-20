@@ -385,7 +385,6 @@ def canonical_record(
     inspection: dict[str, Any] | None,
     kind: str,
     *,
-    summary_contains: str | None = None,
     lifecycle_state: str | None = None,
 ) -> dict[str, Any] | None:
     records = inspection.get("records", []) if inspection else []
@@ -394,11 +393,17 @@ def canonical_record(
             record
             for record in records
             if record.get("kind") == kind
-            and (summary_contains is None or summary_contains in record.get("summary", ""))
             and (lifecycle_state is None or record.get("lifecycle_state") == lifecycle_state)
         ),
         None,
     )
+
+
+def candidate_repository_source_basis(
+    analysis: dict[str, Any] | None,
+) -> list[str]:
+    source_id = analysis.get("repository_source_id") if analysis else None
+    return [source_id] if isinstance(source_id, str) and source_id else []
 
 
 def unsupported_cli(*operations: dict[str, Any]) -> bool:
@@ -673,7 +678,10 @@ def rehearse_target(
         result=understanding, cleanup=understanding_cleanup,
     )
 
-    candidate_tools = {"candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record", "canonical_inspect"}
+    candidate_tools = {
+        "candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record",
+        "canonical_inspect", "repository_analyze",
+    }
     candidate_evidence: dict[str, Any] = {}
     inquiry_evidence: dict[str, Any] = {}
     candidate_status = "failed"
@@ -692,14 +700,17 @@ def rehearse_target(
             inquiry_evidence = {"missing_public_tools": missing_candidate_tools}
         else:
             canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
-            repository_source = canonical_record(canonical_before, "source", summary_contains="RepositorySnapshot")
-            source_id = repository_source.get("identity") if repository_source else None
+            candidate_analysis, candidate_analysis_ok = host.tool(
+                "repository_analyze", {"project_id": project_id, "excluded_paths": []}
+            )
+            source_ids = candidate_repository_source_basis(candidate_analysis)
+            source_id = source_ids[0] if source_ids else None
             submitted, submitted_ok = host.tool("candidate_manage", {
                 "action": "submit_question",
                 "project_id": project_id,
-                "source_ids": [source_id] if source_id else [],
-                "source_operation": "v11-integrated-repository-review",
-                "repository_snapshot": analysis.get("repository_snapshot", "unknown") if analysis else "unknown",
+                "source_ids": source_ids,
+                "source_operation": "repository_analyze",
+                "repository_snapshot": candidate_analysis.get("repository_snapshot_id", "unknown") if candidate_analysis else "unknown",
                 "research_state": "research_required",
                 "research_state_basis": "repository structure must be inspected before asking for a user judgment",
                 "retention_basis": "retain through the explicit V11 inquiry disposition",
@@ -795,7 +806,7 @@ def rehearse_target(
                 None,
             )
             candidate_ok = all([
-                canonical_before_ok, source_id, submitted_ok,
+                canonical_before_ok, candidate_analysis_ok, source_id, submitted_ok,
                 submitted and submitted.get("research_state") == "research_required",
                 after_submission_ok, submitted_candidate and submitted_candidate.get("research_state") == "research_required",
                 frontier_before_ok, not (frontier_before or {}).get("questions"),
@@ -817,7 +828,8 @@ def rehearse_target(
             candidate_status = "passed" if candidate_ok else "failed"
             inquiry_status = "passed" if inquiry_ok else "failed"
             candidate_evidence = {
-                "repository_source": repository_source,
+                "repository_analysis": candidate_analysis,
+                "repository_source_id": source_id,
                 "submission": submitted,
                 "inspection_after_submission": submitted_candidate,
                 "frontier_after_submission": frontier_before,
@@ -1542,6 +1554,29 @@ def assert_authenticated_codex_lifecycle() -> None:
             raise AssertionError("source Codex authentication was modified")
 
 
+def assert_candidate_repository_source_contract() -> None:
+    source_id = "0f" * 16
+    analysis = {
+        "repository_source_id": source_id,
+        "analysis_snapshot_id": "1a" * 32,
+        "repository_snapshot_id": "2b" * 32,
+    }
+    human_facing_inspection = {
+        "records": [{
+            "kind": "source",
+            "identity": source_id,
+            "summary": "Repository snapshot at a readable revision",
+        }]
+    }
+    summary = human_facing_inspection["records"][0]["summary"]
+    if "RepositorySnapshot" in summary:
+        raise AssertionError("synthetic display summary retained the old machine token")
+    if candidate_repository_source_basis(analysis) != [source_id]:
+        raise AssertionError("Candidate submission did not use structured repository Source identity")
+    if candidate_repository_source_basis(None):
+        raise AssertionError("missing analysis fabricated a repository Source identity")
+
+
 def credential_retention_audit(
     artifact_directory: Path,
     authentication_source: Path | None = None,
@@ -1615,6 +1650,7 @@ def self_check() -> int:
         raise AssertionError("polyglot fixture lost three languages or documentation")
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
+    assert_candidate_repository_source_contract()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
     assessment = read_decision_revisit_assessment()
@@ -1673,6 +1709,7 @@ def self_check() -> int:
         "required_steps": len(REQUIRED_STEPS),
         "evidence_driven_steps": len(REQUIRED_STEPS),
         "required_step_policy_regressions": "passed",
+        "candidate_structured_repository_source_regression": "passed",
         "authentication_lifecycle": "passed",
         "credential_retention_audit": "passed",
         "decision_revisit_trigger_assessment": "passed",

@@ -120,11 +120,109 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["decision_record"].contains("not a user Decision"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
     assert!(descriptions["repository_analyze"]
+        .contains("repository_source_id as the canonical source_ids basis"));
+    assert!(descriptions["repository_analyze"]
         .contains("no background-provider or network transmission"));
     assert!(descriptions["repository_analyze"].contains("local Runtime Home"));
     assert!(descriptions["repository_analyze"].contains("background_semantic_operation"));
     assert!(descriptions["checkpoint_record"].contains("numeric exit status"));
     assert!(descriptions["checkpoint_record"].contains("output-only text is insufficient"));
+}
+
+#[test]
+fn repository_analysis_exposes_its_canonical_source_identity_without_display_parsing() {
+    use volicord_context::SourcePayload;
+    use volicord_repository_intelligence::AnalysisSnapshot;
+
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::write(repository.join("README.md"), "# Host analysis fixture\n")
+        .expect("repository fixture");
+    let project_id = parse_project(&project);
+
+    let response = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    );
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let result = structured(&response);
+    assert!(matches!(
+        result["state"].as_str(),
+        Some("succeeded" | "partial")
+    ));
+    let analysis_id = result["analysis_snapshot_id"]
+        .as_str()
+        .expect("Analysis Snapshot identity");
+    let repository_snapshot_id = result["repository_snapshot_id"]
+        .as_str()
+        .expect("Repository Snapshot identity");
+    let repository_source_id = result["repository_source_id"]
+        .as_str()
+        .expect("repository Source identity");
+
+    let analysis_path = adapter
+        .operations()
+        .layout()
+        .analysis_project_dir(project_id)
+        .join(format!("{analysis_id}.json"));
+    let analysis: AnalysisSnapshot =
+        serde_json::from_slice(&fs::read(analysis_path).expect("published Analysis Snapshot"))
+            .expect("supported Analysis Snapshot");
+    assert_eq!(analysis.identity.to_string(), analysis_id);
+    assert_eq!(
+        analysis.repository_snapshot.to_string(),
+        repository_snapshot_id
+    );
+    assert_eq!(
+        analysis.repository_source.identity().to_string(),
+        repository_source_id
+    );
+
+    let canonical = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical analysis basis");
+    let repository_source = canonical
+        .sources
+        .iter()
+        .find(|basis| basis.source.id.to_string() == repository_source_id)
+        .expect("canonical repository Source recorded for the analysis");
+    assert!(matches!(
+        &repository_source.source.payload,
+        SourcePayload::RepositorySnapshot { .. }
+    ));
+
+    let persisted_again: AnalysisSnapshot = serde_json::from_slice(
+        &fs::read(
+            adapter
+                .operations()
+                .layout()
+                .analysis_project_dir(project_id)
+                .join(format!("{analysis_id}.json")),
+        )
+        .expect("same published Analysis Snapshot"),
+    )
+    .expect("same supported Analysis Snapshot");
+    assert_eq!(
+        persisted_again.repository_source.identity().to_string(),
+        repository_source_id,
+        "the structured Source identity is stable for the returned analysis"
+    );
+}
+
+#[test]
+fn failed_repository_analysis_does_not_fabricate_a_source_identity() {
+    let (temporary, mut adapter, project) = setup();
+    fs::remove_dir(temporary.path().join("repository")).expect("remove bound repository");
+
+    let response = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    );
+    assert_eq!(response["result"]["isError"], true, "{response}");
+    assert!(structured(&response).get("repository_source_id").is_none());
 }
 
 #[test]
