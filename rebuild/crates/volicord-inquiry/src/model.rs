@@ -234,6 +234,9 @@ pub struct CandidateReadBasis {
     pub project_id: ProjectId,
     pub candidates: Vec<CandidateRecord>,
     pub collection_policies: Vec<CollectionOptOut>,
+    /// Related content is withheld while canonical forgetting cleanup is
+    /// incomplete. This is a read barrier, not a lifecycle transition.
+    pub withheld_for_canonical_forgetting: Vec<CandidateId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

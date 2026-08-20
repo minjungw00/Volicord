@@ -1,10 +1,11 @@
+use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, CommandVerificationDraft, Error, GroundedCheckpointDraft,
-    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
-    UserContextRecordingOutcome,
+    ChildProcessOutcome, CommandVerificationDraft, Error, ForgettingOutcome,
+    GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport,
+    HealthState, LongOperationResult, OperationState, PartialOutcome, ProgressState,
+    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
+    RuntimeLayout, UserContextRecordingOutcome,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -25,11 +26,11 @@ use std::{
     time::{Duration, Instant},
 };
 use volicord_context::{
-    Availability, BundleComparison, BundleMerge, CanonicalReadBasis, CanonicalReadOptions,
-    CanonicalRecordId, CheckpointDraft, Clock, CommandOutcome, ContextItemCorrectionDraft,
-    ContextItemDraft, ContextItemId, ContextItemRole, DecisionChoice, DecisionCorrectionDraft,
-    DecisionId, DecisionSupersessionDraft, MergeResolution, OperationId, OperationResult,
-    Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload,
+    Availability, BundleComparison, BundleMerge, CanonicalInvalidation, CanonicalReadBasis,
+    CanonicalReadOptions, CanonicalRecordId, CheckpointDraft, Clock, CommandOutcome,
+    ContextItemCorrectionDraft, ContextItemDraft, ContextItemId, ContextItemRole, DecisionChoice,
+    DecisionCorrectionDraft, DecisionId, DecisionSupersessionDraft, MergeResolution, OperationId,
+    OperationResult, Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload,
     StatementProvenanceRole, Store, SystemClock, TimestampMicros, UserAcceptanceFact,
     UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
     VerificationState,
@@ -101,8 +102,9 @@ impl LocalOperations {
         let privacy = PrivacyStore::open(self.layout.privacy_store())
             .map_err(|error| Error::with_source("cannot initialize privacy store", error))?;
         let guarded = GuardedStore::open(self.layout.guarded_store())?;
+        let forgetting = ForgettingStore::open(&self.layout.forgetting_store())?;
         self.layout.enforce_private_store_files()?;
-        drop((canonical, candidates, privacy, guarded));
+        drop((canonical, candidates, privacy, guarded, forgetting));
         Ok(())
     }
 
@@ -231,6 +233,7 @@ impl LocalOperations {
                 candidate_available: false,
                 privacy_available: false,
                 guarded_available: false,
+                forgetting_available: false,
                 repository_available: None,
                 issues,
             };
@@ -239,10 +242,12 @@ impl LocalOperations {
         let candidates = CandidateStore::open(self.layout.candidate_store());
         let privacy = PrivacyStore::open(self.layout.privacy_store());
         let guarded = GuardedStore::open(self.layout.guarded_store());
+        let forgetting = ForgettingStore::open(&self.layout.forgetting_store());
         let canonical_available = canonical.is_ok();
         let candidate_available = candidates.is_ok();
         let privacy_available = privacy.is_ok();
         let guarded_available = guarded.is_ok();
+        let forgetting_available = forgetting.is_ok();
         if let Err(error) = &canonical {
             issues.push(HealthIssue {
                 kind: classify_context_error(error.kind()),
@@ -270,6 +275,34 @@ impl LocalOperations {
                 scope: "guarded_operations".into(),
                 detail: error.to_string(),
             });
+        }
+        if let Err(error) = &forgetting {
+            issues.push(HealthIssue {
+                kind: HealthIssueKind::Failed,
+                scope: "forgetting_operations".into(),
+                detail: error.to_string(),
+            });
+        }
+        if let Ok(store) = &forgetting {
+            match store.incomplete(project_id) {
+                Ok(operations) => {
+                    for operation in operations {
+                        issues.push(HealthIssue {
+                            kind: HealthIssueKind::RepairRequired,
+                            scope: format!("forgetting:{}", operation.operation_id),
+                            detail: format!(
+                                "canonical forgetting cleanup is {:?}; explicit repair is required",
+                                operation.state
+                            ),
+                        });
+                    }
+                }
+                Err(error) => issues.push(HealthIssue {
+                    kind: HealthIssueKind::Failed,
+                    scope: "forgetting_operations".into(),
+                    detail: error.to_string(),
+                }),
+            }
         }
         let repository_available = project_id.and_then(|id| match &canonical {
             Ok(store) => match store.get_local_binding(id) {
@@ -321,6 +354,7 @@ impl LocalOperations {
             candidate_available,
             privacy_available,
             guarded_available,
+            forgetting_available,
             repository_available,
             issues,
         }
@@ -749,8 +783,9 @@ impl LocalOperations {
     }
 
     pub fn candidate_basis(&self, project_id: ProjectId) -> Result<CandidateReadBasis, Error> {
+        let invalidations = self.incomplete_committed_invalidations(project_id)?;
         CandidateStore::open(self.layout.candidate_store())
-            .and_then(|store| store.read_basis(project_id))
+            .and_then(|store| store.read_basis_with_invalidations(project_id, &invalidations))
             .map_err(|error| Error::with_source("Candidate inspection failed", error))
     }
 
@@ -821,6 +856,15 @@ impl LocalOperations {
         candidate_id: CandidateId,
     ) -> Result<PromotionResult, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
+        if self
+            .candidate_basis(project_id)?
+            .withheld_for_canonical_forgetting
+            .contains(&candidate_id)
+        {
+            return Err(Error::new(
+                "Question Candidate promotion is blocked while related canonical forgetting requires repair",
+            ));
+        }
         let mut canonical = self.open_canonical()?;
         let basis = canonical
             .read_canonical_basis(
@@ -864,8 +908,9 @@ impl LocalOperations {
     }
 
     pub fn privacy_status(&self, project_id: ProjectId) -> Result<ProjectPrivacyInspection, Error> {
+        let invalidations = self.incomplete_committed_invalidations(project_id)?;
         PrivacyStore::open(self.layout.privacy_store())
-            .and_then(|store| store.inspect_project(project_id))
+            .and_then(|store| store.inspect_project_with_invalidations(project_id, &invalidations))
             .map_err(|error| Error::with_source("privacy inspection failed", error))
     }
 
@@ -1426,40 +1471,187 @@ impl LocalOperations {
         project_id: ProjectId,
         record: CanonicalRecordId,
         authorization: SourceId,
-    ) -> Result<CanonicalMutationOutcome, Error> {
+    ) -> Result<ForgettingOutcome, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
+        self.initialize_runtime_unlocked()?;
+        let requested_operation = new_operation_id()?;
+        let observed_at = now_micros()?.as_unix_micros();
+        let mut forgetting = self.open_forgetting()?;
+        let mut operation = forgetting.prepare(
+            requested_operation,
+            project_id,
+            record,
+            authorization,
+            observed_at,
+        )?;
+        let replayed = operation.operation_id != requested_operation
+            || operation.state != ForgettingState::Prepared;
+        if operation.state == ForgettingState::Completed {
+            return Ok(forgetting_outcome(&operation, true, None));
+        }
+
         let mut canonical = self.open_canonical()?;
-        let operation = new_operation_id()?;
-        let result = match record {
-            CanonicalRecordId::Source(id) => {
-                canonical.forget_source(operation, project_id, id, authorization)
-            }
-            CanonicalRecordId::Question(id) => {
-                canonical.forget_question(operation, project_id, id, authorization)
-            }
-            CanonicalRecordId::Decision(id) => {
-                canonical.forget_decision(operation, project_id, id, authorization)
-            }
-            CanonicalRecordId::ContextItem(id) => {
-                canonical.forget_context_item(operation, project_id, id, authorization)
-            }
-            CanonicalRecordId::Checkpoint(id) => {
-                canonical.forget_checkpoint(operation, project_id, id, authorization)
-            }
+        let canonical_result = match operation.record {
+            CanonicalRecordId::Source(id) => canonical.forget_source(
+                operation.operation_id,
+                project_id,
+                id,
+                operation.authorization_source_id,
+            ),
+            CanonicalRecordId::Question(id) => canonical.forget_question(
+                operation.operation_id,
+                project_id,
+                id,
+                operation.authorization_source_id,
+            ),
+            CanonicalRecordId::Decision(id) => canonical.forget_decision(
+                operation.operation_id,
+                project_id,
+                id,
+                operation.authorization_source_id,
+            ),
+            CanonicalRecordId::ContextItem(id) => canonical.forget_context_item(
+                operation.operation_id,
+                project_id,
+                id,
+                operation.authorization_source_id,
+            ),
+            CanonicalRecordId::Checkpoint(id) => canonical.forget_checkpoint(
+                operation.operation_id,
+                project_id,
+                id,
+                operation.authorization_source_id,
+            ),
             CanonicalRecordId::Project(_) => {
                 return Err(Error::new(
                     "Project forgetting is not exposed by the Canonical Context owner",
                 ))
             }
+        };
+        match canonical_result {
+            Ok(_) => {
+                operation = forgetting.mark_canonical_committed(
+                    operation.operation_id,
+                    now_micros()?.as_unix_micros(),
+                )?;
+            }
+            Err(error) => match canonical.get_tombstone(project_id, operation.record) {
+                Ok(_) => {
+                    operation = forgetting.mark_repair_required(
+                        operation.operation_id,
+                        false,
+                        false,
+                        false,
+                        now_micros()?.as_unix_micros(),
+                    )?;
+                    return Ok(forgetting_outcome(
+                        &operation,
+                        replayed,
+                        Some(format!(
+                            "canonical content is forgotten, but reconciliation failed: {error}"
+                        )),
+                    ));
+                }
+                Err(tombstone_error)
+                    if tombstone_error.kind() == volicord_context::ErrorKind::NotFound =>
+                {
+                    return Err(Error::with_source("canonical forgetting failed", error));
+                }
+                Err(tombstone_error) => {
+                    return Err(Error::with_source(
+                        "canonical forgetting commit state is indeterminate",
+                        tombstone_error,
+                    ));
+                }
+            },
         }
-        .map_err(|error| Error::with_source("canonical forgetting failed", error))?;
-        let (record_kind, identity) = canonical_record_parts(result.value.tombstone.record);
-        Ok(CanonicalMutationOutcome {
-            record_kind,
-            identity,
-            revision: None,
-            replayed: result.replayed,
-        })
+        drop(canonical);
+
+        let invalidation = operation.invalidation();
+        let mut candidates = match CandidateStore::open(self.layout.candidate_store()) {
+            Ok(store) => store,
+            Err(error) => {
+                return mark_forgetting_repair_required(
+                    &mut forgetting,
+                    operation,
+                    replayed,
+                    false,
+                    false,
+                    format!("cannot open Candidate store: {error}"),
+                )
+            }
+        };
+        let mut privacy = match PrivacyStore::open(self.layout.privacy_store()) {
+            Ok(store) => store,
+            Err(error) => {
+                return mark_forgetting_repair_required(
+                    &mut forgetting,
+                    operation,
+                    replayed,
+                    false,
+                    false,
+                    format!("cannot open privacy store: {error}"),
+                )
+            }
+        };
+        let cleanup_basis = format!("forgetting-operation:{}", operation.operation_id);
+        if let Err(error) =
+            privacy.apply_canonical_forgetting(&mut candidates, &invalidation, cleanup_basis)
+        {
+            let candidate_complete = candidates
+                .verify_canonical_forgetting(&invalidation)
+                .unwrap_or(false);
+            let derived_complete = privacy
+                .verify_canonical_forgetting(&invalidation)
+                .unwrap_or(false);
+            return mark_forgetting_repair_required(
+                &mut forgetting,
+                operation,
+                replayed,
+                candidate_complete,
+                derived_complete,
+                format!("related local cleanup is incomplete: {error}"),
+            );
+        }
+        let candidate_complete = match candidates.verify_canonical_forgetting(&invalidation) {
+            Ok(complete) => complete,
+            Err(error) => {
+                return mark_forgetting_repair_required(
+                    &mut forgetting,
+                    operation,
+                    replayed,
+                    false,
+                    false,
+                    format!("cannot verify Candidate forgetting: {error}"),
+                )
+            }
+        };
+        let derived_complete = match privacy.verify_canonical_forgetting(&invalidation) {
+            Ok(complete) => complete,
+            Err(error) => {
+                return mark_forgetting_repair_required(
+                    &mut forgetting,
+                    operation,
+                    replayed,
+                    candidate_complete,
+                    false,
+                    format!("cannot verify managed Derived forgetting: {error}"),
+                )
+            }
+        };
+        if !candidate_complete || !derived_complete {
+            return mark_forgetting_repair_required(
+                &mut forgetting,
+                operation,
+                replayed,
+                candidate_complete,
+                derived_complete,
+                "related local cleanup postconditions are incomplete".into(),
+            );
+        }
+        operation =
+            forgetting.mark_completed(operation.operation_id, now_micros()?.as_unix_micros())?;
+        Ok(forgetting_outcome(&operation, replayed, None))
     }
 
     pub fn record_checkpoint(
@@ -1738,6 +1930,36 @@ impl LocalOperations {
         volicord_local_platform::ensure_private_file(&path)
             .map_err(|error| Error::with_source("canonical store is not private", error))?;
         Ok(store)
+    }
+
+    fn open_forgetting(&self) -> Result<ForgettingStore, Error> {
+        let path = self.layout.forgetting_store();
+        let store = ForgettingStore::open(&path)?;
+        volicord_local_platform::ensure_private_file(&path)
+            .map_err(|error| Error::with_source("forgetting store is not private", error))?;
+        Ok(store)
+    }
+
+    fn incomplete_committed_invalidations(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<CanonicalInvalidation>, Error> {
+        let operations = self.open_forgetting()?.incomplete(Some(project_id))?;
+        let canonical = self.open_canonical()?;
+        let mut invalidations = Vec::new();
+        for operation in operations {
+            match canonical.get_tombstone(project_id, operation.record) {
+                Ok(_) => invalidations.push(operation.invalidation()),
+                Err(error) if error.kind() == volicord_context::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(Error::with_source(
+                        "cannot establish canonical forgetting read barrier",
+                        error,
+                    ))
+                }
+            }
+        }
+        Ok(invalidations)
     }
 
     fn create_user_source(
@@ -2313,6 +2535,45 @@ fn canonical_record_parts(record: CanonicalRecordId) -> (String, String) {
         let _ = write!(identity, "{byte:02x}");
     }
     (kind.to_owned(), identity)
+}
+
+fn mark_forgetting_repair_required(
+    forgetting: &mut ForgettingStore,
+    operation: ForgettingOperationRecord,
+    replayed: bool,
+    candidate_cleanup_completed: bool,
+    managed_derived_cleanup_completed: bool,
+    diagnostic: String,
+) -> Result<ForgettingOutcome, Error> {
+    let operation = forgetting.mark_repair_required(
+        operation.operation_id,
+        candidate_cleanup_completed,
+        managed_derived_cleanup_completed,
+        false,
+        now_micros()?.as_unix_micros(),
+    )?;
+    Ok(forgetting_outcome(&operation, replayed, Some(diagnostic)))
+}
+
+fn forgetting_outcome(
+    operation: &ForgettingOperationRecord,
+    replayed: bool,
+    diagnostic: Option<String>,
+) -> ForgettingOutcome {
+    let (record_kind, identity) = canonical_record_parts(operation.record);
+    ForgettingOutcome {
+        operation_id: operation.operation_id,
+        record_kind,
+        identity,
+        state: operation.state,
+        canonical_committed: operation.state != ForgettingState::Prepared,
+        candidate_cleanup_completed: operation.candidate_cleanup_completed,
+        managed_derived_cleanup_completed: operation.managed_derived_cleanup_completed,
+        residue_verified: operation.residue_verified,
+        replayed,
+        provider_deletion: ProviderDeletionOutcome::NotRequested,
+        diagnostic,
+    }
 }
 
 pub(crate) fn parse_identity(value: &str) -> Result<[u8; 16], Error> {

@@ -128,6 +128,7 @@ security enforcement 보증으로 바꾸지 않는다.
 | semantic-provider unavailable | Provider Boundary `unavailable`, provider-backed capability `degraded` | local inventory/structural, Inquiry, Decision, Checkpoint, Recall과 canonical read/write | opt-in 확대, local core failure 또는 old annotation을 current로 표시 | Repository Intelligence/Local Operations가 config/availability 뒤 explicit retry |
 | Derived Index corruption | index owner `corrupt`, dependent search/projection `degraded` | Canonical Context, Source basis와 non-index read | canonical loss, corrupt index query 또는 silent empty index | owning subsystem이 quarantine/delete 후 rebuild; Local Operations가 progress 관찰 |
 | Canonical transaction failure | Kernel `failed` 또는 commit 불명 시 `repair_required` | last verified committed state와 unrelated derived/history read | partial canonical success, projection-only degradation으로 축소 또는 blind retry | Kernel이 commit state 확인, idempotent retry/validated repair |
+| Canonical forgetting cleanup interruption | Local Operations의 durable operation이 `prepared`, `canonical_committed`, `repair_required` 또는 `completed`를 보존 | tombstone이 확인된 뒤 관련 Candidate/managed Derived content는 read barrier로 withheld; unrelated record는 read 허용 | local cleanup/post-check 전 complete success, 관련 Candidate promotion 또는 provider deletion success 추론 | Local Operations가 같은 operation identity와 invalidation으로 owner cleanup과 residue post-check를 reconcile |
 | bundle conflict | Portable Context의 named conflict; unresolved operation `partial`/`failed` | both histories, common-base/lineage와 unaffected additions | Decision/Question/delete-modify silent overwrite | user-owned resolution 또는 branch; Portable I/O가 result/provenance 보존 |
 | document-generation failure | Projections and Documents `failed`/`partial` | canonical records, analysis, ordinary work와 prior adopted Sources | repository work/Checkpoint rollback 또는 failed draft 자동 adoption | Projection owner가 same/current basis 확인 후 retry/regenerate |
 | Recall-projection failure | Projections and Documents `failed`/`partial` | direct canonical inspect, existing Question/Decision/Checkpoint와 ordinary work | hidden fallback memory를 authority로 사용하거나 canonical mutation | Projection owner retry; user에게 unavailable sections와 direct inspection path 제공 |
@@ -162,6 +163,14 @@ Canonical Context를 Derived State에서 rebuild하지 않는다. User Decision,
 supersession, forgetting과 conflict resolution은 repair algorithm이 자동 선택할 수 없는
 domain operation이다. Conversely, rebuildable index corruption에 canonical migration이나
 semantic repair를 요구하지 않는다.
+
+이미 user-authorized canonical forgetting이 commit된 operation의 recovery는 새
+forgetting 의미를 선택하는 semantic repair가 아니다. Content-minimal operation record는
+target identity, authorization Source identity와 `prepared` → `canonical_committed` /
+`repair_required` → `completed` 진행 상태만 보존한다. Reconciliation은 tombstone을
+확인한 뒤 missing Candidate/managed Derived cleanup과 destructive residue post-check만
+idempotently 수행한다. `completed`는 세 owner postcondition이 모두 검증된 뒤에만
+기록하고, provider deletion outcome은 local completion state에 합치지 않는다.
 
 ## 6. Retry ownership
 

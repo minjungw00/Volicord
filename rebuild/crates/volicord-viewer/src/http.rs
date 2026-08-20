@@ -9,7 +9,7 @@ use std::{
 use volicord_context::{
     CanonicalRecordId, CheckpointId, ContextItemId, DecisionId, ProjectId, QuestionId, SourceId,
 };
-use volicord_operations::{ConfirmationDecision, ConfirmationRequestId};
+use volicord_operations::{ConfirmationDecision, ConfirmationRequestId, ForgettingState};
 use volicord_projections::{DocumentKind, OutputFormat};
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
@@ -173,9 +173,22 @@ impl ViewerServer {
                     identity(form.required("record_id")?)?,
                 )?;
                 let source = self.user_source(form.required("user_turn")?)?;
-                self.adapter
+                let outcome = self
+                    .adapter
                     .forget(self.project_id, record, source)
                     .map_err(domain_failure)?;
+                if outcome.state != ForgettingState::Completed {
+                    return Err(HttpFailure::new(
+                        409,
+                        "Conflict",
+                        outcome.diagnostic.unwrap_or_else(|| {
+                            format!(
+                                "canonical forgetting operation {} requires repair",
+                                outcome.operation_id
+                            )
+                        }),
+                    ));
+                }
                 Ok(HttpResponse::redirect(form.return_location()))
             }
             ("POST", "/guarded/confirm") => {

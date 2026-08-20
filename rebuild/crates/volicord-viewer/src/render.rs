@@ -7,7 +7,8 @@ use volicord_context::{
 use volicord_inquiry::{CandidateDisposition, CandidateKind};
 use volicord_operations::{
     CanonicalMutationOutcome, ConfirmationDecision, ConfirmationRequestId, ConfirmationResponse,
-    GuardedEffectCategory, HealthIssueKind, HealthState, LocalOperations, PublicationOutcome,
+    ForgettingOutcome, GuardedEffectCategory, HealthIssueKind, HealthState, LocalOperations,
+    PublicationOutcome,
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
@@ -254,7 +255,7 @@ impl ViewerAdapter {
         project_id: ProjectId,
         record: CanonicalRecordId,
         authorization: SourceId,
-    ) -> Result<CanonicalMutationOutcome, ViewerError> {
+    ) -> Result<ForgettingOutcome, ViewerError> {
         self.operations
             .forget_record(project_id, record, authorization)
             .map_err(|error| ViewerError::new(error.to_string()))

@@ -61,6 +61,7 @@ fn runtime_initialization_enforces_private_managed_paths() -> Result<(), Box<dyn
         operations.layout().candidate_store(),
         operations.layout().privacy_store(),
         operations.layout().guarded_store(),
+        operations.layout().forgetting_store(),
         operations.layout().mutation_lock(),
     ] {
         assert_eq!(
@@ -154,6 +155,7 @@ fn repository_bound_project_resolution_is_normalized_explicit_and_read_only(
         operations.layout().candidate_store(),
         operations.layout().privacy_store(),
         operations.layout().guarded_store(),
+        operations.layout().forgetting_store(),
         operations.layout().derived_dir(),
         operations.layout().artifacts_dir(),
     ] {

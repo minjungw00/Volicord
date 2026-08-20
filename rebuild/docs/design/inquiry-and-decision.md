@@ -227,6 +227,16 @@ atomic meaning과 전체 결과를 구분해 보고한다.
 동등하게 검증된 repair/idempotency behavior로 만족하고 later failure validation에
 근거를 남겨야 한다.
 
+### Canonical forgetting 중 Candidate boundary
+
+Canonical Source 또는 Question forgetting이 commit되면 Inquiry owner는 전달받은
+`CanonicalInvalidation`과 관련된 Candidate content를 idempotently cleanup한다. Cleanup과
+destructive residue post-check가 아직 완료되지 않았으면 Candidate Inspection read basis는
+관련 Candidate identity를 explicit withholding으로 표시하고 content, question research
+basis와 bounded summary를 반환하지 않는다. 이 read barrier는 Candidate disposition을
+조용히 바꾸지 않는다. 관련 Question Candidate promotion은 repair가 끝날 때까지
+차단되며 unrelated Candidate lifecycle과 content는 유지된다.
+
 ## 9. Terminal outcome
 
 Canonical Question의 terminal outcome vocabulary는 다음과 같다.

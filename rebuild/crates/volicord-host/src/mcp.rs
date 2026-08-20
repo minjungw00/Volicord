@@ -510,6 +510,36 @@ impl HostAdapter {
             .map_err(operation_error)?;
         let authorization = parse_source(&source.identity)?;
         let action = required_str(args, "action")?;
+        if action == "forget" {
+            let bytes = parse_identity(required_str(args, "record_id")?)?;
+            let record = match required_str(args, "record_kind")? {
+                "source" => CanonicalRecordId::Source(SourceId::from_bytes(bytes)),
+                "question" => CanonicalRecordId::Question(QuestionId::from_bytes(bytes)),
+                "decision" => CanonicalRecordId::Decision(DecisionId::from_bytes(bytes)),
+                "context_item" => CanonicalRecordId::ContextItem(ContextItemId::from_bytes(bytes)),
+                "checkpoint" => CanonicalRecordId::Checkpoint(CheckpointId::from_bytes(bytes)),
+                _ => return Err(HostError::new("record kind is not forgettable")),
+            };
+            let outcome = self
+                .operations
+                .forget_record(project_id, record, authorization)
+                .map_err(operation_error)?;
+            return Ok(json!({
+                "action": action,
+                "record_kind": outcome.record_kind,
+                "identity": outcome.identity,
+                "operation_id": outcome.operation_id.to_string(),
+                "state": format!("{:?}", outcome.state).to_lowercase(),
+                "canonical_committed": outcome.canonical_committed,
+                "candidate_cleanup_completed": outcome.candidate_cleanup_completed,
+                "managed_derived_cleanup_completed": outcome.managed_derived_cleanup_completed,
+                "residue_verified": outcome.residue_verified,
+                "replayed": outcome.replayed,
+                "provider_deletion": format!("{:?}", outcome.provider_deletion).to_lowercase(),
+                "diagnostic": outcome.diagnostic,
+                "user_response_source_id": authorization.to_string(),
+            }));
+        }
         let outcome = match action {
             "correct_context" => self.operations.correct_context_item(
                 project_id,
@@ -542,21 +572,6 @@ impl HostAdapter {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned),
             ),
-            "forget" => {
-                let bytes = parse_identity(required_str(args, "record_id")?)?;
-                let record = match required_str(args, "record_kind")? {
-                    "source" => CanonicalRecordId::Source(SourceId::from_bytes(bytes)),
-                    "question" => CanonicalRecordId::Question(QuestionId::from_bytes(bytes)),
-                    "decision" => CanonicalRecordId::Decision(DecisionId::from_bytes(bytes)),
-                    "context_item" => {
-                        CanonicalRecordId::ContextItem(ContextItemId::from_bytes(bytes))
-                    }
-                    "checkpoint" => CanonicalRecordId::Checkpoint(CheckpointId::from_bytes(bytes)),
-                    _ => return Err(HostError::new("record kind is not forgettable")),
-                };
-                self.operations
-                    .forget_record(project_id, record, authorization)
-            }
             _ => return Err(HostError::new("unknown canonical mutation action")),
         }
         .map_err(operation_error)?;

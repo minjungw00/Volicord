@@ -178,7 +178,7 @@ fn health(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Er
     Ok(json!({
         "operation":"health", "state":debug_name(report.state), "runtime_root":report.runtime_root,
         "canonical_available":report.canonical_available, "candidate_available":report.candidate_available,
-        "privacy_available":report.privacy_available, "guarded_available":report.guarded_available, "repository_available":report.repository_available,
+        "privacy_available":report.privacy_available, "guarded_available":report.guarded_available, "forgetting_available":report.forgetting_available, "repository_available":report.repository_available,
         "issues":report.issues.into_iter().map(|issue| json!({"kind":debug_name(issue.kind),"scope":issue.scope,"detail":issue.detail})).collect::<Vec<_>>()
     }))
 }
@@ -532,10 +532,7 @@ fn canonical(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
                 "checkpoint" => CanonicalRecordId::Checkpoint(volicord_context::CheckpointId::from_bytes(identity)),
                 _ => return Err(usage("forgettable kind must be source, question, decision, context_item, or checkpoint")),
             };
-            mutation_json(
-                "canonical_forget",
-                operations.forget_record(project, record, authorization)?,
-            )
+            forgetting_json(operations.forget_record(project, record, authorization)?)
         }
         _ => Err(usage(
             "canonical requires inspect, user-source, correct-context, correct-decision, supersede-decision, or forget",
@@ -874,6 +871,23 @@ fn mutation_json(operation: &str, value: crate::CanonicalMutationOutcome) -> Res
     Ok(
         json!({"operation":operation,"record_kind":value.record_kind,"identity":value.identity,"revision":value.revision,"replayed":value.replayed}),
     )
+}
+
+fn forgetting_json(value: crate::ForgettingOutcome) -> Result<Value, Error> {
+    Ok(json!({
+        "operation":"canonical_forget",
+        "forgetting_operation_id":value.operation_id.to_string(),
+        "record_kind":value.record_kind,
+        "identity":value.identity,
+        "state":debug_name(value.state),
+        "canonical_committed":value.canonical_committed,
+        "candidate_cleanup_completed":value.candidate_cleanup_completed,
+        "managed_derived_cleanup_completed":value.managed_derived_cleanup_completed,
+        "residue_verified":value.residue_verified,
+        "replayed":value.replayed,
+        "provider_deletion":debug_name(value.provider_deletion),
+        "diagnostic":value.diagnostic,
+    }))
 }
 
 fn privacy_intent(source: SourceId, basis: &str) -> ProviderIntentProvenance {

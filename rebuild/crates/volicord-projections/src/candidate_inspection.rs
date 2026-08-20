@@ -21,6 +21,7 @@ pub enum InspectionHealth {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CandidateContentOmission {
     PolicyWithheld,
+    CanonicalForgettingPending,
     RetentionCleaned,
     ContentUnavailable,
 }
@@ -113,6 +114,9 @@ fn inspect_existing(
         .cloned()
         .collect();
     let cleaned = candidate.cleanup.is_some();
+    let forgetting_pending = basis
+        .withheld_for_canonical_forgetting
+        .contains(&candidate.id);
     let retention = if let Some(retained_until) = candidate.retention.retained_until {
         RetentionInspection::RetainedUntil {
             retained_until,
@@ -124,45 +128,57 @@ fn inspect_existing(
             basis: candidate.retention.basis.clone(),
         }
     };
-    let (health, bounded_summary, content_omission) = match content_access {
-        CandidateContentAccess::PolicyWithheld => (
-            InspectionHealth::Partial,
+    let (health, bounded_summary, content_omission) = if forgetting_pending {
+        (
+            InspectionHealth::Degraded,
             None,
-            Some(CandidateContentOmission::PolicyWithheld),
-        ),
-        CandidateContentAccess::AllowBoundedSummary => match candidate.content.as_ref() {
-            Some(content) => (
-                InspectionHealth::Complete,
-                Some(content.bounded_summary.clone()),
-                None,
-            ),
-            None if cleaned => (
+            Some(CandidateContentOmission::CanonicalForgettingPending),
+        )
+    } else {
+        match content_access {
+            CandidateContentAccess::PolicyWithheld => (
                 InspectionHealth::Partial,
                 None,
-                Some(CandidateContentOmission::RetentionCleaned),
+                Some(CandidateContentOmission::PolicyWithheld),
             ),
-            None => (
-                InspectionHealth::Degraded,
-                None,
-                Some(CandidateContentOmission::ContentUnavailable),
-            ),
-        },
+            CandidateContentAccess::AllowBoundedSummary => match candidate.content.as_ref() {
+                Some(content) => (
+                    InspectionHealth::Complete,
+                    Some(content.bounded_summary.clone()),
+                    None,
+                ),
+                None if cleaned => (
+                    InspectionHealth::Partial,
+                    None,
+                    Some(CandidateContentOmission::RetentionCleaned),
+                ),
+                None => (
+                    InspectionHealth::Degraded,
+                    None,
+                    Some(CandidateContentOmission::ContentUnavailable),
+                ),
+            },
+        }
     };
-    let (question_research_state, repository_research_basis) = match content_access {
-        CandidateContentAccess::AllowBoundedSummary => candidate
-            .content
-            .as_ref()
-            .and_then(|content| content.question.as_ref())
-            .map_or_else(
-                || (None, Vec::new()),
-                |question| {
-                    (
-                        Some(question.research_state),
-                        question.repository_basis.clone(),
-                    )
-                },
-            ),
-        CandidateContentAccess::PolicyWithheld => (None, Vec::new()),
+    let (question_research_state, repository_research_basis) = if forgetting_pending {
+        (None, Vec::new())
+    } else {
+        match content_access {
+            CandidateContentAccess::AllowBoundedSummary => candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.question.as_ref())
+                .map_or_else(
+                    || (None, Vec::new()),
+                    |question| {
+                        (
+                            Some(question.research_state),
+                            question.repository_basis.clone(),
+                        )
+                    },
+                ),
+            CandidateContentAccess::PolicyWithheld => (None, Vec::new()),
+        }
     };
     CandidateInspection {
         candidate_id: candidate.id,

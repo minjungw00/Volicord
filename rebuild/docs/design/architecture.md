@@ -237,6 +237,15 @@ analysis operation과 Projection의 read operation을 순서대로 호출할 수
 상세 contract는 active [Failure와 Recovery 계약](failure-and-recovery.md)이,
 durable format evolution은 active [Versioning 정책](versioning-policy.md)이 소유한다.
 
+한 Runtime Home을 공유하는 CLI, MCP와 Viewer의 conflicting durable mutation은
+Local Operations의 process-safe coordination boundary를 통과한다. Repository scan,
+analyzer 실행처럼 durable publication 전의 긴 read/compute 구간은 이 exclusive
+boundary를 점유하지 않고, owner store에 결과를 publish하는 구간만 직렬화한다.
+Canonical forgetting은 Local Operations가 content-minimal durable operation identity로
+조정한다. Kernel의 canonical commit 뒤 Inquiry의 관련 Candidate cleanup과 Privacy의
+관련 managed Derived cleanup 및 residue post-check가 모두 확인되어야 complete다.
+Orchestrator는 각 owner의 lifecycle/삭제 meaning을 재정의하지 않는다.
+
 Local Operations는 Guarded effect dispatch와 exact confirmation validation의 logical
 owner다. Transport가 confirmation을 받았다는 사실만으로 effect를 실행하지 않으며,
 아래 contract를 통과한 operation만 dispatch한다.

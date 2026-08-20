@@ -54,6 +54,9 @@ impl RuntimeLayout {
     pub fn guarded_store(&self) -> PathBuf {
         self.root.join("guarded.sqlite3")
     }
+    pub fn forgetting_store(&self) -> PathBuf {
+        self.root.join("forgetting.sqlite3")
+    }
     pub fn mutation_lock(&self) -> PathBuf {
         self.root.join("mutation.lock")
     }
@@ -87,6 +90,7 @@ impl RuntimeLayout {
             self.candidate_store(),
             self.privacy_store(),
             self.guarded_store(),
+            self.forgetting_store(),
         ] {
             if path.try_exists().map_err(|error| {
                 Error::with_source("cannot inspect managed Runtime Home file", error)
@@ -107,6 +111,7 @@ impl RuntimeLayout {
             self.candidate_store(),
             self.privacy_store(),
             self.guarded_store(),
+            self.forgetting_store(),
         ] {
             ensure_private_file(&path).map_err(|error| {
                 Error::with_source("managed Runtime Home store is not private", error)

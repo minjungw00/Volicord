@@ -449,6 +449,9 @@ pub struct ProjectPrivacyInspection {
     pub authority_observations: Vec<AuthorityObservation>,
     pub requests: Vec<ProviderRequestRecord>,
     pub managed_derived: Vec<ManagedDerivedRecord>,
+    /// Managed content withheld by the read barrier while a local canonical
+    /// forgetting operation still requires cleanup.
+    pub withheld_for_canonical_forgetting: Vec<ManagedDerivedId>,
 }
 
 pub(crate) struct PreparedSource {

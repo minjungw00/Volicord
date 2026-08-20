@@ -49,7 +49,10 @@ impl CandidateStore {
         let mut connection = Connection::open(path).map_err(open_error)?;
         connection
             .execute_batch(
-                "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;",
+                "PRAGMA foreign_keys = ON;
+                 PRAGMA journal_mode = WAL;
+                 PRAGMA synchronous = FULL;
+                 PRAGMA secure_delete = ON;",
             )
             .map_err(write_error)?;
         initialize_or_validate(&mut connection)?;
@@ -137,7 +140,28 @@ impl CandidateStore {
             project_id,
             candidates,
             collection_policies: policies,
+            withheld_for_canonical_forgetting: Vec::new(),
         })
+    }
+
+    pub fn read_basis_with_invalidations(
+        &self,
+        project_id: ProjectId,
+        invalidations: &[CanonicalInvalidation],
+    ) -> Result<CandidateReadBasis, Error> {
+        let mut basis = self.read_basis(project_id)?;
+        for candidate in &mut basis.candidates {
+            if invalidations.iter().any(|invalidation| {
+                invalidation.project_id == project_id
+                    && candidate_refers_to(candidate, invalidation.record)
+            }) {
+                candidate.content = None;
+                basis.withheld_for_canonical_forgetting.push(candidate.id);
+            }
+        }
+        basis.withheld_for_canonical_forgetting.sort();
+        basis.withheld_for_canonical_forgetting.dedup();
+        Ok(basis)
     }
 
     pub fn set_collection_opt_out(
@@ -270,7 +294,20 @@ impl CandidateStore {
                 }
             }
         }
+        sanitize_deleted_content(&self.connection)?;
         Ok(cleaned)
+    }
+
+    pub fn verify_canonical_forgetting(
+        &self,
+        invalidation: &CanonicalInvalidation,
+    ) -> Result<bool, Error> {
+        Ok(self
+            .read_basis(invalidation.project_id)?
+            .candidates
+            .iter()
+            .filter(|candidate| candidate_refers_to(candidate, invalidation.record))
+            .all(|candidate| candidate.content.is_none()))
     }
 
     pub fn assess_materiality(
@@ -663,6 +700,23 @@ impl CandidateStore {
             .filter(|policy| scope_matches(&policy.scope, scope))
             .collect())
     }
+}
+
+fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
+    let (busy, _, _): (i64, i64, i64) = connection
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(write_error)?;
+    if busy != 0 {
+        return Err(Error::new(
+            ErrorKind::StorageUnavailable,
+            "Candidate content cleanup committed but WAL truncation is busy",
+        ));
+    }
+    connection
+        .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(write_error)
 }
 
 fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -> bool {

@@ -58,7 +58,10 @@ impl PrivacyStore {
         let mut connection = Connection::open(path).map_err(open_error)?;
         connection
             .execute_batch(
-                "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;",
+                "PRAGMA foreign_keys = ON;
+                 PRAGMA journal_mode = WAL;
+                 PRAGMA synchronous = FULL;
+                 PRAGMA secure_delete = ON;",
             )
             .map_err(write_error)?;
         initialize_or_validate(&mut connection)?;
@@ -610,6 +613,7 @@ impl PrivacyStore {
                 derived_ids.push(record.id);
             }
         }
+        sanitize_deleted_content(&self.connection)?;
         Ok(CanonicalForgettingCleanup {
             candidate_ids,
             derived_ids,
@@ -634,7 +638,44 @@ impl PrivacyStore {
             authority_observations: self.read_authority_observations(project_id)?,
             requests: self.read_requests(project_id)?,
             managed_derived: self.read_derived(project_id)?,
+            withheld_for_canonical_forgetting: Vec::new(),
         })
+    }
+
+    pub fn inspect_project_with_invalidations(
+        &self,
+        project_id: ProjectId,
+        invalidations: &[CanonicalInvalidation],
+    ) -> Result<ProjectPrivacyInspection, Error> {
+        let mut inspection = self.inspect_project(project_id)?;
+        for record in &mut inspection.managed_derived {
+            let related = invalidations.iter().any(|invalidation| {
+                invalidation.project_id == project_id
+                    && record
+                        .canonical_links
+                        .contains(&ManagedCanonicalLink::from_invalidation(invalidation))
+            });
+            if related && record.state != ManagedDerivedState::Deleted {
+                record.content = None;
+                record.state = ManagedDerivedState::Invalidated;
+                inspection.withheld_for_canonical_forgetting.push(record.id);
+            }
+        }
+        inspection.withheld_for_canonical_forgetting.sort();
+        inspection.withheld_for_canonical_forgetting.dedup();
+        Ok(inspection)
+    }
+
+    pub fn verify_canonical_forgetting(
+        &self,
+        invalidation: &CanonicalInvalidation,
+    ) -> Result<bool, Error> {
+        let target = ManagedCanonicalLink::from_invalidation(invalidation);
+        Ok(self
+            .read_derived(invalidation.project_id)?
+            .iter()
+            .filter(|record| record.canonical_links.contains(&target))
+            .all(|record| record.content.is_none() && record.state == ManagedDerivedState::Deleted))
     }
 
     pub fn provider_request(
@@ -860,6 +901,23 @@ impl PrivacyStore {
             project_id,
         )
     }
+}
+
+fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
+    let (busy, _, _): (i64, i64, i64) = connection
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(write_error)?;
+    if busy != 0 {
+        return Err(Error::new(
+            ErrorKind::StorageUnavailable,
+            "managed Derived cleanup committed but WAL truncation is busy",
+        ));
+    }
+    connection
+        .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(write_error)
 }
 
 struct FilteredBody {

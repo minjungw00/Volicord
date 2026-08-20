@@ -203,8 +203,18 @@ Analysis Snapshot, included Source refs, generated time, uncertainty와 freshnes
 Provider-side retained input/output은 provider의 deletion capability와 observed
 outcome을 별도로 표시한다. 삭제 전송 실패, unsupported deletion 또는 unknown
 retention을 local success에 묻지 않는다. 개인정보 forgetting의 canonical meaning은
-`domain-model.md`가 소유하며 구체적인 cross-system recovery guarantee는 이 문서가
-선택하지 않는다.
+`domain-model.md`가 소유한다.
+
+Canonical forgetting의 local privacy completion은 관련 Candidate content와 managed
+Derived content를 owner store에서 제거하고, ordinary SQLite database/WAL 경로에
+forgotten content가 남지 않도록 secure deletion, checkpoint/truncation과 destructive
+residue post-check를 통과한 상태다. Canonical commit 뒤 이 과정이 중단되면 관련
+Candidate/managed Derived content는 cleanup 완료 전 inspection에서 withheld된다.
+Managed Derived inspection은 이 상태를 `invalidated`와 explicit withholding identity로
+표시하며 content를 반환하지 않는다. Unrelated record는 유지한다. Retry는 같은
+canonical invalidation과 operation identity를 사용해 idempotent cleanup만 반복하며
+forgotten canonical content를 복원하지 않는다. Provider deletion은 `not_requested`,
+`unsupported`, `failed`, `unknown` 또는 observed success로 계속 별도 보고한다.
 
 ## 9. User correction protection
 

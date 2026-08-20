@@ -7,6 +7,7 @@
 mod cli;
 mod codex;
 mod error;
+mod forgetting;
 mod guarded;
 mod layout;
 mod model;
@@ -14,6 +15,7 @@ mod operations;
 
 pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
+pub use forgetting::ForgettingState;
 pub use guarded::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
     ConfirmationRejection, ConfirmationRequestId, ConfirmationResponse, ConfirmationResponseId,
@@ -25,7 +27,7 @@ pub use guarded::{
 pub use layout::RuntimeLayout;
 pub use model::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, CommandVerificationDraft, GroundedCheckpointDraft,
+    ChildProcessOutcome, CommandVerificationDraft, ForgettingOutcome, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
     ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,

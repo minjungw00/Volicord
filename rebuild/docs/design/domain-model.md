@@ -404,8 +404,15 @@ operation이다. Forgetting은 correction이나 supersession과 달리 원문 hi
 읽을 수 있게 유지하지 않는다. Referential integrity에 최소 tombstone이 필요할
 수 있지만 민감 원문이나 recoverable hash를 포함해서는 안 된다. Derived State,
 Candidate와 managed projection의 관련 content도 invalidate/delete 대상이지만,
-구체적 propagation과 residue guarantee는 future privacy, portable와 recovery
-owner가 정의한다.
+그 identity와 lifecycle meaning은 각 owner에 남는다. Canonical forgetting success는
+Kernel tombstone만으로 성립하지 않는다. Local Operations가 같은 invalidation을
+Inquiry와 Privacy owner에 전달하고, 관련 Candidate와 managed Derived content가
+삭제되었으며 local destructive-residue postcondition이 확인되어야 complete다.
+Canonical commit 뒤 이 후속 조건이 미완료이면 operation은 `repair_required`이고,
+read barrier가 관련 non-canonical content를 숨긴다. 이 barrier는 Candidate disposition을
+promotion, dismissal 또는 expiry로 바꾸거나 managed Derived record를 canonical
+history로 재분류하지 않는다. Provider-side deletion outcome은 이 local completion과
+별도 사실이다.
 
 이 다섯 의미는 서로 대체할 수 없다. 특히 오래 사용하지 않은 Decision을
 forgetting 처리하거나, source가 stale하다는 이유만으로 supersede하거나, 의미가

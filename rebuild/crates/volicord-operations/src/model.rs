@@ -8,8 +8,11 @@ use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
     ProcessTreeCleanup,
 };
+use volicord_privacy::ProviderDeletionOutcome;
 use volicord_repository_intelligence::{AnalysisSnapshot, RepositorySnapshot};
 use volicord_repository_intelligence::{AnalysisSnapshotId, RepositorySnapshotId};
+
+use crate::ForgettingState;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OperationState {
@@ -160,6 +163,7 @@ pub struct HealthReport {
     pub candidate_available: bool,
     pub privacy_available: bool,
     pub guarded_available: bool,
+    pub forgetting_available: bool,
     pub repository_available: Option<bool>,
     pub issues: Vec<HealthIssue>,
 }
@@ -192,6 +196,21 @@ pub struct CanonicalMutationOutcome {
     pub identity: String,
     pub revision: Option<u64>,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgettingOutcome {
+    pub operation_id: OperationId,
+    pub record_kind: String,
+    pub identity: String,
+    pub state: ForgettingState,
+    pub canonical_committed: bool,
+    pub candidate_cleanup_completed: bool,
+    pub managed_derived_cleanup_completed: bool,
+    pub residue_verified: bool,
+    pub replayed: bool,
+    pub provider_deletion: ProviderDeletionOutcome,
+    pub diagnostic: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
