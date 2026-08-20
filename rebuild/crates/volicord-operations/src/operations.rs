@@ -291,8 +291,8 @@ impl LocalOperations {
                             kind: HealthIssueKind::RepairRequired,
                             scope: format!("forgetting:{}", operation.operation_id),
                             detail: format!(
-                                "canonical forgetting cleanup is {:?}; explicit repair is required",
-                                operation.state
+                                "canonical forgetting cleanup is {:?}; safe next action: volicord repair {} forgetting {}",
+                                operation.state, operation.project_id, operation.operation_id
                             ),
                         });
                     }
@@ -1652,6 +1652,31 @@ impl LocalOperations {
         operation =
             forgetting.mark_completed(operation.operation_id, now_micros()?.as_unix_micros())?;
         Ok(forgetting_outcome(&operation, replayed, None))
+    }
+
+    pub fn repair_forgetting(
+        &self,
+        project_id: ProjectId,
+        operation_id: OperationId,
+    ) -> Result<ForgettingOutcome, Error> {
+        self.initialize_runtime()?;
+        let operation = self.open_forgetting()?.get(operation_id)?;
+        if operation.project_id != project_id {
+            return Err(Error::new(
+                "forgetting repair operation belongs to a different Project",
+            ));
+        }
+        let outcome = self.forget_record(
+            project_id,
+            operation.record,
+            operation.authorization_source_id,
+        )?;
+        if outcome.operation_id != operation_id {
+            return Err(Error::new(
+                "forgetting repair resolved a different durable operation",
+            ));
+        }
+        Ok(outcome)
     }
 
     pub fn record_checkpoint(

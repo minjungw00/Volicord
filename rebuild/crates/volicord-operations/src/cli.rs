@@ -12,9 +12,9 @@ use std::{
 use volicord_context::{
     BundleComparison, BundleConflictClass, BundleMergeStatus, CanonicalRecordId, CheckpointDraft,
     CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
-    DecisionCorrectionDraft, DecisionId, MergeResolution, MergeResolutionMode, Principal,
-    PrincipalKind, ProjectId, SourceId, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
-    UserReviewState, VerificationFact, VerificationState, WorkState,
+    DecisionCorrectionDraft, DecisionId, MergeResolution, MergeResolutionMode, OperationId,
+    Principal, PrincipalKind, ProjectId, SourceId, UserAcceptanceFact, UserAcceptanceState,
+    UserReviewFact, UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_privacy::{
     ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
@@ -229,6 +229,15 @@ fn reindex(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
 fn repair(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     let project = project_id(&cursor.next("Project ID")?)?;
     let scope = cursor.next("repair scope")?;
+    if scope == "forgetting" {
+        let operation = operation_id(&cursor.next("forgetting operation ID")?)?;
+        return forgetting_json(operations.repair_forgetting(project, operation)?);
+    }
+    if scope != "derived-analysis" {
+        return Err(Error::new(
+            "unsupported repair scope; supported forms: repair PROJECT derived-analysis [--exclude PATH ...] or repair PROJECT forgetting OPERATION_ID",
+        ));
+    }
     let excludes = excluded_paths(cursor)?;
     repair_json("repair", operations.repair(project, scope, excludes)?)
 }
@@ -905,6 +914,9 @@ fn privacy_intent(source: SourceId, basis: &str) -> ProviderIntentProvenance {
 
 fn project_id(value: &str) -> Result<ProjectId, Error> {
     Ok(ProjectId::from_bytes(parse_identity(value)?))
+}
+fn operation_id(value: &str) -> Result<OperationId, Error> {
+    Ok(OperationId::from_bytes(parse_identity(value)?))
 }
 fn confirmation_request_id(value: &str) -> Result<ConfirmationRequestId, Error> {
     Ok(ConfirmationRequestId::from_bytes(parse_identity(value)?))

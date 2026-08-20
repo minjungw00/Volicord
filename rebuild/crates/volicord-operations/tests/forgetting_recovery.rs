@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection};
+use serde_json::Value;
 use std::{error::Error, fs, path::Path};
 use tempfile::TempDir;
 use volicord_context::{
@@ -10,7 +11,9 @@ use volicord_inquiry::{
     CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
     SubmissionOutcome,
 };
-use volicord_operations::{ForgettingState, HealthIssueKind, LocalOperations, RuntimeLayout};
+use volicord_operations::{
+    run_cli, CliExit, ForgettingState, HealthIssueKind, LocalOperations, RuntimeLayout,
+};
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
     PrivacyStore, ProviderDeletionOutcome,
@@ -67,12 +70,34 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
         RELATED_DERIVED_SENTINEL,
     )?;
 
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime.to_str().ok_or("runtime path is not UTF-8")?,
+                "repair",
+                &fixture.project_id.to_string(),
+                "forgetting",
+                &first.operation_id.to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&stderr)
+    );
+    let cli: Value = serde_json::from_slice(&stdout)?;
+    assert_eq!(cli["state"], "completed");
+    assert_eq!(
+        cli["forgetting_operation_id"],
+        first.operation_id.to_string()
+    );
+
     let restarted = LocalOperations::new(RuntimeLayout::new(runtime)?);
-    let replay = restarted.forget_record(
-        fixture.project_id,
-        CanonicalRecordId::Source(fixture.target_source),
-        fixture.authorization_source,
-    )?;
+    let replay = restarted.repair_forgetting(fixture.project_id, first.operation_id)?;
     assert_eq!(replay.operation_id, first.operation_id);
     assert_eq!(replay.state, ForgettingState::Completed);
     assert!(replay.replayed);
@@ -152,19 +177,27 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
         .promote_question_candidate(fixture.project_id, fixture.related_candidate)
         .is_err());
     let health = fixture.operations.health(Some(fixture.project_id));
-    assert!(health
+    let health_issue = health
         .issues
         .iter()
-        .any(|issue| issue.kind == HealthIssueKind::RepairRequired));
+        .find(|issue| issue.kind == HealthIssueKind::RepairRequired)
+        .ok_or("forgetting repair health issue missing")?;
+    assert!(health_issue.detail.contains(&format!(
+        "volicord repair {} forgetting {}",
+        fixture.project_id, partial.operation_id
+    )));
+    assert!(fixture
+        .operations
+        .repair_forgetting(
+            volicord_context::ProjectId::from_bytes([99; 16]),
+            partial.operation_id,
+        )
+        .is_err());
 
     blocker.execute_batch("ROLLBACK")?;
     drop(blocker);
     let restarted = LocalOperations::new(RuntimeLayout::new(runtime)?);
-    let repaired = restarted.forget_record(
-        fixture.project_id,
-        CanonicalRecordId::Source(fixture.target_source),
-        fixture.authorization_source,
-    )?;
+    let repaired = restarted.repair_forgetting(fixture.project_id, partial.operation_id)?;
     assert_eq!(repaired.operation_id, partial.operation_id);
     assert_eq!(repaired.state, ForgettingState::Completed);
     assert!(repaired.replayed);

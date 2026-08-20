@@ -171,6 +171,11 @@ target identity, authorization Source identity와 `prepared` → `canonical_comm
 확인한 뒤 missing Candidate/managed Derived cleanup과 destructive residue post-check만
 idempotently 수행한다. `completed`는 세 owner postcondition이 모두 검증된 뒤에만
 기록하고, provider deletion outcome은 local completion state에 합치지 않는다.
+Local Operations는 이 invariant에 한해 durable forgetting operation identity를 받는
+explicit recovery를 제공한다. CLI의 safe next action은
+`volicord repair <PROJECT> forgetting <OPERATION_ID>`이며 stored target과 authorization
+Source를 사용해 missing owner cleanup/post-check만 reconcile한다. Caller가 새 user fact나
+provider deletion success를 제공했다고 추론하지 않는다.
 
 ## 6. Retry ownership
 
