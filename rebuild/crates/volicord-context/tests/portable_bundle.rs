@@ -417,8 +417,8 @@ fn import_preserves_ids_is_idempotent_and_allows_explicit_another_path_binding(
 }
 
 #[test]
-fn corruption_and_newer_version_fail_before_any_mutation() -> Result<(), Box<dyn std::error::Error>>
-{
+fn corruption_and_every_non_current_version_fail_before_any_mutation(
+) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
     let clone = root.path().join("clone");
     fs::create_dir(&clone)?;
@@ -458,32 +458,41 @@ fn corruption_and_newer_version_fail_before_any_mutation() -> Result<(), Box<dyn
         ErrorKind::NotFound
     );
 
-    let newer = root.path().join("newer.json");
     let text = String::from_utf8(original)?;
-    fs::write(
-        &newer,
-        text.replacen(
-            &format!("\"format_version\":{BUNDLE_FORMAT_VERSION}"),
-            &format!("\"format_version\":{}", BUNDLE_FORMAT_VERSION + 1),
-            1,
-        ),
-    )?;
-    assert_eq!(
-        destination
-            .import_bundle(operation(41), &newer)
-            .err()
-            .ok_or("expected version failure")?
-            .kind(),
-        ErrorKind::UnsupportedVersion
-    );
-    assert_eq!(
-        destination
-            .get_project(fixture.project.id)
-            .err()
-            .ok_or("newer import mutated")?
-            .kind(),
-        ErrorKind::NotFound
-    );
+    for (index, detected) in [
+        BUNDLE_FORMAT_VERSION.saturating_sub(1),
+        BUNDLE_FORMAT_VERSION + 1,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_ne!(detected, BUNDLE_FORMAT_VERSION);
+        let non_current = root.path().join(format!("non-current-{detected}.json"));
+        fs::write(
+            &non_current,
+            text.replacen(
+                &format!("\"format_version\":{BUNDLE_FORMAT_VERSION}"),
+                &format!("\"format_version\":{detected}"),
+                1,
+            ),
+        )?;
+        assert_eq!(
+            destination
+                .import_bundle(operation(41 + index as u8), &non_current)
+                .err()
+                .ok_or("expected version failure")?
+                .kind(),
+            ErrorKind::UnsupportedVersion
+        );
+        assert_eq!(
+            destination
+                .get_project(fixture.project.id)
+                .err()
+                .ok_or("non-current import mutated")?
+                .kind(),
+            ErrorKind::NotFound
+        );
+    }
     Ok(())
 }
 

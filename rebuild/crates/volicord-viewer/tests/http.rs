@@ -1,9 +1,23 @@
-use std::io::Cursor;
+use std::{
+    collections::BTreeSet,
+    io::Cursor,
+    sync::{Arc, Barrier},
+    thread,
+};
 use tempfile::tempdir;
 use volicord_context::{Clock, Principal, PrincipalKind, ProjectId, SystemClock, TimestampMicros};
+use volicord_inquiry::{
+    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDraft,
+    CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
+    SubmissionOutcome,
+};
 use volicord_operations::{
     ConfirmationDecision, GuardedEffectCategory, GuardedEffectDraft, GuardedRisk, GuardedStore,
     LocalOperations, RequestingProvenance, RuntimeLayout,
+};
+use volicord_privacy::{
+    ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
+    PrivacyStore,
 };
 use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerServer};
 
@@ -121,7 +135,7 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
 }
 
 #[test]
-fn post_routes_one_real_memory_mutation_through_local_operations() {
+fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
     let (_temporary, server, project) = setup();
     let page = exchange(
         &server,
@@ -138,6 +152,37 @@ fn post_routes_one_real_memory_mutation_through_local_operations() {
             "forget this memory".into(),
         )
         .expect("record forget target");
+    let unrelated_source = server
+        .adapter()
+        .operations()
+        .record_user_source(
+            project,
+            "test-host".into(),
+            "memory-session".into(),
+            "preserve this unrelated memory".into(),
+        )
+        .expect("record unrelated Source");
+    let target_source_id = source_id(&source.identity);
+    let unrelated_source_id = source_id(&unrelated_source.identity);
+    let related_candidate =
+        viewer_candidate(&server, project, target_source_id, "related Candidate");
+    let unrelated_candidate =
+        viewer_candidate(&server, project, unrelated_source_id, "unrelated Candidate");
+    let mut privacy = PrivacyStore::open(server.adapter().operations().layout().privacy_store())
+        .expect("privacy store");
+    let related_derived = privacy
+        .record_managed_derived(viewer_derived(project, target_source_id, "related Derived"))
+        .expect("related Derived")
+        .id;
+    let unrelated_derived = privacy
+        .record_managed_derived(viewer_derived(
+            project,
+            unrelated_source_id,
+            "unrelated Derived",
+        ))
+        .expect("unrelated Derived")
+        .id;
+    drop(privacy);
     let response = exchange(
         &server,
         post(
@@ -160,12 +205,275 @@ fn post_routes_one_real_memory_mutation_through_local_operations() {
         .sources
         .iter()
         .any(|basis| basis.source.id.to_string() == source.identity));
+    assert!(canonical
+        .sources
+        .iter()
+        .any(|basis| basis.source.id.to_string() == unrelated_source.identity));
+    let candidates = CandidateStore::open(server.adapter().operations().layout().candidate_store())
+        .expect("Candidate store");
+    assert!(candidates
+        .get(project, related_candidate)
+        .expect("related Candidate")
+        .content
+        .is_none());
+    assert!(candidates
+        .get(project, unrelated_candidate)
+        .expect("unrelated Candidate")
+        .content
+        .is_some());
+    let privacy = PrivacyStore::open(server.adapter().operations().layout().privacy_store())
+        .expect("privacy store");
+    assert_eq!(
+        privacy
+            .get_derived(project, related_derived)
+            .expect("related Derived")
+            .state,
+        ManagedDerivedState::Deleted
+    );
+    assert_eq!(
+        privacy
+            .get_derived(project, unrelated_derived)
+            .expect("unrelated Derived")
+            .state,
+        ManagedDerivedState::Current
+    );
 
     let refreshed = exchange(
         &server,
         format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(!refreshed.contains(&format!("Source · {} r1", source.identity)));
+}
+
+#[test]
+fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
+    const WRITERS: usize = 4;
+    let (_temporary, server, project) = setup();
+    let runtime = server.adapter().operations().layout().root().to_path_buf();
+    let unrelated_source = server
+        .adapter()
+        .operations()
+        .record_user_source(
+            project,
+            "test-host".into(),
+            "viewer-concurrency".into(),
+            "preserve unrelated viewer control".into(),
+        )
+        .expect("unrelated Source");
+    let unrelated_source_id = source_id(&unrelated_source.identity);
+    let unrelated_candidate = viewer_candidate(
+        &server,
+        project,
+        unrelated_source_id,
+        "unrelated concurrent Candidate",
+    );
+    let mut privacy = PrivacyStore::open(server.adapter().operations().layout().privacy_store())
+        .expect("privacy store");
+    let unrelated_derived = privacy
+        .record_managed_derived(viewer_derived(
+            project,
+            unrelated_source_id,
+            "unrelated concurrent Derived",
+        ))
+        .expect("unrelated Derived")
+        .id;
+    drop(privacy);
+
+    let mut controls = Vec::new();
+    for index in 0..WRITERS {
+        let operations = LocalOperations::new(RuntimeLayout::new(&runtime).expect("runtime"));
+        let worker = ViewerServer::new(
+            ViewerAdapter::new(operations),
+            project,
+            ViewerLocale::English,
+            ExplanationLevel::Working,
+            "en".into(),
+            AUTHORITY.parse().expect("viewer authority"),
+        )
+        .expect("worker viewer");
+        let target = worker
+            .adapter()
+            .operations()
+            .record_user_source(
+                project,
+                "test-host".into(),
+                "viewer-concurrency".into(),
+                format!("forget concurrent viewer target {index}"),
+            )
+            .expect("forget target");
+        let target_id = source_id(&target.identity);
+        let candidate = viewer_candidate(
+            &worker,
+            project,
+            target_id,
+            &format!("concurrent Candidate {index}"),
+        );
+        let mut privacy =
+            PrivacyStore::open(worker.adapter().operations().layout().privacy_store())
+                .expect("privacy store");
+        let derived = privacy
+            .record_managed_derived(viewer_derived(
+                project,
+                target_id,
+                &format!("concurrent Derived {index}"),
+            ))
+            .expect("managed Derived")
+            .id;
+        drop(privacy);
+        let page = exchange(
+            &worker,
+            format!("GET / HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        );
+        let token = request_authenticity(&page);
+        controls.push((worker, token, target.identity, candidate, derived));
+    }
+    drop(server);
+
+    let barrier = Arc::new(Barrier::new(WRITERS));
+    let writers = controls
+        .into_iter()
+        .map(|(worker, token, target, candidate, derived)| {
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let response = exchange(
+                    &worker,
+                    post(
+                        "/memory/forget",
+                        &format!(
+                            "record_kind=source&record_id={target}&user_turn=Forget+this+concurrent+Viewer+target",
+                        ),
+                        &token,
+                    ),
+                );
+                assert!(response.starts_with("HTTP/1.1 303 See Other"), "{response}");
+                (target, candidate, derived)
+            })
+        })
+        .collect::<Vec<_>>();
+    let controls = writers
+        .into_iter()
+        .map(|writer| writer.join().expect("Viewer writer"))
+        .collect::<Vec<_>>();
+
+    let restarted = LocalOperations::new(RuntimeLayout::new(runtime).expect("runtime"));
+    let canonical = restarted
+        .canonical_basis(project)
+        .expect("canonical after concurrent Viewer forgetting");
+    let remaining_sources = canonical
+        .sources
+        .iter()
+        .map(|basis| basis.source.id.to_string())
+        .collect::<BTreeSet<_>>();
+    assert!(remaining_sources.contains(&unrelated_source.identity));
+    assert!(controls
+        .iter()
+        .all(|(target, _, _)| !remaining_sources.contains(target)));
+    let candidates = CandidateStore::open(restarted.layout().candidate_store())
+        .expect("Candidate store after restart");
+    assert!(controls.iter().all(|(_, candidate, _)| candidates
+        .get(project, *candidate)
+        .expect("related Candidate")
+        .content
+        .is_none()));
+    assert!(candidates
+        .get(project, unrelated_candidate)
+        .expect("unrelated Candidate")
+        .content
+        .is_some());
+    let privacy =
+        PrivacyStore::open(restarted.layout().privacy_store()).expect("privacy after restart");
+    assert!(controls.iter().all(|(_, _, derived)| privacy
+        .get_derived(project, *derived)
+        .expect("related Derived")
+        .state
+        == ManagedDerivedState::Deleted));
+    assert_eq!(
+        privacy
+            .get_derived(project, unrelated_derived)
+            .expect("unrelated Derived")
+            .state,
+        ManagedDerivedState::Current
+    );
+}
+
+fn source_id(value: &str) -> volicord_context::SourceId {
+    let mut bytes = [0_u8; 16];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] =
+            u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
+    }
+    volicord_context::SourceId::from_bytes(bytes)
+}
+
+fn viewer_candidate(
+    server: &ViewerServer,
+    project_id: ProjectId,
+    source_id: volicord_context::SourceId,
+    summary: &str,
+) -> volicord_inquiry::CandidateId {
+    match server
+        .adapter()
+        .operations()
+        .submit_candidate(CandidateDraft {
+            project_id,
+            kind: CandidateKind::Observation,
+            collection_mode: CandidateCollectionMode::Automatic,
+            origin: CandidateOrigin {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "viewer-test-agent".into(),
+                },
+                subsystem: "viewer-forgetting-test".into(),
+                session: Some("viewer-forgetting".into()),
+                provenance_summary: "viewer forgetting fixture".into(),
+            },
+            collection_scope: CandidateCollectionScope {
+                project_id,
+                session: Some("viewer-forgetting".into()),
+                source_operation: Some("fixture".into()),
+                candidate_kind: CandidateKind::Observation,
+            },
+            observation_basis: CandidateObservationBasis {
+                source_basis: vec![source_id],
+                ..CandidateObservationBasis::default()
+            },
+            observed_at: TimestampMicros::from_unix_micros(1),
+            retention: CandidateRetention {
+                retained_until: None,
+                basis: "retain for viewer forgetting test".into(),
+            },
+            content: CandidateContent {
+                bounded_summary: summary.into(),
+                question: None,
+            },
+        })
+        .expect("submit Candidate")
+    {
+        SubmissionOutcome::Stored(candidate) => candidate.id,
+        SubmissionOutcome::CollectionDisabled { .. } => panic!("Candidate collection disabled"),
+    }
+}
+
+fn viewer_derived(
+    project_id: ProjectId,
+    source_id: volicord_context::SourceId,
+    content: &str,
+) -> ManagedDerivedDraft {
+    ManagedDerivedDraft {
+        project_id,
+        kind: ManagedDerivedKind::CachedSummary,
+        provider: None,
+        model: None,
+        purpose: "viewer forgetting fixture".into(),
+        analysis_snapshot: None,
+        included_sources: Vec::new(),
+        canonical_links: vec![ManagedCanonicalLink::Source(source_id)],
+        content: content.into(),
+        uncertainty: None,
+        retained_until: None,
+        retention_basis: "rebuildable fixture".into(),
+    }
 }
 
 #[test]

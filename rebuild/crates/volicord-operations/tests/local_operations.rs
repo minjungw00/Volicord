@@ -53,21 +53,23 @@ fn candidate_store_states_remain_typed_in_partial_project_projections(
     assert_eq!(healthy_projection.health, ProjectionHealth::Complete);
     assert!(healthy_projection.candidate_inspection.is_empty());
 
-    let (_unsupported_root, unsupported, unsupported_repository) = fixture()?;
-    let unsupported_project = unsupported
-        .initialize_project("Unsupported Candidates", Some(&unsupported_repository))?
-        .project
-        .id;
-    Connection::open(unsupported.layout().candidate_store())?.execute(
-        "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
-        [],
-    )?;
-    assert!(unsupported.candidate_basis(unsupported_project).is_err());
-    assert_candidate_dependency(
-        &unsupported.project_projection(unsupported_project)?,
-        CandidateDependencyState::Unsupported,
-        ProjectionIssueKind::CandidateUnsupported,
-    );
+    for detected in ["0", "999"] {
+        let (_unsupported_root, unsupported, unsupported_repository) = fixture()?;
+        let unsupported_project = unsupported
+            .initialize_project("Unsupported Candidates", Some(&unsupported_repository))?
+            .project
+            .id;
+        Connection::open(unsupported.layout().candidate_store())?.execute(
+            "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
+            [detected],
+        )?;
+        assert!(unsupported.candidate_basis(unsupported_project).is_err());
+        assert_candidate_dependency(
+            &unsupported.project_projection(unsupported_project)?,
+            CandidateDependencyState::Unsupported,
+            ProjectionIssueKind::CandidateUnsupported,
+        );
+    }
 
     let (_corrupt_root, corrupt, corrupt_repository) = fixture()?;
     let corrupt_project = corrupt

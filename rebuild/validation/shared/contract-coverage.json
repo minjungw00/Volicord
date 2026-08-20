@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "contracts": [
+    {
+      "id": "canonical-forgetting-local-closure",
+      "owners": ["canonical-context", "candidate-lifecycle", "privacy", "local-operations"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["local_operations", "cli", "mcp", "viewer"],
+      "evidence": [
+        ["local_operations", "rebuild/crates/volicord-operations/tests/forgetting_recovery.rs", "post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survives_restart"],
+        ["cli", "rebuild/crates/volicord-operations/tests/forgetting_recovery.rs", "successful_forgetting_cleans_related_local_content_and_replays_after_restart"],
+        ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "canonical_forgetting_mcp_cleans_linked_local_content"],
+        ["viewer", "rebuild/crates/volicord-viewer/tests/http.rs", "forgetting_http_cleans_linked_local_content_and_preserves_unrelated"]
+      ]
+    },
+    {
+      "id": "candidate-dependency-failure-honesty",
+      "owners": ["candidate-lifecycle", "projections", "local-operations", "host-and-user-adapters"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["local_operations", "cli", "mcp", "viewer"],
+      "evidence": [
+        ["local_operations", "rebuild/crates/volicord-operations/tests/local_operations.rs", "candidate_store_states_remain_typed_in_partial_project_projections"],
+        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "candidate_cli_rejects_dependency_failures_as_empty_success"],
+        ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "candidate_inspection_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies"],
+        ["viewer", "rebuild/crates/volicord-viewer/tests/viewer.rs", "candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies"]
+      ]
+    },
+    {
+      "id": "recoverable-forgetting-repair",
+      "owners": ["canonical-context", "candidate-lifecycle", "privacy", "failure-and-recovery", "local-operations"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["local_operations", "cli"],
+      "evidence": [
+        ["local_operations", "rebuild/crates/volicord-operations/tests/forgetting_recovery.rs", "post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survives_restart"],
+        ["cli", "rebuild/crates/volicord-operations/tests/forgetting_recovery.rs", "successful_forgetting_cleans_related_local_content_and_replays_after_restart"]
+      ]
+    },
+    {
+      "id": "bounded-product-writer-serialization",
+      "owners": ["local-platform", "local-operations", "host-and-user-adapters", "failure-and-recovery"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["cli", "mcp", "viewer"],
+      "evidence": [
+        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "concurrent_cli_writers_preserve_every_committed_source"],
+        ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "concurrent_mcp_writers_preserve_every_committed_context"],
+        ["viewer", "rebuild/crates/volicord-viewer/tests/http.rs", "concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls"]
+      ]
+    },
+    {
+      "id": "configured-provider-failure-honesty",
+      "owners": ["privacy-and-provider-boundary", "host-and-user-adapters", "projections"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["mcp"],
+      "evidence": [
+        ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "codex_host_exposes_guarded_provider_dispatch_and_durable_unavailable_outcome"]
+      ]
+    }
+  ]
+}

@@ -1,7 +1,13 @@
 {
   "schema_version": 1,
   "validation_id": "V07",
-  "production_commit": "4ef58cb1",
+  "production_baseline_subjects": [
+    "fix: enforce private serialized runtime access",
+    "fix: make canonical forgetting recoverable across local stores",
+    "feat: add forgetting repair operations",
+    "fix: preserve Candidate dependency failures in projections",
+    "fix: bound generated documents and normalize HTML language metadata"
+  ],
   "fixture_sources": [
     {
       "fixture_id": "v07-privacy-boundary",
@@ -73,9 +79,10 @@
       ["V07-C03-expiry-and-explicit-deletion-local", "volicord-inquiry", "candidate_lifecycle", "dismissal_and_explicit_deletion_are_candidate_local"],
       ["V07-C04-promoted-target-survives-cleanup", "volicord-inquiry", "promotion", "promoted_candidate_retention_cleanup_survives_restart_and_is_idempotent"],
       ["V07-C05-cleaned-pending-cannot-promote", "volicord-inquiry", "promotion", "pending_retention_cleanup_cannot_promote_or_create_a_question"],
-      ["V07-C06-related-forgetting-propagation", "volicord-privacy", "privacy_boundary", "canonical_forgetting_cleans_only_related_candidate_and_derived_content"],
-      ["V07-C07-unrelated-managed-content-preserved", "volicord-privacy", "privacy_boundary", "canonical_forgetting_cleans_only_related_candidate_and_derived_content"],
-      ["V07-C08-canonical-forgetting-minimal-residue", "volicord-context", "forgetting_matrix", "every_content_bearing_kind_forgets_to_one_minimal_portable_tombstone"]
+      ["V07-C06-local-operations-forgetting-closure", "volicord-operations", "forgetting_recovery", "post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survives_restart"],
+      ["V07-C07-cli-related-and-unrelated-forgetting", "volicord-operations", "forgetting_recovery", "successful_forgetting_cleans_related_local_content_and_replays_after_restart"],
+      ["V07-C08-mcp-related-and-unrelated-forgetting", "volicord-host", "mcp", "canonical_forgetting_mcp_cleans_linked_local_content"],
+      ["V07-C09-viewer-related-and-unrelated-forgetting", "volicord-viewer", "http", "forgetting_http_cleans_linked_local_content_and_preserves_unrelated"]
     ],
     "retention_deletion_and_correction": [
       ["V07-D01-managed-identity-and-annotation", "volicord-privacy", "privacy_boundary", "opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch"],
@@ -97,5 +104,9 @@
       ["V07-P08-projections-read-only", "volicord-projections", "project_documents", "project_surface_and_four_documents_are_grounded_equivalent_and_read_only"],
       ["V07-P09-candidate-inspection-no-mutation", "volicord-projections", "projections", "candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates"]
     ]
-  }
+  },
+  "owner_tests": [
+    ["V07-O01-privacy-cleanup-owner", "volicord-privacy", "privacy_boundary", "canonical_forgetting_cleans_only_related_candidate_and_derived_content"],
+    ["V07-O02-canonical-minimal-residue-owner", "volicord-context", "forgetting_matrix", "every_content_bearing_kind_forgets_to_one_minimal_portable_tombstone"]
+  ]
 }

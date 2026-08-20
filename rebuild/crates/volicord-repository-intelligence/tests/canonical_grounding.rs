@@ -391,6 +391,12 @@ fn canonical_links_are_project_scoped_basis_bound_and_stable() -> Result<(), Box
         )
         .is_err()
     );
+    let mut future_format = serde_json::to_value(&first)?;
+    future_format["format_version"] = json!(ANALYSIS_SNAPSHOT_FORMAT_VERSION + 1);
+    assert!(
+        serde_json::from_value::<volicord_repository_intelligence::AnalysisSnapshot>(future_format)
+            .is_err()
+    );
 
     let linked_entity = first
         .structural_facts

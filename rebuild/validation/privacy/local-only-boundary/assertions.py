@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parents[4]
 FIXTURE_ROOT = ROOT / "rebuild/validation/privacy/local-only-boundary/fixtures"
 FIXTURE = FIXTURE_ROOT / "v07-matrix.json"
 MANIFEST = ROOT / "rebuild/validation/shared/fixture-manifest.json"
-PRODUCTION_COMMIT = "4ef58cb1"
+PRODUCTION_BASELINE_SUBJECTS = (
+    "fix: enforce private serialized runtime access",
+    "fix: make canonical forgetting recoverable across local stores",
+    "feat: add forgetting repair operations",
+    "fix: preserve Candidate dependency failures in projections",
+    "fix: bound generated documents and normalize HTML language metadata",
+)
 EXPECTED_GROUPS = {
     "authority_and_local_only",
     "opt_in_transmission_and_revoke",
@@ -79,8 +85,8 @@ def main() -> int:
     require(fixture.get("schema_version") == 1, "V07 fixture schema_version changed")
     require(fixture.get("validation_id") == "V07", "fixture is not V07 evidence")
     require(
-        fixture.get("production_commit") == PRODUCTION_COMMIT,
-        "V07 Production commit identity changed",
+        tuple(fixture.get("production_baseline_subjects", [])) == PRODUCTION_BASELINE_SUBJECTS,
+        "V07 Production baseline subjects changed",
     )
     groups = fixture.get("groups")
     require(isinstance(groups, dict), "V07 fixture groups must be an object")
@@ -141,24 +147,27 @@ def main() -> int:
         "V07 no longer maps to the Production privacy owner",
     )
 
-    subject = run(
-        ["git", "show", "-s", "--format=%s", PRODUCTION_COMMIT], capture=True
-    ).stdout.strip()
+    owner_tests = fixture.get("owner_tests")
+    require(isinstance(owner_tests, list) and owner_tests, "V07 owner tests are not classified")
+    for mapping in owner_tests:
+        require(
+            isinstance(mapping, list)
+            and len(mapping) == 4
+            and all(isinstance(value, str) and value for value in mapping),
+            f"invalid V07 owner-test mapping: {mapping!r}",
+        )
     require(
-        subject == "feat: add project-scoped provider privacy controls",
-        "V07 Production commit subject is not the required boundary commit",
+        not ({mapping[0] for mapping in owner_tests} & set(requirement_ids)),
+        "V07 owner tests were counted as product acceptance requirements",
     )
-    run(
-        [
-            "git",
-            "diff",
-            "--quiet",
-            PRODUCTION_COMMIT,
-            "--",
-            "rebuild/crates",
-            "rebuild/Cargo.toml",
-            "rebuild/Cargo.lock",
-        ]
+    mappings.extend(tuple(mapping) for mapping in owner_tests)
+
+    current_subjects = set(
+        run(["git", "log", "--format=%s"], capture=True).stdout.splitlines()
+    )
+    require(
+        set(PRODUCTION_BASELINE_SUBJECTS) <= current_subjects,
+        "V07 Production-fix baseline is not present in current history",
     )
 
     metadata = json.loads(
@@ -210,7 +219,8 @@ def main() -> int:
             {
                 "fixture_sources": len(sources),
                 "group_count": len(groups),
-                "mapped_requirements": len(mappings),
+                "mapped_requirements": len(requirement_ids),
+                "classified_owner_tests": len(owner_tests),
                 "production_targets": len(target_mappings),
                 "discovered_tests": discovered,
                 "provider_fixture_files": len(provider_files),

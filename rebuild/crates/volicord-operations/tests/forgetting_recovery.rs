@@ -16,7 +16,7 @@ use volicord_operations::{
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
-    PrivacyStore, ProviderDeletionOutcome,
+    PrivacyStore,
 };
 use volicord_projections::{
     CandidateContentOmission, CandidateDependencyState, ProjectionIssueKind,
@@ -45,22 +45,41 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
     let fixture = fixture()?;
     let runtime = fixture.operations.layout().root().to_path_buf();
 
-    let first = fixture.operations.forget_record(
-        fixture.project_id,
-        CanonicalRecordId::Source(fixture.target_source),
-        fixture.authorization_source,
-    )?;
-    assert_eq!(first.state, ForgettingState::Completed);
-    assert!(first.canonical_committed);
-    assert!(first.candidate_cleanup_completed);
-    assert!(first.managed_derived_cleanup_completed);
-    assert!(first.residue_verified);
-    assert!(!first.replayed);
+    let mut forget_stdout = Vec::new();
+    let mut forget_stderr = Vec::new();
     assert_eq!(
-        first.provider_deletion,
-        ProviderDeletionOutcome::NotRequested
+        run_cli(
+            [
+                "--runtime",
+                runtime.to_str().ok_or("runtime path is not UTF-8")?,
+                "canonical",
+                "forget",
+                &fixture.project_id.to_string(),
+                "source",
+                &fixture.target_source.to_string(),
+                &fixture.authorization_source.to_string(),
+            ],
+            &mut forget_stdout,
+            &mut forget_stderr,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&forget_stderr)
     );
-    assert!(first.diagnostic.is_none());
+    let first: Value = serde_json::from_slice(&forget_stdout)?;
+    assert_eq!(first["state"], "completed");
+    assert_eq!(first["canonical_committed"], true);
+    assert_eq!(first["candidate_cleanup_completed"], true);
+    assert_eq!(first["managed_derived_cleanup_completed"], true);
+    assert_eq!(first["residue_verified"], true);
+    assert_eq!(first["replayed"], false);
+    assert_eq!(first["provider_deletion"], "notrequested");
+    assert!(first["diagnostic"].is_null());
+    let operation_id = OperationId::from_bytes(parse_identity(
+        first["forgetting_operation_id"]
+            .as_str()
+            .ok_or("forgetting operation identity missing")?,
+    )?);
 
     assert_local_cleanup(&fixture.operations, &fixture)?;
     assert_sentinel_absent(
@@ -82,7 +101,7 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
                 "repair",
                 &fixture.project_id.to_string(),
                 "forgetting",
-                &first.operation_id.to_string(),
+                &operation_id.to_string(),
             ],
             &mut stdout,
             &mut stderr,
@@ -93,18 +112,26 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
     );
     let cli: Value = serde_json::from_slice(&stdout)?;
     assert_eq!(cli["state"], "completed");
-    assert_eq!(
-        cli["forgetting_operation_id"],
-        first.operation_id.to_string()
-    );
+    assert_eq!(cli["forgetting_operation_id"], operation_id.to_string());
 
     let restarted = LocalOperations::new(RuntimeLayout::new(runtime)?);
-    let replay = restarted.repair_forgetting(fixture.project_id, first.operation_id)?;
-    assert_eq!(replay.operation_id, first.operation_id);
+    let replay = restarted.repair_forgetting(fixture.project_id, operation_id)?;
+    assert_eq!(replay.operation_id, operation_id);
     assert_eq!(replay.state, ForgettingState::Completed);
     assert!(replay.replayed);
     assert_local_cleanup(&restarted, &fixture)?;
     Ok(())
+}
+
+fn parse_identity(value: &str) -> Result<[u8; 16], Box<dyn Error>> {
+    if value.len() != 32 {
+        return Err("identity must contain 32 hexadecimal characters".into());
+    }
+    let mut bytes = [0_u8; 16];
+    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] = u8::from_str_radix(std::str::from_utf8(chunk)?, 16)?;
+    }
+    Ok(bytes)
 }
 
 #[test]

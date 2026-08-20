@@ -49,6 +49,13 @@ surface, not a Volicord product command or production architecture.
   inputs to isolated temporary fixtures and demonstrates positive validation
   plus independent structural failures, including direction reversal and
   Candidate/Guarded omissions, without modifying active documents.
+- `python3 rebuild/validation/shared/contract_coverage.py` verifies that each
+  mapped cross-owner behavior names its required Local Operations, CLI, MCP,
+  or Viewer product-entry-point tests. Its `--self-test` mode rejects
+  internal-primitive-only coverage, missing entrypoints, canonical-only or
+  over-broad forgetting, ignored cleanup/repair failure, Candidate
+  error-to-empty conversion, and configured-provider failure reported as
+  commercial semantic-provider success.
 
 The architecture checker is deterministic internal test support. It does not
 define domain meaning, judge conceptual correctness, choose implementation
@@ -95,12 +102,21 @@ Production Rust tests. It validates orchestration and evidence completeness
 only; Candidate, frontier, Decision, Checkpoint, Recall, and inspection
 semantics remain owned by the Production Rust crates.
 
+V07 product acceptance maps canonical forgetting through Local Operations and
+the public CLI, MCP, and Viewer adapters. The lower-level canonical tombstone
+and privacy cleanup tests remain separately classified owner tests and cannot
+by themselves satisfy the cross-owner forgetting requirements.
+
 The V11 multi-repository harness is under
 `end-to-end/multi-repository/`. It performs a non-fail-fast rehearsal against
 the installed CLI and MCP surfaces, writes child-operation evidence and its
 structured result only below ignored `rebuild/.local/`, and classifies missing
 public product paths as `unsupported` instead of substituting validation-only
-domain behavior.
+domain behavior. Its maintained journey seeds linked and unrelated Candidate
+and managed-Derived controls, inspects them after public forgetting and
+restart, and injects unavailable, corrupt, and unsupported Candidate stores to
+require an explicit degraded dependency state while canonical inspection
+remains usable.
 
 ## Scripted conformance and naturalistic dogfood
 

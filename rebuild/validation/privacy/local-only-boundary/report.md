@@ -2,14 +2,15 @@
 
 ## Status
 
-Passed against Production Rust commit
-`4ef58cb1488e69030f4e31c2ce2f41096d053274`. The maintained V07 matrix maps
-43 requirements to 12 Production integration targets and discovered 62 tests;
-every mapped target passed. This status closes the Project-scoped
+Passed in focused requalification against the current Production-fix baseline
+ending at `3d2922b4f90e0d6518b4986029a452dd1a5e75b7`. The maintained V07 matrix
+maps 44 requirements to 15 Production integration targets, separately
+classifies two owner tests, and discovered 92 tests; every mapped target
+passed. This status closes the Project-scoped
 local/interactive/background authority boundary, Candidate privacy integration,
 managed Derived deletion, and local-only degradation behavior. It does not
 claim a commercial provider, network transport, perfect secret detection,
-provider-side deletion completeness, Guarded dispatch, host UI, V08, or V11.
+provider-side deletion completeness, official V11, or naturalistic Dogfood.
 
 ## Goal
 
@@ -36,14 +37,14 @@ separate local/provider deletion truth.
 
 ## Input repositories and revisions
 
-Production behavior is fixed at
-`4ef58cb1488e69030f4e31c2ce2f41096d053274`. The self-authored
+Production behavior is fixed at the five current Production-fix commits ending
+at `3d2922b4f90e0d6518b4986029a452dd1a5e75b7`. The self-authored
 `v07-privacy-boundary` fixture has directory hash
-`f5b234f6776f89f1afda91fa1f0d6c36cd5a870f32b6c5dcfa618b683759f299`.
+`6104ccdc39d8c4c10d71b1fe0804bf77181a24b2afe6705372953c467a68c044`.
 It contains an included `src/lib.rs` with a deliberately fake secret-like line,
 an excluded `src/vendor/generated.rs`, and an inventory-visible
 `docs/readme.md` outside the requested provider scope. The V07 matrix file has
-SHA-256 `52357d5f87e7642aa23f6b4fa83e5b01f455984f95fb7e6df20064ada1230416`.
+SHA-256 `6b33ccf338e6a98e0aca81c3d16007ea5cee2ab4a2139c8fa9214f461f6e0a49`.
 
 The matrix also reuses `v01-rust` for local structural/ecosystem capability,
 `v09-phase-6-matrix` for Candidate, Inquiry, Decision, Checkpoint, Recall, and
@@ -78,25 +79,27 @@ viewer, or external service was required.
 ## Commands and configuration
 
 ```text
-rebuild/scripts/validate focused v07-production-commit -- cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features
-rebuild/scripts/validate focused v07-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
-rebuild/scripts/validate focused v07-assertions -- rebuild/validation/privacy/local-only-boundary/assertions.py
-rebuild/scripts/validate focused v07-assertions-repeat -- rebuild/validation/privacy/local-only-boundary/assertions.py
-rebuild/scripts/validate focused v07-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/privacy/local-only-boundary/report.md
+rebuild/scripts/validate focused c3-v07-product-path -- rebuild/validation/privacy/local-only-boundary/assertions.py
+rebuild/scripts/validate focused c3-contract-coverage -- python3 rebuild/validation/shared/contract_coverage.py
+rebuild/scripts/validate focused c3-contract-self-test -- python3 rebuild/validation/shared/contract_coverage.py --self-test
+rebuild/scripts/validate focused c3-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
 ```
 
-The assertion verifies the exact Production commit subject, rejects Production
-changes after that commit, checks that all workspace packages stay under
+The assertion verifies that all five Production-fix subjects remain in current
+history, checks that all workspace packages stay under
 `rebuild/`, rejects legacy Volicord dependencies, validates the shared fixture
 manifest and four evidence roles, discovers every mapped Rust test with
-`cargo test -- --list`, and runs each mapped Production target.
+`cargo test -- --list`, and runs each mapped Production target. It counts the
+Local Operations, CLI, MCP, and Viewer forgetting scenarios as product
+acceptance while reporting lower-level tombstone and cleanup cases only as
+owner tests.
 
 ## Observed results
 
-The first assertion run completed in 3.805 seconds and reported four fixture
-sources, five evidence groups, 43 mapped requirements, 12 Production targets,
-62 discovered tests, and three provider-scope fixture files. Every executed
-target passed.
+The focused assertion completed in 13.416 seconds and reported four fixture
+sources, five evidence groups, 44 mapped requirements, two classified owner
+tests, 15 Production targets, 92 discovered tests, and three provider-scope
+fixture files. Every executed target passed.
 
 The privacy oracle observed no dispatch token and no provider invocation before
 opt-in even after recording current-host interactive access. A Project opt-in
@@ -117,8 +120,9 @@ provider-derived cache was recorded. Annotation identity, retention expiry,
 snapshot staleness, local deletion, provider deletion failure, and restart
 inspection remained explicit.
 
-Canonical Source forgetting removed only Candidate and managed Derived content
-linked to that Source. Unrelated Candidate and Derived records remained current.
+Canonical Source forgetting through Local Operations and the public CLI, MCP,
+and Viewer paths removed only Candidate and managed Derived content linked to
+that Source. Unrelated Candidate and Derived records remained current.
 Existing opt-out, dismissal, expiry, explicit deletion, promotion, and Candidate
 Inspection tests passed unchanged; promoted canonical targets survived Candidate
 cleanup. Portable export and the privacy SQLite store contained no raw request
@@ -144,10 +148,8 @@ as successful.
 
 ## Performance and resource observations
 
-The first maintained assertion completed in 3.805 seconds after build reuse.
-The six focused privacy tests completed in approximately 0.08 seconds within
-that run, and the post-Production-commit workspace test completed in 6.667
-seconds. Fixtures are deliberately small and deterministic. These observations
+The focused maintained assertion completed in 13.416 seconds after build
+reuse. Fixtures are deliberately small and deterministic. These observations
 do not establish large-repository filtering throughput, provider latency,
 network bandwidth, peak memory, database growth, or long-retention cleanup cost.
 
@@ -238,10 +240,9 @@ accepted Q3 revisit process.
 
 - Place background external dispatch behind exact Guarded confirmation only if
   the Local Operations owner classifies it as a Guarded high-risk effect.
-- Add host/CLI/viewer privacy surfaces and clean Linux/Codex wiring in V08,
-  without changing this Project-scoped authority contract.
-- Exercise real repositories, real provider retention limitations, concurrency,
-  cancellation, accessibility, and combined Candidate/Guarded journeys in V11.
+- Exercise real repositories, real provider retention limitations,
+  cancellation, accessibility, and combined Candidate/Guarded journeys only
+  through a fresh official V11 and naturalistic Dogfood campaign.
 - Keep provider/model/transport selection and credential storage as explicit
   later implementation choices.
 
@@ -249,6 +250,7 @@ accepted Q3 revisit process.
 
 Maintained artifacts are this report, `assertions.py`, the
 `v07-privacy-boundary` fixture directory and matrix, its shared fixture-manifest
-entry, the reused V01/V06/V09 fixture authorities, and the mapped Production
-Rust tests. Focused command results, complete stdout/stderr, exit status, and
-durations remain under ignored `rebuild/.local/validation/`.
+entry, the cross-owner contract mapping and self-test, the reused V01/V06/V09
+fixture authorities, and the mapped Production Rust tests. Focused command
+results, complete stdout/stderr, exit status, and durations remain under
+ignored `rebuild/.local/validation/`.

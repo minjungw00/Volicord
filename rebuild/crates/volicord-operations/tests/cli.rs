@@ -1,6 +1,176 @@
+use rusqlite::Connection;
 use serde_json::Value;
-use std::fs;
+use std::{
+    collections::BTreeSet,
+    fs,
+    sync::{Arc, Barrier},
+    thread,
+};
 use volicord_operations::{run_cli, CliExit};
+
+#[test]
+fn candidate_cli_rejects_dependency_failures_as_empty_success(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for fault in ["unsupported", "corrupt", "unavailable"] {
+        let temporary = tempfile::tempdir()?;
+        let runtime = temporary.path().join("runtime");
+        let runtime_text = runtime.to_str().ok_or("runtime path")?;
+        let mut output = Vec::new();
+        let mut error = Vec::new();
+        assert_eq!(
+            run_cli(
+                [
+                    "--runtime",
+                    runtime_text,
+                    "project",
+                    "init",
+                    "Candidate CLI"
+                ],
+                &mut output,
+                &mut error,
+            ),
+            CliExit::SUCCESS,
+            "{fault}: {}",
+            String::from_utf8_lossy(&error)
+        );
+        let initialized: Value = serde_json::from_slice(&output)?;
+        let project = initialized["project_id"]
+            .as_str()
+            .ok_or("missing Project ID")?;
+        let candidate_store = runtime.join("candidates.sqlite3");
+        match fault {
+            "unsupported" => {
+                Connection::open(&candidate_store)?.execute(
+                    "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
+                    [],
+                )?;
+            }
+            "corrupt" => {
+                Connection::open(&candidate_store)?.execute("DROP TABLE candidates", [])?;
+            }
+            "unavailable" => {
+                fs::remove_file(&candidate_store)?;
+                fs::create_dir(&candidate_store)?;
+            }
+            _ => unreachable!(),
+        }
+        output.clear();
+        error.clear();
+        assert_eq!(
+            run_cli(
+                ["--runtime", runtime_text, "candidates", project],
+                &mut output,
+                &mut error,
+            ),
+            CliExit::SUCCESS,
+            "{fault}: {}",
+            String::from_utf8_lossy(&error)
+        );
+        let inspection: Value = serde_json::from_slice(&output)?;
+        assert_eq!(inspection["health"], "degraded", "{fault}: {inspection}");
+        assert_eq!(inspection["candidates"], serde_json::json!([]));
+    }
+    Ok(())
+}
+
+#[test]
+fn concurrent_cli_writers_preserve_every_committed_source() -> Result<(), Box<dyn std::error::Error>>
+{
+    const WRITERS: usize = 8;
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let runtime_text = runtime.to_str().ok_or("runtime path")?;
+    let mut output = Vec::new();
+    let mut error = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "project",
+                "init",
+                "Concurrent CLI",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let initialized: Value = serde_json::from_slice(&output)?;
+    let project = initialized["project_id"]
+        .as_str()
+        .ok_or("missing Project ID")?
+        .to_owned();
+    let barrier = Arc::new(Barrier::new(WRITERS));
+    let mut writers = Vec::new();
+    for index in 0..WRITERS {
+        let runtime = runtime.clone();
+        let project = project.clone();
+        let barrier = Arc::clone(&barrier);
+        writers.push(thread::spawn(move || {
+            barrier.wait();
+            let mut output = Vec::new();
+            let mut error = Vec::new();
+            let runtime = runtime.to_str().expect("runtime path");
+            let turn = format!("concurrent CLI writer {index}");
+            assert_eq!(
+                run_cli(
+                    [
+                        "--runtime",
+                        runtime,
+                        "canonical",
+                        "user-source",
+                        &project,
+                        "cli-test",
+                        "bounded-concurrency",
+                        &turn,
+                    ],
+                    &mut output,
+                    &mut error,
+                ),
+                CliExit::SUCCESS,
+                "writer {index}: {}",
+                String::from_utf8_lossy(&error)
+            );
+            let result: Value = serde_json::from_slice(&output).expect("writer JSON");
+            result["identity"]
+                .as_str()
+                .expect("Source identity")
+                .to_owned()
+        }));
+    }
+    let identities = writers
+        .into_iter()
+        .map(|writer| writer.join().expect("CLI writer"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(identities.len(), WRITERS);
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            ["--runtime", runtime_text, "canonical", "inspect", &project],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let inspection: Value = serde_json::from_slice(&output)?;
+    let persisted = inspection["records"]
+        .as_array()
+        .ok_or("canonical records")?
+        .iter()
+        .filter_map(|record| record["identity"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(identities
+        .iter()
+        .all(|identity| persisted.contains(identity.as_str())));
+    Ok(())
+}
 
 #[test]
 fn cli_initializes_binds_analyzes_and_inspects_without_raw_storage_access(

@@ -14,6 +14,7 @@ import platform
 import re
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -324,6 +325,101 @@ def cli_json(
     except json.JSONDecodeError:
         return None, result
     return value, result
+
+
+def qualify_candidate_dependency_failures(
+    recorder: Recorder,
+    cli: Path,
+    mcp_binary: Path,
+    env: dict[str, str],
+    runtime: Path,
+    project_id: str,
+) -> tuple[bool, list[dict[str, Any]]]:
+    path = runtime / "candidates.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    connection.close()
+    baseline = path.read_bytes()
+    sidecars = [Path(f"{path}-wal"), Path(f"{path}-shm"), Path(f"{path}-journal")]
+
+    def restore() -> None:
+        if path.is_dir():
+            path.rmdir()
+        elif path.exists():
+            path.unlink()
+        path.write_bytes(baseline)
+        path.chmod(0o600)
+        for sidecar in sidecars:
+            if sidecar.is_file():
+                sidecar.unlink()
+
+    observations: list[dict[str, Any]] = []
+    try:
+        for fault, expected in (
+            ("unsupported", "unsupported"),
+            ("corrupt", "corrupt"),
+            ("unavailable", "unavailable"),
+        ):
+            restore()
+            if fault == "unsupported":
+                with sqlite3.connect(path) as connection:
+                    connection.execute(
+                        "UPDATE metadata SET value = '999' WHERE key = 'schema_version'"
+                    )
+            elif fault == "corrupt":
+                with sqlite3.connect(path) as connection:
+                    connection.execute("DROP TABLE candidates")
+            else:
+                path.unlink()
+                path.mkdir()
+            cli_result, cli_operation = cli_json(
+                recorder, f"candidate-{fault}-cli", cli, env, "candidates", project_id
+            )
+            canonical, canonical_operation = cli_json(
+                recorder, f"candidate-{fault}-canonical", cli, env,
+                "canonical", "inspect", project_id,
+            )
+            host = None
+            cleanup: dict[str, Any] = {}
+            try:
+                host = Mcp(mcp_binary, env)
+                host.initialize()
+                mcp_result, mcp_ok = host.tool(
+                    "candidate_inspect", {"project_id": project_id}
+                )
+            except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+                mcp_result, mcp_ok = {"error": str(error)}, False
+            finally:
+                if host is not None:
+                    cleanup = host.close()
+            issue_preserved = any(
+                issue.get("scope") == "candidate_inspection"
+                and expected in issue.get("kind", "")
+                for issue in (mcp_result or {}).get("issues", [])
+            )
+            passed = all((
+                cli_result is not None and cli_result.get("health") == "degraded",
+                cli_result is not None and cli_result.get("candidates") == [],
+                canonical is not None and bool(canonical.get("records")),
+                mcp_ok,
+                mcp_result is not None and mcp_result.get("health") == expected,
+                mcp_result is not None and mcp_result.get("candidates") == [],
+                issue_preserved,
+                cleanup.get("exit_code") == 0,
+            ))
+            observations.append({
+                "fault": fault,
+                "status": "passed" if passed else "failed",
+                "cli": cli_result,
+                "cli_operation": cli_operation,
+                "canonical_usable": canonical is not None and bool(canonical.get("records")),
+                "canonical_operation": canonical_operation,
+                "mcp": mcp_result,
+                "cleanup": cleanup,
+            })
+    finally:
+        restore()
+    return all(item["status"] == "passed" for item in observations), observations
 
 
 class Mcp:
@@ -1208,8 +1304,34 @@ def rehearse_target(
         recorder, "disposable-source", cli, env, "canonical", "user-source", project_id,
         "codex", "v11", "Disposable Source created by the integrated V11 journey",
     )
+    cleanup_control_source, cleanup_control_source_op = cli_json(
+        recorder, "cleanup-control-source", cli, env, "canonical", "user-source", project_id,
+        "codex", "v11", "Unrelated Source that must survive the V11 forgetting journey",
+    )
+    cleanup_control_state = target_root / "forgetting-control-state.json"
+    cleanup_control_result = target_root / "forgetting-control-result.json"
+    fixture_control_command = [
+        "cargo", "test", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-operations",
+        "--test", "v11_fixture_control", "--all-features", "--", "--exact",
+        "seed_and_inspect_v11_forgetting_control", "--nocapture",
+    ]
+    if disposable_source and cleanup_control_source:
+        fixture_env = env | {
+            "VOLICORD_V11_RUNTIME": str(runtime),
+            "VOLICORD_V11_PROJECT": project_id,
+            "VOLICORD_V11_RELATED_SOURCE": disposable_source["identity"],
+            "VOLICORD_V11_UNRELATED_SOURCE": cleanup_control_source["identity"],
+            "VOLICORD_V11_FIXTURE_ACTION": "seed",
+            "VOLICORD_V11_CONTROL_OUTPUT": str(cleanup_control_state),
+        }
+        cleanup_seed_op = recorder.run(
+            "seed-forgetting-controls", fixture_control_command, fixture_env
+        )
+    else:
+        fixture_env = env
+        cleanup_seed_op = {"exit_code": None}
     deletion = None
-    if deletion_authorization and disposable_source:
+    if deletion_authorization and disposable_source and cleanup_seed_op.get("exit_code") == 0:
         deletion, deletion_op = cli_json(
             recorder, "forget-source", cli, env, "canonical", "forget", project_id,
             "source", disposable_source["identity"], deletion_authorization["identity"],
@@ -1219,10 +1341,29 @@ def rehearse_target(
     canonical_after_mutations, canonical_after_mutations_op = cli_json(
         recorder, "canonical-after-mutations", cli, env, "canonical", "inspect", project_id
     )
+    if deletion and cleanup_control_state.is_file():
+        cleanup_inspect_op = recorder.run(
+            "inspect-forgetting-controls",
+            fixture_control_command,
+            fixture_env | {
+                "VOLICORD_V11_FIXTURE_ACTION": "inspect",
+                "VOLICORD_V11_CONTROL_STATE": str(cleanup_control_state),
+                "VOLICORD_V11_CONTROL_OUTPUT": str(cleanup_control_result),
+            },
+        )
+        cleanup_control = (
+            json.loads(cleanup_control_result.read_text(encoding="utf-8"))
+            if cleanup_inspect_op["exit_code"] == 0 and cleanup_control_result.is_file()
+            else None
+        )
+    else:
+        cleanup_inspect_op = {"exit_code": None}
+        cleanup_control = None
     records_after_mutations = canonical_after_mutations.get("records", []) if canonical_after_mutations else []
     mutation_operations = [
         correction_source_op, correction_op, supersession_source_op, supersession_op,
-        deletion_source_op, disposable_source_op, deletion_op, canonical_after_mutations_op,
+        deletion_source_op, disposable_source_op, cleanup_control_source_op, cleanup_seed_op,
+        deletion_op, canonical_after_mutations_op, cleanup_inspect_op,
     ]
     mutations_ok = all([
         corrected,
@@ -1231,8 +1372,17 @@ def rehearse_target(
         superseded,
         superseded and superseded.get("identity") != local_decision.get("identity") if local_decision else False,
         deletion,
+        deletion and deletion.get("state") == "completed",
+        deletion and deletion.get("candidate_cleanup_completed") is True,
+        deletion and deletion.get("managed_derived_cleanup_completed") is True,
+        deletion and deletion.get("residue_verified") is True,
         canonical_after_mutations,
         disposable_source and all(record.get("identity") != disposable_source.get("identity") for record in records_after_mutations),
+        cleanup_control_source and any(record.get("identity") == cleanup_control_source.get("identity") for record in records_after_mutations),
+        cleanup_control and cleanup_control.get("related_candidate_absent") is True,
+        cleanup_control and cleanup_control.get("related_derived_absent") is True,
+        cleanup_control and cleanup_control.get("unrelated_candidate_present") is True,
+        cleanup_control and cleanup_control.get("unrelated_derived_present") is True,
         canonical_record(canonical_after_mutations, "decision", lifecycle_state="active") is not None,
     ])
     mutation_status = "passed" if mutations_ok else (
@@ -1240,11 +1390,13 @@ def rehearse_target(
     )
     steps["correction_supersession_deletion"] = step(
         mutation_status,
-        "the integrated Decision was corrected and superseded, and an integrated disposable Source was forgotten",
+        "the integrated Decision was corrected and superseded, and public forgetting removed linked Candidate/managed Derived controls while preserving unrelated controls after restart",
         correction_authorization=correction_authorization, correction=corrected,
         supersession_authorization=supersession_authorization, supersession=superseded,
         deletion_authorization=deletion_authorization, disposable_source=disposable_source,
+        unrelated_control_source=cleanup_control_source, cleanup_seed_operation=cleanup_seed_op,
         deletion=deletion, canonical_after=canonical_after_mutations,
+        cleanup_restart_inspection=cleanup_control, cleanup_inspection_operation=cleanup_inspect_op,
     )
 
     canonical_before_docs = target_root / "before-documents.json"
@@ -1313,6 +1465,22 @@ def rehearse_target(
             recall_pre_recovery.get("used_sources") != recall_post_recovery.get("used_sources")
         ),
     )
+
+    try:
+        candidate_failure_ok, candidate_failure_evidence = qualify_candidate_dependency_failures(
+            recorder, cli, mcp_binary, env, runtime, project_id
+        )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error, json.JSONDecodeError) as error:
+        candidate_failure_ok = False
+        candidate_failure_evidence = [{"status": "failed", "error": str(error)}]
+    steps["candidate_boundary"]["evidence"]["dependency_failure_qualification"] = (
+        candidate_failure_evidence
+    )
+    if not candidate_failure_ok:
+        steps["candidate_boundary"]["status"] = "failed"
+        steps["candidate_boundary"]["summary"] = (
+            "Candidate lifecycle passed, but dependency failure honesty qualification failed"
+        )
 
     legacy_after = (legacy_sentinel.stat().st_mtime_ns, sha256(legacy_sentinel))
     return {

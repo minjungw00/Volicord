@@ -485,24 +485,27 @@ fn close_and_reopen_preserves_identity_binding_and_provenance(
 }
 
 #[test]
-fn rejects_unsupported_newer_schema_without_mutating_file() -> Result<(), Box<dyn std::error::Error>>
+fn rejects_every_non_current_schema_without_mutating_file() -> Result<(), Box<dyn std::error::Error>>
 {
     let root = tempdir()?;
-    let path = root.path().join("context.sqlite3");
-    drop(store_with_ids(&path, &[])?);
-    let connection = Connection::open(&path)?;
-    connection.execute(
-        "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
-        [(SCHEMA_VERSION + 1).to_string()],
-    )?;
-    drop(connection);
-    let before = fs::read(&path)?;
+    for detected in [SCHEMA_VERSION.saturating_sub(1), SCHEMA_VERSION + 1] {
+        assert_ne!(detected, SCHEMA_VERSION);
+        let path = root.path().join(format!("context-{detected}.sqlite3"));
+        drop(store_with_ids(&path, &[])?);
+        let connection = Connection::open(&path)?;
+        connection.execute(
+            "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
+            [detected.to_string()],
+        )?;
+        drop(connection);
+        let before = fs::read(&path)?;
 
-    let error = Store::open(&path)
-        .err()
-        .ok_or("expected unsupported schema rejection")?;
-    assert_eq!(error.kind(), ErrorKind::UnsupportedVersion);
-    assert_eq!(fs::read(&path)?, before);
+        let error = Store::open(&path)
+            .err()
+            .ok_or("expected unsupported schema rejection")?;
+        assert_eq!(error.kind(), ErrorKind::UnsupportedVersion);
+        assert_eq!(fs::read(&path)?, before);
+    }
     Ok(())
 }
 

@@ -1,13 +1,183 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, fs, process::Command};
+use std::{
+    collections::BTreeSet,
+    fs,
+    process::Command,
+    sync::{Arc, Barrier},
+    thread,
+};
 use tempfile::tempdir;
+use volicord_context::{Principal, PrincipalKind, TimestampMicros};
 use volicord_host::{run_stdio, HostAdapter, HOST_TOOL_NAMES};
+use volicord_inquiry::{
+    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDraft,
+    CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
+    SubmissionOutcome,
+};
 use volicord_operations::{LocalOperations, RuntimeLayout};
 use volicord_privacy::{
-    ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
-    SourceExclusionPolicy,
+    ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
+    PrivacyStore, ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy,
+    SecretFilteringPolicy, SourceExclusionPolicy,
 };
+
+#[test]
+fn canonical_forgetting_mcp_cleans_linked_local_content() {
+    let (_temporary, mut adapter, project) = setup();
+    let project_id = parse_project(&project);
+    let target = adapter
+        .operations()
+        .record_user_source(
+            project_id,
+            "codex".into(),
+            "mcp-forgetting".into(),
+            "linked target".into(),
+        )
+        .expect("target Source");
+    let unrelated = adapter
+        .operations()
+        .record_user_source(
+            project_id,
+            "codex".into(),
+            "mcp-forgetting".into(),
+            "unrelated target".into(),
+        )
+        .expect("unrelated Source");
+    let target_id = parse_source_identity(&target.identity);
+    let unrelated_id = parse_source_identity(&unrelated.identity);
+    let related_candidate = store_forgetting_candidate(&adapter, project_id, target_id, "related");
+    let unrelated_candidate =
+        store_forgetting_candidate(&adapter, project_id, unrelated_id, "unrelated");
+    let mut privacy =
+        PrivacyStore::open(adapter.operations().layout().privacy_store()).expect("privacy store");
+    let related_derived = privacy
+        .record_managed_derived(forgetting_derived(project_id, target_id, "related"))
+        .expect("related Derived")
+        .id;
+    let unrelated_derived = privacy
+        .record_managed_derived(forgetting_derived(project_id, unrelated_id, "unrelated"))
+        .expect("unrelated Derived")
+        .id;
+    drop(privacy);
+
+    let response = call(
+        &mut adapter,
+        "canonical_mutate",
+        json!({
+            "action":"forget",
+            "project_id":project,
+            "record_kind":"source",
+            "record_id":target.identity,
+            "user_turn":"Forget this exact linked Source"
+        }),
+    );
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let result = structured(&response);
+    assert_eq!(result["state"], "completed");
+    assert_eq!(result["canonical_committed"], true);
+    assert_eq!(result["candidate_cleanup_completed"], true);
+    assert_eq!(result["managed_derived_cleanup_completed"], true);
+    assert_eq!(result["residue_verified"], true);
+
+    let candidates = CandidateStore::open(adapter.operations().layout().candidate_store())
+        .expect("Candidate store");
+    assert!(candidates
+        .get(project_id, related_candidate)
+        .expect("related Candidate")
+        .content
+        .is_none());
+    assert!(candidates
+        .get(project_id, unrelated_candidate)
+        .expect("unrelated Candidate")
+        .content
+        .is_some());
+    let privacy =
+        PrivacyStore::open(adapter.operations().layout().privacy_store()).expect("privacy store");
+    assert_eq!(
+        privacy
+            .get_derived(project_id, related_derived)
+            .expect("related Derived")
+            .state,
+        ManagedDerivedState::Deleted
+    );
+    assert_eq!(
+        privacy
+            .get_derived(project_id, unrelated_derived)
+            .expect("unrelated Derived")
+            .state,
+        ManagedDerivedState::Current
+    );
+}
+
+fn store_forgetting_candidate(
+    adapter: &HostAdapter,
+    project_id: volicord_context::ProjectId,
+    source_id: volicord_context::SourceId,
+    summary: &str,
+) -> volicord_inquiry::CandidateId {
+    let outcome = adapter
+        .operations()
+        .submit_candidate(CandidateDraft {
+            project_id,
+            kind: CandidateKind::Observation,
+            collection_mode: CandidateCollectionMode::Automatic,
+            origin: CandidateOrigin {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "mcp-test-agent".into(),
+                },
+                subsystem: "mcp-forgetting-test".into(),
+                session: Some("mcp-forgetting".into()),
+                provenance_summary: "MCP forgetting fixture".into(),
+            },
+            collection_scope: CandidateCollectionScope {
+                project_id,
+                session: Some("mcp-forgetting".into()),
+                source_operation: Some("fixture".into()),
+                candidate_kind: CandidateKind::Observation,
+            },
+            observation_basis: CandidateObservationBasis {
+                source_basis: vec![source_id],
+                ..CandidateObservationBasis::default()
+            },
+            observed_at: TimestampMicros::from_unix_micros(1),
+            retention: CandidateRetention {
+                retained_until: None,
+                basis: "retain for MCP forgetting test".into(),
+            },
+            content: CandidateContent {
+                bounded_summary: summary.into(),
+                question: None,
+            },
+        })
+        .expect("submit Candidate");
+    match outcome {
+        SubmissionOutcome::Stored(candidate) => candidate.id,
+        SubmissionOutcome::CollectionDisabled { .. } => panic!("Candidate collection disabled"),
+    }
+}
+
+fn forgetting_derived(
+    project_id: volicord_context::ProjectId,
+    source_id: volicord_context::SourceId,
+    content: &str,
+) -> ManagedDerivedDraft {
+    ManagedDerivedDraft {
+        project_id,
+        kind: ManagedDerivedKind::CachedSummary,
+        provider: None,
+        model: None,
+        purpose: "MCP forgetting fixture".into(),
+        analysis_snapshot: None,
+        included_sources: Vec::new(),
+        canonical_links: vec![ManagedCanonicalLink::Source(source_id)],
+        content: content.into(),
+        uncertainty: None,
+        retained_until: None,
+        retention_basis: "rebuildable fixture".into(),
+    }
+}
 
 fn setup() -> (tempfile::TempDir, HostAdapter, String) {
     let temporary = tempdir().expect("temporary directory");
@@ -23,6 +193,59 @@ fn setup() -> (tempfile::TempDir, HostAdapter, String) {
         .id
         .to_string();
     (temporary, HostAdapter::new(operations), project)
+}
+
+#[test]
+fn concurrent_mcp_writers_preserve_every_committed_context() {
+    const WRITERS: usize = 8;
+    let (_temporary, adapter, project) = setup();
+    let runtime = adapter.operations().layout().root().to_path_buf();
+    drop(adapter);
+    let barrier = Arc::new(Barrier::new(WRITERS));
+    let mut writers = Vec::new();
+    for index in 0..WRITERS {
+        let runtime = runtime.clone();
+        let project = project.clone();
+        let barrier = Arc::clone(&barrier);
+        writers.push(thread::spawn(move || {
+            let operations = LocalOperations::new(RuntimeLayout::new(runtime).expect("runtime"));
+            let mut adapter = HostAdapter::new(operations);
+            let statement = format!("bounded concurrent MCP context {index}");
+            barrier.wait();
+            let response = call(
+                &mut adapter,
+                "context_record",
+                json!({
+                    "project_id":project,
+                    "user_turn":statement,
+                    "role":"goal",
+                    "statement":statement,
+                }),
+            );
+            assert_eq!(response["result"]["isError"], false, "{response}");
+            structured(&response)["context_item_id"]
+                .as_str()
+                .expect("Context identity")
+                .to_owned()
+        }));
+    }
+    let identities = writers
+        .into_iter()
+        .map(|writer| writer.join().expect("MCP writer"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(identities.len(), WRITERS);
+    let restarted = LocalOperations::new(RuntimeLayout::new(runtime).expect("runtime"));
+    let canonical = restarted
+        .canonical_basis(parse_project(&project))
+        .expect("canonical after concurrent MCP writes");
+    let persisted = canonical
+        .context_items
+        .iter()
+        .map(|item| item.id.to_string())
+        .collect::<BTreeSet<_>>();
+    assert!(identities
+        .iter()
+        .all(|identity| persisted.contains(identity)));
 }
 
 #[test]
