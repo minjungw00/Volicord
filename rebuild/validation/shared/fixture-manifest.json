@@ -566,7 +566,7 @@
       "id": "v10-local-platform-primitives",
       "validation_id": "V10",
       "path": "rebuild/validation/local-platform-primitives/fixtures",
-      "purpose": "Exercise Linux process stream, exit, timeout, cancellation and child-tree observations; path, symlink, worktree, clone, dirty-state, fingerprint and no-replace publication semantics; and bounded transaction, schema and repair classification without promoting a legacy API.",
+      "purpose": "Exercise deterministic Linux process readiness, complete streams, exit, timeout, cancellation, repeated child-tree cleanup and process-death lock release; path, permission, symlink, read-only, parent-sync, worktree, clone, dirty-state, fingerprint and no-replace publication semantics; and bounded transaction, schema and repair classification without promoting a legacy API.",
       "expected_entities": [
         "legacy-platform-process",
         "legacy-test-process",
@@ -581,19 +581,22 @@
       ],
       "expected_relations": [
         "timeout-trigger|distinct_from|termination-observation",
+        "readiness-pipe|precedes|timeout-trigger",
+        "holder-process-death|releases|mutation-lock",
         "linked-worktree|shares|local-clone-coordinate",
         "separate-clone|does_not_imply|same-project",
         "dirty-status|contributes_to|source-fingerprint",
         "atomic-publication|reports|namespace-effect-and-durability",
+        "permission-and-symlink-fault|cannot_be_coerced_to|publication-success",
         "storage-pattern|does_not_create|second-canonical-engine"
       ],
       "expected_unsupported": [
         "Windows and macOS process or filesystem behavior",
         "cgroup, subreaper, PID-namespace or security-sandbox guarantees",
-        "network filesystem atomicity and hostile concurrent path replacement",
+        "network filesystem atomicity, arbitrary power loss and hostile concurrent path replacement",
         "legacy Runtime Home, schema, repair, migration or compatibility"
       ],
-      "content_sha256": "dfcff91d234af21f480fc4e30effbb409140dc118381e46c8667f6129ed1eb79",
+      "content_sha256": "dc55ef88ed4899cf90b1353237163b754dbe421252e7303d23f86f80fbdcd4fc",
       "origin": "Self-authored deterministic Linux fixture for V10.",
       "license": "CC0-1.0"
     },

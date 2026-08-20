@@ -53,16 +53,44 @@ def main() -> int:
     assert "volicord-types" in filesystem_manifest
     assert "volicord-platform-process" in filesystem_manifest
 
-    result = load_probe().full_probe()
+    probe = load_probe()
+    result = probe.full_probe()
     assert result["platform"] == "linux"
     assert result["process"]["exit_code"] == 23
     assert result["process"]["timeout_triggered"] is True
     assert result["process"]["termination_requested"] is True
     assert result["process"]["descendant_termination_observed"] is True
+    assert result["process"]["readiness_protocol"] == "dedicated inherited pipe observed before timeout"
+    repeated_process_runs = [result["process"]]
+    repeated_process_runs.extend(probe.process_probe() for _ in range(11))
+    assert len(repeated_process_runs) == 12
+    assert all(run["timeout_triggered"] is True for run in repeated_process_runs)
+    assert all(run["termination_requested"] is True for run in repeated_process_runs)
+    assert all(run["descendant_termination_observed"] is True for run in repeated_process_runs)
+    assert len({run["complete_stdout_sha256"] for run in repeated_process_runs}) == 1
+    assert len({run["complete_stderr_sha256"] for run in repeated_process_runs}) == 1
+    result["bounded_process_repetition_count"] = len(repeated_process_runs)
     assert result["filesystem"]["symlink_escape_rejected"] is True
     assert result["repository"]["linked_dirty"]["dirty"] == "true"
     assert result["storage"]["uncommitted_rows_after_crash"] == 0
     assert result["storage"]["integrity_check"] == "ok"
+
+    probe_source = (DIRECTORY / "probe.py").read_text(encoding="utf-8")
+    assert "timeout.stdout" not in probe_source
+    production_tests = (ROOT / "rebuild/crates/volicord-local-platform/tests/filesystem.rs").read_text(
+        encoding="utf-8"
+    )
+    for test_name in (
+        "private_runtime_paths_repair_owned_modes_and_reject_symlinks",
+        "private_runtime_creation_rejects_a_read_only_parent",
+        "mutation_lock_is_released_after_holder_process_termination",
+        "publication_rejects_symlink_and_read_only_faults_without_false_success",
+    ):
+        assert f"fn {test_name}" in production_tests, test_name
+    production_filesystem = (ROOT / "rebuild/crates/volicord-local-platform/src/filesystem.rs").read_text(
+        encoding="utf-8"
+    )
+    assert "fn parent_sync_failure_reports_published_namespace_effect" in production_filesystem
 
     report = REPORT.read_text(encoding="utf-8")
     for candidate in candidates:
@@ -74,6 +102,12 @@ def main() -> int:
         "timeout",
         "cancellation",
         "child-tree",
+        "readiness",
+        "repeated",
+        "read-only",
+        "permission",
+        "process death",
+        "parent-sync",
         "symlink",
         "worktree",
         "clone",

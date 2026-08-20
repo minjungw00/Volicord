@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import signal
 import sqlite3
@@ -52,6 +53,34 @@ def await_not_running(pid: int, timeout: float) -> bool:
     return not process_is_running(pid)
 
 
+def await_descendant_readiness(read_fd: int, child: subprocess.Popen[bytes], timeout: float) -> int:
+    deadline = time.monotonic() + timeout
+    payload = bytearray()
+    while b"\n" not in payload:
+        if child.poll() is not None:
+            raise AssertionError(
+                f"descendant fixture exited before readiness with status {child.returncode}"
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("descendant fixture did not report readiness")
+        readable, _, _ = select.select([read_fd], [], [], remaining)
+        if not readable:
+            raise AssertionError("descendant fixture readiness timed out")
+        chunk = os.read(read_fd, 128)
+        if not chunk:
+            raise AssertionError("descendant fixture closed readiness before one complete record")
+        payload.extend(chunk)
+        if len(payload) > 128:
+            raise AssertionError("descendant readiness record exceeded its bound")
+    if payload.count(b"\n") != 1 or not payload.startswith(b"descendant="):
+        raise AssertionError("descendant fixture emitted malformed readiness")
+    try:
+        return int(payload.removeprefix(b"descendant=").strip().decode("ascii"))
+    except ValueError as error:
+        raise AssertionError("descendant fixture emitted a non-numeric identity") from error
+
+
 def process_probe() -> dict[str, object]:
     started = time.monotonic_ns()
     completed = subprocess.run(
@@ -68,31 +97,45 @@ def process_probe() -> dict[str, object]:
     if completed.returncode != 23:
         raise AssertionError("numeric exit status was not preserved")
 
-    child = subprocess.Popen(
-        [sys.executable, __file__, "--fixture", "descendant"],
-        start_new_session=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    readiness_read, readiness_write = os.pipe()
+    try:
+        child = subprocess.Popen(
+            [sys.executable, __file__, "--fixture", "descendant", str(readiness_write)],
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=(readiness_write,),
+        )
+    except BaseException:
+        os.close(readiness_read)
+        os.close(readiness_write)
+        raise
+    os.close(readiness_write)
     timeout_triggered = False
     termination_requested = False
     descendant_pid: int | None = None
+    captured_stdout = b""
+    captured_stderr = b""
     try:
-        child.communicate(timeout=0.15)
-    except subprocess.TimeoutExpired as timeout:
-        timeout_triggered = True
-        prefix = timeout.stdout or b""
-        descendant_pid = int(prefix.decode("ascii").strip().split("=", 1)[1])
-        os.killpg(child.pid, signal.SIGKILL)
-        termination_requested = True
-        stdout, stderr = child.communicate(timeout=2)
-        captured_stdout = prefix if stdout.startswith(prefix) else prefix + stdout
-        if stderr:
-            raise AssertionError("descendant fixture emitted unexpected stderr")
-        if f"descendant={descendant_pid}\n".encode("ascii") not in captured_stdout:
-            raise AssertionError("descendant identity was not preserved")
+        descendant_pid = await_descendant_readiness(readiness_read, child, 2.0)
+        try:
+            child.communicate(timeout=0.05)
+        except subprocess.TimeoutExpired:
+            timeout_triggered = True
+        if not timeout_triggered:
+            raise AssertionError("ready hanging process did not reach the timeout path")
+    finally:
+        os.close(readiness_read)
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+            termination_requested = True
+        captured_stdout, captured_stderr = child.communicate(timeout=2)
     if descendant_pid is None:
-        raise AssertionError("hanging process did not reach the timeout path")
+        raise AssertionError("hanging process did not complete readiness")
+    if captured_stderr:
+        raise AssertionError("descendant fixture emitted unexpected stderr")
+    if captured_stdout != f"descendant={descendant_pid}\n".encode("ascii"):
+        raise AssertionError("complete descendant stdout was not preserved")
     descendant_stopped = await_not_running(descendant_pid, 2.0)
     if not descendant_stopped:
         raise AssertionError("process-group termination left a running descendant")
@@ -104,6 +147,7 @@ def process_probe() -> dict[str, object]:
         "duration_ms": duration_ms,
         "timeout_triggered": timeout_triggered,
         "termination_requested": termination_requested,
+        "readiness_protocol": "dedicated inherited pipe observed before timeout",
         "direct_child_returncode": child.returncode,
         "direct_child_signal": -child.returncode if child.returncode is not None and child.returncode < 0 else None,
         "descendant_termination_observed": descendant_stopped,
@@ -279,6 +323,9 @@ def fixture(name: str, arguments: list[str]) -> int:
         return 23
     if name == "descendant":
         descendant = subprocess.Popen([sys.executable, __file__, "--fixture", "park"])
+        readiness = int(arguments[0])
+        os.write(readiness, f"descendant={descendant.pid}\n".encode("ascii"))
+        os.close(readiness)
         print(f"descendant={descendant.pid}", flush=True)
         while True:
             time.sleep(60)

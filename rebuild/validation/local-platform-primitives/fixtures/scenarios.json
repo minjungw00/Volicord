@@ -6,7 +6,9 @@
     "separate_complete_streams_and_nonzero_exit",
     "timeout_is_a_trigger_not_a_cleanup_claim",
     "cancellation_is_distinct_from_termination",
-    "process_group_descendant_cleanup"
+    "dedicated_pipe_readiness_before_timeout",
+    "process_group_descendant_cleanup",
+    "bounded_repeated_cleanup"
   ],
   "filesystem_scenarios": [
     "lexical_normalization",
@@ -14,12 +16,17 @@
     "primary_linked_worktree_and_clone_identity",
     "dirty_status_observation",
     "regular_file_and_symlink_fingerprints",
-    "atomic_no_replace_publication"
+    "atomic_no_replace_publication",
+    "private_runtime_permission_repair",
+    "private_runtime_symlink_rejection",
+    "read_only_parent_failure",
+    "parent_sync_failure_effect"
   ],
   "storage_scenarios": [
     "uncommitted_transaction_is_absent_after_process_exit",
     "schema_kind_and_version_are_checked_before_write",
-    "canonical_repair_is_not_derived_rebuild"
+    "canonical_repair_is_not_derived_rebuild",
+    "mutation_lock_contention_and_process_death_release"
   ],
   "candidates": [
     {

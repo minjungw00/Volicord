@@ -3,17 +3,30 @@ use std::{
     process::Command,
     sync::{Arc, Barrier},
     thread,
+    time::{Duration, Instant},
 };
 
 use tempfile::tempdir;
 use volicord_local_platform::{
     ensure_private_directory, ensure_private_file, publish_file_no_replace,
     DirectoryEntryDurability, DirtyObservation, GitWorktreeLayout, MutationLockGuard,
-    NoReplacePublicationOutcome, RepositoryPathState, RepositoryRoot, SourceFingerprint,
+    NoReplacePublicationEffect, NoReplacePublicationOutcome, NoReplacePublicationPhase,
+    RepositoryPathState, RepositoryRoot, SourceFingerprint,
 };
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::{symlink, PermissionsExt};
+
+#[cfg(target_os = "linux")]
+struct KillAndReap(std::process::Child);
+
+#[cfg(target_os = "linux")]
+impl Drop for KillAndReap {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
 
 #[test]
 fn paths_normalize_missing_state_and_reject_symlink_escape() {
@@ -326,6 +339,68 @@ fn private_runtime_creation_is_independent_of_permissive_umask() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn private_runtime_creation_rejects_a_read_only_parent() {
+    if rustix::process::geteuid().as_raw() == 0 {
+        eprintln!("permission denial is not meaningful for effective uid 0");
+        return;
+    }
+    let temporary = tempdir().expect("temporary directory");
+    let parent = temporary.path().join("read-only");
+    fs::create_dir(&parent).expect("parent");
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).expect("read-only mode");
+    let state = parent.join("state");
+    let error = ensure_private_file(&state).expect_err("read-only parent must reject creation");
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).expect("restore mode");
+    assert!(error.detail().contains("cannot create private file"));
+    assert!(!state.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn publication_rejects_symlink_and_read_only_faults_without_false_success() {
+    let temporary = tempdir().expect("temporary directory");
+    let parent = temporary.path().join("publication");
+    fs::create_dir(&parent).expect("parent");
+    let ordinary = parent.join("ordinary");
+    let linked = parent.join("linked.staging");
+    let destination = parent.join("published");
+    fs::write(&ordinary, b"complete").expect("ordinary");
+    symlink("ordinary", &linked).expect("staging symlink");
+    let symlink_error = publish_file_no_replace(&linked, &destination)
+        .expect_err("symlink staging must be rejected");
+    assert_eq!(symlink_error.phase(), NoReplacePublicationPhase::Validation);
+    assert_eq!(
+        symlink_error.effect(),
+        NoReplacePublicationEffect::NamesUnchanged
+    );
+    assert_eq!(fs::read(&ordinary).expect("ordinary bytes"), b"complete");
+    assert!(linked.symlink_metadata().is_ok());
+    assert!(!destination.exists());
+
+    if rustix::process::geteuid().as_raw() == 0 {
+        eprintln!("read-only publication denial is not meaningful for effective uid 0");
+        return;
+    }
+    let staged = parent.join("ordinary.staging");
+    fs::write(&staged, b"staged").expect("staged");
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).expect("read-only mode");
+    let permission_error = publish_file_no_replace(&staged, &destination)
+        .expect_err("read-only parent must reject publication");
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).expect("restore mode");
+    assert_eq!(
+        permission_error.phase(),
+        NoReplacePublicationPhase::NamespacePublication
+    );
+    assert_eq!(
+        permission_error.effect(),
+        NoReplacePublicationEffect::NamesUnchanged
+    );
+    assert_eq!(fs::read(&staged).expect("preserved source"), b"staged");
+    assert!(!destination.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn mutation_lock_excludes_another_open_description() {
     let temporary = tempdir().expect("temporary directory");
     let runtime = temporary.path().join("runtime");
@@ -347,12 +422,20 @@ fn mutation_lock_process_probe() {
     let Some(path) = std::env::var_os("VOLICORD_TEST_MUTATION_LOCK") else {
         return;
     };
-    let acquired = MutationLockGuard::try_acquire(std::path::Path::new(&path))
-        .expect("process lock probe")
-        .is_some();
+    let guard =
+        MutationLockGuard::try_acquire(std::path::Path::new(&path)).expect("process lock probe");
+    let acquired = guard.is_some();
     let expected =
         std::env::var_os("VOLICORD_TEST_LOCK_EXPECTED").expect("expected state") == "acquired";
     assert_eq!(acquired, expected);
+    if acquired {
+        if let Some(ready) = std::env::var_os("VOLICORD_TEST_LOCK_HOLD_READY") {
+            fs::write(ready, b"ready\n").expect("lock-holder readiness");
+            loop {
+                thread::sleep(Duration::from_secs(60));
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -366,6 +449,45 @@ fn mutation_lock_excludes_a_separate_process() {
     run_lock_probe(&path, "contended");
     drop(parent);
     run_lock_probe(&path, "acquired");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mutation_lock_is_released_after_holder_process_termination() {
+    let temporary = tempdir().expect("temporary directory");
+    let runtime = temporary.path().join("runtime");
+    ensure_private_directory(&runtime).expect("runtime");
+    let path = runtime.join("mutation.lock");
+    for iteration in 0..8 {
+        let ready = runtime.join(format!("holder-{iteration}.ready"));
+        let mut child = KillAndReap(
+            Command::new(std::env::current_exe().expect("current test executable"))
+                .args(["--exact", "mutation_lock_process_probe", "--nocapture"])
+                .env("VOLICORD_TEST_MUTATION_LOCK", &path)
+                .env("VOLICORD_TEST_LOCK_EXPECTED", "acquired")
+                .env("VOLICORD_TEST_LOCK_HOLD_READY", &ready)
+                .spawn()
+                .expect("lock-holder process"),
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !ready.exists() && Instant::now() < deadline {
+            if let Some(status) = child.0.try_wait().expect("holder status") {
+                panic!("lock holder exited before readiness: {status}");
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        if !ready.exists() {
+            panic!("lock holder did not become ready");
+        }
+        let contended = MutationLockGuard::try_acquire(&path);
+        child.0.kill().expect("terminate lock holder");
+        let status = child.0.wait().expect("reap lock holder");
+        assert!(!status.success());
+        assert!(contended.expect("contended observation").is_none());
+        assert!(MutationLockGuard::try_acquire(&path)
+            .expect("post-termination observation")
+            .is_some());
+    }
 }
 
 #[cfg(target_os = "linux")]

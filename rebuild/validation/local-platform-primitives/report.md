@@ -2,7 +2,7 @@
 
 ## Status
 
-Passed on Linux at the recorded HEAD. The maintained assertions reproduce every accepted behavior below and validate a final classification for each candidate.
+Passed on Linux for the maintained focused qualification. The assertions reproduce every accepted behavior below, repeat the process boundary twelve times, exercise the promoted production primitives, and validate a final classification for each candidate.
 
 ## Goal
 
@@ -19,7 +19,7 @@ Qualify only domain-independent process and filesystem responsibilities needed b
 
 ## Input repositories and revisions
 
-- Repository HEAD: `4131a965678f9fcbff77b85f04a0a47d6b643896`.
+- Candidate identity is captured by each focused runner artifact rather than frozen in this maintained report.
 - Fixture `v10-local-platform-primitives`, whose content hash is catalogued in `rebuild/validation/shared/fixture-manifest.json`.
 - Legacy sources are inspected and executed only as reference candidates: `volicord-platform-process`, `volicord-test-process`, the independent portions of `volicord-platform-fs`, and storage patterns in `volicord-store`.
 
@@ -44,33 +44,35 @@ Run each command through the focused validation runner from the repository root:
 rebuild/scripts/validate focused v10-assertions -- python3 rebuild/validation/local-platform-primitives/assertions.py
 rebuild/scripts/validate focused v10-report -- rebuild/scripts/check-validation-report rebuild/validation/local-platform-primitives/report.md
 rebuild/scripts/validate focused v10-fixtures -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
-rebuild/scripts/validate focused v10-legacy-platform-process -- cargo test -p volicord-platform-process
-rebuild/scripts/validate focused v10-legacy-test-process -- cargo test -p volicord-test-process
-rebuild/scripts/validate focused v10-legacy-filesystem -- cargo test -p volicord-platform-fs --lib no_replace_file_publication
+rebuild/scripts/validate focused v10-production-process -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-local-platform --test process
+rebuild/scripts/validate focused v10-production-filesystem -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-local-platform --test filesystem
+rebuild/scripts/validate focused v10-parent-sync-fault -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-local-platform --lib parent_sync_failure_reports_published_namespace_effect
 ```
 
-The Python probe uses an isolated temporary directory, a self-authored Git repository, linked worktree and clone, and a disposable SQLite database. It does not use a Runtime Home.
+The Python probe uses an isolated temporary directory, a self-authored Git repository, linked worktree and clone, and a disposable SQLite database. Descendant readiness uses a dedicated inherited pipe before the bounded timeout begins; it does not parse scheduler-dependent partial stdout. The probe does not use a Runtime Home.
 
 ## Observed results
 
 - Process: complete stdout and complete stderr remained byte-distinct, numeric exit 23 remained failure, and monotonic duration was positive.
-- Timeout/cancellation: the timeout trigger, termination request, signal result, and descendant observation remained separate. Linux process-group termination stopped the pipe-holding child-tree; timeout alone was never recorded as cleanup confirmation.
+- Timeout/cancellation: dedicated-pipe readiness was observed before the timeout trigger. The timeout trigger, termination request, signal result, complete streams, and descendant observation remained separate in twelve repeated runs. Unconditional cleanup stopped and reaped the process group on every probe exit path; timeout alone was never recorded as cleanup confirmation.
 - Paths and symlinks: normalization was deterministic and a repository-relative path traversing an outward symlink resolved outside the root and was rejected.
 - Repository/worktree/clone: a primary and linked worktree shared one local clone coordinate but retained distinct worktree coordinates. A separate clone with the same commit retained a different local clone coordinate. None was treated as Project identity.
 - Dirty observation: porcelain-v2 bytes changed after a worktree edit and their opaque digest changed without attributing the edit to the observer.
 - Fingerprint: regular-file bytes/mode and symlink target used distinct typed hash domains.
 - Atomic publication: one complete staged file became visible without replacing an existing destination; a losing staged source remained available for caller-owned cleanup.
+- Production filesystem faults: private paths repaired owner modes, rejected symbolic links, and reported read-only creation failure without creating state. Atomic publication rejected a symbolic-link staging path and a read-only parent without reporting publication; the injected parent-sync failure separately reported that namespace publication had occurred but durability was not confirmed.
+- Production mutation lock: another process observed contention while the holder was ready, and the kernel released the lock after forced holder process death in each of eight bounded repetitions.
 - Storage: a process exit inside an uncommitted SQLite transaction left no row after reopen, committed schema metadata remained intact, and integrity check returned `ok`.
 
 ## Coverage and failures
 
-Covered: Linux process groups, binary stdout/stderr, nonzero exit, timeout-triggered kill, descendant termination observation, normalization, symlink escape, Git primary/linked/separate-clone coordinates, dirty status, typed fingerprints, no-replace publication, transaction crash, schema metadata, and repair/rebuild classification.
+Covered: deterministic readiness, Linux process groups, binary stdout/stderr, nonzero exit, timeout-triggered kill, repeated descendant termination observation, lock contention/release after process death, private permission repair, symlink and read-only failure, no-replace publication and parent-sync failure effect, normalization, Git primary/linked/separate-clone coordinates, dirty status, typed fingerprints, transaction crash, schema metadata, and repair/rebuild classification.
 
-Unsupported or excluded: Windows/macOS behavior, cgroup/subreaper guarantees, PID-namespace escape, network filesystems, hostile concurrent path replacement beyond primitive result reporting, full Git observer parity, and legacy schema recovery. No probe failure was hidden as success.
+Unsupported or excluded: Windows/macOS behavior, cgroup/subreaper guarantees, PID-namespace escape, network filesystems, arbitrary power loss, hostile concurrent path replacement beyond primitive result reporting, hardware durability beyond the supported parent-sync result, full Git observer parity, and legacy schema recovery. Permission-denial assertions require a non-root effective user and state that limitation instead of treating an effective-root run as evidence. No probe failure was hidden as success.
 
 ## Performance and resource observations
 
-The maintained probe is bounded by a 150 ms lifecycle timeout and two-second descendant observation window. The focused runner owns exact elapsed duration and output artifact sizes. No production performance or large-repository scaling claim is made.
+Each maintained process run waits at most two seconds for explicit readiness, then applies a 50 ms timeout trigger and a two-second descendant observation window. Twelve process runs and eight lock-holder termination runs bound repetition. The focused runner owns exact elapsed duration and output artifact sizes. No production performance or large-repository scaling claim is made.
 
 ## Privacy and external transmission
 
@@ -81,6 +83,9 @@ All fixtures, processes, Git repositories, streams, and SQLite bytes remain loca
 - PASS: process containment can be defined without Task, UserAction, Write Ticket, Evidence, Guard admission, or Runtime Home types.
 - PASS: complete streams, failure status, signal termination, duration, timeout trigger, cancellation intent, and cleanup observation can remain distinct.
 - PASS: Linux child-tree cleanup is directly testable.
+- PASS: readiness is an explicit protocol and does not depend on `TimeoutExpired.stdout` or a fixed pre-read sleep.
+- PASS: repeated cross-process mutation-lock contention and process-death release preserve one holder at a time.
+- PASS: supported permission, symlink, read-only publication, and parent-sync faults return explicit effects without false success.
 - PASS: path/symlink, local clone/worktree, dirty-state, fingerprint, and atomic-publication semantics can be responsibility-bounded.
 - PASS: storage evidence supports the existing production canonical owner and does not justify another engine.
 - PASS: reconstruction workspace independence can be preserved because no legacy crate needs promotion as a dependency.
@@ -128,9 +133,9 @@ Decision revisit trigger: not triggered. Linux behavior supports the accepted Lo
 
 ## Follow-up work
 
-- Promote only the qualified process, path/local-Git/fingerprint, and atomic-publication responsibilities in the next commit.
-- Add responsibility-level Rust tests for complete artifacts, exit/signal, timeout/cancellation truth, descendant cleanup, symlink escape, local clone/worktree identity, dirty changes, typed fingerprint, concurrent no-replace publication, and parent-sync failure effect.
-- Leave CLI, orchestration, providers, viewer, packaging, V08, V11, and dogfood to their owning phases.
+- Use the promoted primitives through Local Operations and public adapters in V07/V11; primitive qualification alone is not cross-owner product acceptance.
+- Keep network-filesystem, arbitrary power-loss, and hardware-durability guarantees excluded until an accepted contract and suitable environment exist.
+- Leave provider behavior, official V11, and naturalistic Dogfood to their owning sessions.
 
 ## Artifacts
 
