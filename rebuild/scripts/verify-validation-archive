@@ -151,7 +151,7 @@ PORTABLE_STRUCTURAL_ARGUMENTS = {
     "volicord-operations",
     "zsh",
 }
-PORTABLE_ROLE_CLASSIFICATIONS = {"projected", "redacted", "structural"}
+PORTABLE_ROLE_CLASSIFICATIONS = {"projected", "redacted"}
 PORTABLE_ROLES = {
     "candidate_identity",
     "closed_structural_value",
@@ -187,6 +187,22 @@ PORTABLE_PATH_PREFIXES = (
     "<local-validation-artifact>",
     "<official-v11:",
 )
+PROJECTED_ROLES = {
+    "executable_path",
+    "gate_path",
+    "local_validation_path",
+    "official_v11_path",
+    "repository_path",
+}
+LEGACY_EXECUTION_ARGV_KEYS = {
+    "argument_classifications",
+    "argv_completeness",
+    "argv_projection_policy",
+    "raw_argv_retained_locally",
+    "sanitization_applied",
+    "sanitized_argument_count",
+    "sanitizations",
+}
 
 
 def fail(message: str) -> None:
@@ -213,67 +229,72 @@ def inspect_keys(value: Any, location: str) -> None:
             inspect_keys(child, location)
 
 
+def verify_argv_policy(value: Any, location: str) -> None:
+    expected = {
+        "kind": "sanitized_argv_policy",
+        "completeness": "sanitized_portable_projection",
+        "projection": "explicit_semantic_argument_roles",
+        "raw_argv": "ignored_local_execution_evidence",
+        "structural_arguments": {
+            "classification": "structural",
+            "role": "approved_structural_token",
+            "encoding": "omitted_from_non_structural_argument_roles",
+        },
+        "non_structural_argument_roles": {
+            "encoding": "argument_index_classification_semantic_role",
+            "classifications": ["projected", "redacted"],
+        },
+    }
+    if value != expected:
+        fail(f"invalid portable argv policy in {location}")
+
+
 def verify_portable_execution(value: Any, location: str) -> None:
     if not isinstance(value, dict):
         fail(f"invalid portable execution in {location}")
+    if LEGACY_EXECUTION_ARGV_KEYS & set(value):
+        fail(f"portable execution uses non-current argv metadata in {location}")
     argv = value.get("argv")
     if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
         fail(f"portable execution argv is invalid in {location}")
-    if value.get("argv_completeness") != "sanitized_portable_projection":
-        fail(f"portable execution falsely claims unsanitized argv in {location}")
-    if value.get("argv_projection_policy") != "explicit_semantic_argument_roles":
-        fail(f"portable execution lacks the semantic argument-role policy in {location}")
-    if value.get("raw_argv_retained_locally") is not True:
-        fail(f"portable execution does not distinguish local raw argv in {location}")
-    applied = value.get("sanitization_applied")
-    count = value.get("sanitized_argument_count")
-    sanitizations = value.get("sanitizations")
-    argument_classifications = value.get("argument_classifications")
-    if (
-        not isinstance(applied, bool)
-        or not isinstance(count, int)
-        or count < 0
-        or not isinstance(sanitizations, list)
-        or not isinstance(argument_classifications, list)
-        or len(argument_classifications) != len(argv)
-        or count != len(sanitizations)
-        or applied != (count > 0)
-    ):
-        fail(f"portable argv sanitization accounting is invalid in {location}")
-    sanitization_by_index: dict[int, str] = {}
-    for entry in sanitizations:
+    role_entries = value.get("non_structural_argument_roles")
+    if not isinstance(role_entries, list):
+        fail(f"portable argv role records are invalid in {location}")
+    roles_by_index: dict[int, tuple[str, str]] = {}
+    for entry in role_entries:
         if (
-            not isinstance(entry, dict)
-            or not isinstance(entry.get("argument_index"), int)
-            or entry["argument_index"] in sanitization_by_index
-            or entry.get("reason") not in PORTABLE_ROLES
+            not isinstance(entry, list)
+            or len(entry) != 3
+            or not isinstance(entry[0], int)
+            or entry[0] < 0
+            or entry[0] >= len(argv)
+            or entry[0] in roles_by_index
+            or entry[1] not in PORTABLE_ROLE_CLASSIFICATIONS
+            or entry[2] not in PORTABLE_ROLES
         ):
-            fail(f"portable argv sanitization entry is invalid in {location}")
-        sanitization_by_index[entry["argument_index"]] = entry["reason"]
-    expected_sanitized_indexes: set[int] = set()
-    for index, classification in enumerate(argument_classifications):
-        if classification not in PORTABLE_ROLE_CLASSIFICATIONS:
-            fail(f"portable argv classification is invalid in {location}")
-        role = sanitization_by_index.get(index)
+            fail(f"portable argv role record is invalid in {location}")
+        roles_by_index[entry[0]] = (entry[1], entry[2])
+    for index in range(len(argv)):
+        classification, role = roles_by_index.get(
+            index, ("structural", "approved_structural_token")
+        )
         argument = argv[index]
         if classification == "structural":
             if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
                 fail(f"portable argv retains an unapproved structural value in {location}")
         elif classification == "redacted":
+            if role in PROJECTED_ROLES:
+                fail(f"portable argv redaction uses a projected role in {location}")
             expected_marker = f"<redacted:{str(role).replace('_', '-')}>"
             if argument != expected_marker:
                 fail(f"portable argv redaction marker is invalid in {location}")
+        elif role not in PROJECTED_ROLES:
+            fail(f"portable argv projection uses a non-path role in {location}")
         elif role == "executable_path":
             if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
                 fail(f"portable projected executable is unapproved in {location}")
         elif argument != "." and not argument.startswith(PORTABLE_PATH_PREFIXES):
             fail(f"portable projected path is invalid in {location}")
-        if classification != "structural":
-            expected_sanitized_indexes.add(index)
-            if role is None:
-                fail(f"portable argv projection lacks its semantic role in {location}")
-    if set(sanitization_by_index) != expected_sanitized_indexes:
-        fail(f"portable argv sanitization metadata disagrees with argument roles in {location}")
     executable = argv[0]
     if executable == "codex" and "exec" in argv and not argv[-1].startswith("<redacted:"):
         fail(f"portable Codex execution retains a prompt-bearing argument in {location}")
@@ -289,6 +310,7 @@ def verify_process_payloads(contents: dict[str, bytes]) -> None:
         processes.get("processes"), list
     ):
         fail("invalid sanitized process evidence")
+    verify_argv_policy(processes.get("argv_policy"), "processes.json")
     for index, process in enumerate(processes["processes"]):
         verify_portable_execution(process, f"processes.json.processes[{index}]")
     final_name = f"{ROOT}/final-summary.json"
@@ -298,6 +320,7 @@ def verify_process_payloads(contents: dict[str, bytes]) -> None:
             final.get("commands"), list
         ):
             fail("invalid sanitized final summary")
+        verify_argv_policy(final.get("argv_policy"), "final-summary.json")
         for index, command in enumerate(final["commands"]):
             verify_portable_execution(command, f"final-summary.json.commands[{index}]")
 
@@ -336,6 +359,8 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     modes = load_json(contents, modes_name)
     if manifest.get("kind") != "validation_evidence_archive_manifest":
         fail("invalid archive manifest kind")
+    if manifest.get("member_size_limit_bytes") != MAX_MEMBER_BYTES:
+        fail("archive manifest member-size contract is invalid")
     candidate = manifest.get("candidate_head")
     if not isinstance(candidate, str) or re.fullmatch(r"[0-9a-f]{40}", candidate) is None:
         fail("archive manifest candidate is invalid")

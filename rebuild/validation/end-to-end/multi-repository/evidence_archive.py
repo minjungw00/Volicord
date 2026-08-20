@@ -16,6 +16,7 @@ from typing import Any
 
 ARCHIVE_ROOT = "validation-evidence"
 ARCHIVE_MAX_BYTES = 512 * 1024
+MEMBER_MAX_BYTES = 256 * 1024
 PAYLOAD_MODE = 0o644
 DIRECTORY_MODE = 0o755
 TRACKED_EVIDENCE_PATHS = (
@@ -125,6 +126,24 @@ def json_bytes(value: object) -> bytes:
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def argv_policy() -> dict[str, Any]:
+    return {
+        "kind": "sanitized_argv_policy",
+        "completeness": "sanitized_portable_projection",
+        "projection": "explicit_semantic_argument_roles",
+        "raw_argv": "ignored_local_execution_evidence",
+        "structural_arguments": {
+            "classification": "structural",
+            "role": "approved_structural_token",
+            "encoding": "omitted_from_non_structural_argument_roles",
+        },
+        "non_structural_argument_roles": {
+            "encoding": "argument_index_classification_semantic_role",
+            "classifications": ["projected", "redacted"],
+        },
+    }
 
 
 def path_within(path: Path, parent: Path) -> Path | None:
@@ -437,8 +456,7 @@ def sanitized_argv(
         raise ValueError("execution record has empty argv")
     roles = semantic_argument_roles(argv)
     projected: list[str] = []
-    sanitizations: list[dict[str, Any]] = []
-    argument_classifications: list[str] = []
+    non_structural_argument_roles: list[list[Any]] = []
     for index, (argument, decision) in enumerate(zip(argv, roles)):
         classification = decision["classification"]
         role = decision["role"]
@@ -458,18 +476,11 @@ def sanitized_argv(
         elif classification == "redacted":
             replacement = f"<redacted:{role.replace('_', '-')}>"
         projected.append(replacement)
-        argument_classifications.append(classification)
         if classification != "structural":
-            sanitizations.append({"argument_index": index, "reason": role})
+            non_structural_argument_roles.append([index, classification, role])
     return {
         "argv": projected,
-        "argv_completeness": "sanitized_portable_projection",
-        "argv_projection_policy": "explicit_semantic_argument_roles",
-        "raw_argv_retained_locally": True,
-        "sanitization_applied": bool(sanitizations),
-        "sanitized_argument_count": len(sanitizations),
-        "sanitizations": sanitizations,
-        "argument_classifications": argument_classifications,
+        "non_structural_argument_roles": non_structural_argument_roles,
     }
 
 
@@ -516,6 +527,7 @@ def sanitized_final_summary(
         raise ValueError("final summary commands are unavailable")
     return {
         "kind": "sanitized_exact_final_summary",
+        "argv_policy": argv_policy(),
         "working_directory": normalized_working_directory(
             summary.get("working_directory"), repository_root, gate_directory
         ),
@@ -569,7 +581,11 @@ def collected_processes(gate_directory: Path, repository_root: Path) -> dict[str
                 **sanitized_execution(value, repository_root, gate_directory),
             }
         )
-    return {"kind": "sanitized_gate_processes", "processes": processes}
+    return {
+        "kind": "sanitized_gate_processes",
+        "argv_policy": argv_policy(),
+        "processes": processes,
+    }
 
 
 def tracked_file_evidence(repository_root: Path, candidate_head: str) -> dict[str, Any]:
@@ -643,6 +659,7 @@ def write_archive(
         "kind": "validation_evidence_archive_manifest",
         "candidate_head": candidate_head,
         "created_at": utc_now(),
+        "member_size_limit_bytes": MEMBER_MAX_BYTES,
         "source_final_summary_sha256": source_final_summary_sha256,
         "capsule_sha256": sha256_bytes(encoded["capsule.json"]),
         "files": {
@@ -655,6 +672,21 @@ def write_archive(
         },
     }
     manifest_bytes = json_bytes(manifest)
+
+    members = {
+        "archive-manifest.json": manifest_bytes,
+        **encoded,
+    }
+    oversized = [
+        (name, len(content))
+        for name, content in sorted(members.items())
+        if len(content) > MEMBER_MAX_BYTES
+    ]
+    if oversized:
+        name, size = oversized[0]
+        raise ValueError(
+            f"archive member exceeds its {MEMBER_MAX_BYTES}-byte bound: {name} ({size} bytes)"
+        )
 
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "w:gz", format=tarfile.PAX_FORMAT) as archive:

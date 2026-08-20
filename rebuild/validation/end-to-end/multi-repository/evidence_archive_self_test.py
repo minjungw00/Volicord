@@ -71,6 +71,7 @@ def payloads() -> dict[str, object]:
         },
         "processes.json": {
             "kind": "sanitized_gate_processes",
+            "argv_policy": builder.argv_policy(),
             "processes": [],
         },
         "tracked-files.json": {
@@ -149,8 +150,11 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         projected = builder.sanitized_argv(command, ROOT, gate)
         assert projected["argv"][:3] == ["volicord", "canonical", "user-source"]
         assert projected["argv"][-1] == "<redacted:sensitive-operand>"
-        assert projected["argument_classifications"][-1] == "redacted"
-        assert projected["sanitizations"][-1]["reason"] == "sensitive_operand"
+        assert projected["non_structural_argument_roles"][-1] == [
+            6,
+            "redacted",
+            "sensitive_operand",
+        ]
 
         privacy = builder.sanitized_argv(
             [
@@ -214,7 +218,9 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         "--all-targets",
         "--all-features",
     ]
-    assert exact_final["argv_projection_policy"] == "explicit_semantic_argument_roles"
+    assert exact_final["non_structural_argument_roles"] == [
+        [3, "projected", "repository_path"]
+    ]
 
     family_shapes = (
         ([str(ROOT / "rebuild/scripts/validate"), "self-test"], ["validate", "self-test"]),
@@ -447,9 +453,12 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         "path": ".",
     }
     assert target_process["argv"][-1] == "<redacted:private-prompt>"
-    assert target_process["argv_completeness"] == "sanitized_portable_projection"
-    assert target_process["argv_projection_policy"] == "explicit_semantic_argument_roles"
-    assert target_process["raw_argv_retained_locally"] is True
+    assert processes["argv_policy"] == builder.argv_policy()
+    assert target_process["non_structural_argument_roles"][-1] == [
+        14,
+        "redacted",
+        "private_prompt",
+    ]
     assert PROMPT_SENTINEL in codex_result.read_text(encoding="utf-8")
     for index, payload in enumerate(SENSITIVE_OPERANDS, start=2):
         assert payload in (
@@ -476,6 +485,123 @@ def integration_archive(root: Path) -> tuple[Path, str]:
     else:
         raise AssertionError("unknown external working directory was accepted")
     return archive, head
+
+
+def production_scale_archive(root: Path) -> dict[str, int]:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
+    ).stdout.strip()
+    gate = root / "production-scale-gate"
+    target = gate / "official-v11" / "work" / "polyglot-medium" / "repository"
+    target.mkdir(parents=True)
+    commands: list[list[str]] = []
+    for index in range(174):
+        commands.append(
+            [
+                "volicord",
+                "canonical",
+                "user-source",
+                "project-identity",
+                "codex",
+                "v11",
+                SENSITIVE_OPERANDS[index % len(SENSITIVE_OPERANDS)],
+            ]
+        )
+    commands.extend(
+        [
+            codex_argv(target, PROMPT_SENTINEL),
+            ["python3", "-c", "repository body"],
+            [
+                "git",
+                "-c",
+                "user.name=SECRETWORD",
+                "-c",
+                "user.email=internal_name",
+                "commit",
+                "--quiet",
+                "-m",
+                "foo-bar",
+            ],
+            [
+                "unrecognized-command",
+                "--flag",
+                "SECRETWORD",
+                "internal_name",
+                "foo-bar",
+                "abc123",
+                "x",
+            ],
+        ]
+    )
+    assert len(commands) == 178
+    for index, command in enumerate(commands):
+        result = gate / "official-v11" / "operations" / f"{index:03d}" / "result.json"
+        result.parent.mkdir(parents=True)
+        result.write_text(json.dumps(execution(command, target)), encoding="utf-8")
+
+    admission = {
+        "candidate_head": head,
+        "status": "eligible",
+        "eligible": True,
+        "checks": [],
+    }
+    capsule = {
+        "kind": "validation_handoff_capsule",
+        "validated_candidate_head": head,
+        "final_summary_sha256": None,
+        "phase_8_ready": False,
+        "blocking_classification": "evidence_archive_pending",
+        "evidence_archive": {"status": "pending"},
+    }
+    gate_result = {
+        "kind": "validation_gate_result",
+        "candidate_head": head,
+        "status": "blocked",
+        "blocking_classification": "evidence_archive_pending",
+        "evidence_archive_status": "pending",
+    }
+    identity = builder.create_review_archive(
+        repository_root=ROOT,
+        gate_directory=gate,
+        candidate_head=head,
+        admission=admission,
+        capsule=capsule,
+        gate_result=gate_result,
+        final_summary=None,
+    )
+    archive = Path(identity["path"])
+    verified = run_verifier(archive, head)
+    assert verified.returncode == 0, verified.stderr
+    with tarfile.open(archive, "r:gz") as retained:
+        file_members = [member for member in retained.getmembers() if member.isfile()]
+        assert all(member.size <= builder.MEMBER_MAX_BYTES for member in file_members)
+        bodies = b"".join(retained.extractfile(member).read() for member in file_members)
+        processes = json.loads(
+            retained.extractfile("validation-evidence/processes.json").read()
+        )
+    process_count = len(processes["processes"])
+    argv_entries = sum(len(process["argv"]) for process in processes["processes"])
+    role_records = sum(
+        len(process["non_structural_argument_roles"])
+        for process in processes["processes"]
+    )
+    assert process_count >= 178
+    assert argv_entries >= 1_116
+    assert role_records >= 659
+    assert PROMPT_SENTINEL.encode() not in bodies
+    for payload in SENSITIVE_OPERANDS:
+        if len(payload) > 1:
+            assert payload.encode() not in bodies
+    assert b'"x"' not in bodies
+    assert b"repository body" not in bodies
+    assert str(ROOT).encode() not in bodies
+    assert str(root).encode() not in bodies
+    return {
+        "process_records": process_count,
+        "argv_entries": argv_entries,
+        "non_structural_argument_role_records": role_records,
+        "processes_member_bytes": len(builder.json_bytes(processes)),
+    }
 
 
 def rewrite_archive(
@@ -506,6 +632,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-evidence-archive-self-test-") as directory:
         root = Path(directory)
         integration_archive(root)
+        scale = production_scale_archive(root)
         archive = root / "positive.tar.gz"
         builder.write_archive(
             archive,
@@ -551,9 +678,54 @@ def main() -> int:
         assert run_verifier(wrong_mode).returncode == 1
         assert run_verifier(archive, "d" * 40).returncode == 1
 
+        oversized_payloads = payloads()
+        oversized_payloads["processes.json"]["oversized_test_value"] = (
+            "x" * builder.MEMBER_MAX_BYTES
+        )
+        oversized_archive = root / "oversized.tar.gz"
+        try:
+            builder.write_archive(
+                oversized_archive,
+                candidate_head=HEAD,
+                payloads=oversized_payloads,
+                source_final_summary_sha256=None,
+            )
+        except ValueError as error:
+            assert "archive member exceeds" in str(error)
+        else:
+            raise AssertionError("builder accepted an over-bound payload member")
+        assert not oversized_archive.exists()
+
+        non_current_payloads = payloads()
+        non_current_execution = builder.sanitized_execution(
+            execution(["cargo", "metadata"], ROOT), ROOT, root
+        )
+        non_current_execution.pop("non_structural_argument_roles")
+        non_current_execution.update(
+            {
+                "argv_completeness": "sanitized_portable_projection",
+                "argv_projection_policy": "explicit_semantic_argument_roles",
+                "raw_argv_retained_locally": True,
+                "sanitization_applied": False,
+                "sanitized_argument_count": 0,
+                "sanitizations": [],
+                "argument_classifications": ["structural", "structural"],
+            }
+        )
+        non_current_payloads["processes.json"]["processes"] = [non_current_execution]
+        non_current_archive = root / "non-current-process-representation.tar.gz"
+        builder.write_archive(
+            non_current_archive,
+            candidate_head=HEAD,
+            payloads=non_current_payloads,
+            source_final_summary_sha256=None,
+        )
+        assert run_verifier(non_current_archive).returncode == 1
+
         prohibited_payloads = payloads()
         prohibited_payloads["processes.json"] = {
             "kind": "sanitized_gate_processes",
+            "argv_policy": builder.argv_policy(),
             "processes": [],
             "api_key": "sk-prohibited-credential-value",
         }
@@ -573,11 +745,14 @@ def main() -> int:
             execution(codex_argv(ROOT, PROMPT_SENTINEL), ROOT), ROOT, root
         )
         leaked_prompt["argv"][-1] = PROMPT_SENTINEL
-        leaked_prompt["argument_classifications"][-1] = "structural"
-        leaked_prompt["sanitizations"] = leaked_prompt["sanitizations"][:-1]
-        leaked_prompt["sanitized_argument_count"] -= 1
+        leaked_prompt["non_structural_argument_roles"] = [
+            role
+            for role in leaked_prompt["non_structural_argument_roles"]
+            if role[0] != len(leaked_prompt["argv"]) - 1
+        ]
         prompt_payloads["processes.json"] = {
             "kind": "sanitized_gate_processes",
+            "argv_policy": builder.argv_policy(),
             "processes": [leaked_prompt],
         }
         prompt_archive = root / "prompt-retained.tar.gz"
@@ -616,6 +791,7 @@ def main() -> int:
     print(json.dumps({
         "kind": "validation_evidence_archive_self_test",
         "status": "passed",
+        "production_scale": scale,
         "scenarios": [
             "positive",
             "integration_shaped_gate_and_official_v11",
@@ -639,6 +815,9 @@ def main() -> int:
             "wrong_posix_mode",
             "candidate_mismatch",
             "credential_like_prohibited_content",
+            "production_scale_builder_and_verifier",
+            "builder_member_bound_rejection",
+            "non_current_process_representation_rejection",
         ],
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

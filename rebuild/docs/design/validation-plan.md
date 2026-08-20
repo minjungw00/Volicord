@@ -165,6 +165,16 @@ stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 �
 - sanitized evidence archive filename/SHA-256/size/member count, independent verification
   status와 archive 이전 prerequisite completion state
 
+Sanitized evidence archive의 current process representation은 payload마다 하나의
+`sanitized_argv_policy`를 두고, execution마다 sanitized argv와 projected/redacted
+argument의 index·classification·semantic role만 한 번 기록한다. Policy에서 생략된
+argument-role entry는 approved structural token이라는 명시적 default이며 independent
+verifier의 closed allowlist를 통과해야 한다. Exact raw argv는 ignored local execution
+evidence에만 남는다. Builder는 tar를 쓰기 전에 모든 JSON member를 encode하고 manifest가
+선언하는 256 KiB uncompressed per-member bound를 검사하며, verifier는 같은 선언과
+bound를 독립적으로 다시 검사한다. 기존 512 KiB compressed archive bound도 별도로
+유지한다. 다른 process schema, numeric format branch 또는 legacy decoder는 두지 않는다.
+
 Version probe는 fixed non-secret command만 사용하며 environment variable, home content,
 username 또는 unrelated host metadata를 수집하지 않는다. Capsule은 Credential/API/session
 token, `auth.json` content, credential content나 reusable fingerprint, source body, full

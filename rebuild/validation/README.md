@@ -20,14 +20,20 @@ surface, not a Volicord product command or production architecture.
 - `rebuild/scripts/validate evidence-archive-self-test` builds a synthetic
   gate/V11 artifact tree and exercises result discovery, logical repository and
   V11 target cwd projection, argv sanitization, archive creation, and independent
-  verification. It also rejects unknown external cwd values, retained prompts or
-  absolute host paths, tampered content, missing members, changed POSIX modes,
-  candidate mismatch, repository source bodies, and credential-like prohibited
-  content. It invokes neither exact final nor official V11.
+  verification. Its production-scale case uses the real collector and sanitizer
+  for at least 178 process records, 1,116 argv entries, and 659 non-structural
+  argument-role records. It also rejects a builder-side over-bound member,
+  unknown external cwd values, retained prompts or absolute host paths, tampered
+  content, missing members, changed POSIX modes, candidate mismatch, repository
+  source bodies, and credential-like prohibited content. It invokes neither
+  exact final nor official V11.
 - `rebuild/scripts/verify-validation-archive <archive> [--expected-candidate
   <HEAD>]` independently verifies archive membership, content hashes, bounded
   size, candidate agreement, tracked/executable identities, tar modes, and the
-  prohibited-content boundary without extracting the archive.
+  prohibited-content boundary without extracting the archive. Builder and
+  verifier both enforce the manifest-declared current 256 KiB uncompressed
+  per-member limit; the builder encodes and checks every member before writing
+  the tar, while the existing 512 KiB compressed-archive limit remains separate.
 - `rebuild/scripts/check-validation-report --self-test` proves generic report
   compatibility plus positive and negative capsule-backed semantics for
   admission-blocked, final-failed, V11-preflight-failed,
@@ -72,6 +78,15 @@ surface, not a Volicord product command or production architecture.
 The architecture checker is deterministic internal test support. It does not
 define domain meaning, judge conceptual correctness, choose implementation
 technology, or treat validation IDs as product-format versions.
+
+Portable process payloads carry one top-level `sanitized_argv_policy`. That
+policy declares the sanitized projection, identifies exact raw argv as ignored
+local execution evidence, and defines omitted per-argument role entries as
+allowlisted structural tokens. Each execution then stores argv plus exactly one
+compact `[argument index, classification, semantic role]` record for every
+projected or redacted argument. The independent verifier rejects the superseded
+duplicated per-execution accounting fields; there is no alternate reader or
+numeric format branch.
 
 ## Maintained and generated boundaries
 
