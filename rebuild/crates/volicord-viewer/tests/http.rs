@@ -1,3 +1,4 @@
+use rusqlite::{params, Connection};
 use std::{
     collections::BTreeSet,
     io::Cursor,
@@ -246,6 +247,162 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
 }
 
 #[test]
+fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
+    const RELATED: &str = "VIEWER-LIVE-FORGET-CANDIDATE-78c2";
+    const UNRELATED: &str = "VIEWER-LIVE-KEEP-CANDIDATE-51af";
+    let (_temporary, server, project) = setup();
+    let initial = exchange(
+        &server,
+        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+    );
+    let token = request_authenticity(&initial);
+    let target = server
+        .adapter()
+        .operations()
+        .record_user_source(
+            project,
+            "test-host".into(),
+            "viewer-live-read".into(),
+            "viewer live forgetting target".into(),
+        )
+        .expect("forget target");
+    let unrelated_source = server
+        .adapter()
+        .operations()
+        .record_user_source(
+            project,
+            "test-host".into(),
+            "viewer-live-read".into(),
+            "viewer live unrelated source".into(),
+        )
+        .expect("unrelated Source");
+    let target_id = source_id(&target.identity);
+    let unrelated_source_id = source_id(&unrelated_source.identity);
+    let related_candidate = viewer_candidate(&server, project, target_id, RELATED);
+    let unrelated_candidate = viewer_candidate(&server, project, unrelated_source_id, UNRELATED);
+    let mut privacy = PrivacyStore::open(server.adapter().operations().layout().privacy_store())
+        .expect("privacy store");
+    let related_derived = privacy
+        .record_managed_derived(viewer_derived(
+            project,
+            target_id,
+            "viewer live related Derived",
+        ))
+        .expect("related Derived")
+        .id;
+    let unrelated_derived = privacy
+        .record_managed_derived(viewer_derived(
+            project,
+            unrelated_source_id,
+            "viewer live unrelated Derived",
+        ))
+        .expect("unrelated Derived")
+        .id;
+    drop(privacy);
+
+    let completed_before_commit = exchange(
+        &server,
+        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+    );
+    assert!(completed_before_commit.starts_with("HTTP/1.1 200 OK"));
+    assert!(completed_before_commit.contains(RELATED));
+    assert!(completed_before_commit.contains(UNRELATED));
+
+    let candidate_path = server.adapter().operations().layout().candidate_store();
+    let blocker = Connection::open(candidate_path).expect("Candidate reader");
+    blocker
+        .execute_batch("BEGIN DEFERRED")
+        .expect("begin pre-commit reader");
+    let precommit_snapshot: String = blocker
+        .query_row(
+            "SELECT record_json FROM candidates WHERE id = ?1",
+            params![related_candidate.as_bytes().as_slice()],
+            |row| row.get(0),
+        )
+        .expect("read Candidate before canonical commit");
+    assert!(precommit_snapshot.contains(RELATED));
+
+    let conflict = exchange(
+        &server,
+        post(
+            "/memory/forget",
+            &format!(
+                "record_kind=source&record_id={}&user_turn=Forget+the+live+Viewer+target&level=deep&locale=en&language=en",
+                target.identity
+            ),
+            &token,
+        ),
+    );
+    assert!(conflict.starts_with("HTTP/1.1 409 Conflict"), "{conflict}");
+    let canonical = server
+        .adapter()
+        .operations()
+        .canonical_basis(project)
+        .expect("canonical basis after committed forgetting");
+    assert!(!canonical
+        .sources
+        .iter()
+        .any(|source| source.source.id == target_id));
+    assert!(canonical
+        .sources
+        .iter()
+        .any(|source| source.source.id == unrelated_source_id));
+
+    let still_precommit_snapshot: String = blocker
+        .query_row(
+            "SELECT record_json FROM candidates WHERE id = ?1",
+            params![related_candidate.as_bytes().as_slice()],
+            |row| row.get(0),
+        )
+        .expect("complete pre-commit Candidate snapshot");
+    assert_eq!(still_precommit_snapshot, precommit_snapshot);
+    assert!(completed_before_commit.contains(RELATED));
+
+    let live_read = exchange(
+        &server,
+        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+    );
+    assert!(live_read.starts_with("HTTP/1.1 200 OK"));
+    assert!(!live_read.contains(RELATED));
+    assert!(!live_read.contains(&target.identity));
+    assert!(live_read.contains(UNRELATED));
+    assert!(live_read.contains(&unrelated_source.identity));
+    assert!(live_read.contains("Candidate data omitted"));
+
+    let projection = server
+        .adapter()
+        .operations()
+        .project_projection(project)
+        .expect("live project projection");
+    assert!(projection
+        .candidate_inspection
+        .iter()
+        .find(|candidate| candidate.candidate_id == related_candidate)
+        .is_some_and(|candidate| candidate.bounded_summary.is_none()));
+    assert_eq!(
+        projection
+            .candidate_inspection
+            .iter()
+            .find(|candidate| candidate.candidate_id == unrelated_candidate)
+            .and_then(|candidate| candidate.bounded_summary.as_deref()),
+        Some(UNRELATED)
+    );
+    let privacy = server
+        .adapter()
+        .operations()
+        .privacy_status(project)
+        .expect("privacy status during repair");
+    assert!(privacy
+        .withheld_for_canonical_forgetting
+        .contains(&related_derived));
+    assert!(!privacy
+        .withheld_for_canonical_forgetting
+        .contains(&unrelated_derived));
+
+    blocker.execute_batch("ROLLBACK").expect("release reader");
+}
+
+#[test]
 fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
     const WRITERS: usize = 4;
     let (_temporary, server, project) = setup();
@@ -327,8 +484,6 @@ fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
         let token = request_authenticity(&page);
         controls.push((worker, token, target.identity, candidate, derived));
     }
-    drop(server);
-
     let barrier = Arc::new(Barrier::new(WRITERS));
     let writers = controls
         .into_iter()

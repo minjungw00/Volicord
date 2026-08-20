@@ -139,14 +139,24 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
 ) -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
     let runtime = fixture.operations.layout().root().to_path_buf();
+    let precommit_projection = fixture.operations.project_projection(fixture.project_id)?;
+    assert_eq!(
+        precommit_projection
+            .candidate_inspection
+            .iter()
+            .find(|candidate| candidate.candidate_id == fixture.related_candidate)
+            .and_then(|candidate| candidate.bounded_summary.as_deref()),
+        Some(RELATED_CANDIDATE_SENTINEL)
+    );
     let candidate_path = fixture.operations.layout().candidate_store();
     let blocker = Connection::open(&candidate_path)?;
     blocker.execute_batch("BEGIN DEFERRED")?;
-    let _: String = blocker.query_row(
+    let precommit_snapshot: String = blocker.query_row(
         "SELECT record_json FROM candidates WHERE id = ?1",
         params![fixture.related_candidate.as_bytes().as_slice()],
         |row| row.get(0),
     )?;
+    assert!(precommit_snapshot.contains(RELATED_CANDIDATE_SENTINEL));
 
     let partial = fixture.operations.forget_record(
         fixture.project_id,
@@ -171,6 +181,12 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
         fixture.project_id,
         CanonicalRecordId::Source(fixture.target_source),
     )?;
+    let still_precommit_snapshot: String = blocker.query_row(
+        "SELECT record_json FROM candidates WHERE id = ?1",
+        params![fixture.related_candidate.as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(still_precommit_snapshot, precommit_snapshot);
     let candidate_basis = fixture.operations.candidate_basis(fixture.project_id)?;
     assert!(candidate_basis
         .withheld_for_canonical_forgetting
@@ -182,6 +198,14 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
         .and_then(|candidate| candidate.content.as_ref())
         .is_none());
     let projected = fixture.operations.project_projection(fixture.project_id)?;
+    assert!(!projected
+        .source_catalog
+        .iter()
+        .any(|source| source.source.id == fixture.target_source));
+    assert!(projected
+        .source_catalog
+        .iter()
+        .any(|source| source.source.id == fixture.authorization_source));
     assert_eq!(
         projected.candidate_dependency,
         CandidateDependencyState::RepairRequired
@@ -197,6 +221,14 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
             .find(|candidate| candidate.candidate_id == fixture.related_candidate)
             .and_then(|candidate| candidate.content_omission.clone()),
         Some(CandidateContentOmission::CanonicalForgettingPending)
+    );
+    assert_eq!(
+        projected
+            .candidate_inspection
+            .iter()
+            .find(|candidate| candidate.candidate_id == fixture.unrelated_candidate)
+            .and_then(|candidate| candidate.bounded_summary.as_deref()),
+        Some(UNRELATED_CANDIDATE_SENTINEL)
     );
     let privacy = fixture.operations.privacy_status(fixture.project_id)?;
     assert!(privacy
