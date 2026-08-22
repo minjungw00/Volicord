@@ -85,11 +85,16 @@ rebuild/scripts/dogfood-campaign prepare \
   --repositories <three-repository-input.json>
 ```
 
-Use `activate-cycle` before each helper-owned cycle activation, `collect-work`
-and `collect-resume` for the two distinct raw rollouts, and
+Complete each evaluator input under the private control plane and use
+`seal-cycle` before exposing the generated operator run sheet. Use
+`activate-cycle` before each helper-owned cycle activation, `collect-work` and
+`collect-resume` for the two distinct raw rollouts, and
 `record-observation` for the four subjective and four manual-accessibility
 observations per cycle. After all six cycles, use `finalize-manifest` and
-`package-review`.
+`package-review`. The operator material contains the frozen tasks and paths but
+not the oracle, materiality reasoning, recommendation, expected choice, or
+provenance. Typed provenance is reverified against an active architecture owner
+at the candidate revision or a real file at the pinned target revision.
 
 `collect-work` returns only `resume_allowed`, `campaign_stop`, or
 `operator_environment_invalid`. A stopped or invalid campaign identity cannot

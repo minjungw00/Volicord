@@ -145,7 +145,32 @@ def copy_exact(source: Path, destination: Path) -> None:
         raise CampaignError("raw capture copy did not preserve source bytes")
 
 
-def descriptor_skeleton(kind: str, cycle: int, revision: str) -> dict[str, Any]:
+def evaluator_input_path(root: Path, kind: str, cycle: int) -> Path:
+    return root / "evaluator/inputs" / f"{cycle_key(kind, cycle)}.json"
+
+
+def evaluator_descriptor_path(root: Path, kind: str, cycle: int) -> Path:
+    return root / "evaluator/descriptors" / f"{cycle_key(kind, cycle)}.json"
+
+
+def operator_observation_path(root: Path, kind: str, cycle: int, scope: str) -> Path:
+    return root / "operator/observations" / cycle_key(kind, cycle) / f"{scope}.json"
+
+
+def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
+    semantic = {key: item for key, item in value.items() if key != "evidence"}
+    return hashlib.sha256(
+        json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def descriptor_skeleton(
+    kind: str,
+    cycle: int,
+    revision: str,
+    candidate_head: str,
+) -> dict[str, Any]:
+    owner_path = "rebuild/docs/design/inquiry-and-decision.md"
     return {
         "kind": "phase8_cycle_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
@@ -168,7 +193,12 @@ def descriptor_skeleton(kind: str, cycle: int, revision: str) -> dict[str, Any]:
             "kind": "phase8_materiality_review",
             "classification": "unassessed",
             "decision_dimension": "REPLACE with the user-owned decision dimension",
-            "reviewed_active_owner_references": ["rebuild/docs/design/open-decisions.md"],
+            "provenance_references": [{
+                "scope": "volicord_active_owner",
+                "path": owner_path,
+                "sha256": harness.sha256(ROOT / owner_path),
+                "repository_revision": candidate_head,
+            }],
             "established_repository_facts": ["REPLACE with an established repository fact"],
             "why_repository_facts_do_not_determine_choice": "REPLACE after independent review",
             "why_no_accepted_contract_determines_choice": "REPLACE after independent review",
@@ -181,6 +211,83 @@ def descriptor_skeleton(kind: str, cycle: int, revision: str) -> dict[str, Any]:
             },
         },
     }
+
+
+def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
+    hidden: set[str] = set()
+    oracle = descriptor.get("decision_oracle", {})
+    for field, value in (oracle.items() if isinstance(oracle, dict) else ()):
+        if field == "work_task_materiality_basis":
+            continue
+        values = value if isinstance(value, list) else [value]
+        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
+    review = descriptor.get("materiality_review", {})
+    for field in (
+        "decision_dimension",
+        "established_repository_facts",
+        "why_repository_facts_do_not_determine_choice",
+        "why_no_accepted_contract_determines_choice",
+        "why_not_explicitly_delegated_implementation_choice",
+        "user_visible_material_consequence",
+    ):
+        value = review.get(field) if isinstance(review, dict) else None
+        values = value if isinstance(value, list) else [value]
+        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
+    independent = review.get("independent_review", {}) if isinstance(review, dict) else {}
+    basis = independent.get("basis") if isinstance(independent, dict) else None
+    if isinstance(basis, str) and len(basis) >= 8:
+        hidden.add(basis)
+    return hidden
+
+
+def assert_operator_artifacts_do_not_leak(root: Path) -> None:
+    descriptors = [read_json(path) for path in sorted((root / "evaluator/descriptors").glob("*.json"))]
+    hidden = set().union(*(hidden_evaluator_strings(value) for value in descriptors)) if descriptors else set()
+    for path in sorted((root / "operator").rglob("*")):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "EVALUATOR_ONLY" in text or any(value in text for value in hidden):
+            raise CampaignError(f"operator-facing artifact exposes evaluator-only material: {relative(root, path)}")
+
+
+def render_operator_run_sheet(root: Path) -> Path:
+    campaign = load_campaign(root)
+    entries: list[str] = []
+    for kind in CLASSES:
+        for cycle in (1, 2):
+            state = campaign["cycles"][cycle_key(kind, cycle)]
+            if state["state"] == "prepared":
+                continue
+            descriptor = read_json(evaluator_descriptor_path(root, kind, cycle))
+            entries.append(
+                f"## {kind} cycle {cycle}\n\n"
+                f"- Repository: `{state['repository_path']}`\n"
+                f"- Runtime Home: `{state['runtime_home']}`\n"
+                f"- Work capture destination: `{cycle_root(root, kind, cycle) / 'evidence/work.rollout.jsonl'}`\n"
+                f"- Resume capture destination: `{cycle_root(root, kind, cycle) / 'evidence/resume.rollout.jsonl'}`\n\n"
+                "### Frozen work task\n\n"
+                f"{descriptor['work_user_task']}\n\n"
+                "### Frozen resume task\n\n"
+                f"{descriptor['fresh_resume_user_task']}\n\n"
+                "Explicitly approve repository and hook trust in VS Code. Start each task in its own "
+                "fresh thread. After work capture, run `collect-work`; continue only when it reports "
+                "`resume_allowed`. After resume capture, run `collect-resume`, then record the manual "
+                "and accessibility observations listed in the operator observation templates.\n"
+            )
+    path = root / "operator/RUN-SHEET.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# Naturalistic Dogfood Operator Run Sheet\n\n"
+        "This helper does not grant repository or hook trust and does not start Codex sessions. "
+        "Use this operator material only after all six sealed cycle entries are present. Evaluator "
+        "research is maintained separately; this workflow isolation is not an operating-system "
+        "security boundary against deliberately opening evaluator files.\n\n"
+        + ("\n\n".join(entries) if entries else "No cycles are sealed for operator use yet.\n"),
+        encoding="utf-8",
+    )
+    assert_operator_artifacts_do_not_leak(root)
+    return path
 
 
 def run_checked(argv: list[str], *, cwd: Path = ROOT) -> dict[str, Any]:
@@ -260,11 +367,83 @@ def clone_repository(source: Path, destination: Path, revision: str) -> None:
         raise CampaignError("disposable cycle repository revision could not be pinned cleanly")
 
 
+def load_sealed_descriptor(
+    root: Path,
+    kind: str,
+    cycle: int,
+    campaign: dict[str, Any] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    campaign = campaign or load_campaign(root)
+    state = campaign["cycles"][cycle_key(kind, cycle)]
+    path = evaluator_descriptor_path(root, kind, cycle)
+    if state.get("state") == "prepared" or not path.is_file():
+        raise CampaignError("cycle requires a valid sealed evaluator descriptor")
+    descriptor = read_json(path)
+    if descriptor_semantic_sha256(descriptor) != state.get("sealed_semantic_sha256"):
+        raise CampaignError("sealed evaluator descriptor semantics changed")
+    errors = harness.cycle_descriptor_errors(
+        descriptor,
+        candidate_revision=campaign["candidate_head"],
+        target_repository=Path(state["repository_path"]),
+        verify_provenance=True,
+    )
+    if errors:
+        raise CampaignError("sealed descriptor no longer qualifies: " + "; ".join(errors))
+    return path, descriptor
+
+
+def seal_cycle(root: Path, kind: str, cycle: int, prepared_descriptor: Path) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    state = campaign["cycles"][cycle_key(kind, cycle)]
+    if state.get("state") != "prepared":
+        raise CampaignError("cycle descriptor is already sealed and cannot be replaced")
+    descriptor = read_json(prepared_descriptor.resolve())
+    if "evidence" in descriptor:
+        raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
+    if descriptor.get("repository_class") != kind or descriptor.get("cycle") != cycle:
+        raise CampaignError("evaluator descriptor is bound to a different cycle")
+    if descriptor.get("repository_revision") != state["repository_revision"]:
+        raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
+    errors = harness.cycle_descriptor_errors(
+        descriptor,
+        candidate_revision=campaign["candidate_head"],
+        target_repository=Path(state["repository_path"]),
+        verify_provenance=True,
+    )
+    if errors:
+        raise CampaignError("evaluator descriptor does not qualify: " + "; ".join(errors))
+    operator_text = f"{descriptor['work_user_task']}\n{descriptor['fresh_resume_user_task']}"
+    if "EVALUATOR_ONLY" in operator_text or any(
+        value in operator_text for value in hidden_evaluator_strings(descriptor)
+    ):
+        raise CampaignError("operator-facing task would expose evaluator-only material")
+    destination = evaluator_descriptor_path(root, kind, cycle)
+    if destination.exists():
+        raise CampaignError("authoritative evaluator descriptor already exists")
+    write_json(destination, descriptor)
+    state["state"] = "sealed"
+    state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
+    save_campaign(root, campaign)
+    run_sheet = render_operator_run_sheet(root)
+    register_artifact(root, destination)
+    register_artifact(root, run_sheet, replace=True)
+    return {
+        "kind": "phase8_dogfood_sealed_cycle",
+        "repository_class": kind,
+        "cycle": cycle,
+        "repository_revision": state["repository_revision"],
+        "sealed_semantic_sha256": state["sealed_semantic_sha256"],
+        "operator_run_sheet": relative(root, run_sheet),
+    }
+
+
 def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
     key = cycle_key(kind, cycle)
     state = campaign["cycles"][key]
+    load_sealed_descriptor(root, kind, cycle, campaign)
     repository = Path(state["repository_path"])
     binary = Path(campaign["candidate_binary"])
     manifest = repository / ".codex/volicord-integration.json"
@@ -288,7 +467,7 @@ def prepare_campaign(
     repository_input: Path,
     *,
     candidate_binary: Path | None = None,
-    enable: bool = True,
+    enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
 ) -> dict[str, Any]:
     root = root.resolve()
@@ -324,10 +503,16 @@ def prepare_campaign(
             (destination / "documents").mkdir()
             repository = destination / "repository"
             cloner(Path(spec["path"]).resolve(), repository, revision)
-            write_json(destination / "descriptor.json", descriptor_skeleton(kind, number, revision))
-            write_json(destination / "observations/manual.json", harness.observation_template(MANUAL_OBSERVATIONS))
             write_json(
-                destination / "observations/accessibility.json",
+                evaluator_input_path(root, kind, number),
+                descriptor_skeleton(kind, number, revision, candidate_head),
+            )
+            write_json(
+                operator_observation_path(root, kind, number, "manual"),
+                harness.observation_template(MANUAL_OBSERVATIONS),
+            )
+            write_json(
+                operator_observation_path(root, kind, number, "accessibility"),
                 harness.observation_template(ACCESSIBILITY_OBSERVATIONS),
             )
             cycles[key] = {
@@ -337,6 +522,7 @@ def prepare_campaign(
                 "repository_revision": revision,
                 "runtime_home": str((destination / "runtime").resolve()),
                 "state": "prepared",
+                "sealed_semantic_sha256": None,
                 "project_id": None,
                 "codex_enabled": False,
             }
@@ -355,21 +541,9 @@ def prepare_campaign(
     write_json(root / "repository-input.json", raw_input)
     save_campaign(root, campaign)
     write_json(inventory_path(root), load_inventory(root))
-    run_sheet = root / "RUN-SHEET.md"
-    run_sheet.write_text(
-        "# Naturalistic Dogfood Run Sheet\n\n"
-        "This helper never grants repository or hook trust and never starts a Codex session.\n\n"
-        "For each cycle: review and complete `descriptor.json`; run `activate-cycle`; explicitly "
-        "trust the repository and hook in VS Code; start the frozen work task in a fresh thread; "
-        "collect-work; only when it reports `resume_allowed`, start the frozen resume task in a "
-        "distinct fresh thread; then collect-resume and record-observation. Finalize only after all "
-        "six cycles are complete. Preserve raw rollouts separately unless explicit archive inclusion "
-        "is required.\n",
-        encoding="utf-8",
-    )
+    run_sheet = render_operator_run_sheet(root)
     if enable:
-        for kind in CLASSES:
-            activate_cycle(root, kind, 1)
+        raise CampaignError("cycles must be evaluator-sealed before activation")
     preparation = {
         "kind": "phase8_dogfood_campaign_preparation",
         "campaign_id": campaign_id,
@@ -419,13 +593,9 @@ def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[s
         raise CampaignError("campaign already stopped; create a new campaign identity")
     key = cycle_key(kind, cycle)
     state = campaign["cycles"][key]
-    if state["state"] != "prepared":
-        raise CampaignError("work collection requires a prepared cycle")
-    descriptor_path = cycle_root(root, kind, cycle) / "descriptor.json"
-    descriptor = read_json(descriptor_path)
-    errors = harness.cycle_descriptor_errors(descriptor)
-    if errors:
-        raise CampaignError("descriptor does not qualify: " + "; ".join(errors))
+    if state["state"] != "sealed":
+        raise CampaignError("work collection requires a valid sealed evaluator descriptor")
+    descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
     destination = cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"
     copy_exact(raw_capture.resolve(), destination)
     try:
@@ -436,7 +606,11 @@ def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[s
     result: dict[str, Any]
     try:
         blocker = harness.build_work_blocker_result(
-            campaign["candidate_head"], descriptor, harness.sha256(descriptor_path), capture
+            campaign["candidate_head"],
+            descriptor,
+            harness.sha256(descriptor_path),
+            capture,
+            target_repository=Path(state["repository_path"]),
         )
     except ValueError as error:
         if "has no machine-observable terminal work blocker" not in str(error):
@@ -469,7 +643,7 @@ def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[s
         work_session_start_activation_observed=capture.repository_scoped_activation_observed,
     )
     save_campaign(root, campaign)
-    for path in (destination, descriptor_path, cycle_root(root, kind, cycle) / "work-intake.json", activation):
+    for path in (destination, cycle_root(root, kind, cycle) / "work-intake.json", activation):
         register_artifact(root, path)
     return result
 
@@ -591,8 +765,7 @@ def collect_resume(
         capture = load_codex_capture(destination)
     except (OSError, EvidenceError) as error:
         raise CampaignError("resume rollout is not a supported normalized Codex capture") from error
-    descriptor_path = cycle_root(root, kind, cycle) / "descriptor.json"
-    descriptor = read_json(descriptor_path)
+    descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
     project_id = inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
     runtime = Path(state["runtime_home"])
@@ -663,7 +836,7 @@ def record_observation(root: Path, kind: str, cycle: int, scope: str, name: str,
         raise CampaignError("observation name is not permitted for the selected scope")
     observation = {"status": status, "basis": basis}
     harness.validate_observation_object(observation, name)
-    path = cycle_root(root, kind, cycle) / f"observations/{scope}.json"
+    path = operator_observation_path(root, kind, cycle, scope)
     values = read_json(path)
     values[name] = observation
     for item_name, item in values.items():
@@ -688,12 +861,10 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
             state = campaign["cycles"][cycle_key(kind, number)]
             if state["state"] != "resume_collected":
                 raise CampaignError("all six cycles must have resume evidence before finalization")
-            descriptor = cycle_root(root, kind, number) / "descriptor.json"
-            if harness.cycle_descriptor_errors(read_json(descriptor)):
-                raise CampaignError("manifest cannot reference an invalid completed descriptor")
+            descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
             real[str(number)] = relative(root, descriptor)
-            manual[str(number)] = read_json(cycle_root(root, kind, number) / "observations/manual.json")
-            accessibility[str(number)] = read_json(cycle_root(root, kind, number) / "observations/accessibility.json")
+            manual[str(number)] = read_json(operator_observation_path(root, kind, number, "manual"))
+            accessibility[str(number)] = read_json(operator_observation_path(root, kind, number, "accessibility"))
             for values in (manual[str(number)], accessibility[str(number)]):
                 for name, observation in values.items():
                     harness.validate_observation_object(observation, name)
@@ -774,7 +945,7 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
         "preparation.json": (json.dumps(preparation, indent=2, sort_keys=True) + "\n").encode(),
         "repositories.json": manifest.read_bytes(),
         "evidence-inventory.json": inventory_path(root).read_bytes(),
-        "RUN-SHEET.md": (root / "RUN-SHEET.md").read_bytes(),
+        "operator/RUN-SHEET.md": (root / "operator/RUN-SHEET.md").read_bytes(),
     }
     inventory = load_inventory(root)
     review_index: list[dict[str, Any]] = []
@@ -785,7 +956,7 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
             continue
         path = root / name
         files[name] = path.read_bytes()
-        if name.endswith("/descriptor.json"):
+        if name.startswith("evaluator/descriptors/") and name.endswith(".json"):
             descriptor = read_json(path)
             review_name = f"materiality-reviews/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
             review_bytes = (json.dumps(descriptor["materiality_review"], indent=2, sort_keys=True) + "\n").encode()
@@ -830,16 +1001,18 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--campaign-id", required=True)
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
+    seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
     collect_w = sub.add_parser("collect-work")
     collect_r = sub.add_parser("collect-resume")
     observe = sub.add_parser("record-observation")
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
-    for command in (activate, collect_w, collect_r, observe):
+    for command in (seal, activate, collect_w, collect_r, observe):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument("--cycle", choices=(1, 2), type=int, required=True)
+    seal.add_argument("--descriptor", required=True)
     collect_w.add_argument("--raw-rollout", required=True)
     collect_r.add_argument("--raw-rollout", required=True)
     observe.add_argument("--scope", choices=("manual", "accessibility"), required=True)
@@ -858,6 +1031,8 @@ def main() -> int:
     root = Path(args.campaign_root).resolve()
     if args.command == "prepare":
         value = prepare_campaign(root, args.campaign_id, args.candidate_head, Path(args.repositories).resolve())
+    elif args.command == "seal-cycle":
+        value = seal_cycle(root, args.repository_class, args.cycle, Path(args.descriptor))
     elif args.command == "activate-cycle":
         value = activate_cycle(root, args.repository_class, args.cycle)
     elif args.command == "collect-work":

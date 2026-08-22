@@ -170,12 +170,16 @@ that comparison does not automatically pass the subjective Question-relevance
 observation.
 
 Every descriptor also carries a hidden `materiality_review` prepared by the
-campaign control session. It records the reviewed active owners, repository
-facts, why neither facts nor accepted contracts determine the choice, why the
-choice is not an explicitly delegated implementation detail, the user-visible
-consequence, and an independent-review outcome. Only `user_owned_material`
-with an accepted independent review is descriptor-valid. This is a bounded
-review gate, not a claim that JSON mechanically proves semantic truth.
+campaign control session. Its single typed provenance representation can bind
+content hashes either to one of the nine current active architecture owners at
+the candidate revision or to a safe path in the cycle's exact pinned target
+revision. Qualification re-reads those Git objects and rejects inactive owner
+documents, traversal, missing files, wrong revisions, and stale hashes. The
+review still records why neither facts nor accepted contracts determine the
+choice, why the choice is not an explicitly delegated implementation detail,
+the user-visible consequence, and an independent-review outcome. Only
+`user_owned_material` with an accepted independent review is descriptor-valid;
+typed provenance does not mechanically prove semantic materiality.
 
 Work-session research, Inquiry, current-host Decision provenance, ordinary
 work, numeric-exit verification, and Checkpoint creation are observed from the
@@ -237,6 +241,7 @@ be classified without executing later qualifying sessions:
 python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
   --candidate-head <current-candidate-head> \
   --descriptor <one-cycle-descriptor.json> \
+  --repository <exact-pinned-cycle-repository> \
   --work-capture <completed-work-rollout.jsonl> \
   --output <blocker-result.json>
 ```
@@ -266,13 +271,20 @@ rebuild/scripts/dogfood-campaign prepare \
 ```
 
 `prepare` verifies the clean candidate and source identities, performs a
-candidate-local install, creates six revision-pinned disposable repository
-workspaces with fresh Runtime Homes and descriptor/review skeletons, writes
-`status`/`basis` observation templates and an operator run sheet, and enables
-the first cycle for each repository. It never grants Codex
-repository or hook trust. Before another cycle, `activate-cycle` changes only
-the helper-owned repository-local Volicord configuration; the operator still
-reviews and grants trust in VS Code.
+candidate-local install, and creates six revision-pinned disposable repository
+workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
+under the private evaluator plane; operator observation templates and the run
+sheet live under the operator plane. A preparation/control agent completes an
+evaluator input and invokes `seal-cycle`. Sealing verifies the class, pinned
+revision, active-owner or target-repository provenance and content hashes,
+stores the authoritative hidden descriptor, freezes its semantic hash, and
+regenerates the run sheet from only the exact work/resume tasks and operational
+paths. `activate-cycle` and `collect-work` reject unsealed cycles. The run-sheet
+leak check rejects exact hidden oracle/review material and deliberately marked
+evaluator-only sentinels. This is workflow/evidence isolation, not an OS
+security boundary against deliberately opening evaluator files. The helper
+never grants Codex repository or hook trust; the operator reviews and grants
+trust in VS Code.
 
 `collect-work` copies and hashes a user-supplied raw rollout byte-for-byte,
 checks its frozen task/session/revision/activation contract, extracts an

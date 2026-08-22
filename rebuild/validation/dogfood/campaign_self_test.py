@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 
@@ -102,7 +104,10 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
     value = copy.deepcopy(descriptor)
     value.pop("_evidence_directory", None)
     value.pop("_evidence_file_sha256", None)
-    campaign.write_json(campaign.cycle_root(root, kind, cycle) / "descriptor.json", value)
+    value.pop("evidence", None)
+    source = campaign.evaluator_input_path(root, kind, cycle)
+    campaign.write_json(source, value)
+    campaign.seal_cycle(root, kind, cycle, source)
 
 
 def exporter_from(source: Path):
@@ -134,7 +139,7 @@ def assert_observation_round_trip(root: Path) -> None:
         ("manual", campaign.MANUAL_OBSERVATIONS),
         ("accessibility", campaign.ACCESSIBILITY_OBSERVATIONS),
     ):
-        path = campaign.cycle_root(root, "volicord", 1) / f"observations/{scope}.json"
+        path = campaign.operator_observation_path(root, "volicord", 1, scope)
         template = campaign.read_json(path)
         assert set(template) == set(names)
         for name, value in template.items():
@@ -170,6 +175,108 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     invalid = campaign.collect_work(activation_root, "volicord", 1, missing)
     assert invalid["outcome"] == "operator_environment_invalid"
     assert invalid["classification"] == "operator_environment_setup_failure"
+
+
+def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
+    root = parent / "sealing-campaign"
+    prepare(root, parent / "sealing-sources", binary)
+    run_sheet = root / "operator/RUN-SHEET.md"
+    initial = run_sheet.read_text(encoding="utf-8")
+    assert "descriptor" not in initial.casefold()
+    assert not list((root / "cycles").glob("*/descriptor.json"))
+    try:
+        campaign.activate_cycle(root, "volicord", 1)
+    except campaign.CampaignError as error:
+        assert "sealed evaluator descriptor" in str(error)
+    else:
+        raise AssertionError("unsealed cycle activated")
+    try:
+        campaign.collect_work(root, "volicord", 1, parent / "absent-rollout.jsonl")
+    except campaign.CampaignError as error:
+        assert "sealed evaluator descriptor" in str(error)
+    else:
+        raise AssertionError("unsealed cycle accepted work collection")
+
+    descriptor, _work, _resume, _bundle = fixture_for(parent, "volicord", 1)
+    descriptor.pop("_evidence_directory", None)
+    descriptor.pop("_evidence_file_sha256", None)
+    descriptor.pop("evidence", None)
+    leaked = copy.deepcopy(descriptor)
+    leaked["materiality_review"]["independent_review"]["basis"] = leaked["work_user_task"]
+    leaked_path = parent / "leaked-evaluator-input.json"
+    campaign.write_json(leaked_path, leaked)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, leaked_path)
+    except campaign.CampaignError as error:
+        assert "evaluator-only material" in str(error)
+    else:
+        raise AssertionError("evaluator material entered the operator run sheet")
+
+    target = parent / "pinned-target"
+    target.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(target)], check=True)
+    subprocess.run(["git", "-C", str(target), "config", "user.email", "fixture@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(target), "config", "user.name", "Fixture"], check=True)
+    contract = target / "CONTRACT.md"
+    contract.write_text("pinned target contract\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(target), "add", "CONTRACT.md"], check=True)
+    subprocess.run(["git", "-C", str(target), "commit", "--quiet", "-m", "fixture"], check=True)
+    target_revision = subprocess.run(
+        ["git", "-C", str(target), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_revision = harness.git_head(campaign.ROOT)
+    assert candidate_revision is not None
+    base = copy.deepcopy(descriptor)
+    base["repository_revision"] = target_revision
+    owner = base["materiality_review"]["provenance_references"][0]
+    target_reference = {
+        "scope": "target_repository",
+        "path": "CONTRACT.md",
+        "sha256": hashlib.sha256(b"pinned target contract\n").hexdigest(),
+        "repository_revision": target_revision,
+    }
+    base["materiality_review"]["provenance_references"].append(target_reference)
+    assert not harness.cycle_descriptor_errors(
+        base,
+        candidate_revision=candidate_revision,
+        target_repository=target,
+        verify_provenance=True,
+    )
+
+    invalid_cases = []
+    nonexistent_owner = copy.deepcopy(base)
+    nonexistent_owner["materiality_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/not-an-owner.md"
+    invalid_cases.append(("current active architecture owner", nonexistent_owner))
+    inactive_owner = copy.deepcopy(base)
+    inactive_owner["materiality_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/product-charter.md"
+    inactive_owner["materiality_review"]["provenance_references"][0]["sha256"] = harness.sha256(campaign.ROOT / "rebuild/docs/design/product-charter.md")
+    invalid_cases.append(("current active architecture owner", inactive_owner))
+    stale_owner = copy.deepcopy(base)
+    stale_owner["materiality_review"]["provenance_references"][0]["sha256"] = "00" * 32
+    invalid_cases.append(("stale", stale_owner))
+    traversal = copy.deepcopy(base)
+    traversal["materiality_review"]["provenance_references"][1]["path"] = "../CONTRACT.md"
+    invalid_cases.append(("safe relative path", traversal))
+    missing = copy.deepcopy(base)
+    missing["materiality_review"]["provenance_references"][1]["path"] = "MISSING.md"
+    invalid_cases.append(("does not exist", missing))
+    stale_target = copy.deepcopy(base)
+    stale_target["materiality_review"]["provenance_references"][1]["sha256"] = "11" * 32
+    invalid_cases.append(("stale", stale_target))
+    wrong_revision = copy.deepcopy(base)
+    wrong_revision["materiality_review"]["provenance_references"][1]["repository_revision"] = "22" * 20
+    invalid_cases.append(("wrong pinned target revision", wrong_revision))
+    for expected, value in invalid_cases:
+        errors = harness.cycle_descriptor_errors(
+            value,
+            candidate_revision=candidate_revision,
+            target_repository=target,
+            verify_provenance=True,
+        )
+        assert any(expected in error for error in errors), (expected, errors)
 
 
 def assert_successful_campaign(parent: Path, binary: Path) -> None:
@@ -223,7 +330,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     archive = campaign.build_review_package(root, parent / "review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
-        assert len([name for name in names if name.endswith("/descriptor.json")]) == 6
+        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 6
         assert len([name for name in names if name.startswith("materiality-reviews/") and name.endswith(".json")]) == 7
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts) for name in names)
@@ -248,12 +355,15 @@ def main() -> int:
         parent = Path(temporary)
         binary = parent / "candidate/bin/volicord"
         write_fake_binary(binary)
+        assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
         assert_successful_campaign(parent, binary)
     print(json.dumps({
         "status": "passed",
         "checks": [
             "observation_schema_round_trip",
+            "sealed_evaluator_operator_isolation",
+            "typed_materiality_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
             "automatic_project_identity_and_bundle_export",

@@ -45,6 +45,9 @@ from codex_events import (
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "rebuild/validation/shared"))
+from architecture_owners import ACTIVE_ARCHITECTURE_OWNER_PATHS  # noqa: E402
+
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 V11_HARNESS = ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"
@@ -102,6 +105,10 @@ SECRET_MARKERS = (
     "bearer ", "api_key", "api-key", "access_token", "refresh_token",
     "private prompt", "auth.json", "credential_content",
 )
+MATERIALITY_PROVENANCE_SCOPES = {
+    "volicord_active_owner",
+    "target_repository",
+}
 
 
 def utc_now() -> str:
@@ -110,6 +117,26 @@ def utc_now() -> str:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def safe_relative_evidence_path(value: Any) -> str | None:
+    if not nonempty_string(value) or len(value.encode("utf-8")) > 512 or "\\" in value:
+        return None
+    path = Path(value)
+    if path.is_absolute() or value != path.as_posix() or any(part in {"", ".", ".."} for part in path.parts):
+        return None
+    return value
+
+
+def git_blob_bytes(repository: Path, revision: str, relative_path: str) -> bytes | None:
+    completed = subprocess.run(
+        ["git", "-C", str(repository), "show", f"{revision}:{relative_path}"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.stdout if completed.returncode == 0 else None
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -903,6 +930,7 @@ def decision_oracle_errors(value: Any) -> list[str]:
         "user_owned_dimension",
         "why_repository_inspection_cannot_decide",
         "recommendation",
+        "expected_choice",
         "material_consequence",
     ):
         if not nonempty_string(value.get(field)):
@@ -920,7 +948,16 @@ def decision_oracle_errors(value: Any) -> list[str]:
     return errors
 
 
-def materiality_review_errors(value: Any, oracle: Any) -> list[str]:
+def materiality_review_errors(
+    value: Any,
+    oracle: Any,
+    *,
+    candidate_revision: str | None = None,
+    target_revision: str | None = None,
+    candidate_root: Path = ROOT,
+    target_repository: Path | None = None,
+    verify_provenance: bool = False,
+) -> list[str]:
     if not isinstance(value, dict) or value.get("kind") != "phase8_materiality_review":
         return ["materiality_review must be a Phase 8 materiality review"]
     errors: list[str] = []
@@ -939,23 +976,58 @@ def materiality_review_errors(value: Any, oracle: Any) -> list[str]:
             or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
         ):
             errors.append(f"materiality_review.{field} must be bounded non-empty text")
-    owners = value.get("reviewed_active_owner_references")
-    if (
-        not isinstance(owners, list)
-        or not owners
-        or len(owners) > 32
-        or len(owners) != len(set(owners))
-        or not all(
-            nonempty_string(owner)
-            and owner.startswith("rebuild/docs/design/")
-            and owner.endswith(".md")
-            and ".." not in Path(owner).parts
-            for owner in owners
-        )
-    ):
-        errors.append(
-            "materiality_review.reviewed_active_owner_references must name bounded active owners"
-        )
+    if "reviewed_active_owner_references" in value:
+        errors.append("materiality_review does not support superseded reviewed_active_owner_references")
+    references = value.get("provenance_references")
+    if not isinstance(references, list) or not references or len(references) > 32:
+        errors.append("materiality_review.provenance_references must contain bounded typed references")
+        references = []
+    reference_keys: list[tuple[Any, ...]] = []
+    for index, reference in enumerate(references):
+        prefix = f"materiality_review.provenance_references[{index}]"
+        if not isinstance(reference, dict) or set(reference) != {
+            "scope", "path", "sha256", "repository_revision"
+        }:
+            errors.append(f"{prefix} must contain one current typed reference")
+            continue
+        scope = reference.get("scope")
+        path = safe_relative_evidence_path(reference.get("path"))
+        content_hash = reference.get("sha256")
+        reference_revision = reference.get("repository_revision")
+        if scope not in MATERIALITY_PROVENANCE_SCOPES:
+            errors.append(f"{prefix}.scope is unsupported")
+        if path is None:
+            errors.append(f"{prefix}.path must be a safe relative path")
+        if not valid_capture_sha256(content_hash):
+            errors.append(f"{prefix}.sha256 must be a SHA-256 identity")
+        if not isinstance(reference_revision, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", reference_revision) is None:
+            errors.append(f"{prefix}.repository_revision must be a full Git identity")
+        reference_keys.append((scope, path, content_hash, reference_revision))
+        if scope == "volicord_active_owner" and path not in ACTIVE_ARCHITECTURE_OWNER_PATHS:
+            errors.append(f"{prefix}.path is not a current active architecture owner")
+        if not verify_provenance or path is None or not valid_capture_sha256(content_hash):
+            continue
+        if scope == "volicord_active_owner":
+            if reference_revision != candidate_revision:
+                errors.append(f"{prefix} is bound to the wrong candidate revision")
+                continue
+            content = git_blob_bytes(candidate_root, reference_revision, path)
+        elif scope == "target_repository":
+            if target_repository is None:
+                errors.append(f"{prefix} cannot be verified without the pinned target repository")
+                continue
+            if reference_revision != target_revision:
+                errors.append(f"{prefix} is bound to the wrong pinned target revision")
+                continue
+            content = git_blob_bytes(target_repository, reference_revision, path)
+        else:
+            continue
+        if content is None:
+            errors.append(f"{prefix}.path does not exist at the bound revision")
+        elif hashlib.sha256(content).hexdigest() != content_hash:
+            errors.append(f"{prefix}.sha256 is stale for the bound revision")
+    if len(reference_keys) != len(set(reference_keys)):
+        errors.append("materiality_review.provenance_references must be unique")
     facts = value.get("established_repository_facts")
     if (
         not isinstance(facts, list)
@@ -1112,7 +1184,14 @@ def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: i
     )
 
 
-def cycle_descriptor_errors(value: Any) -> list[str]:
+def cycle_descriptor_errors(
+    value: Any,
+    *,
+    candidate_revision: str | None = None,
+    candidate_root: Path = ROOT,
+    target_repository: Path | None = None,
+    verify_provenance: bool = False,
+) -> list[str]:
     if not isinstance(value, dict) or value.get("kind") != "phase8_cycle_descriptor":
         return ["descriptor kind must be phase8_cycle_descriptor"]
     errors: list[str] = []
@@ -1132,7 +1211,15 @@ def cycle_descriptor_errors(value: Any) -> list[str]:
             errors.append(error)
     oracle = value.get("decision_oracle")
     errors.extend(decision_oracle_errors(oracle))
-    errors.extend(materiality_review_errors(value.get("materiality_review"), oracle))
+    errors.extend(materiality_review_errors(
+        value.get("materiality_review"),
+        oracle,
+        candidate_revision=candidate_revision,
+        target_revision=revision if isinstance(revision, str) else None,
+        candidate_root=candidate_root,
+        target_repository=target_repository,
+        verify_provenance=verify_provenance,
+    ))
     if not decision_oracle_errors(oracle):
         errors.extend(
             naturalistic_prompt_errors(
@@ -1190,8 +1277,15 @@ def build_work_blocker_result(
     descriptor: dict[str, Any],
     descriptor_sha256: str,
     capture: CodexCapture,
+    *,
+    target_repository: Path | None = None,
 ) -> dict[str, Any]:
-    descriptor_errors = cycle_descriptor_errors(descriptor)
+    descriptor_errors = cycle_descriptor_errors(
+        descriptor,
+        candidate_revision=candidate_head,
+        target_repository=target_repository,
+        verify_provenance=True,
+    )
     if descriptor_errors:
         raise ValueError("qualify-work-blocker requires one valid cycle descriptor")
     if not re.fullmatch(r"[0-9a-f]{40}", candidate_head):
@@ -1408,6 +1502,7 @@ def qualify_work_blocker(args: argparse.Namespace) -> int:
         descriptor,
         hashlib.sha256(descriptor_bytes).hexdigest(),
         capture,
+        target_repository=Path(args.repository).resolve(),
     )
     write_json(output_path, result)
     print(json.dumps(result, indent=2, sort_keys=True))
@@ -1929,6 +2024,8 @@ def real_session_evidence(
     kind: str,
     cycle: int,
     repository_revision: str | None,
+    candidate_revision: str | None = None,
+    target_repository: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {
@@ -1942,7 +2039,12 @@ def real_session_evidence(
     evidence_directory = (
         Path(evidence_directory_value) if nonempty_string(evidence_directory_value) else None
     )
-    descriptor_errors = cycle_descriptor_errors(raw)
+    descriptor_errors = cycle_descriptor_errors(
+        raw,
+        candidate_revision=candidate_revision or git_head(ROOT),
+        target_repository=target_repository,
+        verify_provenance=True,
+    )
     evidence = raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {}
     captures = evidence.get("captures") if isinstance(evidence.get("captures"), dict) else {}
     work_reference = captures.get("work")
@@ -2743,6 +2845,8 @@ def sanitized_cycle(
     cycle_root: Path,
     duration_ms: float,
     repository_revision: str | None,
+    candidate_revision: str,
+    target_repository: Path,
     real_session_raw: dict[str, Any] | None,
     peak_memory: dict[str, Any],
     repeated_resources: dict[str, Any],
@@ -2806,6 +2910,8 @@ def sanitized_cycle(
         kind=kind,
         cycle=cycle,
         repository_revision=repository_revision,
+        candidate_revision=candidate_revision,
+        target_repository=target_repository,
     )
     deterministic_status = status_from_steps(step_statuses)
     resource_qualification = {
@@ -3204,6 +3310,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         cycle_root,
                         (time.monotonic_ns() - cycle_started) / 1_000_000,
                         identity["revision"],
+                        candidate_head,
+                        source_by_class[kind],
                         load_real_session_cycle(
                             specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
                             repository_manifest.parent,
@@ -3224,6 +3332,8 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         kind=kind,
                         cycle=cycle_number,
                         repository_revision=identity["revision"],
+                        candidate_revision=candidate_head,
+                        target_repository=source_by_class[kind],
                     )
                     cycles.append({
                         "cycle": cycle_number,
@@ -3414,6 +3524,7 @@ def fixture_decision_oracle() -> dict[str, Any]:
             "Include the actionable cause in every public error",
         ],
         "recommendation": "Keep public errors concise and expose details only in diagnostics",
+        "expected_choice": "Keep public errors concise and expose details only in diagnostics",
         "material_consequence": "The choice changes output stability and troubleshooting usefulness.",
     }
 
@@ -3424,10 +3535,13 @@ def fixture_materiality_review(oracle: dict[str, Any] | None = None) -> dict[str
         "kind": "phase8_materiality_review",
         "classification": "user_owned_material",
         "decision_dimension": oracle["user_owned_dimension"],
-        "reviewed_active_owner_references": [
-            "rebuild/docs/design/product-charter.md",
-            "rebuild/docs/design/open-decisions.md",
-            "rebuild/docs/design/inquiry-and-decision.md",
+        "provenance_references": [
+            {
+                "scope": "volicord_active_owner",
+                "path": "rebuild/docs/design/inquiry-and-decision.md",
+                "sha256": sha256(ROOT / "rebuild/docs/design/inquiry-and-decision.md"),
+                "repository_revision": git_head(ROOT),
+            },
         ],
         "established_repository_facts": oracle["established_repository_facts"],
         "why_repository_facts_do_not_determine_choice": (
@@ -4244,6 +4358,9 @@ def self_test() -> int:
     if codex_user_turn_transport_identity_matches(descriptor_task, None):
         raise AssertionError("non-text descriptor qualified as Codex user-turn identity")
     revision = "0" * 40
+    candidate_revision = git_head(ROOT)
+    if candidate_revision is None:
+        raise AssertionError("dogfood self-test could not resolve the current candidate")
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
@@ -4692,7 +4809,7 @@ def self_test() -> int:
     ).hexdigest()
     try:
         build_work_blocker_result(
-            revision,
+            candidate_revision,
             external_fixture,
             descriptor_identity,
             positive_work_capture,
@@ -4724,7 +4841,7 @@ def self_test() -> int:
     )
     zero_workflow_capture = load_codex_capture(zero_workflow_path)
     blocker_result = build_work_blocker_result(
-        revision,
+        candidate_revision,
         external_fixture,
         descriptor_identity,
         zero_workflow_capture,
@@ -4760,7 +4877,7 @@ def self_test() -> int:
     )
     missing_activation_capture = load_codex_capture(missing_activation_path)
     setup_result = build_work_blocker_result(
-        revision,
+        candidate_revision,
         external_fixture,
         descriptor_identity,
         missing_activation_capture,
@@ -4789,7 +4906,7 @@ def self_test() -> int:
     )
     transport_blocker_sha256 = sha256(transport_blocker_path)
     transport_blocker_result = build_work_blocker_result(
-        revision,
+        candidate_revision,
         external_fixture,
         descriptor_identity,
         load_codex_capture(transport_blocker_path),
@@ -4827,6 +4944,8 @@ def self_test() -> int:
             current_candidate,
             "--descriptor",
             str(blocker_descriptor_path),
+            "--repository",
+            str(ROOT),
             "--work-capture",
             str(zero_workflow_path),
             "--output",
@@ -4870,7 +4989,7 @@ def self_test() -> int:
     )
     try:
         build_work_blocker_result(
-            revision,
+            candidate_revision,
             external_fixture,
             descriptor_identity,
             load_codex_capture(incomplete_work_path),
@@ -6798,6 +6917,7 @@ def parse_args() -> argparse.Namespace:
     blocker = subparsers.add_parser("qualify-work-blocker")
     blocker.add_argument("--candidate-head", required=True)
     blocker.add_argument("--descriptor", required=True)
+    blocker.add_argument("--repository", required=True)
     blocker.add_argument("--work-capture", required=True)
     blocker.add_argument("--output", required=True)
     run = subparsers.add_parser("run")

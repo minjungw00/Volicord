@@ -17,20 +17,14 @@ import sys
 import tempfile
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "validation/shared"))
+from architecture_owners import ACTIVE_ARCHITECTURE_OWNER_FILES  # noqa: E402
+
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DESIGN_DIRECTORY = Path("rebuild/docs/design")
 
-ARCHITECTURE_DOCUMENTS: tuple[str, ...] = (
-    "architecture.md",
-    "domain-model.md",
-    "repository-intelligence.md",
-    "privacy-and-provider-boundary.md",
-    "inquiry-and-decision.md",
-    "projections-and-documents.md",
-    "portable-context.md",
-    "versioning-policy.md",
-    "failure-and-recovery.md",
-)
+ARCHITECTURE_DOCUMENTS = ACTIVE_ARCHITECTURE_OWNER_FILES
 
 REQUIRED_HEADINGS: dict[str, tuple[str, ...]] = {
     "architecture.md": (

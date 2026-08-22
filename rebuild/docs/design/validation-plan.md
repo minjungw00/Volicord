@@ -802,6 +802,11 @@ contract와 explicit implementation delegation을 독립 control session에서 �
 `user_owned_material`로 accepted한 bounded prequalification artifact다. Schema가 semantic
 truth를 기계적으로 증명한다는 뜻은 아니며 accepted independent review가 없거나 fact,
 accepted contract 또는 delegated implementation choice로 분류된 cycle은 시작하지 않는다.
+Review provenance는 하나의 typed reference 표현만 사용한다. 각 reference는 scope, safe
+relative path, SHA-256와 repository revision을 보존한다. Volicord owner reference는 candidate
+revision의 아홉 current active Phase 3 architecture owner 중 하나와 실제 Git content를,
+target-repository reference는 cycle의 exact pinned revision에 존재하는 실제 Git content를
+검증한다. Path/hash 검증은 independent reviewer의 semantic materiality 판단을 대신하지 않는다.
 `work_task_materiality_basis`는 hidden user-owned dimension이 현재 work
 outcome에 material한 이유를 만드는 ordinary user-task text의 exact bounded fragment다.
 Case-folding하고 whitespace를 collapse해 normalize한 basis가 같은 방식으로
@@ -852,6 +857,7 @@ Internal harness는 completed real work capture 뒤 machine-observable terminal 
 python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
   --candidate-head <current-candidate-head> \
   --descriptor <one-cycle-descriptor.json> \
+  --repository <exact-pinned-cycle-repository> \
   --work-capture <completed-work-rollout.jsonl> \
   --output <blocker-result.json>
 ```
@@ -879,6 +885,13 @@ Campaign 준비와 routine evidence collection은 maintained internal helper인
 validation, blocker gating, Project identity extraction, canonical bundle export와 hash,
 bounded Runtime summary, descriptor evidence completion, manifest assembly와 review packaging을
 담당한다. Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+`prepare`는 evaluator input과 operator material을 분리한다. Independent control agent가
+`seal-cycle`로 descriptor를 검증·봉인하기 전에는 `activate-cycle`과 `collect-work`가
+거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
+동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
+Operator-facing artifact의 leak check는 oracle alternative, recommendation, expected choice,
+materiality-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
+isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
 
 ## 16. Architecture 확정 gate
 
