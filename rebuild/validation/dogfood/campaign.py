@@ -58,6 +58,7 @@ MANAGED_STORES = (
 RAW_NAMES = {"work.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
+BATCH_CAPTURE_COUNT = len(CLASSES) * 2 * 2
 
 
 class CampaignError(ValueError):
@@ -280,10 +281,9 @@ def render_operator_run_sheet(root: Path) -> Path:
                 f"{descriptor['work_user_task']}\n\n"
                 "### Frozen resume task\n\n"
                 f"{descriptor['fresh_resume_user_task']}\n\n"
-                "Explicitly approve repository and hook trust in VS Code. Start each task in its own "
-                "fresh thread. After work capture, run `collect-work`; continue only when it reports "
-                "`resume_allowed`. After resume capture, run `collect-resume`, then record the manual "
-                "and accessibility observations listed in the operator observation templates.\n"
+                "Explicitly inspect and approve repository and hook trust in VS Code. Start each task "
+                "in its own fresh thread, send only the frozen task, and preserve the raw rollout file. "
+                "Do not run campaign collection between chats.\n"
             )
     path = root / "operator/RUN-SHEET.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -292,7 +292,10 @@ def render_operator_run_sheet(root: Path) -> Path:
         "This helper does not grant repository or hook trust and does not start Codex sessions. "
         "Use this operator material only after all six sealed cycle entries are present. Evaluator "
         "research is maintained separately; this workflow isolation is not an operating-system "
-        "security boundary against deliberately opening evaluator files.\n\n"
+        "security boundary against deliberately opening evaluator files. After all six entries are "
+        "sealed, the campaign steward may run `activate-all`; activation never grants trust. Run all "
+        "twelve fresh work/resume chats, preserve their raw rollouts, and provide the twelve files once "
+        "through `collect-batch`. No per-chat control-session collection is required.\n\n"
         + ("\n\n".join(entries) if entries else "No cycles are sealed for operator use yet.\n"),
         encoding="utf-8",
     )
@@ -470,6 +473,28 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
     return result
 
 
+def activate_all(root: Path) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    for kind in CLASSES:
+        for cycle in (1, 2):
+            load_sealed_descriptor(root, kind, cycle, campaign)
+    results = []
+    for kind in CLASSES:
+        for cycle in (1, 2):
+            results.append({
+                "repository_class": kind,
+                "cycle": cycle,
+                "result": activate_cycle(root, kind, cycle),
+            })
+    return {
+        "kind": "phase8_dogfood_campaign_activation",
+        "cycle_count": len(results),
+        "repository_and_hook_trust": "user_controlled_not_automated",
+        "cycles": results,
+    }
+
+
 def prepare_campaign(
     root: Path,
     campaign_id: str,
@@ -500,6 +525,9 @@ def prepare_campaign(
         or len(document_language.encode("utf-8")) > 128
     ):
         raise CampaignError("campaign document language must be bounded non-empty text")
+    viewer_locale = raw_input.get("viewer_locale", "en")
+    if viewer_locale not in {"en", "ko"}:
+        raise CampaignError("campaign Viewer locale must be en or ko")
     _, identities = harness.load_repository_specs(repository_input, candidate_head, definition)
     failures = [item for item in identities if item["status"] != "passed"]
     if failures:
@@ -551,6 +579,7 @@ def prepare_campaign(
         "candidate_head": candidate_head,
         "candidate_binary": str(binary),
         "document_language": document_language,
+        "viewer_locale": viewer_locale,
         "repository_input": relative(root, root / "repository-input.json"),
         "terminal_outcome": None,
         "active_cycle_by_repository": {},
@@ -776,6 +805,101 @@ def generate_document(
     }
 
 
+def generate_viewer_snapshot(
+    binary: Path,
+    runtime: Path,
+    project_id: str,
+    destination: Path,
+    locale: str,
+    language: str,
+) -> dict[str, Any]:
+    viewer = binary.with_name("volicord-viewer")
+    completed = subprocess.run(
+        [
+            str(viewer),
+            "--runtime", str(runtime),
+            "--project", project_id,
+            "--locale", locale,
+            "--level", "deep",
+            "--language", language,
+            "--snapshot", str(destination.resolve()),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode == 0 and destination.is_file():
+        return {"status": "passed"}
+    return {
+        "status": "failed",
+        "basis": (
+            f"public Viewer snapshot export exited {completed.returncode}; "
+            f"destination_present={destination.is_file()}"
+        ),
+    }
+
+
+def collect_viewer_snapshot_evidence(
+    root: Path,
+    kind: str,
+    cycle: int,
+    binary: Path,
+    runtime: Path,
+    project_id: str,
+    candidate_head: str,
+    locale: str,
+    language: str,
+    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]],
+) -> tuple[dict[str, Any], list[Path]]:
+    destination = cycle_root(root, kind, cycle) / "evidence/viewer-snapshot.html"
+    try:
+        result = snapshotter(
+            binary,
+            runtime,
+            project_id,
+            destination,
+            locale,
+            language,
+        )
+    except (OSError, ValueError, CampaignError) as error:
+        result = {
+            "status": "failed",
+            "basis": f"Viewer snapshot evidence adapter failed: {type(error).__name__}",
+        }
+    evidence: dict[str, Any] = {
+        "kind": "phase8_viewer_snapshot_evidence_summary",
+        "schema_version": 1,
+        "status": "failed",
+        "project_id": project_id,
+        "candidate_head": candidate_head,
+        "repository_class": kind,
+        "cycle": cycle,
+        "locale": locale,
+        "requested_language": language,
+    }
+    produced: list[Path] = []
+    if result.get("status") == "passed" and destination.is_file():
+        evidence.update({
+            "status": "passed",
+            "relative_evidence_path": relative(root, destination),
+            "bytes": destination.stat().st_size,
+            "sha256": harness.sha256(destination),
+        })
+        produced.append(destination)
+    else:
+        basis = result.get("basis") if isinstance(result, dict) else None
+        evidence["basis"] = (
+            basis[:512]
+            if isinstance(basis, str) and basis.strip()
+            else "public Viewer snapshot export did not produce usable evidence"
+        )
+    summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
+    write_json(summary, evidence)
+    produced.append(summary)
+    return evidence, produced
+
+
 def collect_document_evidence(
     root: Path,
     kind: str,
@@ -894,29 +1018,21 @@ def complete_document_evidence(root: Path, kind: str, cycle: int) -> bool:
     )
 
 
-def collect_resume(
+def extract_resume_evidence(
     root: Path,
     kind: str,
     cycle: int,
-    raw_capture: Path,
+    capture: Any,
+    destination: Path,
     *,
     exporter: Callable[[Path, Path, str, Path], None] = default_export,
     documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
+    final_state: str = "resume_collected",
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
-    verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None:
-        raise CampaignError("later collection is blocked; create a new campaign identity")
     key = cycle_key(kind, cycle)
     state = campaign["cycles"][key]
-    if state["state"] != "work_collected":
-        raise CampaignError("resume collection requires a resume_allowed work intake")
-    destination = cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl"
-    copy_exact(raw_capture.resolve(), destination)
-    try:
-        capture = load_codex_capture(destination)
-    except (OSError, EvidenceError) as error:
-        raise CampaignError("resume rollout is not a supported normalized Codex capture") from error
     descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
     project_id = inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
@@ -939,7 +1055,6 @@ def collect_resume(
     errors = harness.cycle_descriptor_errors(descriptor)
     if errors:
         raise CampaignError("completed descriptor does not qualify: " + "; ".join(errors))
-    write_json(descriptor_path, descriptor)
     summary_path = cycle_root(root, kind, cycle) / "runtime-summary.json"
     activation_path = update_activation_summary(
         root, kind, cycle, resume_session_start_activation_observed=True
@@ -969,7 +1084,39 @@ def collect_resume(
     document_review_index = write_operator_document_review_index(
         root, kind, cycle, document_result
     )
-    state["state"] = "resume_collected"
+    snapshot_result, snapshot_paths = collect_viewer_snapshot_evidence(
+        root,
+        kind,
+        cycle,
+        binary,
+        runtime,
+        project_id,
+        campaign["candidate_head"],
+        campaign.get("viewer_locale", "en"),
+        campaign.get("document_language", "en"),
+        snapshotter,
+    )
+    snapshot_summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
+    descriptor["evidence"].update({
+        "runtime_summary": {
+            "file": relative(cycle_root(root, kind, cycle), summary_path),
+            "sha256": harness.sha256(summary_path),
+        },
+        "activation_summary": {
+            "file": relative(cycle_root(root, kind, cycle), activation_path),
+            "sha256": harness.sha256(activation_path),
+        },
+        "generated_documents": {
+            "file": relative(cycle_root(root, kind, cycle), document_summary),
+            "sha256": harness.sha256(document_summary),
+        },
+        "viewer_snapshot": {
+            "file": relative(cycle_root(root, kind, cycle), snapshot_summary),
+            "sha256": harness.sha256(snapshot_summary),
+        },
+    })
+    write_json(descriptor_path, descriptor)
+    state["state"] = final_state
     state["resume_session_id"] = capture.session_id
     state["bundle_sha256"] = harness.sha256(bundle)
     save_campaign(root, campaign)
@@ -982,8 +1129,13 @@ def collect_resume(
         document_summary,
         document_review_index,
         *document_paths,
+        *snapshot_paths,
     ):
-        register_artifact(root, path, replace=path in {descriptor_path, activation_path})
+        register_artifact(
+            root,
+            path,
+            replace=path in {destination, descriptor_path, activation_path},
+        )
     return {
         "kind": "phase8_dogfood_resume_intake",
         "outcome": "evidence_collected",
@@ -995,7 +1147,354 @@ def collect_resume(
         "descriptor_evidence_completed": True,
         "runtime_home_copied": False,
         "document_evidence": document_result,
+        "viewer_snapshot_evidence": snapshot_result,
     }
+
+
+def collect_resume(
+    root: Path,
+    kind: str,
+    cycle: int,
+    raw_capture: Path,
+    *,
+    exporter: Callable[[Path, Path, str, Path], None] = default_export,
+    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
+) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    if campaign.get("terminal_outcome") is not None:
+        raise CampaignError("later collection is blocked; create a new campaign identity")
+    state = campaign["cycles"][cycle_key(kind, cycle)]
+    if state["state"] != "work_collected":
+        raise CampaignError("resume collection requires a resume_allowed work intake")
+    destination = cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl"
+    copy_exact(raw_capture.resolve(), destination)
+    try:
+        capture = load_codex_capture(destination)
+    except (OSError, EvidenceError) as error:
+        raise CampaignError("resume rollout is not a supported normalized Codex capture") from error
+    return extract_resume_evidence(
+        root,
+        kind,
+        cycle,
+        capture,
+        destination,
+        exporter=exporter,
+        documenter=documenter,
+        snapshotter=snapshotter,
+    )
+
+
+def batch_rollout_paths(
+    explicit_paths: list[Path] | None,
+    rollout_directory: Path | None,
+) -> list[Path]:
+    if (explicit_paths is None) == (rollout_directory is None):
+        raise CampaignError("collect-batch requires either twelve raw rollouts or one directory")
+    if rollout_directory is not None:
+        directory = rollout_directory.resolve()
+        if not directory.is_dir():
+            raise CampaignError("batch rollout directory is unavailable")
+        entries = sorted(directory.iterdir())
+        if len(entries) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in entries):
+            raise CampaignError("batch rollout directory must contain exactly twelve files")
+        paths = entries
+    else:
+        paths = [path.resolve() for path in explicit_paths or []]
+        if len(paths) != BATCH_CAPTURE_COUNT:
+            raise CampaignError("collect-batch requires exactly twelve explicit raw rollouts")
+    resolved = [path.resolve() for path in paths]
+    if len(set(resolved)) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in resolved):
+        raise CampaignError("batch rollout inputs must be twelve distinct files")
+    return resolved
+
+
+def map_batch_rollouts(
+    root: Path,
+    raw_paths: list[Path],
+) -> dict[tuple[str, int, str], tuple[Path, Any]]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    slots: dict[tuple[str, int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
+    for kind in CLASSES:
+        for cycle in (1, 2):
+            _descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
+            state = campaign["cycles"][cycle_key(kind, cycle)]
+            for role, field in (("work", "work_user_task"), ("resume", "fresh_resume_user_task")):
+                slots[(kind, cycle, role)] = (state, descriptor)
+
+    mapped: dict[tuple[str, int, str], tuple[Path, Any]] = {}
+    sessions: dict[str, Path] = {}
+    for path in raw_paths:
+        try:
+            capture = load_codex_capture(path)
+        except (OSError, EvidenceError) as error:
+            raise CampaignError("batch rollout is not a supported normalized Codex capture") from error
+        if (
+            capture.source != "vscode"
+            or capture.originator != "codex_vscode"
+            or not capture.fresh_user_thread
+            or not capture.user_turns
+        ):
+            raise CampaignError("batch rollout is not a fresh VS Code Codex session")
+        if not nonempty_session_id(capture.session_id):
+            raise CampaignError("batch rollout has no bounded session identity")
+        if capture.session_id in sessions:
+            raise CampaignError("batch rollout reuses a Codex session identity")
+        sessions[capture.session_id] = path
+        candidates = []
+        for slot, (state, descriptor) in slots.items():
+            role = slot[2]
+            task_field = "work_user_task" if role == "work" else "fresh_resume_user_task"
+            if (
+                harness.codex_user_turn_transport_identity_matches(
+                    capture.user_turns[0].text,
+                    descriptor[task_field],
+                )
+                and capture.git_revision == state["repository_revision"]
+                and capture.cwd.resolve(strict=False)
+                == Path(state["repository_path"]).resolve(strict=False)
+            ):
+                candidates.append(slot)
+        if len(candidates) != 1:
+            raise CampaignError("batch rollout does not map unambiguously to one sealed cycle role")
+        slot = candidates[0]
+        if slot in mapped:
+            raise CampaignError("batch rollouts contain duplicate evidence for one sealed cycle role")
+        mapped[slot] = (path, capture)
+    missing = sorted(set(slots) - set(mapped))
+    if missing:
+        raise CampaignError("batch rollouts are missing one or more sealed cycle roles")
+    return mapped
+
+
+def nonempty_session_id(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value == value.strip()
+        and len(value.encode("utf-8")) <= 512
+    )
+
+
+def collect_batch(
+    root: Path,
+    raw_paths: list[Path],
+    *,
+    exporter: Callable[[Path, Path, str, Path], None] = default_export,
+    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
+) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    if campaign.get("terminal_outcome") is not None:
+        raise CampaignError("campaign already stopped; create a new campaign identity")
+    for state in campaign["cycles"].values():
+        if state.get("state") != "sealed":
+            raise CampaignError("batch collection requires all six sealed cycles")
+
+    mapped = map_batch_rollouts(root, raw_paths)
+    for (kind, cycle, role), (source, _capture) in sorted(mapped.items()):
+        destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
+        if source.resolve() == destination.resolve():
+            raise CampaignError("batch rollout source must be outside its sealed evidence destination")
+        copy_exact(source, destination)
+        register_artifact(root, destination)
+
+    cycle_results: list[dict[str, Any]] = []
+    has_product_blocker = False
+    has_environment_invalid = False
+    has_evidence_failure = False
+    for kind in CLASSES:
+        for cycle in (1, 2):
+            key = cycle_key(kind, cycle)
+            state = campaign["cycles"][key]
+            descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
+            work_destination = cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"
+            resume_destination = cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl"
+            work_capture = mapped[(kind, cycle, "work")][1]
+            resume_capture = mapped[(kind, cycle, "resume")][1]
+            if (
+                not work_capture.repository_scoped_activation_observed
+                or not resume_capture.repository_scoped_activation_observed
+            ):
+                has_environment_invalid = True
+            project_ids = observed_project_ids(work_capture)
+            blocker: dict[str, Any] | None = None
+            try:
+                blocker = harness.build_work_blocker_result(
+                    campaign["candidate_head"],
+                    descriptor,
+                    harness.sha256(descriptor_path),
+                    work_capture,
+                    target_repository=Path(state["repository_path"]),
+                )
+            except ValueError as error:
+                if "has no machine-observable terminal work blocker" not in str(error):
+                    raise CampaignError(str(error)) from error
+
+            work_intake_path = cycle_root(root, kind, cycle) / "work-intake.json"
+            if blocker is None and len(project_ids) == 1:
+                work_intake = {
+                    "kind": "phase8_dogfood_work_intake",
+                    "outcome": "resume_allowed",
+                    "repository_class": kind,
+                    "cycle": cycle,
+                    "project_id": project_ids[0],
+                    "work_capture_sha256": work_capture.source_sha256,
+                    "repository_scoped_activation_observed": True,
+                }
+                state["state"] = "work_collected"
+            elif blocker is not None:
+                work_intake = blocker
+                blocker_path = cycle_root(root, kind, cycle) / "blocker-result.json"
+                write_json(blocker_path, blocker)
+                register_artifact(root, blocker_path)
+                has_environment_invalid |= blocker["outcome"] == "operator_environment_invalid"
+                has_product_blocker |= blocker["outcome"] == "campaign_stop"
+                state["state"] = blocker["outcome"]
+            else:
+                work_intake = {
+                    "kind": "phase8_dogfood_work_intake",
+                    "outcome": "campaign_stop",
+                    "classification": "product_work_session_blocker",
+                    "repository_class": kind,
+                    "cycle": cycle,
+                    "basis": "qualifying work capture did not expose exactly one Project identity",
+                }
+                state["state"] = "campaign_stop"
+                has_product_blocker = True
+            if len(project_ids) == 1:
+                state["project_id"] = project_ids[0]
+            state["work_session_id"] = work_capture.session_id
+            write_json(work_intake_path, work_intake)
+            activation_path = update_activation_summary(
+                root,
+                kind,
+                cycle,
+                work_session_start_activation_observed=(
+                    work_capture.repository_scoped_activation_observed
+                ),
+                resume_session_start_activation_observed=(
+                    resume_capture.repository_scoped_activation_observed
+                ),
+            )
+            save_campaign(root, campaign)
+            register_artifact(root, work_intake_path)
+            register_artifact(root, activation_path)
+
+            resume_result: dict[str, Any]
+            if len(project_ids) == 1:
+                try:
+                    resume_result = extract_resume_evidence(
+                        root,
+                        kind,
+                        cycle,
+                        resume_capture,
+                        resume_destination,
+                        exporter=exporter,
+                        documenter=documenter,
+                        snapshotter=snapshotter,
+                        final_state=(
+                            "resume_collected"
+                            if blocker is None
+                            else "batch_diagnostic_evidence_collected"
+                        ),
+                    )
+                except (CampaignError, EvidenceError, OSError, ValueError) as error:
+                    resume_result = {
+                        "kind": "phase8_dogfood_resume_intake",
+                        "outcome": "evidence_failed",
+                        "repository_class": kind,
+                        "cycle": cycle,
+                        "basis": f"{type(error).__name__}: {str(error)[:384]}",
+                        "resume_capture_sha256": resume_capture.source_sha256,
+                    }
+                    has_evidence_failure = True
+            else:
+                resume_result = {
+                    "kind": "phase8_dogfood_resume_intake",
+                    "outcome": "prerequisite_unavailable",
+                    "repository_class": kind,
+                    "cycle": cycle,
+                    "basis": "work Project identity was unavailable",
+                    "resume_capture_sha256": resume_capture.source_sha256,
+                }
+                has_evidence_failure = True
+            evidence_complete = (
+                resume_result.get("outcome") == "evidence_collected"
+                and resume_result.get("document_evidence", {}).get("status") == "passed"
+                and resume_result.get("viewer_snapshot_evidence", {}).get("status") == "passed"
+            )
+            has_evidence_failure |= not evidence_complete
+            cycle_results.append({
+                "repository_class": kind,
+                "cycle": cycle,
+                "status": (
+                    "passed"
+                    if blocker is None and work_intake["outcome"] == "resume_allowed" and evidence_complete
+                    else "failed"
+                ),
+                "work": {
+                    "outcome": work_intake["outcome"],
+                    "session_id": work_capture.session_id,
+                    "relative_evidence_path": relative(root, work_destination),
+                    "sha256": work_capture.source_sha256,
+                    "activation_observed": work_capture.repository_scoped_activation_observed,
+                },
+                "resume": {
+                    "outcome": resume_result["outcome"],
+                    "session_id": resume_capture.session_id,
+                    "relative_evidence_path": relative(root, resume_destination),
+                    "sha256": resume_capture.source_sha256,
+                    "activation_observed": resume_capture.repository_scoped_activation_observed,
+                    **(
+                        {"basis": resume_result["basis"]}
+                        if isinstance(resume_result.get("basis"), str)
+                        else {}
+                    ),
+                },
+                "project_id": state.get("project_id"),
+                "supported_evidence_complete": evidence_complete,
+                "terminal_work_failure_preserved": blocker is not None,
+            })
+            campaign = load_campaign(root)
+
+    campaign["terminal_outcome"] = (
+        "operator_environment_invalid"
+        if has_environment_invalid
+        else "campaign_stop"
+        if has_product_blocker or has_evidence_failure
+        else None
+    )
+    save_campaign(root, campaign)
+    summary = {
+        "kind": "phase8_dogfood_batch_intake_summary",
+        "schema_version": 1,
+        "candidate_head": campaign["candidate_head"],
+        "status": "passed" if all(item["status"] == "passed" for item in cycle_results) else "failed",
+        "outcome": (
+            "evidence_collected"
+            if all(item["status"] == "passed" for item in cycle_results)
+            else "operator_environment_invalid"
+            if has_environment_invalid
+            else "campaign_stop"
+        ),
+        "session_distinctness": {
+            "status": "passed",
+            "expected_count": BATCH_CAPTURE_COUNT,
+            "observed_count": len({
+                mapped[slot][1].session_id for slot in mapped
+            }),
+        },
+        "cycles": cycle_results,
+        "later_evidence_cannot_restore_terminal_work_failure": True,
+    }
+    summary_path = root / "batch-intake-summary.json"
+    write_json(summary_path, summary)
+    register_artifact(root, summary_path)
+    return summary
 
 
 def record_observation(root: Path, kind: str, cycle: int, scope: str, name: str, status: str, basis: str) -> dict[str, str]:
@@ -1103,6 +1602,7 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
         "campaign_id": campaign["campaign_id"],
         "candidate_head": campaign["candidate_head"],
         "document_language": campaign.get("document_language", "en"),
+        "viewer_locale": campaign.get("viewer_locale", "en"),
         "terminal_outcome": campaign["terminal_outcome"],
         "cycles": {
             key: {
@@ -1186,8 +1686,10 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--repositories", required=True)
     seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
+    activate_every = sub.add_parser("activate-all")
     collect_w = sub.add_parser("collect-work")
     collect_r = sub.add_parser("collect-resume")
+    collect_b = sub.add_parser("collect-batch")
     observe = sub.add_parser("record-observation")
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
@@ -1198,6 +1700,11 @@ def parser() -> argparse.ArgumentParser:
     seal.add_argument("--descriptor", required=True)
     collect_w.add_argument("--raw-rollout", required=True)
     collect_r.add_argument("--raw-rollout", required=True)
+    activate_every.add_argument("--campaign-root", required=True)
+    collect_b.add_argument("--campaign-root", required=True)
+    batch_input = collect_b.add_mutually_exclusive_group(required=True)
+    batch_input.add_argument("--raw-rollout", action="append")
+    batch_input.add_argument("--rollout-directory")
     observe.add_argument("--scope", choices=("manual", "accessibility"), required=True)
     observe.add_argument("--name", required=True)
     observe.add_argument("--status", choices=sorted(harness.ALLOWED_STATUS), required=True)
@@ -1218,10 +1725,18 @@ def main() -> int:
         value = seal_cycle(root, args.repository_class, args.cycle, Path(args.descriptor))
     elif args.command == "activate-cycle":
         value = activate_cycle(root, args.repository_class, args.cycle)
+    elif args.command == "activate-all":
+        value = activate_all(root)
     elif args.command == "collect-work":
         value = collect_work(root, args.repository_class, args.cycle, Path(args.raw_rollout))
     elif args.command == "collect-resume":
         value = collect_resume(root, args.repository_class, args.cycle, Path(args.raw_rollout))
+    elif args.command == "collect-batch":
+        paths = batch_rollout_paths(
+            [Path(path) for path in args.raw_rollout] if args.raw_rollout else None,
+            Path(args.rollout_directory) if args.rollout_directory else None,
+        )
+        value = collect_batch(root, paths)
     elif args.command == "record-observation":
         value = record_observation(root, args.repository_class, args.cycle, args.scope, args.name, args.status, args.basis)
     elif args.command == "finalize-manifest":

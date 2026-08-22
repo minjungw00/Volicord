@@ -74,6 +74,7 @@ def main() -> int:
         "question_relevance_review",
         "continuation_basis",
         "check-descriptors",
+        "batch_campaign_contract",
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
@@ -219,6 +220,16 @@ def main() -> int:
         "missing_activation_outcome": "operator_environment_invalid",
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
+    batch_contract = real_session.get("batch_campaign_contract", {})
+    if (
+        batch_contract.get("operation") != "collect-batch"
+        or batch_contract.get("required_raw_rollout_count") != 12
+        or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
+        or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
+        or "read_only_static_viewer_snapshot"
+        not in batch_contract.get("automatic_cycle_evidence", [])
+    ):
+        raise AssertionError("Phase 8 batch campaign contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")

@@ -891,21 +891,35 @@ Evaluator material은 operator instruction, example 또는 review index에 넣�
 descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
 repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
 Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. 실제 material
-Question에는 본인의 답을 제공하고 subjective/accessibility observation도 직접 기록한다.
+Question에는 본인의 답을 제공하고 12개 raw rollout을 session 사이의 control 접촉 없이 보존한다.
 `prepare`는 evaluator input과 operator material을 분리한다. Independent control agent가
-`seal-cycle`로 descriptor를 검증·봉인하기 전에는 `activate-cycle`과 `collect-work`가
+`seal-cycle`로 descriptor를 검증·봉인하기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
 Operator-facing artifact의 leak check는 oracle alternative, recommendation, expected choice,
 materiality-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
-Resume collection은 supported product document-export path로 네 initial kind 각각의 Markdown과
+여섯 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
+repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 12개 fresh
+chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 12개
+explicit path 또는 정확히 12개 file만 있는 directory를 받고, state mutation 전에 frozen first
+task, exact workspace/revision, work/resume role, `source=vscode`, `originator=codex_vscode`, fresh
+session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
+duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
+
+Mapping 뒤 raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
+복구하지 않는다. Missing activation은 operator/environment invalid로 유지한다. 다른 capture는
+bounded diagnostic과 안전하게 식별 가능한 evidence extraction을 위해 계속 parse한다. Extraction은
+Project identity, canonical bundle, bounded Runtime/activation summary, descriptor evidence reference,
+supported product document-export path로 네 initial kind 각각의 Markdown과
 self-contained HTML을 deterministic private evidence path에 생성한다. Summary는 모든
 kind/format의 status, bounded failure basis 또는 relative path, bytes와 SHA-256를 보존하고,
 operator document-review index는 produced path만 노출한다. 한 kind라도 usable evidence가
 없으면 `document_fidelity_and_usefulness = passed`를 거부한다. Human criterion은 네 product
-document kind이며 format별 subjective pass를 따로 요구하지 않는다. Review package는 이
-summary/index와 produced documents를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
+document kind이며 format별 subjective pass를 따로 요구하지 않는다. Public static Viewer snapshot
+capability도 cycle마다 campaign fixed locale/language로 self-contained read-only HTML을 만들고
+path, bytes, SHA-256와 Project/candidate basis를 summary에 기록한다. Review package는 이
+summary/index, produced documents와 Viewer snapshots를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
 Analysis, credential, prompt, provider payload와 source copy는 계속 제외한다.
 Ordinary independent review의 handoff는 byte-exact raw rollout archive와 bounded review
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며

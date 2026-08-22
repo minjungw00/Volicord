@@ -683,6 +683,19 @@ def load_definition() -> dict[str, Any]:
         }
     ):
         raise ValueError("the Phase 8 materiality-review or observation schema changed")
+    batch = evidence.get("batch_campaign_contract", {})
+    if (
+        batch.get("operation") != "collect-batch"
+        or batch.get("required_raw_rollout_count") != 12
+        or batch.get("global_mapping_precedes_campaign_mutation") is not True
+        or batch.get("raw_rollout_bytes_preserved") is not True
+        or batch.get("terminal_work_failure_repaired_by_resume") is not False
+        or batch.get("missing_activation_classification")
+        != "operator_environment_invalid"
+        or "read_only_static_viewer_snapshot"
+        not in batch.get("automatic_cycle_evidence", [])
+    ):
+        raise ValueError("the Phase 8 batch campaign contract changed")
     goal = evidence.get("plain_task_goal", {})
     if (
         goal.get("maximum_utf8_bytes") != MAX_USER_TASK_BYTES
@@ -3567,6 +3580,7 @@ def real_session_fixture(
     cycle: int,
     revision: str,
     evidence_directory: Path,
+    repository_path: Path | None = None,
 ) -> dict[str, Any]:
     project = "01" * 16
     user_source = "02" * 16
@@ -3585,6 +3599,7 @@ def real_session_fixture(
     repository_source = "0f" * 16
     candidate = "10" * 16
     binding = "11" * 16
+    repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
     work_user_task = fixture_work_user_task(kind, cycle)
@@ -3609,7 +3624,7 @@ def real_session_fixture(
                 "id": session,
                 "session_id": session,
                 "timestamp": "2026-08-15T00:00:00Z",
-                "cwd": "/phase8/repository",
+                "cwd": repository_cwd,
                 "originator": "codex_vscode",
                 "cli_version": "0.148.0-alpha.9",
                 "source": "vscode",
@@ -3744,7 +3759,7 @@ def real_session_fixture(
 
     def command_call(turn_id: str, call_id: str, command: str) -> dict[str, Any]:
         arguments = json.dumps(
-            {"cmd": command, "workdir": "/phase8/repository", "yield_time_ms": 30000},
+            {"cmd": command, "workdir": repository_cwd, "yield_time_ms": 30000},
             separators=(",", ":"),
         )
         return custom_call(
@@ -3813,7 +3828,7 @@ def real_session_fixture(
             work_turn,
             initialize_call,
             "project_initialize",
-            {"display_name": "Phase 8 fixture", "repository": "/phase8/repository"},
+            {"display_name": "Phase 8 fixture", "repository": repository_cwd},
         ),
         custom_output(work_turn, initialize_call, {"project_id": project}),
         mcp_call(
@@ -4101,7 +4116,7 @@ def real_session_fixture(
             resume_turn,
             resolve_call,
             "project_resolve",
-            {"repository": "/phase8/repository"},
+            {"repository": repository_cwd},
             fallback="??",
         ),
         custom_output(
@@ -4115,7 +4130,7 @@ def real_session_fixture(
                 "binding": {
                     "binding_id": binding,
                     "revision": 1,
-                    "canonical_repository_path": "/phase8/repository",
+                    "canonical_repository_path": repository_cwd,
                     "availability": "available",
                     "clone_identity": None,
                     "worktree_identity": None,

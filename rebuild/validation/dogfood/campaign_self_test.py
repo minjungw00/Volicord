@@ -23,6 +23,15 @@ def write_fake_binary(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     path.chmod(0o755)
+    viewer = path.with_name("volicord-viewer")
+    viewer.write_text(
+        "#!/bin/sh\n"
+        "destination=\n"
+        "for argument in \"$@\"; do destination=$argument; done\n"
+        "printf '%s\\n' '<!doctype html><html lang=\"en\"><body data-viewer-mode=\"snapshot\">fixture</body></html>' > \"$destination\"\n",
+        encoding="utf-8",
+    )
+    viewer.chmod(0o755)
 
 
 def repository_input(path: Path, sources: Path) -> Path:
@@ -88,12 +97,28 @@ def prepare(root: Path, source_root: Path, binary: Path) -> None:
         harness.load_repository_specs = original_specs
 
 
-def fixture_for(root: Path, kind: str, cycle: int) -> tuple[dict[str, object], Path, Path, Path]:
+def fixture_for(
+    root: Path,
+    kind: str,
+    cycle: int,
+    campaign_root: Path | None = None,
+) -> tuple[dict[str, object], Path, Path, Path]:
     fixture_root = root / "fixture-source" / f"{kind}-{cycle}"
     fixture_root.mkdir(parents=True, exist_ok=True)
     revision = harness.git_head(campaign.ROOT) if kind == "volicord" else REVISION
     assert revision is not None
-    descriptor = harness.real_session_fixture(kind, cycle, revision, fixture_root)
+    repository = (
+        campaign.cycle_root(campaign_root, kind, cycle) / "repository"
+        if campaign_root is not None
+        else None
+    )
+    descriptor = harness.real_session_fixture(
+        kind,
+        cycle,
+        revision,
+        fixture_root,
+        repository_path=repository,
+    )
     work = fixture_root / f"{kind}-{cycle}-work-events.jsonl"
     resume = fixture_root / f"{kind}-{cycle}-resume-events.jsonl"
     bundle = fixture_root / f"{kind}-{cycle}-context.bundle.json"
@@ -148,10 +173,67 @@ def failed_documenter(
     return documenter(binary, runtime, project_id, kind, format_name, destination, language)
 
 
+def snapshotter(
+    _binary: Path,
+    _runtime: Path,
+    project_id: str,
+    destination: Path,
+    locale: str,
+    language: str,
+) -> dict[str, object]:
+    assert project_id == "01" * 16
+    assert locale == "en"
+    assert language == "en"
+    destination.write_text(
+        '<!doctype html><html lang="en"><body data-viewer-mode="snapshot">fixture</body></html>\n',
+        encoding="utf-8",
+    )
+    return {"status": "passed"}
+
+
 def filtered_capture(source: Path, destination: Path, phrase: str) -> Path:
     lines = [line for line in source.read_text(encoding="utf-8").splitlines() if phrase not in line]
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return destination
+
+
+def replaced_capture(source: Path, destination: Path, old: str, new: str) -> Path:
+    text = source.read_text(encoding="utf-8")
+    if old not in text:
+        raise AssertionError(f"capture replacement source was absent: {old}")
+    destination.write_text(text.replace(old, new), encoding="utf-8")
+    return destination
+
+
+def prepared_batch(
+    parent: Path,
+    name: str,
+    binary: Path,
+) -> tuple[Path, list[Path], dict[str, Path]]:
+    root = parent / name
+    prepare(root, parent / f"{name}-sources", binary)
+    captures: list[Path] = []
+    bundles: dict[str, Path] = {}
+    for kind in campaign.CLASSES:
+        for cycle in (1, 2):
+            descriptor, work, resume, bundle = fixture_for(
+                parent / f"{name}-fixtures",
+                kind,
+                cycle,
+                campaign_root=root,
+            )
+            install_descriptor(root, kind, cycle, descriptor)
+            captures.extend((work, resume))
+            bundles[campaign.cycle_key(kind, cycle)] = bundle
+    return root, captures, bundles
+
+
+def batch_exporter(bundles: dict[str, Path]):
+    def export(_binary: Path, _runtime: Path, project_id: str, destination: Path) -> None:
+        assert project_id == "01" * 16
+        shutil.copyfile(bundles[destination.parent.name], destination)
+
+    return export
 
 
 def assert_observation_round_trip(root: Path) -> None:
@@ -299,6 +381,212 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         assert any(expected in error for error in errors), (expected, errors)
 
 
+def assert_batch_workflow(parent: Path, binary: Path) -> None:
+    root, captures, bundles = prepared_batch(parent, "batch-campaign", binary)
+    run_sheet = (root / "operator/RUN-SHEET.md").read_text(encoding="utf-8")
+    assert "collect-batch" in run_sheet
+    assert "collect-work" not in run_sheet
+    assert "collect-resume" not in run_sheet
+
+    mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
+    assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
+    assert len({capture.session_id for _path, capture in mapped.values()}) == 12
+
+    directory = parent / "unordered-rollouts"
+    directory.mkdir()
+    for index, source in enumerate(reversed(captures)):
+        shutil.copyfile(source, directory / f"capture-{index:02}.jsonl")
+    directory_paths = campaign.batch_rollout_paths(None, directory)
+    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 12
+    try:
+        campaign.map_batch_rollouts(root, captures[:-1])
+    except campaign.CampaignError as error:
+        assert "missing" in str(error)
+    else:
+        raise AssertionError("batch mapping accepted a missing rollout")
+
+    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
+    duplicate_session = replaced_capture(
+        resume,
+        parent / "duplicate-session.jsonl",
+        "volicord-resume-session-1",
+        "volicord-work-session-1",
+    )
+    duplicate_inputs = [duplicate_session if path == resume else path for path in captures]
+    try:
+        campaign.map_batch_rollouts(root, duplicate_inputs)
+    except campaign.CampaignError as error:
+        assert "session identity" in str(error)
+    else:
+        raise AssertionError("batch mapping accepted a reused session identity")
+
+    state = campaign.load_campaign(root)["cycles"][campaign.cycle_key("volicord", 1)]
+    descriptor = campaign.read_json(campaign.evaluator_descriptor_path(root, "volicord", 1))
+    wrong_cases = (
+        (
+            "task",
+            descriptor["work_user_task"],
+            descriptor["work_user_task"] + " changed",
+        ),
+        ("revision", state["repository_revision"], "cd" * 20),
+        ("workspace", state["repository_path"], str(parent / "wrong-workspace")),
+    )
+    for label, old, new in wrong_cases:
+        invalid = replaced_capture(work, parent / f"wrong-{label}.jsonl", old, new)
+        inputs = [invalid if path == work else path for path in captures]
+        try:
+            campaign.map_batch_rollouts(root, inputs)
+        except campaign.CampaignError as error:
+            assert "unambiguously" in str(error)
+        else:
+            raise AssertionError(f"batch mapping accepted wrong {label}")
+
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = lambda _argv, cwd=campaign.ROOT: {
+        "project_trust": "user_controlled"
+    }
+    try:
+        activation = campaign.activate_all(root)
+    finally:
+        campaign.run_checked = original_run_checked
+    assert activation["cycle_count"] == 6
+    assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
+
+    for kind in campaign.CLASSES:
+        for cycle in (1, 2):
+            runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
+            (runtime / "canonical.sqlite3").write_bytes(b"BATCH-PRIVATE-STORE")
+            derived = runtime / "derived/analysis/private"
+            derived.mkdir(parents=True)
+            (derived / "private.json").write_bytes(b"BATCH-PRIVATE-DERIVED")
+    summary = campaign.collect_batch(
+        root,
+        list(reversed(captures)),
+        exporter=batch_exporter(bundles),
+        documenter=documenter,
+    )
+    assert summary["status"] == "passed", summary
+    assert summary["outcome"] == "evidence_collected"
+    assert summary["session_distinctness"] == {
+        "status": "passed",
+        "expected_count": 12,
+        "observed_count": 12,
+    }
+    assert len(summary["cycles"]) == 6
+    for item in summary["cycles"]:
+        assert item["supported_evidence_complete"] is True
+        assert item["terminal_work_failure_preserved"] is False
+        cycle_path = campaign.cycle_root(root, item["repository_class"], item["cycle"])
+        descriptor_value = campaign.read_json(
+            campaign.evaluator_descriptor_path(root, item["repository_class"], item["cycle"])
+        )
+        assert set(descriptor_value["evidence"]) == {
+            "captures",
+            "canonical_bundle",
+            "runtime_summary",
+            "activation_summary",
+            "generated_documents",
+            "viewer_snapshot",
+        }
+        snapshot = campaign.read_json(cycle_path / "viewer-snapshot-summary.json")
+        assert snapshot["status"] == "passed"
+        assert snapshot["project_id"] == "01" * 16
+        assert snapshot["candidate_head"] == harness.git_head(campaign.ROOT)
+        raw_source = next(
+            source
+            for source in captures
+            if source.name
+            == f"{item['repository_class']}-{item['cycle']}-work-events.jsonl"
+        )
+        assert (cycle_path / "evidence/work.rollout.jsonl").read_bytes() == raw_source.read_bytes()
+
+    campaign.finalize_manifest(root)
+    archive = campaign.build_review_package(root, parent / "batch-review.tar.gz")
+    with tarfile.open(archive, "r:gz") as opened:
+        names = opened.getnames()
+        assert "batch-intake-summary.json" in names
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
+        assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
+        assert not any(
+            any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts)
+            for name in names
+        )
+        body = b"".join(
+            file.read()
+            for member in opened.getmembers()
+            if member.isfile() and (file := opened.extractfile(member)) is not None
+        )
+        assert b"BATCH-PRIVATE-STORE" not in body
+        assert b"BATCH-PRIVATE-DERIVED" not in body
+
+    tampered = campaign.cycle_root(root, "small-python", 2) / "evidence/viewer-snapshot.html"
+    tampered.write_bytes(tampered.read_bytes() + b"tamper")
+    try:
+        campaign.build_review_package(root, parent / "batch-tampered.tar.gz")
+    except campaign.CampaignError as error:
+        assert "hash mismatch" in str(error)
+    else:
+        raise AssertionError("tampered batch Viewer evidence was not detected")
+
+    blocker_root, blocker_captures, blocker_bundles = prepared_batch(
+        parent,
+        "batch-blocker-campaign",
+        binary,
+    )
+    blocker_work = next(
+        path for path in blocker_captures if path.name == "volicord-1-work-events.jsonl"
+    )
+    blocked = filtered_capture(
+        blocker_work,
+        parent / "batch-blocked-work.jsonl",
+        '"type":"mcp_tool_call_end"',
+    )
+    blocker_inputs = [blocked if path == blocker_work else path for path in blocker_captures]
+    blocker_summary = campaign.collect_batch(
+        blocker_root,
+        blocker_inputs,
+        exporter=batch_exporter(blocker_bundles),
+        documenter=documenter,
+    )
+    blocked_cycle = blocker_summary["cycles"][0]
+    assert blocker_summary["outcome"] == "campaign_stop"
+    assert blocked_cycle["terminal_work_failure_preserved"] is True
+    assert (
+        campaign.cycle_root(blocker_root, "volicord", 1)
+        / "evidence/resume.rollout.jsonl"
+    ).is_file()
+
+    activation_root, activation_captures, activation_bundles = prepared_batch(
+        parent,
+        "batch-activation-campaign",
+        binary,
+    )
+    activation_work = next(
+        path for path in activation_captures if path.name == "volicord-1-work-events.jsonl"
+    )
+    missing_activation = filtered_capture(
+        activation_work,
+        parent / "batch-missing-activation.jsonl",
+        "Volicord is active because",
+    )
+    activation_inputs = [
+        missing_activation if path == activation_work else path
+        for path in activation_captures
+    ]
+    activation_summary = campaign.collect_batch(
+        activation_root,
+        activation_inputs,
+        exporter=batch_exporter(activation_bundles),
+        documenter=documenter,
+    )
+    assert activation_summary["outcome"] == "operator_environment_invalid"
+    activation_blocker = campaign.read_json(
+        campaign.cycle_root(activation_root, "volicord", 1) / "blocker-result.json"
+    )
+    assert activation_blocker["classification"] == "operator_environment_setup_failure"
+
+
 def assert_successful_campaign(parent: Path, binary: Path) -> None:
     root = parent / "successful-campaign"
     prepare(root, parent / "successful-sources", binary)
@@ -323,9 +611,11 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
                 resume,
                 exporter=exporter_from(bundle),
                 documenter=documenter,
+                snapshotter=snapshotter,
             )
             assert resume_result["project_id"] == "01" * 16
             assert resume_result["descriptor_evidence_completed"] is True
+            assert resume_result["viewer_snapshot_evidence"]["status"] == "passed"
             document_evidence = resume_result["document_evidence"]
             assert document_evidence["status"] == "passed"
             assert set(document_evidence["documents"]) == set(campaign.DOCUMENT_KINDS)
@@ -373,6 +663,8 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 6
         assert len([name for name in names if name.startswith("materiality-reviews/") and name.endswith(".json")]) == 7
         assert len([name for name in names if "/evidence/generated-documents/" in name]) == 48
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
+        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 6
         assert len([name for name in names if name.endswith("/documents-summary.json")]) == 6
         assert len([name for name in names if name.startswith("operator/document-review/")]) == 6
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
@@ -406,6 +698,7 @@ def assert_failed_document_kind_blocks_pass(parent: Path, binary: Path) -> None:
         resume,
         exporter=exporter_from(bundle),
         documenter=failed_documenter,
+        snapshotter=snapshotter,
     )
     failed = result["document_evidence"]["documents"]["implementation-plan"]
     assert result["document_evidence"]["status"] == "failed"
@@ -434,6 +727,7 @@ def main() -> int:
         write_fake_binary(binary)
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
+        assert_batch_workflow(parent, binary)
         assert_failed_document_kind_blocks_pass(parent, binary)
         assert_successful_campaign(parent, binary)
     print(json.dumps({
@@ -444,8 +738,13 @@ def main() -> int:
             "typed_materiality_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
+            "unordered_twelve_rollout_batch_mapping",
+            "missing_duplicate_and_wrong_identity_batch_rejection",
+            "batch_terminal_work_failure_preserved_with_later_resume",
+            "batch_activation_all_preserves_user_controlled_trust",
             "automatic_project_identity_and_bundle_export",
             "four_kind_markdown_html_document_evidence",
+            "static_viewer_snapshot_evidence",
             "failed_document_kind_blocks_fidelity_pass",
             "bounded_runtime_summary",
             "deterministic_manifest",

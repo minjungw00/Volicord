@@ -279,7 +279,7 @@ evaluator input and invokes `seal-cycle`. Sealing verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes,
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
-paths. `activate-cycle` and `collect-work` reject unsealed cycles. The run-sheet
+paths. `activate-cycle`, `activate-all`, and rollout collection reject unsealed cycles. The run-sheet
 leak check rejects exact hidden oracle/review material and deliberately marked
 evaluator-only sentinels. This is workflow/evidence isolation, not an OS
 security boundary against deliberately opening evaluator files. The helper
@@ -296,8 +296,8 @@ The roles remain separate throughout a campaign:
 - The naturalistic operator inspects and trusts the intended repository,
   explicitly approves the SessionStart hook, opens every required fresh VS
   Code Codex session, and sends only the frozen work/resume tasks from the run
-  sheet. The operator supplies genuine answers to material Questions and
-  genuine subjective and accessibility observations.
+  sheet. The operator supplies genuine answers to material Questions, preserves
+  all twelve raw rollouts, and provides them once after the sessions finish.
 - The helper owns campaign setup, sealed-descriptor validation, operator
   run-sheet generation, byte-exact rollout intake and hashing,
   activation/setup classification, early blocker gating, Project-ID
@@ -306,25 +306,37 @@ The roles remain separate throughout a campaign:
   evidence completion, observation-schema validation, repository-manifest
   assembly, and bounded review packaging.
 
-`collect-work` copies and hashes a user-supplied raw rollout byte-for-byte,
-checks its frozen task/session/revision/activation contract, extracts an
-observed Project identity, and returns exactly `resume_allowed`,
-`campaign_stop`, or `operator_environment_invalid`. A stop or invalid setup
-seals that campaign identity against later qualifying collection.
-`collect-resume` accepts a distinct raw rollout, verifies Project-resolution
-and Recall ordering, derives the Project ID from the normalized result, invokes
-the installed candidate's supported `portable export`, completes descriptor
-evidence references and hashes, and invokes the supported `documents export`
+After all six descriptors are sealed, `activate-all` may enable the six
+repository-scoped integrations before the chats begin. It never grants
+repository or hook trust. `collect-batch` accepts either twelve explicit paths
+or one directory containing exactly twelve files. Before changing campaign
+state it maps the unordered captures to the sealed work/resume slots using the
+frozen first task, exact workspace and revision, VS Code source/originator,
+fresh session identity, and SessionStart activation. Ambiguous, missing,
+duplicate, mismatched, or session-reused input is rejected globally.
+
+After mapping succeeds, `collect-batch` copies and hashes every rollout
+byte-for-byte. It preserves a terminal work blocker even when the matching
+resume exists and continues parsing later captures only for bounded diagnostic
+and extractable evidence. Missing activation remains
+`operator_environment_invalid`. For each safely identifiable cycle it derives
+the Project ID, invokes the installed candidate's supported `portable export`,
+completes descriptor evidence references and hashes, and invokes the supported `documents export`
 path for `project-architecture-guide`, `decision-report`,
 `implementation-plan`, and `handoff-resume` in both Markdown and
 self-contained HTML. A deterministic per-cycle summary records every
 kind/format status, bounded failure basis or relative evidence path, bytes, and
-SHA-256; export failure remains explicitly failed. A bounded operator review
+SHA-256; export failure remains explicitly failed. The public
+`volicord-viewer --snapshot` capability also produces one self-contained,
+read-only HTML snapshot with its Project/candidate basis, relative path, bytes,
+and SHA-256. A bounded operator review
 index lists the produced paths without evaluator material. The helper also
 writes a bounded Runtime Home summary containing managed logical names and sizes,
 derived-analysis size, configuration presence, and activation booleans; it
 never reads or copies store, derived-analysis, credential, provider-payload,
-prompt, or source-body contents.
+prompt, or source-body contents. `collect-work` and `collect-resume` remain
+available as non-default focused diagnostics; they are not the ordinary
+operator workflow.
 
 Use `record-observation` for the four subjective quality observations and four
 manual accessibility observations; its structured arguments are validated by

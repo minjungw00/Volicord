@@ -259,6 +259,37 @@
       "basis_maximum_utf8_bytes": 8192,
       "templates_must_not_prefill_passed": true
     },
+    "batch_campaign_contract": {
+      "operation": "collect-batch",
+      "required_raw_rollout_count": 12,
+      "input_modes": [
+        "twelve_explicit_paths",
+        "one_directory_with_exactly_twelve_files"
+      ],
+      "mapping_evidence": [
+        "exact_repository_workspace",
+        "frozen_first_user_task",
+        "work_or_fresh_resume_role",
+        "repository_revision",
+        "source_vscode",
+        "originator_codex_vscode",
+        "globally_distinct_session_id",
+        "repository_scoped_session_start_activation"
+      ],
+      "global_mapping_precedes_campaign_mutation": true,
+      "raw_rollout_bytes_preserved": true,
+      "terminal_work_failure_repaired_by_resume": false,
+      "missing_activation_classification": "operator_environment_invalid",
+      "automatic_cycle_evidence": [
+        "project_identity",
+        "canonical_bundle",
+        "bounded_runtime_summary",
+        "activation_summary",
+        "four_document_kinds_markdown_and_html",
+        "read_only_static_viewer_snapshot",
+        "descriptor_evidence_references_and_sha256"
+      ]
+    },
     "naturalistic_prompt_integrity": {
       "rejects_harness_choreography": true,
       "ordinary_repository_paths_and_public_api_names_allowed": true

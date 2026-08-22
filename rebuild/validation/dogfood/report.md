@@ -99,22 +99,28 @@ rebuild/scripts/dogfood-campaign prepare \
 ```
 
 Complete each evaluator input under the private control plane and use
-`seal-cycle` before exposing the generated operator run sheet. Use
-`activate-cycle` before each helper-owned cycle activation, `collect-work` and
-`collect-resume` for the two distinct raw rollouts, and
-`record-observation` for the four subjective and four manual-accessibility
-observations per cycle. After all six cycles, use `finalize-manifest` and
+`seal-cycle` before exposing the generated operator run sheet. After all six
+descriptors are sealed, use `activate-all`; it enables the repository-scoped
+integration but does not grant repository or hook trust. Run all twelve chats
+without per-chat collection, preserve their raw rollouts, and then use
+`collect-batch` with twelve explicit paths or one directory containing exactly
+twelve files. After batch collection, use `record-observation` for the four
+subjective and four manual-accessibility observations per cycle. Then use `finalize-manifest` and
 `package-review`. The operator material contains the frozen tasks and paths but
 not the oracle, materiality reasoning, recommendation, expected choice, or
 provenance. Typed provenance is reverified against an active architecture owner
 at the candidate revision or a real file at the pinned target revision.
 
-`collect-work` returns only `resume_allowed`, `campaign_stop`, or
-`operator_environment_invalid`. A stopped or invalid campaign identity cannot
-be repaired by reusing later evidence. `collect-resume` verifies Project
-resolution and Recall order and invokes the installed candidate's supported
-portable export plus all four supported generated-document exports in Markdown
-and self-contained HTML. Per-kind/per-format status, bounded failure basis,
+`collect-batch` maps all unordered inputs before mutating campaign state. It
+rejects ambiguous, missing, duplicate, wrong-task, wrong-workspace,
+wrong-revision, non-VS-Code, and session-reused evidence. A terminal work
+blocker cannot be repaired by a later resume, while missing activation remains
+an operator/environment-invalid classification. The helper still parses later
+captures for bounded diagnostics and safely available extraction. It verifies
+Project resolution and Recall order and invokes the installed candidate's
+supported portable export plus all four supported generated-document exports
+in Markdown and self-contained HTML and the public static Viewer snapshot
+export. Per-kind/per-format and Viewer-snapshot status, bounded failure basis,
 relative path, bytes, and SHA-256 are recorded in private evidence; the
 operator receives a bounded document-review index. A passed document-fidelity
 observation requires usable evidence for all four product document kinds. The
@@ -224,9 +230,10 @@ assessment or a replacement-gate conclusion.
 
 Prepare one completely fresh helper-owned campaign for the sealed candidate,
 have the control agent research and seal the six evaluator descriptors, grant
-trust manually, run the twelve required work/resume chats with only the frozen
-tasks, answer the actual material Questions, record subjective and
-accessibility observations, assemble the manifest, and provide the raw rollout
+trust manually, activate all six repository integrations, run the twelve
+required work/resume chats with only the frozen tasks, answer the actual
+material Questions, provide all raw rollouts once to batch collection, record
+subjective and accessibility observations, assemble the manifest, and provide the raw rollout
 archive with the bounded default review package.
 
 ## Artifacts
