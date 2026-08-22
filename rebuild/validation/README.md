@@ -294,20 +294,30 @@ seals that campaign identity against later qualifying collection.
 `collect-resume` accepts a distinct raw rollout, verifies Project-resolution
 and Recall ordering, derives the Project ID from the normalized result, invokes
 the installed candidate's supported `portable export`, completes descriptor
-evidence references and hashes, and writes document evidence plus a bounded
-Runtime Home summary. The summary contains managed logical names and sizes,
+evidence references and hashes, and invokes the supported `documents export`
+path for `project-architecture-guide`, `decision-report`,
+`implementation-plan`, and `handoff-resume` in both Markdown and
+self-contained HTML. A deterministic per-cycle summary records every
+kind/format status, bounded failure basis or relative evidence path, bytes, and
+SHA-256; export failure remains explicitly failed. A bounded operator review
+index lists the produced paths without evaluator material. The helper also
+writes a bounded Runtime Home summary containing managed logical names and sizes,
 derived-analysis size, configuration presence, and activation booleans; it
 never reads or copies store, derived-analysis, credential, provider-payload,
 prompt, or source-body contents.
 
 Use `record-observation` for the four subjective quality observations and four
 manual accessibility observations; its structured arguments are validated by
-the same parser as official qualification. `finalize-manifest` deterministically
+the same parser as official qualification. A passed
+`document_fidelity_and_usefulness` observation requires usable evidence for all
+four document kinds; the human reviews each product kind rather than marking
+the two formats independently. `finalize-manifest` deterministically
 assembles `repositories.json` after all six resume captures. `package-review`
 then creates a deterministic bounded archive containing campaign metadata,
 the manifest, six descriptors and derived review views, hash inventory,
 canonical bundles, observations, runtime/activation summaries, blocker records
-when present, and bounded document evidence. Raw rollouts are excluded by
+when present, and all generated-document summaries, review indexes, Markdown,
+and HTML evidence. Raw rollouts are excluded by
 default and enter only with `--include-raw-rollouts`. Full Runtime Homes,
 SQLite files and sidecars, derived directories, installation files, source
 repositories, credentials, private prompts, and provider payloads are never

@@ -38,6 +38,16 @@ ACCESSIBILITY_OBSERVATIONS = (
     "not_color_only",
     "narrow_and_zoomed_presentation",
 )
+DOCUMENT_KINDS = (
+    "project-architecture-guide",
+    "decision-report",
+    "implementation-plan",
+    "handoff-resume",
+)
+DOCUMENT_FORMATS = (
+    ("markdown", "md"),
+    ("html", "html"),
+)
 MANAGED_STORES = (
     "canonical.sqlite3",
     "candidates.sqlite3",
@@ -482,6 +492,14 @@ def prepare_campaign(
     definition = harness.load_definition()
     raw_input = read_json(repository_input)
     specs = repository_spec_map(raw_input)
+    document_language = raw_input.get("document_language", "en")
+    if (
+        not isinstance(document_language, str)
+        or not document_language.strip()
+        or document_language != document_language.strip()
+        or len(document_language.encode("utf-8")) > 128
+    ):
+        raise CampaignError("campaign document language must be bounded non-empty text")
     _, identities = harness.load_repository_specs(repository_input, candidate_head, definition)
     failures = [item for item in identities if item["status"] != "passed"]
     if failures:
@@ -500,7 +518,6 @@ def prepare_campaign(
             destination = cycle_root(root, kind, number)
             (destination / "evidence").mkdir(parents=True)
             (destination / "runtime").mkdir()
-            (destination / "documents").mkdir()
             repository = destination / "repository"
             cloner(Path(spec["path"]).resolve(), repository, revision)
             write_json(
@@ -533,6 +550,7 @@ def prepare_campaign(
         "campaign_root": str(root),
         "candidate_head": candidate_head,
         "candidate_binary": str(binary),
+        "document_language": document_language,
         "repository_input": relative(root, root / "repository-input.json"),
         "terminal_outcome": None,
         "active_cycle_by_repository": {},
@@ -728,18 +746,152 @@ def runtime_summary(runtime: Path, repository: Path, work_activation: bool, resu
     }
 
 
-def generate_document(binary: Path, runtime: Path, project_id: str, destination: Path) -> dict[str, Any]:
+def generate_document(
+    binary: Path,
+    runtime: Path,
+    project_id: str,
+    kind: str,
+    format_name: str,
+    destination: Path,
+    language: str,
+) -> dict[str, Any]:
     completed = subprocess.run(
-        [str(binary), "--runtime", str(runtime), "documents", "export", project_id,
-         "project-architecture-guide", "html", str(destination), "en"],
+        [
+            str(binary), "--runtime", str(runtime), "documents", "export", project_id,
+            kind, format_name, str(destination), language,
+        ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
     )
     if completed.returncode == 0 and destination.is_file():
-        return {"status": "passed", "file": destination.name, "bytes": destination.stat().st_size, "sha256": harness.sha256(destination)}
-    return {"status": "skipped", "basis": "current document prerequisites or export were unavailable"}
+        return {"status": "passed"}
+    return {
+        "status": "failed",
+        "basis": (
+            f"supported document export exited {completed.returncode}; "
+            f"destination_present={destination.is_file()}"
+        ),
+    }
+
+
+def collect_document_evidence(
+    root: Path,
+    kind: str,
+    cycle: int,
+    binary: Path,
+    runtime: Path,
+    project_id: str,
+    language: str,
+    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]],
+) -> tuple[dict[str, Any], list[Path]]:
+    directory = cycle_root(root, kind, cycle) / "evidence/generated-documents"
+    directory.mkdir(parents=True, exist_ok=True)
+    documents: dict[str, Any] = {}
+    produced: list[Path] = []
+    for document_kind in DOCUMENT_KINDS:
+        formats: dict[str, Any] = {}
+        for format_name, suffix in DOCUMENT_FORMATS:
+            destination = directory / f"{document_kind}.{suffix}"
+            try:
+                result = documenter(
+                    binary,
+                    runtime,
+                    project_id,
+                    document_kind,
+                    format_name,
+                    destination,
+                    language,
+                )
+            except (OSError, ValueError, CampaignError) as error:
+                result = {
+                    "status": "failed",
+                    "basis": f"document evidence adapter failed: {type(error).__name__}",
+                }
+            if result.get("status") == "passed" and destination.is_file():
+                formats[format_name] = {
+                    "status": "passed",
+                    "relative_evidence_path": relative(root, destination),
+                    "bytes": destination.stat().st_size,
+                    "sha256": harness.sha256(destination),
+                }
+                produced.append(destination)
+            else:
+                basis = result.get("basis") if isinstance(result, dict) else None
+                if not isinstance(basis, str) or not basis.strip():
+                    basis = "supported document export did not produce usable evidence"
+                formats[format_name] = {
+                    "status": "failed",
+                    "basis": basis[:512],
+                }
+        document_status = (
+            "passed"
+            if all(formats[name]["status"] == "passed" for name, _suffix in DOCUMENT_FORMATS)
+            else "failed"
+        )
+        documents[document_kind] = {"status": document_status, "formats": formats}
+    summary = {
+        "kind": "phase8_generated_document_evidence_summary",
+        "schema_version": 1,
+        "language": language,
+        "status": "passed" if all(item["status"] == "passed" for item in documents.values()) else "failed",
+        "required_document_kinds": list(DOCUMENT_KINDS),
+        "documents": documents,
+    }
+    return summary, produced
+
+
+def write_operator_document_review_index(
+    root: Path,
+    kind: str,
+    cycle: int,
+    summary: dict[str, Any],
+) -> Path:
+    lines = [
+        f"# Generated document review: {kind} cycle {cycle}",
+        "",
+        f"Language: `{summary['language']}`",
+        "",
+    ]
+    for document_kind in DOCUMENT_KINDS:
+        lines.extend((f"## {document_kind}", ""))
+        formats = summary["documents"][document_kind]["formats"]
+        for format_name, _suffix in DOCUMENT_FORMATS:
+            evidence = formats[format_name]
+            if evidence["status"] == "passed":
+                lines.append(f"- {format_name}: `{evidence['relative_evidence_path']}`")
+            else:
+                lines.append(f"- {format_name}: unavailable ({evidence['basis']})")
+        lines.append("")
+    path = root / "operator/document-review" / f"{cycle_key(kind, cycle)}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+    assert_operator_artifacts_do_not_leak(root)
+    return path
+
+
+def complete_document_evidence(root: Path, kind: str, cycle: int) -> bool:
+    path = cycle_root(root, kind, cycle) / "documents-summary.json"
+    if not path.is_file():
+        return False
+    summary = read_json(path)
+    documents = summary.get("documents") if isinstance(summary, dict) else None
+    return (
+        summary.get("kind") == "phase8_generated_document_evidence_summary"
+        and summary.get("status") == "passed"
+        and summary.get("required_document_kinds") == list(DOCUMENT_KINDS)
+        and isinstance(documents, dict)
+        and set(documents) == set(DOCUMENT_KINDS)
+        and all(
+            documents[document_kind].get("status") == "passed"
+            and all(
+                documents[document_kind].get("formats", {}).get(format_name, {}).get("status") == "passed"
+                for format_name, _suffix in DOCUMENT_FORMATS
+            )
+            for document_kind in DOCUMENT_KINDS
+        )
+    )
 
 
 def collect_resume(
@@ -749,7 +901,7 @@ def collect_resume(
     raw_capture: Path,
     *,
     exporter: Callable[[Path, Path, str, Path], None] = default_export,
-    documenter: Callable[[Path, Path, str, Path], dict[str, Any]] = generate_document,
+    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
@@ -802,18 +954,36 @@ def collect_resume(
             True,
         ),
     )
-    document_path = cycle_root(root, kind, cycle) / "documents/project-architecture-guide.html"
-    document_result = documenter(binary, runtime, project_id, document_path)
+    document_result, document_paths = collect_document_evidence(
+        root,
+        kind,
+        cycle,
+        binary,
+        runtime,
+        project_id,
+        campaign.get("document_language", "en"),
+        documenter,
+    )
     document_summary = cycle_root(root, kind, cycle) / "documents-summary.json"
     write_json(document_summary, document_result)
+    document_review_index = write_operator_document_review_index(
+        root, kind, cycle, document_result
+    )
     state["state"] = "resume_collected"
     state["resume_session_id"] = capture.session_id
     state["bundle_sha256"] = harness.sha256(bundle)
     save_campaign(root, campaign)
-    for path in (destination, bundle, descriptor_path, summary_path, activation_path, document_summary):
+    for path in (
+        destination,
+        bundle,
+        descriptor_path,
+        summary_path,
+        activation_path,
+        document_summary,
+        document_review_index,
+        *document_paths,
+    ):
         register_artifact(root, path, replace=path in {descriptor_path, activation_path})
-    if document_result.get("status") == "passed":
-        register_artifact(root, document_path)
     return {
         "kind": "phase8_dogfood_resume_intake",
         "outcome": "evidence_collected",
@@ -834,6 +1004,13 @@ def record_observation(root: Path, kind: str, cycle: int, scope: str, name: str,
     names = MANUAL_OBSERVATIONS if scope == "manual" else ACCESSIBILITY_OBSERVATIONS if scope == "accessibility" else ()
     if name not in names:
         raise CampaignError("observation name is not permitted for the selected scope")
+    if (
+        scope == "manual"
+        and name == "document_fidelity_and_usefulness"
+        and status == "passed"
+        and not complete_document_evidence(root, kind, cycle)
+    ):
+        raise CampaignError("passed document fidelity requires usable evidence for all four document kinds")
     observation = {"status": status, "basis": basis}
     harness.validate_observation_object(observation, name)
     path = operator_observation_path(root, kind, cycle, scope)
@@ -868,6 +1045,11 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
             for values in (manual[str(number)], accessibility[str(number)]):
                 for name, observation in values.items():
                     harness.validate_observation_object(observation, name)
+            if (
+                manual[str(number)]["document_fidelity_and_usefulness"]["status"] == "passed"
+                and not complete_document_evidence(root, kind, number)
+            ):
+                raise CampaignError("manifest cannot pass document fidelity without complete document evidence")
         repositories.append({
             **{key: spec[key] for key in ("class", "path", "origin", "revision", "license_file", "license_spdx", "provider_source_path") if key in spec},
             "revision": campaign["candidate_head"] if kind == "volicord" else spec["revision"],
@@ -920,6 +1102,7 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
         "schema_version": campaign["schema_version"],
         "campaign_id": campaign["campaign_id"],
         "candidate_head": campaign["candidate_head"],
+        "document_language": campaign.get("document_language", "en"),
         "terminal_outcome": campaign["terminal_outcome"],
         "cycles": {
             key: {

@@ -892,6 +892,14 @@ bounded Runtime summary, descriptor evidence completion, manifest assembly와 re
 Operator-facing artifact의 leak check는 oracle alternative, recommendation, expected choice,
 materiality-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
+Resume collection은 supported product document-export path로 네 initial kind 각각의 Markdown과
+self-contained HTML을 deterministic private evidence path에 생성한다. Summary는 모든
+kind/format의 status, bounded failure basis 또는 relative path, bytes와 SHA-256를 보존하고,
+operator document-review index는 produced path만 노출한다. 한 kind라도 usable evidence가
+없으면 `document_fidelity_and_usefulness = passed`를 거부한다. Human criterion은 네 product
+document kind이며 format별 subjective pass를 따로 요구하지 않는다. Review package는 이
+summary/index와 produced documents를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
+Analysis, credential, prompt, provider payload와 source copy는 계속 제외한다.
 
 ## 16. Architecture 확정 gate
 

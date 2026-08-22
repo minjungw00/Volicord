@@ -100,8 +100,13 @@ at the candidate revision or a real file at the pinned target revision.
 `operator_environment_invalid`. A stopped or invalid campaign identity cannot
 be repaired by reusing later evidence. `collect-resume` verifies Project
 resolution and Recall order and invokes the installed candidate's supported
-portable export; the operator does not manually extract Project identity or
-canonical state from the Runtime Home.
+portable export plus all four supported generated-document exports in Markdown
+and self-contained HTML. Per-kind/per-format status, bounded failure basis,
+relative path, bytes, and SHA-256 are recorded in private evidence; the
+operator receives a bounded document-review index. A passed document-fidelity
+observation requires usable evidence for all four product document kinds. The
+operator does not manually extract Project identity or canonical state from
+the Runtime Home and does not manually discover document export paths.
 
 ## Observed results
 

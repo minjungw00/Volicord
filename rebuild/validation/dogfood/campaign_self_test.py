@@ -117,15 +117,35 @@ def exporter_from(source: Path):
     return export
 
 
-def documenter(_binary: Path, _runtime: Path, project_id: str, destination: Path) -> dict[str, object]:
+def documenter(
+    _binary: Path,
+    _runtime: Path,
+    project_id: str,
+    kind: str,
+    format_name: str,
+    destination: Path,
+    language: str,
+) -> dict[str, object]:
     assert project_id == "01" * 16
-    destination.write_text("<!doctype html><html lang='en'><title>Architecture</title></html>\n", encoding="utf-8")
-    return {
-        "status": "passed",
-        "file": destination.name,
-        "bytes": destination.stat().st_size,
-        "sha256": harness.sha256(destination),
-    }
+    assert kind in campaign.DOCUMENT_KINDS
+    assert format_name in {name for name, _suffix in campaign.DOCUMENT_FORMATS}
+    assert language == "en"
+    destination.write_text(f"{kind} {format_name} {language}\n", encoding="utf-8")
+    return {"status": "passed"}
+
+
+def failed_documenter(
+    binary: Path,
+    runtime: Path,
+    project_id: str,
+    kind: str,
+    format_name: str,
+    destination: Path,
+    language: str,
+) -> dict[str, object]:
+    if kind == "implementation-plan":
+        return {"status": "failed", "basis": "fixture document kind unavailable"}
+    return documenter(binary, runtime, project_id, kind, format_name, destination, language)
 
 
 def filtered_capture(source: Path, destination: Path, phrase: str) -> Path:
@@ -306,6 +326,26 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
             )
             assert resume_result["project_id"] == "01" * 16
             assert resume_result["descriptor_evidence_completed"] is True
+            document_evidence = resume_result["document_evidence"]
+            assert document_evidence["status"] == "passed"
+            assert set(document_evidence["documents"]) == set(campaign.DOCUMENT_KINDS)
+            for document_kind in campaign.DOCUMENT_KINDS:
+                formats = document_evidence["documents"][document_kind]["formats"]
+                assert set(formats) == {name for name, _suffix in campaign.DOCUMENT_FORMATS}
+                for evidence in formats.values():
+                    path = root / evidence["relative_evidence_path"]
+                    assert evidence["status"] == "passed"
+                    assert evidence["bytes"] == path.stat().st_size
+                    assert evidence["sha256"] == harness.sha256(path)
+            campaign.record_observation(
+                root,
+                kind,
+                cycle,
+                "manual",
+                "document_fidelity_and_usefulness",
+                "passed",
+                "reviewed all four generated document kinds",
+            )
             summary_bytes = (campaign.cycle_root(root, kind, cycle) / "runtime-summary.json").read_bytes()
             assert b"canonical.sqlite3" in summary_bytes
             assert b"PRIVATE-STORE-CONTENT" not in summary_bytes
@@ -332,6 +372,9 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         names = opened.getnames()
         assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 6
         assert len([name for name in names if name.startswith("materiality-reviews/") and name.endswith(".json")]) == 7
+        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 48
+        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 6
+        assert len([name for name in names if name.startswith("operator/document-review/")]) == 6
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts) for name in names)
         assert not any(name.casefold().endswith(campaign.PROHIBITED_ARCHIVE_SUFFIXES) for name in names)
@@ -350,6 +393,40 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 12
 
 
+def assert_failed_document_kind_blocks_pass(parent: Path, binary: Path) -> None:
+    root = parent / "failed-document-campaign"
+    prepare(root, parent / "failed-document-sources", binary)
+    descriptor, work, resume, bundle = fixture_for(parent, "volicord", 1)
+    install_descriptor(root, "volicord", 1, descriptor)
+    assert campaign.collect_work(root, "volicord", 1, work)["outcome"] == "resume_allowed"
+    result = campaign.collect_resume(
+        root,
+        "volicord",
+        1,
+        resume,
+        exporter=exporter_from(bundle),
+        documenter=failed_documenter,
+    )
+    failed = result["document_evidence"]["documents"]["implementation-plan"]
+    assert result["document_evidence"]["status"] == "failed"
+    assert failed["status"] == "failed"
+    assert all(item["status"] == "failed" for item in failed["formats"].values())
+    try:
+        campaign.record_observation(
+            root,
+            "volicord",
+            1,
+            "manual",
+            "document_fidelity_and_usefulness",
+            "passed",
+            "reviewed all required documents",
+        )
+    except campaign.CampaignError as error:
+        assert "all four document kinds" in str(error)
+    else:
+        raise AssertionError("failed document evidence allowed a passed fidelity observation")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-dogfood-campaign-") as temporary:
         parent = Path(temporary)
@@ -357,6 +434,7 @@ def main() -> int:
         write_fake_binary(binary)
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
+        assert_failed_document_kind_blocks_pass(parent, binary)
         assert_successful_campaign(parent, binary)
     print(json.dumps({
         "status": "passed",
@@ -367,6 +445,8 @@ def main() -> int:
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
             "automatic_project_identity_and_bundle_export",
+            "four_kind_markdown_html_document_evidence",
+            "failed_document_kind_blocks_fidelity_pass",
             "bounded_runtime_summary",
             "deterministic_manifest",
             "bounded_default_review_archive",
