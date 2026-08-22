@@ -10,6 +10,21 @@ Run it with an explicit Project and optional separate runtime:
 volicord-viewer --runtime /absolute/runtime --project PROJECT_ID
 ```
 
+Export the current Viewer projection as one self-contained, read-only local
+HTML snapshot and exit:
+
+```text
+volicord-viewer --runtime /absolute/runtime --project PROJECT_ID --snapshot /absolute/path/viewer.html
+```
+
+Snapshot publication is atomic, refuses a relative or existing destination,
+opens no listener, and performs no upload or other network transmission. The
+result keeps current degradation, privacy state, document previews, and a
+closed Project/canonical/repository-analysis basis disclosure, but contains no
+forms, authenticity token, mutation endpoint, script, or live-Viewer link. It
+remains readable after the Runtime is no longer available. Sharing the file is
+a separate user-controlled action outside this command.
+
 Fixed product text is bundled in English and Korean. `--language` records an
 arbitrary requested generated-content language without an allowlist.
 

@@ -237,3 +237,10 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 process/filesystem technology, release numbering과 support window를 선택하지 않는다.
 Legacy decoder, dual read/write, compatibility mode와 parallel production implementation은
 새 format evolution path가 아니다.
+
+Current read-only Viewer HTML snapshot은 production reader가 다시 domain data로 ingest,
+decode 또는 adopt하는 durable input format이 아니므로 별도 versioned authority를 만들지
+않는다. Snapshot 안의 bounded Project/canonical/repository-analysis basis는 inspection과
+freshness 설명용이며 canonical schema, portable bundle 또는 generated-document metadata로
+해석하지 않는다. Future에 snapshot ingest/adoption을 지원하려면 그때 별도 current-only
+format contract가 필요하다.

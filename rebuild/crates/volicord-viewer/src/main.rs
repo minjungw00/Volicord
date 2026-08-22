@@ -7,7 +7,7 @@ use std::{
 };
 use volicord_context::ProjectId;
 use volicord_operations::{LocalOperations, RuntimeLayout};
-use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerServer};
+use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer};
 
 fn main() {
     if let Err(error) = run(env::args_os().skip(1).collect()) {
@@ -20,6 +20,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     let mut runtime = None;
     let mut project = None;
     let mut bind = "127.0.0.1:3219".to_owned();
+    let mut bind_was_requested = false;
+    let mut snapshot = None;
     let mut locale = ViewerLocale::English;
     let mut level = ExplanationLevel::Working;
     let mut language = "en".to_owned();
@@ -34,7 +36,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         match argument.as_ref() {
             "--runtime" => runtime = Some(PathBuf::from(next(index + 1)?)),
             "--project" => project = Some(parse_project(&next(index + 1)?)?),
-            "--bind" => bind = next(index + 1)?,
+            "--bind" => {
+                bind = next(index + 1)?;
+                bind_was_requested = true;
+            }
+            "--snapshot" => snapshot = Some(PathBuf::from(next(index + 1)?)),
             "--locale" => {
                 locale = match next(index + 1)?.as_str() {
                     "ko" => ViewerLocale::Korean,
@@ -55,31 +61,53 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         }
         index += 2;
     }
+    let project = project.ok_or_else(|| "--project is required".to_owned())?;
+    let layout = match runtime {
+        Some(path) => RuntimeLayout::new(path).map_err(|error| error.to_string())?,
+        None => RuntimeLayout::from_environment().map_err(|error| error.to_string())?,
+    };
+    let adapter = ViewerAdapter::new(LocalOperations::new(layout));
+    if let Some(destination) = snapshot {
+        if bind_was_requested {
+            return Err("--bind cannot be combined with --snapshot".into());
+        }
+        if !destination.is_absolute() {
+            return Err("the Viewer snapshot destination must be absolute".into());
+        }
+        let outcome = adapter
+            .export_snapshot(
+                &ViewerRequest {
+                    project_id: project,
+                    locale,
+                    explanation_level: level,
+                    requested_language: language,
+                    guarded_request: None,
+                },
+                &destination,
+            )
+            .map_err(|error| format!("cannot export Viewer snapshot: {error}"))?;
+        eprintln!(
+            "Volicord Viewer snapshot: {} ({} bytes; {})",
+            outcome.destination.display(),
+            outcome.bytes,
+            outcome.durability
+        );
+        return Ok(());
+    }
+
     let bind_address = bind
         .parse::<SocketAddr>()
         .map_err(|error| format!("invalid viewer bind address {bind}: {error}"))?;
     if !bind_address.ip().is_loopback() {
         return Err("the local viewer binds only to a loopback address".into());
     }
-    let project = project.ok_or_else(|| "--project is required".to_owned())?;
-    let layout = match runtime {
-        Some(path) => RuntimeLayout::new(path).map_err(|error| error.to_string())?,
-        None => RuntimeLayout::from_environment().map_err(|error| error.to_string())?,
-    };
     let listener = TcpListener::bind(bind_address)
         .map_err(|error| format!("cannot bind {bind_address}: {error}"))?;
     let authority = listener
         .local_addr()
         .map_err(|error| format!("cannot identify bound viewer authority: {error}"))?;
-    let server = ViewerServer::new(
-        ViewerAdapter::new(LocalOperations::new(layout)),
-        project,
-        locale,
-        level,
-        language,
-        authority,
-    )
-    .map_err(|error| error.to_string())?;
+    let server = ViewerServer::new(adapter, project, locale, level, language, authority)
+        .map_err(|error| error.to_string())?;
     eprintln!("Volicord local viewer: http://{authority}/");
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|error| format!("viewer connection failed: {error}"))?;

@@ -60,6 +60,12 @@ pub struct ViewerPage {
     pub html: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ViewerRenderMode<'a> {
+    Live { request_authenticity: &'a str },
+    Snapshot { generated_at: TimestampMicros },
+}
+
 #[derive(Debug)]
 pub struct ViewerError {
     message: String,
@@ -99,6 +105,54 @@ impl ViewerAdapter {
         request: &ViewerRequest,
         request_authenticity: &str,
     ) -> Result<ViewerPage, ViewerError> {
+        self.render_with_mode(
+            request,
+            ViewerRenderMode::Live {
+                request_authenticity,
+            },
+        )
+    }
+
+    /// Renders the same Project projection as the live Viewer without any
+    /// mutation transport, authenticity material, or live-server dependency.
+    pub fn render_snapshot(
+        &self,
+        request: &ViewerRequest,
+        generated_at: TimestampMicros,
+    ) -> Result<ViewerPage, ViewerError> {
+        if request.guarded_request.is_some() {
+            return Err(ViewerError::new(
+                "a static Viewer snapshot cannot render a Guarded response form",
+            ));
+        }
+        self.render_with_mode(request, ViewerRenderMode::Snapshot { generated_at })
+    }
+
+    pub fn export_snapshot(
+        &self,
+        request: &ViewerRequest,
+        destination: &Path,
+    ) -> Result<PublicationOutcome, ViewerError> {
+        self.export_snapshot_at(request, now()?, destination)
+    }
+
+    pub fn export_snapshot_at(
+        &self,
+        request: &ViewerRequest,
+        generated_at: TimestampMicros,
+        destination: &Path,
+    ) -> Result<PublicationOutcome, ViewerError> {
+        let page = self.render_snapshot(request, generated_at)?;
+        self.operations
+            .publish_viewer_snapshot(&page.html, destination)
+            .map_err(|error| ViewerError::new(error.to_string()))
+    }
+
+    fn render_with_mode(
+        &self,
+        request: &ViewerRequest,
+        mode: ViewerRenderMode<'_>,
+    ) -> Result<ViewerPage, ViewerError> {
         let projection = self
             .operations
             .project_projection(request.project_id)
@@ -108,7 +162,10 @@ impl ViewerAdapter {
         let document_request = DocumentRequest {
             requested_language: request.requested_language.clone(),
             fixed_locale: request.locale.fixed(),
-            generated_at: now()?,
+            generated_at: match mode {
+                ViewerRenderMode::Live { .. } => now()?,
+                ViewerRenderMode::Snapshot { generated_at } => generated_at,
+            },
             generator: GeneratorIdentity {
                 generator: "volicord-local-viewer".into(),
                 agent: None,
@@ -122,13 +179,16 @@ impl ViewerAdapter {
             .map_err(|error| {
                 ViewerError::new(format!("cannot generate document preview: {error}"))
             })?;
-        let guarded = request
-            .guarded_request
-            .map(|identity| self.operations.guarded_request(identity))
-            .transpose()
-            .map_err(|error| {
-                ViewerError::new(format!("cannot inspect Guarded request: {error}"))
-            })?;
+        let guarded = match mode {
+            ViewerRenderMode::Live { .. } => request
+                .guarded_request
+                .map(|identity| self.operations.guarded_request(identity))
+                .transpose()
+                .map_err(|error| {
+                    ViewerError::new(format!("cannot inspect Guarded request: {error}"))
+                })?,
+            ViewerRenderMode::Snapshot { .. } => None,
+        };
 
         let mut html = String::new();
         html.push_str("<!doctype html><html lang=\"");
@@ -136,36 +196,53 @@ impl ViewerAdapter {
         html.push_str("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>");
         html.push_str(STYLE);
         html.push_str(&format!(
-            "</head><body data-explanation-level=\"{}\"><main>",
-            level_key(request.explanation_level)
+            "</head><body data-explanation-level=\"{}\" data-viewer-mode=\"{}\"><main>",
+            level_key(request.explanation_level),
+            match mode {
+                ViewerRenderMode::Live { .. } => "live",
+                ViewerRenderMode::Snapshot { .. } => "snapshot",
+            }
         ));
         heading(&mut html, 1, text(request.locale, "Project", "프로젝트"));
-        html.push_str(&format!(
-            "<nav aria-label=\"{}\"><ul class=\"level-nav\">",
-            escape(text(request.locale, "Explanation level", "설명 수준"))
-        ));
-        for (level, label) in [
-            ("overview", text(request.locale, "Overview", "개요")),
-            ("working", text(request.locale, "Working", "작업")),
-            ("deep", text(request.locale, "Deep", "심층")),
-        ] {
-            let current = if level == level_key(request.explanation_level) {
-                " aria-current=\"page\""
-            } else {
-                ""
-            };
+        if matches!(mode, ViewerRenderMode::Live { .. }) {
             html.push_str(&format!(
-                "<li><a{current} href=\"?level={level}&amp;locale={}&amp;language={}{}\">{}</a></li>",
-                locale_key(request.locale),
-                percent_encode(&request.requested_language),
-                request
-                    .guarded_request
-                    .map(|identity| format!("&amp;guarded={identity}"))
-                    .unwrap_or_default(),
-                escape(label)
+                "<nav aria-label=\"{}\"><ul class=\"level-nav\">",
+                escape(text(request.locale, "Explanation level", "설명 수준"))
+            ));
+            for (level, label) in [
+                ("overview", text(request.locale, "Overview", "개요")),
+                ("working", text(request.locale, "Working", "작업")),
+                ("deep", text(request.locale, "Deep", "심층")),
+            ] {
+                let current = if level == level_key(request.explanation_level) {
+                    " aria-current=\"page\""
+                } else {
+                    ""
+                };
+                html.push_str(&format!(
+                    "<li><a{current} href=\"?level={level}&amp;locale={}&amp;language={}{}\">{}</a></li>",
+                    locale_key(request.locale),
+                    percent_encode(&request.requested_language),
+                    request.guarded_request.map(|identity| format!("&amp;guarded={identity}")).unwrap_or_default(),
+                    escape(label)
+                ));
+            }
+            html.push_str("</ul></nav>");
+        } else {
+            html.push_str(&format!(
+                "<p class=\"snapshot-label\"><strong>{}</strong> · {}</p>",
+                escape(text(
+                    request.locale,
+                    "Read-only static snapshot",
+                    "읽기 전용 정적 스냅샷"
+                )),
+                escape(text(
+                    request.locale,
+                    "This file requires no running Viewer or Runtime.",
+                    "이 파일은 실행 중인 뷰어나 런타임이 필요하지 않습니다."
+                ))
             ));
         }
-        html.push_str("</ul></nav>");
         html.push_str(&format!(
             "<p><strong>{}:</strong> {}</p>",
             escape(text(request.locale, "Explanation level", "설명 수준")),
@@ -177,7 +254,13 @@ impl ViewerAdapter {
         render_overview(&mut html, request, &projection);
         render_status(&mut html, request, &projection, &health);
         render_decisions(&mut html, request, &projection);
-        if let Some(candidate) = guarded.as_ref() {
+        if let (
+            Some(candidate),
+            ViewerRenderMode::Live {
+                request_authenticity,
+            },
+        ) = (guarded.as_ref(), mode)
+        {
             render_guarded(&mut html, request, candidate, request_authenticity);
         }
         render_checkpoints(&mut html, request, &projection);
@@ -187,8 +270,19 @@ impl ViewerAdapter {
             render_canonical(&mut html, request, &projection);
         }
         render_privacy(&mut html, request, privacy.as_ref());
+        if let ViewerRenderMode::Snapshot { generated_at } = mode {
+            render_snapshot_basis(&mut html, request, &projection, generated_at);
+        }
+        let request_authenticity = match mode {
+            ViewerRenderMode::Live {
+                request_authenticity,
+            } => Some(request_authenticity),
+            ViewerRenderMode::Snapshot { .. } => None,
+        };
         render_documents(&mut html, request, &documents, request_authenticity);
-        render_mutation_controls(&mut html, request, &projection, request_authenticity);
+        if let Some(request_authenticity) = request_authenticity {
+            render_mutation_controls(&mut html, request, &projection, request_authenticity);
+        }
         html.push_str("</main></body></html>");
         Ok(ViewerPage {
             project_id: request.project_id,
@@ -1251,15 +1345,23 @@ fn render_documents(
     html: &mut String,
     request: &ViewerRequest,
     documents: &DocumentSet,
-    request_authenticity: &str,
+    request_authenticity: Option<&str>,
 ) {
     section_start(
         html,
         "documents",
         text(
             request.locale,
-            "Document preview / export",
-            "문서 미리보기 / 내보내기",
+            if request_authenticity.is_some() {
+                "Document preview / export"
+            } else {
+                "Generated document previews"
+            },
+            if request_authenticity.is_some() {
+                "문서 미리보기 / 내보내기"
+            } else {
+                "생성 문서 미리보기"
+            },
         ),
     );
     html.push_str("<div class=\"document-previews\">");
@@ -1354,25 +1456,80 @@ fn render_documents(
         html.push_str("</details>");
     }
     html.push_str("</div>");
-    html.push_str(&format!(
-        "<form class=\"action-form\" method=\"post\" action=\"/documents/export\"><fieldset><legend>{}</legend><label>{} <select name=\"kind\">",
-        escape(text(request.locale, "Export generated document", "생성 문서 내보내기")),
-        escape(text(request.locale, "Document", "문서"))
-    ));
-    for kind in DocumentKind::ALL {
+    if let Some(request_authenticity) = request_authenticity {
         html.push_str(&format!(
-            "<option value=\"{}\">{}</option>",
-            escape(kind.slug()),
-            escape(document_kind_label(kind, request.locale))
+            "<form class=\"action-form\" method=\"post\" action=\"/documents/export\"><fieldset><legend>{}</legend><label>{} <select name=\"kind\">",
+            escape(text(request.locale, "Export generated document", "생성 문서 내보내기")),
+            escape(text(request.locale, "Document", "문서"))
         ));
+        for kind in DocumentKind::ALL {
+            html.push_str(&format!(
+                "<option value=\"{}\">{}</option>",
+                escape(kind.slug()),
+                escape(document_kind_label(kind, request.locale))
+            ));
+        }
+        html.push_str(&format!("</select></label> <label>{} <select name=\"format\"><option value=\"markdown\">Markdown</option><option value=\"html\">HTML</option></select></label> <label>{} <input name=\"destination\" required></label>", escape(text(request.locale, "Format", "형식")), escape(text(request.locale, "Absolute destination", "절대 대상 경로"))));
+        render_view_fields(html, request, request_authenticity);
+        html.push_str(&format!(
+            "<button type=\"submit\">{}</button></fieldset></form>",
+            escape(text(request.locale, "Export", "내보내기"))
+        ));
+        empty_state(html, text(request.locale, "Export writes only to an explicit absolute destination and never adopts the document automatically.", "내보내기는 명시한 절대 경로에만 쓰며 문서를 자동 채택하지 않습니다."));
     }
-    html.push_str(&format!("</select></label> <label>{} <select name=\"format\"><option value=\"markdown\">Markdown</option><option value=\"html\">HTML</option></select></label> <label>{} <input name=\"destination\" required></label>", escape(text(request.locale, "Format", "형식")), escape(text(request.locale, "Absolute destination", "절대 대상 경로"))));
-    render_view_fields(html, request, request_authenticity);
+    section_end(html);
+}
+
+fn render_snapshot_basis(
+    html: &mut String,
+    request: &ViewerRequest,
+    projection: &ProjectProjection,
+    generated_at: TimestampMicros,
+) {
+    let repository_snapshots = projection
+        .resume
+        .snapshots
+        .iter()
+        .map(|snapshot| snapshot.repository_snapshot.to_string())
+        .collect::<Vec<_>>();
+    let analysis_snapshots = projection
+        .resume
+        .snapshots
+        .iter()
+        .map(|snapshot| snapshot.analysis_snapshot.to_string())
+        .collect::<Vec<_>>();
+    let issues = projection
+        .issues
+        .iter()
+        .map(|issue| {
+            format!(
+                "{}: {} (omitted={})",
+                issue.affected_scope, issue.reason, issue.omitted_count
+            )
+        })
+        .collect::<Vec<_>>();
+    section_start(
+        html,
+        "snapshot-basis",
+        text(request.locale, "Snapshot basis", "스냅샷 근거"),
+    );
     html.push_str(&format!(
-        "<button type=\"submit\">{}</button></fieldset></form>",
-        escape(text(request.locale, "Export", "내보내기"))
+        "<details class=\"audit\"><summary>{}</summary><dl class=\"preview-meta\"><div><dt>{}</dt><dd><code>{}</code></dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div></dl><p class=\"muted\">{}</p></details>",
+        escape(text(request.locale, "Inspect Project, canonical, analysis, and freshness basis", "프로젝트, 정식 맥락, 분석 및 최신성 근거 검사")),
+        escape(text(request.locale, "Project ID", "프로젝트 ID")),
+        projection.overview.project_id,
+        escape(text(request.locale, "Canonical revision", "정식 리비전")),
+        projection.overview.canonical_revision,
+        escape(text(request.locale, "Repository snapshots", "저장소 스냅샷")),
+        escape(&bounded_names(&repository_snapshots, 8, request.locale)),
+        escape(text(request.locale, "Analysis snapshots", "분석 스냅샷")),
+        escape(&bounded_names(&analysis_snapshots, 8, request.locale)),
+        escape(text(request.locale, "Generated at", "생성 시각")),
+        generated_at.as_unix_micros(),
+        escape(text(request.locale, "Projection degradation and omissions", "프로젝션 저하 및 생략")),
+        escape(&bounded_names(&issues, 8, request.locale)),
+        escape(text(request.locale, "The snapshot was generated locally and does not transmit or upload this artifact.", "스냅샷은 로컬에서 생성되며 이 산출물을 전송하거나 업로드하지 않습니다."))
     ));
-    empty_state(html, text(request.locale, "Export writes only to an explicit absolute destination and never adopts the document automatically.", "내보내기는 명시한 절대 경로에만 쓰며 문서를 자동 채택하지 않습니다."));
     section_end(html);
 }
 

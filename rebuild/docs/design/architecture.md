@@ -218,6 +218,13 @@ operation 전에 exact local Origin, present할 경우 `same-origin` Fetch Metad
 발급한 cryptographically unguessable operational form token을 검증한다. 이 token은
 canonical/portable/document meaning이나 Guarded confirmation의 두 번째 approval이 아니다.
 
+같은 Viewer renderer의 explicit static mode는 user가 지정한 local absolute destination에
+current Project projection을 self-contained read-only HTML snapshot으로 publish하고 종료한다.
+Static mode는 listener, live authority, mutation/Guarded/document-export form, authenticity
+token 또는 live endpoint를 만들지 않는다. Local Operations의 atomic no-replace publication만
+사용하며 snapshot 생성 자체를 canonical mutation, provider transmission 또는 generated
+document adoption으로 해석하지 않는다.
+
 Adapter는 Question을 답한 것으로 추론하거나, recommendation을 user choice로
 바꾸거나, low-level transport identity를 domain identity로 만들지 않는다. 특정
 host, command 또는 wire representation은 이 문서의 architecture contract가

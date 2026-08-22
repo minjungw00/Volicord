@@ -1249,6 +1249,17 @@ impl LocalOperations {
         publish_bytes_no_replace(destination, artifact.content.as_bytes())
     }
 
+    /// Publishes one already-rendered, read-only Viewer snapshot to an exact
+    /// user destination. This operation owns only atomic no-replace local
+    /// publication; it does not interpret the HTML or mutate Project state.
+    pub fn publish_viewer_snapshot(
+        &self,
+        html: &str,
+        destination: &Path,
+    ) -> Result<PublicationOutcome, Error> {
+        publish_bytes_no_replace(destination, html.as_bytes())
+    }
+
     pub fn inquiry_frontier(
         &self,
         project_id: ProjectId,

@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::{ffi::OsString, fs, process::Command, time::Duration};
+use std::{ffi::OsString, fs, path::Path, process::Command, time::Duration};
 use tempfile::TempDir;
 use volicord_context::{
     CheckpointKind, ContextItemId, ContextItemRole, PrincipalKind, ProjectId, SourcePayload,
@@ -580,6 +580,40 @@ fn repository_failure_degrades_health_without_canonical_loss(
     let health = operations.health(Some(initialized.project.id));
     assert_eq!(health.state, HealthState::Degraded);
     assert_eq!(health.repository_available, Some(false));
+    Ok(())
+}
+
+#[test]
+fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temporary, operations, repository) = fixture()?;
+    let project = operations
+        .initialize_project("Snapshot publication", Some(&repository))?
+        .project
+        .id;
+    let canonical_before = operations.canonical_basis(project)?;
+    let destination = temporary.path().join("shared/viewer-snapshot.html");
+    let html = "<!doctype html><html><body>read-only snapshot</body></html>";
+
+    let published = operations.publish_viewer_snapshot(html, &destination)?;
+    assert_eq!(published.destination, destination);
+    assert_eq!(published.bytes, html.len() as u64);
+    assert_eq!(fs::read_to_string(&destination)?, html);
+    assert_eq!(operations.canonical_basis(project)?, canonical_before);
+
+    let replacement = operations
+        .publish_viewer_snapshot("replacement", &destination)
+        .expect_err("snapshot publication must not replace an existing file");
+    assert!(replacement
+        .message()
+        .contains("publication destination already exists"));
+    assert_eq!(fs::read_to_string(&destination)?, html);
+
+    let relative = operations
+        .publish_viewer_snapshot(html, Path::new("viewer-snapshot.html"))
+        .expect_err("relative snapshot destination must be rejected");
+    assert!(relative.message().contains("must be absolute"));
+    assert_eq!(operations.canonical_basis(project)?, canonical_before);
     Ok(())
 }
 

@@ -359,6 +359,17 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   사용하되 audit appendix를 closed `<details>`로 제공한다.
 - PDF와 DOCX는 initial required output이 아니다.
 
+Local Viewer는 같은 current Project projection, health/privacy/document data와 human-first
+hierarchy를 하나의 self-contained read-only HTML snapshot으로 user-specified local
+destination에 publish할 수 있다. 이 Viewer snapshot은 네 generated document를 대체하거나
+그 metadata/adoption lifecycle을 공유하는 artifact가 아니다. Snapshot은 live listener,
+mutation/Guarded/document-export form, authenticity token, live endpoint, JavaScript 또는
+external runtime asset을 포함하지 않으며 생성 뒤 Runtime 없이 읽을 수 있다. Project,
+canonical revision, Repository/Analysis Snapshot, generation time, degradation과 omission
+basis는 ordinary reading path를 방해하지 않는 closed audit disclosure에서 inspect할 수 있다.
+Snapshot 생성과 local publication은 background provider opt-in이나 external sharing/upload가
+아니며 자동 network transmission을 수행하지 않는다.
+
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer
 framework 또는 conversion library를 선택하지 않는다. Output format은 canonical
 portable-context bundle format이나 storage schema가 아니다.

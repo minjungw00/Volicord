@@ -497,6 +497,100 @@ fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
 }
 
 #[test]
+fn static_snapshot_is_deterministic_self_contained_and_read_only() {
+    let (temporary, viewer, project) = setup();
+    let request = ViewerRequest {
+        project_id: project,
+        locale: ViewerLocale::English,
+        explanation_level: ExplanationLevel::Working,
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let generated_at = TimestampMicros::from_unix_micros(123_456_789);
+    let canonical_before = viewer
+        .operations()
+        .canonical_basis(project)
+        .expect("canonical basis before snapshot");
+    let repository_before = repository_entries(&temporary);
+    let first = viewer
+        .render_snapshot(&request, generated_at)
+        .expect("render static snapshot");
+    let second = viewer
+        .render_snapshot(&request, generated_at)
+        .expect("render deterministic static snapshot");
+    assert_eq!(first, second);
+    assert_eq!(
+        viewer
+            .operations()
+            .canonical_basis(project)
+            .expect("canonical basis after snapshot"),
+        canonical_before
+    );
+    assert_eq!(repository_entries(&temporary), repository_before);
+    assert!(first.html.contains("data-viewer-mode=\"snapshot\""));
+    assert!(first.html.contains("Read-only static snapshot"));
+    assert!(first.html.contains("Snapshot basis"));
+    assert!(first.html.contains("123456789"));
+    assert!(first.html.contains(&project.to_string()));
+    assert!(first.html.contains("Generated document previews"));
+    for forbidden in [
+        "<form",
+        "request_authenticity",
+        "action=\"/",
+        "<script",
+        " href=",
+        " src=",
+        "/memory/",
+        "/guarded/",
+        "/documents/export",
+    ] {
+        assert!(!first.html.contains(forbidden), "found {forbidden}");
+    }
+    let overview = first
+        .html
+        .find("id=\"project-overview\"")
+        .expect("overview");
+    let health = first.html.find("id=\"health\"").expect("health");
+    let decisions = first.html.find("id=\"decisions\"").expect("decisions");
+    let checkpoints = first.html.find("id=\"checkpoints\"").expect("checkpoints");
+    assert!(overview < health && health < decisions && decisions < checkpoints);
+}
+
+#[test]
+fn degraded_static_snapshot_preserves_capability_honesty() {
+    let (temporary, viewer, project) = setup();
+    fs::write(
+        temporary.path().join("snapshot.go"),
+        "package snapshot\nfunc Gap() {}\n",
+    )
+    .expect("write degraded snapshot fixture");
+    viewer
+        .operations()
+        .analyze(project, Vec::new())
+        .expect("analyze degraded snapshot fixture");
+    let html = viewer
+        .render_snapshot(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Working,
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            TimestampMicros::from_unix_micros(987_654_321),
+        )
+        .expect("render degraded snapshot")
+        .html;
+    assert!(html.contains("Affected capability and scope"));
+    assert!(html.contains("Capability coverage detail"));
+    assert!(
+        html.contains("unavailable") || html.contains("partial") || html.contains("unsupported")
+    );
+    assert!(html.contains("Usable remainder"));
+    assert!(!html.contains("<form"));
+}
+
+#[test]
 fn representative_large_repository_page_is_deterministically_bounded() {
     let (temporary, viewer, project) = setup();
     for index in 0..192 {

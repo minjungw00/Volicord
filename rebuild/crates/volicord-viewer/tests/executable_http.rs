@@ -156,6 +156,94 @@ fn export(
 }
 
 #[test]
+fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
+    let temporary = TempDir::new().expect("temporary root");
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository).expect("repository");
+    fs::write(repository.join("main.py"), "VALUE = 1\n").expect("fixture source");
+    let operations = LocalOperations::new(RuntimeLayout::new(&runtime).expect("runtime layout"));
+    let project = operations
+        .initialize_project("Executable snapshot", Some(&repository))
+        .expect("initialize Project")
+        .project
+        .id;
+    operations
+        .analyze(project, Vec::new())
+        .expect("analyze fixture");
+    let canonical_before = operations
+        .canonical_basis(project)
+        .expect("canonical basis before snapshot");
+    let destination = temporary.path().join("shared/viewer.html");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_volicord-viewer"))
+        .args([
+            "--runtime",
+            runtime.to_str().expect("runtime path"),
+            "--project",
+            &project.to_string(),
+            "--snapshot",
+            destination.to_str().expect("snapshot destination"),
+            "--level",
+            "working",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("run snapshot mode");
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8(output.stderr)
+        .expect("snapshot stderr")
+        .contains("Volicord Viewer snapshot:"));
+    let html = fs::read_to_string(&destination).expect("read static snapshot");
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("data-viewer-mode=\"snapshot\""));
+    assert!(html.contains("main.py"));
+    assert!(html.contains("Snapshot basis"));
+    for forbidden in [
+        "<form",
+        "request_authenticity",
+        " href=",
+        " src=",
+        "<script",
+        "/memory/",
+        "/guarded/",
+        "/documents/export",
+    ] {
+        assert!(!html.contains(forbidden), "found {forbidden}");
+    }
+    assert_eq!(
+        operations
+            .canonical_basis(project)
+            .expect("canonical basis after snapshot"),
+        canonical_before
+    );
+
+    let replacement = Command::new(env!("CARGO_BIN_EXE_volicord-viewer"))
+        .args([
+            "--runtime",
+            runtime.to_str().expect("runtime path"),
+            "--project",
+            &project.to_string(),
+            "--snapshot",
+            destination.to_str().expect("snapshot destination"),
+        ])
+        .output()
+        .expect("run replacement snapshot mode");
+    assert!(!replacement.status.success());
+    assert!(String::from_utf8(replacement.stderr)
+        .expect("replacement stderr")
+        .contains("already exists"));
+
+    fs::remove_dir_all(&runtime).expect("remove Runtime after snapshot");
+    assert!(fs::read_to_string(&destination)
+        .expect("snapshot remains readable without Runtime")
+        .contains("Executable snapshot"));
+}
+
+#[test]
 fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     let temporary = TempDir::new().expect("temporary root");
     let runtime = temporary.path().join("runtime");

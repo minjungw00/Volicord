@@ -134,11 +134,17 @@ Semantic provider가 설정되지 않았거나 disabled, revoked, unavailable �
 - capability, coverage, freshness, unsupported와 failure reporting
 - derived index/cache 삭제와 local rebuild
 - provider result 없이 가능한 projection과 generated document
+- current Viewer projection의 user-specified local read-only HTML snapshot 생성
 
 Provider-backed `semantic` 또는 annotation이 없다는 사실은 해당 capability에
 `unavailable` 또는 상황에 맞는 state로 표시한다. Project 전체나 canonical journey를
 failure로 표현하지 않는다. Local-only mode를 기능 사용 전의 trial/degraded consent
 screen처럼 취급하지 않는다.
+
+Local Viewer snapshot 생성은 local read/projection/publication operation이다. 이 operation은
+background provider opt-in을 만들거나 artifact를 upload/transmit하지 않는다. 생성된 파일을
+다른 사람 또는 external service와 공유하는 행위는 별도의 user-controlled effect이며 snapshot
+command의 authority나 결과에서 추론하지 않는다.
 
 ### Candidate collection opt-out and retention contract
 

@@ -774,6 +774,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - `overview`, `working`, `deep` 설명 수준을 선택한다.
 - code entity와 Decision에 연결된 개념 설명을 본다.
 - 네 필수 문서를 Markdown으로 export하고 self-contained HTML로 preview한다.
+- 현재 Viewer projection을 명시한 local path에 하나의 self-contained read-only HTML
+  snapshot으로 export하고, 생성 뒤 Runtime이나 listener 없이 읽는다.
 - 문서마다 source snapshot, Decisions, capability coverage, known gaps와 generator identity가 표시된다.
 - 저장소 write는 사용자 지정 경로가 있을 때만 수행한다.
 - 사용자가 편집한 문서는 review/import 후에만 canonical input이 된다.
@@ -793,6 +795,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - generated document를 자동 canonical truth로 채택
 - 사용자 요청 없이 Product Repository에 파일 생성
 - unsupported/failed 영역을 문서에서 생략
+- Viewer snapshot에 mutation/Guarded/document-export form, authenticity token, live endpoint,
+  JavaScript 또는 external runtime asset 포함
+- Viewer snapshot 생성 중 자동 upload 또는 external network transmission
 - 사용자 숙련도를 조용히 영구 추론
 
 ### 자동 검증
@@ -804,6 +809,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - stale invalidation
 - Korean/English fixed UI rendering
 - requested user-language generated content를 allowlist로 거부하지 않음
+- Viewer snapshot의 explicit-destination atomic publication, no-listener exit, read-only surface,
+  self-contained asset, basis/freshness/degradation visibility와 Runtime-independent read
 
 ### 수동 평가
 
