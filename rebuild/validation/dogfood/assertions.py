@@ -56,6 +56,15 @@ def main() -> int:
         "fresh_resume_user_task",
         "decision_oracle",
         "work_task_materiality_basis",
+        "materiality_review",
+        "user_owned_material",
+        "campaign_preparation_independent_reviewer",
+        "terminal_checkpoint_call",
+        "verified_state_continuation",
+        "repository_scoped_activation_observed",
+        "operator_environment_invalid",
+        "observation_template",
+        "validate_observation_object",
         "project_resolve",
         "repository_bound_project_resolution",
         "qualify-work-blocker",
@@ -161,8 +170,10 @@ def main() -> int:
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
         "event_msg.mcp_tool_call_end",
-        "meaningful observed repository changes relevant to the recalled Checkpoint",
-        "the resume session preserves separate same-command numeric-exit validation",
+        "permit one or more successful work Checkpoints",
+        "latest terminal Checkpoint candidate after the last meaningful repository change",
+        "change continuation produces a relevant repository change",
+        "verified-state continuation requires a recalled completed Checkpoint",
     ):
         if forwarding_requirement not in definition:
             raise AssertionError(
@@ -205,6 +216,7 @@ def main() -> int:
         "replacement_pass_candidate": False,
         "phase_9_ready": False,
         "later_evidence_status": "not_run",
+        "missing_activation_outcome": "operator_environment_invalid",
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:

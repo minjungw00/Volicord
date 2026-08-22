@@ -169,14 +169,23 @@ Question is still compared with those facts and the user-owned dimension, and
 that comparison does not automatically pass the subjective Question-relevance
 observation.
 
+Every descriptor also carries a hidden `materiality_review` prepared by the
+campaign control session. It records the reviewed active owners, repository
+facts, why neither facts nor accepted contracts determine the choice, why the
+choice is not an explicitly delegated implementation detail, the user-visible
+consequence, and an independent-review outcome. Only `user_owned_material`
+with an accepted independent review is descriptor-valid. This is a bounded
+review gate, not a claim that JSON mechanically proves semantic truth.
+
 Work-session research, Inquiry, current-host Decision provenance, ordinary
 work, numeric-exit verification, and Checkpoint creation are observed from the
 actual Codex rollout and canonical bundle rather than disclosed as prompt
 choreography. The first work turn is bound directly to the canonical Goal
-Source and identity. The Checkpoint references that Goal identity and supplies
-the next meaningful state or step; post-Recall continuation is judged from the
-observed repository change and separate validation, not from a predeclared
-reserved path.
+Source and identity. The selected terminal Checkpoint references that Goal
+identity and supplies the next meaningful state or step. A work capture may
+contain earlier pause or handoff Checkpoints; the latest Checkpoint candidate
+after the last meaningful repository change is selected, and a malformed final
+candidate cannot be hidden by falling back to earlier history.
 
 The fresh-resume task is likewise ordinary user language and does not mention
 Recall or contain a Project ID. Qualification requires successful
@@ -184,7 +193,11 @@ Recall or contain a Project ID. Qualification requires successful
 same Project before Recall. Recall must then precede repository inspection or
 continued work, and the resume session must not initialize a replacement
 Project merely to obtain an identity. Context recovery is derived from that
-Recall result. Deterministic journey success remains independent from manual
+Recall result. Continuation may either make a relevant change and validate it,
+or inspect and numerically verify an already-completed recalled state without
+an artificial mutation. Paused or in-progress work cannot use the no-change
+path, and Recall without later inspection and validation does not qualify.
+Deterministic journey success remains independent from manual
 Question relevance, Decision comprehension, interruption cost, and document
 fidelity/usefulness observations.
 
@@ -200,6 +213,16 @@ research, and reviewed material promotion through `candidate_manage` before
 the resulting Question can appear in `inquiry_frontier`. Only an explicit
 current-host user response can qualify `decision_record`; the agent's own
 recommendation or implementation preference cannot.
+
+Before those product behaviors are judged, work-capture intake verifies that
+the repository-scoped SessionStart activation context is present. Its absence
+is an operator/environment setup failure and stops that campaign path without
+attributing missing Inquiry behavior to Volicord. Repository and hook trust
+remain explicit operator actions.
+
+Manual and accessibility observation objects use exactly `status` plus a
+bounded `basis`. Generated templates start as `skipped`; they never pre-fill a
+pass result.
 
 Full replacement qualification remains the `run` path: three repository
 classes, two cycles per class, and two globally distinct fresh VS Code Codex

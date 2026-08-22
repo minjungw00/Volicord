@@ -161,6 +161,7 @@
       "work_user_task_field": "work_user_task",
       "fresh_resume_user_task_field": "fresh_resume_user_task",
       "hidden_decision_oracle_field": "decision_oracle",
+      "materiality_review_field": "materiality_review",
       "identity_fields": [
         "repository_class",
         "cycle",
@@ -178,6 +179,7 @@
       "other_whitespace_normalized": false
     },
     "work_session_contract": [
+      "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
       "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
       "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
@@ -187,14 +189,19 @@
       "perform real repository work after the baseline",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
       "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
-      "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step"
+      "permit one or more successful work Checkpoints while preserving pause and handoff history",
+      "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
+      "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable current-host Decisions, truthful numeric-exit verification, limits, and next meaningful state or step"
     ],
     "resume_session_contract": [
+      "repository-scoped SessionStart activation is observed before continuation behavior is judged",
       "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
-      "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
-      "the resume session preserves separate same-command numeric-exit validation after that change"
+      "change continuation produces a relevant repository change after Recall and inspection plus separate numeric-exit validation after that change",
+      "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
+      "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
+      "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify"
     ],
     "command_forwarding_contract": {
       "complete_result_evidence": "one statically bound exec_command result forwards its complete structured result",
@@ -237,6 +244,21 @@
       "materiality_basis_hidden_content_exclusion": "must not disclose alternatives, recommendation, or expected choice",
       "question_relevance_result": "manual_observation_independent_from_deterministic_journey_success"
     },
+    "materiality_review": {
+      "kind": "phase8_materiality_review",
+      "accepted_classification": "user_owned_material",
+      "required_independent_review_status": "accepted",
+      "purpose": "bounded independent-review gate rather than mechanical semantic proof",
+      "visibility": "evaluator_input_only"
+    },
+    "observation_schema": {
+      "required_fields": [
+        "status",
+        "basis"
+      ],
+      "basis_maximum_utf8_bytes": 8192,
+      "templates_must_not_prefill_passed": true
+    },
     "naturalistic_prompt_integrity": {
       "rejects_harness_choreography": true,
       "ordinary_repository_paths_and_public_api_names_allowed": true
@@ -249,7 +271,8 @@
       "campaign_complete": false,
       "replacement_pass_candidate": false,
       "phase_9_ready": false,
-      "later_evidence_status": "not_run"
+      "later_evidence_status": "not_run",
+      "missing_activation_outcome": "operator_environment_invalid"
     }
   }
 }

@@ -64,6 +64,7 @@ RESOURCE_STORAGE_METRICS = (
     "document_output_bytes",
 )
 REAL_SESSION_CHECKS = (
+    "repository_scoped_activation",
     "naturalistic_prompt_integrity",
     "plain_task_goal_linkage",
     "clean_bounded_baseline",
@@ -79,6 +80,7 @@ REAL_SESSION_CHECKS = (
     "meaningful_recalled_continuation",
 )
 MAX_USER_TASK_BYTES = 8192
+MAX_REVIEW_TEXT_BYTES = 8192
 OFFICIAL_SUFFIXES = {
     ".java": "Java",
     ".py": "Python",
@@ -545,6 +547,7 @@ def load_definition() -> dict[str, Any]:
         )
         or tuple(evidence.get("work_session_contract", []))
         != (
+            "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
             "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
@@ -554,15 +557,20 @@ def load_definition() -> dict[str, Any]:
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
-            "record a grounded Checkpoint using the Goal Context identity, applicable current-host Decisions, truthful verification evidence, limits, and next meaningful state or step",
+            "permit one or more successful work Checkpoints while preserving pause and handoff history",
+            "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
+            "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable current-host Decisions, truthful numeric-exit verification, limits, and next meaningful state or step",
         )
         or tuple(evidence.get("resume_session_contract", []))
         != (
+            "repository-scoped SessionStart activation is observed before continuation behavior is judged",
             "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
-            "the resume session produces meaningful observed repository changes relevant to the recalled Checkpoint current state or next step",
-            "the resume session preserves separate same-command numeric-exit validation after that change",
+            "change continuation produces a relevant repository change after Recall and inspection plus separate numeric-exit validation after that change",
+            "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
+            "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
+            "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify",
         )
         or evidence.get("codex_user_turn_transport_identity")
         != {
@@ -599,6 +607,7 @@ def load_definition() -> dict[str, Any]:
         descriptor_contract.get("work_user_task_field") != "work_user_task"
         or descriptor_contract.get("fresh_resume_user_task_field") != "fresh_resume_user_task"
         or descriptor_contract.get("hidden_decision_oracle_field") != "decision_oracle"
+        or descriptor_contract.get("materiality_review_field") != "materiality_review"
         or tuple(descriptor_contract.get("identity_fields", []))
         != ("repository_class", "cycle", "repository_revision")
         or descriptor_contract.get("evidence_reference_field") != "evidence"
@@ -624,9 +633,29 @@ def load_definition() -> dict[str, Any]:
             "replacement_pass_candidate": False,
             "phase_9_ready": False,
             "later_evidence_status": "not_run",
+            "missing_activation_outcome": "operator_environment_invalid",
         }
     ):
         raise ValueError("the Phase 8 materiality or work-blocker contract changed")
+    materiality_review = evidence.get("materiality_review", {})
+    observation_schema = evidence.get("observation_schema", {})
+    if (
+        materiality_review
+        != {
+            "kind": "phase8_materiality_review",
+            "accepted_classification": "user_owned_material",
+            "required_independent_review_status": "accepted",
+            "purpose": "bounded independent-review gate rather than mechanical semantic proof",
+            "visibility": "evaluator_input_only",
+        }
+        or observation_schema
+        != {
+            "required_fields": ["status", "basis"],
+            "basis_maximum_utf8_bytes": MAX_REVIEW_TEXT_BYTES,
+            "templates_must_not_prefill_passed": True,
+        }
+    ):
+        raise ValueError("the Phase 8 materiality-review or observation schema changed")
     goal = evidence.get("plain_task_goal", {})
     if (
         goal.get("maximum_utf8_bytes") != MAX_USER_TASK_BYTES
@@ -891,6 +920,79 @@ def decision_oracle_errors(value: Any) -> list[str]:
     return errors
 
 
+def materiality_review_errors(value: Any, oracle: Any) -> list[str]:
+    if not isinstance(value, dict) or value.get("kind") != "phase8_materiality_review":
+        return ["materiality_review must be a Phase 8 materiality review"]
+    errors: list[str] = []
+    if value.get("classification") != "user_owned_material":
+        errors.append("materiality_review.classification must be user_owned_material")
+    for field in (
+        "decision_dimension",
+        "why_repository_facts_do_not_determine_choice",
+        "why_no_accepted_contract_determines_choice",
+        "why_not_explicitly_delegated_implementation_choice",
+        "user_visible_material_consequence",
+    ):
+        field_value = value.get(field)
+        if (
+            not nonempty_string(field_value)
+            or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
+        ):
+            errors.append(f"materiality_review.{field} must be bounded non-empty text")
+    owners = value.get("reviewed_active_owner_references")
+    if (
+        not isinstance(owners, list)
+        or not owners
+        or len(owners) > 32
+        or len(owners) != len(set(owners))
+        or not all(
+            nonempty_string(owner)
+            and owner.startswith("rebuild/docs/design/")
+            and owner.endswith(".md")
+            and ".." not in Path(owner).parts
+            for owner in owners
+        )
+    ):
+        errors.append(
+            "materiality_review.reviewed_active_owner_references must name bounded active owners"
+        )
+    facts = value.get("established_repository_facts")
+    if (
+        not isinstance(facts, list)
+        or not facts
+        or len(facts) > 32
+        or len(facts) != len(set(facts))
+        or not all(
+            nonempty_string(fact) and len(fact.encode("utf-8")) <= MAX_REVIEW_TEXT_BYTES
+            for fact in facts
+        )
+    ):
+        errors.append(
+            "materiality_review.established_repository_facts must contain bounded unique facts"
+        )
+    independent = value.get("independent_review")
+    if (
+        not isinstance(independent, dict)
+        or set(independent) != {"status", "reviewer_role", "basis"}
+        or independent.get("status") != "accepted"
+        or independent.get("reviewer_role") != "campaign_preparation_independent_reviewer"
+        or not nonempty_string(independent.get("basis"))
+        or len(independent.get("basis", "").encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
+    ):
+        errors.append("materiality_review requires an accepted independent review")
+    if isinstance(oracle, dict):
+        if value.get("decision_dimension") != oracle.get("user_owned_dimension"):
+            errors.append("materiality_review decision dimension does not match the hidden oracle")
+        if facts != oracle.get("established_repository_facts"):
+            errors.append("materiality_review repository facts do not match the hidden oracle")
+        if (
+            value.get("user_visible_material_consequence")
+            != oracle.get("material_consequence")
+        ):
+            errors.append("materiality_review consequence does not match the hidden oracle")
+    return errors
+
+
 def naturalistic_prompt_errors(work_task: Any, resume_task: Any, oracle: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(work_task, str) or not isinstance(resume_task, str) or not isinstance(oracle, dict):
@@ -1030,6 +1132,7 @@ def cycle_descriptor_errors(value: Any) -> list[str]:
             errors.append(error)
     oracle = value.get("decision_oracle")
     errors.extend(decision_oracle_errors(oracle))
+    errors.extend(materiality_review_errors(value.get("materiality_review"), oracle))
     if not decision_oracle_errors(oracle):
         errors.extend(
             naturalistic_prompt_errors(
@@ -1079,6 +1182,7 @@ WORK_BLOCKER_CHECKS = (
     "explicit_current_host_user_decision_operation",
     "source_grounded_checkpoint_operation",
 )
+SETUP_ACTIVATION_CHECK = "repository_scoped_session_start_activation"
 
 
 def build_work_blocker_result(
@@ -1111,6 +1215,7 @@ def build_work_blocker_result(
     ):
         raise ValueError("work capture is not machine-observably completed")
 
+    activation_observed = capture.repository_scoped_activation_observed
     project_entries = [
         call
         for call in (
@@ -1157,7 +1262,11 @@ def build_work_blocker_result(
             capture.successful_calls("checkpoint_record")
         ),
     }
-    failed_checks = [name for name in WORK_BLOCKER_CHECKS if not observed[name]]
+    failed_checks = (
+        [SETUP_ACTIVATION_CHECK]
+        if not activation_observed
+        else [name for name in WORK_BLOCKER_CHECKS if not observed[name]]
+    )
     if not failed_checks:
         raise ValueError(
             "completed work capture has no machine-observable terminal work blocker; use normal full qualification"
@@ -1165,6 +1274,16 @@ def build_work_blocker_result(
     result = {
         "kind": "phase8_dogfood_blocker_result",
         "status": "failed",
+        "classification": (
+            "operator_environment_setup_failure"
+            if not activation_observed
+            else "product_work_session_blocker"
+        ),
+        "outcome": (
+            "operator_environment_invalid"
+            if not activation_observed
+            else "campaign_stop"
+        ),
         "candidate_head": candidate_head,
         "repository_class": descriptor["repository_class"],
         "cycle": descriptor["cycle"],
@@ -1194,6 +1313,8 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     expected_keys = {
         "kind",
         "status",
+        "classification",
+        "outcome",
         "candidate_head",
         "repository_class",
         "cycle",
@@ -1219,6 +1340,13 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or result.get("phase_9_ready") is not False
     ):
         raise ValueError("work-blocker result cannot claim campaign completion or passage")
+    classification = result.get("classification")
+    outcome = result.get("outcome")
+    if (classification, outcome) not in {
+        ("operator_environment_setup_failure", "operator_environment_invalid"),
+        ("product_work_session_blocker", "campaign_stop"),
+    }:
+        raise ValueError("work-blocker result has an invalid failure classification")
     if (
         not re.fullmatch(r"[0-9a-f]{40}", result.get("candidate_head", ""))
         or result.get("repository_class") not in CLASSES
@@ -1231,8 +1359,15 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     if (
         not isinstance(failed_checks, list)
         or not failed_checks
-        or any(check not in WORK_BLOCKER_CHECKS for check in failed_checks)
-        or failed_checks != [name for name in WORK_BLOCKER_CHECKS if name in failed_checks]
+        or any(check not in (*WORK_BLOCKER_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
+        or (
+            classification == "operator_environment_setup_failure"
+            and failed_checks != [SETUP_ACTIVATION_CHECK]
+        )
+        or (
+            classification == "product_work_session_blocker"
+            and failed_checks != [name for name in WORK_BLOCKER_CHECKS if name in failed_checks]
+        )
         or result.get("failed_check_count") != len(failed_checks)
     ):
         raise ValueError("work-blocker result has invalid failed checks")
@@ -1665,6 +1800,29 @@ def checkpoint_verification_facts(
     return returned_ids == executed_ids
 
 
+def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
+    if work is None:
+        return []
+    return [
+        observation
+        for observation in work.path_observations
+        if any(
+            not looks_like_synthetic_marker(path)
+            and Path(path).suffix.lower() not in {".txt", ".marker"}
+            and not any(part in {"build", "dist", "target"} for part in Path(path).parts)
+            for path in observation.paths
+        )
+    ]
+
+
+def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
+    """Select the latest observed work Checkpoint candidate without fallback."""
+    if work is None:
+        return None
+    calls = work.calls("checkpoint_record")
+    return max(calls, key=lambda call: call.sequence) if calls else None
+
+
 def checkpoint_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
@@ -1674,7 +1832,7 @@ def checkpoint_facts(
     baseline_analysis_id: str | None,
     goal_statement: str | None,
 ) -> tuple[bool, bool, bool, str | None, list[str], str | None]:
-    call = unique_call(work, "checkpoint_record")
+    call = terminal_checkpoint_call(work)
     if call is None or work is None or bundle is None:
         return False, False, False, None, [], None
     checkpoint_id = call.result.get("checkpoint_id")
@@ -1730,8 +1888,15 @@ def checkpoint_facts(
     verification_ok = checkpoint_verification_facts(
         work, bundle, call, str(checkpoint_id)
     )
+    meaningful_changes = meaningful_work_path_observations(work)
+    terminal_after_last_meaningful_change = (
+        bool(meaningful_changes)
+        and max(item.sequence for item in meaningful_changes) < call.sequence
+    )
     valid = (
-        bounded_paths is not None
+        call.outcome == "succeeded"
+        and terminal_after_last_meaningful_change
+        and bounded_paths is not None
         and set(bounded_paths) == set(observed_paths)
         and set(bounded_paths) == source_paths
         and call.result.get("changed_paths") == bounded_paths
@@ -1837,7 +2002,7 @@ def real_session_evidence(
         decision_oracle,
         baseline_call,
     )
-    checkpoint_call = unique_call(work_capture, "checkpoint_record")
+    checkpoint_call = terminal_checkpoint_call(work_capture)
     first_work_change = min(
         (item.sequence for item in work_capture.path_observations),
         default=None,
@@ -1847,7 +2012,10 @@ def real_session_evidence(
         and bool(changed_paths)
         and not all(looks_like_synthetic_marker(path) for path in changed_paths)
         and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
-        and all(item.sequence < checkpoint_call.sequence for item in work_capture.path_observations)
+        and all(
+            item.sequence < checkpoint_call.sequence
+            for item in meaningful_work_path_observations(work_capture)
+        )
     ) if work_capture else False
     cycle_metadata_ok = (
         not descriptor_errors
@@ -1917,6 +2085,12 @@ def real_session_evidence(
         and nonempty_string(work_capture.cli_version)
         and nonempty_string(resume_capture.cli_version)
     )
+    activation_ok = (
+        work_capture is not None
+        and resume_capture is not None
+        and work_capture.repository_scoped_activation_observed
+        and resume_capture.repository_scoped_activation_observed
+    )
     resolve_call = unique_call(resume_capture, "project_resolve")
     recall_call = unique_call(resume_capture, "recall")
     resolved_binding = (
@@ -1984,7 +2158,6 @@ def real_session_evidence(
         and recall_call is not None
         and first_inspection is not None
         and not prior_inspections
-        and bool(continuation_paths)
         and recall_call.completion_sequence < first_inspection
     )
     turns_before_recall = (
@@ -2086,15 +2259,56 @@ def real_session_evidence(
         and recalled_goal_ok
     )
     relevant_resume_paths = relevant_continuation_paths(continuation_paths, next_step)
-    continuation_ok = (
+    change_continuation_ok = (
         recall_match_ok
         and fresh_ok
         and ordering_ok
         and bool(relevant_resume_paths)
         and resume_validation_ok
     )
+    checkpoint_work_state = (
+        recalled_checkpoint_row.get("work_state")
+        if recalled_checkpoint_row is not None
+        else None
+    )
+    recalled_work_state = (
+        recall_checkpoint.get("work_state")
+        if isinstance(recall_checkpoint, dict)
+        else None
+    )
+    contradictory_resume_behavior = False
+    if resume_capture is not None and first_inspection is not None:
+        contradictory_resume_behavior = any(
+            command.sequence > first_inspection
+            and isinstance(command.exit_code, int)
+            and command.exit_code != 0
+            for command in resume_capture.commands
+        ) or any(
+            call.sequence > first_inspection
+            and call.arguments.get("work_state") not in {None, "completed"}
+            for call in resume_capture.successful_calls("checkpoint_record")
+        )
+    verified_state_continuation_ok = (
+        recall_match_ok
+        and fresh_ok
+        and ordering_ok
+        and checkpoint_work_state == "completed"
+        and recalled_work_state == "completed"
+        and not continuation_paths
+        and meaningful_resume_validation(resume_capture, first_inspection)
+        and not contradictory_resume_behavior
+    )
+    continuation_mode = (
+        "change_continuation"
+        if change_continuation_ok
+        else "verified_state_continuation"
+        if verified_state_continuation_ok
+        else None
+    )
+    continuation_ok = continuation_mode is not None
 
     checks = {
+        "repository_scoped_activation": evidence_check(references_present, activation_ok),
         "naturalistic_prompt_integrity": evidence_check(references_present, prompt_integrity_ok),
         "plain_task_goal_linkage": evidence_check(references_present, task_goal_ok),
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
@@ -2123,6 +2337,23 @@ def real_session_evidence(
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
             "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
+            "recalled_checkpoint_work_state": checkpoint_work_state,
+            "continuation_mode": continuation_mode,
+            "change_continuation_qualified": change_continuation_ok,
+            "verified_state_continuation_qualified": verified_state_continuation_ok,
+            "final_behavior_contradicts_completed_state": contradictory_resume_behavior,
+        },
+        "activation_basis": {
+            "work_session_start_observed": (
+                work_capture.repository_scoped_activation_observed
+                if work_capture is not None
+                else False
+            ),
+            "resume_session_start_observed": (
+                resume_capture.repository_scoped_activation_observed
+                if resume_capture is not None
+                else False
+            ),
         },
         "checkpoint_id": checkpoint_id,
         "goal_context_id": goal_context_id,
@@ -2190,6 +2421,31 @@ def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, s
             "basis": ",".join(f"{key}:{value}" for key, value in routed.items()),
         }
     return result
+
+
+def observation_template(names: list[str] | tuple[str, ...]) -> dict[str, dict[str, str]]:
+    return {
+        name: {
+            "status": "skipped",
+            "basis": "Not yet observed; replace with a bounded operator observation.",
+        }
+        for name in names
+    }
+
+
+def validate_observation_object(observation: Any, name: str) -> tuple[str, str]:
+    if not isinstance(observation, dict) or set(observation) != {"status", "basis"}:
+        raise ValueError(f"Phase 8 observation must contain only status and basis: {name}")
+    status = observation.get("status")
+    basis = observation.get("basis")
+    if status not in ALLOWED_STATUS:
+        raise ValueError(f"Phase 8 observation has an invalid status: {name}")
+    if (
+        not nonempty_string(basis)
+        or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
+    ):
+        raise ValueError(f"Phase 8 observation needs a bounded basis: {name}")
+    return str(status), str(basis)
 
 
 VOID_HTML_ELEMENTS = {
@@ -2355,10 +2611,7 @@ def qualify_accessibility(
     for name, observation in (observations or {}).items():
         if name not in permitted or not isinstance(observation, dict):
             raise ValueError(f"unsupported accessibility observation: {name}")
-        status = observation.get("status")
-        basis = observation.get("basis")
-        if status not in ALLOWED_STATUS or not nonempty_string(basis):
-            raise ValueError(f"accessibility observation needs a status and bounded basis: {name}")
+        status, basis = validate_observation_object(observation, name)
         if name not in machine_checks:
             qualified[name] = {
                 "machine_status": "absent",
@@ -2398,13 +2651,8 @@ def qualify_quality_observation(
     observation: dict[str, Any],
     name: str,
 ) -> dict[str, str]:
-    if observation.get("status") not in ALLOWED_STATUS:
-        raise ValueError(f"manual Phase 8 observation has an invalid status: {name}")
-    basis = observation.get("basis")
-    if not nonempty_string(basis):
-        raise ValueError(f"manual Phase 8 observation needs a bounded basis: {name}")
+    observed_status, basis = validate_observation_object(observation, name)
     machine_status = machine.get("status", "failed")
-    observed_status = observation["status"]
     effective = machine_status
     if observed_status == "failed":
         effective = "failed"
@@ -3170,6 +3418,36 @@ def fixture_decision_oracle() -> dict[str, Any]:
     }
 
 
+def fixture_materiality_review(oracle: dict[str, Any] | None = None) -> dict[str, Any]:
+    oracle = oracle or fixture_decision_oracle()
+    return {
+        "kind": "phase8_materiality_review",
+        "classification": "user_owned_material",
+        "decision_dimension": oracle["user_owned_dimension"],
+        "reviewed_active_owner_references": [
+            "rebuild/docs/design/product-charter.md",
+            "rebuild/docs/design/open-decisions.md",
+            "rebuild/docs/design/inquiry-and-decision.md",
+        ],
+        "established_repository_facts": oracle["established_repository_facts"],
+        "why_repository_facts_do_not_determine_choice": (
+            "The repository establishes the available output layers but not the public policy."
+        ),
+        "why_no_accepted_contract_determines_choice": (
+            "The active owners require truthful errors but do not select this public detail boundary."
+        ),
+        "why_not_explicitly_delegated_implementation_choice": (
+            "The choice changes operator-visible output rather than only renderer or layout mechanics."
+        ),
+        "user_visible_material_consequence": oracle["material_consequence"],
+        "independent_review": {
+            "status": "accepted",
+            "reviewer_role": "campaign_preparation_independent_reviewer",
+            "basis": "Independent control-session review accepted the bounded user-owned classification.",
+        },
+    }
+
+
 def real_session_fixture(
     kind: str,
     cycle: int,
@@ -3224,6 +3502,26 @@ def real_session_fixture(
                 "thread_source": "user",
                 "model_provider": "openai",
                 "git": {"commit_hash": revision, "branch": "phase8"},
+            },
+        )
+
+    def activation_message() -> dict[str, Any]:
+        return event(
+            "response_item",
+            {
+                "type": "message",
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Volicord is active because this repository was explicitly authorized. "
+                            "For every fresh project-scoped session, STOP before repository inspection, "
+                            "edits, or continuation: resolve the current repository first. If found, "
+                            "successfully Recall before inspecting, editing, or continuing work."
+                        ),
+                    }
+                ],
             },
         )
 
@@ -3394,6 +3692,7 @@ def real_session_fixture(
     patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/existing.rs\n@@\n-old\n+new\n*** Update File: /phase8/repository/tests/existing.rs\n@@\n-old\n+new\n*** End Patch"
     work_events = [
         session_meta(work_session),
+        activation_message(),
         task(work_turn),
         user(work_turn, f"{kind}-user-turn-{cycle}", work_user_task),
         mcp_call(
@@ -3681,6 +3980,7 @@ def real_session_fixture(
     resume_patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/resume.rs\n@@\n+continued\n*** End Patch"
     resume_events = [
         session_meta(resume_session),
+        activation_message(),
         task(resume_turn),
         user(resume_turn, f"{kind}-resume-user-turn-{cycle}", resume_user_task),
         mcp_call(
@@ -3903,6 +4203,7 @@ def real_session_fixture(
         "work_user_task": work_user_task,
         "fresh_resume_user_task": resume_user_task,
         "decision_oracle": decision_oracle,
+        "materiality_review": fixture_materiality_review(decision_oracle),
         "evidence": {
             "captures": {
                 "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
@@ -4203,12 +4504,14 @@ def self_test() -> int:
             "Continue the validation-adapter improvement from the current project state."
         ),
         "decision_oracle": fixture_decision_oracle(),
+        "materiality_review": fixture_materiality_review(),
     }
     if cycle_descriptor_errors(valid_descriptor):
         raise AssertionError("valid naturalistic plain-task descriptor was rejected")
     for label, mutation in (
         ("missing work task", lambda value: value.pop("work_user_task")),
         ("missing oracle", lambda value: value.pop("decision_oracle")),
+        ("missing materiality review", lambda value: value.pop("materiality_review")),
         (
             "missing work materiality basis",
             lambda value: value["decision_oracle"].pop("work_task_materiality_basis"),
@@ -4238,6 +4541,30 @@ def self_test() -> int:
             lambda value: value.update({"fresh_resume_user_task": "Invoke Recall before continuing."}),
         ),
         ("obsolete reserved scope", lambda value: value.update({"resume_change_scope": ["src/resume.rs"]})),
+        (
+            "repository fact misclassified as user-owned",
+            lambda value: value["materiality_review"].update(
+                {"classification": "repository_fact"}
+            ),
+        ),
+        (
+            "accepted contract misclassified as user-owned",
+            lambda value: value["materiality_review"].update(
+                {"classification": "accepted_contract"}
+            ),
+        ),
+        (
+            "delegated layout choice misclassified as user-owned",
+            lambda value: value["materiality_review"].update(
+                {"classification": "delegated_implementation_choice"}
+            ),
+        ),
+        (
+            "unaccepted independent review",
+            lambda value: value["materiality_review"]["independent_review"].update(
+                {"status": "pending"}
+            ),
+        ),
     ):
         invalid_descriptor = json.loads(json.dumps(valid_descriptor))
         mutation(invalid_descriptor)
@@ -4245,14 +4572,37 @@ def self_test() -> int:
         expected_error = {
             "missing work task": "work_user_task",
             "missing oracle": "decision_oracle",
+            "missing materiality review": "materiality_review",
             "missing work materiality basis": "work_task_materiality_basis",
             "materiality basis absent from work task": "absent from work_user_task",
             "materiality basis only in resume task": "appears only in fresh_resume_user_task",
             "scripted resume": "Recall",
             "obsolete reserved scope": "obsolete field",
+            "repository fact misclassified as user-owned": "classification",
+            "accepted contract misclassified as user-owned": "classification",
+            "delegated layout choice misclassified as user-owned": "classification",
+            "unaccepted independent review": "accepted independent review",
         }[label]
         if not any(expected_error in error for error in errors):
             raise AssertionError(f"{label} descriptor qualified")
+    generated_observations = observation_template(
+        [
+            "question_relevance",
+            "decision_comprehension",
+            "interruption_cost",
+            "document_fidelity_and_usefulness",
+            "keyboard_reachability",
+            "visible_focus",
+            "not_color_only",
+            "narrow_and_zoomed_presentation",
+        ]
+    )
+    for name, observation in generated_observations.items():
+        status, basis = validate_observation_object(
+            json.loads(json.dumps(observation)), name
+        )
+        if status != "skipped" or not basis or "passed" in observation.values():
+            raise AssertionError("generated observation template did not round-trip safely")
     for fallback in ("||", "??"):
         parsed = parse_mcp_wrapper(
             "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
@@ -4382,9 +4732,45 @@ def self_test() -> int:
     if (
         blocker_result["kind"] != "phase8_dogfood_blocker_result"
         or blocker_result["failed_checks"] != list(WORK_BLOCKER_CHECKS)
+        or blocker_result["classification"] != "product_work_session_blocker"
+        or blocker_result["outcome"] != "campaign_stop"
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
     ):
         raise AssertionError("zero-Volicord completed work capture was not a terminal blocker")
+    missing_activation_path = evidence_directory / "missing-activation-work.jsonl"
+    positive_work_events = [
+        json.loads(line)
+        for line in positive_work_path.read_text(encoding="utf-8").splitlines()
+    ]
+    missing_activation_events = [
+        value
+        for value in positive_work_events
+        if not (
+            value.get("type") == "response_item"
+            and value.get("payload", {}).get("type") == "message"
+            and value.get("payload", {}).get("role") == "developer"
+        )
+    ]
+    missing_activation_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in missing_activation_events
+        ),
+        encoding="utf-8",
+    )
+    missing_activation_capture = load_codex_capture(missing_activation_path)
+    setup_result = build_work_blocker_result(
+        revision,
+        external_fixture,
+        descriptor_identity,
+        missing_activation_capture,
+    )
+    if (
+        setup_result["classification"] != "operator_environment_setup_failure"
+        or setup_result["outcome"] != "operator_environment_invalid"
+        or setup_result["failed_checks"] != [SETUP_ACTIVATION_CHECK]
+    ):
+        raise AssertionError("missing SessionStart activation was attributed to the product")
     transport_blocker_events = json.loads(json.dumps(zero_workflow_events))
     for value in transport_blocker_events:
         payload = value.get("payload", {})
@@ -4795,6 +5181,95 @@ def self_test() -> int:
         write_json(path, value)
         reference["sha256"] = sha256(path)
 
+    def add_checkpoint_candidate(
+        fixture: dict[str, Any],
+        checkpoint_identity: str,
+        *,
+        before_decision: bool = False,
+        goal_context_identity: str = "08" * 16,
+        add_canonical_history: bool = False,
+        verification_source_ids: list[str] | None = None,
+    ) -> None:
+        path, events = capture_events(fixture, "work")
+        checkpoint_events = [
+            value
+            for value in events
+            if value.get("payload", {}).get("type") == "mcp_tool_call_end"
+            and value.get("payload", {}).get("invocation", {}).get("tool")
+            == "checkpoint_record"
+        ]
+        if len(checkpoint_events) != 1:
+            raise AssertionError("fixture terminal Checkpoint completion was not unique")
+        candidate = json.loads(json.dumps(checkpoint_events[0]))
+        candidate["payload"]["call_id"] = f"exec-extra-checkpoint-{checkpoint_identity[:8]}"
+        arguments = candidate["payload"]["invocation"]["arguments"]
+        arguments["goal_context_id"] = goal_context_identity
+        arguments["kind"] = "handoff" if before_decision else "completed"
+        arguments["work_state"] = "paused" if before_decision else "completed"
+        if before_decision:
+            arguments["applied_decision_ids"] = []
+            arguments["verification"] = [{"state": "not_run"}]
+        structured = candidate["payload"]["result"]["Ok"]["structuredContent"]
+        structured["checkpoint_id"] = checkpoint_identity
+        structured["goal_context_id"] = goal_context_identity
+        structured["applied_decision_ids"] = arguments["applied_decision_ids"]
+        structured["verification_source_ids"] = (
+            verification_source_ids
+            if verification_source_ids is not None
+            else []
+            if before_decision
+            else structured["verification_source_ids"]
+        )
+        if before_decision:
+            insertion = next(
+                index
+                for index, value in enumerate(events)
+                if value.get("payload", {}).get("type") == "task_started"
+                and "decision-turn" in str(value.get("payload", {}).get("turn_id"))
+            )
+        else:
+            insertion = max(
+                index
+                for index, value in enumerate(events)
+                if value.get("payload", {}).get("type")
+                in {"task_complete", "task_completed"}
+            )
+        events.insert(insertion, candidate)
+        store_capture(fixture, "work", path, events)
+
+        if add_canonical_history:
+            def add_row(bundle_value: dict[str, Any]) -> None:
+                for table_value in bundle_value["payload"]["tables"]:
+                    if table_value["name"] != "checkpoints":
+                        continue
+                    row = json.loads(json.dumps(table_value["rows"][0]))
+                    columns = table_value["columns"]
+                    row[columns.index("id")] = {
+                        "type": "bytes",
+                        "value": checkpoint_identity,
+                    }
+                    row[columns.index("goal")] = {
+                        "type": "text",
+                        "value": (
+                            fixture["work_user_task"]
+                            if goal_context_identity == "08" * 16
+                            else "Unrelated goal"
+                        ),
+                    }
+                    row[columns.index("checkpoint_kind")] = {
+                        "type": "text",
+                        "value": arguments["kind"],
+                    }
+                    row[columns.index("work_state")] = {
+                        "type": "text",
+                        "value": arguments["work_state"],
+                    }
+                    table_value["rows"].append(row)
+                    return
+                raise AssertionError("fixture canonical Checkpoint table was absent")
+
+            mutate_bundle(fixture, add_row)
+
     def mutate_mcp_call(
         fixture: dict[str, Any],
         capture: str,
@@ -5094,6 +5569,82 @@ def self_test() -> int:
         user_events[0]["payload"]["message"] = task_text
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
+
+    two_checkpoint_fixture = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    add_checkpoint_candidate(
+        two_checkpoint_fixture,
+        "12" * 16,
+        before_decision=True,
+        add_canonical_history=True,
+    )
+    two_checkpoint_result = real_session_evidence(
+        two_checkpoint_fixture,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    two_checkpoint_capture = load_codex_capture(
+        evidence_directory
+        / two_checkpoint_fixture["evidence"]["captures"]["work"]["file"]
+    )
+    if (
+        two_checkpoint_result["status"] != "passed"
+        or two_checkpoint_result["checkpoint_id"] != "09" * 16
+        or len(two_checkpoint_capture.calls("checkpoint_record")) != 2
+    ):
+        raise AssertionError(
+            "pause history followed by a valid completion Checkpoint did not select the terminal state"
+        )
+
+    malformed_final_checkpoint = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    add_checkpoint_candidate(malformed_final_checkpoint, "13" * 16)
+    malformed_final_result = real_session_evidence(
+        malformed_final_checkpoint,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if malformed_final_result["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("a malformed final Checkpoint fell back to an earlier valid record")
+
+    unrelated_goal_checkpoint = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    add_checkpoint_candidate(
+        unrelated_goal_checkpoint,
+        "14" * 16,
+        goal_context_identity="ff" * 16,
+        add_canonical_history=True,
+    )
+    unrelated_goal_result = real_session_evidence(
+        unrelated_goal_checkpoint,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if unrelated_goal_result["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("an unrelated-Goal terminal Checkpoint qualified the work session")
+
+    final_without_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    add_checkpoint_candidate(
+        final_without_verification,
+        "15" * 16,
+        add_canonical_history=True,
+        verification_source_ids=[],
+    )
+    if real_session_evidence(
+        final_without_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("a terminal Checkpoint without correlated verification qualified")
 
     transport_fixture = real_session_fixture(
         "small-python", 2, revision, evidence_directory
@@ -5925,8 +6476,75 @@ def self_test() -> int:
     if (
         not no_continuation_result["continuation_basis"]["resume_numeric_exit_validation"]
         or no_continuation_result["continuation_basis"]["observed_change_relevant_to_checkpoint_next_step"]
+        or no_continuation_result["continuation_basis"]["verified_state_continuation_qualified"]
     ):
         raise AssertionError("validation and source-change evidence were not kept separate")
+
+    verified_completed_state = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    verified_path, verified_events = capture_events(verified_completed_state, "resume")
+    verified_events = [
+        value
+        for value in verified_events
+        if value.get("payload", {}).get("type") != "patch_apply_end"
+    ]
+    store_capture(verified_completed_state, "resume", verified_path, verified_events)
+
+    def mark_canonical_checkpoint_completed(bundle: dict[str, Any]) -> None:
+        for table_value in bundle["payload"]["tables"]:
+            if table_value["name"] == "checkpoints":
+                state_index = table_value["columns"].index("work_state")
+                table_value["rows"][0][state_index] = {
+                    "type": "text",
+                    "value": "completed",
+                }
+
+    mutate_bundle(verified_completed_state, mark_canonical_checkpoint_completed)
+    mutate_custom_output(
+        verified_completed_state,
+        "resume",
+        "recall-call",
+        lambda output: output["checkpoint"].update({"work_state": "completed"}),
+    )
+    verified_completed_result = real_session_evidence(
+        verified_completed_state,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        verified_completed_result["checks"]["meaningful_recalled_continuation"]
+        != "passed"
+        or verified_completed_result["continuation_basis"]["continuation_mode"]
+        != "verified_state_continuation"
+        or verified_completed_result["continuation_paths"]
+    ):
+        raise AssertionError("completed recalled state could not qualify through inspection and verification")
+
+    recall_and_stop = real_session_fixture("volicord", 1, revision, evidence_directory)
+    stop_path, stop_events = capture_events(recall_and_stop, "resume")
+    stop_events = [
+        value
+        for value in stop_events
+        if value.get("payload", {}).get("type") != "patch_apply_end"
+        and "resume-verification-call" not in str(value.get("payload", {}).get("call_id"))
+    ]
+    store_capture(recall_and_stop, "resume", stop_path, stop_events)
+    mutate_bundle(recall_and_stop, mark_canonical_checkpoint_completed)
+    mutate_custom_output(
+        recall_and_stop,
+        "resume",
+        "recall-call",
+        lambda output: output["checkpoint"].update({"work_state": "completed"}),
+    )
+    if real_session_evidence(
+        recall_and_stop,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["meaningful_recalled_continuation"] != "failed":
+        raise AssertionError("Recall and inspection without post-inspection verification qualified")
 
     irrelevant_continuation = real_session_fixture("volicord", 1, revision, evidence_directory)
     replace_checkpoint_next_step(
@@ -6089,6 +6707,18 @@ def self_test() -> int:
         "wrapper_completion_deduplicated": "passed",
         "naturalistic_plain_task_descriptor_contract": "passed",
         "work_task_materiality_basis_required_in_work_task": "passed",
+        "independent_materiality_review_required": "passed",
+        "repository_fact_contract_and_delegated_choice_rejected": "passed",
+        "terminal_checkpoint_single_and_pause_completion_selection": "passed",
+        "malformed_final_checkpoint_no_fallback": "passed",
+        "unrelated_goal_and_unverified_terminal_checkpoint_rejected": "passed",
+        "resume_change_continuation": "passed",
+        "resume_verified_completed_state_continuation": "passed",
+        "paused_state_no_change_continuation_rejected": "passed",
+        "recall_without_post_inspection_verification_rejected": "passed",
+        "repository_scoped_activation_required": "passed",
+        "missing_activation_operator_environment_classification": "passed",
+        "observation_status_basis_round_trip": "passed",
         "plain_task_and_hidden_oracle_sanitization": "passed",
         "descriptor_and_captured_task_mismatch_rejected": "passed",
         "scripted_objective_marker_rejected": "passed",

@@ -21,6 +21,11 @@ from typing import Any
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
+ACTIVATION_CONTEXT_MARKERS = (
+    "Volicord is active because this repository was explicitly authorized.",
+    "STOP before repository inspection, edits, or continuation",
+    "successfully Recall before inspecting, editing, or continuing work",
+)
 VOLICORD_OPERATIONS = {
     "background_semantic_operation",
     "candidate_inspect",
@@ -448,6 +453,7 @@ class CodexCapture:
     cli_version: str
     thread_source: str
     fresh_user_thread: bool
+    repository_scoped_activation_observed: bool
     task_sequences: tuple[int, ...]
     completed_task_sequences: tuple[int, ...]
     compacted_sequences: tuple[int, ...]
@@ -631,6 +637,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     mcp_wrappers: dict[str, tuple[int, str, ParsedMcpWrapper]] = {}
     mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     raw_path_observations: list[tuple[int, str, tuple[str, ...]]] = []
+    repository_scoped_activation_observed = False
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -638,6 +645,22 @@ def load_codex_capture(path: Path) -> CodexCapture:
             continue
         envelope = event.get("type")
         payload_type = payload.get("type")
+        if (
+            envelope == "response_item"
+            and payload_type == "message"
+            and payload.get("role") == "developer"
+        ):
+            content = payload.get("content")
+            if isinstance(content, list) and len(content) <= 32:
+                developer_text = "\n".join(
+                    item.get("text", "")
+                    for item in content
+                    if isinstance(item, dict)
+                    and item.get("type") in {"input_text", "output_text"}
+                    and isinstance(item.get("text"), str)
+                )
+                if all(marker in developer_text for marker in ACTIVATION_CONTEXT_MARKERS):
+                    repository_scoped_activation_observed = True
         if envelope == "event_msg" and payload_type == "task_started":
             turn_id = payload.get("turn_id")
             if nonempty(turn_id):
@@ -830,6 +853,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         cli_version=str(cli_version),
         thread_source=str(thread_source),
         fresh_user_thread=fresh_user_thread,
+        repository_scoped_activation_observed=repository_scoped_activation_observed,
         task_sequences=tuple(task_sequences),
         completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),

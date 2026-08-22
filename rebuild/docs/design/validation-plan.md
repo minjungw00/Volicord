@@ -796,7 +796,13 @@ complete `run` path만 `campaign_complete = true`, `replacement_pass_candidate =
 accessibility evidence가 하나라도 빠지면 passage가 아니다.
 
 각 cycle descriptor의 hidden decision oracle은 bounded
-`work_task_materiality_basis`를 포함한다. 이 값은 hidden user-owned dimension이 현재 work
+`work_task_materiality_basis`를 포함한다. Descriptor에는 별도의 hidden
+`materiality_review`도 필요하다. 이 review는 active owner, repository fact, accepted
+contract와 explicit implementation delegation을 독립 control session에서 확인하고
+`user_owned_material`로 accepted한 bounded prequalification artifact다. Schema가 semantic
+truth를 기계적으로 증명한다는 뜻은 아니며 accepted independent review가 없거나 fact,
+accepted contract 또는 delegated implementation choice로 분류된 cycle은 시작하지 않는다.
+`work_task_materiality_basis`는 hidden user-owned dimension이 현재 work
 outcome에 material한 이유를 만드는 ordinary user-task text의 exact bounded fragment다.
 Case-folding하고 whitespace를 collapse해 normalize한 basis가 같은 방식으로
 normalize한 `work_user_task` 안에 반드시 나타나야 한다. `fresh_resume_user_task`에만
@@ -813,6 +819,11 @@ research를 연결한 뒤 reviewed `material` Candidate를 canonical Question으
 response에서만 기록하며 agent recommendation이나 implementation preference를 response로
 사용하지 않는다. Meaningful completion/pause는 Goal, baseline, applicable Decision, actual
 changed basis와 numeric-exit verification을 연결한 source-grounded Checkpoint를 요구한다.
+Work session은 pause/handoff history를 포함해 하나 이상의 successful Checkpoint를 가질 수
+있다. Qualification은 마지막 meaningful repository change 뒤의 latest Checkpoint candidate를
+terminal state로 결정하며 malformed final candidate에서 earlier valid Checkpoint로 fallback하지
+않는다. 선택된 terminal Checkpoint만 ordinary-work qualification의 Goal/baseline/Decision과
+correlated numeric-exit verification을 충족해야 한다.
 
 Fresh resume session의 exact first task에는 Project ID가 포함되지 않는다. Repository
 inspection 또는 continued work 전에 current repository path로 `project_resolve`가
@@ -821,6 +832,18 @@ Project와 같으며 current binding identity/revision을 포함해야 한다. �
 Recall은 이 successful resolution 뒤, repository inspection/continuation 전에 발생한다.
 Resume session은 identity를 얻기 위해 `project_initialize`로 replacement Project를
 만들 수 없다. Work/resume session의 global distinctness 조건은 그대로 유지한다.
+
+Resume continuation은 두 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
+relevant repository change와 그 뒤의 별도 numeric-exit validation을 요구한다.
+`verified_state_continuation`은 recalled terminal Checkpoint가 `completed`이고 inspection이
+그 state가 current임을 확인하며 post-inspection numeric-exit validation이 있고 final behavior가
+completed state와 충돌하지 않을 때 source mutation 없이 통과할 수 있다. Paused/in-progress
+Checkpoint나 meaningful unfinished next step이 있는 state는 no-change mode를 사용할 수 없고,
+Recall 뒤 inspection/validation 없이 끝난 session도 통과하지 않는다.
+
+Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
+evidence를 확인한다. Activation이 없으면 operator/environment setup failure로 분류하고 그
+campaign path를 중단하며 Question/Decision 부재를 product failure로 귀속하지 않는다.
 
 Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
 보존하기 위한 failure-only command를 제공한다.
