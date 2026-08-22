@@ -286,6 +286,26 @@ security boundary against deliberately opening evaluator files. The helper
 never grants Codex repository or hook trust; the operator reviews and grants
 trust in VS Code.
 
+The roles remain separate throughout a campaign:
+
+- The evaluator/control agent researches the actual repositories, prepares and
+  independently reviews the hidden materiality/oracle data, and seals each
+  descriptor through the helper. Evaluator data stays out of operator-facing
+  instructions and examples; the operator is never asked to inspect or edit a
+  descriptor.
+- The naturalistic operator inspects and trusts the intended repository,
+  explicitly approves the SessionStart hook, opens every required fresh VS
+  Code Codex session, and sends only the frozen work/resume tasks from the run
+  sheet. The operator supplies genuine answers to material Questions and
+  genuine subjective and accessibility observations.
+- The helper owns campaign setup, sealed-descriptor validation, operator
+  run-sheet generation, byte-exact rollout intake and hashing,
+  activation/setup classification, early blocker gating, Project-ID
+  extraction, canonical bundle export, bounded Runtime summaries, all four
+  generated document kinds in Markdown and self-contained HTML, descriptor
+  evidence completion, observation-schema validation, repository-manifest
+  assembly, and bounded review packaging.
+
 `collect-work` copies and hashes a user-supplied raw rollout byte-for-byte,
 checks its frozen task/session/revision/activation contract, extracts an
 observed Project identity, and returns exactly `resume_allowed`,
@@ -322,7 +342,9 @@ default and enter only with `--include-raw-rollouts`. Full Runtime Homes,
 SQLite files and sidecars, derived directories, installation files, source
 repositories, credentials, private prompts, and provider payloads are never
 selected by the default packager. Keep the campaign root in ignored private
-state and preserve a separate raw-rollout archive when review requires it.
+state. Ordinary independent review requires both the byte-exact raw rollout
+archive and the bounded review package; transfer them as separate private
+artifacts. It does not require, and must not substitute, a full Runtime Home.
 
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
@@ -330,7 +352,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `a3217ed5de67fe2d00605d0e865206139272f207`:
+production/test candidate `914e0f0b5b343ce2bf363f2610fac278d12555d1`:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger

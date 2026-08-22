@@ -885,6 +885,13 @@ Campaign 준비와 routine evidence collection은 maintained internal helper인
 validation, blocker gating, Project identity extraction, canonical bundle export와 hash,
 bounded Runtime summary, descriptor evidence completion, manifest assembly와 review packaging을
 담당한다. Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+Independent evaluator/control은 actual repository와 pinned revision을 조사하고 hidden oracle과
+materiality review를 준비·독립 검토한 뒤 maintained helper로 cycle descriptor를 봉인한다.
+Evaluator material은 operator instruction, example 또는 review index에 넣지 않으며 operator에게
+descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
+repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
+Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. 실제 material
+Question에는 본인의 답을 제공하고 subjective/accessibility observation도 직접 기록한다.
 `prepare`는 evaluator input과 operator material을 분리한다. Independent control agent가
 `seal-cycle`로 descriptor를 검증·봉인하기 전에는 `activate-cycle`과 `collect-work`가
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
@@ -900,6 +907,9 @@ operator document-review index는 produced path만 노출한다. 한 kind라도 
 document kind이며 format별 subjective pass를 따로 요구하지 않는다. Review package는 이
 summary/index와 produced documents를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
 Analysis, credential, prompt, provider payload와 source copy는 계속 제외한다.
+Ordinary independent review의 handoff는 byte-exact raw rollout archive와 bounded review
+package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
+별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
 ## 16. Architecture 확정 gate
 

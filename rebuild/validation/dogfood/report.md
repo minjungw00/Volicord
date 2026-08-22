@@ -3,7 +3,7 @@
 ## Status
 
 Not run. Technical Phase 8 entry is eligible for the sealed production/test
-candidate `a3217ed5de67fe2d00605d0e865206139272f207`, but a fresh naturalistic
+candidate `914e0f0b5b343ce2bf363f2610fac278d12555d1`, but a fresh naturalistic
 Dogfood campaign has not begun for that candidate.
 
 - `replacement_gate = pending`
@@ -36,7 +36,7 @@ choreography.
 ## Input repositories and revisions
 
 The production/test candidate is exactly
-`a3217ed5de67fe2d00605d0e865206139272f207`. No repository descriptor,
+`914e0f0b5b343ce2bf363f2610fac278d12555d1`. No repository descriptor,
 workspace, Runtime Home, rollout, bundle, observation, blocker result, or
 session identity currently qualifies it.
 
@@ -59,18 +59,31 @@ campaign setup and evidence handling, while leaving genuine host interaction
 to the user. The helper does not create a Codex chat, approve repository or
 hook trust, invent a user response, or pre-fill a human observation as passed.
 
-The user owns the actions that cannot be truthfully automated:
+Evaluator/control owns the hidden preparation work:
 
-- approve repository and hook trust where required;
-- run twelve globally distinct real VS Code Codex chats: work and fresh resume
-  sessions for two cycles in each of three repository classes;
+- research each actual repository and pin its qualifying revision;
+- prepare and independently review hidden materiality and decision-oracle data;
+- seal each descriptor through the maintained helper before any operator run;
+- keep evaluator alternatives, recommendation, expected choice, materiality
+  reasoning, and provenance out of operator-facing instructions and examples.
+
+The naturalistic operator owns the actions that cannot be truthfully automated:
+
+- inspect and trust the intended repository and explicitly approve its
+  SessionStart hook where required;
+- open twelve globally distinct fresh VS Code Codex chats: work and fresh
+  resume sessions for two cycles in each of three repository classes;
+- send only the frozen work or resume task from the generated run sheet;
 - provide actual answers to the material Questions shown in those sessions;
 - record genuine subjective-quality and accessibility observations.
 
-The helper owns routine rollout intake, activation validation, blocker gating,
-Project identity extraction, canonical bundle export and hashes, bounded
-Runtime summaries, descriptor evidence completion, manifest assembly, and
-review packaging.
+The operator does not inspect or edit evaluator descriptors. The helper owns
+campaign setup, sealed-descriptor validation, operator run-sheet generation,
+byte-exact rollout intake and hashing, activation/setup classification, early
+blocker gating, Project-ID extraction, canonical bundle export, bounded Runtime
+summaries, all four required generated document kinds in Markdown and
+self-contained HTML, descriptor evidence completion, observation-schema
+validation, repository-manifest assembly, and bounded review packaging.
 
 ## Commands and configuration
 
@@ -81,7 +94,7 @@ the sealed candidate:
 rebuild/scripts/dogfood-campaign prepare \
   --campaign-root /absolute/private/campaign \
   --campaign-id <new-campaign-identity> \
-  --candidate-head a3217ed5de67fe2d00605d0e865206139272f207 \
+  --candidate-head 914e0f0b5b343ce2bf363f2610fac278d12555d1 \
   --repositories <three-repository-input.json>
 ```
 
@@ -144,22 +157,24 @@ in the technical gate capsule are not Dogfood resource evidence.
 
 ## Privacy and external transmission
 
-Keep the campaign root and raw rollouts in private ignored state. The default
-review package contains bounded campaign metadata, descriptors and review
-views, hashes, canonical bundles, observations, Runtime/activation summaries,
-blocker records when present, and bounded document evidence. It excludes raw
-rollouts unless explicitly requested.
+Keep the campaign root and raw rollouts in private ignored state. Ordinary
+independent review requires two private artifacts: the byte-exact raw rollout
+archive and the bounded review package. The package contains bounded campaign
+metadata, descriptors and review views, hashes, canonical bundles,
+observations, Runtime/activation summaries, blocker records when present, and
+all four generated document kinds in Markdown and self-contained HTML. Raw
+rollouts remain outside the default package.
 
-Do not package full Runtime Homes, SQLite files or sidecars, derived-analysis
+Do not package or request full Runtime Homes, SQLite files or sidecars, derived-analysis
 directories, installations, source repositories, credentials, prompts, source
 bodies, or provider payloads for ordinary review. Preserve raw rollouts in a
-separate private archive only when review requires them.
+separate private archive for the independent review handoff.
 
 ## Acceptance results
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `a3217ed5de67fe2d00605d0e865206139272f207` |
+| Sealed production/test candidate | `914e0f0b5b343ce2bf363f2610fac278d12555d1` |
 | Technical Phase 8 entry | `eligible`; passed capsule-backed gate evidence |
 | Naturalistic Dogfood | `not_run` |
 | Complete twelve-session campaign | `not_run` |
@@ -208,16 +223,18 @@ assessment or a replacement-gate conclusion.
 ## Follow-up work
 
 Prepare one completely fresh helper-owned campaign for the sealed candidate,
-grant trust manually, run the twelve required work/resume chats, answer the
-actual material Questions, record subjective and accessibility observations,
-assemble the manifest, and create the bounded default review package.
+have the control agent research and seal the six evaluator descriptors, grant
+trust manually, run the twelve required work/resume chats with only the frozen
+tasks, answer the actual material Questions, record subjective and
+accessibility observations, assemble the manifest, and provide the raw rollout
+archive with the bounded default review package.
 
 ## Artifacts
 
 - Copied sanitized capsule SHA-256:
-  `17132a2ba2f7b2309aaa9c2b0ca6271067ca369a9e3dd982ce2d9dd9350eea10`.
+  `043a90577aa3d7da882d650b8a7e8b3a85b38688c106e4c1451539148f270ded`.
 - Independently verified evidence archive SHA-256:
-  `68c33c27b51b9c5874852862f17d962fb84329b49a2a99efb73590bab19fd5c8`.
+  `f7513e8c2519c2d1f8b1f7b657418ad7963f2625c63698dcb8c6df64eef93cec`.
 - Maintained inputs: `evaluation.json`, `harness.py`, `campaign.py`,
   `codex_events.py`, and `rebuild/scripts/dogfood-campaign`.
 

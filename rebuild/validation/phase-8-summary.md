@@ -3,7 +3,7 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current pre-Dogfood production/test candidate:
-  `a3217ed5de67fe2d00605d0e865206139272f207`
+  `914e0f0b5b343ce2bf363f2610fac278d12555d1`
 - Technical Phase 8 entry gate: `passed`; eligibility: `eligible`;
   `phase_8_ready = true`
 - Admission state: `eligible`
@@ -13,9 +13,9 @@
 - Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q13
   trigger reported
 - Sanitized gate capsule: `verified`; SHA-256
-  `17132a2ba2f7b2309aaa9c2b0ca6271067ca369a9e3dd982ce2d9dd9350eea10`
+  `043a90577aa3d7da882d650b8a7e8b3a85b38688c106e4c1451539148f270ded`
 - Sanitized evidence archive: `verified`; SHA-256
-  `68c33c27b51b9c5874852862f17d962fb84329b49a2a99efb73590bab19fd5c8`
+  `f7513e8c2519c2d1f8b1f7b657418ad7963f2625c63698dcb8c6df64eef93cec`
 - Naturalistic Dogfood for the current candidate: `not_run`
 - `replacement_pass_candidate = false`
 
@@ -41,7 +41,7 @@ reused for this candidate.
 
 The fresh campaign must begin from zero in a separate clean worktree whose
 actual Git `HEAD` is exactly the sealed production/test candidate
-`a3217ed5de67fe2d00605d0e865206139272f207`. It must retain the maintained
+`914e0f0b5b343ce2bf363f2610fac278d12555d1`. It must retain the maintained
 three-class, two-cycle, distinct work/resume-session, automatic, manual,
 resource, and accessibility qualification contract. The documentation-only
 conclusion commit is not part of the sealed production/test candidate and must
@@ -51,10 +51,16 @@ candidate argument.
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation,
 rollout intake, activation and blocker validation, Project identity and bundle
 collection, bounded Runtime summaries, descriptor completion, manifest
-assembly, and review packaging. The operator still grants repository and hook
-trust, runs all twelve naturalistic VS Code Codex sessions, supplies actual
-material-Question answers, and records subjective and accessibility
-observations. Ordinary review does not require packaging a full Runtime Home.
+assembly, four-document Markdown/HTML evidence collection, observation-schema
+validation, and bounded review packaging. The evaluator/control agent researches
+the repositories, independently reviews hidden materiality/oracle data, and
+seals each descriptor without exposing it to the operator. The operator
+inspects and trusts the intended repository, explicitly approves the
+SessionStart hook, runs all twelve fresh naturalistic VS Code Codex sessions
+using only the frozen tasks, supplies genuine material-Question answers, and
+records genuine subjective and accessibility observations. Ordinary
+independent review requires the separate raw rollout archive plus the bounded
+review package, not a full Runtime Home.
 
 ## Remaining Phase 8 risks
 
