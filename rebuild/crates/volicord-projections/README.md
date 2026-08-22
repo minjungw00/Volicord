@@ -26,9 +26,13 @@ documents.
   Implementation Plan, and Handoff / Resume bodies. Structural Fact, Semantic
   Result, and explicit Agent Interpretation claims remain distinct and carry
   their Source, Decision, and Analysis Snapshot bases.
-- Markdown and self-contained HTML render from the same semantic body and share
-  versioned grounding metadata. The returned publication artifact may carry an
-  explicitly requested destination, but this crate never writes it.
+- Markdown and self-contained HTML render from the same semantic body. Their
+  ordinary reading path starts with current human meaning; versioned metadata,
+  opaque identities, and direct per-claim basis remain in a trailing Markdown
+  audit appendix or a closed HTML audit disclosure. A resolved Question's
+  former choice ambiguity remains historical audit basis rather than current
+  uncertainty. The returned publication artifact may carry an explicitly
+  requested destination, but this crate never writes it.
 
 The crate has no dependency in the reverse direction from Context, Repository
 Intelligence, or Inquiry, and it exposes no canonical write, CLI, MCP, viewer,

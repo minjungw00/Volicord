@@ -131,9 +131,9 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
     let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
     let repository = page.html.find("id=\"repository-map\"").expect("repository");
     assert!(
-        overview < decisions
-            && decisions < health
-            && health < checkpoints
+        overview < health
+            && health < decisions
+            && decisions < checkpoints
             && checkpoints < repository
     );
     for empty in [
@@ -347,9 +347,9 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
             project,
             CheckpointDraft {
                 expected_project_revision: revision,
-                kind: CheckpointKind::Handoff,
+                kind: CheckpointKind::Completion,
                 goal: "Make the Viewer operator-readable".into(),
-                work_state: WorkState::Paused,
+                work_state: WorkState::Completed,
                 state_change: Some("structured cockpit rendered".into()),
                 source_basis: vec![user_turn.id, command.id],
                 changed_source_basis: vec![command.id],
@@ -371,8 +371,8 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                 known_limits: vec!["manual zoom review remains".into()],
                 non_goals: Vec::new(),
                 open_questions: Vec::new(),
-                next_step: "run focused validation".into(),
-                handoff_to: Some("next operator".into()),
+                next_step: "No further work is planned for this goal".into(),
+                handoff_to: None,
             },
         )
         .expect("Checkpoint");
@@ -406,10 +406,94 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         .html
         .contains("rebuild/crates/volicord-viewer/src/render.rs"));
     assert!(page.html.contains("manual zoom review remains"));
-    assert!(page.html.contains("run focused validation"));
+    assert!(page
+        .html
+        .contains("No further work is planned for this goal"));
     assert!(page.html.contains("<time datetime=\"unix-micros:"));
     assert!(page.html.contains("User review</dt><dd>pending"));
     assert!(page.html.contains("User acceptance</dt><dd>not requested"));
+
+    let working = viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Working,
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("render completed working Viewer")
+        .html;
+    let overview = section_html(&working, "project-overview");
+    for expected in [
+        "Keep mutation targets readable",
+        "completed",
+        "passed",
+        "Alternative: operator-readable",
+        "No open Questions.",
+        "No further work is planned for this goal",
+    ] {
+        assert!(
+            overview.contains(expected),
+            "missing {expected}: {overview}"
+        );
+    }
+    let work = overview.find("Resume state").expect("work summary");
+    let decision_position = overview.find("Latest Decision").expect("Decision summary");
+    let questions = overview.find("Open Questions").expect("Question summary");
+    let next = overview.find("Next step").expect("next-step summary");
+    assert!(work < decision_position && decision_position < questions && questions < next);
+    assert!(!overview.contains(&project.to_string()));
+    assert!(!overview.contains(&context.id.to_string()));
+    assert!(!overview.contains(&decision.id.to_string()));
+    assert!(!working.contains("id=\"candidates\""));
+    assert!(!working.contains("id=\"canonical-context\""));
+}
+
+#[test]
+fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
+    let (temporary, viewer, project) = setup();
+    fs::write(
+        temporary.path().join("main.go"),
+        "package main\nfunc main() {}\n",
+    )
+    .expect("write unsupported-language fixture");
+    viewer
+        .operations()
+        .analyze(project, Vec::new())
+        .expect("analyze degraded fixture");
+
+    let page = viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                explanation_level: ExplanationLevel::Working,
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("render degraded working Viewer")
+        .html;
+    let overview = page.find("id=\"project-overview\"").expect("overview");
+    let health = page.find("id=\"health\"").expect("health");
+    let decisions = page.find("id=\"decisions\"").expect("decisions");
+    let repository = page.find("id=\"repository-map\"").expect("repository");
+    assert!(overview < health && health < decisions && decisions < repository);
+    assert!(page.contains("Affected capability and scope"), "{page}");
+    assert!(
+        page.contains("unavailable") || page.contains("partial") || page.contains("unsupported"),
+        "{page}"
+    );
+    let capability_summary = page
+        .find("Capability coverage detail")
+        .expect("progressively disclosed capability detail");
+    assert!(health < capability_summary);
+    assert!(!page.contains("id=\"candidates\""));
+    assert!(!page.contains("id=\"canonical-context\""));
 }
 
 #[test]
@@ -551,4 +635,13 @@ fn repository_entries(temporary: &tempfile::TempDir) -> Vec<String> {
         .collect::<Vec<_>>();
     entries.sort();
     entries
+}
+
+fn section_html<'a>(page: &'a str, identity: &str) -> &'a str {
+    let start = page
+        .find(&format!("<section id=\"{identity}\""))
+        .expect("section start");
+    let remainder = &page[start..];
+    let end = remainder.find("</section>").expect("section end");
+    &remainder[..end]
 }

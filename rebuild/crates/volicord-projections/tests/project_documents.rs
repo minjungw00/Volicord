@@ -136,6 +136,219 @@ fn build_projection_fixture(
 }
 
 #[test]
+fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_audit(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut store = Store::open_with(
+        root.path().join("completed-context.sqlite3"),
+        DeterministicIdGenerator::new((1_u8..=40).map(|value| [value; 16])),
+        FixedClock::new(TimestampMicros::from_unix_micros(50_000)),
+    )?;
+    let project = store
+        .create_project(operation(201), "Completed Project")?
+        .value;
+    let user_turn = store
+        .record_source(
+            operation(202),
+            project.id,
+            SourceDraft {
+                expected_project_revision: project.revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "codex".to_owned(),
+                    session: "completed-session".to_owned(),
+                    turn: "Choose the local renderer".to_owned(),
+                },
+                actor: principal(PrincipalKind::User, "owner"),
+                observer: Some(principal(PrincipalKind::Agent, "codex")),
+                availability: Availability::Available,
+            },
+        )?
+        .value;
+    store.record_context_item(
+        operation(203),
+        project.id,
+        ContextItemDraft {
+            expected_project_revision: project.revision,
+            role: ContextItemRole::Goal,
+            statement: "Ship a readable local project summary".to_owned(),
+            provenance_role: StatementProvenanceRole::UserStatement,
+            author: principal(PrincipalKind::User, "owner"),
+            source_basis: vec![user_turn.id],
+            applicability: ApplicabilityScope::default(),
+        },
+    )?;
+    let mut draft = question_draft(
+        &project,
+        &user_turn,
+        "Should the summary use the local or remote renderer?",
+        1,
+    );
+    draft.uncertainty = vec!["the renderer choice is unresolved".to_owned()];
+    draft.known_limits = vec!["manual readability review remains".to_owned()];
+    let question = store
+        .create_question(operation(204), project.id, draft)?
+        .value;
+    let decision = store
+        .record_question_response(
+            operation(205),
+            project.id,
+            QuestionResponseDraft {
+                expected_project_revision: project.revision,
+                question_id: question.id,
+                question_revision: question.revision,
+                user_turn_source: UserTurnSource::Existing(user_turn.id),
+                displayed_alternative_keys: vec!["local".to_owned(), "remote".to_owned()],
+                displayed_recommendation_key: Some("local".to_owned()),
+                response: ExplicitQuestionResponse::Choice {
+                    alternative_key: "local".to_owned(),
+                    user_rationale: Some("the result must remain local and shareable".to_owned()),
+                },
+                applicability: ApplicabilityScope::default(),
+                assumptions: vec!["local-first".to_owned()],
+                revisit_triggers: vec!["local output becomes unusable".to_owned()],
+            },
+        )?
+        .value
+        .decision
+        .ok_or("Decision missing")?;
+    let verification = store
+        .record_source(
+            operation(206),
+            project.id,
+            SourceDraft {
+                expected_project_revision: project.revision,
+                payload: SourcePayload::CommandExecution {
+                    command_label: "cargo test -p completed-fixture".to_owned(),
+                    outcome: volicord_context::CommandOutcome {
+                        exit_code: Some(0),
+                        termination: volicord_context::CommandTermination::Exited,
+                    },
+                },
+                actor: principal(PrincipalKind::Command, "cargo"),
+                observer: Some(principal(PrincipalKind::Agent, "codex")),
+                availability: Availability::Available,
+            },
+        )?
+        .value;
+    store.record_checkpoint(
+        operation(207),
+        project.id,
+        CheckpointDraft {
+            expected_project_revision: project.revision,
+            kind: CheckpointKind::Completion,
+            goal: "Ship a readable local project summary".to_owned(),
+            work_state: WorkState::Completed,
+            state_change: Some("summary renderer completed".to_owned()),
+            source_basis: vec![user_turn.id, verification.id],
+            changed_source_basis: vec![verification.id],
+            changed_paths: vec!["src/summary.rs".to_owned()],
+            applied_decisions: vec![decision.id],
+            verification: vec![VerificationFact {
+                state: VerificationState::Passed,
+                source_id: Some(verification.id),
+                outcome: Some("all focused checks passed".to_owned()),
+            }],
+            user_review: UserReviewFact {
+                state: UserReviewState::Reviewed,
+                source_id: Some(user_turn.id),
+            },
+            user_acceptance: UserAcceptanceFact {
+                state: UserAcceptanceState::Accepted,
+                source_id: Some(user_turn.id),
+            },
+            known_limits: vec!["manual readability review remains".to_owned()],
+            non_goals: Vec::new(),
+            open_questions: Vec::new(),
+            next_step: "No further work is planned for this goal".to_owned(),
+            handoff_to: None,
+        },
+    )?;
+
+    let canonical = store.read_canonical_basis(
+        project.id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+    let candidate_store = CandidateStore::open(root.path().join("completed-candidates.sqlite3"))?;
+    let candidates = candidate_store.read_basis(project.id)?;
+    let projection = build_project_projection(ProjectProjectionInputs {
+        canonical: &canonical,
+        analyses: &[],
+        applicability: ApplicabilityQuery {
+            project_id: project.id,
+            paths: Vec::new(),
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+            current_assumptions: vec!["local-first".to_owned()],
+            met_revisit_triggers: Vec::new(),
+        },
+        candidates: CandidateProjectionInput::Available(&candidates),
+        candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
+        observed_at: TimestampMicros::from_unix_micros(60_000),
+        bound: ProjectionBound::default(),
+    });
+    assert!(projection.resume.open_questions.is_empty());
+    let current = projection
+        .resume
+        .decisions
+        .iter()
+        .find(|value| value.decision_id == decision.id)
+        .ok_or("projected Decision missing")?;
+    assert_eq!(
+        current.question_uncertainty,
+        ["the renderer choice is unresolved"]
+    );
+    assert_eq!(current.known_limits, ["manual readability review remains"]);
+
+    let documents = generate_documents(
+        &projection,
+        &DocumentRequest {
+            requested_language: "en".to_owned(),
+            fixed_locale: FixedLocale::English,
+            generated_at: TimestampMicros::from_unix_micros(70_000),
+            generator: GeneratorIdentity {
+                generator: "volicord-projections".to_owned(),
+                agent: None,
+                model: None,
+            },
+            requested_destinations: Vec::new(),
+        },
+    )?;
+    for document in [
+        &documents.project_architecture_guide,
+        &documents.decision_report,
+        &documents.implementation_plan,
+        &documents.handoff_resume,
+    ] {
+        let markdown = &document.markdown.content;
+        let appendix = markdown
+            .find("## Grounding and audit appendix")
+            .ok_or("Markdown audit appendix missing")?;
+        assert!(markdown
+            .find("Ship a readable local project summary")
+            .is_some_and(|position| position < appendix));
+        assert!(markdown.find("Grounding metadata").is_none());
+        assert!(!markdown[..appendix].contains(&project.id.to_string()));
+        assert!(!markdown[..appendix].contains("the renderer choice is unresolved"));
+        assert!(markdown[..appendix].contains("manual readability review remains"));
+        assert!(markdown[appendix..].contains("the renderer choice is unresolved"));
+        assert!(markdown[appendix..].contains("claim="));
+
+        let html = &document.html.content;
+        let audit = html
+            .find("<details class=\"audit\" data-section=\"grounding-audit\">")
+            .ok_or("HTML audit disclosure missing")?;
+        assert!(!html[audit..].starts_with("<details open"));
+        assert!(!html[..audit].contains(&project.id.to_string()));
+        assert!(!html[..audit].contains("the renderer choice is unresolved"));
+        assert!(html[audit..].contains("the renderer choice is unresolved"));
+        assert!(html[audit..].contains("data-claim-id"));
+    }
+    Ok(())
+}
+
+#[test]
 fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;

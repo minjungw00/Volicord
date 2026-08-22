@@ -19,3 +19,9 @@ and the unrestricted generated-content `language`. Memory correction,
 supersession and forgetting, explicit document export, and exact Guarded
 confirmation forms submit to Local Operations; the viewer does not persist or
 reinterpret their domain state.
+
+`overview` and `working` lead with Goal, current work and verification,
+Decision consequence, open Questions, next step, and material degradation.
+Opaque identities, raw relations, canonical records, and detailed capability
+evidence are subordinate to `deep` or closed audit disclosure; they are not
+removed from the shared Project projection.

@@ -266,6 +266,19 @@ Metadata는 claim마다 필요한 direct Source reference를 대체하지 않는
 Decision이 바뀌면 existing document를 current로 가장하지 않고 stale/review
 projection으로 표시한다.
 
+사람이 읽는 기본 경로는 문서 목적에 맞는 Goal, current Decision과 consequence,
+work/verification state, open material Question 또는 blocker, next meaningful step과 material
+gap을 먼저 제시한다. Opaque identity, hash, snapshot identity, 전체 capability inventory와
+claim별 direct basis는 Markdown의 명확히 분리된 trailing audit appendix 또는 HTML의 기본
+closed audit disclosure에 둔다. 본문 단순화는 typed grounding을 삭제하거나 failed,
+unavailable, partial, stale, known-limit와 omission을 숨기는 근거가 아니다.
+
+Current Decision으로 originating Question이 terminally answered/delegated된 경우, 그
+Question을 열어 두었던 choice ambiguity는 current unresolved uncertainty로 표시하지 않는다.
+그 ambiguity는 Decision의 historical displayed basis로 audit에서 inspect 가능하게 유지하고,
+current assumption, known limit, revisit trigger, applicability review와 genuinely unresolved
+Question은 계속 본문에 표시한다.
+
 ## 9. Draft, preview, correction과 review
 
 Generated output의 기본 lifecycle은 다음과 같다.
@@ -341,6 +354,9 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   format별 deterministic total byte contract를 만든다. 이 contract는 authoritative typed
   projection이나 repository 전체 크기의 상한이 아니며, 더 깊은 inspection은 source
   projection을 다시 읽는다.
+- Markdown 본문에는 opaque claim/source/Decision/analysis identity를 claim마다 interleave하지
+  않고 trailing audit appendix에서 direct basis를 보존한다. HTML은 같은 body와 grounding을
+  사용하되 audit appendix를 closed `<details>`로 제공한다.
 - PDF와 DOCX는 initial required output이 아니다.
 
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer

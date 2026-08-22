@@ -175,15 +175,17 @@ impl ViewerAdapter {
             ))
         ));
         render_overview(&mut html, request, &projection);
-        render_decisions(&mut html, request, &projection);
         render_status(&mut html, request, &projection, &health);
+        render_decisions(&mut html, request, &projection);
         if let Some(candidate) = guarded.as_ref() {
             render_guarded(&mut html, request, candidate, request_authenticity);
         }
         render_checkpoints(&mut html, request, &projection);
         render_repository(&mut html, request, &projection);
-        render_candidates(&mut html, request, &projection);
-        render_canonical(&mut html, request, &projection);
+        if request.explanation_level == ExplanationLevel::Deep {
+            render_candidates(&mut html, request, &projection);
+            render_canonical(&mut html, request, &projection);
+        }
         render_privacy(&mut html, request, privacy.as_ref());
         render_documents(&mut html, request, &documents, request_authenticity);
         render_mutation_controls(&mut html, request, &projection, request_authenticity);
@@ -492,13 +494,20 @@ fn render_overview(html: &mut String, request: &ViewerRequest, projection: &Proj
     );
     let overview = &projection.overview;
     html.push_str(&format!(
-        "<p class=\"project-identity\"><strong>{}</strong> <span class=\"muted\">{} {} · {} <code>{}</code></span></p>",
+        "<p class=\"project-identity\"><strong>{}</strong> <span class=\"badge\">{}</span></p>",
         escape(&overview.project_name),
-        escape(text(request.locale, "revision", "리비전")),
-        overview.canonical_revision,
-        escape(text(request.locale, "Project ID", "프로젝트 ID")),
-        overview.project_id
+        escape(projection_health_label(projection.health, request.locale))
     ));
+    if request.explanation_level == ExplanationLevel::Deep {
+        html.push_str(&format!(
+            "<details class=\"audit\"><summary>{}</summary><p class=\"record-meta\">{} {} · {} <code>{}</code></p></details>",
+            escape(text(request.locale, "Project identity and revision", "프로젝트 ID 및 리비전")),
+            escape(text(request.locale, "revision", "리비전")),
+            overview.canonical_revision,
+            escape(text(request.locale, "Project ID", "프로젝트 ID")),
+            overview.project_id
+        ));
+    }
     heading(html, 3, text(request.locale, "Current goal", "현재 목표"));
     if overview.current_goals.is_empty() {
         empty_state(
@@ -542,6 +551,31 @@ fn render_overview(html: &mut String, request: &ViewerRequest, projection: &Proj
             )),
             escape(&checkpoint.goal)
         ));
+        let verification = if checkpoint.verification.is_empty() {
+            text(request.locale, "not recorded", "기록되지 않음").to_owned()
+        } else {
+            checkpoint
+                .verification
+                .iter()
+                .map(|fact| verification_state_label(fact.state, request.locale))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        html.push_str(&format!(
+            "<p><strong>{}:</strong> {} · <strong>{}:</strong> {} · <strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Verification", "검증")),
+            escape(&verification),
+            escape(text(request.locale, "User review", "사용자 검토")),
+            escape(user_review_label(
+                checkpoint.user_review.state,
+                request.locale
+            )),
+            escape(text(request.locale, "User acceptance", "사용자 수락")),
+            escape(user_acceptance_label(
+                checkpoint.user_acceptance.state,
+                request.locale
+            ))
+        ));
     } else {
         empty_state(
             html,
@@ -552,19 +586,40 @@ fn render_overview(html: &mut String, request: &ViewerRequest, projection: &Proj
             ),
         );
     }
-    if let Some(step) = &projection.resume.next_meaningful_step {
+    heading(
+        html,
+        3,
+        text(request.locale, "Latest Decision", "최근 결정"),
+    );
+    if let Some(decision) = projection
+        .resume
+        .decisions
+        .iter()
+        .find(|decision| decision.state != BriefDecisionState::Superseded)
+    {
         html.push_str(&format!(
-            "<p class=\"next-action\"><strong>{}:</strong> {}</p>",
-            escape(text(request.locale, "Next step", "다음 단계")),
-            escape(step)
+            "<p><strong>{}</strong> · {}: {} · {}: {}</p>",
+            escape(&decision_choice_label(&decision.choice, request.locale)),
+            escape(text(request.locale, "Rationale", "근거")),
+            escape(decision.user_rationale.as_deref().unwrap_or_else(|| text(
+                request.locale,
+                "Not recorded",
+                "기록되지 않음"
+            ))),
+            escape(text(request.locale, "Consequence", "결과")),
+            escape(&bounded_names(
+                &decision.expected_consequences,
+                3,
+                request.locale
+            ))
         ));
     } else {
         empty_state(
             html,
             text(
                 request.locale,
-                "No source-grounded next step is recorded.",
-                "source-grounded 다음 단계가 기록되지 않았습니다.",
+                "No current Decision is recorded.",
+                "현재 결정이 기록되지 않았습니다.",
             ),
         );
     }
@@ -601,11 +656,29 @@ fn render_overview(html: &mut String, request: &ViewerRequest, projection: &Proj
         }
         html.push_str("</ul>");
     }
-    html.push_str(&format!(
-        "<p class=\"bound\">{}: {}.</p>",
-        escape(text(request.locale, "Resume omissions", "재개 요약 생략")),
-        projection.resume.omitted_count
-    ));
+    if let Some(step) = &projection.resume.next_meaningful_step {
+        html.push_str(&format!(
+            "<p class=\"next-action\"><strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Next step", "다음 단계")),
+            escape(step)
+        ));
+    } else {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No source-grounded next step is recorded.",
+                "source-grounded 다음 단계가 기록되지 않았습니다.",
+            ),
+        );
+    }
+    if request.explanation_level == ExplanationLevel::Deep {
+        html.push_str(&format!(
+            "<p class=\"bound\">{}: {}.</p>",
+            escape(text(request.locale, "Resume omissions", "재개 요약 생략")),
+            projection.resume.omitted_count
+        ));
+    }
     section_end(html);
 }
 
@@ -643,52 +716,69 @@ fn render_repository(html: &mut String, request: &ViewerRequest, projection: &Pr
             text(request.locale, "Structure summary", "구조 요약"),
         );
         render_repository_aggregates(html, request, projection);
+        if request.explanation_level != ExplanationLevel::Overview {
+            heading(
+                html,
+                3,
+                text(
+                    request.locale,
+                    "Representative current entities",
+                    "대표 현재 엔터티",
+                ),
+            );
+            let limit = level_limit(request.explanation_level);
+            html.push_str("<ul class=\"cards entity-list\">");
+            for entity in map.entities.iter().take(limit) {
+                let locator = entity
+                    .source_range
+                    .as_ref()
+                    .map(|range| range.locator.as_str())
+                    .unwrap_or_else(|| {
+                        text(request.locale, "No path recorded", "기록된 경로 없음")
+                    });
+                html.push_str(&format!(
+                    "<li class=\"item\"><strong>{}</strong><br><span>{} · {} · {}</span><br><code>{}</code></li>",
+                    escape(&entity.display_name),
+                    escape(&language_label(&entity.language, request.locale)),
+                    escape(&code_entity_kind_label(&entity.kind, request.locale)),
+                    escape(freshness_state_label(entity.freshness.state, request.locale)),
+                    escape(locator)
+                ));
+            }
+            html.push_str("</ul>");
+            rendered_bound(
+                html,
+                map.entities.len(),
+                map.entities.len().min(limit),
+                projection_bound_count(projection, "repository_map.entity"),
+                request.locale,
+                "repository entities",
+            );
+        }
+    }
+    if request.explanation_level == ExplanationLevel::Working {
+        html.push_str(&format!(
+            "<details class=\"audit\"><summary>{}</summary>",
+            escape(text(
+                request.locale,
+                "Capability coverage detail",
+                "기능 범위 상세"
+            ))
+        ));
+        render_repository_capabilities(html, request, projection);
+        html.push_str("</details>");
+    } else if request.explanation_level == ExplanationLevel::Deep {
         heading(
             html,
             3,
             text(
                 request.locale,
-                "Representative current entities",
-                "대표 현재 엔터티",
+                "Capability coverage and gaps",
+                "기능 범위 및 빈틈",
             ),
         );
-        let limit = level_limit(request.explanation_level);
-        html.push_str("<ul class=\"cards entity-list\">");
-        for entity in map.entities.iter().take(limit) {
-            let locator = entity
-                .source_range
-                .as_ref()
-                .map(|range| range.locator.as_str())
-                .unwrap_or_else(|| text(request.locale, "No path recorded", "기록된 경로 없음"));
-            html.push_str(&format!(
-                "<li class=\"item\"><strong>{}</strong><br><span>{} · {} · {}</span><br><code>{}</code></li>",
-                escape(&entity.display_name),
-                escape(&language_label(&entity.language, request.locale)),
-                escape(&code_entity_kind_label(&entity.kind, request.locale)),
-                escape(freshness_state_label(entity.freshness.state, request.locale)),
-                escape(locator)
-            ));
-        }
-        html.push_str("</ul>");
-        rendered_bound(
-            html,
-            map.entities.len(),
-            map.entities.len().min(limit),
-            projection_bound_count(projection, "repository_map.entity"),
-            request.locale,
-            "repository entities",
-        );
+        render_repository_capabilities(html, request, projection);
     }
-    heading(
-        html,
-        3,
-        text(
-            request.locale,
-            "Capability coverage and gaps",
-            "기능 범위 및 빈틈",
-        ),
-    );
-    render_repository_capabilities(html, request, projection);
     if request.explanation_level == ExplanationLevel::Deep {
         html.push_str(&format!(
             "<details class=\"audit\"><summary>{}</summary>",
@@ -769,17 +859,19 @@ fn render_decisions(html: &mut String, request: &ViewerRequest, projection: &Pro
                 )))
             ));
             if let Some(link) = link {
-                html.push_str(&format!(
-                    "<p class=\"muted\">{}: {} · {}: {}</p>",
-                    escape(text(request.locale, "Declared paths", "선언된 경로")),
-                    escape(&bounded_names(&link.declared_paths, 4, request.locale)),
-                    escape(text(request.locale, "Related code", "관련 코드")),
-                    escape(&bounded_names(
-                        &link.related_code_entities,
-                        4,
-                        request.locale
-                    ))
-                ));
+                if request.explanation_level != ExplanationLevel::Overview {
+                    html.push_str(&format!(
+                        "<p class=\"muted\">{}: {} · {}: {}</p>",
+                        escape(text(request.locale, "Declared paths", "선언된 경로")),
+                        escape(&bounded_names(&link.declared_paths, 4, request.locale)),
+                        escape(text(request.locale, "Related code", "관련 코드")),
+                        escape(&bounded_names(
+                            &link.related_code_entities,
+                            4,
+                            request.locale
+                        ))
+                    ));
+                }
                 if !link.missing_or_uncertain_links.is_empty() {
                     html.push_str(&format!(
                         "<p><strong>{}:</strong> {}</p>",
@@ -792,12 +884,37 @@ fn render_decisions(html: &mut String, request: &ViewerRequest, projection: &Pro
                     ));
                 }
             }
-            html.push_str(&format!(
-                "<p class=\"record-meta\">{} {} · ID <code>{}</code></p></article></li>",
-                escape(text(request.locale, "revision", "리비전")),
-                decision.revision,
-                decision.decision_id
-            ));
+            if !decision.known_limits.is_empty() {
+                html.push_str(&format!(
+                    "<p><strong>{}:</strong> {}</p>",
+                    escape(text(request.locale, "Known limits", "알려진 한계")),
+                    escape(&bounded_names(&decision.known_limits, 3, request.locale))
+                ));
+            }
+            if request.explanation_level == ExplanationLevel::Deep {
+                html.push_str(&format!(
+                    "<p class=\"record-meta\">{} {} · ID <code>{}</code></p>",
+                    escape(text(request.locale, "revision", "리비전")),
+                    decision.revision,
+                    decision.decision_id
+                ));
+                if !decision.question_uncertainty.is_empty() {
+                    html.push_str(&format!(
+                        "<details class=\"audit\"><summary>{}</summary><p>{}</p></details>",
+                        escape(text(
+                            request.locale,
+                            "Resolved Question ambiguity",
+                            "해결된 Question 모호성"
+                        )),
+                        escape(&bounded_names(
+                            &decision.question_uncertainty,
+                            4,
+                            request.locale
+                        ))
+                    ));
+                }
+            }
+            html.push_str("</article></li>");
         }
         html.push_str("</ol>");
         let projected = projection_bound_count(projection, "decision_context_code");
@@ -913,13 +1030,19 @@ fn render_checkpoints(html: &mut String, request: &ViewerRequest, projection: &P
             ));
         }
         html.push_str(&format!(
-            "<p class=\"next-action\"><strong>{}:</strong> {}</p><p class=\"record-meta\">ID <code>{}</code> · {} {}</p></article></li>",
+            "<p class=\"next-action\"><strong>{}:</strong> {}</p>",
             escape(text(request.locale, "Next step", "다음 단계")),
-            escape(&checkpoint.next_step),
-            checkpoint.id,
-            escape(text(request.locale, "revision", "리비전")),
-            checkpoint.revision
+            escape(&checkpoint.next_step)
         ));
+        if request.explanation_level == ExplanationLevel::Deep {
+            html.push_str(&format!(
+                "<p class=\"record-meta\">ID <code>{}</code> · {} {}</p>",
+                checkpoint.id,
+                escape(text(request.locale, "revision", "리비전")),
+                checkpoint.revision
+            ));
+        }
+        html.push_str("</article></li>");
     }
     html.push_str("</ol>");
     rendered_bound(

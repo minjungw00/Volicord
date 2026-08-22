@@ -53,7 +53,15 @@ pub struct BriefDecision {
     pub assumptions: Vec<String>,
     pub revisit_triggers: Vec<String>,
     pub source_basis: Vec<SourceId>,
-    pub uncertainty_and_limits: Vec<String>,
+    /// Ambiguity shown while the originating Question was open. A current
+    /// Decision terminally resolves this choice ambiguity; it remains
+    /// inspectable as historical decision basis rather than current
+    /// uncertainty.
+    pub question_uncertainty: Vec<String>,
+    /// Limits that continue to qualify the selected Decision after the
+    /// originating Question becomes terminal.
+    pub known_limits: Vec<String>,
+    pub expected_consequences: Vec<String>,
     pub review_basis: Vec<String>,
 }
 
@@ -177,17 +185,20 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
                     BriefDecisionState::UnavailableBasis
                 }
             };
-            let uncertainty_and_limits = applicability
+            let question_uncertainty = applicability
                 .displayed_basis
                 .as_ref()
-                .map(|basis| {
-                    basis
-                        .uncertainty
-                        .iter()
-                        .chain(basis.known_limits.iter())
-                        .cloned()
-                        .collect()
-                })
+                .map(|basis| basis.uncertainty.clone())
+                .unwrap_or_default();
+            let known_limits = applicability
+                .displayed_basis
+                .as_ref()
+                .map(|basis| basis.known_limits.clone())
+                .unwrap_or_default();
+            let expected_consequences = applicability
+                .displayed_basis
+                .as_ref()
+                .map(|basis| basis.expected_consequences.clone())
                 .unwrap_or_default();
             BriefDecision {
                 decision_id: lifecycle.decision.id,
@@ -203,7 +214,9 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
                 assumptions: lifecycle.decision.assumptions.clone(),
                 revisit_triggers: lifecycle.decision.revisit_triggers.clone(),
                 source_basis: applicability.source_basis,
-                uncertainty_and_limits,
+                question_uncertainty,
+                known_limits,
+                expected_consequences,
                 review_basis: applicability
                     .issues
                     .iter()
@@ -415,7 +428,7 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
     declared_assumptions.dedup();
     let mut known_limits = decisions
         .iter()
-        .flat_map(|decision| decision.uncertainty_and_limits.iter().cloned())
+        .flat_map(|decision| decision.known_limits.iter().cloned())
         .chain(
             canonical
                 .latest_checkpoint

@@ -20,7 +20,7 @@ pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 3;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -103,6 +103,10 @@ pub struct GeneratedDocumentClaim {
     pub decision_basis: Vec<DecisionId>,
     pub analysis_basis: Vec<AnalysisSnapshotId>,
     pub explicit_inference: bool,
+    /// Historical ambiguity that was part of the displayed Question basis but
+    /// is no longer a current uncertainty after a current Decision terminally
+    /// resolved the choice.
+    pub historical_uncertainty: Vec<String>,
     pub uncertainty: Vec<String>,
 }
 
@@ -316,6 +320,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: Vec::new(),
         })
         .collect::<Vec<_>>();
@@ -348,6 +353,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             decision_basis: Vec::new(),
             analysis_basis: vec![entity.analysis_snapshot],
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: entity.uncertainty.reasons.clone(),
         })
         .collect::<Vec<_>>();
@@ -371,6 +377,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             decision_basis: Vec::new(),
             analysis_basis: vec![relation.analysis_snapshot],
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: relation
                 .uncertainty
                 .reasons
@@ -390,6 +397,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                 decision_basis: Vec::new(),
                 analysis_basis: vec![interpretation.analysis_snapshot],
                 explicit_inference: true,
+                historical_uncertainty: Vec::new(),
                 uncertainty: interpretation
                     .uncertainty
                     .reasons
@@ -447,8 +455,9 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             decision_basis: vec![decision.decision_id],
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: decision.question_uncertainty.clone(),
             uncertainty: decision
-                .uncertainty_and_limits
+                .known_limits
                 .iter()
                 .chain(&decision.review_basis)
                 .cloned()
@@ -469,6 +478,12 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                 overview_claims,
             ),
             section(
+                "decisions",
+                fixed(locale, "Architecture decisions", "아키텍처 결정"),
+                decision_claims,
+            ),
+            timeline_section(projection, locale),
+            section(
                 "architecture",
                 fixed(
                     locale,
@@ -476,11 +491,6 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                     "저장소 아키텍처 근거",
                 ),
                 architecture_claims,
-            ),
-            section(
-                "decisions",
-                fixed(locale, "Architecture decisions", "아키텍처 결정"),
-                decision_claims,
             ),
             gap_section(projection, locale),
         ],
@@ -501,7 +511,7 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                 identity: format!("decision:{}", decision.decision_id),
                 class: ClaimClass::CanonicalContext,
                 text: format!(
-                    "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
+                    "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
                     fixed(locale, "state", "상태"),
                     brief_decision_state_label(decision.state, locale),
                     fixed(locale, "choice", "선택"),
@@ -514,6 +524,8 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                     )),
                     fixed(locale, "agent recommendation", "에이전트 권고"),
                     decision.recommendation_rationale,
+                    fixed(locale, "expected consequence", "예상 결과"),
+                    display_strings(&decision.expected_consequences, locale),
                     fixed(locale, "assumptions", "가정"),
                     display_strings(&decision.assumptions, locale),
                     fixed(locale, "revisit triggers", "재검토 조건"),
@@ -538,8 +550,9 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                 decision_basis: vec![decision.decision_id],
                 analysis_basis: Vec::new(),
                 explicit_inference: false,
+                historical_uncertainty: decision.question_uncertainty.clone(),
                 uncertainty: decision
-                    .uncertainty_and_limits
+                    .known_limits
                     .iter()
                     .chain(&decision.review_basis)
                     .chain(
@@ -554,11 +567,17 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
     DocumentBody {
         title: fixed(locale, "Decision Report", "결정 보고서").to_owned(),
         sections: vec![
+            goal_section(projection, locale),
             section(
                 "decisions",
-                fixed(locale, "Decision trail", "결정 이력"),
+                fixed(
+                    locale,
+                    "Current Decision and consequence",
+                    "현재 결정과 결과",
+                ),
                 claims,
             ),
+            open_questions_section(projection, locale),
             gap_section(projection, locale),
         ],
     }
@@ -585,6 +604,7 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: true,
+            historical_uncertainty: Vec::new(),
             uncertainty: question.blocked_basis.clone(),
         });
     }
@@ -612,6 +632,7 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
             decision_basis: checkpoint.applied_decisions.clone(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: checkpoint.known_limits.clone(),
         });
     }
@@ -629,6 +650,8 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
     DocumentBody {
         title: fixed(locale, "Implementation Plan", "구현 계획").to_owned(),
         sections: vec![
+            goal_section(projection, locale),
+            decision_summary_section(projection, locale),
             section("plan", fixed(locale, "Ordered work", "작업 순서"), plan),
             timeline_section(projection, locale),
             gap_section(projection, locale),
@@ -649,6 +672,7 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: Vec::new(),
         })
         .collect::<Vec<_>>();
@@ -669,6 +693,7 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                 decision_basis: Vec::new(),
                 analysis_basis: Vec::new(),
                 explicit_inference: false,
+                historical_uncertainty: Vec::new(),
                 uncertainty: Vec::new(),
             }),
     );
@@ -693,6 +718,7 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: question.blocked_basis.clone(),
         })
         .collect();
@@ -704,6 +730,7 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                 fixed(locale, "Goal and context", "목표와 맥락"),
                 context,
             ),
+            decision_summary_section(projection, locale),
             timeline_section(projection, locale),
             section(
                 "questions",
@@ -737,12 +764,120 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                         .unwrap_or_default(),
                     analysis_basis: Vec::new(),
                     explicit_inference: projection.resume.next_meaningful_step.is_none(),
+                    historical_uncertainty: Vec::new(),
                     uncertainty: projection.resume.known_limits.clone(),
                 }],
             ),
             gap_section(projection, locale),
         ],
     }
+}
+
+fn goal_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
+    let mut claims = projection
+        .resume
+        .goals_and_why
+        .iter()
+        .map(|goal| GeneratedDocumentClaim {
+            identity: format!("goal:{}", goal.identity),
+            class: ClaimClass::CanonicalContext,
+            text: goal.statement.clone(),
+            source_basis: goal.source_basis.clone(),
+            decision_basis: Vec::new(),
+            analysis_basis: Vec::new(),
+            explicit_inference: false,
+            historical_uncertainty: Vec::new(),
+            uncertainty: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    if claims.is_empty() {
+        claims.push(inference_claim(
+            "project-goal-gap",
+            fixed(
+                locale,
+                "Project goal is not recorded.",
+                "프로젝트 목표가 기록되지 않았습니다.",
+            ),
+            Vec::new(),
+        ));
+    }
+    section("goal", fixed(locale, "Current Goal", "현재 목표"), claims)
+}
+
+fn decision_summary_section(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+) -> DocumentSection {
+    let claims = projection
+        .resume
+        .decisions
+        .iter()
+        .filter(|decision| decision.state != BriefDecisionState::Superseded)
+        .map(|decision| GeneratedDocumentClaim {
+            identity: format!("decision-summary:{}", decision.decision_id),
+            class: ClaimClass::CanonicalContext,
+            text: format!(
+                "{}: {}; {}={}; {}={}",
+                fixed(locale, "Decision", "결정"),
+                decision_choice_label(&decision.choice, locale),
+                fixed(locale, "rationale", "근거"),
+                decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not recorded",
+                    "기록되지 않음"
+                )),
+                fixed(locale, "consequence", "결과"),
+                display_strings(&decision.expected_consequences, locale),
+            ),
+            source_basis: decision.source_basis.clone(),
+            decision_basis: vec![decision.decision_id],
+            analysis_basis: Vec::new(),
+            explicit_inference: false,
+            historical_uncertainty: decision.question_uncertainty.clone(),
+            uncertainty: decision
+                .known_limits
+                .iter()
+                .chain(&decision.review_basis)
+                .cloned()
+                .collect(),
+        })
+        .collect();
+    section(
+        "decision-summary",
+        fixed(locale, "Current Decision direction", "현재 결정 방향"),
+        claims,
+    )
+}
+
+fn open_questions_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
+    let claims = projection
+        .resume
+        .open_questions
+        .iter()
+        .map(|question| GeneratedDocumentClaim {
+            identity: format!("question:{}", question.question_id),
+            class: ClaimClass::CanonicalContext,
+            text: format!(
+                "{}; {}={}; {}={}",
+                question.prompt,
+                fixed(locale, "unlocks", "해제되는 작업"),
+                display_strings(&question.what_the_answer_unlocks, locale),
+                fixed(locale, "blocked by", "차단 근거"),
+                display_strings(&question.blocked_basis, locale),
+            ),
+            source_basis: question.source_basis.clone(),
+            decision_basis: Vec::new(),
+            analysis_basis: Vec::new(),
+            explicit_inference: false,
+            historical_uncertainty: Vec::new(),
+            uncertainty: question.blocked_basis.clone(),
+        })
+        .collect();
+    section(
+        "open-questions",
+        fixed(locale, "Open material Questions", "열린 주요 질문"),
+        claims,
+    )
 }
 
 fn timeline_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
@@ -778,6 +913,7 @@ fn timeline_section(projection: &ProjectProjection, locale: FixedLocale) -> Docu
             decision_basis: entry.checkpoint.applied_decisions.clone(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: entry.checkpoint.known_limits.clone(),
         })
         .collect();
@@ -835,6 +971,7 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             decision_basis: Vec::new(),
             analysis_basis: vec![gap.analysis_snapshot],
             explicit_inference: false,
+            historical_uncertainty: Vec::new(),
             uncertainty: vec![gap.reason.clone()],
         })
         .collect::<Vec<_>>();
@@ -860,6 +997,7 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: true,
+            historical_uncertainty: Vec::new(),
             uncertainty: vec![issue.reason.clone()],
         }
     }));
@@ -901,6 +1039,7 @@ fn inference_claim(
         decision_basis: Vec::new(),
         analysis_basis: Vec::new(),
         explicit_inference: true,
+        historical_uncertainty: Vec::new(),
         uncertainty: vec!["explicit inference or missing-basis marker".to_owned()],
     }
 }
@@ -1175,7 +1314,6 @@ fn render_markdown(
         locale,
     )));
     output.push_str("\n\n");
-    render_metadata_markdown(&mut output, metadata, locale);
     for section in &body.sections {
         output.push_str("## ");
         output.push_str(&escape_markdown(&bounded_rendered_field(
@@ -1189,9 +1327,7 @@ fn render_markdown(
             output.push_str("\n\n");
         }
         for claim in &section.claims {
-            output.push_str("- **[");
-            output.push_str(claim_class_label(claim.class, locale));
-            output.push_str("]** ");
+            output.push_str("- ");
             if claim.explicit_inference {
                 output.push_str("**[");
                 output.push_str(fixed(locale, "Inference", "추론"));
@@ -1202,14 +1338,13 @@ fn render_markdown(
                 "claim text",
                 locale,
             )));
-            output.push_str("  \n  ");
-            output.push_str(&escape_markdown(&bounded_rendered_field(
-                &claim_basis(claim),
-                "claim basis",
-                locale,
-            )));
             if !claim.uncertainty.is_empty() {
-                output.push_str("  \n  uncertainty: ");
+                output.push_str("  \n  ");
+                output.push_str(fixed(
+                    locale,
+                    "Known limit or uncertainty: ",
+                    "알려진 한계 또는 불확실성: ",
+                ));
                 output.push_str(&escape_markdown(&bounded_rendered_field(
                     &claim.uncertainty.join("; "),
                     "claim uncertainty",
@@ -1220,6 +1355,7 @@ fn render_markdown(
         }
         output.push('\n');
     }
+    render_metadata_markdown(&mut output, metadata, body, locale);
     output
 }
 
@@ -1227,7 +1363,7 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
     let mut output = String::from("<!doctype html><html lang=\"");
     output.push_str(&metadata.html_language_tag);
     output.push_str(
-        "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}code{overflow-wrap:anywhere}</style><title>",
+        "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#17202a}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty,.audit-meta{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}.audit{margin-top:2rem;border-top:1px solid #d0d5dd;padding-top:1rem}.audit>summary{cursor:pointer;font-weight:700}.audit-claim{padding:.5rem 0;border-top:1px solid #e4e7ec}code{overflow-wrap:anywhere}</style><title>",
     );
     output.push_str(&escape_html(&bounded_rendered_field(
         &body.title,
@@ -1241,7 +1377,6 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
         locale,
     )));
     output.push_str("</h1>");
-    render_metadata_html(&mut output, metadata, locale);
     for section in &body.sections {
         output.push_str("<section data-section=\"");
         output.push_str(&escape_html(&bounded_rendered_field(
@@ -1266,15 +1401,7 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
             output.push_str("</p>");
         }
         for claim in &section.claims {
-            output.push_str("<article class=\"claim\" data-claim-id=\"");
-            output.push_str(&escape_html(&bounded_rendered_field(
-                &claim.identity,
-                "claim identity",
-                locale,
-            )));
-            output.push_str("\"><strong>[");
-            output.push_str(claim_class_label(claim.class, locale));
-            output.push_str("]</strong> ");
+            output.push_str("<article class=\"claim\">");
             if claim.explicit_inference {
                 output.push_str("<span class=\"inference\">[");
                 output.push_str(&escape_html(fixed(locale, "Inference", "추론")));
@@ -1285,15 +1412,14 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
                 "claim text",
                 locale,
             )));
-            output.push_str("<div class=\"basis\">");
-            output.push_str(&escape_html(&bounded_rendered_field(
-                &claim_basis(claim),
-                "claim basis",
-                locale,
-            )));
-            output.push_str("</div>");
             if !claim.uncertainty.is_empty() {
-                output.push_str("<div class=\"uncertainty\">uncertainty: ");
+                output.push_str("<div class=\"uncertainty\"><strong>");
+                output.push_str(&escape_html(fixed(
+                    locale,
+                    "Known limit or uncertainty:",
+                    "알려진 한계 또는 불확실성:",
+                )));
+                output.push_str("</strong> ");
                 output.push_str(&escape_html(&bounded_rendered_field(
                     &claim.uncertainty.join("; "),
                     "claim uncertainty",
@@ -1305,14 +1431,25 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
         }
         output.push_str("</section>");
     }
+    render_metadata_html(&mut output, metadata, body, locale);
     output.push_str("</main></body></html>\n");
     output
 }
 
-fn render_metadata_markdown(output: &mut String, metadata: &DocumentMetadata, locale: FixedLocale) {
+fn render_metadata_markdown(
+    output: &mut String,
+    metadata: &DocumentMetadata,
+    body: &DocumentBody,
+    locale: FixedLocale,
+) {
     output.push_str("## ");
-    output.push_str(fixed(locale, "Grounding metadata", "Grounding 메타데이터"));
+    output.push_str(fixed(
+        locale,
+        "Grounding and audit appendix",
+        "Grounding 및 감사 부록",
+    ));
     output.push_str("\n\n");
+    output.push_str(fixed(locale, "This trailing appendix preserves the bounded technical basis for the human-facing document above.\n\n", "이 후행 부록은 위의 사용자 중심 문서에 대한 범위 제한 기술 근거를 보존합니다.\n\n"));
     for (label, value) in metadata_pairs(metadata, locale) {
         output.push_str("- **");
         output.push_str(label);
@@ -1325,16 +1462,61 @@ fn render_metadata_markdown(output: &mut String, metadata: &DocumentMetadata, lo
         output.push('\n');
     }
     output.push('\n');
+    output.push_str("### ");
+    output.push_str(fixed(locale, "Direct claim basis", "직접 주장 근거"));
+    output.push_str("\n\n");
+    for claim in body.sections.iter().flat_map(|section| &section.claims) {
+        output.push_str("- **");
+        output.push_str(&escape_markdown(&bounded_rendered_field(
+            &claim.identity,
+            "claim identity",
+            locale,
+        )));
+        output.push_str(":** ");
+        output.push_str(claim_class_label(claim.class, locale));
+        output.push_str("; ");
+        output.push_str(&escape_markdown(&bounded_rendered_field(
+            &claim_basis(claim),
+            "claim basis",
+            locale,
+        )));
+        if !claim.historical_uncertainty.is_empty() {
+            output.push_str("; ");
+            output.push_str(fixed(
+                locale,
+                "resolved Question ambiguity=",
+                "해결된 Question 모호성=",
+            ));
+            output.push_str(&escape_markdown(&bounded_rendered_field(
+                &claim.historical_uncertainty.join("; "),
+                "historical claim uncertainty",
+                locale,
+            )));
+        }
+        output.push('\n');
+    }
+    output.push('\n');
 }
 
-fn render_metadata_html(output: &mut String, metadata: &DocumentMetadata, locale: FixedLocale) {
-    output.push_str("<section data-section=\"metadata\"><h2>");
+fn render_metadata_html(
+    output: &mut String,
+    metadata: &DocumentMetadata,
+    body: &DocumentBody,
+    locale: FixedLocale,
+) {
+    output.push_str("<details class=\"audit\" data-section=\"grounding-audit\"><summary>");
     output.push_str(&escape_html(fixed(
         locale,
-        "Grounding metadata",
-        "Grounding 메타데이터",
+        "Grounding and audit appendix",
+        "Grounding 및 감사 부록",
     )));
-    output.push_str("</h2><dl>");
+    output.push_str("</summary><p class=\"audit-meta\">");
+    output.push_str(&escape_html(fixed(
+        locale,
+        "Bounded technical basis for this document.",
+        "이 문서의 범위 제한 기술 근거입니다.",
+    )));
+    output.push_str("</p><dl>");
     for (label, value) in metadata_pairs(metadata, locale) {
         output.push_str("<dt>");
         output.push_str(&escape_html(label));
@@ -1346,7 +1528,53 @@ fn render_metadata_html(output: &mut String, metadata: &DocumentMetadata, locale
         )));
         output.push_str("</dd>");
     }
-    output.push_str("</dl></section>");
+    output.push_str("</dl><h3>");
+    output.push_str(&escape_html(fixed(
+        locale,
+        "Direct claim basis",
+        "직접 주장 근거",
+    )));
+    output.push_str("</h3>");
+    for claim in body.sections.iter().flat_map(|section| &section.claims) {
+        output.push_str("<article class=\"audit-claim\" data-claim-id=\"");
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &claim.identity,
+            "claim identity",
+            locale,
+        )));
+        output.push_str("\"><strong>");
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &claim.identity,
+            "claim identity",
+            locale,
+        )));
+        output.push_str("</strong> · ");
+        output.push_str(claim_class_label(claim.class, locale));
+        output.push_str("<div class=\"basis\">");
+        output.push_str(&escape_html(&bounded_rendered_field(
+            &claim_basis(claim),
+            "claim basis",
+            locale,
+        )));
+        output.push_str("</div>");
+        if !claim.historical_uncertainty.is_empty() {
+            output.push_str("<div class=\"uncertainty\"><strong>");
+            output.push_str(&escape_html(fixed(
+                locale,
+                "Resolved Question ambiguity:",
+                "해결된 Question 모호성:",
+            )));
+            output.push_str("</strong> ");
+            output.push_str(&escape_html(&bounded_rendered_field(
+                &claim.historical_uncertainty.join("; "),
+                "historical claim uncertainty",
+                locale,
+            )));
+            output.push_str("</div>");
+        }
+        output.push_str("</article>");
+    }
+    output.push_str("</details>");
 }
 
 fn metadata_pairs(metadata: &DocumentMetadata, locale: FixedLocale) -> Vec<(&'static str, String)> {
