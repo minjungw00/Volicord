@@ -254,6 +254,54 @@ be converted into an early failure. The result always records
 retains only bounded identities, failed checks, and the capture hash—not task
 text, the hidden oracle, source bodies, credentials, or raw provider content.
 
+The maintained internal campaign helper reduces evidence handling without
+creating or coaching a naturalistic session:
+
+```text
+rebuild/scripts/dogfood-campaign prepare \
+  --campaign-root /absolute/private/campaign \
+  --campaign-id <new-campaign-identity> \
+  --candidate-head <clean-candidate-head> \
+  --repositories <three-repository-input.json>
+```
+
+`prepare` verifies the clean candidate and source identities, performs a
+candidate-local install, creates six revision-pinned disposable repository
+workspaces with fresh Runtime Homes and descriptor/review skeletons, writes
+`status`/`basis` observation templates and an operator run sheet, and enables
+the first cycle for each repository. It never grants Codex
+repository or hook trust. Before another cycle, `activate-cycle` changes only
+the helper-owned repository-local Volicord configuration; the operator still
+reviews and grants trust in VS Code.
+
+`collect-work` copies and hashes a user-supplied raw rollout byte-for-byte,
+checks its frozen task/session/revision/activation contract, extracts an
+observed Project identity, and returns exactly `resume_allowed`,
+`campaign_stop`, or `operator_environment_invalid`. A stop or invalid setup
+seals that campaign identity against later qualifying collection.
+`collect-resume` accepts a distinct raw rollout, verifies Project-resolution
+and Recall ordering, derives the Project ID from the normalized result, invokes
+the installed candidate's supported `portable export`, completes descriptor
+evidence references and hashes, and writes document evidence plus a bounded
+Runtime Home summary. The summary contains managed logical names and sizes,
+derived-analysis size, configuration presence, and activation booleans; it
+never reads or copies store, derived-analysis, credential, provider-payload,
+prompt, or source-body contents.
+
+Use `record-observation` for the four subjective quality observations and four
+manual accessibility observations; its structured arguments are validated by
+the same parser as official qualification. `finalize-manifest` deterministically
+assembles `repositories.json` after all six resume captures. `package-review`
+then creates a deterministic bounded archive containing campaign metadata,
+the manifest, six descriptors and derived review views, hash inventory,
+canonical bundles, observations, runtime/activation summaries, blocker records
+when present, and bounded document evidence. Raw rollouts are excluded by
+default and enter only with `--include-raw-rollouts`. Full Runtime Homes,
+SQLite files and sidecars, derived directories, installation files, source
+repositories, credentials, private prompts, and provider payloads are never
+selected by the default packager. Keep the campaign root in ignored private
+state and preserve a separate raw-rollout archive when review requires it.
+
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
 
