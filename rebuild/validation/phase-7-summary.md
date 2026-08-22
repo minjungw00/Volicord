@@ -1,15 +1,15 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `914e0f0b5b343ce2bf363f2610fac278d12555d1`; aggregate `succeeded` with four
+  `fc3f9cac54e9c82e838fc2940b59d00166acc142`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
 - Scope: qualified local platform primitives, source-grounded Project
   projections and documents, repository-bound read-only Project discovery,
   Project-scoped provider privacy, Local Operations, exact Guarded confirmation,
-  live local viewer, clean Linux installation, and discoverable high-level
-  Codex/MCP integration
+  human-first live local Viewer, read-only static Viewer snapshots, clean Linux
+  installation, and discoverable high-level Codex/MCP integration
 - Excluded claim: this summary does not claim Phase 8 dogfood quality, Phase 9
   cutover, or legacy deletion
 
@@ -23,12 +23,12 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`914e0f0b5b343ce2bf363f2610fac278d12555d1`. Its four-command aggregate
+`fc3f9cac54e9c82e838fc2940b59d00166acc142`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`c7f7c96ea1af2bc54ba2ebd89edf425c2cd8077f91baa681c3691eaaed4e4a40`.
+`f76ec5ed2e9929e401a4e879c8b5f8910a2dc26020fe2f6649bc6b7244345abf`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `f6ddb6080ccd9511c389ea0628b53da10653275a9c73273ab4aab02f598b5e96`.
+is `8496c0c3b44a0958601db4635592edb0df81d2ebd49646aefb7adc3a84e357a2`.
 All three authenticated Codex targets passed, the credential-retention audit
 passed with zero auth-named files, credential-content matches, or scan errors,
 the sanitized evidence archive was independently verified, and
@@ -40,6 +40,13 @@ is not part of the exact-final candidate and does not require another final
 aggregate.
 
 ## Phase 7 capability conclusion
+
+Generated documents now lead with a comprehension-first body while preserving
+typed grounding and audit detail in a clearly separated trailing appendix or
+closed HTML disclosure. The live Viewer uses the same human-first hierarchy.
+Its static snapshot export is a distinct, self-contained, read-only share and
+review artifact that can be opened without a Runtime or listener; it is not one
+of the four generated documents and does not share their adoption lifecycle.
 
 The user surfaces have executable-boundary evidence. The real
 viewer process uses its actual ephemeral loopback authority, serves

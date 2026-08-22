@@ -3,7 +3,7 @@
 ## Status
 
 Passed. The official V11 gate completed all 54 required steps for exact-final
-production/test candidate HEAD `914e0f0b5b343ce2bf363f2610fac278d12555d1`.
+production/test candidate HEAD `fc3f9cac54e9c82e838fc2940b59d00166acc142`.
 All 54 steps passed, no blocking classification was reported, and
 `phase_8_ready = true`. Phase 8 may begin; this result does not claim that
 Phase 8 itself has passed.
@@ -35,7 +35,7 @@ retaining no reusable Codex authentication material in V11 evidence.
 
 | Class | Validated identity | Capsule-recorded outcome |
 | --- | --- | --- |
-| Volicord reconstruction repository | `validated_candidate_head = 914e0f0b5b343ce2bf363f2610fac278d12555d1` | authenticated Codex target `volicord`: status `passed`, classification `passed` |
+| Volicord reconstruction repository | `validated_candidate_head = fc3f9cac54e9c82e838fc2940b59d00166acc142` | authenticated Codex target `volicord`: status `passed`, classification `passed` |
 | Small Python application | fixture `v01-python` (V01), SHA-256 `7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867` | authenticated Codex target `small-python`: status `passed`, classification `passed` |
 | Medium polyglot repository | fixture `v11-polyglot-medium` (V11), SHA-256 `7cb34ff3435dfd91a55f261e27ca407bfef7f3654aa8d8dac5c90eaa245edafb` | authenticated Codex target `polyglot-medium`: status `passed`, classification `passed` |
 
@@ -58,7 +58,7 @@ starting HEAD all identify the same commit.
 
 Admission status was `eligible`. Immediately before exact final, the gate
 observed a clean worktree with zero dirty entries and confirmed that HEAD was
-unchanged at `914e0f0b5b343ce2bf363f2610fac278d12555d1`.
+unchanged at `fc3f9cac54e9c82e838fc2940b59d00166acc142`.
 
 | Capsule field | Value |
 | --- | --- |
@@ -94,13 +94,13 @@ zero failures. Its sealed command evidence is:
 | Command evidence | Value |
 | --- | --- |
 | `final_command.cargo_metadata` | `cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1` |
-| `final_command.cargo_metadata.outcome`; `final_command.cargo_metadata.exit_code`; `final_command.cargo_metadata.termination`; `final_command.cargo_metadata.spawn_error`; `final_command.cargo_metadata.duration_ms` | `succeeded`; `0`; `null`; `false`; `11.668` |
+| `final_command.cargo_metadata.outcome`; `final_command.cargo_metadata.exit_code`; `final_command.cargo_metadata.termination`; `final_command.cargo_metadata.spawn_error`; `final_command.cargo_metadata.duration_ms` | `succeeded`; `0`; `null`; `false`; `14.738` |
 | `final_command.cargo_fmt` | `cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check` |
-| `final_command.cargo_fmt.outcome`; `final_command.cargo_fmt.exit_code`; `final_command.cargo_fmt.termination`; `final_command.cargo_fmt.spawn_error`; `final_command.cargo_fmt.duration_ms` | `succeeded`; `0`; `null`; `false`; `477.449` |
+| `final_command.cargo_fmt.outcome`; `final_command.cargo_fmt.exit_code`; `final_command.cargo_fmt.termination`; `final_command.cargo_fmt.spawn_error`; `final_command.cargo_fmt.duration_ms` | `succeeded`; `0`; `null`; `false`; `531.993` |
 | `final_command.cargo_clippy` | `cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features` |
-| `final_command.cargo_clippy.outcome`; `final_command.cargo_clippy.exit_code`; `final_command.cargo_clippy.termination`; `final_command.cargo_clippy.spawn_error`; `final_command.cargo_clippy.duration_ms` | `succeeded`; `0`; `null`; `false`; `10332.151` |
+| `final_command.cargo_clippy.outcome`; `final_command.cargo_clippy.exit_code`; `final_command.cargo_clippy.termination`; `final_command.cargo_clippy.spawn_error`; `final_command.cargo_clippy.duration_ms` | `succeeded`; `0`; `null`; `false`; `2210.594` |
 | `final_command.cargo_test` | `cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features` |
-| `final_command.cargo_test.outcome`; `final_command.cargo_test.exit_code`; `final_command.cargo_test.termination`; `final_command.cargo_test.spawn_error`; `final_command.cargo_test.duration_ms` | `succeeded`; `0`; `null`; `false`; `32561.273` |
+| `final_command.cargo_test.outcome`; `final_command.cargo_test.exit_code`; `final_command.cargo_test.termination`; `final_command.cargo_test.spawn_error`; `final_command.cargo_test.duration_ms` | `succeeded`; `0`; `null`; `false`; `27068.424` |
 
 - `gate_configuration.argv = rebuild/scripts/validate gate --external-network available --authorize-external-transmission v11-openai-codex-project-health-three-targets`
 - `gate_configuration.argv_status = complete`
@@ -113,7 +113,7 @@ zero failures. Its sealed command evidence is:
   `final_aggregate.failure_count = 0`.
 
 The exact-final summary SHA-256 is
-`final_summary_sha256 = c7f7c96ea1af2bc54ba2ebd89edf425c2cd8077f91baa681c3691eaaed4e4a40`.
+`final_summary_sha256 = f76ec5ed2e9929e401a4e879c8b5f8910a2dc26020fe2f6649bc6b7244345abf`.
 Final and official V11 were run by the immediately preceding gate session and
 are not rerun for this documentation conclusion.
 
@@ -122,9 +122,9 @@ are not rerun for this documentation conclusion.
 Official V11 reported `official_v11.status = passed`,
 `official_v11.required_step_count = 54`, and
 `official_v11.phase_8_ready = true`. Its result SHA-256 is
-`official_v11.result_sha256 = f6ddb6080ccd9511c389ea0628b53da10653275a9c73273ab4aab02f598b5e96`.
+`official_v11.result_sha256 = 8496c0c3b44a0958601db4635592edb0df81d2ebd49646aefb7adc3a84e357a2`.
 The final-validated and V11-validated candidate HEAD is
-`914e0f0b5b343ce2bf363f2610fac278d12555d1`.
+`fc3f9cac54e9c82e838fc2940b59d00166acc142`.
 
 ## Coverage and failures
 
@@ -144,8 +144,8 @@ skipped, or environment-blocked step.
 
 ## Performance and resource observations
 
-The capsule records exact-final command durations of 11.668 ms, 477.449 ms,
-10332.151 ms, and 32561.273 ms. It does not project official V11 per-step
+The capsule records exact-final command durations of 14.738 ms, 531.993 ms,
+2210.594 ms, and 27068.424 ms. It does not project official V11 per-step
 timings, output sizes, or peak-resource measurements, so this conclusion makes
 no broader performance claim.
 
@@ -184,10 +184,10 @@ reusable secret fingerprint is recorded in this report.
 | Sanitized evidence archive | `evidence_archive.status = verified`; `evidence_archive.verification_status = passed`; `evidence_archive.prerequisites_passed = true` |
 
 The verified sanitized evidence archive records
-`evidence_archive.candidate_head = 914e0f0b5b343ce2bf363f2610fac278d12555d1`,
-`evidence_archive.filename = validation-evidence-914e0f0b5b34.tar.gz`,
-`evidence_archive.sha256 = f7513e8c2519c2d1f8b1f7b657418ad7963f2625c63698dcb8c6df64eef93cec`,
-`evidence_archive.size_bytes = 11927`, and
+`evidence_archive.candidate_head = fc3f9cac54e9c82e838fc2940b59d00166acc142`,
+`evidence_archive.filename = validation-evidence-fc3f9cac54e9.tar.gz`,
+`evidence_archive.sha256 = 2a2080ad1a02c6840b7d1619ab8a78851fc57ec5cccc4cef9fd955591ea32f5a`,
+`evidence_archive.size_bytes = 11933`, and
 `evidence_archive.member_count = 9`.
 
 All admission and target outcomes from the capsule are retained below:
@@ -234,7 +234,7 @@ it does not certify Phase 8 dogfood quality or completion.
 Begin a fresh Phase 8 naturalistic Dogfood campaign under the maintained
 repeated-use and replacement-gate plan from a separate clean worktree whose
 actual Git `HEAD` is exactly the sealed production/test candidate
-`914e0f0b5b343ce2bf363f2610fac278d12555d1`. The later documentation-only
+`fc3f9cac54e9c82e838fc2940b59d00166acc142`. The later documentation-only
 commit must not be used for qualification by supplying the sealed commit only
 as a harness candidate argument. Use the maintained
 `rebuild/scripts/dogfood-campaign` helper for campaign setup, routine evidence
@@ -283,13 +283,13 @@ satisfied.
 
 - Supplied sanitized evidence kind: `validation_handoff_capsule`.
 - Exact-final summary SHA-256:
-  `c7f7c96ea1af2bc54ba2ebd89edf425c2cd8077f91baa681c3691eaaed4e4a40`.
+  `f76ec5ed2e9929e401a4e879c8b5f8910a2dc26020fe2f6649bc6b7244345abf`.
 - Official V11 result SHA-256:
-  `f6ddb6080ccd9511c389ea0628b53da10653275a9c73273ab4aab02f598b5e96`.
+  `8496c0c3b44a0958601db4635592edb0df81d2ebd49646aefb7adc3a84e357a2`.
 - Sanitized capsule SHA-256:
-  `043a90577aa3d7da882d650b8a7e8b3a85b38688c106e4c1451539148f270ded`.
+  `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
 - Independently verified sanitized evidence archive SHA-256:
-  `f7513e8c2519c2d1f8b1f7b657418ad7963f2625c63698dcb8c6df64eef93cec`.
+  `2a2080ad1a02c6840b7d1619ab8a78851fc57ec5cccc4cef9fd955591ea32f5a`.
 - Maintained inputs: this report, `harness.py`, fixture
   `v11-polyglot-medium`, reused fixture `v01-python`, and
   `rebuild/validation/shared/fixture-manifest.json`.

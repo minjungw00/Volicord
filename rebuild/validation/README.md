@@ -336,6 +336,15 @@ prompt, or source-body contents. `collect-work` and `collect-resume` remain
 available as non-default focused diagnostics; they are not the ordinary
 operator workflow.
 
+The generated documents and Viewer serve different review needs. Each document
+uses a comprehension-first body and moves opaque identities, hashes, complete
+capability inventory, and claim-level grounding into a distinct trailing audit
+appendix or default-closed HTML disclosure. The live Viewer uses the current
+human-first hierarchy. Its static snapshot is a separate read-only,
+self-contained share/review artifact that works without a Runtime or listener;
+it is not interchangeable with a generated document and does not share the
+document-adoption lifecycle.
+
 `finalize-manifest` deterministically assembles `repositories.json` after all
 six resume captures. Run the automated Dogfood evaluation without subjective
 inputs. If replacement qualification is needed, create one campaign-level
@@ -379,7 +388,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `914e0f0b5b343ce2bf363f2610fac278d12555d1`:
+production/test candidate `fc3f9cac54e9c82e838fc2940b59d00166acc142`:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger
@@ -387,8 +396,21 @@ was reported, the sanitized evidence archive was independently verified, and
 `phase_8_ready = true`. This candidate is eligible for a
 fresh naturalistic Dogfood campaign, but its Dogfood state is `not_run`.
 
+Automated Dogfood has not run for this candidate and campaign-level human
+review is `not_provided`. The operator workflow is batch-first: after hidden
+evaluator material is independently reviewed and sealed, the user approves
+repository/hook trust, completes all twelve fresh naturalistic chats without
+per-session evidence processing, and supplies the raw rollouts once to
+`collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
+activation summaries, four document kinds, and static Viewer snapshots.
+Automated qualification may complete without human review; absent review keeps
+replacement pending rather than failing automation, while human review can
+never override a machine failure.
+
 Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for this candidate.
+Any predecessor Small Python cycle is diagnostic only and is not qualifying
+evidence for the sealed candidate.
 Replacement passage remains pending/false, and Phase 9 may not begin. The
 documentation-only conclusion is outside the sealed production/test candidate.
 Qualifying Dogfood must run from a separate clean worktree whose actual Git

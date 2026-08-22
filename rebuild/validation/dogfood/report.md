@@ -3,12 +3,14 @@
 ## Status
 
 Not run. Technical Phase 8 entry is eligible for the sealed production/test
-candidate `914e0f0b5b343ce2bf363f2610fac278d12555d1`, but a fresh naturalistic
+candidate `fc3f9cac54e9c82e838fc2940b59d00166acc142`, but a fresh naturalistic
 Dogfood campaign has not begun for that candidate.
 
 - `replacement_gate = pending`
 - `replacement_pass_candidate = false`
 - `phase_9_ready = false`
+- `automated_qualification = not_run`
+- `human_review = not_provided`
 
 The later documentation-only conclusion is outside the sealed candidate and
 does not extend its production/test evidence.
@@ -36,7 +38,7 @@ choreography.
 ## Input repositories and revisions
 
 The production/test candidate is exactly
-`914e0f0b5b343ce2bf363f2610fac278d12555d1`. No repository descriptor,
+`fc3f9cac54e9c82e838fc2940b59d00166acc142`. No repository descriptor,
 workspace, Runtime Home, rollout, bundle, observation, blocker result, or
 session identity currently qualifies it.
 
@@ -96,7 +98,7 @@ the sealed candidate:
 rebuild/scripts/dogfood-campaign prepare \
   --campaign-root /absolute/private/campaign \
   --campaign-id <new-campaign-identity> \
-  --candidate-head 914e0f0b5b343ce2bf363f2610fac278d12555d1 \
+  --candidate-head fc3f9cac54e9c82e838fc2940b59d00166acc142 \
   --repositories <three-repository-input.json>
 ```
 
@@ -133,6 +135,14 @@ observation requires usable evidence for all four product document kinds. The
 operator does not manually extract Project identity or canonical state from
 the Runtime Home and does not manually discover document export paths.
 
+The generated documents use a comprehension-first body and keep opaque
+identity, hash, complete capability, and claim-grounding detail in a distinct
+trailing audit appendix or default-closed HTML disclosure. The live Viewer
+uses the current human-first hierarchy. Its static snapshot is a separate
+self-contained, read-only share/review artifact that works without a Runtime
+or listener; it is not interchangeable with any of the four generated
+documents and does not share their adoption lifecycle.
+
 ## Observed results
 
 The copied capsule and independently verified archive establish only the
@@ -155,8 +165,9 @@ scripted conformance and is not naturalistic Dogfood passage.
 Technical Phase 8 entry is passed/eligible. Naturalistic activation, Question
 discovery and relevance, explicit Decision comprehension, terminal Checkpoint
 selection, fresh-session Project resolution and Recall, interruption cost,
-document usefulness, manual accessibility, and repeated resource behavior are
-all `not_run` for the current candidate.
+document readability, Viewer usability, and repeated resource behavior are all
+`not_run` for the current candidate. Automated Dogfood is `not_run`; optional
+campaign-level human review is `not_provided`.
 
 Absence of Dogfood evidence is not a product failure, but it leaves the
 replacement gate pending and cannot support Phase 9 readiness.
@@ -186,10 +197,12 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `914e0f0b5b343ce2bf363f2610fac278d12555d1` |
+| Sealed production/test candidate | `fc3f9cac54e9c82e838fc2940b59d00166acc142` |
 | Technical Phase 8 entry | `eligible`; passed capsule-backed gate evidence |
 | Naturalistic Dogfood | `not_run` |
 | Complete twelve-session campaign | `not_run` |
+| Automated Dogfood qualification | `not_run` |
+| Campaign-level human review | `not_provided` |
 | Replacement gate | `pending` |
 | Replacement pass candidate | `false` |
 | Phase 9 readiness | `false` |
@@ -216,6 +229,8 @@ optional campaign-level human review only when evaluating replacement.
   the sealed candidate.
 - Do not reuse any previous descriptor, Runtime Home, workspace, rollout,
   bundle, observation, blocker result, or session identity.
+- Treat any predecessor Small Python cycle only as non-qualifying diagnostic
+  evidence; do not reuse it for the current candidate.
 - Do not treat V11 as naturalistic passage or infer replacement readiness from
   technical entry eligibility.
 - Do not require a manual full Runtime Home extraction for routine evidence
@@ -247,9 +262,9 @@ result.
 ## Artifacts
 
 - Copied sanitized capsule SHA-256:
-  `043a90577aa3d7da882d650b8a7e8b3a85b38688c106e4c1451539148f270ded`.
+  `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
 - Independently verified evidence archive SHA-256:
-  `f7513e8c2519c2d1f8b1f7b657418ad7963f2625c63698dcb8c6df64eef93cec`.
+  `2a2080ad1a02c6840b7d1619ab8a78851fc57ec5cccc4cef9fd955591ea32f5a`.
 - Maintained inputs: `evaluation.json`, `harness.py`, `campaign.py`,
   `codex_events.py`, and `rebuild/scripts/dogfood-campaign`.
 
