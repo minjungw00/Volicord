@@ -381,11 +381,23 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("not_found result requires explicit project_initialize"));
     assert!(first_512.contains("current-host Goal"));
     assert!(first_512.contains("repository baseline"));
-    assert!(instructions
-        .contains("Repository/environment-resolvable facts are research, not user Questions"));
-    assert!(instructions.contains("STOP before implementation"));
-    assert!(instructions.contains("user-visible behavior, API/compatibility behavior"));
-    assert!(instructions.contains("privacy/security posture, maintenance policy"));
+    assert!(instructions.contains("before the first ordinary repository write"));
+    assert!(instructions.contains("exactly one category"));
+    assert!(instructions.contains("repository/environment fact--resolve through research"));
+    assert!(instructions.contains("accepted repository/product contract--apply it"));
+    assert!(instructions.contains("delegated implementation choice--the agent may choose"));
+    assert!(instructions.contains("material user-owned outcome--STOP before implementing"));
+    assert!(instructions.contains("user-visible default behavior"));
+    assert!(instructions.contains("CLI/API compatibility behavior"));
+    assert!(instructions.contains("externally observable error or failure policy"));
+    assert!(instructions.contains("privacy/security posture"));
+    assert!(instructions.contains("maintenance/support policy"));
+    assert!(instructions.contains("Public invalid-input behavior"));
+    assert!(instructions.contains("batch-failure continuation policy"));
+    assert!(instructions.contains("explicitly delegated by active architecture/product contracts"));
+    assert!(instructions.contains("including renderer/layout/detail choices"));
+    assert!(instructions.contains("library default, conventional behavior"));
+    assert!(instructions.contains("implementation simplicity, or agent recommendation"));
     assert!(instructions.contains("attach source-grounded repository research"));
     assert!(instructions.contains("review materiality, mark it ready, and explicitly promote it"));
     assert!(
@@ -394,6 +406,12 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("explicit current-host user response"));
     assert!(instructions.contains("candidate_manage"));
     assert!(instructions.contains("only then apply that Decision"));
+    assert!(instructions
+        .contains("Never substitute an agent recommendation or implementation preference"));
+    assert!(instructions.contains("facts remain research and must not be asked of the user"));
+    assert!(instructions
+        .contains("accepted repository/product contract--apply it and do not reopen it"));
+    assert!(instructions.contains("ordinary code edits require no new approval ceremony"));
     assert!(instructions.contains("repository_analyze is authorized local analysis"));
     assert!(instructions
         .contains("background_semantic_operation is the separate explicit provider boundary"));
@@ -402,6 +420,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("output-only text is insufficient"));
     assert!(instructions
         .contains("Incidental inspection commands need not become Checkpoint verification facts"));
+    assert!(instructions
+        .contains("Meaningful completed or paused work uses a source-grounded Checkpoint"));
     assert!(instructions.contains("Non-project requests and unrelated greetings"));
 
     let listed = adapter

@@ -17,7 +17,7 @@ const CONFIG_NAME: &str = "config.toml";
 const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
-const ACTIVATION_CONTEXT: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, record the current-host Goal, and establish a repository baseline. Repository/environment facts are research, not user Questions. When research cannot decide a material choice that changes user-visible behavior, API/compatibility behavior, privacy/security posture, maintenance policy, or another user-owned outcome, STOP before implementing it. Submit a Question Candidate, attach source-grounded repository research, review materiality, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, then record and apply the Decision. An agent recommendation is never a user Decision. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
+const ACTIVATION_CONTEXT: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, record the current-host Goal, and establish a repository baseline. After that baseline and before the first ordinary repository write, screen every unresolved choice relevant to the requested outcome into exactly one category: repository/environment fact--resolve through research, not a user Question; accepted repository/product contract--apply it and do not reopen it to manufacture a Question; delegated implementation choice--the agent may choose within the active contract; implementation choices explicitly delegated by active architecture/product contracts, including renderer/layout/detail choices, are not user Questions; or material user-owned outcome--STOP before implementing that outcome and use the existing Question and Decision path. Strong material signals include user-visible default behavior, CLI/API compatibility behavior, externally observable error or failure policy, privacy/security posture, maintenance/support policy, and any outcome where repository research leaves multiple viable policies that materially change what the user or downstream automation experiences. Public invalid-input behavior and batch-failure continuation policy are material observable outcomes when research leaves multiple viable policies. A library default, conventional behavior, implementation simplicity, or agent recommendation does not authorize selecting a material user-owned outcome. For such an outcome, submit a Question Candidate, attach source-grounded repository research, review materiality, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, then record and apply the Decision. Repository/environment facts remain research and must not be asked of the user. An agent recommendation is never a user Decision. Once applicable Decisions and contracts resolve the material outcome, ordinary code edits require no new approval ceremony. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct OwnershipManifest {
@@ -892,19 +892,44 @@ mod tests {
             assert!(context.contains("STOP before repository inspection, edits, or continuation"));
             assert!(context
                 .contains("successfully Recall before inspecting, editing, or continuing work"));
+            assert!(context.contains("record the current-host Goal"));
+            assert!(context.contains("establish a repository baseline"));
+            assert!(context.contains("before the first ordinary repository write"));
+            assert!(context.contains("exactly one category"));
+            assert!(context.contains("repository/environment fact--resolve through research"));
+            assert!(context.contains("accepted repository/product contract--apply it"));
+            assert!(context.contains("delegated implementation choice--the agent may choose"));
+            assert!(context.contains("material user-owned outcome--STOP before implementing"));
+            assert!(context.contains("user-visible default behavior"));
+            assert!(context.contains("CLI/API compatibility behavior"));
+            assert!(context.contains("externally observable error or failure policy"));
+            assert!(context.contains("privacy/security posture"));
+            assert!(context.contains("maintenance/support policy"));
+            assert!(context.contains("Public invalid-input behavior"));
+            assert!(context.contains("batch-failure continuation policy"));
             assert!(
-                context.contains("Repository/environment facts are research, not user Questions")
+                context.contains("explicitly delegated by active architecture/product contracts")
             );
-            assert!(context.contains("STOP before implementing it"));
+            assert!(context.contains("including renderer/layout/detail choices"));
+            assert!(context.contains("library default, conventional behavior"));
+            assert!(context.contains("implementation simplicity, or agent recommendation"));
             assert!(context.contains("attach source-grounded repository research"));
             assert!(context.contains("explicitly promote it"));
             assert!(
                 context.contains("present its actual alternatives, recommendation, and trade-offs")
             );
             assert!(context.contains("explicit current-host user response"));
+            assert!(context.contains("record and apply the Decision"));
+            assert!(context.contains("facts remain research and must not be asked of the user"));
+            assert!(context
+                .contains("accepted repository/product contract--apply it and do not reopen it"));
+            assert!(context.contains("ordinary code edits require no new approval ceremony"));
             assert!(context
                 .contains("same actually observed command execution with a numeric exit status"));
             assert!(context.contains("output-only text is insufficient"));
+            assert!(
+                context.contains("Meaningful completed or paused work uses a grounded Checkpoint")
+            );
         }
         let encoded = event(&unauthorized, "startup");
         let mut input = encoded.as_slice();
