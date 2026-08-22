@@ -308,7 +308,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `3b8a3c0e882af863d8bfdb562e5c20327889fdf6`:
+production/test candidate `a3217ed5de67fe2d00605d0e865206139272f207`:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger

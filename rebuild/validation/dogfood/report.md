@@ -1,291 +1,215 @@
-# V12 — Phase 8 repeated dogfood and replacement gate
+# V12 — Phase 8 naturalistic Dogfood operating state
 
 ## Status
 
-Failed. The designated sanitized result records `status = failed` and
-`replacement_pass_candidate = false` for candidate HEAD
-`387b7b527ac588c9061120f6e295508a4bd92c81`. The repeated dogfood evaluation
-does not satisfy the replacement gate, and Phase 9 may not begin.
+Not run. Technical Phase 8 entry is eligible for the sealed production/test
+candidate `a3217ed5de67fe2d00605d0e865206139272f207`, but a fresh naturalistic
+Dogfood campaign has not begun for that candidate.
 
-The designated final-admission handoff records `status = skipped`,
-`blocking_stage = phase8_dogfood`, `admission_invoked = false`,
-`gate_invoked = false`, `final_aggregate_invocations = 0`, and
-`official_v11_invocations = 0`. No designated `final-capsule.json` exists, so
-there is no exact-final/V11-sealed Phase 8 candidate to interpret.
+- `replacement_gate = pending`
+- `replacement_pass_candidate = false`
+- `phase_9_ready = false`
+
+The later documentation-only conclusion is outside the sealed candidate and
+does not extend its production/test evidence.
 
 ## Goal
 
-Independently audit the sanitized two-cycle Phase 8 dogfood result for three
-actual repositories, preserve observations separately from interpretation, and
-decide whether the replacement gate passed and Phase 9 cutover planning may
-begin. The audit also checks the designated final handoff without rerunning
-exact final or official V11.
+Run and review a completely fresh naturalistic campaign for the sealed
+candidate across the three maintained repository classes. The campaign must
+show whether real VS Code Codex sessions independently discover and promote a
+material Question, obtain an explicit user Decision, create a grounded terminal
+Checkpoint, and resume from repository resolution and Recall without prompt
+choreography.
 
 ## Accepted decisions being validated
 
-- Q1 staged Inquiry relevance and interruption behavior.
-- Q2 seven-language structural coverage, three semantic ecosystems, polyglot
-  honesty, and out-of-set inventory fallback.
-- Q3 local-first operation and explicit external-transmission authority.
-- Q4 Linux/Codex surfaces and Korean/English fixed UI.
-- Q5 four useful, portable, source-grounded Markdown/HTML documents and their
-  accessibility.
-- Q6 portable Project identity, clone binding, divergence, and conflict.
-- Q7 correction, supersession, and deletion.
-- Q8-A Linux/Codex operation and Q8-B fresh-service legacy exclusion.
-- Q9 bounded Recall, Q10 Candidate boundaries, Q11 Checkpoint grounding, Q12
-  Guarded effect behavior, and Q13 Decision reuse without repetition.
+- Q1 staged Inquiry relevance and terminal material-Question behavior.
+- Q2 polyglot capability and honest coverage.
+- Q3 local-first operation and explicit transmission authority.
+- Q4 Linux/Codex user surfaces and Q5 useful accessible documents.
+- Q6 portable Project identity, Q7 correction/deletion, and Q8 fresh-service
+  operation without legacy compatibility.
+- Q9 Recall, Q10 Candidate promotion, Q11 grounded Checkpoint, Q12 bounded
+  interruption, and Q13 Decision reuse.
 
 ## Input repositories and revisions
 
-The sanitized result identifies three actual repository targets. The harness
-records no repository-identity blocker, and its tracked identity check rejects
-maintained fixtures as substitutes for these targets.
+The production/test candidate is exactly
+`a3217ed5de67fe2d00605d0e865206139272f207`. No repository descriptor,
+workspace, Runtime Home, rollout, bundle, observation, blocker result, or
+session identity currently qualifies it.
 
-| Class | Origin | Revision | Observed repository shape |
-| --- | --- | --- | --- |
-| `volicord` | `https://github.com/minjungw00/Volicord.git` | `387b7b527ac588c9061120f6e295508a4bd92c81` | 1,046 files, 241 documentation files, all seven official structural languages |
-| `small-python` | `https://github.com/pypa/sampleproject.git` | `621e4974ca25ce531773def586ba3ed8e736b3fc` | 12 files, one documentation file, Python only; MIT `LICENSE.txt` SHA-256 `71e0bd649395f47e82b500dc6261ce4b8e8d03774727f583e09f5b947e75de97` |
-| `polyglot-medium` | `https://github.com/tree-sitter/tree-sitter.git` | `0e2af0d8d1089e750def69ee51e75dd7cc15f531` | 604 files, 76 documentation files, all seven official structural languages; MIT `LICENSE` SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78` |
-
-The candidate worktree was clean before and after the complete evaluation.
-Current Git inspection independently confirmed that the candidate is the
-expected `test: add phase 8 dogfood evaluation harness` commit and that it adds
-only `evaluation.json`, `harness.py`, and `assertions.py` under the dogfood
-validation directory.
+A fresh helper input must identify one actual repository and pinned revision
+for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
+The campaign then creates two fresh cycles per class. No prior campaign input
+may be reused.
 
 ## Environment and tool versions
 
-The sanitized dogfood result records Linux on `x86_64` with Python `3.12.3`.
-It intentionally contains no local absolute paths, command logs, source bodies,
-private prompts, credentials, or provider payloads. The result does not project
-kernel, Git, Cargo, Rust, Codex CLI, or browser-engine versions, so this report
-does not infer them.
+The copied gate capsule records Linux `x86_64`, CPython `3.12.3`, Git `2.43.0`,
+Cargo `1.97.1`, Rust `1.97.1`, and Codex CLI `0.145.0` for the sealed technical
+entry. A new naturalistic campaign must record its own actual operating
+environment; the sealed V11 environment does not substitute for Dogfood.
 
 ## Candidate approaches
 
-The tracked Phase 8 harness reuses the maintained V11 product journey for two
-independent runtime cycles per actual repository. It separately runs the
-maintained Phase 5 acceptance assertion for structural, fallback, and semantic
-regression coverage and collects bounded manual-quality observations when
-provided.
+The maintained approach uses `rebuild/scripts/dogfood-campaign` for routine
+campaign setup and evidence handling, while leaving genuine host interaction
+to the user. The helper does not create a Codex chat, approve repository or
+hook trust, invent a user response, or pre-fill a human observation as passed.
 
-The observed run did not authorize the six fresh authenticated Codex turns.
-Consequently, the product steps were still exercised locally, but the Codex/MCP
-connection step and the fresh Codex-turn boundary were not qualified. No
-fixture was substituted for an actual repository, and no old ignored validation
-artifact is used to fill the missing final/V11 handoff.
+The user owns the actions that cannot be truthfully automated:
+
+- approve repository and hook trust where required;
+- run twelve globally distinct real VS Code Codex chats: work and fresh resume
+  sessions for two cycles in each of three repository classes;
+- provide actual answers to the material Questions shown in those sessions;
+- record genuine subjective-quality and accessibility observations.
+
+The helper owns routine rollout intake, activation validation, blocker gating,
+Project identity extraction, canonical bundle export and hashes, bounded
+Runtime summaries, descriptor evidence completion, manifest assembly, and
+review packaging.
 
 ## Commands and configuration
 
-The sanitized result records the focused fixture regression command as:
+Start the new campaign from a separate clean worktree whose actual `HEAD` is
+the sealed candidate:
 
 ```text
-python3 rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py
+rebuild/scripts/dogfood-campaign prepare \
+  --campaign-root /absolute/private/campaign \
+  --campaign-id <new-campaign-identity> \
+  --candidate-head a3217ed5de67fe2d00605d0e865206139272f207 \
+  --repositories <three-repository-input.json>
 ```
 
-That assertion maps maintained Production tests for all seven structural
-languages, out-of-set inventory fallback, and Java/Maven, TypeScript/Node, and
-Rust/Cargo semantic capability. The current result's evaluation-definition
-SHA-256 is
-`5a33c578812d4a4569770982a1fe91b3a6972ab40329135cb7b228f219ce7f36`.
+Use `activate-cycle` before each helper-owned cycle activation, `collect-work`
+and `collect-resume` for the two distinct raw rollouts, and
+`record-observation` for the four subjective and four manual-accessibility
+observations per cycle. After all six cycles, use `finalize-manifest` and
+`package-review`.
 
-The missing Phase 8 authorization assertion is
-`phase8-openai-codex-project-health-six-real-repository-cycles`. Its maintained
-purpose is one bounded `project_health` turn in each of two fresh cycles for
-the three actual repositories. No exact-final, gate, or official V11 command
-was run for this candidate.
+`collect-work` returns only `resume_allowed`, `campaign_stop`, or
+`operator_environment_invalid`. A stopped or invalid campaign identity cannot
+be repaired by reusing later evidence. `collect-resume` verifies Project
+resolution and Recall order and invokes the installed candidate's supported
+portable export; the operator does not manually extract Project identity or
+canonical state from the Runtime Home.
 
 ## Observed results
 
-Each repository has two distinct Project identities and
-`independent_fresh_runtime_cycles = true`. Within all six cycles,
-`restart_recall` passed. This establishes six distinct runtime cycles and the
-maintained restart/Recall step; it does not establish fresh authenticated Codex
-turns because that transmission was not authorized.
+The copied capsule and independently verified archive establish only the
+technical entry state:
 
-Across 108 required product-step outcomes, 102 passed and six were
-`environment_blocked`. Every cycle has 17 passed steps and one
-`environment_blocked` `codex_mcp_connection` step. There were no step-level
-`failed`, `partial`, `unsupported`, or `skipped` outcomes, but every repository
-aggregate is `environment_blocked` and therefore is not a passed repeated
-journey.
+- admission `eligible`;
+- exact final `succeeded` with four commands and zero failures;
+- official V11 `passed` with 54 of 54 required steps;
+- all three authenticated Codex target outcomes `passed`;
+- credential-retention audit `passed` with every recorded count zero;
+- sanitized evidence archive verification `passed`;
+- same-gate final/V11 artifact ownership valid;
+- no active accepted-Decision revisit trigger reported by official V11.
 
-Across 72 quality observations, 48 passed and 24 were partial. Every cycle
-passed Context recovery accuracy, Decision non-repetition, source grounding,
-capability honesty, coverage, correction/supersession/deletion, portability,
-and recovery. Every cycle left Question relevance, Decision comprehension,
-interruption cost, and document fidelity/usefulness at `partial`; the basis is
-the corresponding automated journey step, not a bounded human-subject or
-authorized fresh-agent observation.
-
-The maintained structural/fallback regression passed, covers the official
-structural fixtures and out-of-set fallback fixture, and explicitly records
-that fixtures did not substitute for the first three actual repositories. The
-tracked Phase 5 conclusion and V02 report remain the qualification references
-for the seven structural languages and the three selected semantic ecosystems;
-this dogfood result does not widen those bounded claims.
-
-Correction/deletion, another-clone portability, divergent conflict handling,
-provider/parser/derived-index recovery, capability honesty, and source
-grounding all passed their automated step bases in both cycles for all three
-repositories. These are step observations, not evidence that the four partial
-human-facing quality criteria succeeded.
+No naturalistic Dogfood result exists for the current candidate. V11 is
+scripted conformance and is not naturalistic Dogfood passage.
 
 ## Coverage and failures
 
-The dogfood result preserves these blockers:
+Technical Phase 8 entry is passed/eligible. Naturalistic activation, Question
+discovery and relevance, explicit Decision comprehension, terminal Checkpoint
+selection, fresh-session Project resolution and Recall, interruption cost,
+document usefulness, manual accessibility, and repeated resource behavior are
+all `not_run` for the current candidate.
 
-- the exact bounded fresh-Codex-turn authorization was absent;
-- one or more accepted Decision revisit triggers are active;
-- accessibility has a blocker or unqualified criterion;
-- all three repeated repository journeys did not pass; and
-- all six cycles have partial Question relevance, Decision comprehension,
-  interruption cost, and document fidelity/usefulness.
-
-Accessibility records `document_html_language = failed` in all cycles.
-Korean and English fixed UI evaluation is `environment_blocked` because the
-viewer did not start. Keyboard reachability, visible focus, not-color-only,
-headings/labels, and narrow/zoom behavior have no recorded result and remain
-unobserved. The bounded accessibility claim is structural only: no standards
-certification, human-subject qualification, or browser-layout-engine
-qualification occurred.
-
-No current exact-final or official V11 evidence exists for the dogfood
-candidate. The earlier maintained V11 report sealed
-`80dd08e8828d7159ac7b8839178ccdd9f9013851` only for Phase 8 entry; it neither
-seals candidate `387b7b52` nor proves Phase 8 completion.
+Absence of Dogfood evidence is not a product failure, but it leaves the
+replacement gate pending and cannot support Phase 9 readiness.
 
 ## Performance and resource observations
 
-| Repository | Cycle duration (ms) | Inventory (ms) | Recall (ms) | Repair/reindex (ms) | Per-document generation (ms) | Per-document bytes | Runtime home bytes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `volicord` | 102,901.229; 102,959.413 | 3,888.243; 3,716.715 | 2,452.930; 2,359.667 | 3,847.505; 4,290.097 | 7,045.134–7,352.455 | 97,461,095–148,901,706 | 621,254,612 in both cycles |
-| `small-python` | 568.780; 564.260 | 9.470; 7.997 | 3.117; 3.153 | 8.481; 9.155 | 6.372–6.975 | 28,931–75,113 | 671,780 in both cycles |
-| `polyglot-medium` | 23,220.861; 23,452.527 | 1,239.265; 1,224.322 | 458.250; 478.661 | 1,439.693; 1,735.238 | 1,377.356–1,560.362 | 19,525,167–29,859,595 | 127,452,102 in both cycles |
-
-Portable bundles were stable between cycles at 30,195, 30,211, and 30,223
-bytes for the three repository classes respectively. Recorded derived-state
-bytes were zero in every cycle. The close two-cycle values are bounded repeat
-observations, not sustained-duration or resource-ceiling qualification. Peak
-memory is explicitly `unsupported`; therefore no memory ceiling is claimed.
-
-The Volicord and medium-polyglot document outputs are large, while document
-fidelity/usefulness remained partial. The evidence does not establish that
-users would accept these sizes or that the outputs are useful enough for
-handoff.
+No naturalistic campaign timing, output-size, Runtime-size, or sustained
+resource result exists for this candidate. The exact-final command durations
+in the technical gate capsule are not Dogfood resource evidence.
 
 ## Privacy and external transmission
 
-The dogfood journey required six bounded Codex transmissions, but
-`codex_transmission_authorized = false`, the authorization assertion ID is
-absent, and no fresh Codex turn is claimed. The sanitized result contains no
-raw source or credential content. It also makes no commercial semantic-provider
-success claim; passed unavailable-provider recovery is not commercial-provider
-qualification.
+Keep the campaign root and raw rollouts in private ignored state. The default
+review package contains bounded campaign metadata, descriptors and review
+views, hashes, canonical bundles, observations, Runtime/activation summaries,
+blocker records when present, and bounded document evidence. It excludes raw
+rollouts unless explicitly requested.
+
+Do not package full Runtime Homes, SQLite files or sidecars, derived-analysis
+directories, installations, source repositories, credentials, prompts, source
+bodies, or provider payloads for ordinary review. Preserve raw rollouts in a
+separate private archive only when review requires them.
 
 ## Acceptance results
 
-| Acceptance area | Conclusion |
+| Acceptance area | Current conclusion |
 | --- | --- |
-| Candidate identity and cleanliness | Passed for dogfood candidate `387b7b527ac588c9061120f6e295508a4bd92c81`; clean before and after |
-| Three actual repository identities | Passed harness identity checks; exact origins and revisions recorded above |
-| Two independent runtime cycles per repository | Passed; six distinct Project identities |
-| Fresh authenticated Codex turns | Environment-blocked; exact assertion absent |
-| Required product steps | Not passed as an aggregate: 102 passed, six environment-blocked |
-| Human-facing quality qualification | Not passed: 24 partial observations across four criteria |
-| Structural/fallback regression | Passed |
-| Semantic qualification reference | Present through maintained Phase 5 acceptance and V02 evidence; no wider real-repository semantic claim |
-| Accessibility | Failed and partly unobserved |
-| Decision revisit assessment | Failed: observed active Q5 trigger |
-| Current exact-final/V11 handoff | Missing by design after dogfood failure; zero final/V11 invocations |
-| Replacement gate | `replacement_gate = failed` |
-| Phase 9 readiness | `phase_9_ready = false` |
+| Sealed production/test candidate | `a3217ed5de67fe2d00605d0e865206139272f207` |
+| Technical Phase 8 entry | `eligible`; passed capsule-backed gate evidence |
+| Naturalistic Dogfood | `not_run` |
+| Complete twelve-session campaign | `not_run` |
+| Replacement gate | `pending` |
+| Replacement pass candidate | `false` |
+| Phase 9 readiness | `false` |
 
 ## Known limits
 
-- The four subjective quality criteria use agent-observed bases and remain
-  partial; no human-subject usability conclusion is available.
-- Peak memory, sustained resource ceilings, browser layout, five accessibility
-  checks, non-Linux operation, and commercial-provider behavior are not
-  qualified.
-- Sanitization excludes raw command logs, source bodies, private prompts,
-  provider payloads, credentials, and local paths. This report does not infer
-  details absent from the bounded handoff.
-- The maintained fixture regression establishes bounded structural, fallback,
-  and semantic contracts; it does not turn the first three repositories into
-  fixtures or prove population-wide semantic accuracy.
+- Official V11 proves scripted installed-product conformance, not independent
+  agent discovery in ordinary user sessions.
+- The current evidence says nothing yet about reliability of strengthened
+  material-Question discovery or real-session usability.
+- No manual quality, accessibility, or sustained resource conclusion exists
+  for this candidate.
 
 ## Recommended implementation choice
 
-Keep the replacement gate closed and do not begin Phase 9. Preserve candidate
-`387b7b52` as the dogfood evidence identity, while recognizing that no current
-exact-final/V11-sealed Phase 8 candidate exists. Route findings only to their
-maintained owners before any separate remediation work is designed.
+Make no product or test change in this conclusion. Use the maintained campaign
+helper to prepare a new candidate-bound campaign, then run all twelve genuine
+sessions and complete the human observations before evaluating replacement.
 
 ## Rejected alternatives and reasons
 
-- Do not infer a pass from 102 successful product steps: every repeated journey
-  contains an environment-blocked required step.
-- Do not treat distinct runtime Project identities as proof of fresh Codex
-  turns: the exact transmission authority was absent.
-- Do not promote partial automated bases to human-facing quality success.
-- Do not reuse the earlier Phase 7 V11 capsule or search old ignored validation
-  runs: it sealed a different candidate and only opened Phase 8 entry.
-- Do not rerun exact final or V11 after a failed dogfood result in this
-  documentation-only session.
+- Do not qualify a documentation branch by passing the sealed commit only as a
+  harness candidate argument; the campaign worktree's actual `HEAD` must equal
+  the sealed candidate.
+- Do not reuse any previous descriptor, Runtime Home, workspace, rollout,
+  bundle, observation, blocker result, or session identity.
+- Do not treat V11 as naturalistic passage or infer replacement readiness from
+  technical entry eligibility.
+- Do not require a manual full Runtime Home extraction for routine evidence
+  review; use the maintained helper's bounded summaries and package.
 
 ## Reusable primitive decision
 
-`reference_only` for production. The Phase 8 harness and sanitized result are
-validation evidence and do not own product semantics or authorize production
-changes.
+`reference_only` for production. The helper and Dogfood harness are internal
+validation tooling and do not own product semantics.
 
 ## Decision revisit trigger status
 
-Active. The maintained Decision-register assessment reports no previously
-active trigger, but the current dogfood evidence reports Q5 active because
-`document_html_language` failed. Q5's recorded revisit condition includes
-Markdown/HTML failing required accessibility. This active trigger independently
-forces `replacement_gate = failed` and `phase_9_ready = false`.
-
-The Q5 contract remains accepted until a separate user decision changes it.
-This report records the trigger and does not silently narrow the document or
-accessibility contract.
+Official V11 reported no active accepted Q1–Q13 revisit trigger for technical
+entry. Naturalistic Dogfood has not run, so it has not produced a new trigger
+assessment or a replacement-gate conclusion.
 
 ## Follow-up work
 
-Concrete finding ownership is:
-
-- Q5 HTML language failure, large document outputs, and partial document
-  fidelity/usefulness: `projections-and-documents.md`, with Q5 review governed
-  by `open-decisions.md`.
-- Viewer-start blocking and unobserved fixed-UI/accessibility checks:
-  `architecture.md` Host and User Adapters plus `failure-and-recovery.md`.
-- Missing current-invocation Codex authorization and the six unqualified fresh
-  turns: the Phase 8 dogfood validation boundary and
-  `privacy-and-provider-boundary.md`; absence is not user consent.
-- Partial Question relevance and Decision comprehension:
-  `inquiry-and-decision.md`.
-- Partial interruption cost: the accepted Q1/Q12 user-flow boundaries in
-  `open-decisions.md` and `architecture.md`.
-- Unsupported peak memory and sustained-resource qualification: the Phase 8
-  validation evidence owner; no product ceiling is inferred.
-
-No implementation fix, contract change, or generic remediation design is part
-of this documentation conclusion.
+Prepare one completely fresh helper-owned campaign for the sealed candidate,
+grant trust manually, run the twelve required work/resume chats, answer the
+actual material Questions, record subjective and accessibility observations,
+assemble the manifest, and create the bounded default review package.
 
 ## Artifacts
 
-- Designated sanitized dogfood result:
-  `rebuild/.local/phase8/dogfood-result.json`, SHA-256
-  `a9a4cab2934fc153e6e9780d88f8803667e198f9d4d8b191ccbc6b599f125db5`.
-- Designated final-admission handoff:
-  `rebuild/.local/phase8/final-admission.json`, SHA-256
-  `e4178e36abb4e4b3bcf1695fc7155340c38a7ea10e17b8a5f2dc75e78ae7860c`.
-- Designated final capsule: absent; the final-admission handoff records
-  `capsule_produced = false`.
-- Maintained inputs: `evaluation.json`, `harness.py`, `assertions.py`, Phase 5
-  acceptance assertions and reports, the active design owners, and this report.
+- Copied sanitized capsule SHA-256:
+  `17132a2ba2f7b2309aaa9c2b0ca6271067ca369a9e3dd982ce2d9dd9350eea10`.
+- Independently verified evidence archive SHA-256:
+  `68c33c27b51b9c5874852862f17d962fb84329b49a2a99efb73590bab19fd5c8`.
+- Maintained inputs: `evaluation.json`, `harness.py`, `campaign.py`,
+  `codex_events.py`, and `rebuild/scripts/dogfood-campaign`.
 
-Raw Phase 8 state remains ignored and is not copied into maintained documents.
+No private campaign path, Runtime Home, raw rollout, prompt, credential,
+source body, or provider payload is maintained in this report.

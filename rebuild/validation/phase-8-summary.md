@@ -3,8 +3,9 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current pre-Dogfood production/test candidate:
-  `3b8a3c0e882af863d8bfdb562e5c20327889fdf6`
-- Technical entry state: `eligible`; `phase_8_ready = true`
+  `a3217ed5de67fe2d00605d0e865206139272f207`
+- Technical Phase 8 entry gate: `passed`; eligibility: `eligible`;
+  `phase_8_ready = true`
 - Admission state: `eligible`
 - Exact-final state: `succeeded`; `failure_count = 0`
 - Official V11 state: `passed`; 54 of 54 required steps passed
@@ -12,9 +13,9 @@
 - Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q13
   trigger reported
 - Sanitized gate capsule: `verified`; SHA-256
-  `c9ee66f462ca490e4c15f1380451afe0873a1412d690506e1d6bcb0e78698201`
+  `17132a2ba2f7b2309aaa9c2b0ca6271067ca369a9e3dd982ce2d9dd9350eea10`
 - Sanitized evidence archive: `verified`; SHA-256
-  `83929c166783098205e450bd6dc259894f383bac2f227f0b6f70851e54007a7f`
+  `68c33c27b51b9c5874852862f17d962fb84329b49a2a99efb73590bab19fd5c8`
 - Naturalistic Dogfood for the current candidate: `not_run`
 - `replacement_pass_candidate = false`
 
@@ -40,12 +41,20 @@ reused for this candidate.
 
 The fresh campaign must begin from zero in a separate clean worktree whose
 actual Git `HEAD` is exactly the sealed production/test candidate
-`3b8a3c0e882af863d8bfdb562e5c20327889fdf6`. It must retain the maintained
+`a3217ed5de67fe2d00605d0e865206139272f207`. It must retain the maintained
 three-class, two-cycle, distinct work/resume-session, automatic, manual,
 resource, and accessibility qualification contract. The documentation-only
 conclusion commit is not part of the sealed production/test candidate and must
 not be used for qualification by supplying the sealed commit only as a harness
 candidate argument.
+
+Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation,
+rollout intake, activation and blocker validation, Project identity and bundle
+collection, bounded Runtime summaries, descriptor completion, manifest
+assembly, and review packaging. The operator still grants repository and hook
+trust, runs all twelve naturalistic VS Code Codex sessions, supplies actual
+material-Question answers, and records subjective and accessibility
+observations. Ordinary review does not require packaging a full Runtime Home.
 
 ## Remaining Phase 8 risks
 

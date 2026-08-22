@@ -872,6 +872,14 @@ completed capture SHA-256와 later required session/check의 `not_run` 상태만
 task text, hidden oracle, source body, credential과 raw provider content는 보존하지 않는다.
 이 result는 full passage, Phase 8 completion 또는 Phase 9 readiness의 evidence가 아니다.
 
+Campaign 준비와 routine evidence collection은 maintained internal helper인
+`rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
+12개의 genuinely naturalistic VS Code Codex chat을 실행하며, material Question에 실제로
+답하고 subjective/accessibility observation을 제공한다. Helper는 rollout intake, activation
+validation, blocker gating, Project identity extraction, canonical bundle export와 hash,
+bounded Runtime summary, descriptor evidence completion, manifest assembly와 review packaging을
+담당한다. Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+
 ## 16. Architecture 확정 gate
 
 다음이 완료되면 production architecture 문서를 확정할 수 있다.
