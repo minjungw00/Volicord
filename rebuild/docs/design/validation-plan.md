@@ -789,11 +789,12 @@ indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한�
 Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification
 이다. 하나의 current candidate에 대해 `volicord`, `small-python`, `polyglot-medium` 세
 actual repository class에서 두 cycle씩 실행하고, 각 cycle은 globally distinct한 fresh
-VS Code Codex work session과 fresh resume session을 사용한다. 따라서 full passage에는
-`3 repositories × 2 cycles × 2 sessions = 12`개의 distinct real session이 필요하다. 이
-complete `run` path만 `campaign_complete = true`, `replacement_pass_candidate = true` 또는
-`phase_9_ready = true`를 만들 수 있으며 required automatic, manual, resource와
-accessibility evidence가 하나라도 빠지면 passage가 아니다.
+VS Code Codex work session과 fresh resume session을 사용한다. 따라서 automated
+qualification에는 `3 repositories × 2 cycles × 2 sessions = 12`개의 distinct real
+session이 필요하다. Current result schema는 `automated_qualification`, `human_review`,
+`replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 human review가
+`not_provided`여도 automated command는 성공하지만 replacement는
+`pending_human_review`이며 `replacement_pass_candidate`와 `phase_9_ready`는 false다.
 
 각 cycle descriptor의 hidden decision oracle은 bounded
 `work_task_materiality_basis`를 포함한다. Descriptor에는 별도의 hidden
@@ -880,11 +881,11 @@ task text, hidden oracle, source body, credential과 raw provider content는 보
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
-12개의 genuinely naturalistic VS Code Codex chat을 실행하며, material Question에 실제로
-답하고 subjective/accessibility observation을 제공한다. Helper는 rollout intake, activation
-validation, blocker gating, Project identity extraction, canonical bundle export와 hash,
-bounded Runtime summary, descriptor evidence completion, manifest assembly와 review packaging을
-담당한다. Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+12개의 genuinely naturalistic VS Code Codex chat을 실행하며 material Question에 실제로
+답하고 raw rollout을 한 번에 제공한다. Helper는 rollout intake, activation validation,
+blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
+summary, descriptor evidence completion, manifest assembly와 review packaging을 담당한다.
+Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
 Independent evaluator/control은 actual repository와 pinned revision을 조사하고 hidden oracle과
 materiality review를 준비·독립 검토한 뒤 maintained helper로 cycle descriptor를 봉인한다.
 Evaluator material은 operator instruction, example 또는 review index에 넣지 않으며 operator에게
@@ -915,8 +916,7 @@ supported product document-export path로 네 initial kind 각각의 Markdown과
 self-contained HTML을 deterministic private evidence path에 생성한다. Summary는 모든
 kind/format의 status, bounded failure basis 또는 relative path, bytes와 SHA-256를 보존하고,
 operator document-review index는 produced path만 노출한다. 한 kind라도 usable evidence가
-없으면 `document_fidelity_and_usefulness = passed`를 거부한다. Human criterion은 네 product
-document kind이며 format별 subjective pass를 따로 요구하지 않는다. Public static Viewer snapshot
+없으면 automated document evidence가 실패한다. Public static Viewer snapshot
 capability도 cycle마다 campaign fixed locale/language로 self-contained read-only HTML을 만들고
 path, bytes, SHA-256와 Project/candidate basis를 summary에 기록한다. Review package는 이
 summary/index, produced documents와 Viewer snapshots를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
@@ -924,6 +924,16 @@ Analysis, credential, prompt, provider payload와 source copy는 계속 제외�
 Ordinary independent review의 handoff는 byte-exact raw rollout archive와 bounded review
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
+
+Automated run은 repository/candidate identity, 12-session semantics, bundle/provenance,
+document와 static snapshot 생성, machine accessibility, resource, regression, Decision revisit와
+candidate cleanliness를 독립 판정한다. Optional human review는 immutable automated result 뒤에
+한 번만 생성한다. Deterministic sampling은 각 repository class의 lowest automated-passed cycle로
+Question relevance, Decision comprehension과 interruption cost를, `small-python`/`polyglot-medium`
+sample로 simple/complex document readability를, polyglot static snapshot으로 Viewer readability를,
+Volicord live Viewer의 `en`/`ko` sample로 keyboard/focus/color/zoom을 평가한다. Human fail은
+automated pass를 훼손하지 않지만 replacement를 fail하며, human pass도 machine failure를 override할
+수 없다. `prepare-human-review`와 `qualify-review`는 session 또는 machine Dogfood를 rerun하지 않는다.
 
 ## 16. Architecture 확정 gate
 

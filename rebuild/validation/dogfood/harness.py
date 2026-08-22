@@ -81,6 +81,10 @@ REAL_SESSION_CHECKS = (
     "recall_precedes_inspection_and_continuation",
     "recall_matches_checkpoint_decision_and_context",
     "meaningful_recalled_continuation",
+    "canonical_bundle_and_provenance",
+    "generated_document_outputs",
+    "static_viewer_snapshot",
+    "bounded_runtime_and_activation_evidence",
 )
 MAX_USER_TASK_BYTES = 8192
 MAX_REVIEW_TEXT_BYTES = 8192
@@ -563,6 +567,29 @@ def load_definition() -> dict[str, Any]:
         is not False
     ):
         raise ValueError("the Phase 8 accessibility machine contract changed")
+    if tuple(value.get("automated_accessibility_checks", [])) != (
+        "keyboard_reachability",
+        "visible_focus",
+        "headings_and_labels",
+        "narrow_and_zoomed_presentation",
+        "korean_english_fixed_ui",
+        "document_html_language",
+    ):
+        raise ValueError("the Phase 8 automated accessibility qualification changed")
+    human_review = value.get("human_review_contract", {})
+    if (
+        human_review.get("artifact_kind") != "phase8_dogfood_human_review"
+        or human_review.get("states") != ["not_provided", "passed", "failed"]
+        or human_review.get("replacement_states")
+        != ["pending_human_review", "passed", "failed"]
+        or tuple(human_review.get("interaction_repository_classes", [])) != CLASSES
+        or human_review.get("document_samples") != ["simple", "complex"]
+        or human_review.get("live_viewer_locales") != ["en", "ko"]
+        or human_review.get("machine_accessibility_may_be_overridden") is not False
+        or human_review.get("sampling_algorithm")
+        != "lowest_automated_passed_cycle_by_repository_class"
+    ):
+        raise ValueError("the Phase 8 campaign-level human review contract changed")
     if (
         evidence.get("required_capture_format")
         != "codex_mcp_completion_rollout_jsonl"
@@ -665,24 +692,14 @@ def load_definition() -> dict[str, Any]:
     ):
         raise ValueError("the Phase 8 materiality or work-blocker contract changed")
     materiality_review = evidence.get("materiality_review", {})
-    observation_schema = evidence.get("observation_schema", {})
-    if (
-        materiality_review
-        != {
+    if materiality_review != {
             "kind": "phase8_materiality_review",
             "accepted_classification": "user_owned_material",
             "required_independent_review_status": "accepted",
             "purpose": "bounded independent-review gate rather than mechanical semantic proof",
             "visibility": "evaluator_input_only",
-        }
-        or observation_schema
-        != {
-            "required_fields": ["status", "basis"],
-            "basis_maximum_utf8_bytes": MAX_REVIEW_TEXT_BYTES,
-            "templates_must_not_prefill_passed": True,
-        }
-    ):
-        raise ValueError("the Phase 8 materiality-review or observation schema changed")
+        }:
+        raise ValueError("the Phase 8 materiality-review contract changed")
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
@@ -808,7 +825,7 @@ def load_real_session_cycle(reference: Any, manifest_directory: Path) -> dict[st
     if not isinstance(value, dict):
         raise ValueError("real-session evidence must be a JSON object")
     value["_evidence_file_sha256"] = sha256(evidence_path)
-    value["_evidence_directory"] = str(evidence_path.parent)
+    value["_evidence_directory"] = str(manifest_directory.resolve())
     return value
 
 
@@ -897,6 +914,128 @@ def verified_evidence_path(
     if not path.is_file() or sha256(path) != expected_hash:
         return None
     return path
+
+
+def verified_json_evidence(
+    reference: Any,
+    evidence_directory: Path | None,
+) -> tuple[Path | None, dict[str, Any] | None]:
+    path = verified_evidence_path(reference, evidence_directory)
+    if path is None:
+        return None, None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return path, None
+    return path, value if isinstance(value, dict) else None
+
+
+def campaign_support_evidence(
+    evidence: dict[str, Any],
+    evidence_directory: Path | None,
+    bundle: CanonicalBundle | None,
+    *,
+    project_id: str | None,
+    candidate_revision: str | None,
+    kind: str,
+    cycle: int,
+) -> tuple[dict[str, bool], dict[str, Any]]:
+    _runtime_path, runtime = verified_json_evidence(
+        evidence.get("runtime_summary"), evidence_directory
+    )
+    _activation_path, activation = verified_json_evidence(
+        evidence.get("activation_summary"), evidence_directory
+    )
+    _documents_path, documents = verified_json_evidence(
+        evidence.get("generated_documents"), evidence_directory
+    )
+    _snapshot_path, snapshot = verified_json_evidence(
+        evidence.get("viewer_snapshot"), evidence_directory
+    )
+    document_files_valid = False
+    if (
+        isinstance(documents, dict)
+        and documents.get("kind") == "phase8_generated_document_evidence_summary"
+        and documents.get("status") == "passed"
+    ):
+        document_values = documents.get("documents")
+        document_files_valid = (
+            isinstance(document_values, dict)
+            and len(document_values) == 4
+            and all(isinstance(item, dict) for item in document_values.values())
+            and all(
+                item.get("status") == "passed"
+                and all(
+                    format_value.get("status") == "passed"
+                    and verified_evidence_path(
+                        {
+                            "file": format_value.get("relative_evidence_path"),
+                            "sha256": format_value.get("sha256"),
+                        },
+                        evidence_directory,
+                    )
+                    is not None
+                    for format_value in item.get("formats", {}).values()
+                )
+                and len(item.get("formats", {})) == 2
+                for item in document_values.values()
+            )
+        )
+    snapshot_file = (
+        verified_evidence_path(
+            {
+                "file": snapshot.get("relative_evidence_path"),
+                "sha256": snapshot.get("sha256"),
+            },
+            evidence_directory,
+        )
+        if isinstance(snapshot, dict)
+        else None
+    )
+    checks = {
+        "canonical_bundle_and_provenance": (
+            bundle is not None
+            and nonempty_string(project_id)
+            and bundle.project_id == project_id
+        ),
+        "generated_document_outputs": document_files_valid,
+        "static_viewer_snapshot": (
+            isinstance(snapshot, dict)
+            and snapshot.get("kind") == "phase8_viewer_snapshot_evidence_summary"
+            and snapshot.get("status") == "passed"
+            and snapshot.get("project_id") == project_id
+            and snapshot.get("candidate_head") == candidate_revision
+            and snapshot.get("repository_class") == kind
+            and snapshot.get("cycle") == cycle
+            and snapshot_file is not None
+        ),
+        "bounded_runtime_and_activation_evidence": (
+            isinstance(runtime, dict)
+            and runtime.get("kind") == "phase8_bounded_runtime_summary"
+            and runtime.get("content_included") is False
+            and isinstance(activation, dict)
+            and activation.get("kind") == "phase8_dogfood_activation_summary"
+            and activation.get("repository_class") == kind
+            and activation.get("cycle") == cycle
+            and activation.get("work_session_start_activation_observed") is True
+            and activation.get("resume_session_start_activation_observed") is True
+        ),
+    }
+    return checks, {
+        "canonical_bundle_sha256": bundle.source_sha256 if bundle is not None else None,
+        "generated_document_summary_status": (
+            documents.get("status") if isinstance(documents, dict) else "unavailable"
+        ),
+        "static_viewer_snapshot_status": (
+            snapshot.get("status") if isinstance(snapshot, dict) else "unavailable"
+        ),
+        "runtime_summary_content_included": (
+            runtime.get("content_included") if isinstance(runtime, dict) else None
+        ),
+        "activation_summary_complete": checks[
+            "bounded_runtime_and_activation_evidence"
+        ],
+    }
 
 
 def unique_call(capture: CodexCapture | None, operation: str) -> ToolCall | None:
@@ -1227,7 +1366,7 @@ def cycle_descriptor_errors(
     errors.extend(materiality_review_errors(
         value.get("materiality_review"),
         oracle,
-        candidate_revision=candidate_revision,
+        candidate_revision=candidate_revision or git_head(ROOT),
         target_revision=revision if isinstance(revision, str) else None,
         candidate_root=candidate_root,
         target_repository=target_repository,
@@ -2083,6 +2222,28 @@ def real_session_evidence(
         resume_capture = None
         bundle = None
 
+    support_checks, support_basis = campaign_support_evidence(
+        evidence,
+        evidence_directory,
+        bundle,
+        project_id=bundle.project_id if bundle is not None else None,
+        candidate_revision=candidate_revision or git_head(ROOT),
+        kind=kind,
+        cycle=cycle,
+    )
+    support_references_present = {
+        name: isinstance(evidence.get(reference), dict)
+        for name, reference in {
+            "canonical_bundle_and_provenance": "canonical_bundle",
+            "generated_document_outputs": "generated_documents",
+            "static_viewer_snapshot": "viewer_snapshot",
+            "bounded_runtime_and_activation_evidence": "runtime_summary",
+        }.items()
+    }
+    support_references_present["bounded_runtime_and_activation_evidence"] &= isinstance(
+        evidence.get("activation_summary"), dict
+    )
+
     decision_ok, decision_id, question_id, question_revision, user_source_id = decision_facts(
         work_capture, bundle
     )
@@ -2437,6 +2598,10 @@ def real_session_evidence(
         "recall_precedes_inspection_and_continuation": evidence_check(references_present, ordering_ok),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
         "meaningful_recalled_continuation": evidence_check(references_present, continuation_ok),
+        **{
+            name: evidence_check(support_references_present[name], passed)
+            for name, passed in support_checks.items()
+        },
     }
     return {
         "evidence_class": "actual_repository_real_session",
@@ -2506,6 +2671,7 @@ def real_session_evidence(
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
         "question_relevance_review": question_review_basis,
+        "campaign_support_evidence": support_basis,
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
 
@@ -2536,31 +2702,6 @@ def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, s
             "basis": ",".join(f"{key}:{value}" for key, value in routed.items()),
         }
     return result
-
-
-def observation_template(names: list[str] | tuple[str, ...]) -> dict[str, dict[str, str]]:
-    return {
-        name: {
-            "status": "skipped",
-            "basis": "Not yet observed; replace with a bounded operator observation.",
-        }
-        for name in names
-    }
-
-
-def validate_observation_object(observation: Any, name: str) -> tuple[str, str]:
-    if not isinstance(observation, dict) or set(observation) != {"status", "basis"}:
-        raise ValueError(f"Phase 8 observation must contain only status and basis: {name}")
-    status = observation.get("status")
-    basis = observation.get("basis")
-    if status not in ALLOWED_STATUS:
-        raise ValueError(f"Phase 8 observation has an invalid status: {name}")
-    if (
-        not nonempty_string(basis)
-        or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
-    ):
-        raise ValueError(f"Phase 8 observation needs a bounded basis: {name}")
-    return str(status), str(basis)
 
 
 VOID_HTML_ELEMENTS = {
@@ -2701,7 +2842,7 @@ def parse_accessibility_html(content: str, *, expected_language: str | None) -> 
         "visible_focus": "passed" if re.search(r":focus(?:-visible)?", style) else "partial",
         "not_color_only": "partial",
         "headings_and_labels": "passed" if headings_and_labels else "failed",
-        "narrow_and_zoomed_presentation": "partial" if parser.viewport else "failed",
+        "narrow_and_zoomed_presentation": "passed" if parser.viewport else "failed",
         "document_html_language": "passed" if required_language is None or actual_language == required_language else "failed",
     }
     return {
@@ -2712,70 +2853,6 @@ def parse_accessibility_html(content: str, *, expected_language: str | None) -> 
         **controls,
         "label_count": len(parser.labels),
         "viewport": parser.viewport,
-    }
-
-
-def qualify_accessibility(
-    machine_result: dict[str, Any],
-    observations: dict[str, Any] | None,
-    permitted: set[str],
-) -> dict[str, Any]:
-    machine_checks = dict(machine_result.get("checks", {}))
-    checks = dict(machine_checks)
-    qualified: dict[str, dict[str, str]] = {}
-    for name, observation in (observations or {}).items():
-        if name not in permitted or not isinstance(observation, dict):
-            raise ValueError(f"unsupported accessibility observation: {name}")
-        status, basis = validate_observation_object(observation, name)
-        if name not in machine_checks:
-            qualified[name] = {
-                "machine_status": "absent",
-                "observation_status": status,
-                "effective_status": machine_result.get("status", "failed"),
-                "basis": basis,
-            }
-            continue
-        machine_status = machine_checks[name]
-        effective = machine_status
-        if status == "failed":
-            effective = "failed"
-        elif status == "passed" and machine_status == "partial":
-            effective = "passed"
-        checks[name] = effective
-        qualified[name] = {
-            "machine_status": machine_status,
-            "observation_status": status,
-            "effective_status": effective,
-            "basis": basis,
-        }
-    barrier = machine_result.get("status")
-    effective_inputs = dict(checks)
-    if barrier in {"failed", "environment_blocked", "unsupported", "skipped"}:
-        effective_inputs["machine_availability"] = barrier
-    return {
-        **machine_result,
-        "status": status_from_steps(effective_inputs),
-        "checks": checks,
-        "machine_checks": machine_checks,
-        "observations": qualified,
-    }
-
-
-def qualify_quality_observation(
-    machine: dict[str, str],
-    observation: dict[str, Any],
-    name: str,
-) -> dict[str, str]:
-    observed_status, basis = validate_observation_object(observation, name)
-    machine_status = machine.get("status", "failed")
-    effective = machine_status
-    if observed_status == "failed":
-        effective = "failed"
-    elif observed_status == "passed" and machine_status in {"passed", "partial"}:
-        effective = "passed"
-    return {
-        "status": effective,
-        "basis": f"machine={machine_status}; observation={observed_status}; {basis}",
     }
 
 
@@ -2863,8 +2940,6 @@ def sanitized_cycle(
     real_session_raw: dict[str, Any] | None,
     peak_memory: dict[str, Any],
     repeated_resources: dict[str, Any],
-    manual_observations: dict[str, Any] | None = None,
-    accessibility_observations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps = raw.get("steps", {})
     step_statuses = deterministic_v11_statuses(steps)
@@ -2902,22 +2977,7 @@ def sanitized_cycle(
         else "failed"
     )
     accessibility["status"] = status_from_steps(accessibility["checks"])
-    accessibility = qualify_accessibility(
-        accessibility,
-        accessibility_observations,
-        set(load_definition()["permitted_accessibility_observations"]),
-    )
     quality = quality_observations(step_statuses)
-    subjective = {
-        "question_relevance",
-        "decision_comprehension",
-        "interruption_cost",
-        "document_fidelity_and_usefulness",
-    }
-    for name, observation in (manual_observations or {}).items():
-        if name not in subjective or not isinstance(observation, dict):
-            raise ValueError(f"unsupported manual Phase 8 observation: {name}")
-        quality[name] = qualify_quality_observation(quality[name], observation, name)
     actual = real_session_evidence(
         real_session_raw,
         kind=kind,
@@ -2957,7 +3017,7 @@ def sanitized_cycle(
             "qualifies_as_real_session_dogfood": False,
         },
         "real_session_dogfood": actual,
-        "quality_observations": quality,
+        "machine_quality_evidence": quality,
         "measurements": metrics,
         "resource_qualification": resource_qualification,
         "accessibility": accessibility,
@@ -2993,11 +3053,17 @@ def aggregate_resource_qualification(repositories: list[dict[str, Any]]) -> dict
     }
 
 
-def aggregate_accessibility(repositories: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate_machine_accessibility(
+    repositories: list[dict[str, Any]],
+    definition: dict[str, Any],
+) -> dict[str, Any]:
+    required = set(definition["automated_accessibility_checks"])
     checks: dict[str, str] = {}
     for repository in repositories:
         for cycle in repository.get("cycles", []):
             for name, status in cycle.get("accessibility", {}).get("checks", {}).items():
+                if name not in required:
+                    continue
                 current = checks.get(name)
                 if current == "failed" or status == "failed":
                     checks[name] = "failed"
@@ -3005,12 +3071,15 @@ def aggregate_accessibility(repositories: list[dict[str, Any]]) -> dict[str, Any
                     checks[name] = "partial"
                 else:
                     checks[name] = status
+    for name in required:
+        checks.setdefault(name, "failed")
     return {
         "status": status_from_steps(checks),
         "checks": checks,
+        "required_checks": list(definition["automated_accessibility_checks"]),
         "limits": [
-            "No standards certification or human-subject accessibility qualification was performed.",
-            "Narrow and zoom behavior combines live HTML/viewport structure with a bounded operator observation; no browser layout engine or standards certification was used.",
+            "Machine checks do not claim human keyboard, focus, color, or zoom usability.",
+            "No standards certification or human accessibility review was performed by the automated run.",
         ],
     }
 
@@ -3060,6 +3129,54 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
         raise ValueError("unexpected dogfood result kind")
     if not re.fullmatch(r"[0-9a-f]{40}", result.get("candidate_head", "")):
         raise ValueError("dogfood result has no exact candidate HEAD")
+    if "status" in result or "blockers" in result:
+        raise ValueError("dogfood result may not conflate automated and replacement status")
+    automated = result.get("automated_qualification")
+    human = result.get("human_review")
+    replacement = result.get("replacement_qualification")
+    if (
+        not isinstance(automated, dict)
+        or automated.get("status") not in ALLOWED_STATUS
+        or not isinstance(automated.get("passed"), bool)
+        or not isinstance(automated.get("blockers"), list)
+        or automated["passed"]
+        != (automated["status"] == "passed" and not automated["blockers"])
+        or result.get("automated_campaign_complete") is not True
+    ):
+        raise ValueError("dogfood automated qualification is incomplete or inconsistent")
+    if (
+        not isinstance(human, dict)
+        or human.get("state") not in {"not_provided", "passed", "failed"}
+        or human.get("required_samples")
+        != deterministic_human_review_samples(result.get("repositories", []))
+        or (
+            human.get("state") == "not_provided"
+            and human.get("artifact_sha256") is not None
+        )
+        or (
+            human.get("state") != "not_provided"
+            and not valid_capture_sha256(human.get("artifact_sha256"))
+        )
+    ):
+        raise ValueError("dogfood human-review state is incomplete or inconsistent")
+    expected_replacement = (
+        "failed"
+        if not automated["passed"]
+        else "pending_human_review"
+        if human["state"] == "not_provided"
+        else "passed"
+        if human["state"] == "passed"
+        else "failed"
+    )
+    if (
+        not isinstance(replacement, dict)
+        or replacement.get("status") != expected_replacement
+        or not nonempty_string(replacement.get("basis"))
+        or result.get("replacement_pass_candidate")
+        != (expected_replacement == "passed")
+        or result.get("phase_9_ready") != (expected_replacement == "passed")
+    ):
+        raise ValueError("dogfood replacement qualification is incomplete or inconsistent")
     repositories = result.get("repositories", [])
     if [item.get("class") for item in repositories] != list(CLASSES):
         raise ValueError("dogfood result does not contain the three ordered repository classes")
@@ -3123,6 +3240,17 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 != repeated.get("repetition_count")
             ):
                 raise ValueError("passed repeated-resource evidence is not bounded and measured")
+            quality = cycle.get("machine_quality_evidence", {})
+            if (
+                not isinstance(quality, dict)
+                or set(quality) != set(definition["quality_observations"])
+                or not all(isinstance(observation, dict) for observation in quality.values())
+                or any(
+                observation.get("status") not in ALLOWED_STATUS
+                for observation in quality.values()
+                )
+            ):
+                raise ValueError("dogfood cycle machine quality evidence is incomplete")
             real_invocations.extend(
                 [
                     actual.get("work_session_id"),
@@ -3142,24 +3270,22 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
         )
     ):
         raise ValueError("dogfood aggregate resource qualification is incomplete")
-    if result.get("replacement_pass_candidate") is True:
-        if result.get("status") != "passed" or result.get("blockers"):
-            raise ValueError("replacement pass cannot have a non-pass status or blocker")
+    if automated["passed"]:
         if result.get("decision_revisit", {}).get("observed_active_triggers"):
             raise ValueError("replacement pass cannot have an active Decision revisit trigger")
         if result.get("candidate_worktree") != {"clean_before": True, "clean_after": True}:
             raise ValueError("replacement pass requires a clean candidate throughout dogfood")
         if result.get("fixture_regression", {}).get("status") != "passed":
             raise ValueError("replacement pass requires current structural/fallback regression")
-        if result.get("accessibility", {}).get("status") != "passed":
-            raise ValueError("replacement pass requires passed accessibility evaluation")
+        if result.get("machine_accessibility", {}).get("status") != "passed":
+            raise ValueError("automated pass requires passed machine accessibility")
         if result.get("resource_qualification", {}).get("status") != "passed":
             raise ValueError("replacement pass requires passed resource qualification")
-        accessibility_checks = result.get("accessibility", {}).get("checks", {})
-        if set(accessibility_checks) != set(definition["accessibility_checks"]) or any(
+        accessibility_checks = result.get("machine_accessibility", {}).get("checks", {})
+        if set(accessibility_checks) != set(definition["automated_accessibility_checks"]) or any(
             status != "passed" for status in accessibility_checks.values()
         ):
-            raise ValueError("replacement pass requires every accessibility check to pass")
+            raise ValueError("automated pass requires every machine accessibility check to pass")
         for repository in repositories:
             if repository.get("status") != "passed" or not repository.get("independent_fresh_runtime_cycles"):
                 raise ValueError("replacement pass requires two independent passed repository cycles")
@@ -3173,20 +3299,15 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                     status != "passed" for status in actual.get("checks", {}).values()
                 ):
                     raise ValueError("replacement pass requires complete real-session dogfood evidence")
-                if any(
-                    observation.get("status") != "passed"
-                    for observation in cycle.get("quality_observations", {}).values()
-                ):
-                    raise ValueError("replacement pass contains an unqualified quality observation")
                 if cycle.get("resource_qualification", {}).get("status") != "passed":
-                    raise ValueError("replacement pass contains unqualified resource evidence")
+                    raise ValueError("automated pass contains unqualified resource evidence")
         if (
             any(not nonempty_string(identity) for identity in real_invocations)
             or len(real_invocations)
             != definition["real_session_evidence"]["full_replacement_session_count"]
             or len(set(real_invocations)) != len(real_invocations)
         ):
-            raise ValueError("replacement pass requires twelve globally distinct Codex invocations")
+            raise ValueError("automated pass requires twelve globally distinct Codex invocations")
     sanitize_check(result)
 
 
@@ -3211,6 +3332,277 @@ def aggregate_status(
         if status in statuses:
             return status
     return "environment_blocked" if blockers else "passed"
+
+
+def deterministic_human_review_samples(
+    repositories: list[dict[str, Any]],
+) -> dict[str, Any]:
+    selected: dict[str, dict[str, Any]] = {}
+    for repository in repositories:
+        kind = repository.get("class")
+        candidates = [
+            cycle
+            for cycle in repository.get("cycles", [])
+            if cycle.get("status") == "passed"
+            and cycle.get("real_session_dogfood", {}).get("status") == "passed"
+        ]
+        if kind in CLASSES and candidates:
+            cycle = min(candidates, key=lambda item: item.get("cycle", 999))
+            selected[str(kind)] = {
+                "repository_class": kind,
+                "cycle": cycle["cycle"],
+                "project_id": cycle.get("project_identity"),
+            }
+    interaction = [selected[kind] for kind in CLASSES if kind in selected]
+    simple = selected.get("small-python")
+    complex_sample = selected.get("polyglot-medium")
+    live_viewer = selected.get("volicord")
+    return {
+        "algorithm": "lowest_automated_passed_cycle_by_repository_class",
+        "interaction": interaction,
+        "documents": {
+            "simple": simple,
+            "complex": complex_sample,
+        },
+        "viewer_snapshot": complex_sample,
+        "live_viewer": {
+            "sample": live_viewer,
+            "locales": ["en", "ko"],
+        },
+    }
+
+
+def human_review_observation_template() -> dict[str, str]:
+    return {
+        "status": "not_provided",
+        "basis": "Not yet reviewed; replace with a bounded human observation.",
+    }
+
+
+def human_review_template(automated_result: dict[str, Any], result_sha256: str) -> dict[str, Any]:
+    if not isinstance(automated_result, dict):
+        raise ValueError("automated Dogfood result must be a JSON object")
+    validate_result(automated_result, load_definition())
+    if automated_result["automated_qualification"]["passed"] is not True:
+        raise ValueError("human review is only meaningful after automated qualification passes")
+    samples = automated_result["human_review"]["required_samples"]
+    return {
+        "kind": "phase8_dogfood_human_review",
+        "candidate_head": automated_result["candidate_head"],
+        "automated_result_sha256": result_sha256,
+        "sampling": samples,
+        "interaction_reviews": [
+            {
+                "sample": sample,
+                "question_relevance": human_review_observation_template(),
+                "decision_comprehension": human_review_observation_template(),
+                "interruption_cost": human_review_observation_template(),
+            }
+            for sample in samples["interaction"]
+        ],
+        "document_reviews": {
+            complexity: {
+                "sample": sample,
+                "document_fidelity_and_readability": human_review_observation_template(),
+            }
+            for complexity, sample in samples["documents"].items()
+        },
+        "viewer_snapshot_review": {
+            "sample": samples["viewer_snapshot"],
+            "viewer_human_usability": human_review_observation_template(),
+        },
+        "live_viewer_accessibility": {
+            "sample": samples["live_viewer"]["sample"],
+            "locales": {
+                locale: {
+                    criterion: human_review_observation_template()
+                    for criterion in (
+                        "keyboard_reachability",
+                        "visible_focus",
+                        "not_color_only",
+                        "narrow_and_zoomed_presentation",
+                    )
+                }
+                for locale in samples["live_viewer"]["locales"]
+            },
+        },
+    }
+
+
+def human_review_observations(artifact: dict[str, Any]) -> list[dict[str, Any]]:
+    values: list[dict[str, Any]] = []
+    for review in artifact.get("interaction_reviews", []):
+        if isinstance(review, dict):
+            values.extend(
+                review.get(name)
+                for name in (
+                    "question_relevance",
+                    "decision_comprehension",
+                    "interruption_cost",
+                )
+            )
+    documents = artifact.get("document_reviews", {})
+    if isinstance(documents, dict):
+        values.extend(
+            review.get("document_fidelity_and_readability")
+            for review in documents.values()
+            if isinstance(review, dict)
+        )
+    snapshot = artifact.get("viewer_snapshot_review")
+    if isinstance(snapshot, dict):
+        values.append(snapshot.get("viewer_human_usability"))
+    live = artifact.get("live_viewer_accessibility", {})
+    locales = live.get("locales", {}) if isinstance(live, dict) else {}
+    if isinstance(locales, dict):
+        for review in locales.values():
+            if isinstance(review, dict):
+                values.extend(review.values())
+    return values
+
+
+def validate_human_review_artifact(
+    artifact: dict[str, Any],
+    automated_result: dict[str, Any],
+    automated_result_sha256: str,
+) -> str:
+    if not isinstance(artifact, dict):
+        raise ValueError("human review artifact must be a JSON object")
+    expected_samples = automated_result["human_review"]["required_samples"]
+    expected_artifact_fields = {
+        "kind",
+        "candidate_head",
+        "automated_result_sha256",
+        "sampling",
+        "interaction_reviews",
+        "document_reviews",
+        "viewer_snapshot_review",
+        "live_viewer_accessibility",
+    }
+    interaction_reviews = artifact.get("interaction_reviews")
+    document_reviews = artifact.get("document_reviews")
+    snapshot_review = artifact.get("viewer_snapshot_review")
+    live_review = artifact.get("live_viewer_accessibility")
+    locales = live_review.get("locales") if isinstance(live_review, dict) else None
+    if (
+        set(artifact) != expected_artifact_fields
+        or artifact.get("kind") != "phase8_dogfood_human_review"
+        or artifact.get("candidate_head") != automated_result.get("candidate_head")
+        or artifact.get("automated_result_sha256") != automated_result_sha256
+        or artifact.get("sampling") != expected_samples
+        or not isinstance(interaction_reviews, list)
+        or len(interaction_reviews) != len(CLASSES)
+        or not all(isinstance(item, dict) for item in interaction_reviews)
+        or not isinstance(document_reviews, dict)
+        or set(document_reviews) != {"simple", "complex"}
+        or not all(isinstance(item, dict) for item in document_reviews.values())
+        or not isinstance(snapshot_review, dict)
+        or not isinstance(live_review, dict)
+        or not isinstance(locales, dict)
+        or set(locales) != {"en", "ko"}
+        or not all(isinstance(item, dict) for item in locales.values())
+    ):
+        raise ValueError("human review artifact identity or deterministic sampling is invalid")
+    if [item.get("sample") for item in interaction_reviews] != expected_samples[
+        "interaction"
+    ]:
+        raise ValueError("human interaction review samples are not deterministic")
+    if any(
+        set(item)
+        != {
+            "sample",
+            "question_relevance",
+            "decision_comprehension",
+            "interruption_cost",
+        }
+        for item in interaction_reviews
+    ):
+        raise ValueError("human interaction review criteria are incomplete")
+    for complexity, sample in expected_samples["documents"].items():
+        review = document_reviews[complexity]
+        if (
+            set(review) != {"sample", "document_fidelity_and_readability"}
+            or review.get("sample") != sample
+        ):
+            raise ValueError("human document review samples are not deterministic")
+    if (
+        set(snapshot_review) != {"sample", "viewer_human_usability"}
+        or snapshot_review.get("sample") != expected_samples["viewer_snapshot"]
+    ):
+        raise ValueError("human Viewer snapshot sample is not deterministic")
+    if (
+        set(live_review) != {"sample", "locales"}
+        or live_review.get("sample") != expected_samples["live_viewer"]["sample"]
+        or any(
+            set(review) != set(load_definition()["human_review_contract"]["live_viewer_criteria"])
+            for review in locales.values()
+        )
+    ):
+        raise ValueError("human live Viewer sample is not deterministic")
+    observations = human_review_observations(artifact)
+    expected_count = len(CLASSES) * 3 + 2 + 1 + 2 * 4
+    if len(observations) != expected_count:
+        raise ValueError("human review artifact does not contain every required criterion")
+    statuses: list[str] = []
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, dict) or set(observation) != {"status", "basis"}:
+            raise ValueError("human review observations require status and basis")
+        status = observation.get("status")
+        basis = observation.get("basis")
+        if status not in {"not_provided", "passed", "failed"}:
+            raise ValueError("human review observation status is invalid")
+        if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+            raise ValueError(f"human review observation {index} has no bounded basis")
+        statuses.append(str(status))
+    if set(statuses) == {"not_provided"}:
+        return "not_provided"
+    return "passed" if set(statuses) == {"passed"} else "failed"
+
+
+def combine_human_review(
+    automated_result: dict[str, Any],
+    artifact: dict[str, Any],
+    automated_result_sha256: str,
+) -> dict[str, Any]:
+    if not isinstance(automated_result, dict):
+        raise ValueError("automated Dogfood result must be a JSON object")
+    definition = load_definition()
+    validate_result(automated_result, definition)
+    if automated_result.get("human_review", {}).get("state") != "not_provided":
+        raise ValueError("qualification requires the immutable automated Dogfood result")
+    review_state = validate_human_review_artifact(
+        artifact,
+        automated_result,
+        automated_result_sha256,
+    )
+    result = json.loads(json.dumps(automated_result))
+    result["human_review"] = {
+        "state": review_state,
+        "artifact_sha256": hashlib.sha256(
+            json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+        "required_samples": artifact["sampling"],
+    }
+    automated_passed = result["automated_qualification"]["passed"] is True
+    if not automated_passed:
+        replacement_status = "failed"
+        basis = "automated qualification did not pass and cannot be overridden by human review"
+    elif review_state == "not_provided":
+        replacement_status = "pending_human_review"
+        basis = "automated qualification passed; campaign-level human review was not provided"
+    elif review_state == "passed":
+        replacement_status = "passed"
+        basis = "automated qualification and the maintained campaign-level human review passed"
+    else:
+        replacement_status = "failed"
+        basis = "one or more maintained qualitative human-review criteria did not pass"
+    result["replacement_qualification"] = {
+        "status": replacement_status,
+        "basis": basis,
+    }
+    result["replacement_pass_candidate"] = replacement_status == "passed"
+    result["phase_9_ready"] = replacement_status == "passed"
+    validate_result(result, definition)
+    return result
 
 
 def run_fixture_regression(v11: Any, raw_root: Path, base_env: dict[str, str], definition: dict[str, Any]) -> dict[str, Any]:
@@ -3331,8 +3723,6 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         ),
                         peak_memory,
                         repeated_resources,
-                        specs[kind].get("manual_observations", {}).get(str(cycle_number)),
-                        specs[kind].get("accessibility_observations", {}).get(str(cycle_number)),
                     ))
             else:
                 for cycle_number in range(1, definition["candidate_cycle_count"] + 1):
@@ -3364,7 +3754,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
                             "qualifies_as_real_session_dogfood": False,
                         },
                         "real_session_dogfood": actual,
-                        "quality_observations": quality_observations(skipped),
+                        "machine_quality_evidence": quality_observations(skipped),
                         "measurements": {
                             **{name: None for name in definition["measurements"]},
                             "cycle_duration_ms": None,
@@ -3402,7 +3792,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
     finally:
         v11.prepare_repository = original_prepare
     regression = run_fixture_regression(v11, raw_root, base_env, definition)
-    accessibility = aggregate_accessibility(repository_results)
+    accessibility = aggregate_machine_accessibility(repository_results, definition)
     resource_qualification = aggregate_resource_qualification(repository_results)
     try:
         maintained_decisions = v11.read_decision_revisit_assessment(DECISION_REGISTER)
@@ -3423,7 +3813,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
     if observed_triggers:
         blockers.append("dogfood evidence activates one or more accepted Decision revisit triggers")
     if accessibility.get("status") != "passed":
-        blockers.append("accessibility evaluation has a blocker or unqualified criterion")
+        blockers.append("machine accessibility qualification did not pass")
     if resource_qualification.get("status") != "passed":
         blockers.append("peak-memory or repeated-resource qualification did not pass")
     for repository in repository_results:
@@ -3434,26 +3824,16 @@ def run_evaluation(args: argparse.Namespace) -> int:
                 blockers.append(
                     f"{repository['class']} cycle {cycle['cycle']} lacks qualifying real-session dogfood evidence"
                 )
-            incomplete_quality = sorted(
-                name
-                for name, observation in cycle["quality_observations"].items()
-                if observation.get("status") != "passed"
-            )
-            if incomplete_quality:
-                blockers.append(
-                    f"{repository['class']} cycle {cycle['cycle']} has unqualified quality observations: "
-                    + ", ".join(incomplete_quality)
-                )
     if regression["status"] != "passed":
         blockers.append("maintained structural/fallback regression did not pass")
-    status = aggregate_status(
+    automated_status = aggregate_status(
         repository_results,
         regression,
         accessibility,
         resource_qualification,
         blockers,
     )
-    replacement_pass_candidate = status == "passed" and not blockers
+    automated_passed = automated_status == "passed" and not blockers
     result = {
         "kind": "phase8_dogfood_result",
         "candidate_head": candidate_head,
@@ -3467,12 +3847,30 @@ def run_evaluation(args: argparse.Namespace) -> int:
             "python": platform.python_version(),
         },
         "candidate_worktree": {"clean_before": clean_before, "clean_after": clean_after},
-        "status": status,
-        "replacement_pass_candidate": replacement_pass_candidate,
-        "blockers": blockers,
+        "automated_campaign_complete": True,
+        "automated_qualification": {
+            "status": automated_status,
+            "passed": automated_passed,
+            "blockers": blockers,
+        },
+        "human_review": {
+            "state": "not_provided",
+            "artifact_sha256": None,
+            "required_samples": deterministic_human_review_samples(repository_results),
+        },
+        "replacement_qualification": {
+            "status": "pending_human_review" if automated_passed else "failed",
+            "basis": (
+                "automated qualification passed; campaign-level human review was not provided"
+                if automated_passed
+                else "automated qualification did not pass"
+            ),
+        },
+        "replacement_pass_candidate": False,
+        "phase_9_ready": False,
         "repositories": repository_results,
         "fixture_regression": regression,
-        "accessibility": accessibility,
+        "machine_accessibility": accessibility,
         "resource_qualification": resource_qualification,
         "privacy_and_transmission": {
             "evidence_mode": definition["real_session_evidence"]["mode"],
@@ -3489,7 +3887,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
             "observed_active_triggers": observed_triggers,
         },
         "known_limits": [
-            "Question relevance, decision comprehension, interruption cost, and document usefulness include agent-observed rather than human-subject evidence.",
+            "No subjective human usability or live manual accessibility conclusion is included in automated qualification.",
             "Peak RSS is an observed Linux process-tree sample for each dogfood cycle, not a universal product memory ceiling.",
             "Repeated-resource qualification is a bounded fixed-input rehearsal and does not claim indefinite-duration stability.",
             "A successful unavailable-provider recovery path is not commercial semantic-provider qualification.",
@@ -3506,13 +3904,15 @@ def run_evaluation(args: argparse.Namespace) -> int:
     validate_result(result, definition)
     write_json(output / "dogfood-result.json", result)
     print(json.dumps({
-        "status": status,
-        "replacement_pass_candidate": replacement_pass_candidate,
+        "automated_qualification": automated_status,
+        "automated_passed": automated_passed,
+        "human_review": "not_provided",
+        "replacement_qualification": result["replacement_qualification"]["status"],
         "candidate_head": candidate_head,
         "blockers": blockers,
         "result": "dogfood-result.json",
     }, indent=2, sort_keys=True))
-    return 0 if replacement_pass_candidate else 1
+    return 0 if automated_passed else 1
 
 
 def fixture_work_user_task(kind: str, cycle: int) -> str:
@@ -4321,6 +4721,82 @@ def real_session_fixture(
         "payload": payload,
     }
     write_json(bundle_path, bundle)
+    support_prefix = f"{kind}-{cycle}"
+    generated_documents: dict[str, Any] = {}
+    for document_kind in (
+        "project-architecture-guide",
+        "decision-report",
+        "implementation-plan",
+        "handoff-resume",
+    ):
+        formats: dict[str, Any] = {}
+        for format_name, suffix in (("markdown", "md"), ("html", "html")):
+            path = evidence_directory / f"{support_prefix}-{document_kind}.{suffix}"
+            path.write_text(
+                f"{document_kind} {format_name} fixture evidence\n",
+                encoding="utf-8",
+            )
+            formats[format_name] = {
+                "status": "passed",
+                "relative_evidence_path": path.name,
+                "bytes": path.stat().st_size,
+                "sha256": sha256(path),
+            }
+        generated_documents[document_kind] = {
+            "status": "passed",
+            "formats": formats,
+        }
+    documents_summary_path = evidence_directory / f"{support_prefix}-documents-summary.json"
+    write_json(documents_summary_path, {
+        "kind": "phase8_generated_document_evidence_summary",
+        "schema_version": 1,
+        "language": "en",
+        "status": "passed",
+        "required_document_kinds": list(generated_documents),
+        "documents": generated_documents,
+    })
+    snapshot_html_path = evidence_directory / f"{support_prefix}-viewer-snapshot.html"
+    snapshot_html_path.write_text(
+        '<!doctype html><html lang="en"><body data-viewer-mode="snapshot">fixture</body></html>\n',
+        encoding="utf-8",
+    )
+    snapshot_summary_path = evidence_directory / f"{support_prefix}-viewer-snapshot-summary.json"
+    write_json(snapshot_summary_path, {
+        "kind": "phase8_viewer_snapshot_evidence_summary",
+        "schema_version": 1,
+        "status": "passed",
+        "project_id": project,
+        "candidate_head": git_head(ROOT),
+        "repository_class": kind,
+        "cycle": cycle,
+        "locale": "en",
+        "requested_language": "en",
+        "relative_evidence_path": snapshot_html_path.name,
+        "bytes": snapshot_html_path.stat().st_size,
+        "sha256": sha256(snapshot_html_path),
+    })
+    runtime_summary_path = evidence_directory / f"{support_prefix}-runtime-summary.json"
+    write_json(runtime_summary_path, {
+        "kind": "phase8_bounded_runtime_summary",
+        "runtime_home_bytes": 1024,
+        "derived_analysis_bytes": 128,
+        "managed_file_inventory": [],
+        "repository_config_present": True,
+        "repository_ownership_manifest_present": True,
+        "work_session_start_activation_observed": True,
+        "resume_session_start_activation_observed": True,
+        "content_included": False,
+    })
+    activation_summary_path = evidence_directory / f"{support_prefix}-activation-summary.json"
+    write_json(activation_summary_path, {
+        "kind": "phase8_dogfood_activation_summary",
+        "repository_class": kind,
+        "cycle": cycle,
+        "repository_config_present": True,
+        "repository_ownership_manifest_present": True,
+        "work_session_start_activation_observed": True,
+        "resume_session_start_activation_observed": True,
+    })
     return {
         "kind": "phase8_cycle_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
@@ -4339,6 +4815,10 @@ def real_session_fixture(
                 "resume": {"file": resume_capture.name, "sha256": sha256(resume_capture)},
             },
             "canonical_bundle": {"file": bundle_path.name, "sha256": sha256(bundle_path)},
+            "runtime_summary": {"file": runtime_summary_path.name, "sha256": sha256(runtime_summary_path)},
+            "activation_summary": {"file": activation_summary_path.name, "sha256": sha256(activation_summary_path)},
+            "generated_documents": {"file": documents_summary_path.name, "sha256": sha256(documents_summary_path)},
+            "viewer_snapshot": {"file": snapshot_summary_path.name, "sha256": sha256(snapshot_summary_path)},
         },
     }
 
@@ -4717,24 +5197,6 @@ def self_test() -> int:
         }[label]
         if not any(expected_error in error for error in errors):
             raise AssertionError(f"{label} descriptor qualified")
-    generated_observations = observation_template(
-        [
-            "question_relevance",
-            "decision_comprehension",
-            "interruption_cost",
-            "document_fidelity_and_usefulness",
-            "keyboard_reachability",
-            "visible_focus",
-            "not_color_only",
-            "narrow_and_zoomed_presentation",
-        ]
-    )
-    for name, observation in generated_observations.items():
-        status, basis = validate_observation_object(
-            json.loads(json.dumps(observation)), name
-        )
-        if status != "skipped" or not basis or "passed" in observation.values():
-            raise AssertionError("generated observation template did not round-trip safely")
     for fallback in ("||", "??"):
         parsed = parse_mcp_wrapper(
             "const r=await tools.mcp__volicord__recall({\"project_id\":\"01\"});\n"
@@ -5090,27 +5552,13 @@ def self_test() -> int:
         raise AssertionError("malformed heading hierarchy qualified")
     parsed["checks"]["korean_english_fixed_ui"] = "passed"
     parsed["status"] = status_from_steps(parsed["checks"])
-    accessibility = qualify_accessibility(
-        parsed,
-        {
-            "not_color_only": {
-                "status": "passed",
-                "basis": "Operator verified that every status includes a textual label.",
-            },
-            "narrow_and_zoomed_presentation": {
-                "status": "passed",
-                "basis": "Operator verified the live page at narrow width and browser zoom.",
-            },
-        },
-        set(definition["permitted_accessibility_observations"]),
-    )
-    if accessibility["status"] != "passed":
-        raise AssertionError("real parser and permitted observations did not reach accessibility pass")
-    accessibility_aggregate = aggregate_accessibility(
-        [{"cycles": [{"accessibility": accessibility}]}]
+    accessibility = parsed
+    accessibility_aggregate = aggregate_machine_accessibility(
+        [{"cycles": [{"accessibility": accessibility}]}],
+        definition,
     )
     if accessibility_aggregate["status"] != "passed":
-        raise AssertionError("qualified parser evidence did not reach aggregate accessibility pass")
+        raise AssertionError("machine-observable accessibility evidence did not pass")
 
     synthetic_repeated_resources = {
         **stable_resources,
@@ -5172,7 +5620,7 @@ def self_test() -> int:
                     "qualifies_as_real_session_dogfood": False,
                 },
                 "real_session_dogfood": actual,
-                "quality_observations": {
+                "machine_quality_evidence": {
                     name: {"status": "passed", "basis": "bounded observation"}
                     for name in definition["quality_observations"]
                 },
@@ -5186,20 +5634,100 @@ def self_test() -> int:
             "independent_fresh_runtime_cycles": True,
             "cycles": cycles,
         })
+    accessibility_aggregate = aggregate_machine_accessibility(repositories, definition)
+    samples = deterministic_human_review_samples(repositories)
     result = {
         "kind": "phase8_dogfood_result",
         "candidate_head": revision,
-        "status": "passed",
-        "replacement_pass_candidate": True,
-        "blockers": [],
+        "automated_campaign_complete": True,
+        "automated_qualification": {
+            "status": "passed",
+            "passed": True,
+            "blockers": [],
+        },
+        "human_review": {
+            "state": "not_provided",
+            "artifact_sha256": None,
+            "required_samples": samples,
+        },
+        "replacement_qualification": {
+            "status": "pending_human_review",
+            "basis": "automated qualification passed; campaign-level human review was not provided",
+        },
+        "replacement_pass_candidate": False,
+        "phase_9_ready": False,
         "repositories": repositories,
         "candidate_worktree": {"clean_before": True, "clean_after": True},
         "fixture_regression": {"status": "passed"},
-        "accessibility": accessibility_aggregate,
+        "machine_accessibility": accessibility_aggregate,
         "resource_qualification": aggregate_resource_qualification(repositories),
         "decision_revisit": {"observed_active_triggers": []},
     }
     validate_result(result, definition)
+    if (
+        result["automated_qualification"]["passed"] is not True
+        or result["human_review"]["state"] != "not_provided"
+        or result["replacement_qualification"]["status"] != "pending_human_review"
+        or result["replacement_pass_candidate"] is not False
+    ):
+        raise AssertionError("automated pass without human review was not kept pending")
+    if deterministic_human_review_samples(repositories) != samples:
+        raise AssertionError("campaign-level representative sampling is not deterministic")
+
+    automated_result_sha256 = "ab" * 32
+    review_template = human_review_template(result, automated_result_sha256)
+    if validate_human_review_artifact(
+        review_template,
+        result,
+        automated_result_sha256,
+    ) != "not_provided":
+        raise AssertionError("empty campaign-level human review was not explicit")
+    passed_review = json.loads(json.dumps(review_template))
+    for observation in human_review_observations(passed_review):
+        observation["status"] = "passed"
+        observation["basis"] = "Bounded representative human review passed."
+    qualified = combine_human_review(result, passed_review, automated_result_sha256)
+    if (
+        qualified["automated_qualification"] != result["automated_qualification"]
+        or qualified["human_review"]["state"] != "passed"
+        or qualified["replacement_qualification"]["status"] != "passed"
+        or qualified["replacement_pass_candidate"] is not True
+    ):
+        raise AssertionError("passed human review did not qualify replacement independently")
+    failed_review = json.loads(json.dumps(passed_review))
+    human_review_observations(failed_review)[0]["status"] = "failed"
+    human_review_observations(failed_review)[0]["basis"] = "Question was not relevant."
+    failed_qualification = combine_human_review(
+        result,
+        failed_review,
+        automated_result_sha256,
+    )
+    if (
+        failed_qualification["automated_qualification"]["passed"] is not True
+        or failed_qualification["human_review"]["state"] != "failed"
+        or failed_qualification["replacement_qualification"]["status"] != "failed"
+    ):
+        raise AssertionError("failed human review incorrectly destroyed automated truth")
+    machine_failed = json.loads(json.dumps(result))
+    machine_failed["automated_qualification"] = {
+        "status": "failed",
+        "passed": False,
+        "blockers": ["deterministic machine failure"],
+    }
+    machine_failed["replacement_qualification"] = {
+        "status": "failed",
+        "basis": "automated qualification did not pass",
+    }
+    machine_failed_qualified = combine_human_review(
+        machine_failed,
+        passed_review,
+        automated_result_sha256,
+    )
+    if (
+        machine_failed_qualified["automated_qualification"]["passed"] is not False
+        or machine_failed_qualified["replacement_qualification"]["status"] != "failed"
+    ):
+        raise AssertionError("human review overrode a deterministic machine failure")
     weakened_session_contract = json.loads(json.dumps(definition))
     weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 11
     expect_rejected(
@@ -5217,9 +5745,15 @@ def self_test() -> int:
         "measurement_error": "linux_procfs_children_unavailable:PermissionError",
     }
     unavailable_resources = json.loads(json.dumps(result))
-    unavailable_resources["status"] = "environment_blocked"
-    unavailable_resources["replacement_pass_candidate"] = False
-    unavailable_resources["blockers"] = ["required peak-memory measurement unavailable"]
+    unavailable_resources["automated_qualification"] = {
+        "status": "environment_blocked",
+        "passed": False,
+        "blockers": ["required peak-memory measurement unavailable"],
+    }
+    unavailable_resources["replacement_qualification"] = {
+        "status": "failed",
+        "basis": "automated qualification did not pass",
+    }
     for repository in unavailable_resources["repositories"]:
         repository["status"] = "environment_blocked"
         for cycle in repository["cycles"]:
@@ -5234,11 +5768,20 @@ def self_test() -> int:
     unavailable_resources["resource_qualification"] = aggregate_resource_qualification(
         unavailable_resources["repositories"]
     )
+    unavailable_resources["human_review"]["required_samples"] = (
+        deterministic_human_review_samples(unavailable_resources["repositories"])
+    )
     validate_result(unavailable_resources, definition)
     unavailable_as_pass = json.loads(json.dumps(unavailable_resources))
-    unavailable_as_pass["status"] = "passed"
-    unavailable_as_pass["replacement_pass_candidate"] = True
-    unavailable_as_pass["blockers"] = []
+    unavailable_as_pass["automated_qualification"] = {
+        "status": "passed",
+        "passed": True,
+        "blockers": [],
+    }
+    unavailable_as_pass["replacement_qualification"] = {
+        "status": "pending_human_review",
+        "basis": "human review not provided",
+    }
     expect_rejected(
         unavailable_as_pass,
         definition,
@@ -5246,9 +5789,15 @@ def self_test() -> int:
     )
 
     blocked = json.loads(json.dumps(result))
-    blocked["status"] = "environment_blocked"
-    blocked["replacement_pass_candidate"] = False
-    blocked["blockers"] = ["missing repository"]
+    blocked["automated_qualification"] = {
+        "status": "environment_blocked",
+        "passed": False,
+        "blockers": ["missing repository"],
+    }
+    blocked["replacement_qualification"] = {
+        "status": "failed",
+        "basis": "automated qualification did not pass",
+    }
     validate_result(blocked, definition)
     leaked = json.loads(json.dumps(blocked))
     leaked["private_prompt"] = "private prompt body"
@@ -5261,7 +5810,7 @@ def self_test() -> int:
     expect_rejected(local_path_leak, definition, "sanitizer accepted a local resource path")
     active = json.loads(json.dumps(result))
     active["decision_revisit"]["observed_active_triggers"] = [{"decision_id": "Q5"}]
-    expect_rejected(active, definition, "replacement pass accepted a Decision revisit trigger")
+    expect_rejected(active, definition, "automated pass accepted a Decision revisit trigger")
 
     v11_only = json.loads(json.dumps(result))
     v11_only["repositories"][0]["cycles"][0]["real_session_dogfood"] = real_session_evidence(
@@ -6733,85 +7282,6 @@ def self_test() -> int:
     if insufficient_result["status"] == "passed":
         raise AssertionError("validly hashed arbitrary event label qualified as Codex evidence")
 
-    missing_language = parse_accessibility_html(
-        "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width\">"
-        "</head><body><h1>x</h1></body></html>",
-        expected_language="en",
-    )
-    missing_language["status"] = status_from_steps(missing_language["checks"])
-    missing_qualified = qualify_accessibility(
-        missing_language,
-        {
-            "not_color_only": {"status": "passed", "basis": "bounded observation"},
-            "narrow_and_zoomed_presentation": {
-                "status": "passed",
-                "basis": "bounded observation",
-            },
-        },
-        set(definition["permitted_accessibility_observations"]),
-    )
-    if missing_qualified["checks"]["document_html_language"] != "failed":
-        raise AssertionError("observations hid missing HTML language")
-    wrong_language = parse_accessibility_html(valid_html, expected_language="ko")
-    wrong_language["status"] = status_from_steps(wrong_language["checks"])
-    wrong_qualified = qualify_accessibility(
-        wrong_language,
-        {
-            "not_color_only": {"status": "passed", "basis": "bounded observation"},
-            "narrow_and_zoomed_presentation": {
-                "status": "passed",
-                "basis": "bounded observation",
-            },
-        },
-        set(definition["permitted_accessibility_observations"]),
-    )
-    if wrong_qualified["checks"]["document_html_language"] != "failed":
-        raise AssertionError("observations hid wrong HTML language")
-    missing_viewport = parse_accessibility_html(
-        "<!doctype html><html lang=\"en\"><body><h1>Project</h1></body></html>",
-        expected_language="en",
-    )
-    missing_viewport["status"] = status_from_steps(missing_viewport["checks"])
-    viewport_qualified = qualify_accessibility(
-        missing_viewport,
-        {
-            "narrow_and_zoomed_presentation": {
-                "status": "passed",
-                "basis": "bounded observation",
-            },
-        },
-        set(definition["permitted_accessibility_observations"]),
-    )
-    if viewport_qualified["checks"]["narrow_and_zoomed_presentation"] != "failed":
-        raise AssertionError("manual observation hid deterministic viewport failure")
-
-    unavailable_viewer = {
-        "status": "environment_blocked",
-        "checks": {},
-        "reason": "viewer_start_failed",
-    }
-    unavailable_qualified = qualify_accessibility(
-        unavailable_viewer,
-        {
-            "not_color_only": {"status": "passed", "basis": "bounded observation"},
-            "narrow_and_zoomed_presentation": {
-                "status": "passed",
-                "basis": "bounded observation",
-            },
-        },
-        set(definition["permitted_accessibility_observations"]),
-    )
-    if unavailable_qualified["status"] != "environment_blocked":
-        raise AssertionError("observations hid viewer environment failure")
-
-    failed_quality = qualify_quality_observation(
-        {"status": "failed", "basis": "machine failure"},
-        {"status": "passed", "basis": "operator impression"},
-        "question_relevance",
-    )
-    if failed_quality["status"] != "failed":
-        raise AssertionError("manual quality evidence hid a machine failure")
-
     if viewer_start_failure_status(
         "cannot bind: Operation not permitted (os error 1)"
     ) != "environment_blocked":
@@ -6852,7 +7322,7 @@ def self_test() -> int:
         "recall_without_post_inspection_verification_rejected": "passed",
         "repository_scoped_activation_required": "passed",
         "missing_activation_operator_environment_classification": "passed",
-        "observation_status_basis_round_trip": "passed",
+        "campaign_level_human_review_state_round_trip": "passed",
         "plain_task_and_hidden_oracle_sanitization": "passed",
         "descriptor_and_captured_task_mismatch_rejected": "passed",
         "scripted_objective_marker_rejected": "passed",
@@ -6902,7 +7372,7 @@ def self_test() -> int:
         "accessibility_heading_order_rejected": "passed",
         "accessibility_machine_failure_authority": "passed",
         "viewer_environment_blocking": "passed",
-        "manual_override_boundary": "passed",
+        "human_review_cannot_override_machine_failure": "passed",
         "linux_process_tree_peak_rss": process_peak["status"],
         "linux_process_tree_environment_classification": "passed",
         "resource_measurement_unavailable_blocks_qualification": "passed",

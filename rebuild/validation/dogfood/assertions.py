@@ -63,8 +63,10 @@ def main() -> int:
         "verified_state_continuation",
         "repository_scoped_activation_observed",
         "operator_environment_invalid",
-        "observation_template",
-        "validate_observation_object",
+        "deterministic_human_review_samples",
+        "human_review_template",
+        "validate_human_review_artifact",
+        "combine_human_review",
         "project_resolve",
         "repository_bound_project_resolution",
         "qualify-work-blocker",
@@ -75,11 +77,21 @@ def main() -> int:
         "continuation_basis",
         "check-descriptors",
         "batch_campaign_contract",
+        "automated_qualification",
+        "replacement_qualification",
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
     if "verified_capture" in source or "first_repository_inspection_sequence" in source:
         raise AssertionError("the declaration-only real-session path remains active")
+    for obsolete in (
+        "def observation_template(",
+        "def validate_observation_object(",
+        "permitted_accessibility_observations",
+        '"observation_schema"',
+    ):
+        if obsolete in source or obsolete in definition:
+            raise AssertionError(f"obsolete per-cycle review compatibility remains: {obsolete}")
     if 'payload_type == "function_call"' in event_source or "eval(" in event_source:
         raise AssertionError("the obsolete decoder or JavaScript evaluation path remains active")
     if 'cli_version ==' in source or 'cli_version ==' in event_source:
@@ -230,6 +242,15 @@ def main() -> int:
         not in batch_contract.get("automatic_cycle_evidence", [])
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
+    human_review = definition_value.get("human_review_contract", {})
+    if (
+        human_review.get("artifact_kind") != "phase8_dogfood_human_review"
+        or human_review.get("machine_accessibility_may_be_overridden") is not False
+        or human_review.get("sampling_algorithm")
+        != "lowest_automated_passed_cycle_by_repository_class"
+        or set(human_review.get("live_viewer_locales", [])) != {"en", "ko"}
+    ):
+        raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
         raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")

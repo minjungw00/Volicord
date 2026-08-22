@@ -236,25 +236,6 @@ def batch_exporter(bundles: dict[str, Path]):
     return export
 
 
-def assert_observation_round_trip(root: Path) -> None:
-    for scope, names in (
-        ("manual", campaign.MANUAL_OBSERVATIONS),
-        ("accessibility", campaign.ACCESSIBILITY_OBSERVATIONS),
-    ):
-        path = campaign.operator_observation_path(root, "volicord", 1, scope)
-        template = campaign.read_json(path)
-        assert set(template) == set(names)
-        for name, value in template.items():
-            assert harness.validate_observation_object(value, name) == (
-                "skipped",
-                "Not yet observed; replace with a bounded operator observation.",
-            )
-            recorded = campaign.record_observation(
-                root, "volicord", 1, scope, name, "partial", f"bounded review for {name}"
-            )
-            assert harness.validate_observation_object(recorded, name)[0] == "partial"
-
-
 def assert_blockers(parent: Path, binary: Path) -> None:
     blocker_root = parent / "blocker-campaign"
     prepare(blocker_root, parent / "blocker-sources", binary)
@@ -590,7 +571,6 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 def assert_successful_campaign(parent: Path, binary: Path) -> None:
     root = parent / "successful-campaign"
     prepare(root, parent / "successful-sources", binary)
-    assert_observation_round_trip(root)
     fixtures: dict[tuple[str, int], tuple[dict[str, object], Path, Path, Path]] = {}
     for kind in campaign.CLASSES:
         for cycle in (1, 2):
@@ -627,15 +607,6 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
                     assert evidence["status"] == "passed"
                     assert evidence["bytes"] == path.stat().st_size
                     assert evidence["sha256"] == harness.sha256(path)
-            campaign.record_observation(
-                root,
-                kind,
-                cycle,
-                "manual",
-                "document_fidelity_and_usefulness",
-                "passed",
-                "reviewed all four generated document kinds",
-            )
             summary_bytes = (campaign.cycle_root(root, kind, cycle) / "runtime-summary.json").read_bytes()
             assert b"canonical.sqlite3" in summary_bytes
             assert b"PRIVATE-STORE-CONTENT" not in summary_bytes
@@ -657,6 +628,21 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         raise AssertionError("tampered bundle was not detected")
     tampered.write_bytes(original)
 
+    review_path = root / "operator/human-review.json"
+    campaign.write_json(review_path, {
+        "kind": "phase8_dogfood_human_review",
+        "automated_result_sha256": "cd" * 32,
+        "state": "passed",
+    })
+    campaign.register_artifact(root, review_path)
+    qualified_path = root / "qualified-result.json"
+    campaign.write_json(qualified_path, {
+        "kind": "phase8_dogfood_result",
+        "human_review": {"state": "passed"},
+        "replacement_qualification": {"status": "passed"},
+    })
+    campaign.register_artifact(root, qualified_path)
+
     archive = campaign.build_review_package(root, parent / "review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
@@ -667,6 +653,8 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 6
         assert len([name for name in names if name.endswith("/documents-summary.json")]) == 6
         assert len([name for name in names if name.startswith("operator/document-review/")]) == 6
+        assert "operator/human-review.json" in names
+        assert "qualified-result.json" in names
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts) for name in names)
         assert not any(name.casefold().endswith(campaign.PROHIBITED_ARCHIVE_SUFFIXES) for name in names)
@@ -685,7 +673,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 12
 
 
-def assert_failed_document_kind_blocks_pass(parent: Path, binary: Path) -> None:
+def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
     root = parent / "failed-document-campaign"
     prepare(root, parent / "failed-document-sources", binary)
     descriptor, work, resume, bundle = fixture_for(parent, "volicord", 1)
@@ -704,20 +692,59 @@ def assert_failed_document_kind_blocks_pass(parent: Path, binary: Path) -> None:
     assert result["document_evidence"]["status"] == "failed"
     assert failed["status"] == "failed"
     assert all(item["status"] == "failed" for item in failed["formats"].values())
+
+
+def assert_campaign_level_human_review_operations(parent: Path, binary: Path) -> None:
+    root = parent / "human-review-campaign"
+    prepare(root, parent / "human-review-sources", binary)
+    automated = parent / "automated-result.json"
+    automated.write_bytes(b'{"kind":"fixture-automated-result"}\n')
+    expected_sha = hashlib.sha256(automated.read_bytes()).hexdigest()
+    original_template = harness.human_review_template
+    original_combine = harness.combine_human_review
+
+    def fake_template(result: dict[str, object], result_sha: str) -> dict[str, object]:
+        assert result == {"kind": "fixture-automated-result"}
+        assert result_sha == expected_sha
+        return {
+            "kind": "phase8_dogfood_human_review",
+            "automated_result_sha256": result_sha,
+            "status": "not_provided",
+        }
+
+    def fake_combine(
+        result: dict[str, object],
+        review: dict[str, object],
+        result_sha: str,
+    ) -> dict[str, object]:
+        assert result == {"kind": "fixture-automated-result"}
+        assert review["status"] == "passed"
+        assert result_sha == expected_sha
+        return {
+            "kind": "phase8_dogfood_result",
+            "automated_result_sha256": result_sha,
+            "replacement_qualification": {"status": "passed"},
+        }
+
+    harness.human_review_template = fake_template
+    harness.combine_human_review = fake_combine
     try:
-        campaign.record_observation(
+        review_path = campaign.prepare_human_review(root, automated)
+        review = campaign.read_json(review_path)
+        assert review["automated_result_sha256"] == expected_sha
+        review["status"] = "passed"
+        campaign.write_json(review_path, review)
+        qualified_path = campaign.qualify_human_review(
             root,
-            "volicord",
-            1,
-            "manual",
-            "document_fidelity_and_usefulness",
-            "passed",
-            "reviewed all required documents",
+            automated,
+            review_path,
+            root / "qualified-result.json",
         )
-    except campaign.CampaignError as error:
-        assert "all four document kinds" in str(error)
-    else:
-        raise AssertionError("failed document evidence allowed a passed fidelity observation")
+        assert campaign.read_json(qualified_path)["automated_result_sha256"] == expected_sha
+        assert automated.read_bytes() == b'{"kind":"fixture-automated-result"}\n'
+    finally:
+        harness.human_review_template = original_template
+        harness.combine_human_review = original_combine
 
 
 def main() -> int:
@@ -728,12 +755,13 @@ def main() -> int:
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
         assert_batch_workflow(parent, binary)
-        assert_failed_document_kind_blocks_pass(parent, binary)
+        assert_failed_document_kind_is_machine_failure(parent, binary)
+        assert_campaign_level_human_review_operations(parent, binary)
         assert_successful_campaign(parent, binary)
     print(json.dumps({
         "status": "passed",
         "checks": [
-            "observation_schema_round_trip",
+            "campaign_level_human_review_operations",
             "sealed_evaluator_operator_isolation",
             "typed_materiality_provenance_verification",
             "terminal_work_blocker_stops_collection",
@@ -745,10 +773,11 @@ def main() -> int:
             "automatic_project_identity_and_bundle_export",
             "four_kind_markdown_html_document_evidence",
             "static_viewer_snapshot_evidence",
-            "failed_document_kind_blocks_fidelity_pass",
+            "failed_document_kind_is_machine_failure",
             "bounded_runtime_summary",
             "deterministic_manifest",
             "bounded_default_review_archive",
+            "campaign_level_human_review_packaging",
             "explicit_raw_rollout_archive_option",
             "evidence_hash_tamper_detection",
         ],

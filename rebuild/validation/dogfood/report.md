@@ -57,7 +57,8 @@ environment; the sealed V11 environment does not substitute for Dogfood.
 The maintained approach uses `rebuild/scripts/dogfood-campaign` for routine
 campaign setup and evidence handling, while leaving genuine host interaction
 to the user. The helper does not create a Codex chat, approve repository or
-hook trust, invent a user response, or pre-fill a human observation as passed.
+hook trust, invent a user response, or pre-fill campaign-level human review as
+passed.
 
 Evaluator/control owns the hidden preparation work:
 
@@ -75,15 +76,16 @@ The naturalistic operator owns the actions that cannot be truthfully automated:
   resume sessions for two cycles in each of three repository classes;
 - send only the frozen work or resume task from the generated run sheet;
 - provide actual answers to the material Questions shown in those sessions;
-- record genuine subjective-quality and accessibility observations.
+- preserve all twelve raw rollouts for one batch intake.
 
 The operator does not inspect or edit evaluator descriptors. The helper owns
 campaign setup, sealed-descriptor validation, operator run-sheet generation,
 byte-exact rollout intake and hashing, activation/setup classification, early
 blocker gating, Project-ID extraction, canonical bundle export, bounded Runtime
 summaries, all four required generated document kinds in Markdown and
-self-contained HTML, descriptor evidence completion, observation-schema
-validation, repository-manifest assembly, and bounded review packaging.
+self-contained HTML, descriptor evidence completion, deterministic
+campaign-level review sampling, repository-manifest assembly, and bounded
+review packaging.
 
 ## Commands and configuration
 
@@ -104,9 +106,13 @@ descriptors are sealed, use `activate-all`; it enables the repository-scoped
 integration but does not grant repository or hook trust. Run all twelve chats
 without per-chat collection, preserve their raw rollouts, and then use
 `collect-batch` with twelve explicit paths or one directory containing exactly
-twelve files. After batch collection, use `record-observation` for the four
-subjective and four manual-accessibility observations per cycle. Then use `finalize-manifest` and
-`package-review`. The operator material contains the frozen tasks and paths but
+twelve files. Then use `finalize-manifest` and `package-review`. The automated
+Dogfood result may pass with `human_review = not_provided`, while replacement
+remains `pending_human_review` and `replacement_pass_candidate = false`. If a
+replacement-usability conclusion is needed, use `prepare-human-review` on the
+immutable automated result, complete its deterministic campaign-level samples,
+and use `qualify-review`; neither operation reruns Dogfood. The operator
+material contains the frozen tasks and paths but
 not the oracle, materiality reasoning, recommendation, expected choice, or
 provenance. Typed provenance is reverified against an active architecture owner
 at the candidate revision or a real file at the pinned target revision.
@@ -166,8 +172,8 @@ in the technical gate capsule are not Dogfood resource evidence.
 Keep the campaign root and raw rollouts in private ignored state. Ordinary
 independent review requires two private artifacts: the byte-exact raw rollout
 archive and the bounded review package. The package contains bounded campaign
-metadata, descriptors and review views, hashes, canonical bundles,
-observations, Runtime/activation summaries, blocker records when present, and
+metadata, descriptors and review views, hashes, canonical bundles, the
+optional campaign-level human review, Runtime/activation summaries, blocker records when present, and
 all four generated document kinds in Markdown and self-contained HTML. Raw
 rollouts remain outside the default package.
 
@@ -194,14 +200,14 @@ separate private archive for the independent review handoff.
   agent discovery in ordinary user sessions.
 - The current evidence says nothing yet about reliability of strengthened
   material-Question discovery or real-session usability.
-- No manual quality, accessibility, or sustained resource conclusion exists
-  for this candidate.
+- No campaign-level human usability/accessibility or sustained resource
+  conclusion exists for this candidate.
 
 ## Recommended implementation choice
 
-Make no product or test change in this conclusion. Use the maintained campaign
-helper to prepare a new candidate-bound campaign, then run all twelve genuine
-sessions and complete the human observations before evaluating replacement.
+Use the maintained campaign helper to prepare a new candidate-bound campaign,
+run all twelve genuine sessions, and obtain the automated result first. Add the
+optional campaign-level human review only when evaluating replacement.
 
 ## Rejected alternatives and reasons
 
@@ -232,9 +238,11 @@ Prepare one completely fresh helper-owned campaign for the sealed candidate,
 have the control agent research and seal the six evaluator descriptors, grant
 trust manually, activate all six repository integrations, run the twelve
 required work/resume chats with only the frozen tasks, answer the actual
-material Questions, provide all raw rollouts once to batch collection, record
-subjective and accessibility observations, assemble the manifest, and provide the raw rollout
-archive with the bounded default review package.
+material Questions, provide all raw rollouts once to batch collection, assemble
+the manifest, and provide the raw rollout archive with the bounded default
+review package. If replacement qualification is requested, complete the
+deterministic campaign-level human review against the immutable automated
+result.
 
 ## Artifacts
 

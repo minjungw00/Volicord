@@ -1027,6 +1027,15 @@ clean install
 - bundle export/import, divergence와 conflict resolution이 작동한다.
 - correction, supersession과 deletion이 portable state에 반영된다.
 - 네 필수 문서가 source-grounded metadata와 함께 생성된다.
+- Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
+  독립적으로 통과할 수 있다.
+- Human review가 없으면 replacement는 명시적으로 `pending_human_review`이며 pass로
+  표현되지 않는다.
+- Replacement usability review는 campaign-level deterministic representative sample로
+  Question/Decision/interruption, simple/complex document readability, static Viewer
+  readability와 `en`/`ko` live Viewer accessibility를 포함한다.
+- Human review는 deterministic machine failure를 override하지 않으며, immutable automated
+  result에 나중에 결합할 때 naturalistic session을 다시 실행하지 않는다.
 - Guarded effect만 action-scoped confirmation을 요구한다.
 - partial analyzer, provider와 derived-index 실패가 canonical state를 손상시키지 않는다.
 - active product에 legacy migration, data detection, compatibility와 workflow surface가 없다.

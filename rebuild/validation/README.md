@@ -201,9 +201,9 @@ Recall result. Continuation may either make a relevant change and validate it,
 or inspect and numerically verify an already-completed recalled state without
 an artificial mutation. Paused or in-progress work cannot use the no-change
 path, and Recall without later inspection and validation does not qualify.
-Deterministic journey success remains independent from manual
-Question relevance, Decision comprehension, interruption cost, and document
-fidelity/usefulness observations.
+Deterministic journey success remains independent from the optional
+campaign-level review of Question relevance, Decision comprehension,
+interruption cost, document fidelity/readability, and Viewer usability.
 
 The hidden decision oracle includes one bounded
 `work_task_materiality_basis`: exact ordinary user-task text that makes the
@@ -224,15 +224,13 @@ is an operator/environment setup failure and stops that campaign path without
 attributing missing Inquiry behavior to Volicord. Repository and hook trust
 remain explicit operator actions.
 
-Manual and accessibility observation objects use exactly `status` plus a
-bounded `basis`. Generated templates start as `skipped`; they never pre-fill a
-pass result.
-
-Full replacement qualification remains the `run` path: three repository
-classes, two cycles per class, and two globally distinct fresh VS Code Codex
-sessions per cycle, for twelve distinct real sessions, plus every required
-automatic, manual, resource, and accessibility check. Only this complete path
-may set campaign completion, replacement passage, or Phase 9 readiness true.
+The current result schema reports `automated_qualification`, `human_review`,
+and `replacement_qualification` separately. The automated `run` path covers
+three repository classes, two cycles per class, and two globally distinct
+fresh VS Code Codex sessions per cycle, plus every maintained machine check.
+It exits successfully when those checks pass even if human review is
+`not_provided`; in that state replacement is `pending_human_review` and neither
+`replacement_pass_candidate` nor Phase 9 readiness is true.
 
 A completed work session with a machine-observable terminal work blocker may
 be classified without executing later qualifying sessions:
@@ -273,8 +271,8 @@ rebuild/scripts/dogfood-campaign prepare \
 `prepare` verifies the clean candidate and source identities, performs a
 candidate-local install, and creates six revision-pinned disposable repository
 workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
-under the private evaluator plane; operator observation templates and the run
-sheet live under the operator plane. A preparation/control agent completes an
+under the private evaluator plane; the run sheet and optional campaign-level
+human-review artifact live under the operator plane. A preparation/control agent completes an
 evaluator input and invokes `seal-cycle`. Sealing verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes,
 stores the authoritative hidden descriptor, freezes its semantic hash, and
@@ -303,8 +301,8 @@ The roles remain separate throughout a campaign:
   activation/setup classification, early blocker gating, Project-ID
   extraction, canonical bundle export, bounded Runtime summaries, all four
   generated document kinds in Markdown and self-contained HTML, descriptor
-  evidence completion, observation-schema validation, repository-manifest
-  assembly, and bounded review packaging.
+  evidence completion, repository-manifest assembly, deterministic
+  campaign-level review sampling, and bounded review packaging.
 
 After all six descriptors are sealed, `activate-all` may enable the six
 repository-scoped integrations before the chats begin. It never grants
@@ -338,16 +336,33 @@ prompt, or source-body contents. `collect-work` and `collect-resume` remain
 available as non-default focused diagnostics; they are not the ordinary
 operator workflow.
 
-Use `record-observation` for the four subjective quality observations and four
-manual accessibility observations; its structured arguments are validated by
-the same parser as official qualification. A passed
-`document_fidelity_and_usefulness` observation requires usable evidence for all
-four document kinds; the human reviews each product kind rather than marking
-the two formats independently. `finalize-manifest` deterministically
-assembles `repositories.json` after all six resume captures. `package-review`
+`finalize-manifest` deterministically assembles `repositories.json` after all
+six resume captures. Run the automated Dogfood evaluation without subjective
+inputs. If replacement qualification is needed, create one campaign-level
+review artifact from the immutable automated result:
+
+```text
+rebuild/scripts/dogfood-campaign prepare-human-review \
+  --campaign-root /absolute/private/campaign \
+  --automated-result /absolute/private/automated-result.json
+```
+
+The artifact deterministically selects the lowest automated-passed cycle in
+each repository class for Question relevance, Decision comprehension, and
+interruption cost; the small-Python and polyglot samples for simple/complex
+documents; the polyglot static snapshot for readability; and the Volicord live
+Viewer sample in `en` and `ko` for keyboard, focus, color, and zoom review.
+Every human criterion is `not_provided` initially. After bounded review,
+`qualify-review` combines that artifact with the byte-identical automated
+result and does not rerun the sessions or machine evaluation. A human failure
+preserves an automated pass but fails replacement; a human pass cannot
+override any automated failure.
+
+`package-review`
 then creates a deterministic bounded archive containing campaign metadata,
 the manifest, six descriptors and derived review views, hash inventory,
-canonical bundles, observations, runtime/activation summaries, blocker records
+canonical bundles, the campaign-level human review when present,
+runtime/activation summaries, blocker records
 when present, and all generated-document summaries, review indexes, Markdown,
 and HTML evidence. Raw rollouts are excluded by
 default and enter only with `--include-raw-rollouts`. Full Runtime Homes,

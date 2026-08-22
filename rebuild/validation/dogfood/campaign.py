@@ -26,18 +26,6 @@ from codex_events import EvidenceError, command_is_repository_inspection, load_c
 
 ROOT = Path(__file__).resolve().parents[3]
 CLASSES = harness.CLASSES
-MANUAL_OBSERVATIONS = (
-    "question_relevance",
-    "decision_comprehension",
-    "interruption_cost",
-    "document_fidelity_and_usefulness",
-)
-ACCESSIBILITY_OBSERVATIONS = (
-    "keyboard_reachability",
-    "visible_focus",
-    "not_color_only",
-    "narrow_and_zoomed_presentation",
-)
 DOCUMENT_KINDS = (
     "project-architecture-guide",
     "decision-report",
@@ -162,10 +150,6 @@ def evaluator_input_path(root: Path, kind: str, cycle: int) -> Path:
 
 def evaluator_descriptor_path(root: Path, kind: str, cycle: int) -> Path:
     return root / "evaluator/descriptors" / f"{cycle_key(kind, cycle)}.json"
-
-
-def operator_observation_path(root: Path, kind: str, cycle: int, scope: str) -> Path:
-    return root / "operator/observations" / cycle_key(kind, cycle) / f"{scope}.json"
 
 
 def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
@@ -551,14 +535,6 @@ def prepare_campaign(
             write_json(
                 evaluator_input_path(root, kind, number),
                 descriptor_skeleton(kind, number, revision, candidate_head),
-            )
-            write_json(
-                operator_observation_path(root, kind, number, "manual"),
-                harness.observation_template(MANUAL_OBSERVATIONS),
-            )
-            write_json(
-                operator_observation_path(root, kind, number, "accessibility"),
-                harness.observation_template(ACCESSIBILITY_OBSERVATIONS),
             )
             cycles[key] = {
                 "repository_class": kind,
@@ -995,29 +971,6 @@ def write_operator_document_review_index(
     return path
 
 
-def complete_document_evidence(root: Path, kind: str, cycle: int) -> bool:
-    path = cycle_root(root, kind, cycle) / "documents-summary.json"
-    if not path.is_file():
-        return False
-    summary = read_json(path)
-    documents = summary.get("documents") if isinstance(summary, dict) else None
-    return (
-        summary.get("kind") == "phase8_generated_document_evidence_summary"
-        and summary.get("status") == "passed"
-        and summary.get("required_document_kinds") == list(DOCUMENT_KINDS)
-        and isinstance(documents, dict)
-        and set(documents) == set(DOCUMENT_KINDS)
-        and all(
-            documents[document_kind].get("status") == "passed"
-            and all(
-                documents[document_kind].get("formats", {}).get(format_name, {}).get("status") == "passed"
-                for format_name, _suffix in DOCUMENT_FORMATS
-            )
-            for document_kind in DOCUMENT_KINDS
-        )
-    )
-
-
 def extract_resume_evidence(
     root: Path,
     kind: str,
@@ -1047,10 +1000,10 @@ def extract_resume_evidence(
         raise CampaignError("portable bundle Project identity does not match the resume capture")
     descriptor["evidence"] = {
         "captures": {
-            "work": {"file": "evidence/work.rollout.jsonl", "sha256": harness.sha256(cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl")},
-            "resume": {"file": "evidence/resume.rollout.jsonl", "sha256": harness.sha256(destination)},
+            "work": {"file": relative(root, cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"), "sha256": harness.sha256(cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl")},
+            "resume": {"file": relative(root, destination), "sha256": harness.sha256(destination)},
         },
-        "canonical_bundle": {"file": "context.bundle.json", "sha256": harness.sha256(bundle)},
+        "canonical_bundle": {"file": relative(root, bundle), "sha256": harness.sha256(bundle)},
     }
     errors = harness.cycle_descriptor_errors(descriptor)
     if errors:
@@ -1099,19 +1052,19 @@ def extract_resume_evidence(
     snapshot_summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
     descriptor["evidence"].update({
         "runtime_summary": {
-            "file": relative(cycle_root(root, kind, cycle), summary_path),
+            "file": relative(root, summary_path),
             "sha256": harness.sha256(summary_path),
         },
         "activation_summary": {
-            "file": relative(cycle_root(root, kind, cycle), activation_path),
+            "file": relative(root, activation_path),
             "sha256": harness.sha256(activation_path),
         },
         "generated_documents": {
-            "file": relative(cycle_root(root, kind, cycle), document_summary),
+            "file": relative(root, document_summary),
             "sha256": harness.sha256(document_summary),
         },
         "viewer_snapshot": {
-            "file": relative(cycle_root(root, kind, cycle), snapshot_summary),
+            "file": relative(root, snapshot_summary),
             "sha256": harness.sha256(snapshot_summary),
         },
     })
@@ -1497,30 +1450,6 @@ def collect_batch(
     return summary
 
 
-def record_observation(root: Path, kind: str, cycle: int, scope: str, name: str, status: str, basis: str) -> dict[str, str]:
-    load_campaign(root)
-    verify_inventory(root)
-    names = MANUAL_OBSERVATIONS if scope == "manual" else ACCESSIBILITY_OBSERVATIONS if scope == "accessibility" else ()
-    if name not in names:
-        raise CampaignError("observation name is not permitted for the selected scope")
-    if (
-        scope == "manual"
-        and name == "document_fidelity_and_usefulness"
-        and status == "passed"
-        and not complete_document_evidence(root, kind, cycle)
-    ):
-        raise CampaignError("passed document fidelity requires usable evidence for all four document kinds")
-    observation = {"status": status, "basis": basis}
-    harness.validate_observation_object(observation, name)
-    path = operator_observation_path(root, kind, cycle, scope)
-    values = read_json(path)
-    values[name] = observation
-    for item_name, item in values.items():
-        harness.validate_observation_object(item, item_name)
-    write_json(path, values)
-    return observation
-
-
 def finalize_manifest(root: Path, output: Path | None = None) -> Path:
     campaign = load_campaign(root)
     verify_inventory(root)
@@ -1531,30 +1460,16 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
     for kind in CLASSES:
         spec = specs[kind]
         real: dict[str, str] = {}
-        manual: dict[str, Any] = {}
-        accessibility: dict[str, Any] = {}
         for number in (1, 2):
             state = campaign["cycles"][cycle_key(kind, number)]
             if state["state"] != "resume_collected":
                 raise CampaignError("all six cycles must have resume evidence before finalization")
             descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
             real[str(number)] = relative(root, descriptor)
-            manual[str(number)] = read_json(operator_observation_path(root, kind, number, "manual"))
-            accessibility[str(number)] = read_json(operator_observation_path(root, kind, number, "accessibility"))
-            for values in (manual[str(number)], accessibility[str(number)]):
-                for name, observation in values.items():
-                    harness.validate_observation_object(observation, name)
-            if (
-                manual[str(number)]["document_fidelity_and_usefulness"]["status"] == "passed"
-                and not complete_document_evidence(root, kind, number)
-            ):
-                raise CampaignError("manifest cannot pass document fidelity without complete document evidence")
         repositories.append({
             **{key: spec[key] for key in ("class", "path", "origin", "revision", "license_file", "license_spdx", "provider_source_path") if key in spec},
             "revision": campaign["candidate_head"] if kind == "volicord" else spec["revision"],
             "real_session_evidence": real,
-            "manual_observations": manual,
-            "accessibility_observations": accessibility,
         })
     destination = output.resolve() if output else root / "repositories.json"
     if destination.parent != root:
@@ -1676,6 +1591,63 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
     return output
 
 
+def prepare_human_review(root: Path, automated_result_path: Path) -> Path:
+    load_campaign(root)
+    verify_inventory(root)
+    automated_bytes = automated_result_path.read_bytes()
+    try:
+        automated_result = json.loads(automated_bytes)
+    except json.JSONDecodeError as error:
+        raise CampaignError("automated Dogfood result is malformed") from error
+    destination = root / "operator/human-review.json"
+    if destination.exists():
+        raise CampaignError("campaign-level human review artifact already exists")
+    try:
+        artifact = harness.human_review_template(
+            automated_result,
+            hashlib.sha256(automated_bytes).hexdigest(),
+        )
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+    write_json(destination, artifact)
+    return destination
+
+
+def qualify_human_review(
+    root: Path,
+    automated_result_path: Path,
+    human_review_path: Path,
+    output: Path,
+) -> Path:
+    load_campaign(root)
+    verify_inventory(root)
+    if output.exists():
+        raise CampaignError("qualified Dogfood result destination already exists")
+    expected_review = (root / "operator/human-review.json").resolve()
+    if human_review_path.resolve() != expected_review:
+        raise CampaignError("human review must be the campaign-level operator artifact")
+    automated_bytes = automated_result_path.read_bytes()
+    try:
+        automated_result = json.loads(automated_bytes)
+        human_review = read_json(human_review_path)
+    except json.JSONDecodeError as error:
+        raise CampaignError("automated Dogfood result is malformed") from error
+    try:
+        qualified = harness.combine_human_review(
+            automated_result,
+            human_review,
+            hashlib.sha256(automated_bytes).hexdigest(),
+        )
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+    if output.resolve().parent != root.resolve():
+        raise CampaignError("qualified Dogfood result must remain at the campaign root")
+    write_json(output, qualified)
+    register_artifact(root, human_review_path)
+    register_artifact(root, output)
+    return output
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     sub = result.add_subparsers(dest="command", required=True)
@@ -1690,10 +1662,11 @@ def parser() -> argparse.ArgumentParser:
     collect_w = sub.add_parser("collect-work")
     collect_r = sub.add_parser("collect-resume")
     collect_b = sub.add_parser("collect-batch")
-    observe = sub.add_parser("record-observation")
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
-    for command in (seal, activate, collect_w, collect_r, observe):
+    prepare_review = sub.add_parser("prepare-human-review")
+    qualify_review = sub.add_parser("qualify-review")
+    for command in (seal, activate, collect_w, collect_r):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument("--cycle", choices=(1, 2), type=int, required=True)
@@ -1705,14 +1678,16 @@ def parser() -> argparse.ArgumentParser:
     batch_input = collect_b.add_mutually_exclusive_group(required=True)
     batch_input.add_argument("--raw-rollout", action="append")
     batch_input.add_argument("--rollout-directory")
-    observe.add_argument("--scope", choices=("manual", "accessibility"), required=True)
-    observe.add_argument("--name", required=True)
-    observe.add_argument("--status", choices=sorted(harness.ALLOWED_STATUS), required=True)
-    observe.add_argument("--basis", required=True)
     finalize.add_argument("--campaign-root", required=True)
     package.add_argument("--campaign-root", required=True)
     package.add_argument("--output", required=True)
     package.add_argument("--include-raw-rollouts", action="store_true")
+    prepare_review.add_argument("--campaign-root", required=True)
+    prepare_review.add_argument("--automated-result", required=True)
+    qualify_review.add_argument("--campaign-root", required=True)
+    qualify_review.add_argument("--automated-result", required=True)
+    qualify_review.add_argument("--human-review", required=True)
+    qualify_review.add_argument("--output", required=True)
     return result
 
 
@@ -1737,10 +1712,25 @@ def main() -> int:
             Path(args.rollout_directory) if args.rollout_directory else None,
         )
         value = collect_batch(root, paths)
-    elif args.command == "record-observation":
-        value = record_observation(root, args.repository_class, args.cycle, args.scope, args.name, args.status, args.basis)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
+    elif args.command == "prepare-human-review":
+        value = {
+            "human_review": str(
+                prepare_human_review(root, Path(args.automated_result).resolve())
+            )
+        }
+    elif args.command == "qualify-review":
+        value = {
+            "result": str(
+                qualify_human_review(
+                    root,
+                    Path(args.automated_result).resolve(),
+                    Path(args.human_review).resolve(),
+                    Path(args.output).resolve(),
+                )
+            )
+        }
     else:
         value = {"archive": str(build_review_package(root, Path(args.output), include_raw=args.include_raw_rollouts))}
     print(json.dumps(value, indent=2, sort_keys=True))

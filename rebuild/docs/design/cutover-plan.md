@@ -255,6 +255,10 @@ clean Linux install
 5. first structural 목록 밖 언어 fallback fixture
 
 통과 조건은 `acceptance-scenarios.md`의 최종 통과 조건과 일치한다.
+Automated Dogfood passage alone is not replacement passage: the current
+campaign-level human review must also pass, while an absent review leaves
+replacement explicitly pending and a human pass cannot override machine
+failure.
 
 ### Phase 9 — Cutover
 

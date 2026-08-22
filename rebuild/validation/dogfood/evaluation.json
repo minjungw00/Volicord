@@ -99,6 +99,14 @@
     "korean_english_fixed_ui",
     "document_html_language"
   ],
+  "automated_accessibility_checks": [
+    "keyboard_reachability",
+    "visible_focus",
+    "headings_and_labels",
+    "narrow_and_zoomed_presentation",
+    "korean_english_fixed_ui",
+    "document_html_language"
+  ],
   "accessibility_machine_contract": {
     "hidden_controls_excluded": [
       "input_type_hidden",
@@ -128,12 +136,40 @@
     ],
     "manual_observation_may_override_deterministic_failure": false
   },
-  "permitted_accessibility_observations": [
-    "keyboard_reachability",
-    "visible_focus",
-    "not_color_only",
-    "narrow_and_zoomed_presentation"
-  ],
+  "human_review_contract": {
+    "artifact_kind": "phase8_dogfood_human_review",
+    "states": [
+      "not_provided",
+      "passed",
+      "failed"
+    ],
+    "replacement_states": [
+      "pending_human_review",
+      "passed",
+      "failed"
+    ],
+    "interaction_repository_classes": [
+      "volicord",
+      "small-python",
+      "polyglot-medium"
+    ],
+    "document_samples": [
+      "simple",
+      "complex"
+    ],
+    "live_viewer_locales": [
+      "en",
+      "ko"
+    ],
+    "live_viewer_criteria": [
+      "keyboard_reachability",
+      "visible_focus",
+      "not_color_only",
+      "narrow_and_zoomed_presentation"
+    ],
+    "machine_accessibility_may_be_overridden": false,
+    "sampling_algorithm": "lowest_automated_passed_cycle_by_repository_class"
+  },
   "fixture_regression_command": [
     "python3",
     "rebuild/validation/repository-intelligence/phase-5-acceptance/assertions.py"
@@ -250,14 +286,6 @@
       "required_independent_review_status": "accepted",
       "purpose": "bounded independent-review gate rather than mechanical semantic proof",
       "visibility": "evaluator_input_only"
-    },
-    "observation_schema": {
-      "required_fields": [
-        "status",
-        "basis"
-      ],
-      "basis_maximum_utf8_bytes": 8192,
-      "templates_must_not_prefill_passed": true
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
