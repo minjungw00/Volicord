@@ -1082,7 +1082,7 @@ fn declaration(
             _ => None,
         },
         Language::C => c_declaration(node, state.source, &state.area.path, false),
-        Language::Cpp => cpp_declaration(node, state.source, &state.area.path, text),
+        Language::Cpp => cpp_declaration(node, state, context, text),
         Language::Rust => match node.kind() {
             "mod_item" => named(node, state.source).map(|name| (CodeEntityKind::Module, name)),
             "trait_item" => named(node, state.source).map(|name| (CodeEntityKind::Trait, name)),
@@ -1158,10 +1158,12 @@ fn c_declaration(
 
 fn cpp_declaration(
     node: Node<'_>,
-    source: &[u8],
-    path: &str,
+    state: &ParseState<'_>,
+    context: &VisitContext,
     text: &str,
 ) -> Option<(CodeEntityKind, String)> {
+    let source = state.source;
+    let path = &state.area.path;
     match node.kind() {
         "namespace_definition" => named(node, source).map(|name| (CodeEntityKind::Namespace, name)),
         "class_specifier" => named(node, source).map(|name| (CodeEntityKind::Class, name)),
@@ -1170,22 +1172,39 @@ fn cpp_declaration(
         "alias_declaration" | "type_definition" => named(node, source)
             .or_else(|| descendant_text(node, source, &["type_identifier"], &[]))
             .map(|name| (CodeEntityKind::Type, name)),
-        "function_definition" => callable_name(node, source).map(|name| {
-            let kind = if is_test_name(path, &name, text) {
-                CodeEntityKind::Test
-            } else {
-                CodeEntityKind::Method
-            };
-            (kind, name)
-        }),
+        "function_definition" => callable_name(node, source)
+            .map(|name| (cpp_callable_kind(node, state, context, text, &name), name)),
         "field_declaration" if contains_kind(node, "function_declarator") => {
-            callable_name(node, source).map(|name| (CodeEntityKind::Method, name))
+            callable_name(node, source)
+                .map(|name| (cpp_callable_kind(node, state, context, text, &name), name))
         }
+        "declaration" if contains_kind(node, "function_declarator") => callable_name(node, source)
+            .map(|name| (cpp_callable_kind(node, state, context, text, &name), name)),
         "field_declaration" => {
             descendant_text(node, source, &["field_identifier", "identifier"], &[])
                 .map(|name| (CodeEntityKind::Field, name))
         }
-        _ => c_declaration(node, source, path, true),
+        _ => c_declaration(node, source, path, false),
+    }
+}
+
+fn cpp_callable_kind(
+    node: Node<'_>,
+    state: &ParseState<'_>,
+    context: &VisitContext,
+    text: &str,
+    name: &str,
+) -> CodeEntityKind {
+    if is_test_name(&state.area.path, name, text) {
+        return CodeEntityKind::Test;
+    }
+    let declared_in_type = state.entities.get(context.parent).is_some_and(|entity| {
+        matches!(entity.kind, CodeEntityKind::Class | CodeEntityKind::Struct)
+    });
+    if declared_in_type || contains_kind(node, "qualified_identifier") {
+        CodeEntityKind::Method
+    } else {
+        CodeEntityKind::Function
     }
 }
 

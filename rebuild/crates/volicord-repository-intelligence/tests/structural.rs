@@ -298,6 +298,40 @@ fn out_of_set_language_keeps_inventory_fallback_without_structural_facts(
     Ok(())
 }
 
+#[test]
+fn cpp_namespace_free_functions_are_not_reported_as_methods() -> Result<(), Box<dyn Error>> {
+    let temporary = tempfile::tempdir()?;
+    fs::write(
+        temporary.path().join("sample.cpp"),
+        r#"namespace sample {
+int normalize(int value) { return value; }
+
+class Greeter {
+public:
+    int greet(int value) { return normalize(value); }
+};
+}
+"#,
+    )?;
+
+    let (_, analysis) =
+        analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())?))?;
+    let normalize = analysis
+        .structural_facts
+        .iter()
+        .find(|fact| fact.entity.qualified_name.as_deref() == Some("sample.normalize"))
+        .ok_or("namespace free function missing")?;
+    let greet = analysis
+        .structural_facts
+        .iter()
+        .find(|fact| fact.entity.qualified_name.as_deref() == Some("sample.Greeter.greet"))
+        .ok_or("class method missing")?;
+
+    assert_eq!(normalize.entity.kind, CodeEntityKind::Function);
+    assert_eq!(greet.entity.kind, CodeEntityKind::Method);
+    Ok(())
+}
+
 fn language(value: &str) -> Result<Language, Box<dyn Error>> {
     Ok(match value {
         "java" => Language::Java,
