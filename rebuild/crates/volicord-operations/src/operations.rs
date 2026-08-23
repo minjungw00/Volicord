@@ -59,10 +59,11 @@ use volicord_privacy::{
     ProviderRequestRecord, SourceClass,
 };
 use volicord_projections::{
-    build_project_projection, generate_documents, CandidateContentAccess,
-    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateProjectionInput,
-    DocumentKind, DocumentRequest, DocumentSet, GeneratedDocument, OutputFormat, ProjectProjection,
-    ProjectProjectionInputs, ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
+    build_project_projection, generate_documents, prepare_narrative_plan, realize_narrative,
+    CandidateContentAccess, CandidateDependencyFailure, CandidateDependencyFailureKind,
+    CandidateProjectionInput, DocumentKind, DocumentRequest, DocumentSet, GeneratedDocument,
+    NarrativePlan, NarrativeRealization, OutputFormat, ProjectProjection, ProjectProjectionInputs,
+    ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
 };
 use volicord_repository_intelligence::{
     analyze_repository, AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding, CapabilityState,
@@ -1234,6 +1235,29 @@ impl LocalOperations {
         let projection = self.project_projection(project_id)?;
         generate_documents(&projection, request)
             .map_err(|error| Error::with_source("document generation failed", error))
+    }
+
+    pub fn document_narrative_plan(
+        &self,
+        project_id: ProjectId,
+        request: &DocumentRequest,
+        kind: DocumentKind,
+    ) -> Result<NarrativePlan, Error> {
+        let projection = self.project_projection(project_id)?;
+        prepare_narrative_plan(&projection, request, kind)
+            .map_err(|error| Error::with_source("narrative plan generation failed", error))
+    }
+
+    pub fn realize_document_narrative(
+        &self,
+        project_id: ProjectId,
+        request: &DocumentRequest,
+        kind: DocumentKind,
+        realization: &NarrativeRealization,
+    ) -> Result<GeneratedDocument, Error> {
+        let projection = self.project_projection(project_id)?;
+        realize_narrative(&projection, request, kind, realization)
+            .map_err(|error| Error::with_source("narrative realization failed", error))
     }
 
     pub fn publish_document(

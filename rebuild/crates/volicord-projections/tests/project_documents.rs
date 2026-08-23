@@ -18,12 +18,14 @@ use volicord_inquiry::{
     CandidateRetention, CandidateStore, SubmissionOutcome,
 };
 use volicord_projections::{
-    build_project_projection, build_project_understanding, generate_documents, BriefDecisionState,
-    CandidateContentAccess, CandidateDependencyFailure, CandidateDependencyFailureKind,
-    CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionKind, ClaimClass,
-    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, MapRelationClass, OutputFormat,
-    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth,
-    ProjectionIssueKind, RequestedDestination, UnderstandingBound,
+    build_project_projection, build_project_understanding, generate_documents,
+    prepare_narrative_plan, realize_narrative, BriefDecisionState, CandidateContentAccess,
+    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateDependencyState,
+    CandidateProjectionInput, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
+    FixedLocale, GeneratorIdentity, MapRelationClass, NarrativeRealization,
+    NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectProjectionInputs,
+    ProjectionBound, ProjectionHealth, ProjectionIssueKind, RealizedNarrativeClaim,
+    RealizedNarrativeSection, RequestedDestination, UnderstandingBound,
     GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
     RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
@@ -843,6 +845,10 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     for document in all {
         assert_eq!(document.metadata.requested_language, "fr-CA");
         assert_eq!(document.metadata.html_language_tag, "fr-CA");
+        assert!(matches!(
+            document.metadata.narrative_realization,
+            NarrativeRealizationState::Unavailable { .. }
+        ));
         assert_eq!(document.metadata.project_id, project.id);
         assert!(!document.metadata.included_decisions.is_empty());
         assert!(!document.metadata.capability_coverage.is_empty());
@@ -876,6 +882,104 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             }
         }
     }
+
+    let plan = prepare_narrative_plan(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+    )?;
+    let realization = NarrativeRealization {
+        plan_fingerprint: plan.plan_fingerprint.clone(),
+        title: "Comprendre le projet et son architecture".to_owned(),
+        sections: plan
+            .sections
+            .iter()
+            .map(|section| RealizedNarrativeSection {
+                key: section.key.clone(),
+                title: format!("Explication française — {}", section.source_title),
+                claims: section
+                    .claims
+                    .iter()
+                    .map(|claim| RealizedNarrativeClaim {
+                        identity: claim.identity.clone(),
+                        text: format!("Explication française : {}", claim.source_text),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        generator: GeneratorIdentity {
+            generator: "volicord-codex-host".to_owned(),
+            agent: Some("codex".to_owned()),
+            model: Some("fixture-realizer".to_owned()),
+        },
+    };
+    let realized = realize_narrative(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+        &realization,
+    )?;
+    assert!(realized
+        .markdown
+        .content
+        .contains("Comprendre le projet et son architecture"));
+    assert!(realized
+        .body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .all(|claim| claim.text.starts_with("Explication française")));
+    assert_eq!(
+        realized.metadata.generator.model.as_deref(),
+        Some("fixture-realizer")
+    );
+    assert!(matches!(
+        realized.metadata.narrative_realization,
+        NarrativeRealizationState::HostRealized { .. }
+    ));
+    for (realized_claim, plan_claim) in realized
+        .body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .zip(plan.sections.iter().flat_map(|section| &section.claims))
+    {
+        assert_eq!(realized_claim.source_basis, plan_claim.source_basis);
+        assert_eq!(realized_claim.decision_basis, plan_claim.decision_basis);
+        assert_eq!(realized_claim.analysis_basis, plan_claim.analysis_basis);
+    }
+
+    let mut ungrounded = realization.clone();
+    ungrounded.sections[0].claims[0].identity = "invented-claim".to_owned();
+    assert!(realize_narrative(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+        &ungrounded,
+    )
+    .is_err());
+    let (section_index, claim_index) = plan
+        .sections
+        .iter()
+        .enumerate()
+        .find_map(|(section_index, section)| {
+            section
+                .claims
+                .iter()
+                .position(|claim| !claim.protected_terms.is_empty())
+                .map(|claim_index| (section_index, claim_index))
+        })
+        .ok_or("fixture plan has no protected code/path term")?;
+    let mut translated_identifier = realization.clone();
+    translated_identifier.sections[section_index].claims[claim_index].text =
+        "Explicación sin el identificador requerido".to_owned();
+    assert!(realize_narrative(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+        &translated_identifier,
+    )
+    .is_err());
     assert_eq!(
         documents
             .project_architecture_guide
@@ -1223,6 +1327,13 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .html
         .content
         .starts_with("<!doctype html><html lang=\"ko\">"));
+    assert_eq!(
+        korean
+            .project_architecture_guide
+            .metadata
+            .narrative_realization,
+        NarrativeRealizationState::FixedLocale
+    );
     assert_eq!(canonical, canonical_before);
     assert_eq!(
         store.read_canonical_basis(

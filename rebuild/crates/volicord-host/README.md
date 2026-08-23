@@ -5,6 +5,15 @@ Recall, repository understanding, Inquiry/Decision, Checkpoint, canonical and
 Candidate lifecycle, privacy, document, analysis, and Guarded interaction
 capabilities. It never exposes raw database operations or legacy methods.
 
+For an arbitrary requested document language, `document_preview` first returns
+`realization_required` with a bounded fingerprinted plan. The active host/model
+returns the exact realized section and claim identities in a second call;
+Volicord validates topology and protected code/path terms, retains the plan's
+grounding, and records generator/agent/model provenance. No hidden provider or
+recursive model call is used. English/Korean fixed-locale previews remain
+deterministic, while a missing host realization never reports the requested
+language as complete.
+
 `context_record` preserves a bounded statement that occurs verbatim in the
 exact current-host user turn as a user-authored Context Item. It returns both
 the canonical Source and Context Item identities; a `goal` recorded this way is

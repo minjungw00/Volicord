@@ -9,6 +9,56 @@ use std::{
 use volicord_operations::{run_cli, CliExit};
 
 #[test]
+fn document_cli_reports_requested_language_realizer_unavailable_without_publishing_english(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let runtime_text = runtime.to_str().ok_or("runtime path")?;
+    let mut output = Vec::new();
+    let mut error = Vec::new();
+    assert_eq!(
+        run_cli(
+            ["--runtime", runtime_text, "project", "init", "Language CLI"],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS
+    );
+    let initialized: Value = serde_json::from_slice(&output)?;
+    let project = initialized["project_id"]
+        .as_str()
+        .ok_or("missing Project ID")?;
+
+    output.clear();
+    error.clear();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                runtime_text,
+                "documents",
+                "preview",
+                project,
+                "handoff-resume",
+                "markdown",
+                "es",
+            ],
+            &mut output,
+            &mut error,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&error)
+    );
+    let preview: Value = serde_json::from_slice(&output)?;
+    assert_eq!(preview["outcome"], "unavailable");
+    assert_eq!(preview["requested_language"], "es");
+    assert!(preview.get("content").is_none());
+    assert_eq!(preview["published"], false);
+    Ok(())
+}
+
+#[test]
 fn candidate_cli_rejects_dependency_failures_as_empty_success(
 ) -> Result<(), Box<dyn std::error::Error>> {
     for fault in ["unsupported", "corrupt", "unavailable"] {

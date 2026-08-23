@@ -16,12 +16,14 @@ pub use candidate_inspection::{
     InspectionHealth, RetentionInspection,
 };
 pub use documents::{
-    generate_documents, ClaimClass, DocumentBody, DocumentDecisionBasis, DocumentError,
-    DocumentKind, DocumentMetadata, DocumentRequest, DocumentSection, DocumentSet,
-    DocumentSourceBasis, FixedLocale, GeneratedDocument, GeneratedDocumentClaim, GeneratorIdentity,
-    OutputFormat, PublicationArtifact, RequestedDestination, GENERATED_DOCUMENT_FORMAT_KIND,
-    GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
-    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
+    generate_documents, prepare_narrative_plan, realize_narrative, ClaimClass, DocumentBody,
+    DocumentDecisionBasis, DocumentError, DocumentKind, DocumentMetadata, DocumentRequest,
+    DocumentSection, DocumentSet, DocumentSourceBasis, FixedLocale, GeneratedDocument,
+    GeneratedDocumentClaim, GeneratorIdentity, NarrativePlan, NarrativePlanClaim,
+    NarrativePlanSection, NarrativeRealization, NarrativeRealizationState, OutputFormat,
+    PublicationArtifact, RealizedNarrativeClaim, RealizedNarrativeSection, RequestedDestination,
+    GENERATED_DOCUMENT_FORMAT_KIND, GENERATED_DOCUMENT_METADATA_VERSION,
+    RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
     build_project_projection, CandidateDependencyFailure, CandidateDependencyFailureKind,

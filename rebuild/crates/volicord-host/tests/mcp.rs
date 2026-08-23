@@ -824,15 +824,36 @@ fn recall_documents_and_inspection_are_read_only_host_calls() {
         let response = call(&mut adapter, tool, json!({"project_id":project}));
         assert_eq!(response["result"]["isError"], false, "{tool}: {response}");
     }
-    let response = call(
+    let prepared = call(
         &mut adapter,
         "document_preview",
-        json!({"project_id":project,"kind":"handoff-resume","language":"ja"}),
+        json!({"project_id":project,"kind":"handoff-resume","language":"es"}),
     );
-    assert_eq!(response["result"]["isError"], false);
-    assert!(structured(&response)["content"]
+    assert_eq!(prepared["result"]["isError"], false, "{prepared}");
+    let prepared_result = structured(&prepared);
+    assert_eq!(prepared_result["outcome"], "realization_required");
+    assert!(prepared_result.get("content").is_none());
+    let realization = spanish_realization(&prepared_result["plan"]);
+    let realized = call(
+        &mut adapter,
+        "document_preview",
+        json!({
+            "project_id":project,
+            "kind":"handoff-resume",
+            "language":"es",
+            "realization":realization
+        }),
+    );
+    assert_eq!(realized["result"]["isError"], false, "{realized}");
+    let realized_result = structured(&realized);
+    assert_eq!(realized_result["outcome"], "realized");
+    assert_eq!(
+        realized_result["generator"]["model"],
+        "fixture-spanish-model"
+    );
+    assert!(realized_result["content"]
         .as_str()
-        .is_some_and(|value| value.contains("ja")));
+        .is_some_and(|value| value.contains("Explicación en español")));
     let unsafe_language = "fr-CA\" data-unsafe=\"<&";
     let response = call(
         &mut adapter,
@@ -844,17 +865,35 @@ fn recall_documents_and_inspection_are_read_only_host_calls() {
             "language":unsafe_language
         }),
     );
-    let content = structured(&response)["content"]
-        .as_str()
-        .expect("HTML document preview");
-    assert!(content.starts_with("<!doctype html><html lang=\"en\">"));
-    assert!(!content.starts_with("<!doctype html><html lang=\"fr-CA"));
-    assert!(content.contains("fr-CA&quot; data-unsafe=&quot;&lt;&amp;"));
+    let unsafe_result = structured(&response);
+    assert_eq!(unsafe_result["outcome"], "realization_required");
+    assert_eq!(unsafe_result["requested_language"], unsafe_language);
+    assert!(unsafe_result.get("content").is_none());
     let after = adapter
         .operations()
         .canonical_basis(parse_project(&project))
         .expect("after");
     assert_eq!(before, after);
+}
+
+fn spanish_realization(plan: &Value) -> Value {
+    json!({
+        "plan_fingerprint":plan["plan_fingerprint"],
+        "title":"Comprensión del proyecto",
+        "generator":{
+            "generator":"volicord-codex-host",
+            "agent":"codex",
+            "model":"fixture-spanish-model"
+        },
+        "sections":plan["sections"].as_array().expect("plan sections").iter().map(|section| json!({
+            "key":section["key"],
+            "title":format!("Explicación en español — {}", section["source_title"].as_str().expect("source title")),
+            "claims":section["claims"].as_array().expect("plan claims").iter().map(|claim| json!({
+                "identity":claim["identity"],
+                "text":format!("Explicación en español: {}", claim["source_text"].as_str().expect("source text"))
+            })).collect::<Vec<_>>()
+        })).collect::<Vec<_>>()
+    })
 }
 
 #[test]
@@ -2557,7 +2596,14 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
         ],
         "document_preview" => vec![shape(
-            &["project_id", "kind", "format", "language", "locale"],
+            &[
+                "project_id",
+                "kind",
+                "format",
+                "language",
+                "locale",
+                "realization",
+            ],
             &["project_id", "kind"],
         )],
         "guarded_interaction" => vec![

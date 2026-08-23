@@ -298,6 +298,17 @@ affected generated section을 `unavailable` 또는 `degraded` actionable outcome
 표시한다. Requested language 메타데이터, HTML `lang` 또는 fixed-string locale만
 맞춘 영어 본문을 requested-language success로 표시하지 않는다.
 
+Production host interface는 이 경계를 두 단계로 표현한다. 첫 단계의
+`NarrativePlan`은 requested language, exact document/section/claim identity와 순서,
+Source/Decision/Analysis grounding, source body와 번역하면 안 되는 code/path term을
+하나의 fingerprint에 bind한다. Active host/model은 두 번째 단계에서 그 exact
+identity별 realized text와 generator/agent/model identity를 반환한다. Projection owner는
+fingerprint, topology, field bound와 protected term을 검증하고 grounding은 host payload가
+아니라 plan에서 복사한다. Mismatch나 extra/missing claim은 failed realization이고,
+realizer가 없는 caller는 typed `unavailable`을 받으며 requested-language success
+artifact를 publish하지 않는다. 이 interaction은 current-host authority이며 background
+semantic-provider opt-in이나 transport를 사용하지 않는다.
+
 ## 8. Grounding metadata
 
 각 generated draft, preview와 export는 최소 다음 grounding을 가진다.

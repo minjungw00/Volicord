@@ -1,6 +1,7 @@
 use crate::{
     BriefDecisionState, CapabilityGap, MapRelationClass, ProjectProjection, ProjectionIssue,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error as StdError;
 use std::fmt;
@@ -20,7 +21,7 @@ pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 4;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -150,6 +151,7 @@ pub struct DocumentMetadata {
     /// attribute. This never replaces the generated-content language request.
     pub html_language_tag: String,
     pub fixed_locale: FixedLocale,
+    pub narrative_realization: NarrativeRealizationState,
     pub repository_snapshots: Vec<RepositorySnapshotId>,
     pub analysis_snapshots: Vec<AnalysisSnapshotId>,
     pub included_decisions: Vec<DocumentDecisionBasis>,
@@ -158,6 +160,62 @@ pub struct DocumentMetadata {
     pub capability_gaps: Vec<CapabilityGap>,
     pub omissions: Vec<ProjectionIssue>,
     pub requested_destination_basis: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NarrativeRealizationState {
+    FixedLocale,
+    Unavailable { reason: String },
+    HostRealized { plan_fingerprint: String },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NarrativePlanClaim {
+    pub identity: String,
+    pub source_text: String,
+    pub protected_terms: Vec<String>,
+    pub class: ClaimClass,
+    pub source_basis: Vec<SourceId>,
+    pub decision_basis: Vec<DecisionId>,
+    pub analysis_basis: Vec<AnalysisSnapshotId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NarrativePlanSection {
+    pub key: String,
+    pub source_title: String,
+    pub claims: Vec<NarrativePlanClaim>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NarrativePlan {
+    pub document_kind: DocumentKind,
+    pub requested_language: String,
+    pub plan_fingerprint: String,
+    pub source_title: String,
+    pub sections: Vec<NarrativePlanSection>,
+    pub generator: GeneratorIdentity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RealizedNarrativeClaim {
+    pub identity: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RealizedNarrativeSection {
+    pub key: String,
+    pub title: String,
+    pub claims: Vec<RealizedNarrativeClaim>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NarrativeRealization {
+    pub plan_fingerprint: String,
+    pub title: String,
+    pub sections: Vec<RealizedNarrativeSection>,
+    pub generator: GeneratorIdentity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -251,6 +309,153 @@ pub fn generate_documents(
         implementation_plan: take_document(&mut documents, DocumentKind::ImplementationPlan)?,
         handoff_resume: take_document(&mut documents, DocumentKind::HandoffResume)?,
     })
+}
+
+/// Prepares one bounded, source-grounded body for realization by the active
+/// host/model. The returned fingerprint binds the requested language, exact
+/// section/claim topology, grounding, and protected code/path terms.
+pub fn prepare_narrative_plan(
+    projection: &ProjectProjection,
+    request: &DocumentRequest,
+    kind: DocumentKind,
+) -> Result<NarrativePlan, DocumentError> {
+    validate_request(request)?;
+    let body = build_body(kind, projection, request.fixed_locale);
+    validate_claim_grounding(projection, &body)?;
+    let protected_candidates = protected_candidates(projection);
+    let sections = body
+        .sections
+        .iter()
+        .map(|section| NarrativePlanSection {
+            key: section.key.clone(),
+            source_title: section.title.clone(),
+            claims: section
+                .claims
+                .iter()
+                .map(|claim| NarrativePlanClaim {
+                    identity: claim.identity.clone(),
+                    source_text: claim.text.clone(),
+                    protected_terms: protected_candidates
+                        .iter()
+                        .filter(|term| claim.text.contains(term.as_str()))
+                        .cloned()
+                        .collect(),
+                    class: claim.class,
+                    source_basis: claim.source_basis.clone(),
+                    decision_basis: claim.decision_basis.clone(),
+                    analysis_basis: claim.analysis_basis.clone(),
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let fingerprint = narrative_plan_fingerprint(kind, request, &body, &sections);
+    Ok(NarrativePlan {
+        document_kind: kind,
+        requested_language: request.requested_language.clone(),
+        plan_fingerprint: fingerprint,
+        source_title: body.title,
+        sections,
+        generator: request.generator.clone(),
+    })
+}
+
+/// Validates and renders a host-supplied natural-language realization while
+/// retaining all claim grounding from the bounded source plan.
+pub fn realize_narrative(
+    projection: &ProjectProjection,
+    request: &DocumentRequest,
+    kind: DocumentKind,
+    realization: &NarrativeRealization,
+) -> Result<GeneratedDocument, DocumentError> {
+    let plan = prepare_narrative_plan(projection, request, kind)?;
+    if realization.plan_fingerprint != plan.plan_fingerprint {
+        return Err(DocumentError::new(
+            "narrative realization does not match the current grounded plan",
+        ));
+    }
+    validate_realized_text("document title", &realization.title)?;
+    if realization.generator.generator.trim().is_empty()
+        || realization
+            .generator
+            .agent
+            .as_deref()
+            .is_none_or(str::is_empty)
+        || realization
+            .generator
+            .model
+            .as_deref()
+            .is_none_or(str::is_empty)
+    {
+        return Err(DocumentError::new(
+            "host realization requires generator, agent, and model identity",
+        ));
+    }
+    if realization.sections.len() != plan.sections.len() {
+        return Err(DocumentError::new(
+            "narrative realization changed the grounded section topology",
+        ));
+    }
+
+    let source_body = build_body(kind, projection, request.fixed_locale);
+    let mut body = DocumentBody {
+        title: realization.title.clone(),
+        sections: Vec::with_capacity(plan.sections.len()),
+    };
+    for ((plan_section, realized_section), source_section) in plan
+        .sections
+        .iter()
+        .zip(&realization.sections)
+        .zip(source_body.sections)
+    {
+        if realized_section.key != plan_section.key
+            || realized_section.claims.len() != plan_section.claims.len()
+        {
+            return Err(DocumentError::new(
+                "narrative realization changed the grounded section or claim topology",
+            ));
+        }
+        validate_realized_text("section title", &realized_section.title)?;
+        let mut claims = Vec::with_capacity(plan_section.claims.len());
+        for ((plan_claim, realized_claim), source_claim) in plan_section
+            .claims
+            .iter()
+            .zip(&realized_section.claims)
+            .zip(source_section.claims)
+        {
+            if realized_claim.identity != plan_claim.identity {
+                return Err(DocumentError::new(
+                    "narrative realization changed a grounded claim identity",
+                ));
+            }
+            validate_realized_text("claim text", &realized_claim.text)?;
+            if let Some(missing) = plan_claim
+                .protected_terms
+                .iter()
+                .find(|term| !realized_claim.text.contains(term.as_str()))
+            {
+                return Err(DocumentError::new(format!(
+                    "narrative realization translated or omitted protected code/path term {missing}"
+                )));
+            }
+            claims.push(GeneratedDocumentClaim {
+                text: realized_claim.text.clone(),
+                ..source_claim
+            });
+        }
+        body.sections.push(DocumentSection {
+            key: plan_section.key.clone(),
+            title: realized_section.title.clone(),
+            claims,
+        });
+    }
+    validate_claim_grounding(projection, &body)?;
+    let mut realized_request = request.clone();
+    realized_request.generator = realization.generator.clone();
+    let mut metadata = build_metadata(kind, projection, &realized_request, &body);
+    metadata.narrative_realization = NarrativeRealizationState::HostRealized {
+        plan_fingerprint: plan.plan_fingerprint,
+    };
+    generated_document(kind, request, metadata, body)
 }
 
 fn validate_request(request: &DocumentRequest) -> Result<(), DocumentError> {
@@ -1290,6 +1495,14 @@ fn build_metadata(
             request.fixed_locale,
         ),
         fixed_locale: request.fixed_locale,
+        narrative_realization: if fixed_realization_available(request) {
+            NarrativeRealizationState::FixedLocale
+        } else {
+            NarrativeRealizationState::Unavailable {
+                reason: "no active-host narrative realizer was supplied for the requested language"
+                    .to_owned(),
+            }
+        },
         repository_snapshots,
         analysis_snapshots,
         included_decisions,
@@ -1299,6 +1512,132 @@ fn build_metadata(
         omissions: projection.issues.clone(),
         requested_destination_basis,
     }
+}
+
+fn generated_document(
+    kind: DocumentKind,
+    request: &DocumentRequest,
+    metadata: DocumentMetadata,
+    body: DocumentBody,
+) -> Result<GeneratedDocument, DocumentError> {
+    let markdown_content = render_markdown(&metadata, &body, metadata.fixed_locale);
+    let html_content = render_html(&metadata, &body, metadata.fixed_locale);
+    validate_rendered_size(OutputFormat::Markdown, &markdown_content)?;
+    validate_rendered_size(OutputFormat::Html, &html_content)?;
+    Ok(GeneratedDocument {
+        markdown: PublicationArtifact {
+            format: OutputFormat::Markdown,
+            media_type: "text/markdown; charset=utf-8".to_owned(),
+            suggested_file_name: format!("{}.md", kind.slug()),
+            requested_destination: destination(request, kind, OutputFormat::Markdown),
+            content: markdown_content,
+        },
+        html: PublicationArtifact {
+            format: OutputFormat::Html,
+            media_type: "text/html; charset=utf-8".to_owned(),
+            suggested_file_name: format!("{}.html", kind.slug()),
+            requested_destination: destination(request, kind, OutputFormat::Html),
+            content: html_content,
+        },
+        metadata,
+        body,
+    })
+}
+
+fn fixed_realization_available(request: &DocumentRequest) -> bool {
+    let language = request.requested_language.trim().to_ascii_lowercase();
+    match request.fixed_locale {
+        FixedLocale::English => language == "en" || language.starts_with("en-"),
+        FixedLocale::Korean => language == "ko" || language.starts_with("ko-"),
+    }
+}
+
+fn validate_realized_text(field: &str, value: &str) -> Result<(), DocumentError> {
+    if value.trim().is_empty() {
+        return Err(DocumentError::new(format!(
+            "realized {field} must not be empty"
+        )));
+    }
+    if value.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT {
+        return Err(DocumentError::new(format!(
+            "realized {field} exceeds the bounded field limit"
+        )));
+    }
+    Ok(())
+}
+
+fn protected_candidates(projection: &ProjectProjection) -> Vec<String> {
+    let mut values = projection
+        .repository_map
+        .entities
+        .iter()
+        .flat_map(|entity| {
+            let mut values = vec![entity.identity.clone(), entity.display_name.clone()];
+            if let Some(range) = &entity.source_range {
+                values.push(range.locator.clone());
+            }
+            values
+        })
+        .chain(projection.decision_context_code.iter().flat_map(|link| {
+            link.declared_paths
+                .iter()
+                .chain(&link.declared_components)
+                .chain(&link.related_code_entities)
+                .cloned()
+        }))
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn narrative_plan_fingerprint(
+    kind: DocumentKind,
+    request: &DocumentRequest,
+    body: &DocumentBody,
+    sections: &[NarrativePlanSection],
+) -> String {
+    let mut digest = Sha256::new();
+    hash_plan_field(&mut digest, kind.slug());
+    hash_plan_field(&mut digest, &request.requested_language);
+    hash_plan_field(&mut digest, &projection_locale_key(request.fixed_locale));
+    hash_plan_field(&mut digest, &body.title);
+    for section in sections {
+        hash_plan_field(&mut digest, &section.key);
+        hash_plan_field(&mut digest, &section.source_title);
+        for claim in &section.claims {
+            hash_plan_field(&mut digest, &claim.identity);
+            hash_plan_field(&mut digest, &claim.source_text);
+            hash_plan_field(&mut digest, &format!("{:?}", claim.class));
+            for source in &claim.source_basis {
+                hash_plan_field(&mut digest, &source.to_string());
+            }
+            for decision in &claim.decision_basis {
+                hash_plan_field(&mut digest, &decision.to_string());
+            }
+            for analysis in &claim.analysis_basis {
+                hash_plan_field(&mut digest, &analysis.to_string());
+            }
+            for term in &claim.protected_terms {
+                hash_plan_field(&mut digest, term);
+            }
+        }
+    }
+    format!("sha256:{:x}", digest.finalize())
+}
+
+fn hash_plan_field(digest: &mut Sha256, value: &str) {
+    digest.update(value.len().to_le_bytes());
+    digest.update(value.as_bytes());
+}
+
+fn projection_locale_key(locale: FixedLocale) -> String {
+    match locale {
+        FixedLocale::English => "en",
+        FixedLocale::Korean => "ko",
+    }
+    .to_owned()
 }
 
 fn render_markdown(
@@ -1646,6 +1985,10 @@ fn metadata_pairs(metadata: &DocumentMetadata, locale: FixedLocale) -> Vec<(&'st
             metadata.requested_language.clone(),
         ),
         (
+            fixed(locale, "narrative realization", "서술 실현"),
+            narrative_realization_label(&metadata.narrative_realization, locale),
+        ),
+        (
             fixed(locale, "HTML language tag", "HTML 언어 태그"),
             metadata.html_language_tag.clone(),
         ),
@@ -1682,6 +2025,21 @@ fn metadata_pairs(metadata: &DocumentMetadata, locale: FixedLocale) -> Vec<(&'st
             bounded_rendered_list(&metadata.requested_destination_basis, locale),
         ),
     ]
+}
+
+fn narrative_realization_label(state: &NarrativeRealizationState, locale: FixedLocale) -> String {
+    match state {
+        NarrativeRealizationState::FixedLocale => {
+            fixed(locale, "fixed locale body", "고정 locale 본문").to_owned()
+        }
+        NarrativeRealizationState::Unavailable { reason } => {
+            format!("{}: {reason}", fixed(locale, "unavailable", "사용 불가"))
+        }
+        NarrativeRealizationState::HostRealized { plan_fingerprint } => format!(
+            "{}: {plan_fingerprint}",
+            fixed(locale, "active-host realized", "현재 host 실현")
+        ),
+    }
 }
 
 fn claim_basis(claim: &GeneratedDocumentClaim) -> String {

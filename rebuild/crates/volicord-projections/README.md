@@ -32,6 +32,12 @@ documents.
   Implementation Plan, and Handoff / Resume bodies. Structural Fact, Semantic
   Result, and explicit Agent Interpretation claims remain distinct and carry
   their Source, Decision, and Analysis Snapshot bases.
+- Arbitrary requested-language prose uses a fingerprinted `NarrativePlan` and
+  an active-host `NarrativeRealization`. Realization must preserve the exact
+  section/claim topology and protected code/path terms; grounding is copied
+  from the plan and generator/agent/model provenance is required. Without a
+  realizer, metadata reports `Unavailable` rather than treating the fixed
+  English body as requested-language success.
 - Markdown and self-contained HTML render from the same semantic body. Their
   ordinary reading path starts with current human meaning; versioned metadata,
   opaque identities, and direct per-claim basis remain in a trailing Markdown

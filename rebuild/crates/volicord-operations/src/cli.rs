@@ -21,8 +21,8 @@ use volicord_privacy::{
     SourceExclusionPolicy,
 };
 use volicord_projections::{
-    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, OutputFormat,
-    RequestedDestination,
+    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, NarrativeRealizationState,
+    OutputFormat, RequestedDestination,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -676,6 +676,21 @@ fn documents(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
     };
     let set = operations.documents(project, &request)?;
     let document = select_document(&set, kind);
+    if let NarrativeRealizationState::Unavailable { reason } =
+        &document.metadata.narrative_realization
+    {
+        return Ok(json!({
+            "operation":if destination.is_some() { "document_export" } else { "document_preview" },
+            "project_id":project.to_string(),
+            "kind":kind.slug(),
+            "format":debug_name(format),
+            "outcome":"unavailable",
+            "requested_language":document.metadata.requested_language,
+            "reason":reason,
+            "published":false,
+            "canonical_mutation":false
+        }));
+    }
     let artifact = if format == OutputFormat::Markdown {
         &document.markdown
     } else {

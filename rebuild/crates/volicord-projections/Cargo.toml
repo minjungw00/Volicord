@@ -9,6 +9,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
+sha2 = "0.10.9"
 volicord-context = { path = "../volicord-context" }
 volicord-inquiry = { path = "../volicord-inquiry" }
 volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }

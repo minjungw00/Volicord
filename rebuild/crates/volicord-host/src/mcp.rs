@@ -31,7 +31,8 @@ use volicord_operations::{
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
-    OutputFormat,
+    NarrativePlan, NarrativeRealization, NarrativeRealizationState, OutputFormat,
+    RealizedNarrativeClaim, RealizedNarrativeSection,
 };
 
 pub const HOST_TOOL_NAMES: [&str; 18] = [
@@ -982,9 +983,35 @@ impl HostAdapter {
             },
             requested_destinations: Vec::new(),
         };
+        let project_id = project(args)?;
+        if let Some(value) = args.get("realization") {
+            let realization = narrative_realization(value)?;
+            let document = self
+                .operations
+                .realize_document_narrative(project_id, &request, kind, &realization)
+                .map_err(operation_error)?;
+            let content = if format == OutputFormat::Html {
+                document.html.content
+            } else {
+                document.markdown.content
+            };
+            return Ok(json!({
+                "outcome":"realized",
+                "kind":kind.slug(),
+                "format":format!("{:?}",format).to_lowercase(),
+                "requested_language":document.metadata.requested_language,
+                "generator":{
+                    "generator":document.metadata.generator.generator,
+                    "agent":document.metadata.generator.agent,
+                    "model":document.metadata.generator.model,
+                },
+                "content":content,
+                "canonical_mutation":false
+            }));
+        }
         let set = self
             .operations
-            .documents(project(args)?, &request)
+            .documents(project_id, &request)
             .map_err(operation_error)?;
         let document = match kind {
             DocumentKind::ProjectArchitectureGuide => set.project_architecture_guide,
@@ -992,13 +1019,30 @@ impl HostAdapter {
             DocumentKind::ImplementationPlan => set.implementation_plan,
             DocumentKind::HandoffResume => set.handoff_resume,
         };
+        if matches!(
+            document.metadata.narrative_realization,
+            NarrativeRealizationState::Unavailable { .. }
+        ) {
+            let plan = self
+                .operations
+                .document_narrative_plan(project_id, &request, kind)
+                .map_err(operation_error)?;
+            return Ok(json!({
+                "outcome":"realization_required",
+                "kind":kind.slug(),
+                "format":format!("{:?}",format).to_lowercase(),
+                "requested_language":request.requested_language,
+                "plan":narrative_plan_json(&plan),
+                "canonical_mutation":false
+            }));
+        }
         let content = if format == OutputFormat::Html {
             document.html.content
         } else {
             document.markdown.content
         };
         Ok(
-            json!({"kind":kind.slug(),"format":format!("{:?}",format).to_lowercase(),"content":content,"canonical_mutation":false}),
+            json!({"outcome":"fixed_locale","kind":kind.slug(),"format":format!("{:?}",format).to_lowercase(),"content":content,"canonical_mutation":false}),
         )
     }
 
@@ -1320,6 +1364,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     ("format", enum_schema("Preview format", &["markdown", "html"])),
                     ("language", text_schema("Requested generated-content language", 1, 128)),
                     ("locale", enum_schema("Bundled fixed-text locale", &["en", "ko"])),
+                    ("realization", narrative_realization_schema()),
                 ],
                 &["project_id", "kind"],
             ),
@@ -1341,6 +1386,57 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         input_schema,
         behavior,
     })
+}
+
+fn narrative_realization_schema() -> Value {
+    let mut claim = object_schema(
+        vec![
+            (
+                "identity",
+                text_schema("Exact grounded claim identity", 1, 4096),
+            ),
+            ("text", text_schema("Realized claim text", 1, 4096)),
+        ],
+        &["identity", "text"],
+    );
+    claim["description"] = json!("One exact realized grounded claim");
+    let mut claims = json!({"type":"array","minItems":0,"maxItems":64,"items":claim});
+    claims["description"] = json!("Exact ordered realized claims for the grounded section");
+    let mut section = object_schema(
+        vec![
+            ("key", text_schema("Exact grounded section key", 1, 256)),
+            ("title", text_schema("Realized section title", 1, 4096)),
+            ("claims", claims),
+        ],
+        &["key", "title", "claims"],
+    );
+    section["description"] = json!("One exact realized grounded section");
+    let mut sections = json!({"type":"array","minItems":1,"maxItems":16,"items":section});
+    sections["description"] = json!("Exact ordered realized sections for the grounded plan");
+    let mut generator = object_schema(
+        vec![
+            ("generator", text_schema("Host realizer identity", 1, 256)),
+            ("agent", text_schema("Active agent identity", 1, 256)),
+            ("model", text_schema("Active model identity", 1, 256)),
+        ],
+        &["generator", "agent", "model"],
+    );
+    generator["description"] = json!("Active host/model generator provenance");
+    let mut realization = object_schema(
+        vec![
+            (
+                "plan_fingerprint",
+                text_schema("Exact prepared narrative plan fingerprint", 71, 71),
+            ),
+            ("title", text_schema("Realized document title", 1, 4096)),
+            ("sections", sections),
+            ("generator", generator),
+        ],
+        &["plan_fingerprint", "title", "sections", "generator"],
+    );
+    realization["description"] =
+        json!("Active-host natural-language realization of one prepared grounded plan");
+    realization
 }
 
 fn background_semantic_operation_schemas() -> Vec<Value> {
@@ -2691,4 +2787,72 @@ fn document_kind(value: &str) -> Result<DocumentKind, HostError> {
         "handoff-resume" => Ok(DocumentKind::HandoffResume),
         _ => Err(HostError::new("unknown document kind")),
     }
+}
+
+fn narrative_plan_json(plan: &NarrativePlan) -> Value {
+    json!({
+        "document_kind":plan.document_kind.slug(),
+        "requested_language":plan.requested_language,
+        "plan_fingerprint":plan.plan_fingerprint,
+        "source_title":plan.source_title,
+        "generator":{
+            "generator":plan.generator.generator,
+            "agent":plan.generator.agent,
+            "model":plan.generator.model,
+        },
+        "sections":plan.sections.iter().map(|section| json!({
+            "key":section.key,
+            "source_title":section.source_title,
+            "claims":section.claims.iter().map(|claim| json!({
+                "identity":claim.identity,
+                "source_text":claim.source_text,
+                "protected_terms":claim.protected_terms,
+                "class":format!("{:?}",claim.class).to_lowercase(),
+                "source_basis":claim.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "decision_basis":claim.decision_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "analysis_basis":claim.analysis_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>()
+        })).collect::<Vec<_>>()
+    })
+}
+
+fn narrative_realization(value: &Value) -> Result<NarrativeRealization, HostError> {
+    let sections = value
+        .get("sections")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("realization sections are required"))?
+        .iter()
+        .map(|section| {
+            let claims = section
+                .get("claims")
+                .and_then(Value::as_array)
+                .ok_or_else(|| HostError::new("realization claims are required"))?
+                .iter()
+                .map(|claim| {
+                    Ok(RealizedNarrativeClaim {
+                        identity: required_str(claim, "identity")?.to_owned(),
+                        text: required_str(claim, "text")?.to_owned(),
+                    })
+                })
+                .collect::<Result<Vec<_>, HostError>>()?;
+            Ok(RealizedNarrativeSection {
+                key: required_str(section, "key")?.to_owned(),
+                title: required_str(section, "title")?.to_owned(),
+                claims,
+            })
+        })
+        .collect::<Result<Vec<_>, HostError>>()?;
+    let generator = value
+        .get("generator")
+        .ok_or_else(|| HostError::new("realization generator is required"))?;
+    Ok(NarrativeRealization {
+        plan_fingerprint: required_str(value, "plan_fingerprint")?.to_owned(),
+        title: required_str(value, "title")?.to_owned(),
+        sections,
+        generator: GeneratorIdentity {
+            generator: required_str(generator, "generator")?.to_owned(),
+            agent: Some(required_str(generator, "agent")?.to_owned()),
+            model: Some(required_str(generator, "model")?.to_owned()),
+        },
+    })
 }
