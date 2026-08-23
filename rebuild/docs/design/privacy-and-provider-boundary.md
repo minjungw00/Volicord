@@ -97,6 +97,20 @@ exclusion, filtering 또는 retention meaning을 material하게 바꾸는 경우
 opt-in과 scope가 현재 유효한지 확인하고 transmitted source manifest를 남겨야 한다.
 Revoke 뒤의 새 invocation은 차단한다.
 
+첫 replacement qualification은 mock/stub과 truthful failure/degradation만으로 완료하지
+않고 current production background semantic-provider path의 실제 성공을 최소 한 번
+검증한다. 이 성공은 설정된 production dispatcher/transport가 실제 provider를
+호출하고 authorized Source manifest에 반환 result가 연결되며 provenance,
+coverage, retention와 outcome이 inspection된 경우다. 특정 provider, model 또는
+transport technology를 제품 계약으로 고정하지 않는다.
+
+Technical network availability, credential/authentication, sandbox permission과 ordinary host
+access는 source transmission authorization이 아니다. Qualification invocation은 해당
+Project opt-in에 더해 exact provider/purpose/Source scope의 별도 source-transmission
+authorization을 요구한다. 이 authorization이 없으면 production success check는
+`authorization_blocked`/`not_run`으로 남고 local-only journey나 truthful provider
+degradation 결과를 실제 transmission success로 대체하지 않는다.
+
 ## 5. Inspectable provider state
 
 사용자는 Project마다 최소 다음 상태를 확인할 수 있어야 한다.
@@ -293,6 +307,11 @@ V11은 single-language, polyglot와 Volicord repository journey에서 다음을 
 - correction 이후 reanalysis가 user-owned canonical meaning을 복원/overwrite하지 않음
 - Candidate opt-out, retention expiry와 deletion이 inspection/promotion journey에서
   scope를 넘거나 existing Candidate를 silent promotion/rewrite하지 않음
+- current production background semantic-provider dispatcher/transport의 최소 한 실제
+  successful request/result path가 exact Project opt-in, transmitted Source manifest와
+  별도 source-transmission authorization에 연결됨
+- network/credential availability만으로 authorization을 추론하지 않고, 실제
+  production success와 unavailable/failed/partial degradation을 모두 진실하게 보존함
 
 V07/V11이 secret filtering 또는 provider deletion completeness의 한계를 드러내면
 accepted Q3 revisit trigger 절차를 따르며 이 문서가 동의를 조용히 넓히지 않는다.

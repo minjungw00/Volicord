@@ -40,7 +40,7 @@ Volicord의 중심은 정교한 절차를 수행했다는 기록이 아니라 �
 | 사용자 자연어 | allowlist를 두지 않으며 현재 대화 또는 사용자가 요청한 언어를 유지 |
 | 분석 대상 저장소 언어 | 단일 언어로 제한하지 않고 capability별 지원 상태를 표시 |
 
-고정 UI와 CLI 문자열의 첫 bundled locale은 한국어와 영어다. 지원 locale에 없는 고정 문자열은 영어로 fallback할 수 있다. 질문, Recall, 코드 설명과 생성 문서는 연결된 모델이 해당 언어를 처리할 수 있는 범위에서 사용자가 선택한 자연어를 사용한다. 코드 identifier, 경로, API 이름과 symbol 원문은 번역하지 않는다.
+고정 UI와 CLI 문자열의 첫 bundled locale은 한국어와 영어다. 지원 locale에 없는 고정 문자열은 영어로 fallback할 수 있다. 질문, Recall, 코드 설명과 생성 문서는 연결된 모델이 해당 언어를 처리할 수 있는 범위에서 사용자가 선택한 자연어를 실제 본문에 사용한다. Requested-language 메타데이터나 HTML `lang`만 맞고 본문이 영어인 결과는 성공이 아니다. 연결된 모델이 요청 언어를 실현할 수 없으면 해당 generated-content 결과를 `unavailable` 또는 `degraded`로 표시하고 영어 본문을 요청 언어 성공으로 위장하지 않는다. 코드 identifier, 경로, API 이름과 symbol 원문은 번역하지 않는다.
 
 첫 공식 운영 계약은 다음과 같다.
 
@@ -239,6 +239,11 @@ parser, compiler, indexer 또는 repository metadata에서 확인한 구조적·
 - semantic annotation에는 source snapshot, included source refs, 생성 시각, provider, model과 uncertainty를 기록한다.
 - raw source body를 portable bundle에 기본 포함하지 않는다.
 - 사용자는 semantic annotation과 관련 cache를 삭제할 수 있다.
+- 첫 replacement qualification은 truthful provider failure/degradation과 별개로 current
+  production background semantic-provider path의 실제 성공을 최소 한 번 포함한다.
+- Technical network/credential availability는 source transmission authorization이 아니며,
+  qualification은 Project opt-in에 더해 exact provider/purpose/source scope의 별도
+  authorization을 요구한다.
 
 ## 13. Recall과 Checkpoint
 
@@ -262,11 +267,15 @@ Checkpoint는 의미 있는 작업 완료, 일시 중지 또는 handoff 경계�
 | 표면 | 초기 책임 |
 |---|---|
 | Agent conversation | Inquiry, Decision, Recall, 현재 작업과 코드 설명 |
-| Local viewer | 프로젝트 개요, Repository Map, Decision trail, Checkpoint timeline, 기억 수정·삭제, 문서 preview |
-| CLI | init, bind, health, analyze, export/import, repair, reindex, privacy 설정과 고위험 fallback |
+| Local viewer | Project Understanding을 기본으로 한 목표, 완료·현재·남은 작업, 다음 단계, Decision과 이유, 관련 코드, component·architecture·flow, Repository Map과 문서 preview; record·audit 상세는 더 깊은 inspection으로 제공 |
+| CLI | repository-relative ordinary use와 task-oriented discovery를 제공하는 init/bind, understand/status, analyze, document, export/import, privacy, repair/reindex와 고위험 fallback |
 | MCP | recall, explain/search, request decision, checkpoint, analyze와 document의 고수준 기능 |
 
 viewer가 없는 환경에서도 agent conversation과 CLI를 통해 핵심 기록을 읽고 수정할 수 있어야 한다. record별 저수준 CRUD를 수십 개 MCP 도구로 노출하지 않는다.
+
+Project Understanding은 Canonical Context와 Repository Intelligence를 읽어 만드는 derived/read-side interpretation이며 새 canonical truth가 아니다. 기본 Viewer는 verified structural/semantic fact와 generated interpretation을 출처·statement role·uncertainty로 구분하고, 관계를 시각적으로 이해하는 데 실질적인 도식을 사용한다. 도식의 node와 edge 존재는 inspectable repository relation 또는 Decision/Context relation에서 와야 하며 generated interpretation은 해당 topology를 발명하지 않는다.
+
+CLI는 사용자 작업과 다음 안전한 행동을 중심으로 help·status·error를 제공하고, 일반적인 bound repository 사용에서 current directory를 기준으로 Project를 resolve한다. 안정적인 Project identity는 내부·portable 계약으로 유지하되 일상 명령에서 사용자가 opaque Project ID를 찾아 복사하거나 반복 입력하게 하지 않는다. Human-readable output이 기본이고 structured output은 automation을 위한 explicit mode다.
 
 설명 깊이는 최소 `overview`, `working`, `deep` 수준으로 사용자가 선택할 수 있다. Volicord는 사용자 숙련도를 조용히 추론해 영구 프로필로 저장하지 않으며, 사용자가 명시적으로 저장한 설명 선호만 Context Item으로 보존한다.
 
@@ -390,3 +399,5 @@ confirmation은 exact action, target, expected effect, risk, scope와 expiration
 8. 일반 작업을 절차로 차단하지 않으며 고위험 effect에만 강한 확인을 사용한다.
 9. 사용자는 canonical memory를 inspect, correct, supersede와 forget할 수 있다.
 10. 기술 prototype은 accepted product contract를 조용히 축소하거나 legacy contract를 복원하지 않는다.
+11. Project Understanding은 canonical/analysis basis를 읽는 derived projection이며 record browser나 새 canonical authority가 아니다.
+12. Requested-language generated content의 성공은 실제 본문 실현을 요구하며, 불가능하면 명시적 degradation으로 남긴다.

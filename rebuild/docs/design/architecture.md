@@ -162,7 +162,12 @@ Projections and Documents는 정확히 다음 세 logical input class를 읽는�
    bounded Session Candidate metadata.
 3. Recall, map, preview와 generated document에 필요한 permitted Derived State.
 
-이 read authority로 Recall, viewer view와 generated document를 만든다. User용과
+이 read authority로 Recall, Project Understanding을 기본으로 한 viewer view와 generated
+document를 만든다. Project Understanding은 completed/current/remaining work, next step,
+Decision rationale와 affected code, component/architecture/flow, evidence/gap/freshness/uncertainty를
+Canonical Context와 Repository Intelligence에서 파생한 read-side interpretation이며
+새 canonical truth가 아니다. Low-level record/audit inspection은 더 깊은 detail로
+유지한다. User용과
 agent용 표현의 깊이는 달라도 record identity, source, freshness, uncertainty,
 supersession와 omission basis는 같다.
 
@@ -229,6 +234,15 @@ Adapter는 Question을 답한 것으로 추론하거나, recommendation을 user 
 바꾸거나, low-level transport identity를 domain identity로 만들지 않는다. 특정
 host, command 또는 wire representation은 이 문서의 architecture contract가
 아니다.
+
+CLI adapter는 task-oriented command grouping, discoverable help, actionable error/next step과
+human-readable default output을 제공한다. Ordinary bound-repository operation은 current
+repository path를 Local Operations의 read-only Project resolution에 전달하며 사용자에게
+stable internal Project identity를 반복 입력하게 하지 않는다. Ambiguous/unbound
+repository는 명시적 selection/init/bind next action을 제시하고 조용히 Project를
+추론·생성하지 않는다. Structured machine output은 explicit mode이며 일상
+status/understand/analyze/document/privacy/recovery task의 기본 성공을 raw record 또는
+opaque UUID handling에 의존시키지 않는다.
 
 ### 3.6 Local Operations
 
@@ -468,6 +482,10 @@ provider request는 각각 durable identity/outcome을 유지하므로 `not_disp
 `unavailable`, confirmed execution failure와 indeterminate effect를 별도로 inspect할 수
 있다. Production transport가 선택·설정되지 않은 build는 transmission을 만들지 않고
 provider `unavailable`을 반환하며 local/canonical operation은 계속 제공한다.
+첫 replacement qualification은 이 production dispatcher/transport의 실제 successful
+request/result를 최소 하나 포함한다. Network/credential availability는 필요한 실행
+조건일 뿐 source transmission authorization이 아니며 exact Project opt-in·purpose·scope와
+별도 authorization이 없으면 request를 dispatch하지 않는다.
 
 ### 10. Analyzer, provider, index, source와 process failure recovery
 

@@ -211,14 +211,20 @@ Projection and Documents
 - four required documents
 - Korean/English bundled UI locale
 - unrestricted requested-language generated content
-- CLI init, bind, health, analyze, export/import, repair와 reindex
+- requested-language generated body realization 또는 explicit unavailable/degraded behavior
+- task-oriented, discoverable, repository-relative CLI with human-readable defaults and no
+  routine opaque Project ID handling
 - Codex MCP integration
 - Guarded effect confirmation
 - bounded long-running process reporting
 
 통과 조건:
 
-- raw JSON이나 database 없이 current goal, code structure, Decisions와 next step을 이해 가능
+- Viewer의 기본 Project Understanding에서 raw JSON, database 또는 opaque ID 없이
+  completed/current/remaining work, next step, Decision rationale, affected code,
+  component/architecture/flow, evidence, gap, freshness와 uncertainty를 이해 가능
+- verified structural/semantic fact와 generated interpretation이 구분되고 diagram
+  topology가 inspectable repository/Decision relation에서 옴
 - generated document가 자동 canonical truth가 되지 않음
 - source snapshot, capability coverage와 known gaps가 문서에 포함됨
 - external semantic analysis는 Project opt-in 전 실행되지 않음
@@ -235,7 +241,7 @@ clean Linux install
 → Project init and clone binding
 → repository inventory and capability analysis
 → source-grounded understanding
-→ staged Inquiry and Decision
+→ evidence-appropriate inquiry behavior, including no Question when correct
 → ordinary work
 → Checkpoint
 → process restart and new-session Recall
@@ -249,8 +255,10 @@ clean Linux install
 최소 대상:
 
 1. Volicord 자체 Rust workspace
-2. 소규모 단일 언어 application
-3. 문서와 최소 세 언어가 섞인 중간 규모 polyglot repository
+2. 여러 source/test/config 파일의 meaningful behavior 변경·검증을 포함한 소규모
+   단일 언어 application
+3. 문서/config, component boundary와 cross-language flow가 있는 최소 세 언어의
+   현실적인 중간 규모 polyglot repository
 4. 각 first structural language fixture
 5. first structural 목록 밖 언어 fallback fixture
 
@@ -259,6 +267,12 @@ Automated Dogfood passage alone is not replacement passage: the current
 campaign-level human review must also pass, while an absent review leaves
 replacement explicitly pending and a human pass cannot override machine
 failure.
+Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고
+no-question, research, delegated choice, prototype/research/defer와 genuine user-owned
+Decision behavior class를 적절한 task에서 평가한다. 모든 qualifying cycle의
+human review와 current production background semantic-provider의 별도로 authorized real
+success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
+단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
 
 ### Phase 9 — Cutover
 
@@ -308,6 +322,8 @@ failure.
 - [ ] Rust structural
 - [ ] 최소 세 ecosystem semantic
 - [ ] polyglot capability와 coverage
+- [ ] realistic multi-file small-application work의 analysis usefulness
+- [ ] realistic medium-polyglot cross-component/flow comprehension
 - [ ] unsupported language agent-assisted fallback
 - [ ] provider unavailable local-only mode
 - [ ] partial parser failure와 degradation
@@ -323,12 +339,16 @@ failure.
 - [ ] unrelated dirty change 분리
 - [ ] verification, user review와 acceptance의 독립 상태
 - [ ] Decision reuse와 revisit trigger
+- [ ] no-question/research/delegation/prototype/defer/user-Decision behavior-class qualification
 
 ### Recall, UI와 documents
 
 - [ ] first project-scoped bounded Recall
 - [ ] user-visible Recall basis와 omissions
-- [ ] local viewer의 inspect/correct/supersede/forget
+- [ ] local viewer의 Project Understanding default와 deeper inspect/correct/supersede/forget
+- [ ] completed/current/remaining work, next step, Decision rationale, affected code와
+      component/architecture/flow
+- [ ] verified fact/generated interpretation distinction와 relation-grounded diagrams
 - [ ] Project & Architecture Guide
 - [ ] Decision Report
 - [ ] Implementation Plan
@@ -336,11 +356,14 @@ failure.
 - [ ] Markdown와 self-contained HTML
 - [ ] source snapshot, capability coverage와 known gaps metadata
 - [ ] Korean/English fixed UI와 unrestricted requested-language content
+- [ ] requested-language actual body realization 또는 explicit unavailable/degraded result
+- [ ] task-oriented/repository-relative CLI, human-readable default와 ordinary UUID-free use
 
 ### Risk와 신뢰
 
 - [ ] background semantic provider Project opt-in
 - [ ] source transmission scope visibility
+- [ ] 별도 source-transmission authorization으로 production provider real success
 - [ ] Guarded high-risk effect confirmation
 - [ ] ordinary action non-blocking
 - [ ] cooperative guarantee의 정직한 표현
@@ -353,6 +376,9 @@ failure.
 - [ ] medium polyglot repository journey
 - [ ] failure recovery rehearsal
 - [ ] 사용자가 raw protocol 없이 Project를 이해하고 판단·재개할 수 있음
+- [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, CLI, Viewer,
+      documents, Question necessity·Decision comprehension와 interruption-cost human review
+- [ ] final gate의 warning-clean clippy
 
 ## 4. 기존 Runtime Home과 데이터
 

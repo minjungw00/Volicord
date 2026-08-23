@@ -133,6 +133,22 @@ Research result는 user Decision이 아니다. Agent가 사실을 찾지 못했�
 사용자에게 추측을 요구하지 않으며, repository/environment fact와 user preference가
 혼합된 Question이면 established fact와 실제 선택 지점을 분리한다.
 
+### Behavior choice is evidence-driven
+
+Inquiry의 성공은 Question 또는 Decision의 존재 자체가 아니라 current evidence와
+materiality에 맞는 behavior를 선택한 결과다.
+
+- Repository/environment research로 작업의 불확실성이 해결되면 user Question
+  없이 진행하거나 `resolved_by_research`로 닫는다.
+- Accepted Decision 또는 user가 이미 명시적으로 위임한 implementation choice가
+  현재 scope에 적용되면 재질문하지 않고 재사용한다.
+- 대화로 판단할 수 없는 경우 `requires_prototype`, 추가 research 또는
+  `deferred`를 선택할 수 있고 user choice를 위조하지 않는다.
+- 실제로 사용자 가치·선호·용인 가능한 trade-off가 결과를 바꾸는 경우만
+  material Question을 제시하고 explicit user-owned Decision을 받는다.
+- 간단한 repository와 자명한 bounded task에서 qualification을 위해 Question이나
+  Decision을 제조하지 않는다.
+
 ## 5. Question presentation
 
 Frontier의 각 Question은 최소 다음을 함께 표시한다.
@@ -350,11 +366,15 @@ V11은 실제 repository task에서 다음을 결합 검증해야 한다.
 
 - repository/environment fact research before ask
 - Question Candidate와 canonical Question promotion boundary
-- material multi-round dependency frontier와 모든 일곱 terminal outcome
+- material Question이 실제 발생한 경우의 multi-round dependency frontier와 관련
+  terminal outcome
 - exact current-host turn/revision response와 stale/ambiguous rejection
 - response Source/interpretation/Decision/Question atomicity와 retry behavior
 - Decision applicability reuse와 evidence-driven re-questioning
 - session/process restart 뒤 pause/resume와 Checkpoint non-authority
+- Question 없음, research resolution, already-delegated choice reuse,
+  prototype/research/deferment와 genuine user-owned Decision이 각각 적절한 task에서
+  나타나는 behavior-class qualification; 모든 cycle에 동일 Question/Decision을 요구하지 않음
 
 Automatic discovery와 materiality quality를 검증하지 않은 상태에서 완전한 Question
 coverage를 주장하지 않는다.

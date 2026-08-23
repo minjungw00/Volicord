@@ -147,6 +147,12 @@ Repository summary는 이 matrix의 projection일 뿐 독립적인 completeness 
 아니다. 높은 coverage의 한 language나 area를 전체 repository의 지원으로 표현하지
 않는다.
 
+User-facing consumer는 `Repository Observation`, `Structural Fact`, `Semantic Result`를
+verified basis로, `Semantic Annotation`과 `Agent Interpretation`을 generated
+interpretation으로 구분한다. 둘은 같은 Source를 참조할 수 있지만 badge,
+statement role, producer, coverage와 uncertainty를 통해 사용자가 어느 부분이
+확인된 구조/의미이고 어느 부분이 생성된 해석인지 판별할 수 있게 한다.
+
 ## 5. 첫 structural gate와 language extension
 
 첫 structural gate는 다음 일곱 language를 모두 포함한다.
@@ -452,6 +458,11 @@ set과 common envelope를 조용히 축소할 수 없다.
 V11은 Volicord repository, single-language application과 polyglot repository에서
 다음을 결합 검증해야 한다.
 
+- Single-language application은 trivial arithmetic/example edit가 아닌 여러 production-like
+  source/test/config 파일을 이어 이해하고 변경·검증하는 meaningful application work를
+  포함한다.
+- Polyglot repository은 최소 세 언어와 문서/config, component boundary,
+  cross-language request/data flow가 있는 현실적인 중간 규모 work를 포함한다.
 - per-snapshot/per-language/per-area capability와 coverage honesty
 - first structural gate 전체와 non-gate inventory fallback
 - stable entity/range와 cross-component source grounding
@@ -459,8 +470,14 @@ V11은 Volicord repository, single-language application과 polyglot repository�
 - file/dependency change 뒤 stale/current 구분
 - Canonical Source/Decision/Context/Checkpoint link의 identity 보존
 - analysis와 generated interpretation이 user judgment를 mutate하지 않는 성질
+- Project Understanding에서 verified structural/semantic fact와 generated interpretation을
+  사용자가 구분하고, component/flow diagram의 node·edge를 inspectable relation으로
+  추적할 수 있는 comprehension
 
-V01의 small fixture 결과만으로 production accuracy나 completeness를 주장하지 않는다.
+V01의 small fixture 결과만으로 production accuracy, practical usefulness나
+generalization completeness를 주장하지 않는다. 위 두 현실적 repository work의
+machine evidence와 human analysis-usefulness/polyglot-comprehension review가 첫 replacement
+qualification에 필요하다.
 
 ## 13. Non-goals
 

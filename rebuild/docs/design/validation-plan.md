@@ -30,6 +30,9 @@
 8. legacy Runtime Home, schema와 API를 검증 입력 또는 compatibility target으로 사용하지 않는다.
 9. Linux에서 실행하며 Codex를 첫 host integration 대상으로 사용한다.
 10. 각 실험은 재현 가능한 report를 남긴다.
+11. Generated-content language 성공은 requested-language metadata가 아닌 actual
+    body realization으로 검증하고, 불가능하면 explicit unavailable/degraded를
+    성공 fallback과 구분한다.
 
 Maintained Wave 1 asset은 capability 기준 경로인
 `rebuild/validation/repository-intelligence/polyglot-structural/`,
@@ -129,6 +132,12 @@ path와 HEAD를 existing V11 preflight에 전달한다. Preflight가 통과한 �
 V11을 정확히 한 번 실행하고 credential-retention audit을 수행한다. Final failure는
 final retry 또는 V11을 만들지 않고, V11 failure는 final retry를 만들지 않는다. Direct
 `rebuild/scripts/validate final` invocation은 이 lifecycle을 우회할 수 없도록 거부한다.
+
+Exact final의 command vector, ordering, invocation count와 orchestration owner는 이 단일
+gate/runner에만 남는다. Final clippy command의 intended acceptance는 exit success에
+더해 preserved stdout/stderr에 compiler/clippy warning이 없는 warning-clean result다.
+문서, 별도 script 또는 later session이 exact final이나 V11을 복제·재실행하여
+이 계약을 대신하지 않는다.
 어느 stage까지 진행됐든 candidate identity가 있으면 gate는 bounded sanitized evidence
 archive를 만들고 independent verifier로 검사한다. Exact final, V11과 credential audit
 성공은 필요조건일 뿐이며 archive creation/verification까지 성공한 뒤에만 top-level gate와
@@ -255,7 +264,11 @@ Java, Python, JavaScript, TypeScript, C, C++와 Rust를 하나의 Repository Int
 - 최소 세 언어가 섞인 polyglot repository
 - 첫 structural 목록 밖의 텍스트 언어 repository
 
-Fixture는 작지만 각 언어의 핵심 차이를 포함해야 한다.
+Fixture는 작지만 각 언어의 핵심 차이를 포함해야 한다. 이 deterministic
+fixture gate는 adapter contract를 검증하지만 realistic repository generalization
+evidence를 대체하지 않는다. Production qualification은 V11의 multi-file
+single-language application과 medium polyglot repository에서 practical analysis usefulness,
+cross-component grounding과 resource behavior를 별도 검증한다.
 
 ### 비교할 접근
 
@@ -549,6 +562,7 @@ Canonical Context와 Repository Intelligence에서 네 필수 문서를 생성�
 - Markdown portability
 - self-contained HTML
 - Korean, English와 추가 사용자 요청 언어 output
+- requested-language metadata/HTML tag와 generated body language의 분리
 
 ### 통과 조건
 
@@ -557,6 +571,11 @@ Canonical Context와 Repository Intelligence에서 네 필수 문서를 생성�
 - partial analyzer 영역을 complete로 표현하지 않는다.
 - generated document는 명시적 adoption 전 canonical record를 변경하지 않는다.
 - user-specified path가 없으면 Product Repository에 쓰지 않는다.
+- Connected model이 요청 언어를 실현하면 generated body가 실제 그
+  언어로 생성되고, 실현할 수 없으면 English body success가 아닌
+  explicit `unavailable`/`degraded` result를 남긴다.
+- Project Understanding body와 diagram이 required work/Decision/code/architecture meaning,
+  fact/interpretation distinction과 inspectable relation-grounded topology를 유지한다.
 
 ## 11. V07 — Privacy와 local-only mode
 
@@ -571,6 +590,7 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 - Candidate retention expiry, explicit deletion과 promoted Candidate
 - Project opt-in 전 background analysis 요청
 - opt-in 후 explicit scope 전송
+- current production background semantic-provider dispatcher/transport의 실제 success request
 - excluded file과 secret-like fixture
 - annotation 삭제
 - portable bundle export
@@ -585,6 +605,8 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 - Candidate retention/expiry와 opt-out state
 - Candidate, annotation, canonical forgetting과 related Derived deletion propagation
 - deletion completeness
+- technical network/credential availability와 exact source-transmission authorization의 분리
+- production provider request/result usability, provenance, retention와 transmitted manifest
 
 ### 통과 조건
 
@@ -598,6 +620,10 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
   유지한다.
 - Candidate retention/deletion은 canonical target을 silent rewrite/delete하지 않고,
   canonical forgetting은 관련 managed Candidate/Derived content로 전파된다.
+- 첫 replacement qualification은 mock/stub이 아닌 production dispatcher/transport에서
+  최소 한 건의 usable background semantic-provider success를 보존한다.
+- Project opt-in, network, authentication과 별개인 current-invocation exact
+  provider/purpose/source-scope transmission authorization 전에는 dispatch하지 않는다.
 
 ## 12. V08 — Linux install과 Codex integration
 
@@ -628,6 +654,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - local viewer/CLI fallback equivalence
 - process cleanup
 - locale rendering
+- task-oriented CLI discovery, repository-relative Project resolution, human-readable default
+  output, explicit structured mode와 actionable error/next step
+- ordinary command의 opaque Project-ID-free journey
 - no legacy dependency or runtime access
 - unauthorized second repository에 project-local Volicord config/hook이 없음
 - hook matching/nonmatching execution 모두 Runtime Home과 canonical state를 touch하지 않음
@@ -648,6 +677,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
   같은 logical confirmation identity/revision과 Source linkage를 유지한다.
 - uninstall/reinstall이 canonical user data를 조용히 삭제하지 않는다.
 - active product에 legacy command alias, import 또는 migrate path가 없다.
+- Bound repository의 ordinary CLI journey는 Project UUID를 요구하지 않고, ambiguous/
+  unbound state는 explicit init/bind/select next action을 제공한다.
 
 ## 13. V09 — Recall과 Checkpoint 정확성
 
@@ -750,8 +781,11 @@ Official V11 실행은 3.1의 admission과 exact final을 통과한 같은 gate 
 ### 대상
 
 1. Volicord 자체 Rust workspace
-2. 소규모 단일 언어 application
-3. 최소 세 언어와 문서가 섞인 중간 규모 polyglot repository
+2. 여러 production-like source/test/config 파일을 이어 이해하고 behavior를
+   변경·검증하는 소규모 단일 언어 application; trivial arithmetic/example
+   edit는 qualification work가 아님
+3. 최소 세 언어, 문서/config, component boundary와 cross-language request/data
+   flow가 있는 현실적인 중간 규모 polyglot repository
 
 ### journey
 
@@ -763,7 +797,7 @@ clean Linux install
 → inventory and capability analysis
 → source-grounded explanation
 → Candidate collection, inspection and bounded promotion/disposition
-→ staged Inquiry and user Decision
+→ evidence-appropriate inquiry behavior, including no Question when correct
 → ordinary work
 → exact Guarded confirmation and effect outcome where applicable
 → source-grounded Checkpoint
@@ -772,6 +806,8 @@ clean Linux install
 → divergent conflict handling
 → correction, supersession and deletion
 → four document outputs
+→ requested-language body realization or explicit unavailable/degraded result
+→ one authorized production background semantic-provider success path
 → provider/parser/index failure recovery
 ```
 
@@ -796,40 +832,46 @@ session이 필요하다. Current result schema는 `automated_qualification`, `hu
 `not_provided`여도 automated command는 성공하지만 replacement는
 `pending_human_review`이며 `replacement_pass_candidate`와 `phase_9_ready`는 false다.
 
-각 cycle descriptor의 hidden decision oracle은 bounded
-`work_task_materiality_basis`를 포함한다. Descriptor에는 별도의 hidden
-`materiality_review`도 필요하다. 이 review는 active owner, repository fact, accepted
-contract와 explicit implementation delegation을 독립 control session에서 확인하고
-`user_owned_material`로 accepted한 bounded prequalification artifact다. Schema가 semantic
-truth를 기계적으로 증명한다는 뜻은 아니며 accepted independent review가 없거나 fact,
-accepted contract 또는 delegated implementation choice로 분류된 cycle은 시작하지 않는다.
-Review provenance는 하나의 typed reference 표현만 사용한다. 각 reference는 scope, safe
-relative path, SHA-256와 repository revision을 보존한다. Volicord owner reference는 candidate
-revision의 아홉 current active Phase 3 architecture owner 중 하나와 실제 Git content를,
-target-repository reference는 cycle의 exact pinned revision에 존재하는 실제 Git content를
-검증한다. Path/hash 검증은 independent reviewer의 semantic materiality 판단을 대신하지 않는다.
-`work_task_materiality_basis`는 hidden user-owned dimension이 현재 work
-outcome에 material한 이유를 만드는 ordinary user-task text의 exact bounded fragment다.
-Case-folding하고 whitespace를 collapse해 normalize한 basis가 같은 방식으로
-normalize한 `work_user_task` 안에 반드시 나타나야 한다. `fresh_resume_user_task`에만
-나타나는 basis는 invalid하며, basis는 hidden alternative, recommendation 또는 expected
-choice를 disclose해서는 안 된다. Work/resume prompt는 Volicord operation order, 물어야 할
-Question, Checkpoint content 또는 Recall을 지시하지 않는다.
+각 cycle descriptor는 unique expected Question, terminal outcome, Decision 또는 user choice를
+hidden oracle로 두지 않는다. 대신 pinned repository revision의 actual owner contract,
+repository fact와 ordinary user task를 보는 independent control review가 해당 cycle에서
+plausible한 inquiry behavior class와 판정 근거를 보존한다. Review provenance는 scope,
+safe relative path, SHA-256와 repository revision을 보존하는 typed reference를 사용한다.
+Path/hash 검증은 reviewer의 semantic materiality 판단을 대신하지 않는다.
+
+Campaign은 다음 behavior class를 실제 task에서 적절히 선택했는지 검증한다.
+
+- `no_question_needed`: research과 current contract로 uncertainty가 없음
+- `resolved_by_research`: repository/environment fact로 branch가 해결됨
+- `delegated_choice_reused`: 이미 위임된 implementation choice나 applicable Decision을 재사용함
+- `prototype_or_research`: 즉시 user choice 대신 prototype 또는 추가 research가 맞음
+- `deferred`: 이유와 revisit basis를 보존하고 보류함
+- `user_owned_decision`: 실제 user value/preference/trade-off가 outcome을 material하게 바꾸어
+  Question과 explicit Decision이 필요함
+
+한 cycle이 모든 class를 실행할 필요는 없지만 campaign은 positive Question
+case, correct no-question, research, delegated choice, prototype/research, defer와 genuine
+user-owned Decision을 모두 포함한다. Simple repository는 Decision count를 채우기
+위해 user Decision을 제조하지 않는다. Work/resume prompt는 Volicord operation
+order, 물어야 할 Question, outcome, Checkpoint content, Recall 또는 expected choice를 지시하지
+않는다.
 
 Qualifying work session은 exact first work task를 current-host Goal Context의 Source로
-보존하고, repository analysis로 baseline을 만든 뒤 ordinary work를 시작한다. Material
-user-owned uncertainty는 `candidate_manage`로 Question Candidate를 submit하고 repository
-research를 연결한 뒤 reviewed `material` Candidate를 canonical Question으로 promote한다.
-`inquiry_frontier`는 이미 promoted된 current frontier를 읽을 뿐 Question을 생성하지
-않는다. User Decision은 displayed Question revision에 대한 explicit current-host user
-response에서만 기록하며 agent recommendation이나 implementation preference를 response로
-사용하지 않는다. Meaningful completion/pause는 Goal, baseline, applicable Decision, actual
+보존하고, repository analysis로 baseline을 만든 뒤 ordinary work를 시작한다. Agent는
+research, active Decision/delegation와 materiality를 판단해 적절한 behavior class를 선택하고
+evidence를 남긴다. Material Question이 필요하면 Question Candidate/research/promotion
+경계와 current-host response linkage를 모두 적용한다. Question이 필요하지 않은 경우
+Question/Decision absence와 그 evidence를 정답으로 허용한다. User Decision은 displayed
+Question revision에 대한 explicit current-host user response에서만 기록하며 agent
+recommendation이나 implementation preference를 response로 사용하지 않는다. Meaningful
+completion/pause는 Goal, baseline, applicable Decision 또는 no-Decision behavior basis, actual
 changed basis와 numeric-exit verification을 연결한 source-grounded Checkpoint를 요구한다.
 Work session은 pause/handoff history를 포함해 하나 이상의 successful Checkpoint를 가질 수
 있다. Qualification은 마지막 meaningful repository change 뒤의 latest Checkpoint candidate를
 terminal state로 결정하며 malformed final candidate에서 earlier valid Checkpoint로 fallback하지
-않는다. 선택된 terminal Checkpoint만 ordinary-work qualification의 Goal/baseline/Decision과
-correlated numeric-exit verification을 충족해야 한다.
+않는다. 선택된 terminal Checkpoint만 ordinary-work qualification의 Goal/baseline,
+applicable Decision 또는 evidence-backed no-Decision behavior basis과 correlated numeric-exit
+verification을 충족해야 한다.
 
 Fresh resume session의 exact first task에는 Project ID가 포함되지 않는다. Repository
 inspection 또는 continued work 전에 current repository path로 `project_resolve`가
@@ -866,9 +908,11 @@ python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
 이 path는 current candidate, valid descriptor와 completed capture의 repository class,
 cycle, revision, `source=vscode`, `originator=codex_vscode`, fresh thread와 exact first
 `work_user_task`를 먼저 검증한다. Completed work capture에 required high-level Project,
-Goal, baseline, material Question Candidate/promotion, current-host user Decision 또는 grounded
-Checkpoint operation이 없으면 later resume이 그 operation을 work session에 retroactively
-추가할 수 없으므로 terminal blocker다. 반대로 capture만으로 required semantic fact를
+Goal, baseline, evidence-backed behavior classification 또는 grounded Checkpoint operation이
+없으면 later resume이 그 operation을 work session에 retroactively 추가할 수 없으므로
+terminal blocker다. `user_owned_decision` class는 material Question Candidate/promotion과
+current-host user Decision이 없으면 blocker이지만 다른 class에 이 operation을 요구하지
+않는다. 반대로 capture만으로 required semantic fact를
 증명할 수 없으면 blocker를 추측하지 않고 full qualification을 요구한다. 모든 required
 work-session condition을 충족한 positive capture는 early-stop failure로 변환할 수 없다.
 
@@ -876,29 +920,33 @@ Early-stop output은 `kind = phase8_dogfood_blocker_result`이며 항상
 `campaign_complete = false`, `replacement_pass_candidate = false`,
 `phase_9_ready = false`다. Candidate, repository class, cycle, revision, failed check,
 completed capture SHA-256와 later required session/check의 `not_run` 상태만 보존한다. Plain
-task text, hidden oracle, source body, credential과 raw provider content는 보존하지 않는다.
+task text, evaluator behavior-review reasoning, source body, credential과 raw provider content는
+보존하지 않는다.
 이 result는 full passage, Phase 8 completion 또는 Phase 9 readiness의 evidence가 아니다.
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
-12개의 genuinely naturalistic VS Code Codex chat을 실행하며 material Question에 실제로
-답하고 raw rollout을 한 번에 제공한다. Helper는 rollout intake, activation validation,
+12개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
+Question을 제시한 경우에만 실제로 답하고 raw rollout을 한 번에 제공한다. Helper는
+rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
 summary, descriptor evidence completion, manifest assembly와 review packaging을 담당한다.
 Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
-Independent evaluator/control은 actual repository와 pinned revision을 조사하고 hidden oracle과
-materiality review를 준비·독립 검토한 뒤 maintained helper로 cycle descriptor를 봉인한다.
+Independent evaluator/control은 actual repository와 pinned revision을 조사하고 hidden expected
+choice가 아닌 behavior-class review를 준비·독립 검토한 뒤 maintained helper로 cycle
+descriptor를 봉인한다.
 Evaluator material은 operator instruction, example 또는 review index에 넣지 않으며 operator에게
 descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
 repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
-Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. 실제 material
-Question에는 본인의 답을 제공하고 12개 raw rollout을 session 사이의 control 접촉 없이 보존한다.
+Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. Genuine
+material Question이 실제로 제시된 경우에는 본인의 답을 제공하고 12개 raw
+rollout을 session 사이의 control 접촉 없이 보존한다.
 `prepare`는 evaluator input과 operator material을 분리한다. Independent control agent가
 `seal-cycle`로 descriptor를 검증·봉인하기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
-Operator-facing artifact의 leak check는 oracle alternative, recommendation, expected choice,
-materiality-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
+Operator-facing artifact의 leak check는 prescribed Question, oracle alternative, recommendation,
+expected choice, behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
 여섯 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
 repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 12개 fresh
@@ -921,17 +969,27 @@ capability도 cycle마다 campaign fixed locale/language로 self-contained read-
 path, bytes, SHA-256와 Project/candidate basis를 summary에 기록한다. Review package는 이
 summary/index, produced documents와 Viewer snapshots를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
 Analysis, credential, prompt, provider payload와 source copy는 계속 제외한다.
+각 cycle의 document/Viewer evidence는 requested-language generated body를 실제 검사하고,
+Project Understanding required meaning, verified-fact/generated-interpretation distinction과
+diagram relation grounding을 machine-inspectable basis와 human review surface에 보존한다.
+Campaign 전체에서 current production background semantic-provider dispatcher/transport의
+별도로 authorized successful request/result를 최소 하나 요구하고 network/credential
+availability, Project opt-in과 source-transmission authorization을 독립 evidence로 남긴다.
 Ordinary independent review의 handoff는 byte-exact raw rollout archive와 bounded review
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
-Automated run은 repository/candidate identity, 12-session semantics, bundle/provenance,
-document와 static snapshot 생성, machine accessibility, resource, regression, Decision revisit와
-candidate cleanliness를 독립 판정한다. Optional human review는 immutable automated result 뒤에
-한 번만 생성한다. Deterministic sampling은 각 repository class의 lowest automated-passed cycle로
-Question relevance, Decision comprehension과 interruption cost를, `small-python`/`polyglot-medium`
-sample로 simple/complex document readability를, polyglot static snapshot으로 Viewer readability를,
-Volicord live Viewer의 `en`/`ko` sample로 keyboard/focus/color/zoom을 평가한다. Human fail은
+Automated run은 repository/candidate identity, 12-session semantics, behavior-class coverage,
+bundle/provenance, document와 static snapshot 생성, requested-language realization, production
+provider success authorization, machine accessibility, resource, regression, Decision revisit와
+candidate cleanliness를 독립 판정한다. Human review는 immutable automated result 뒤에
+한 번만 생성하며 replacement qualification에 필수다. Lowest-numbered 또는 lowest
+automated-passed cycle 하나를 repository class 대표로 삼지 않고 모든 qualifying cycle을
+검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
+usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
+necessity/Decision comprehension과 interruption cost를 평가한다. Polyglot cycle은 언어·component
+경계와 flow comprehension을 추가하고, static Viewer readability와 Volicord live Viewer의
+`en`/`ko` keyboard/focus/color/zoom accessibility도 campaign에서 검토한다. Human fail은
 automated pass를 훼손하지 않지만 replacement를 fail하며, human pass도 machine failure를 override할
 수 없다. `prepare-human-review`와 `qualify-review`는 session 또는 machine Dogfood를 rerun하지 않는다.
 

@@ -35,6 +35,12 @@
 10. 고위험 effect에만 더 강한 confirmation을 요구한다.
 11. 지원하지 않는 capability를 제공한 것처럼 표시하지 않는다.
 12. legacy Runtime Home, API와 데이터는 입력·호환·마이그레이션 대상으로 취급하지 않는다.
+13. Project Understanding은 Canonical Context와 Repository Intelligence의 derived/read-side
+    interpretation이며 새 canonical truth가 아니다.
+14. Viewer와 문서에서 verified structural/semantic fact와 generated interpretation을
+    사용자가 구분할 수 있고, diagram topology는 inspectable relation에서 온다.
+15. Requested-language 성공은 generated body의 실제 실현을 요구하며 불가능하면
+    English success fallback이 아닌 explicit unavailable/degraded result를 제공한다.
 
 ## 3. Capability와 coverage 판정
 
@@ -123,6 +129,12 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - background semantic analysis가 기본적으로 꺼져 있음을 확인한다.
 - health 결과는 success, degraded와 failure를 구분한다.
 - 한국어와 영어 고정 UI 또는 CLI 출력이 정상적으로 표시된다.
+- CLI는 task-oriented help와 actionable next step을 제공하고 human-readable output을
+  기본으로 한다.
+- Bound repository의 ordinary command는 current repository를 기준으로 Project를
+  resolve하며 opaque Project UUID를 반복 요구하지 않는다.
+- Structured output은 explicit automation mode이고, unbound/ambiguous state는 init/bind/select
+  next action을 정확히 안내한다.
 
 ### Canonical Context 변화
 
@@ -395,6 +407,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - agent recommendation을 사용자 choice로 저장
 - 답을 모른다는 사용자에게 추측을 강요
 - 고정 질문 수에 맞추기 위해 material branch를 생략
+- 간단한 task 또는 research/accepted delegation으로 충분한 task에 Dogfood를
+  위한 Question/Decision을 제조
 
 ### 자동 검증
 
@@ -404,12 +418,16 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - restart 후 open frontier 복구
 - answered Question 반복 방지
 - terminal branch 상태
+- behavior class별 expected outcome: no-question, resolved-by-research, delegated-choice reuse,
+  prototype/research/defer와 genuine user-owned Decision
 
 ### 수동 평가
 
 - 질문이 제품·설계·구현 결과에 실제로 중요한가
 - 사용자가 선택의 의미와 영향을 설명할 수 있는가
 - 질문 횟수가 아니라 relevance와 shared understanding으로 종료되는가
+- 사용자가 질문이 필요한 이유 또는 질문하지 않은 이유를 evidence에서
+  납득할 수 있는가
 
 ## G. Candidate 수집과 승격
 
@@ -770,13 +788,24 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 ### 기대 사용자 경험
 
-- viewer에서 Project overview, Repository Map, Decision trail와 Checkpoint timeline을 탐색한다.
+- viewer의 기본 화면에서 record 목록이 아닌 Project Understanding을 자연어로
+  읽는다.
+- 완료한 work, current state, 남은 work/blocker, next meaningful step, Decision과 rationale,
+  affected code, component/architecture/request·data flow를 함께 이해한다.
+- 각 핵심 설명에서 evidence basis, capability/coverage, freshness, gap와 uncertainty를
+  확인하고 verified fact와 generated interpretation을 구분한다.
+- 관계가 본질적인 component/architecture/flow는 유용한 도식으로 보되, 각
+  node/edge는 inspectable repository 또는 Decision relation에 연결된다.
+- Repository Map, Decision trail, Checkpoint timeline, canonical record·audit field는
+  deeper detail/inspection으로 탐색한다.
 - `overview`, `working`, `deep` 설명 수준을 선택한다.
 - code entity와 Decision에 연결된 개념 설명을 본다.
 - 네 필수 문서를 Markdown으로 export하고 self-contained HTML로 preview한다.
 - 현재 Viewer projection을 명시한 local path에 하나의 self-contained read-only HTML
   snapshot으로 export하고, 생성 뒤 Runtime이나 listener 없이 읽는다.
 - 문서마다 source snapshot, Decisions, capability coverage, known gaps와 generator identity가 표시된다.
+- 요청한 사용자 언어의 generated body가 실제 그 언어로 제공되거나,
+  실현할 수 없으면 affected output이 explicit unavailable/degraded로 보고된다.
 - 저장소 write는 사용자 지정 경로가 있을 때만 수행한다.
 - 사용자가 편집한 문서는 review/import 후에만 canonical input이 된다.
 
@@ -795,6 +824,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - generated document를 자동 canonical truth로 채택
 - 사용자 요청 없이 Product Repository에 파일 생성
 - unsupported/failed 영역을 문서에서 생략
+- generated model이 source relation에 없는 diagram node/edge를 발명
+- requested language metadata나 HTML `lang`만 맞춘 영어 body를 성공으로 표시
 - Viewer snapshot에 mutation/Guarded/document-export form, authenticity token, live endpoint,
   JavaScript 또는 external runtime asset 포함
 - Viewer snapshot 생성 중 자동 upload 또는 external network transmission
@@ -809,13 +840,19 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - stale invalidation
 - Korean/English fixed UI rendering
 - requested user-language generated content를 allowlist로 거부하지 않음
+- requested-language body realization 확인 또는 explicit unavailable/degraded outcome
+- Project Understanding required meaning과 fact/interpretation visual distinction
+- diagram node/edge의 repository/Decision relation grounding
 - Viewer snapshot의 explicit-destination atomic publication, no-listener exit, read-only surface,
   self-contained asset, basis/freshness/degradation visibility와 Runtime-independent read
 
 ### 수동 평가
 
-- 사용자가 raw JSON 없이 구조, 판단과 다음 단계를 이해할 수 있는가
-- 문서가 다른 agent의 실제 handoff에 충분한가
+- 사용자가 raw JSON/UUID/audit field 없이 완료·현재·남은 work, 구조,
+  Decision rationale, affected code와 다음 단계를 이해할 수 있는가
+- 사용자가 확인된 source fact와 generated interpretation을 다시 설명하고
+  diagram relation의 basis를 찾을 수 있는가
+- 네 문서가 다른 agent의 실제 handoff와 사용자의 이해·판단에 충분한가
 
 ## O. Degraded analysis, provider failure와 crash recovery
 
@@ -927,6 +964,12 @@ interactive 코드 설명을 요청한 뒤, 선택적으로 background semantic 
 - 현재 Codex 대화의 interactive explanation과 별도 background 전송을 구분한다.
 - background analysis는 Project 단위 opt-in 전 실행되지 않는다.
 - opt-in 화면에서 provider, model, source 범위, exclude와 secret 처리 정책을 확인한다.
+- 첫 replacement qualification에서 production background semantic-provider dispatcher/
+  transport가 authorized Source scope를 실제 전송하고 usable result를 받는 성공
+  path를 최소 한 번 실행한다.
+- Project opt-in과 별개로 exact provider/purpose/source scope transmission을 현재
+  qualification에서 승인하며 network, credential 또는 sandbox availability만으로
+  이 승인을 추론하지 않는다.
 - semantic analysis를 끄거나 revoke해도 inventory, structural analysis, Decision, Checkpoint와 Recall을 계속 사용한다.
 - 생성된 annotation과 cache를 삭제할 수 있다.
 
@@ -947,6 +990,10 @@ interactive 코드 설명을 요청한 뒤, 선택적으로 background semantic 
 - raw source body를 portable bundle에 기본 포함
 - excluded 또는 secret file을 전송 범위에 조용히 포함
 - semantic provider 실패를 canonical 기능 실패로 표현
+- mock/stub 성공, local-only 성공 또는 truthful provider degradation을 production
+  background-provider 실제 성공으로 대체
+- network/credential availability나 다른 transmission consent를 source-transmission
+  authorization으로 재사용
 
 ### 자동 검증
 
@@ -956,6 +1003,9 @@ interactive 코드 설명을 요청한 뒤, 선택적으로 background semantic 
 - revoke 후 background invocation 차단
 - annotation/cache deletion
 - local-only end-to-end core journey
+- explicit source-transmission authorization 전 no-dispatch와 authorization provenance
+- production background-provider 실제 success request/result, transmitted manifest,
+  provider/model/provenance/retention/outcome inspection
 
 ### 수동 평가
 
@@ -967,8 +1017,10 @@ interactive 코드 설명을 요청한 뒤, 선택적으로 background semantic 
 최소 다음 대상에서 전체 journey를 반복한다.
 
 1. Volicord 자체의 Rust workspace
-2. 공식 structural 언어 중 하나를 사용하는 소규모 단일 언어 application
-3. 문서와 최소 세 언어가 섞인 중간 규모 polyglot repository
+2. 공식 structural 언어 중 하나를 사용하고 여러 source/test/config 파일과
+   실제 behavior 변경·검증이 필요한 소규모 단일 언어 application
+3. 문서, config, component boundary와 cross-language request/data flow를 가진
+   최소 세 언어의 현실적인 중간 규모 polyglot repository
 4. 각 공식 structural 언어 fixture
 5. 첫 structural 목록 밖의 언어 fallback fixture
 
@@ -979,7 +1031,7 @@ clean install
 → Project initialization and binding
 → inventory and capability analysis
 → source-grounded understanding
-→ staged Inquiry and user Decision
+→ evidence-appropriate inquiry behavior (including no Question when correct)
 → ordinary repository work
 → source-grounded Checkpoint
 → process restart and new-session Recall
@@ -997,13 +1049,20 @@ clean install
 | Context recovery accuracy | 새 세션이 goal, Decision, rationale, state와 open Question을 정확히 복구하는가 |
 | Decision repeat rate | 이미 해결된 판단을 불필요하게 다시 묻지 않는가 |
 | Question relevance | 사용자 가치와 결과를 바꾸지 않는 세부사항을 넘기지 않는가 |
+| Question necessity | Question을 한 것과 하지 않은 것 모두 research, delegation와 materiality로 정당화되는가 |
 | Decision comprehension | 사용자가 option, trade-off와 consequence를 설명할 수 있는가 |
 | Source grounding | 핵심 코드 설명과 문서가 source로 추적되는가 |
+| Fact/interpretation comprehension | 사용자가 verified fact와 generated interpretation을 구분하는가 |
+| Analysis usefulness | Repository Intelligence가 실제 작업, 코드 이해와 판단에 도움이 되는가 |
+| Polyglot comprehension | 사용자가 언어·component 간 경계와 flow를 source basis와 설명할 수 있는가 |
+| CLI usability | 사용자가 repository에서 task를 발견·실행하고 UUID 없이 결과와 next action을 이해하는가 |
+| Viewer understanding | Project Understanding으로 work, Decision, code, architecture, flow와 gap을 설명할 수 있는가 |
 | Capability honesty | unavailable·partial·failed capability를 정확히 표시하는가 |
 | Coverage | 언어·영역별 분석 범위와 누락이 측정되는가 |
 | Memory correctability | record를 쉽게 수정·supersede·삭제할 수 있는가 |
 | Interruption cost | 사용자의 관심이 작업보다 Volicord 절차에 쏠리지 않는가 |
 | Document fidelity | generated document가 현재 source와 Decision을 반영하는가 |
+| Document usefulness | 네 문서가 사용자의 이해·판단과 다른 agent의 handoff에 실제로 유용한가 |
 | Recovery | crash, provider failure와 index 손상 후 안전하게 복구되는가 |
 | Portability | 다른 clone에서 같은 Project 맥락을 정확히 복구하는가 |
 
@@ -1027,15 +1086,33 @@ clean install
 - bundle export/import, divergence와 conflict resolution이 작동한다.
 - correction, supersession과 deletion이 portable state에 반영된다.
 - 네 필수 문서가 source-grounded metadata와 함께 생성된다.
+- Viewer의 기본 Project Understanding이 completed/current/remaining work, next step,
+  Decision rationale, affected code, component/architecture/flow, evidence, gaps, freshness와
+  uncertainty를 설명하고 audit/record inspection은 deeper detail로 남는다.
+- Verified structural/semantic fact와 generated interpretation을 구분하고 diagram
+  topology가 inspectable repository/Decision relation에 source-grounded된다.
+- CLI가 task-oriented, discoverable, repository-relative, human-readable by default이며
+  ordinary use에서 opaque Project ID를 요구하지 않는다.
+- Requested-language generated content는 actual body를 요청 언어로 실현하거나
+  explicit unavailable/degraded result를 내며 metadata-only match를 성공으로 표시하지 않는다.
+- Production background semantic-provider의 실제 success path가 별도 source-transmission
+  authorization으로 실행되고 truthful failure/degradation도 보존된다.
+- Dogfood는 Question 없음, research resolution, delegated choice, prototype/research/defer와
+  genuine user-owned Decision을 task에 맞게 평가하고 unique Question이나 expected choice를
+  모든 cycle의 성공 조건으로 삼지 않는다.
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
 - Human review가 없으면 replacement는 명시적으로 `pending_human_review`이며 pass로
   표현되지 않는다.
-- Replacement usability review는 campaign-level deterministic representative sample로
-  Question/Decision/interruption, simple/complex document readability, static Viewer
-  readability와 `en`/`ko` live Viewer accessibility를 포함한다.
+- Replacement usability review는 모든 qualifying cycle을 대상으로 source-vs-interpretation
+  comprehension, repository-analysis usefulness, polyglot comprehension, CLI usability,
+  Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
+  interruption cost를 평가한다. Static Viewer readability와 `en`/`ko` live Viewer
+  accessibility도 유지하며 lowest-numbered cycle 하나만으로 repository class를 대표하지
+  않는다.
 - Human review는 deterministic machine failure를 override하지 않으며, immutable automated
   result에 나중에 결합할 때 naturalistic session을 다시 실행하지 않는다.
 - Guarded effect만 action-scoped confirmation을 요구한다.
 - partial analyzer, provider와 derived-index 실패가 canonical state를 손상시키지 않는다.
+- Final qualification의 maintained clippy execution은 warning을 남기지 않는다.
 - active product에 legacy migration, data detection, compatibility와 workflow surface가 없다.

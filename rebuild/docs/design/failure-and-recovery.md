@@ -82,6 +82,10 @@ Canonical mutation과 projection은 서로 다른 authority와 success boundary�
   complete document로 adoption하지 않는다.
 - Projection retry/regeneration은 source snapshot, canonical read revision과 generator
   basis를 다시 확인한다.
+- Requested-language generated body를 실현할 수 없거나 실현 여부를 확인할
+  수 없으면 affected projection/document는 `unavailable` 또는 `degraded`다.
+  Requested-language metadata만 보존하거나 영어 body를 반환한 것을 성공으로
+  바꾸지 않는다. Fixed UI locale fallback은 이 generated-content failure와 별개다.
 - Projection 실패를 canonical transaction failure, repository work failure 또는 user
   Decision rollback으로 보고하지 않는다.
 

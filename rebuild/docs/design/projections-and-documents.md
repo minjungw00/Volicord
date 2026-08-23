@@ -2,7 +2,7 @@
 
 - 상태: active specialized architecture owner
 - 소유 범위: first project-scoped Recall, bounded Resume Brief, user/agent read
-  projections, Candidate Inspection, Decision–Context–Code map, generated-document
+  projections, Candidate Inspection, Project Understanding Viewer, Decision–Context–Code map, generated-document
   grounding, draft/preview, review/correction, explicit adoption과 output format boundary
 - 상위 architecture 기준: [논리 아키텍처](architecture.md)
 - core domain 기준: [핵심 도메인 모델](domain-model.md)
@@ -41,6 +41,25 @@ write의 숨은 경로로 사용하지 않는다.
 Projection은 current truth의 별도 authority가 아니다. Projection과 source record가
 달라지면 source record와 current analysis를 다시 읽고 projection을 stale/rebuild
 대상으로 다룬다.
+
+### Project Understanding read model
+
+`Project Understanding`은 Canonical Context와 Repository Intelligence를 같이 읽어
+사람이 Project를 이해하고 작업을 이어 갈 수 있게 구성한 derived/read-side
+interpretation이다. Runtime Home, database, opaque record 목록을 기본으로 탐색하는
+browser가 아니며 새 canonical truth, Decision 또는 Repository Fact를 만들지 않는다.
+
+기본 Viewer는 다음 user question에 자연어로 답한다.
+
+- 무엇을 달성했고 완료한 work가 무엇인가
+- 현재 Project와 work의 상태, 남은 work, blocker와 next meaningful step은 무엇인가
+- 어떤 Decision을 왜 내렸고 어디에 적용되며 어떤 code가 영향을 받는가
+- code가 어떻게 동작하고 component, boundary, architecture와 flow가 어떻게 연결되는가
+- 설명의 evidence basis, coverage, freshness, known gap과 uncertainty가 무엇인가
+
+Record identity, raw envelope, hash, provider request, audit field와 lifecycle detail은 모두
+inspectable하게 유지하되 ordinary reading hierarchy 뒤의 explicit detail/audit disclosure에
+둔다. 이 hierarchy는 grounding을 삭제하거나 low-level inspection을 막지 않는다.
 
 ## 2. First project-scoped automatic Recall
 
@@ -213,6 +232,22 @@ Graph adjacency나 visual proximity는 causal fact가 아니다. Path scope가 C
 추론한 architecture link를 Structural Fact처럼 표시하지 않는다. Layout과 graph
 storage는 Derived State다.
 
+### Diagram grounding
+
+Component, dependency, request/data flow, Decision impact처럼 관계가 본질적인 설명은
+도식을 사용할 수 있다. Diagram topology의 각 node와 edge는 inspectable
+Repository/Analysis Snapshot의 Code Entity/Relation, manifest/config/document relation 또는
+canonical Decision/Context relation에 연결된다.
+
+- Structural/Semantic Fact에서 온 topology와 Agent Interpretation인 label,
+  grouping, emphasis와 narrative를 구분한다.
+- Generated model은 source relation에 없는 component, dependency, call 또는 flow edge를
+  설명을 자연스럽게 만들기 위해 발명하지 않는다.
+- Inferred grouping이 유용하면 topology edge가 아닌 explicit interpretation layer로
+  표시하고 Source, uncertainty와 known gap을 제공한다.
+- Unsupported, unavailable, failed 또는 stale scope에서 없는 edge를 채우지 않고
+  gap으로 보여 준다.
+
 ## 7. Initial generated documents
 
 첫 generated-document contract는 다음 네 유형을 포함한다.
@@ -244,6 +279,14 @@ verification state, omissions와 source availability를 포함한다.
 문서 유형 이름은 template/renderer 선택이 아니며 사용자가 요청한 natural language를
 인위적인 allowlist로 제한하지 않는다. Code identifier, path와 API name은 원문을
 유지한다.
+
+Requested-language 성공은 title, prose, explanation, option/trade-off, caption과
+diagram label 중 번역 가능한 generated body가 요청 언어로 실제 실현된 경우다.
+Identifier, path, quoted source와 API name은 원문을 유지할 수 있다. Connected model이
+요청 언어를 실현하지 못하거나 실현 여부를 확인할 수 없으면 result와
+affected generated section을 `unavailable` 또는 `degraded` actionable outcome으로
+표시한다. Requested language 메타데이터, HTML `lang` 또는 fixed-string locale만
+맞춘 영어 본문을 requested-language success로 표시하지 않는다.
 
 ## 8. Grounding metadata
 
@@ -346,6 +389,9 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   HTML `lang` syntax metadata와 분리한다. `lang`은 보수적으로 검증·정규화한 language
   tag만 사용하며 요청을 tag로 표현할 수 없으면 bundled fixed locale의 안전한 `en` 또는
   `ko` fallback을 쓴다. Fallback은 generated-content language request를 변경하지 않는다.
+- Syntax metadata fallback은 generated body 언어 fallback 허가가 아니다. Body
+  realization이 불가능하면 명시적 `unavailable`/`degraded` outcome을 내고
+  requested-language success artifact를 생성하지 않는다.
 - Markdown/HTML renderer는 claim, diagnostic, name과 metadata의 각 동적 field에 같은
   deterministic UTF-8 byte policy를 적용한다. 한 field가 bound를 넘으면 일부 text를
   semantic content처럼 잘라 쓰지 않고 field 전체를 exact source byte count, field kind와
@@ -408,6 +454,13 @@ V06은 single-language, polyglot와 partial/failed analyzer fixture에서 다음
 - explicit adoption 전후 Source identity와 provenance boundary
 - Markdown portability와 self-contained HTML equivalence
 - user-specified destination이 없을 때 Product Repository write 부재
+- requested-language generated body의 실제 실현 또는 explicit
+  `unavailable`/`degraded` outcome; metadata-only language match는 성공으로 취급하지 않음
+- Project Understanding의 completed/current/remaining work, next step, Decision rationale,
+  affected code, architecture/flow, evidence, gap, freshness와 uncertainty가 human-first
+  body에 있고 audit detail은 더 깊은 inspection으로 남음
+- Diagram node/edge topology가 inspectable repository/Decision relation에서 오고
+  generated interpretation이 relation을 발명하지 않는 성질
 
 ### V09 — Recall과 Checkpoint 정확성
 
@@ -429,6 +482,9 @@ V11은 Volicord, single-language와 polyglot repository에서 다음을 결합 �
 - fresh session automatic Recall로 실제 작업 재개
 - Decision–Context–Code map의 source/capability honesty
 - four documents가 다른 agent의 handoff와 user comprehension에 충분함
+- Viewer가 record inspection이 아닌 Project Understanding을 기본으로 제공하고,
+  verified fact와 generated interpretation 및 source-grounded diagram을 이해할 수 있음
+- 요청 언어별 generated body realization 성공 또는 explicit unavailable/degraded behavior
 - provider/analyzer/source unavailable 상태의 useful degraded projection
 - correction/review/regeneration/adoption 뒤 provenance와 canonical purity
 - projection/cache deletion과 render/export failure가 canonical loss로 전파되지 않음
