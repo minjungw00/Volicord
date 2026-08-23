@@ -111,6 +111,24 @@ authorization을 요구한다. 이 authorization이 없으면 production success
 `authorization_blocked`/`not_run`으로 남고 local-only journey나 truthful provider
 degradation 결과를 실제 transmission success로 대체하지 않는다.
 
+### Current Linux/Codex production provider realization
+
+첫 supported production adapter의 inspectable identity는 `openai-codex`이며 model은
+Project opt-in과 exact request에 기록된 explicit Codex model string이다. Transport는 설치된
+authenticated Codex CLI의 bounded non-interactive `codex exec`를 재사용한다. Credential은
+Codex가 소유하며 Volicord는 token, auth file 또는 credential fingerprint를 읽거나 복사하거나
+저장하지 않는다. Source payload는 privacy filtering과 Guarded confirmation을 통과한 뒤에만
+stdin으로 전달되고 argv, repository file, portable context 또는 maintained evidence에는 넣지
+않는다. Provider response는 schema-bounded annotation으로 normalize하며 transmitted manifest에
+없는 Source locator를 참조하면 request 전체를 `provider_failed`로 reject한다.
+
+Codex executable 또는 login이 unavailable이면 payload subprocess는 시작하지 않고
+`provider_unavailable`로 남긴다. Timeout, cancellation, nonzero/invalid response failure,
+partial과 stale은 distinct outcome이며 local canonical/structural capability에는 전파하지
+않는다. Codex CLI transport는 provider-side deletion operation을 expose하지 않으므로 local
+annotation deletion과 별개로 `unsupported`를 보고한다. Provider의 service-side retention이나
+deletion을 Codex login 또는 local artifact cleanup에서 추론하지 않는다.
+
 ## 5. Inspectable provider state
 
 사용자는 Project마다 최소 다음 상태를 확인할 수 있어야 한다.

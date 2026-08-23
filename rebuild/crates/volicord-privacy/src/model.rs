@@ -213,6 +213,8 @@ pub enum ProviderRequestOutcome {
     NotTransmitted,
     ProviderUnavailable,
     ProviderFailed,
+    ProviderTimedOut,
+    ProviderCancelled,
     Completed,
     Partial,
     Stale,
@@ -280,6 +282,7 @@ pub struct ProviderGeneratedAnnotation {
 pub enum ProviderExecution {
     Completed {
         annotations: Vec<ProviderGeneratedAnnotation>,
+        diagnostic: Option<String>,
     },
     Partial {
         annotations: Vec<ProviderGeneratedAnnotation>,
@@ -287,6 +290,15 @@ pub enum ProviderExecution {
     },
     Stale {
         annotations: Vec<ProviderGeneratedAnnotation>,
+        diagnostic: String,
+    },
+    Unavailable {
+        diagnostic: String,
+    },
+    TimedOut {
+        diagnostic: String,
+    },
+    Cancelled {
         diagnostic: String,
     },
     Failed {

@@ -4,7 +4,7 @@ use std::{
     io::{self, Read, Write},
     os::{fd::AsFd, unix::process::CommandExt},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
+    process::{ChildStdin, Command, ExitStatus, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -25,6 +25,7 @@ use rustix::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
 const READ_CHUNK: usize = 16 * 1024;
+const MAX_STDIN_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default)]
 pub struct CancellationFlag(Arc<AtomicBool>);
@@ -175,6 +176,7 @@ pub struct ProcessRequest {
     timeout: Duration,
     cleanup_timeout: Duration,
     cancellation: CancellationFlag,
+    stdin: Option<Vec<u8>>,
 }
 
 impl ProcessRequest {
@@ -194,6 +196,7 @@ impl ProcessRequest {
             timeout,
             cleanup_timeout,
             cancellation: CancellationFlag::default(),
+            stdin: None,
         }
     }
 
@@ -219,6 +222,13 @@ impl ProcessRequest {
 
     pub fn cancellation(mut self, cancellation: CancellationFlag) -> Self {
         self.cancellation = cancellation;
+        self
+    }
+
+    /// Supplies bounded in-memory stdin without placing request content in the
+    /// child argv or a maintained process artifact.
+    pub fn stdin_bytes(mut self, stdin: impl Into<Vec<u8>>) -> Self {
+        self.stdin = Some(stdin.into());
         self
     }
 
@@ -253,6 +263,16 @@ fn run_request(_request: ProcessRequest) -> Result<ProcessObservation, ProcessSt
 #[cfg(target_os = "linux")]
 fn run_request(request: ProcessRequest) -> Result<ProcessObservation, ProcessStartError> {
     let started = Instant::now();
+    if request
+        .stdin
+        .as_ref()
+        .is_some_and(|input| input.len() > MAX_STDIN_BYTES)
+    {
+        return Err(start_error(
+            started,
+            format!("stdin exceeds the bounded {MAX_STDIN_BYTES} byte limit"),
+        ));
+    }
     if request.stdout_path == request.stderr_path {
         return Err(start_error(
             started,
@@ -266,7 +286,11 @@ fn run_request(request: ProcessRequest) -> Result<ProcessObservation, ProcessSta
     let mut command = Command::new(&request.program);
     command
         .args(&request.arguments)
-        .stdin(Stdio::null())
+        .stdin(if request.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(directory) = &request.current_dir {
@@ -276,6 +300,16 @@ fn run_request(request: ProcessRequest) -> Result<ProcessObservation, ProcessSta
     let mut child = command
         .spawn()
         .map_err(|error| start_error(started, format!("cannot spawn child process: {error}")))?;
+    let stdin_writer = match request.stdin {
+        Some(input) => {
+            let Some(stdin) = child.stdin.take() else {
+                abort_started_child(&mut child, None);
+                return Err(start_error(started, "child stdin pipe is unavailable"));
+            };
+            Some(spawn_stdin_writer(stdin, input))
+        }
+        None => None,
+    };
     let raw_pid = match i32::try_from(child.id()) {
         Ok(pid) => pid,
         Err(_) => {
@@ -406,6 +440,22 @@ fn run_request(request: ProcessRequest) -> Result<ProcessObservation, ProcessSta
     if status.is_none() {
         status = child.try_wait().ok().flatten();
     }
+    if let Some(writer) = stdin_writer {
+        match writer.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if stop_trigger.is_some() => {
+                observation_issue.get_or_insert_with(|| {
+                    format!("stdin delivery ended during forced process stop: {error}")
+                });
+            }
+            Ok(Err(error)) => {
+                observation_issue.get_or_insert_with(|| format!("stdin delivery failed: {error}"));
+            }
+            Err(_) => {
+                observation_issue.get_or_insert_with(|| "stdin writer panicked".to_owned());
+            }
+        }
+    }
     let group_absent = matches!(kill_process_group(pid, Signal::KILL), Err(Errno::SRCH));
     for (name, file) in [("stdout", &mut stdout_file), ("stderr", &mut stderr_file)] {
         if let Err(error) = file.flush().and_then(|()| file.sync_all()) {
@@ -457,6 +507,14 @@ fn run_request(request: ProcessRequest) -> Result<ProcessObservation, ProcessSta
             completeness,
         },
         duration: started.elapsed(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_stdin_writer(mut stdin: ChildStdin, input: Vec<u8>) -> thread::JoinHandle<io::Result<()>> {
+    thread::spawn(move || {
+        stdin.write_all(&input)?;
+        stdin.flush()
     })
 }
 

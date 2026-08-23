@@ -346,12 +346,6 @@ impl PrivacyStore {
             .iter()
             .map(|source| (source.source.identity(), source.filtered_body.len() as u64))
             .collect::<BTreeMap<_, _>>();
-        for entry in &mut record.manifest {
-            if let Some(length) = transmitted_lengths.get(&entry.source.identity()) {
-                entry.transmission_outcome = TransmissionOutcome::Transmitted;
-                entry.transmitted_bytes = *length;
-            }
-        }
         let invocation = ProviderInvocation {
             request_id: record.id,
             project_id: record.project_id,
@@ -372,11 +366,23 @@ impl PrivacyStore {
                 .collect(),
         };
         let result = provider.invoke(invocation);
+        let source_was_transmitted = !matches!(result, ProviderExecution::Unavailable { .. });
+        if source_was_transmitted {
+            for entry in &mut record.manifest {
+                if let Some(length) = transmitted_lengths.get(&entry.source.identity()) {
+                    entry.transmission_outcome = TransmissionOutcome::Transmitted;
+                    entry.transmitted_bytes = *length;
+                }
+            }
+        }
         let (outcome, annotations, diagnostic, derived_state) = match result {
-            ProviderExecution::Completed { annotations } => (
+            ProviderExecution::Completed {
+                annotations,
+                diagnostic,
+            } => (
                 ProviderRequestOutcome::Completed,
                 annotations,
-                None,
+                diagnostic,
                 ManagedDerivedState::Current,
             ),
             ProviderExecution::Partial {
@@ -396,6 +402,24 @@ impl PrivacyStore {
                 annotations,
                 Some(diagnostic),
                 ManagedDerivedState::Stale,
+            ),
+            ProviderExecution::Unavailable { diagnostic } => (
+                ProviderRequestOutcome::ProviderUnavailable,
+                Vec::new(),
+                Some(diagnostic),
+                ManagedDerivedState::Invalidated,
+            ),
+            ProviderExecution::TimedOut { diagnostic } => (
+                ProviderRequestOutcome::ProviderTimedOut,
+                Vec::new(),
+                Some(diagnostic),
+                ManagedDerivedState::Invalidated,
+            ),
+            ProviderExecution::Cancelled { diagnostic } => (
+                ProviderRequestOutcome::ProviderCancelled,
+                Vec::new(),
+                Some(diagnostic),
+                ManagedDerivedState::Invalidated,
             ),
             ProviderExecution::Failed { diagnostic } => (
                 ProviderRequestOutcome::ProviderFailed,

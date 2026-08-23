@@ -751,7 +751,10 @@ impl GuardedEffectDispatcher for BackgroundProviderDispatcher<'_> {
                     }
                     (
                         true,
-                        ProviderRequestOutcome::ProviderFailed | ProviderRequestOutcome::Stale,
+                        ProviderRequestOutcome::ProviderFailed
+                        | ProviderRequestOutcome::ProviderTimedOut
+                        | ProviderRequestOutcome::ProviderCancelled
+                        | ProviderRequestOutcome::Stale,
                     ) => DispatchObservation::DispatchedAndFailed {
                         diagnostic: diagnostic.unwrap_or_else(|| {
                             format!("provider request ended as {:?}", record.outcome)

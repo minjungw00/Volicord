@@ -215,6 +215,7 @@ fn request(
 }
 
 struct TestProvider {
+    identity: ProviderIdentity,
     availability: ProviderAvailability,
     executions: VecDeque<ProviderExecution>,
     deletion: ProviderDeletionOutcome,
@@ -225,6 +226,10 @@ struct TestProvider {
 impl TestProvider {
     fn new(executions: impl IntoIterator<Item = ProviderExecution>) -> Self {
         Self {
+            identity: ProviderIdentity {
+                provider: "deterministic-test-provider".to_owned(),
+                model: "fixture-model".to_owned(),
+            },
             availability: ProviderAvailability::Available,
             executions: executions.into_iter().collect(),
             deletion: ProviderDeletionOutcome::Succeeded { diagnostic: None },
@@ -236,10 +241,7 @@ impl TestProvider {
 
 impl BackgroundSemanticProvider for TestProvider {
     fn identity(&self) -> ProviderIdentity {
-        ProviderIdentity {
-            provider: "deterministic-test-provider".to_owned(),
-            model: "fixture-model".to_owned(),
-        }
+        self.identity.clone()
     }
 
     fn availability(&self) -> ProviderAvailability {
@@ -334,6 +336,7 @@ fn opt_in_filters_truthful_manifest_and_revoke_blocks_prepared_dispatch(
             text: "bounded semantic annotation".to_owned(),
             uncertainty: Uncertainty::none(),
         }],
+        diagnostic: None,
     }]);
     let prepared = match privacy.prepare_background_request(request(
         &fixture,
@@ -441,6 +444,25 @@ fn provider_degradation_preserves_local_state_and_truthful_transmission(
         ),
     )?;
 
+    let mut mismatched = TestProvider::new([]);
+    mismatched.identity.provider = "different-provider".to_owned();
+    let prepared = match privacy
+        .prepare_background_request(request(&fixture, ["fn local() {}", "vendor", "docs"])?)?
+    {
+        PreparationOutcome::Ready(value) => value,
+        PreparationOutcome::Rejected(_) => return Err("mismatch request not prepared".into()),
+    };
+    let mismatched_record = privacy.dispatch_background(prepared, &mut mismatched)?;
+    assert_eq!(
+        mismatched_record.outcome,
+        ProviderRequestOutcome::ProviderUnavailable
+    );
+    assert!(mismatched.invocations.is_empty());
+    assert!(mismatched_record
+        .manifest
+        .iter()
+        .all(|entry| entry.transmission_outcome == TransmissionOutcome::NotTransmitted));
+
     let mut unavailable = TestProvider::new([]);
     unavailable.availability = ProviderAvailability::Unavailable {
         diagnostic: "provider configuration absent".to_owned(),
@@ -464,7 +486,13 @@ fn provider_degradation_preserves_local_state_and_truthful_transmission(
 
     let mut provider = TestProvider::new([
         ProviderExecution::Failed {
-            diagnostic: "provider timed out after receiving the request".to_owned(),
+            diagnostic: "provider rejected the request".to_owned(),
+        },
+        ProviderExecution::TimedOut {
+            diagnostic: "provider process timed out after receiving the request".to_owned(),
+        },
+        ProviderExecution::Cancelled {
+            diagnostic: "provider process was cancelled after receiving the request".to_owned(),
         },
         ProviderExecution::Partial {
             annotations: vec![ProviderGeneratedAnnotation {
@@ -484,7 +512,13 @@ fn provider_degradation_preserves_local_state_and_truthful_transmission(
         },
     ]);
     let mut outcomes = Vec::new();
-    for body in ["failed body", "partial body", "stale body"] {
+    for body in [
+        "failed body",
+        "timed out body",
+        "cancelled body",
+        "partial body",
+        "stale body",
+    ] {
         let prepared = match privacy
             .prepare_background_request(request(&fixture, [body, "vendor", "docs"])?)?
         {
@@ -501,11 +535,13 @@ fn provider_degradation_preserves_local_state_and_truthful_transmission(
         outcomes,
         vec![
             ProviderRequestOutcome::ProviderFailed,
+            ProviderRequestOutcome::ProviderTimedOut,
+            ProviderRequestOutcome::ProviderCancelled,
             ProviderRequestOutcome::Partial,
             ProviderRequestOutcome::Stale,
         ]
     );
-    assert_eq!(provider.invocations.len(), 3);
+    assert_eq!(provider.invocations.len(), 5);
     let invalidated = privacy.invalidate_snapshot(fixture.project.id, analysis(12)?)?;
     assert_eq!(invalidated.len(), 1);
     let canonical_after = fixture
@@ -785,6 +821,7 @@ fn local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portabl
             text: "annotation without raw body".to_owned(),
             uncertainty: Uncertainty::none(),
         }],
+        diagnostic: None,
     }]);
     let prepared = match privacy
         .prepare_background_request(request(&fixture, [raw_marker, "vendor", "docs"])?)?

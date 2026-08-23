@@ -43,6 +43,23 @@ volicord doctor repair
 volicord doctor reindex
 ```
 
+The supported production background semantic provider identity is
+`openai-codex`. It reuses the installed Codex CLI login and requires an
+explicit model plus exact Project source scopes:
+
+```text
+volicord advanced records source --host codex --session <SESSION> --text "enable bounded background semantics"
+volicord privacy enable openai-codex <MODEL> --source <USER_SOURCE_ID> --scope src/bounded.rs
+```
+
+Provider opt-in is not transmission approval. Each source-bearing operation
+still requires the exact Guarded confirmation shown for that operation. The
+adapter reads neither credential files nor tokens; an unavailable executable or
+Codex login yields `provider_unavailable`, and the Codex CLI transport reports
+provider-side deletion as unsupported. `VOLICORD_CODEX_EXECUTABLE` may select an
+explicit Codex CLI path for a controlled installation; it does not carry or
+authorize credentials.
+
 Output is human-readable by default. Add `--json` for automation and
 `--locale ko` for bundled Korean fixed strings. Use `volicord --help` and
 command-level `--help` to discover options and examples. Canonical audit,

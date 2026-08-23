@@ -1,11 +1,12 @@
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, CommandVerificationDraft, Error, ForgettingOutcome,
-    GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport,
-    HealthState, LongOperationResult, OperationState, PartialOutcome, ProgressState,
-    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
-    RuntimeLayout, UserContextRecordingOutcome,
+    ChildProcessOutcome, CodexCliProviderConfig, CodexCliSemanticProvider,
+    CommandVerificationDraft, Error, ForgettingOutcome, GroundedCheckpointDraft,
+    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
+    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
+    UserContextRecordingOutcome,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -53,9 +54,8 @@ use volicord_local_platform::{
 };
 use volicord_privacy::{
     BackgroundSemanticProvider, BackgroundSemanticRequest, BackgroundSource, PreparationOutcome,
-    PrivacyStore, ProjectPrivacyInspection, ProviderAvailability, ProviderDeletionOutcome,
-    ProviderDeletionRequest, ProviderExecution, ProviderIdentity, ProviderIntentProvenance,
-    ProviderInvocation, ProviderOptInEvent, ProviderOptInPolicy, ProviderRequestId,
+    PrivacyStore, ProjectPrivacyInspection, ProviderDeletionOutcome, ProviderIdentity,
+    ProviderIntentProvenance, ProviderOptInEvent, ProviderOptInPolicy, ProviderRequestId,
     ProviderRequestRecord, SourceClass,
 };
 use volicord_projections::{
@@ -1093,12 +1093,13 @@ impl LocalOperations {
         request_revision: u64,
         effect_fingerprint: &str,
     ) -> Result<GuardedOperationResult, Error> {
-        let mut provider = UnavailableConfiguredProvider {
-            identity: ProviderIdentity {
+        let mut provider = CodexCliSemanticProvider::new(
+            ProviderIdentity {
                 provider: preparation.provider_request.provider.clone(),
                 model: preparation.provider_request.model.clone(),
             },
-        };
+            CodexCliProviderConfig::production(self.layout.artifacts_dir()),
+        );
         self.dispatch_guarded_provider(
             preparation,
             request_revision,
@@ -2503,36 +2504,6 @@ const fn filter_outcome_slug(outcome: volicord_privacy::FilterOutcome) -> &'stat
         volicord_privacy::FilterOutcome::NotApplied => "not_applied",
         volicord_privacy::FilterOutcome::NoMatch => "no_match",
         volicord_privacy::FilterOutcome::Filtered => "filtered",
-    }
-}
-
-struct UnavailableConfiguredProvider {
-    identity: ProviderIdentity,
-}
-
-impl BackgroundSemanticProvider for UnavailableConfiguredProvider {
-    fn identity(&self) -> ProviderIdentity {
-        self.identity.clone()
-    }
-
-    fn availability(&self) -> ProviderAvailability {
-        ProviderAvailability::Unavailable {
-            diagnostic:
-                "no production external semantic-provider transport is configured in this build"
-                    .into(),
-        }
-    }
-
-    fn invoke(&mut self, _request: ProviderInvocation) -> ProviderExecution {
-        ProviderExecution::Failed {
-            diagnostic: "unavailable provider adapter cannot invoke a transport".into(),
-        }
-    }
-
-    fn delete(&mut self, _request: ProviderDeletionRequest) -> ProviderDeletionOutcome {
-        ProviderDeletionOutcome::Unsupported {
-            diagnostic: "no production external semantic-provider transport is configured".into(),
-        }
     }
 }
 

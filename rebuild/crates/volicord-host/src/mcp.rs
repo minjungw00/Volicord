@@ -2283,6 +2283,8 @@ const fn provider_outcome_name(outcome: ProviderRequestOutcome) -> &'static str 
         ProviderRequestOutcome::NotTransmitted => "not_transmitted",
         ProviderRequestOutcome::ProviderUnavailable => "provider_unavailable",
         ProviderRequestOutcome::ProviderFailed => "provider_failed",
+        ProviderRequestOutcome::ProviderTimedOut => "provider_timed_out",
+        ProviderRequestOutcome::ProviderCancelled => "provider_cancelled",
         ProviderRequestOutcome::Completed => "completed",
         ProviderRequestOutcome::Partial => "partial",
         ProviderRequestOutcome::Stale => "stale",

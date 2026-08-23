@@ -18,6 +18,31 @@ fn request(directory: &std::path::Path, script: &str, timeout: Duration) -> Proc
 }
 
 #[test]
+fn bounded_stdin_is_delivered_without_argv_or_input_artifact() {
+    let temporary = tempfile::tempdir().expect("temporary directory");
+    let result = request(
+        temporary.path(),
+        "read value; printf 'received:%s' \"$value\"",
+        Duration::from_secs(2),
+    )
+    .stdin_bytes(b"fixture-source\n".to_vec())
+    .run()
+    .expect("process observation");
+
+    assert!(result.succeeded());
+    assert_eq!(
+        fs::read_to_string(result.stdout().path()).expect("stdout"),
+        "received:fixture-source"
+    );
+    assert_eq!(
+        fs::read_dir(temporary.path())
+            .expect("artifact directory")
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn complete_streams_nonzero_exit_and_duration_are_preserved() {
     let temporary = tempdir().expect("temporary directory");
     let result = request(

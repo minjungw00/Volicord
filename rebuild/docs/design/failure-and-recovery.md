@@ -232,6 +232,16 @@ retention boundary는 그대로 적용한다.
 - Cancellation 전에 safely committed independent units가 있으면 manifest에 보존하되
   aggregate complete success로 표시하지 않는다.
 
+현재 `openai-codex` background provider subprocess도 이 process observation primitive를
+사용한다. Login-status preflight와 source-bearing execution은 서로 다른 observed child
+operation이고, preflight unavailable은 source execution을 만들지 않는다. Source-bearing
+execution의 timeout은 provider `timed_out`, cancellation은 `cancelled`, nonzero exit·stream
+observation failure·invalid structured response는 `provider_failed`로 보존한다. Partial과
+stale provider response는 process success와 별개의 normalized semantic outcome이다. Complete
+stdout/stderr, final raw response와 schema는 private ephemeral artifact에서 bounded parse 후
+제거하고, durable provider request에는 exit/termination/cleanup/stream byte count/duration의
+content-free summary만 남긴다.
+
 ### Bounded progress와 partial result
 
 Progress는 heartbeat만으로 success를 뜻하지 않는다. Total work를 모르면 percentage를

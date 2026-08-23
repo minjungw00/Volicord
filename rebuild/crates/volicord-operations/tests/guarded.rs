@@ -384,6 +384,7 @@ impl BackgroundSemanticProvider for FakeProvider {
         self.calls += 1;
         ProviderExecution::Completed {
             annotations: Vec::new(),
+            diagnostic: None,
         }
     }
     fn delete(&mut self, _request: ProviderDeletionRequest) -> ProviderDeletionOutcome {

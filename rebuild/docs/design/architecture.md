@@ -487,6 +487,18 @@ request/result를 최소 하나 포함한다. Network/credential availability는
 조건일 뿐 source transmission authorization이 아니며 exact Project opt-in·purpose·scope와
 별도 authorization이 없으면 request를 dispatch하지 않는다.
 
+현재 첫 Linux/Codex production realization은 provider identity `openai-codex`와
+Project opt-in에 기록된 explicit model identity를 설치된 authenticated Codex CLI의
+bounded `codex exec` subprocess에 연결한다. Local Operations는 privacy-filtered payload를
+argv나 repository file이 아닌 process stdin으로만 넘기고, repository 밖의 private empty
+work directory, read-only sandbox, ephemeral session과 structured output schema를 사용한다.
+Codex login status를 같은 local process-observation primitive로 먼저 확인하며 executable 또는
+authentication이 unavailable이면 Source payload subprocess를 시작하지 않는다. Raw transport
+stdout/stderr와 final response는 private ephemeral operation artifact로 관찰·parse한 뒤 제거하고
+durable request에는 bounded process outcome/provenance와 normalized annotation만 남긴다. 이
+realization은 Codex credential을 읽거나 저장하지 않고 provider-side deletion capability도
+발명하지 않는다.
+
 ### 10. Analyzer, provider, index, source와 process failure recovery
 
 Local Operations는 bounded subsystem outcome을 모두 관찰하고 active

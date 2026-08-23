@@ -1660,7 +1660,7 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
             let project = project_id(&cursor.next("Project ID")?)?;
             let status = operations.privacy_status(project)?;
             Ok(
-                json!({"operation":"privacy_status","project_id":project.to_string(),"configuration_state":debug_name(status.configuration_state),"policy_revision":status.current_opt_in.as_ref().map(|value| value.revision),"policy_state":status.current_opt_in.as_ref().map(|value| debug_name(value.state)),"provider":status.current_opt_in.as_ref().map(|value| value.policy.provider.clone()),"model":status.current_opt_in.as_ref().map(|value| value.policy.model.clone()),"allowed_source_scopes":status.current_opt_in.as_ref().map(|value| value.policy.allowed_source_scopes.clone()),"request_count":status.requests.len(),"managed_derived_count":status.managed_derived.len()}),
+                json!({"operation":"privacy_status","project_id":project.to_string(),"configuration_state":debug_name(status.configuration_state),"policy_revision":status.current_opt_in.as_ref().map(|value| value.revision),"policy_state":status.current_opt_in.as_ref().map(|value| debug_name(value.state)),"provider":status.current_opt_in.as_ref().map(|value| value.policy.provider.clone()),"model":status.current_opt_in.as_ref().map(|value| value.policy.model.clone()),"purpose":status.current_opt_in.as_ref().map(|value| value.policy.purpose.clone()),"requested_capability":status.current_opt_in.as_ref().map(|value| value.policy.requested_capability.clone()),"allowed_source_scopes":status.current_opt_in.as_ref().map(|value| value.policy.allowed_source_scopes.clone()),"exclusions":status.current_opt_in.as_ref().map(|value| json!({"path_prefixes":value.policy.exclusions.path_prefixes,"file_classes":value.policy.exclusions.file_classes.iter().map(|class| debug_name(*class)).collect::<Vec<_>>(),"basis":value.policy.exclusions.basis})),"filtering":status.current_opt_in.as_ref().map(|value| json!({"enabled":value.policy.filtering.enabled,"known_limits":value.policy.filtering.known_limits})),"provider_retention":status.current_opt_in.as_ref().map(|value| json!({"expectation":value.policy.retention.provider_expectation,"known_limits":value.policy.retention.provider_known_limits,"local_basis":value.policy.retention.local_basis})),"request_count":status.requests.len(),"requests":status.requests.iter().map(|request| json!({"request_id":request.id.to_string(),"provider":request.provider,"model":request.model,"purpose":request.purpose,"repository_snapshot":request.repository_snapshot.to_string(),"analysis_snapshot":request.analysis_snapshot.to_string(),"outcome":debug_name(request.outcome),"diagnostic":request.diagnostic,"manifest":request.manifest.iter().map(|entry| json!({"source_id":entry.source.identity().to_string(),"locator":entry.locator,"scope_outcome":debug_name(entry.scope_outcome),"filter_outcome":debug_name(entry.filter_outcome),"transmission_outcome":debug_name(entry.transmission_outcome),"transmitted_bytes":entry.transmitted_bytes})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"managed_derived_count":status.managed_derived.len()}),
             )
         }
         "enable" => {
@@ -1674,6 +1674,7 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
                     "privacy enable requires at least one explicit source scope",
                 ));
             }
+            let codex_provider = provider == crate::CODEX_CLI_PROVIDER;
             let policy = ProviderOptInPolicy {
                 project_id: project,
                 provider,
@@ -1695,8 +1696,18 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
                 retention: ProviderRetentionPolicy {
                     local_annotation_retained_until: None,
                     local_basis: "until explicit deletion".into(),
-                    provider_expectation: "provider policy applies".into(),
-                    provider_known_limits: Vec::new(),
+                    provider_expectation: if codex_provider {
+                        "the Codex CLI transport exposes no provider-side deletion operation".into()
+                    } else {
+                        "provider-specific retention and deletion support is not established".into()
+                    },
+                    provider_known_limits: vec![if codex_provider {
+                        "local deletion cannot be reported as provider-side deletion for the Codex CLI transport"
+                            .into()
+                    } else {
+                        "provider-side deletion support is unknown until the configured adapter reports an observed outcome"
+                            .into()
+                    }],
                 },
             };
             let event = operations.enable_provider(

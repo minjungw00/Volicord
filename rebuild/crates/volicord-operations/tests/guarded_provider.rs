@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, os::unix::fs::PermissionsExt, sync::Mutex};
 use tempfile::TempDir;
 use volicord_context::{Principal, PrincipalKind, SourceId, TimestampMicros};
 use volicord_operations::{
@@ -17,10 +17,18 @@ struct Fixture {
     _temporary: TempDir,
     operations: LocalOperations,
     project: volicord_context::ProjectId,
+    provider: String,
+    model: String,
 }
+
+static CONFIG_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 impl Fixture {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Self::new_with_provider("fixture-provider", "fixture-model")
+    }
+
+    fn new_with_provider(provider: &str, model: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let temporary = tempfile::tempdir()?;
         let repository = temporary.path().join("repository");
         fs::create_dir_all(repository.join("src"))?;
@@ -44,8 +52,8 @@ impl Fixture {
         operations.enable_provider(
             ProviderOptInPolicy {
                 project_id: project,
-                provider: "fixture-provider".into(),
-                model: "fixture-model".into(),
+                provider: provider.into(),
+                model: model.into(),
                 purpose: "background semantic analysis".into(),
                 requested_capability: "semantic".into(),
                 allowed_source_scopes: vec!["src/lib.rs".into()],
@@ -82,6 +90,8 @@ impl Fixture {
             _temporary: temporary,
             operations,
             project,
+            provider: provider.into(),
+            model: model.into(),
         })
     }
 
@@ -89,8 +99,8 @@ impl Fixture {
         match self.operations.prepare_guarded_provider_operation(
             BackgroundProviderOperationDraft {
                 project_id: self.project,
-                provider: "fixture-provider".into(),
-                model: "fixture-model".into(),
+                provider: self.provider.clone(),
+                model: self.model.clone(),
                 purpose: "background semantic analysis".into(),
                 requested_capability: "semantic".into(),
                 source_paths: vec!["src/lib.rs".into()],
@@ -171,6 +181,7 @@ fn local_operations_preserve_no_dispatch_exact_confirmation_and_single_use(
     let mut provider = FixtureProvider {
         execution: ProviderExecution::Completed {
             annotations: Vec::new(),
+            diagnostic: None,
         },
         calls: 0,
         invocations: Vec::new(),
@@ -247,6 +258,10 @@ fn local_operations_preserve_no_dispatch_exact_confirmation_and_single_use(
 #[test]
 fn configured_adapter_unavailability_is_truthful_and_local_work_continues(
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let _environment = CONFIG_ENV_LOCK
+        .lock()
+        .map_err(|_| "environment lock poisoned")?;
+    std::env::remove_var(volicord_operations::CODEX_EXECUTABLE_ENV);
     let fixture = Fixture::new()?;
     let mut preparation = fixture.prepare()?;
     fixture.confirm(&preparation)?;
@@ -294,6 +309,96 @@ fn configured_adapter_unavailability_is_truthful_and_local_work_continues(
         .canonical_basis(fixture.project)?
         .sources
         .is_empty());
+    Ok(())
+}
+
+#[test]
+fn configured_codex_adapter_completes_the_guarded_production_path(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let _environment = CONFIG_ENV_LOCK
+        .lock()
+        .map_err(|_| "environment lock poisoned")?;
+    let fixture = Fixture::new_with_provider("openai-codex", "fixture-model")?;
+    let executable = fixture._temporary.path().join("codex-fixture");
+    fs::write(
+        &executable,
+        r#"#!/bin/sh
+set -eu
+if [ "${1:-}" = login ]; then exit 0; fi
+output=''
+arguments="$*"
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = '--output-last-message' ]; then
+    shift
+    output="$1"
+  fi
+  shift
+done
+payload=$(sed -n '1,$p')
+case "$payload" in
+  *'pub fn answer()'*) ;;
+  *) exit 41 ;;
+esac
+case "$payload" in
+  *'SECRET=fixture'*) exit 42 ;;
+  *) ;;
+esac
+case "$arguments" in
+  *'pub fn answer()'*) exit 43 ;;
+  *) ;;
+esac
+printf '%s' '{"outcome":"completed","diagnostic":"","annotations":[{"included_source_locators":["src/lib.rs"],"text":"The bounded fixture exposes answer.","uncertainty":"low","uncertainty_reasons":["fixture transport"]}]}' > "$output"
+printf '%s\n' '{"type":"turn.completed"}'
+"#,
+    )?;
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700))?;
+    std::env::set_var(volicord_operations::CODEX_EXECUTABLE_ENV, &executable);
+
+    let result = (|| -> Result<_, Box<dyn std::error::Error>> {
+        let mut preparation = fixture.prepare()?;
+        fixture.confirm(&preparation)?;
+        let revision = preparation.candidate.request_revision;
+        let fingerprint = preparation.candidate.effect_fingerprint.clone();
+        let operation = fixture
+            .operations
+            .dispatch_guarded_provider_with_configured_adapter(
+                &mut preparation,
+                revision,
+                &fingerprint,
+            )?;
+        let inspection = fixture.operations.inspect_guarded_provider_operation(
+            fixture.project,
+            operation.operation_identity,
+            preparation.provider_request.id,
+        )?;
+        Ok((operation, inspection))
+    })();
+    std::env::remove_var(volicord_operations::CODEX_EXECUTABLE_ENV);
+    let (operation, inspection) = result?;
+
+    assert!(matches!(
+        operation.outcome,
+        GuardedOperationOutcome::DispatchedAndCompleted { .. }
+    ));
+    assert_eq!(
+        inspection.provider_request.outcome,
+        ProviderRequestOutcome::Completed
+    );
+    assert!(inspection
+        .provider_request
+        .manifest
+        .iter()
+        .any(|entry| entry.transmission_outcome == TransmissionOutcome::Transmitted));
+    let runtime_bytes = fs::read(fixture.operations.layout().privacy_store())?;
+    assert!(!String::from_utf8_lossy(&runtime_bytes).contains("SECRET=fixture"));
+    assert!(!fixture
+        .operations
+        .layout()
+        .artifacts_dir()
+        .read_dir()?
+        .any(|entry| entry
+            .ok()
+            .is_some_and(|entry| entry.file_name().to_string_lossy().starts_with("provider-"))));
     Ok(())
 }
 
@@ -363,6 +468,7 @@ fn revoked_privacy_authority_is_rechecked_after_guarded_confirmation(
     let mut provider = FixtureProvider {
         execution: ProviderExecution::Completed {
             annotations: Vec::new(),
+            diagnostic: None,
         },
         calls: 0,
         invocations: Vec::new(),

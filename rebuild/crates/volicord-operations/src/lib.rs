@@ -12,6 +12,7 @@ mod guarded;
 mod layout;
 mod model;
 mod operations;
+mod provider;
 
 pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
@@ -33,6 +34,9 @@ pub use model::{
     ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
 };
 pub use operations::LocalOperations;
+pub use provider::{
+    CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
+};
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,
     SourceClass, TransmissionOutcome,
