@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import io
 import json
@@ -18,6 +19,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 BUILDER = HERE / "evidence_archive.py"
 VERIFIER = ROOT / "rebuild/scripts/verify-validation-archive"
+PROVIDER_EVALUATION = (
+    ROOT
+    / "rebuild/validation/privacy/background-provider-qualification/evaluation.json"
+)
 HEAD = "a" * 40
 PROMPT_SENTINEL = "PROMPT_SENTINEL_MUST_NOT_SURVIVE_7f91"
 SENSITIVE_OPERANDS = (
@@ -89,6 +94,33 @@ def payloads() -> dict[str, object]:
             ],
         },
     }
+
+
+def successful_provider_evidence(candidate_head: str) -> dict[str, object]:
+    evidence = json.loads(PROVIDER_EVALUATION.read_text(encoding="utf-8"))
+    evidence["production_head"] = candidate_head
+    retained = evidence.get("retained_evidence")
+    assert retained == {
+        "source_body": False,
+        "provider_response_body": False,
+        "credential": False,
+    }
+    assert evidence.get("success", {}).get("provider_request_outcome") == "completed"
+    assert evidence.get("success", {}).get("transmission_outcome") == "transmitted"
+    return evidence
+
+
+def add_successful_provider_evidence(
+    archive_payloads: dict[str, object], candidate_head: str
+) -> dict[str, object]:
+    capsule = archive_payloads["capsule.json"]
+    assert isinstance(capsule, dict)
+    capsule["live_provider_qualification"] = {
+        "status": "passed",
+        "evidence_sha256": "d" * 64,
+        "evidence": successful_provider_evidence(candidate_head),
+    }
+    return archive_payloads
 
 
 def run_verifier(path: Path, expected: str = HEAD) -> subprocess.CompletedProcess[str]:
@@ -486,6 +518,11 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         "phase_8_ready": False,
         "blocking_classification": "evidence_archive_pending",
         "evidence_archive": {"status": "pending"},
+        "live_provider_qualification": {
+            "status": "passed",
+            "evidence_sha256": "2" * 64,
+            "evidence": successful_provider_evidence(head),
+        },
     }
     gate_result = {
         "kind": "validation_gate_result",
@@ -739,6 +776,90 @@ def main() -> int:
         assert positive.returncode == 0, positive.stderr
         assert json.loads(positive.stdout)["candidate_head"] == HEAD
 
+        successful_provider_archive = root / "successful-provider-attestation.tar.gz"
+        builder.write_archive(
+            successful_provider_archive,
+            candidate_head=HEAD,
+            payloads=add_successful_provider_evidence(payloads(), HEAD),
+            source_final_summary_sha256=None,
+        )
+        successful_provider_result = run_verifier(successful_provider_archive)
+        assert successful_provider_result.returncode == 0, successful_provider_result.stderr
+
+        def rejected_attestation(
+            name: str,
+            mutate: Callable[[dict[str, Any]], None],
+        ) -> subprocess.CompletedProcess[str]:
+            invalid_payloads = add_successful_provider_evidence(payloads(), HEAD)
+            mutate(invalid_payloads)
+            invalid_archive = root / f"{name}.tar.gz"
+            builder.write_archive(
+                invalid_archive,
+                candidate_head=HEAD,
+                payloads=invalid_payloads,
+                source_final_summary_sha256=None,
+            )
+            result = run_verifier(invalid_archive)
+            assert result.returncode == 1
+            return result
+
+        def retained_attestation(archive_payloads: dict[str, Any]) -> dict[str, Any]:
+            return archive_payloads["capsule.json"]["live_provider_qualification"][
+                "evidence"
+            ]["retained_evidence"]
+
+        source_content = rejected_attestation(
+            "negative-attestation-source-content",
+            lambda values: retained_attestation(values).__setitem__(
+                "source_body", "fn retained_source_body() {}"
+            ),
+        )
+        assert "negative-retention attestation" in source_content.stderr
+
+        retained_true = rejected_attestation(
+            "negative-attestation-true",
+            lambda values: retained_attestation(values).__setitem__("source_body", True),
+        )
+        assert "negative-retention attestation" in retained_true.stderr
+
+        provider_response_content = rejected_attestation(
+            "negative-attestation-provider-response-content",
+            lambda values: retained_attestation(values).__setitem__(
+                "provider_response_body", '{"retained":"provider response"}'
+            ),
+        )
+        assert "negative-retention attestation" in provider_response_content.stderr
+
+        credential_content = rejected_attestation(
+            "negative-attestation-credential-content",
+            lambda values: retained_attestation(values).__setitem__(
+                "credential", "Bearer retained-credential-value-123456"
+            ),
+        )
+        assert "credential-like prohibited content" in credential_content.stderr
+
+        wrong_location = rejected_attestation(
+            "negative-attestation-wrong-location",
+            lambda values: values["processes.json"].__setitem__(
+                "retained_evidence", copy.deepcopy(retained_attestation(values))
+            ),
+        )
+        assert "prohibited content key" in wrong_location.stderr
+
+        unexpected_sensitive_sibling = rejected_attestation(
+            "negative-attestation-unexpected-sensitive-sibling",
+            lambda values: retained_attestation(values).__setitem__(
+                "prompt_body", False
+            ),
+        )
+        assert "negative-retention attestation" in unexpected_sensitive_sibling.stderr
+
+        malformed_attestation = rejected_attestation(
+            "negative-attestation-missing-field",
+            lambda values: retained_attestation(values).pop("credential"),
+        )
+        assert "negative-retention attestation" in malformed_attestation.stderr
+
         tampered = root / "tampered.tar.gz"
         rewrite_archive(
             archive,
@@ -862,6 +983,21 @@ def main() -> int:
         assert credential_failure.returncode == 1
         assert "prohibited" in credential_failure.stderr
 
+        generic_token_payloads = payloads()
+        generic_token_payloads["processes.json"]["diagnostic"] = (
+            "Bearer generic-token-leakage-value-1234567890"
+        )
+        generic_token_archive = root / "generic-token-retained.tar.gz"
+        builder.write_archive(
+            generic_token_archive,
+            candidate_head=HEAD,
+            payloads=generic_token_payloads,
+            source_final_summary_sha256=None,
+        )
+        generic_token_failure = run_verifier(generic_token_archive)
+        assert generic_token_failure.returncode == 1
+        assert "credential-like prohibited content" in generic_token_failure.stderr
+
         prompt_payloads = payloads()
         leaked_prompt = builder.sanitized_execution(
             execution(codex_argv(ROOT, PROMPT_SENTINEL), ROOT), ROOT, root
@@ -934,11 +1070,20 @@ def main() -> int:
             "raw_local_argv_preservation",
             "absolute_path_rejection",
             "repository_source_body_rejection",
+            "successful_provider_negative_retention_attestation",
+            "negative_retention_source_content_rejection",
+            "negative_retention_true_rejection",
+            "negative_retention_provider_response_content_rejection",
+            "negative_retention_credential_content_rejection",
+            "negative_retention_wrong_location_rejection",
+            "negative_retention_unexpected_sensitive_sibling_rejection",
+            "negative_retention_malformed_rejection",
             "tampered_content",
             "missing_file",
             "wrong_posix_mode",
             "candidate_mismatch",
             "credential_like_prohibited_content",
+            "generic_token_pattern_rejection",
             "production_scale_builder_and_verifier",
             "builder_member_bound_rejection",
             "non_current_process_representation_rejection",

@@ -34,6 +34,8 @@ PROHIBITED_KEYS = {
     "auth_json_contents",
     "environment_variables",
     "environment_dump",
+    "credential",
+    "provider_response_body",
     "source_body",
     "raw_repository_source_body",
     "raw_prompt",
@@ -41,6 +43,16 @@ PROHIBITED_KEYS = {
     "prompt_body",
     "raw_provider_payload",
     "full_command_log",
+}
+NEGATIVE_RETENTION_ATTESTATION_PATH = (
+    "live_provider_qualification",
+    "evidence",
+    "retained_evidence",
+)
+NEGATIVE_RETENTION_ATTESTATION_FIELDS = {
+    "source_body",
+    "provider_response_body",
+    "credential",
 }
 REQUIRED_PAYLOADS = {
     "admission.json",
@@ -255,15 +267,32 @@ def load_json(contents: dict[str, bytes], name: str) -> Any:
         fail(f"invalid JSON in {name}: {error.msg}")
 
 
-def inspect_keys(value: Any, location: str) -> None:
+def verify_negative_retention_attestation(value: Any, location: str) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != NEGATIVE_RETENTION_ATTESTATION_FIELDS
+        or any(value.get(field) is not False for field in NEGATIVE_RETENTION_ATTESTATION_FIELDS)
+    ):
+        fail(f"invalid negative-retention attestation in {location}")
+
+
+def inspect_keys(value: Any, location: str, path: tuple[str | int, ...] = ()) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            if str(key).lower() in PROHIBITED_KEYS:
+            normalized_key = str(key).lower()
+            child_path = (*path, normalized_key)
+            if (
+                location == "capsule.json"
+                and child_path == NEGATIVE_RETENTION_ATTESTATION_PATH
+            ):
+                verify_negative_retention_attestation(child, location)
+                continue
+            if normalized_key in PROHIBITED_KEYS:
                 fail(f"prohibited content key in {location}: {key}")
-            inspect_keys(child, location)
+            inspect_keys(child, location, child_path)
     elif isinstance(value, list):
-        for child in value:
-            inspect_keys(child, location)
+        for index, child in enumerate(value):
+            inspect_keys(child, location, (*path, index))
 
 
 def verify_argv_policy(value: Any, location: str) -> None:

@@ -25,8 +25,10 @@ surface, not a Volicord product command or production architecture.
   argument-role records. It also rejects a builder-side over-bound member,
   unknown external cwd values, retained prompts or absolute host paths, tampered
   content, missing members, changed POSIX modes, candidate mismatch, repository
-  source bodies, and credential-like prohibited content. It invokes neither
-  exact final nor official V11.
+  source bodies, malformed or misplaced provider-retention attestations, and
+  credential-like prohibited content. Its positive integration case embeds the
+  maintained successful-provider evidence shape, including the exact negative
+  retention attestation. It invokes neither exact final nor official V11.
 - `rebuild/scripts/verify-validation-archive <archive> [--expected-candidate
   <HEAD>]` independently verifies archive membership, content hashes, bounded
   size, candidate agreement, tracked/executable identities, tar modes, and the
@@ -524,8 +526,14 @@ credentials and reusable credential fingerprints. The verifier reads members
 in memory, refuses unsafe or unexpected member types and paths, and rejects
 missing or additional files, hash/size/mode drift, internal or caller-supplied
 candidate mismatch, invalid tracked/executable evidence, and prohibited keys
-or credential-like values. Tar member modes are preserved and checked; the
-archive file itself is created mode `0600` in ignored local state.
+or credential-like values. The only sensitive-name exception is the exact
+`capsule.json.live_provider_qualification.evidence.retained_evidence` object:
+it must contain exactly `source_body`, `provider_response_body`, and
+`credential`, and every value must be the literal boolean `false`. The same
+keys at any other location, any other value, a missing or additional field, or
+a malformed container is rejected independently. Tar member modes are
+preserved and checked; the archive file itself is created mode `0600` in
+ignored local state.
 
 The versionless current capsule has `kind = validation_handoff_capsule`. It is
 one stage-dependent contract rather than separate success and failure schemas.
