@@ -20,9 +20,11 @@ pub use documents::{
     DocumentDecisionBasis, DocumentError, DocumentKind, DocumentMetadata, DocumentRequest,
     DocumentSection, DocumentSet, DocumentSourceBasis, FixedLocale, GeneratedDocument,
     GeneratedDocumentClaim, GeneratorIdentity, NarrativePlan, NarrativePlanClaim,
-    NarrativePlanSection, NarrativeRealization, NarrativeRealizationState, OutputFormat,
-    PublicationArtifact, RealizedNarrativeClaim, RealizedNarrativeSection, RequestedDestination,
-    GENERATED_DOCUMENT_FORMAT_KIND, GENERATED_DOCUMENT_METADATA_VERSION,
+    NarrativePlanSection, NarrativeRealization, NarrativeRealizationState,
+    NarrativeSourceTextOmission, OutputFormat, PublicationArtifact, RealizedNarrativeClaim,
+    RealizedNarrativeSection, RequestedDestination, GENERATED_DOCUMENT_FORMAT_KIND,
+    GENERATED_DOCUMENT_METADATA_VERSION, NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT,
+    NARRATIVE_PLAN_PROTECTED_TERM_LIMIT, NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT,
     RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{

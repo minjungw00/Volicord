@@ -329,6 +329,18 @@ realizer가 없는 caller는 typed `unavailable`을 받으며 requested-language
 artifact를 publish하지 않는다. 이 interaction은 current-host authority이며 background
 semantic-provider opt-in이나 transport를 사용하지 않는다.
 
+`NarrativePlan`은 authoritative typed projection의 크기를 transport 상한으로 바꾸지
+않는다. 반복 path/component/affected-area material은 안정적인 원래 순서에서 대표 항목을
+선택하고 exact omitted item count와 item/per-item bound를 source text에 기록한다. 그래도
+source claim이 크면 UTF-8 중간을 잘라 의미 있는 문장처럼 전달하지 않고 전체 claim을
+`exact_source_utf8_bytes`, `exact_source_character_count`, full-source digest가 있는 bounded
+source representation으로 바꾼다. 따라서 같은 크기의 다른 source claim도 같은 plan으로
+오인하지 않는다. Full typed claim과 Source/Decision/Analysis grounding은 그대로 남는다.
+Public realization field 4,096-byte contract를 늘리지 않고 host realization을 위한
+headroom을 남기기 위해 plan `source_text`는 3,072 UTF-8 bytes 이하다. Protected code/path
+term도 deterministic representative set만 plan에 포함하며 term/item bound 때문에 제외된
+수는 exact하게 기록한다. 이 bound와 omission metadata는 plan fingerprint에 포함된다.
+
 ## 8. Grounding metadata
 
 각 generated draft, preview와 export는 최소 다음 grounding을 가진다.

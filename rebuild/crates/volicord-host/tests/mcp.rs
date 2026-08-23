@@ -21,6 +21,9 @@ use volicord_privacy::{
     PrivacyStore, ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy,
     SecretFilteringPolicy, SourceExclusionPolicy,
 };
+use volicord_projections::{
+    NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+};
 
 #[test]
 fn canonical_forgetting_mcp_cleans_linked_local_content() {
@@ -833,7 +836,27 @@ fn recall_documents_and_inspection_are_read_only_host_calls() {
     let prepared_result = structured(&prepared);
     assert_eq!(prepared_result["outcome"], "realization_required");
     assert!(prepared_result.get("content").is_none());
+    for claim in prepared_result["plan"]["sections"]
+        .as_array()
+        .expect("plan sections")
+        .iter()
+        .flat_map(|section| section["claims"].as_array().expect("plan claims"))
+    {
+        assert!(claim["source_text"]
+            .as_str()
+            .is_some_and(|text| text.len() <= NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT));
+        assert!(claim.get("source_text_omission").is_some());
+        assert!(claim["omitted_protected_term_count"].is_number());
+    }
     let realization = spanish_realization(&prepared_result["plan"]);
+    assert!(realization["sections"]
+        .as_array()
+        .expect("realized sections")
+        .iter()
+        .flat_map(|section| section["claims"].as_array().expect("realized claims"))
+        .all(|claim| claim["text"]
+            .as_str()
+            .is_some_and(|text| text.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT)));
     let realized = call(
         &mut adapter,
         "document_preview",

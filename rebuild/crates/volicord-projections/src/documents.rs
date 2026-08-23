@@ -16,7 +16,14 @@ use volicord_repository_intelligence::{
 
 const RENDERED_BODY_CLAIM_LIMIT: usize = 12;
 const RENDERED_METADATA_ITEM_LIMIT: usize = 8;
+const NARRATIVE_SOURCE_LIST_ITEM_LIMIT: usize = 8;
+const NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT: usize = 256;
 pub const RENDERED_DOCUMENT_FIELD_BYTE_LIMIT: usize = 4_096;
+/// Leaves deterministic headroom for a host to realize a source claim while
+/// remaining inside the public 4,096-byte realized-field contract.
+pub const NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT: usize = 3_072;
+pub const NARRATIVE_PLAN_PROTECTED_TERM_LIMIT: usize = 8;
+pub const NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT: usize = 256;
 pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
@@ -170,10 +177,19 @@ pub enum NarrativeRealizationState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NarrativeSourceTextOmission {
+    pub exact_source_utf8_bytes: usize,
+    pub exact_source_character_count: usize,
+    pub source_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NarrativePlanClaim {
     pub identity: String,
     pub source_text: String,
+    pub source_text_omission: Option<NarrativeSourceTextOmission>,
     pub protected_terms: Vec<String>,
+    pub omitted_protected_term_count: usize,
     pub class: ClaimClass,
     pub source_basis: Vec<SourceId>,
     pub decision_basis: Vec<DecisionId>,
@@ -332,19 +348,7 @@ pub fn prepare_narrative_plan(
             claims: section
                 .claims
                 .iter()
-                .map(|claim| NarrativePlanClaim {
-                    identity: claim.identity.clone(),
-                    source_text: claim.text.clone(),
-                    protected_terms: protected_candidates
-                        .iter()
-                        .filter(|term| claim.text.contains(term.as_str()))
-                        .cloned()
-                        .collect(),
-                    class: claim.class,
-                    source_basis: claim.source_basis.clone(),
-                    decision_basis: claim.decision_basis.clone(),
-                    analysis_basis: claim.analysis_basis.clone(),
-                })
+                .map(|claim| narrative_plan_claim(claim, &protected_candidates))
                 .collect(),
         })
         .collect::<Vec<_>>();
@@ -653,7 +657,9 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                     .find(|link| link.decision_id == decision.decision_id)
                     .map_or_else(
                         || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
-                        |link| format_scope(&link.declared_paths, &link.declared_components)
+                        |link| {
+                            format_scope(&link.declared_paths, &link.declared_components, locale)
+                        }
                     )
             ),
             source_basis: decision.source_basis.clone(),
@@ -740,7 +746,11 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                         || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
                         |value| format!(
                             "{}; {}={}",
-                            format_scope(&value.declared_paths, &value.declared_components),
+                            format_scope(
+                                &value.declared_paths,
+                                &value.declared_components,
+                                locale,
+                            ),
                             fixed(locale, "work context", "작업 맥락"),
                             display_strings(&value.declared_work_contexts, locale)
                         )
@@ -1566,6 +1576,62 @@ fn validate_realized_text(field: &str, value: &str) -> Result<(), DocumentError>
     Ok(())
 }
 
+fn narrative_plan_claim(
+    claim: &GeneratedDocumentClaim,
+    protected_candidates: &[String],
+) -> NarrativePlanClaim {
+    let matching_terms = protected_candidates
+        .iter()
+        .filter(|term| claim.text.contains(term.as_str()))
+        .collect::<Vec<_>>();
+    let protected_terms = matching_terms
+        .iter()
+        .filter(|term| term.len() <= NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT)
+        .take(NARRATIVE_PLAN_PROTECTED_TERM_LIMIT)
+        .map(|term| (*term).clone())
+        .collect::<Vec<_>>();
+    let omitted_protected_term_count = matching_terms.len() - protected_terms.len();
+    let source_text_omission =
+        (claim.text.len() > NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT).then(|| {
+            NarrativeSourceTextOmission {
+                exact_source_utf8_bytes: claim.text.len(),
+                exact_source_character_count: claim.text.chars().count(),
+                source_sha256: format!("sha256:{:x}", Sha256::digest(claim.text.as_bytes())),
+            }
+        });
+    let source_text = source_text_omission.as_ref().map_or_else(
+        || claim.text.clone(),
+        |omission| {
+            let representative_terms = if protected_terms.is_empty() {
+                "none".to_owned()
+            } else {
+                protected_terms.join(", ")
+            };
+            format!(
+                "[bounded source claim; exact source UTF-8 bytes={}; exact source characters={}; source digest={}; representative protected terms=[{}]; omitted protected terms={}; full typed claim remains available from its grounding basis]",
+                omission.exact_source_utf8_bytes,
+                omission.exact_source_character_count,
+                omission.source_sha256,
+                representative_terms,
+                omitted_protected_term_count,
+            )
+        },
+    );
+    debug_assert!(source_text.len() <= NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT);
+
+    NarrativePlanClaim {
+        identity: claim.identity.clone(),
+        source_text,
+        source_text_omission,
+        protected_terms,
+        omitted_protected_term_count,
+        class: claim.class,
+        source_basis: claim.source_basis.clone(),
+        decision_basis: claim.decision_basis.clone(),
+        analysis_basis: claim.analysis_basis.clone(),
+    }
+}
+
 fn protected_candidates(projection: &ProjectProjection) -> Vec<String> {
     let mut values = projection
         .repository_map
@@ -1609,6 +1675,18 @@ fn narrative_plan_fingerprint(
         for claim in &section.claims {
             hash_plan_field(&mut digest, &claim.identity);
             hash_plan_field(&mut digest, &claim.source_text);
+            if let Some(omission) = &claim.source_text_omission {
+                hash_plan_field(&mut digest, "source-text-omitted");
+                hash_plan_field(&mut digest, &omission.exact_source_utf8_bytes.to_string());
+                hash_plan_field(
+                    &mut digest,
+                    &omission.exact_source_character_count.to_string(),
+                );
+                hash_plan_field(&mut digest, &omission.source_sha256);
+            } else {
+                hash_plan_field(&mut digest, "source-text-complete");
+            }
+            hash_plan_field(&mut digest, &claim.omitted_protected_term_count.to_string());
             hash_plan_field(&mut digest, &format!("{:?}", claim.class));
             for source in &claim.source_basis {
                 hash_plan_field(&mut digest, &source.to_string());
@@ -2524,11 +2602,11 @@ const fn projection_issue_kind_label(
     }
 }
 
-fn format_scope(paths: &[String], components: &[String]) -> String {
+fn format_scope(paths: &[String], components: &[String], locale: FixedLocale) -> String {
     format!(
         "paths=[{}]; components=[{}]",
-        paths.join(", "),
-        components.join(", ")
+        display_strings(paths, locale),
+        display_strings(components, locale)
     )
 }
 
@@ -2536,7 +2614,33 @@ fn display_strings(values: &[String], locale: FixedLocale) -> String {
     if values.is_empty() {
         fixed(locale, "none", "없음").to_owned()
     } else {
-        values.join(", ")
+        let retained = values
+            .iter()
+            .filter(|value| value.len() <= NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT)
+            .take(NARRATIVE_SOURCE_LIST_ITEM_LIMIT)
+            .cloned()
+            .collect::<Vec<_>>();
+        let omitted = values.len() - retained.len();
+        let mut rendered = retained.join(", ");
+        if omitted > 0 {
+            if !rendered.is_empty() {
+                rendered.push_str(", ");
+            }
+            rendered.push_str(&format!(
+                "[{}={}; {}={}; {}={}]",
+                fixed(locale, "exact omitted item count", "정확한 생략 항목 수"),
+                omitted,
+                fixed(locale, "item limit", "항목 제한"),
+                NARRATIVE_SOURCE_LIST_ITEM_LIMIT,
+                fixed(
+                    locale,
+                    "per-item UTF-8 byte limit",
+                    "항목별 UTF-8 바이트 제한"
+                ),
+                NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT,
+            ));
+        }
+        rendered
     }
 }
 

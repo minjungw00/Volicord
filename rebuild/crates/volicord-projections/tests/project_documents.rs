@@ -27,7 +27,9 @@ use volicord_projections::{
     ProjectionBound, ProjectionHealth, ProjectionIssueKind, RealizedNarrativeClaim,
     RealizedNarrativeSection, RequestedDestination, UnderstandingBound, UnderstandingEvidenceClass,
     UnderstandingExplanationKind, GENERATED_DOCUMENT_METADATA_VERSION,
-    RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
+    NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT, NARRATIVE_PLAN_PROTECTED_TERM_LIMIT,
+    NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AgentInterpretation, AnalysisSnapshot, CanonicalGrounding,
@@ -1362,6 +1364,147 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     )));
     assert!(pathological_document.markdown.content.len() <= RENDERED_MARKDOWN_BYTE_LIMIT);
     assert!(pathological_document.html.content.len() <= RENDERED_HTML_BYTE_LIMIT);
+
+    // Volicord-scale affected-path sets remain fully available in the typed
+    // projection while the public realization plan carries representative
+    // identifiers and exact omission accounting within its smaller budget.
+    let affected_paths = (0..640)
+        .map(|index| {
+            format!("rebuild/crates/volicord-projections/src/volicord-scale-{index:04}.rs")
+        })
+        .collect::<Vec<_>>();
+    let mut large_realization_projection = projection.clone();
+    large_realization_projection.repository_map.gaps[0].affected_areas = affected_paths.clone();
+    large_realization_projection.decision_context_code[0].declared_paths = affected_paths.clone();
+    let oversized_goal = "Grounded project purpose remains typed. ".repeat(220);
+    assert!(oversized_goal.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT);
+    large_realization_projection.resume.goals_and_why[0].statement = oversized_goal.clone();
+
+    let spanish_request = DocumentRequest {
+        requested_language: "es-ES".to_owned(),
+        requested_destinations: Vec::new(),
+        ..request.clone()
+    };
+    let large_plan = prepare_narrative_plan(
+        &large_realization_projection,
+        &spanish_request,
+        DocumentKind::ProjectArchitectureGuide,
+    )?;
+    assert_eq!(
+        large_plan,
+        prepare_narrative_plan(
+            &large_realization_projection,
+            &spanish_request,
+            DocumentKind::ProjectArchitectureGuide,
+        )?
+    );
+    let mut same_size_source_change = large_realization_projection.clone();
+    same_size_source_change.resume.goals_and_why[0]
+        .statement
+        .replace_range(0..1, "g");
+    let changed_plan = prepare_narrative_plan(
+        &same_size_source_change,
+        &spanish_request,
+        DocumentKind::ProjectArchitectureGuide,
+    )?;
+    assert_ne!(large_plan.plan_fingerprint, changed_plan.plan_fingerprint);
+    for claim in large_plan
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+    {
+        assert!(claim.source_text.len() <= NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT);
+        assert!(claim.protected_terms.len() <= NARRATIVE_PLAN_PROTECTED_TERM_LIMIT);
+        assert!(claim.protected_terms.iter().all(|term| term.len()
+            <= NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT
+            && claim.source_text.contains(term)));
+    }
+    let goal_plan_claim = large_plan
+        .sections
+        .iter()
+        .find(|section| section.key == "overview")
+        .and_then(|section| section.claims.first())
+        .expect("oversized goal claim must remain in the plan");
+    let goal_omission = goal_plan_claim
+        .source_text_omission
+        .as_ref()
+        .expect("oversized goal must use the bounded source representation");
+    assert_eq!(goal_omission.exact_source_utf8_bytes, oversized_goal.len());
+    assert_eq!(
+        goal_omission.exact_source_character_count,
+        oversized_goal.chars().count()
+    );
+    let gap_plan_claim = large_plan
+        .sections
+        .iter()
+        .find(|section| section.key == "gaps")
+        .and_then(|section| section.claims.first())
+        .expect("large affected-path gap must remain in the plan");
+    assert!(gap_plan_claim
+        .source_text
+        .contains("exact omitted item count=632"));
+    assert!(gap_plan_claim.source_text.contains(&affected_paths[0]));
+    assert!(gap_plan_claim.source_text.contains(&affected_paths[7]));
+    assert!(!gap_plan_claim.source_text.contains(&affected_paths[8]));
+
+    let spanish_realization = NarrativeRealization {
+        plan_fingerprint: large_plan.plan_fingerprint.clone(),
+        title: "Guía del proyecto y de la arquitectura".to_owned(),
+        sections: large_plan
+            .sections
+            .iter()
+            .map(|section| RealizedNarrativeSection {
+                key: section.key.clone(),
+                title: format!("Explicación en español: {}", section.source_title),
+                claims: section
+                    .claims
+                    .iter()
+                    .map(|claim| RealizedNarrativeClaim {
+                        identity: claim.identity.clone(),
+                        text: format!("Explicación en español: {}", claim.source_text),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        generator: GeneratorIdentity {
+            generator: "volicord-codex-host".to_owned(),
+            agent: Some("codex".to_owned()),
+            model: Some("fixture-realizer-es".to_owned()),
+        },
+    };
+    assert!(spanish_realization
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .all(|claim| claim.text.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT));
+    let spanish_document = realize_narrative(
+        &large_realization_projection,
+        &spanish_request,
+        DocumentKind::ProjectArchitectureGuide,
+        &spanish_realization,
+    )?;
+    assert!(spanish_document
+        .body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .all(|claim| claim.text.starts_with("Explicación en español")));
+    for (realized_claim, plan_claim) in spanish_document
+        .body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .zip(
+            large_plan
+                .sections
+                .iter()
+                .flat_map(|section| &section.claims),
+        )
+    {
+        assert_eq!(realized_claim.source_basis, plan_claim.source_basis);
+        assert_eq!(realized_claim.decision_basis, plan_claim.decision_basis);
+        assert_eq!(realized_claim.analysis_basis, plan_claim.analysis_basis);
+    }
 
     let korean = generate_documents(
         &projection,

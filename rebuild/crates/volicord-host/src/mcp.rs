@@ -2808,7 +2808,13 @@ fn narrative_plan_json(plan: &NarrativePlan) -> Value {
             "claims":section.claims.iter().map(|claim| json!({
                 "identity":claim.identity,
                 "source_text":claim.source_text,
+                "source_text_omission":claim.source_text_omission.as_ref().map(|omission| json!({
+                    "exact_source_utf8_bytes":omission.exact_source_utf8_bytes,
+                    "exact_source_character_count":omission.exact_source_character_count,
+                    "source_sha256":omission.source_sha256,
+                })),
                 "protected_terms":claim.protected_terms,
+                "omitted_protected_term_count":claim.omitted_protected_term_count,
                 "class":format!("{:?}",claim.class).to_lowercase(),
                 "source_basis":claim.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
                 "decision_basis":claim.decision_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
