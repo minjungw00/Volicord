@@ -79,6 +79,16 @@ and trust the exact command hook through Codex `/hooks`; Volicord never marks a
 repository or hook trusted. The CLI and IDE extension share these Codex config
 layers, so no plugin or AGENTS.md change is needed.
 
+The SessionStart context resolves the repository and performs bounded Recall
+before project work, or establishes a Goal and repository baseline for a new
+Project. It does not require every task to create a Question. Repository facts
+are researched, accepted contracts are reused, and delegated implementation
+choices are handled by the agent. Research or no-question work,
+prototype/research, and explicit deferment are valid outcomes. Only a genuinely
+material, currently relevant, unresolved user-owned outcome stops before that
+outcome is chosen and uses the source-grounded Question and current-host
+Decision path. Ordinary repository edits require no approval ceremony.
+
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or
 ownership manifest is a conflict. An untracked local config can be merged when
