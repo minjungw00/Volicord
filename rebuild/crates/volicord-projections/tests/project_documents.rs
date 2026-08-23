@@ -752,6 +752,13 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     assert!(decision_effect
         .evidence_classes
         .contains(&UnderstandingEvidenceClass::CanonicalDecision));
+    let inspectable_relations = local_understanding
+        .architecture
+        .relationships
+        .iter()
+        .chain(&local_understanding.evidence.unresolved_relationships)
+        .map(|relation| relation.identity.as_str())
+        .collect::<BTreeSet<_>>();
     for explanation in &local_understanding.deterministic_explanations {
         assert!(!explanation.identity.is_empty());
         assert!(!explanation.english.is_empty());
@@ -765,6 +772,10 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         if explanation.kind == UnderstandingExplanationKind::Flow {
             assert!(!explanation.relation_basis.is_empty());
         }
+        assert!(explanation
+            .relation_basis
+            .iter()
+            .all(|relation| inspectable_relations.contains(relation.as_str())));
     }
     assert_eq!(canonical, canonical_before);
     assert_eq!(candidates, candidates_before);

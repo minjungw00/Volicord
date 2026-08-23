@@ -2,7 +2,8 @@ use crate::{
     build_resume_brief, inspect_candidate, CandidateContentAccess, CandidateInspection,
     RecallBound, RecallInputs, ResumeBrief,
 };
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
     CanonicalReadBasis, Checkpoint, ContextItemRole, DecisionChoice, DecisionId, DecisionLifecycle,
     ProjectId, QuestionState, SourceFreshness, SourceId, SourcePayload, TimestampMicros, WorkState,
@@ -201,6 +202,216 @@ pub struct RepositoryMap {
     pub capabilities: Vec<CapabilityReport>,
     pub gaps: Vec<CapabilityGap>,
     pub health: ProjectionHealth,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct BoundedTopology {
+    pub entities: Vec<MapEntity>,
+    pub relations: Vec<MapRelation>,
+    pub omitted_entity_count: usize,
+    pub omitted_relation_count: usize,
+}
+
+/// Selects relationships together with the endpoint entities required to
+/// inspect them. The stable relevance order prefers canonical/Decision-linked
+/// endpoints, useful dependency/flow relations, important component kinds,
+/// and connected structure before identity tie-breaking.
+pub(crate) fn select_bounded_topology(
+    entities: &[MapEntity],
+    relations: &[MapRelation],
+    important_entities: &BTreeSet<String>,
+    entity_limit: usize,
+    relation_limit: usize,
+    include_unresolved: bool,
+) -> BoundedTopology {
+    let entity_limit = entity_limit.max(1);
+    let entity_by_id = entities
+        .iter()
+        .map(|entity| (entity.identity.as_str(), entity))
+        .collect::<BTreeMap<_, _>>();
+    let mut degree = BTreeMap::<&str, usize>::new();
+    for relation in relations {
+        let Some(target) = relation.target_entity.as_deref() else {
+            continue;
+        };
+        if entity_by_id.contains_key(relation.source_entity.as_str())
+            && entity_by_id.contains_key(target)
+        {
+            *degree.entry(relation.source_entity.as_str()).or_default() += 1;
+            *degree.entry(target).or_default() += 1;
+        }
+    }
+
+    let mut candidates = relations
+        .iter()
+        .filter(|relation| {
+            entity_by_id.contains_key(relation.source_entity.as_str())
+                && match relation.target_entity.as_deref() {
+                    Some(target) => entity_by_id.contains_key(target),
+                    None => include_unresolved && relation.unresolved_target.is_some(),
+                }
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        relation_selection_key(left, &entity_by_id, important_entities, &degree).cmp(
+            &relation_selection_key(right, &entity_by_id, important_entities, &degree),
+        )
+    });
+
+    let mut selected_entities = BTreeSet::<String>::new();
+    let mut selected_relations = Vec::<MapRelation>::new();
+    let mut selected_relation_ids = BTreeSet::<String>::new();
+    while selected_relations.len() < relation_limit {
+        let connected = !selected_entities.is_empty();
+        let next = candidates.iter().copied().find(|relation| {
+            if selected_relation_ids.contains(&relation.identity) {
+                return false;
+            }
+            let endpoints = relation_endpoints(relation);
+            let new_endpoint_count = endpoints
+                .iter()
+                .filter(|identity| !selected_entities.contains(identity.as_str()))
+                .count();
+            if selected_entities.len() + new_endpoint_count > entity_limit {
+                return false;
+            }
+            !connected
+                || endpoints
+                    .iter()
+                    .any(|identity| selected_entities.contains(identity.as_str()))
+        });
+        let next = next.or_else(|| {
+            candidates.iter().copied().find(|relation| {
+                if selected_relation_ids.contains(&relation.identity) {
+                    return false;
+                }
+                let endpoints = relation_endpoints(relation);
+                let new_endpoint_count = endpoints
+                    .iter()
+                    .filter(|identity| !selected_entities.contains(identity.as_str()))
+                    .count();
+                selected_entities.len() + new_endpoint_count <= entity_limit
+            })
+        });
+        let Some(relation) = next else {
+            break;
+        };
+        selected_entities.extend(relation_endpoints(relation));
+        selected_relation_ids.insert(relation.identity.clone());
+        selected_relations.push(relation.clone());
+    }
+
+    let mut remaining_entities = entities.iter().collect::<Vec<_>>();
+    remaining_entities.sort_by(|left, right| {
+        entity_selection_key(left, important_entities, &degree).cmp(&entity_selection_key(
+            right,
+            important_entities,
+            &degree,
+        ))
+    });
+    for entity in remaining_entities {
+        if selected_entities.len() == entity_limit {
+            break;
+        }
+        selected_entities.insert(entity.identity.clone());
+    }
+
+    let mut selected_entities = selected_entities
+        .into_iter()
+        .filter_map(|identity| entity_by_id.get(identity.as_str()).copied().cloned())
+        .collect::<Vec<_>>();
+    selected_entities.sort_by(|left, right| left.identity.cmp(&right.identity));
+    selected_relations.sort_by(|left, right| left.identity.cmp(&right.identity));
+    BoundedTopology {
+        omitted_entity_count: entities.len().saturating_sub(selected_entities.len()),
+        omitted_relation_count: relations.len().saturating_sub(selected_relations.len()),
+        entities: selected_entities,
+        relations: selected_relations,
+    }
+}
+
+fn relation_endpoints(relation: &MapRelation) -> Vec<String> {
+    std::iter::once(relation.source_entity.clone())
+        .chain(relation.target_entity.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn relation_selection_key<'a>(
+    relation: &'a MapRelation,
+    entities: &BTreeMap<&str, &MapEntity>,
+    important_entities: &BTreeSet<String>,
+    degree: &BTreeMap<&str, usize>,
+) -> (usize, Reverse<usize>, usize, usize, Reverse<usize>, &'a str) {
+    let endpoints =
+        std::iter::once(relation.source_entity.as_str()).chain(relation.target_entity.as_deref());
+    let important_endpoint_count = endpoints
+        .clone()
+        .filter(|identity| important_entities.contains(*identity))
+        .count();
+    let endpoint_kind_rank = endpoints
+        .clone()
+        .filter_map(|identity| entities.get(identity).copied())
+        .map(|entity| entity_kind_rank(&entity.kind))
+        .min()
+        .unwrap_or(usize::MAX);
+    let connection_degree = endpoints
+        .map(|identity| degree.get(identity).copied().unwrap_or_default())
+        .sum();
+    (
+        usize::from(relation.target_entity.is_none()),
+        Reverse(important_endpoint_count),
+        relation_kind_rank(relation),
+        endpoint_kind_rank,
+        Reverse(connection_degree),
+        relation.identity.as_str(),
+    )
+}
+
+fn entity_selection_key<'a>(
+    entity: &'a MapEntity,
+    important_entities: &BTreeSet<String>,
+    degree: &BTreeMap<&str, usize>,
+) -> (Reverse<bool>, Reverse<usize>, usize, &'a str) {
+    (
+        Reverse(important_entities.contains(&entity.identity)),
+        Reverse(
+            degree
+                .get(entity.identity.as_str())
+                .copied()
+                .unwrap_or_default(),
+        ),
+        entity_kind_rank(&entity.kind),
+        entity.identity.as_str(),
+    )
+}
+
+fn relation_kind_rank(relation: &MapRelation) -> usize {
+    match relation.kind.as_str() {
+        "Imports" | "Includes" | "CallsSyntactically" | "References" | "ResolvesTo"
+        | "InstantiatedBy" | "Implements" | "Overrides" => 0,
+        "Inherits" | "Tests" | "Configures" | "Exports" => 1,
+        "Contains" | "Declares" | "Defines" => 2,
+        _ => 3,
+    }
+}
+
+const fn entity_kind_rank(kind: &CodeEntityKind) -> usize {
+    match kind {
+        CodeEntityKind::Repository => 0,
+        CodeEntityKind::Package => 1,
+        CodeEntityKind::Module | CodeEntityKind::Namespace => 2,
+        CodeEntityKind::File | CodeEntityKind::Configuration | CodeEntityKind::Document => 3,
+        CodeEntityKind::Class
+        | CodeEntityKind::Interface
+        | CodeEntityKind::Trait
+        | CodeEntityKind::Struct
+        | CodeEntityKind::Enum
+        | CodeEntityKind::Type => 4,
+        CodeEntityKind::Function | CodeEntityKind::Method | CodeEntityKind::Test => 5,
+        CodeEntityKind::Field | CodeEntityKind::LanguageSpecific(_) => 6,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -605,8 +816,35 @@ fn build_repository_map(
                 &right.area,
             ))
     });
-    bound(&mut entities, limit, "repository_map.entity", issues);
-    bound(&mut relations, limit, "repository_map.relation", issues);
+    if entities.len() > limit || relations.len() > limit {
+        let important_entities = entities
+            .iter()
+            .filter(|entity| !entity.canonical_links.is_empty())
+            .map(|entity| entity.identity.clone())
+            .collect::<BTreeSet<_>>();
+        let topology = select_bounded_topology(
+            &entities,
+            &relations,
+            &important_entities,
+            limit,
+            limit,
+            true,
+        );
+        if topology.omitted_entity_count > 0 {
+            issues.push(bound_issue(
+                "repository_map.entity",
+                topology.omitted_entity_count,
+            ));
+        }
+        if topology.omitted_relation_count > 0 {
+            issues.push(bound_issue(
+                "repository_map.relation",
+                topology.omitted_relation_count,
+            ));
+        }
+        entities = topology.entities;
+        relations = topology.relations;
+    }
     bound(
         &mut agent_interpretations,
         limit,
@@ -1230,7 +1468,16 @@ const fn canonical_kind_name(kind: volicord_context::CanonicalRecordKind) -> &'s
 
 #[cfg(test)]
 mod tests {
-    use super::{bound, health_from_issues, ProjectionHealth, ProjectionIssueKind};
+    use super::{
+        bound, health_from_issues, select_bounded_topology, MapEntity, MapRelation,
+        MapRelationClass, ProjectionHealth, ProjectionIssueKind,
+    };
+    use std::collections::BTreeSet;
+    use volicord_context::SourceId;
+    use volicord_repository_intelligence::{
+        AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
+        RepositorySnapshotId, Uncertainty,
+    };
 
     #[test]
     fn deterministic_bound_keeps_one_scoped_issue_as_cardinality_grows() {
@@ -1249,5 +1496,133 @@ mod tests {
             assert_eq!(issues[0].omitted_count, cardinality - limit);
             assert_eq!(health_from_issues(&issues), ProjectionHealth::Partial);
         }
+    }
+
+    #[test]
+    fn bounded_topology_keeps_connected_relations_under_input_permutation() {
+        let mut entities = (0..8)
+            .map(|index| map_entity(format!("a{index:02}")))
+            .chain((0..6).map(|index| map_entity(format!("z{index:02}"))))
+            .collect::<Vec<_>>();
+        let mut relations = (0..5)
+            .map(|index| {
+                map_relation(
+                    format!("relation:{index:02}"),
+                    format!("z{index:02}"),
+                    format!("z{:02}", index + 1),
+                )
+            })
+            .collect::<Vec<_>>();
+        let important = BTreeSet::from(["z02".to_owned()]);
+
+        let selected = select_bounded_topology(&entities, &relations, &important, 4, 4, false);
+        entities.reverse();
+        relations.rotate_left(2);
+        let shuffled = select_bounded_topology(&entities, &relations, &important, 4, 4, false);
+
+        assert_eq!(selected, shuffled);
+        assert_eq!(selected.entities.len(), 4);
+        assert!(!selected.relations.is_empty());
+        assert_eq!(selected.omitted_entity_count, 10);
+        assert_eq!(selected.omitted_relation_count, 2);
+        let visible = selected
+            .entities
+            .iter()
+            .map(|entity| entity.identity.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(selected.relations.iter().all(|relation| {
+            visible.contains(relation.source_entity.as_str())
+                && relation
+                    .target_entity
+                    .as_deref()
+                    .is_some_and(|target| visible.contains(target))
+        }));
+        assert!(selected
+            .relations
+            .iter()
+            .any(|relation| relation.source_entity == "z02"
+                || relation.target_entity.as_deref() == Some("z02")));
+        assert!(selected
+            .entities
+            .iter()
+            .all(|entity| entity.identity.starts_with('z')));
+    }
+
+    #[test]
+    fn resolved_topology_precedes_unresolved_relation_evidence() {
+        let entities = vec![map_entity("z00".to_owned()), map_entity("z01".to_owned())];
+        let mut unresolved = map_relation(
+            "relation:00".to_owned(),
+            "z00".to_owned(),
+            "unused".to_owned(),
+        );
+        unresolved.target_entity = None;
+        unresolved.unresolved_target = Some("external::unused".to_owned());
+        let resolved = map_relation("relation:99".to_owned(), "z00".to_owned(), "z01".to_owned());
+
+        let selected = select_bounded_topology(
+            &entities,
+            &[unresolved, resolved.clone()],
+            &BTreeSet::new(),
+            2,
+            1,
+            true,
+        );
+
+        assert_eq!(selected.relations, vec![resolved]);
+    }
+
+    fn map_entity(identity: String) -> MapEntity {
+        let repository_snapshot = snapshot_id();
+        MapEntity {
+            display_name: identity.clone(),
+            identity,
+            kind: CodeEntityKind::Module,
+            language: Language::Rust,
+            source_id: SourceId::from_bytes([1; 16]),
+            source_range: None,
+            analysis_snapshot: analysis_id(),
+            repository_snapshot,
+            freshness: FreshnessBasis {
+                state: FreshnessState::Current,
+                repository_snapshot,
+                compared_repository_snapshot: None,
+                reason: None,
+            },
+            uncertainty: Uncertainty::none(),
+            canonical_links: Vec::new(),
+        }
+    }
+
+    fn map_relation(identity: String, source_entity: String, target_entity: String) -> MapRelation {
+        let repository_snapshot = snapshot_id();
+        MapRelation {
+            identity,
+            class: MapRelationClass::StructuralFact,
+            kind: "Imports".to_owned(),
+            source_entity,
+            target_entity: Some(target_entity),
+            unresolved_target: None,
+            source_id: SourceId::from_bytes([1; 16]),
+            supporting_range: None,
+            analysis_snapshot: analysis_id(),
+            repository_snapshot,
+            freshness: FreshnessBasis {
+                state: FreshnessState::Current,
+                repository_snapshot,
+                compared_repository_snapshot: None,
+                reason: None,
+            },
+            uncertainty: Uncertainty::none(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn snapshot_id() -> RepositorySnapshotId {
+        RepositorySnapshotId::from_hex(&"11".repeat(32)).expect("snapshot identity")
+    }
+
+    fn analysis_id() -> AnalysisSnapshotId {
+        AnalysisSnapshotId::from_hex(&"22".repeat(32)).expect("analysis identity")
     }
 }

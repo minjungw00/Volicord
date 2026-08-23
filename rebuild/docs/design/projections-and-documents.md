@@ -71,6 +71,18 @@ architecture `components`/`relationships`, `generated_interpretations`와 `evide
 canonical, Candidate, analyzer, publication 또는 provider mutation capability를 받지
 않는다.
 
+Architecture bound는 component를 먼저 자른 뒤 우연히 남은 endpoint 사이의 relation만
+보존하지 않는다. 실제 Repository Intelligence relation과 그 양 endpoint를 하나의
+deterministic selection으로 선택하고, current bound가 endpoint 둘과 relation 하나를
+표현할 수 있으며 qualifying relation이 존재하면 최소 하나의 연결된 topology를
+보존한다. Active Decision linkage, source-grounded component kind, connection structure와
+stable identity를 relevance/tie-break basis로 사용할 수 있다. 선택된 relation의 양 endpoint는
+항상 같은 bounded component set에 있으며 component/relation omission count를 각각 exact하게
+보고한다. Target이 resolve되지 않은 실제 relation은 topology edge가 아니라 별도의 bounded
+inspectable explanation evidence로 identity와 source endpoint를 보존할 수 있으며 target
+component를 발명하지 않는다. 이 bounded subgraph는 repository-wide completeness를 뜻하지
+않는다.
+
 `ProjectUnderstanding`의 local deterministic explanation은 verified canonical,
 Structural Fact와 Semantic Result만 조합한 `deterministic_derived` presentation layer다.
 각 item은 사용한 entity, relation, Decision, Source와 snapshot identity를 보존하고,

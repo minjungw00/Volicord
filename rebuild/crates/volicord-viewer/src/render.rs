@@ -1091,6 +1091,21 @@ fn render_understanding_evidence(
         escape(text(request.locale, "Known issues", "알려진 문제")),
         understanding.evidence.issues.len()
     ));
+    if !understanding.evidence.unresolved_relationships.is_empty() {
+        html.push_str("<ul class=\"audit-list unresolved-relation-basis\">");
+        for relation in &understanding.evidence.unresolved_relationships {
+            list_item(
+                html,
+                &format!(
+                    "Relationship {} — {} → unresolved {}",
+                    relation.identity,
+                    relation.source_entity,
+                    relation.unresolved_target.as_deref().unwrap_or("unknown")
+                ),
+            );
+        }
+        html.push_str("</ul>");
+    }
     if understanding.known_limits.is_empty() && understanding.architecture.gaps.is_empty() {
         empty_state(
             html,

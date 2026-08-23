@@ -1,7 +1,8 @@
 use crate::{
-    BriefContextItem, BriefDecision, BriefQuestion, BriefSnapshot, CapabilityGap,
-    CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation,
-    ProjectProjection, ProjectionHealth, ProjectionIssue, SourceStatusSummary,
+    project::select_bounded_topology, BriefContextItem, BriefDecision, BriefQuestion,
+    BriefSnapshot, CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity,
+    MapInterpretation, MapRelation, ProjectProjection, ProjectionHealth, ProjectionIssue,
+    SourceStatusSummary,
 };
 use volicord_context::{
     CheckpointId, DecisionId, ProjectId, SourceId, SourceReadBasis, VerificationFact, WorkState,
@@ -104,6 +105,10 @@ pub struct UnderstandingExplanation {
 pub struct UnderstandingEvidence {
     pub sources: Vec<SourceReadBasis>,
     pub snapshots: Vec<BriefSnapshot>,
+    /// Bounded unresolved Repository Intelligence relationships retained as
+    /// inspectable explanation evidence. They are not architecture edges and
+    /// no target entity is invented for them.
+    pub unresolved_relationships: Vec<MapRelation>,
     pub source_status: SourceStatusSummary,
     pub issues: Vec<ProjectionIssue>,
 }
@@ -211,44 +216,106 @@ pub fn build_project_understanding(
     known_limits.dedup();
     bound_section(&mut known_limits, limit, "known_limits", &mut omissions);
 
-    let mut components = projection.repository_map.entities.clone();
-    components.sort_by(|left, right| left.identity.cmp(&right.identity));
-    bound_section(
-        &mut components,
+    let important_entities = projection
+        .decision_context_code
+        .iter()
+        .filter(|link| link.decision_state != crate::BriefDecisionState::Superseded)
+        .flat_map(|link| link.related_code_entities.iter().cloned())
+        .chain(
+            projection
+                .repository_map
+                .entities
+                .iter()
+                .filter(|entity| !entity.canonical_links.is_empty())
+                .map(|entity| entity.identity.clone()),
+        )
+        .collect::<std::collections::BTreeSet<_>>();
+    let topology = select_bounded_topology(
+        &projection.repository_map.entities,
+        &projection.repository_map.relations,
+        &important_entities,
         limit,
-        "architecture.components",
-        &mut omissions,
+        limit,
+        false,
     );
-    let visible = components
+    let all_entities = projection
+        .repository_map
+        .entities
         .iter()
         .map(|entity| entity.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    let mut relationships = projection
+    let resolved_relation_count = projection
         .repository_map
         .relations
         .iter()
         .filter(|relation| {
-            visible.contains(relation.source_entity.as_str())
+            all_entities.contains(relation.source_entity.as_str())
                 && relation
                     .target_entity
                     .as_deref()
-                    .is_some_and(|target| visible.contains(target))
+                    .is_some_and(|target| all_entities.contains(target))
+        })
+        .count();
+    if topology.omitted_entity_count > 0 {
+        omissions.push(UnderstandingOmission {
+            section: "architecture.components".to_owned(),
+            omitted_count: topology.omitted_entity_count,
+        });
+    }
+    let omitted_resolved_relations =
+        resolved_relation_count.saturating_sub(topology.relations.len());
+    if omitted_resolved_relations > 0 {
+        omissions.push(UnderstandingOmission {
+            section: "architecture.relationships".to_owned(),
+            omitted_count: omitted_resolved_relations,
+        });
+    }
+    let components = topology.entities;
+    let relationships = topology.relations;
+    let visible_components = components
+        .iter()
+        .map(|entity| entity.identity.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let unresolved_relation_count = projection
+        .repository_map
+        .relations
+        .iter()
+        .filter(|relation| relation.target_entity.is_none() && relation.unresolved_target.is_some())
+        .count();
+    let mut unresolved_relationships = projection
+        .repository_map
+        .relations
+        .iter()
+        .filter(|relation| {
+            relation.target_entity.is_none()
+                && relation.unresolved_target.is_some()
+                && visible_components.contains(relation.source_entity.as_str())
         })
         .cloned()
         .collect::<Vec<_>>();
-    relationships.sort_by(|left, right| left.identity.cmp(&right.identity));
-    bound_section(
-        &mut relationships,
-        limit,
-        "architecture.relationships",
-        &mut omissions,
-    );
+    unresolved_relationships.sort_by(|left, right| {
+        (!is_flow_relation(left), &left.identity).cmp(&(!is_flow_relation(right), &right.identity))
+    });
+    unresolved_relationships.truncate(limit);
+    let omitted_unresolved_relations =
+        unresolved_relation_count.saturating_sub(unresolved_relationships.len());
+    if omitted_unresolved_relations > 0 {
+        omissions.push(UnderstandingOmission {
+            section: "evidence.unresolved_relationships".to_owned(),
+            omitted_count: omitted_unresolved_relations,
+        });
+    }
     let mut gaps = projection.repository_map.gaps.clone();
     bound_section(&mut gaps, limit, "architecture.gaps", &mut omissions);
 
+    let explanation_relationships = relationships
+        .iter()
+        .chain(&unresolved_relationships)
+        .cloned()
+        .collect::<Vec<_>>();
     let deterministic_explanations = deterministic_explanations(
         &components,
-        &projection.repository_map.relations,
+        &explanation_relationships,
         &active_decisions,
         &gaps,
         limit,
@@ -296,6 +363,7 @@ pub fn build_project_understanding(
         evidence: UnderstandingEvidence {
             sources,
             snapshots,
+            unresolved_relationships,
             source_status: projection.overview.source_status.clone(),
             issues,
         },
