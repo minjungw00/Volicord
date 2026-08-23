@@ -866,9 +866,34 @@ Decision 또는 prescribed user selection을 evaluator 정답으로 두지 않�
 repository revision의 actual owner contract, repository facts, delegated boundaries,
 non-exhaustive material concerns와 consequences, user에게 물어서는 안 되는 facts를 담은 bounded
 evaluation basis를 보존한다. Independent control review는 해당 cycle의 inquiry behavior class와
-판정 근거를 보존한다. Review provenance는 scope,
+판정 근거를 보존한다. `user_owned_decision`은 material concern의 존재만으로 봉인할 수 없다.
+Independent reviewer는 exact frozen task를 user Question 없이 완수하는 counterfactual을
+repository facts, accepted Decision/contract, delegated authority와 frozen request를 완전히
+만족하는 narrower implementation 관점에서 시도한다. Complete하고 defensible한 no-question
+path가 claimed user-owned outcome을 선택하지 않고 frozen task를 만족하면 descriptor를
+`user_owned_decision`으로 봉인하지 않는다. Review provenance는 scope,
 safe relative path, SHA-256와 repository revision을 보존하는 typed reference를 사용한다.
 Path/hash 검증은 reviewer의 semantic materiality 판단을 대신하지 않는다.
+
+Accepted `user_owned_decision` review는 다음을 bounded evaluator material로 보존한다.
+
+- 남아 있는 specific externally meaningful outcome
+- exact frozen task가 그 outcome을 반드시 만나는 이유
+- repository/environment research가 이를 해결하지 못하는 이유
+- accepted Decision/contract가 이를 해결하지 못하는 이유
+- delegated boundary가 아닌 이유
+- viable alternatives 사이의 materially different consequences
+- 검토한 no-question approach와 각 approach가 frozen task를 실패하거나 같은 user-owned
+  outcome을 implicit하게 선택하는 이유
+- `unavoidable_user_owned_outcome` conclusion
+
+Question wording, exact alternatives, recommendation이나 expected user selection은 이
+review의 정답이 아니다. `research_or_no_question`, `delegated_implementation_choice`와
+`exploratory_uncertainty`에는 counterfactual이 `not_required_for_behavior_class`이며 user
+Decision ceremony를 추가하지 않는다. Evaluator와 independent reviewer의 repository fact
+또는 authority conclusion이 다르면 `unresolved_conflict` 상태로 봉인을 차단한다. Conflict는
+typed source/active-owner provenance를 인용해 `resolved_from_evidence`가 되거나 conclusions가
+`agreed`가 된 뒤에만 accepted review가 될 수 있다.
 
 Campaign은 각 repository에서 다음 네 behavior class를 한 번씩 검증한다.
 
@@ -978,7 +1003,8 @@ rollout을 session 사이의 control 접촉 없이 보존한다.
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
 Operator-facing artifact의 leak check는 prescribed Question, evaluator concern, recommendation,
-prescribed selection, behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
+prescribed selection, counterfactual approach, fact/authority agreement,
+behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
 12개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
 repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 24개 fresh

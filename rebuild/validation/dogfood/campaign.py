@@ -168,6 +168,37 @@ def descriptor_skeleton(
 ) -> dict[str, Any]:
     owner_path = "rebuild/docs/design/inquiry-and-decision.md"
     behavior_class = BEHAVIOR_CLASSES[cycle - 1]
+    if behavior_class == "user_owned_decision":
+        counterfactual_review = {
+            "applicability": "required_for_user_owned_decision",
+            "specific_unresolved_outcome": "REPLACE with the exact externally meaningful unresolved outcome",
+            "frozen_task_necessity": "REPLACE with why the exact frozen task necessarily encounters the outcome",
+            "repository_research_cannot_settle": "REPLACE with why repository/environment research cannot settle it",
+            "accepted_decision_or_contract_cannot_settle": "REPLACE with why no accepted Decision or contract settles it",
+            "not_delegated_basis": "REPLACE with why the outcome is not delegated",
+            "materially_different_consequences": [
+                "REPLACE with one material consequence",
+                "REPLACE with a materially different consequence",
+            ],
+            "no_question_approaches": [{
+                "approach": "REPLACE with a no-question approach considered",
+                "task_satisfaction": "fails_frozen_task",
+                "assessment": "REPLACE with why it fails the frozen task or still chooses the same user-owned outcome",
+            }],
+            "conclusion": "unavoidable_user_owned_outcome",
+        }
+    else:
+        counterfactual_review = {
+            "applicability": "not_required_for_behavior_class",
+            "specific_unresolved_outcome": None,
+            "frozen_task_necessity": None,
+            "repository_research_cannot_settle": None,
+            "accepted_decision_or_contract_cannot_settle": None,
+            "not_delegated_basis": None,
+            "materially_different_consequences": [],
+            "no_question_approaches": [],
+            "conclusion": "not_applicable",
+        }
     return {
         "kind": "phase8_cycle_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
@@ -209,6 +240,15 @@ def descriptor_skeleton(
                 "status": "pending",
                 "reviewer_role": "campaign_preparation_independent_reviewer",
                 "basis": "REPLACE after independent review",
+                "fact_authority_agreement": {
+                    "status": "unresolved_conflict",
+                    "evaluator_conclusions": ["REPLACE with the evaluator fact and authority conclusion"],
+                    "reviewer_conclusions": ["REPLACE with the independent reviewer conclusion"],
+                    "conflicts": ["REPLACE with any unresolved disagreement or clear this list after agreement"],
+                    "resolution_basis": "REPLACE with inspectable source/owner evidence resolving agreement",
+                    "provenance_reference_indices": [0],
+                },
+                "counterfactual_review": counterfactual_review,
             },
         },
     }
@@ -235,6 +275,49 @@ def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
     basis = independent.get("basis") if isinstance(independent, dict) else None
     if isinstance(basis, str) and len(basis) >= 8:
         hidden.add(basis)
+    agreement = (
+        independent.get("fact_authority_agreement", {})
+        if isinstance(independent, dict)
+        else {}
+    )
+    for field in (
+        "evaluator_conclusions",
+        "reviewer_conclusions",
+        "conflicts",
+        "resolution_basis",
+    ):
+        value = agreement.get(field) if isinstance(agreement, dict) else None
+        values = value if isinstance(value, list) else [value]
+        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
+    counterfactual = (
+        independent.get("counterfactual_review", {})
+        if isinstance(independent, dict)
+        else {}
+    )
+    for field in (
+        "specific_unresolved_outcome",
+        "frozen_task_necessity",
+        "repository_research_cannot_settle",
+        "accepted_decision_or_contract_cannot_settle",
+        "not_delegated_basis",
+        "materially_different_consequences",
+    ):
+        value = counterfactual.get(field) if isinstance(counterfactual, dict) else None
+        values = value if isinstance(value, list) else [value]
+        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
+    approaches = (
+        counterfactual.get("no_question_approaches", [])
+        if isinstance(counterfactual, dict)
+        else []
+    )
+    for approach in approaches if isinstance(approaches, list) else []:
+        if not isinstance(approach, dict):
+            continue
+        hidden.update(
+            value
+            for field in ("approach", "assessment")
+            if isinstance((value := approach.get(field)), str) and len(value) >= 8
+        )
     return hidden
 
 

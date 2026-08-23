@@ -2,18 +2,24 @@
 
 ## Status
 
-Not run. No production/test candidate has been sealed for the redesigned
-four-behavior-class campaign. The prior technical-entry capsule is historical
-evidence and cannot qualify this campaign contract.
+Failed diagnostic. The technically gated production/test candidate entered a
+naturalistic four-behavior-class campaign, but the campaign was stopped after
+the first six completed cycles exposed a production materiality-screening gap
+and a `user_owned_decision` evaluator false-positive risk. The incomplete
+campaign, its sealed descriptors, and its private evidence are diagnostic only;
+they must not be repaired, resumed, or reused for replacement qualification.
+The prior technical-entry capsule remains historical evidence and cannot by
+itself qualify a later campaign contract.
 
-- `replacement_gate = pending`
+- `replacement_gate = failed`
 - `replacement_pass_candidate = false`
 - `phase_9_ready = false`
-- `automated_qualification = not_run`
+- `automated_qualification = failed`
 - `human_review = not_provided`
 
-This support redesign does not establish technical entry, automated Dogfood,
-replacement passage, or Phase 9 readiness.
+The remediation and support checks in this change do not establish a new
+technical entry, automated Dogfood passage, replacement passage, or Phase 9
+readiness.
 
 ## Goal
 
@@ -38,9 +44,9 @@ prompt choreography.
 
 ## Input repositories and revisions
 
-The redesigned campaign has no sealed production/test candidate. No repository descriptor,
-workspace, Runtime Home, rollout, bundle, observation, blocker result, or
-session identity currently qualifies it.
+The failed campaign's candidate, descriptors, workspaces, Runtime Homes,
+rollouts, bundles, observations, blocker results, and session identities are
+non-qualifying diagnostic evidence and cannot be reused.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
@@ -158,34 +164,47 @@ historical technical entry state for the predecessor campaign contract:
 - same-gate final/V11 artifact ownership valid;
 - no active accepted-Decision revisit trigger reported by official V11.
 
-No naturalistic Dogfood result exists for the redesigned campaign. V11 is
-scripted conformance and is not naturalistic Dogfood passage.
+The first six completed naturalistic cycles established diagnostic failure:
+
+- both completed `user_owned_decision` cycles implemented without obtaining a
+  user Decision;
+- the Small Python expired-token diagnostic task selected a new stable public
+  API shape directly;
+- the Polyglot generated-package/default-policy task also implemented without a
+  Question or Decision;
+- research/no-question, delegated implementation, and exploratory uncertainty
+  behavior was substantially proportional;
+- one Polyglot `user_owned_decision` descriptor admitted a plausible complete
+  no-question implementation, exposing the need for independent counterfactual
+  review.
+
+The campaign stopped at that point. These observations do not qualify the
+candidate, and V11 remains scripted conformance rather than naturalistic
+Dogfood passage.
 
 ## Coverage and failures
 
-Historical technical Phase 8 entry evidence is passed/eligible only for the
-predecessor contract. Naturalistic activation, Question
-necessity and relevance, no-question behavior, user ownership, Decision
-comprehension when applicable, terminal Checkpoint selection, fresh-session
-Project resolution and Recall, interruption cost, Repository Intelligence and
-CLI usefulness, document fidelity/usefulness, Viewer understanding, and repeated
-resource behavior are all `not_run` for the redesigned campaign. Every
-automated-passed cycle requires interaction, document, Viewer snapshot,
-Repository Intelligence, and CLI human review for replacement qualification.
-Automated Dogfood is `not_run`; campaign-level human review is `not_provided`.
+Historical technical Phase 8 entry evidence remains passed/eligible only for
+the technically gated candidate. The partial naturalistic campaign failed on
+material Question discovery and descriptor validity before complete
+twenty-four-session coverage. Unrun cycles and campaign-wide interaction,
+document, Viewer, Repository Intelligence, CLI, and resource conclusions remain
+unqualified. Campaign-level human review is `not_provided`.
 
-Absence of Dogfood evidence is not a product failure, but it leaves the
-replacement gate pending and cannot support Phase 9 readiness.
+The observed naturalistic behavior is a product diagnostic failure. Incomplete
+campaign-wide coverage adds no replacement evidence and cannot support Phase 9
+readiness.
 
 ## Performance and resource observations
 
-No naturalistic campaign timing, output-size, Runtime-size, or sustained
-resource result exists for this candidate. The maintained fixed-input repeated
-operation check measures Runtime and Derived bytes, document bytes, process
-count, open file descriptors, Runtime file count, stale temporary files, and
-operation latency after warm-up; cumulative growth, stale temporary files, or
-descendant-process leaks fail qualification. The exact-final command durations
-in the technical gate capsule are not Dogfood resource evidence.
+No complete qualifying naturalistic campaign timing, output-size, Runtime-size,
+or sustained resource result exists for this candidate. The maintained
+fixed-input repeated operation check measures Runtime and Derived bytes,
+document bytes, process count, open file descriptors, Runtime file count, stale
+temporary files, and operation latency after warm-up; cumulative growth, stale
+temporary files, or descendant-process leaks fail qualification. The exact-final
+command durations in the technical gate capsule are not Dogfood resource
+evidence.
 
 ## Privacy and external transmission
 
@@ -206,13 +225,13 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `not_established` |
-| Technical Phase 8 entry | `not_run` for redesigned contract; prior capsule is historical |
-| Naturalistic Dogfood | `not_run` |
-| Complete twenty-four-session campaign | `not_run` |
-| Automated Dogfood qualification | `not_run` |
+| Sealed production/test candidate | `technical_entry_only` |
+| Technical Phase 8 entry | `passed_historical_candidate_evidence` |
+| Naturalistic Dogfood | `failed_diagnostic_after_six_completed_cycles` |
+| Complete twenty-four-session campaign | `stopped_not_complete` |
+| Automated Dogfood qualification | `failed` |
 | Campaign-level human review | `not_provided` |
-| Replacement gate | `pending` |
+| Replacement gate | `failed` |
 | Replacement pass candidate | `false` |
 | Phase 9 readiness | `false` |
 
@@ -222,6 +241,8 @@ separate private archive for the independent review handoff.
   agent discovery in ordinary user sessions.
 - The current evidence says nothing yet about reliability of strengthened
   material-Question discovery or real-session usability.
+- The failed campaign descriptors and evidence are immutable diagnostics, not
+  inputs to a fresh qualification campaign.
 - No campaign-level human usability/accessibility or sustained resource
   conclusion exists for this candidate.
 
@@ -238,8 +259,8 @@ campaign-level human review when evaluating replacement.
   the later sealed candidate.
 - Do not reuse any previous descriptor, Runtime Home, workspace, rollout,
   bundle, observation, blocker result, or session identity.
-- Treat any predecessor Small Python cycle only as non-qualifying diagnostic
-  evidence; do not reuse it for the redesigned campaign.
+- Treat every completed or incomplete cycle from the failed campaign only as
+  non-qualifying diagnostic evidence; do not repair or reuse it.
 - Do not treat V11 as naturalistic passage or infer replacement readiness from
   technical entry eligibility.
 - Do not require a manual full Runtime Home extraction for routine evidence
@@ -253,12 +274,13 @@ validation tooling and do not own product semantics.
 ## Decision revisit trigger status
 
 Official V11 reported no active accepted Q1–Q13 revisit trigger for technical
-entry. Naturalistic Dogfood has not run, so it has not produced a new trigger
-assessment or a replacement-gate conclusion.
+entry. Naturalistic Dogfood then produced failed diagnostic evidence requiring
+production materiality-screening and evaluator-contract remediation, without
+changing the accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
-After technical entry seals a new candidate, prepare one completely fresh helper-owned campaign,
+After remediation passes a new technical entry, prepare one completely fresh helper-owned campaign,
 have the control agent research and seal the twelve evaluator descriptors, grant
 trust manually, activate all twelve repository integrations, run the twenty-four
 required work/resume chats with only the frozen tasks, answer the actual

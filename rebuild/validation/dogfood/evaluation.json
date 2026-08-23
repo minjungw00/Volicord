@@ -336,7 +336,55 @@
         "exploratory_uncertainty"
       ],
       "required_independent_review_status": "accepted",
-      "purpose": "bounded independent evidence review without prescribing one Question expression or user selection",
+      "required_independent_review_fields": [
+        "status",
+        "reviewer_role",
+        "basis",
+        "fact_authority_agreement",
+        "counterfactual_review"
+      ],
+      "fact_authority_agreement": {
+        "accepted_statuses": [
+          "agreed",
+          "resolved_from_evidence"
+        ],
+        "sealing_blocked_status": "unresolved_conflict",
+        "required_fields": [
+          "status",
+          "evaluator_conclusions",
+          "reviewer_conclusions",
+          "conflicts",
+          "resolution_basis",
+          "provenance_reference_indices"
+        ],
+        "resolution_evidence": "inspectable source or active-owner provenance references"
+      },
+      "user_owned_counterfactual_review": {
+        "applicability": "required_for_user_owned_decision",
+        "required_fields": [
+          "specific_unresolved_outcome",
+          "frozen_task_necessity",
+          "repository_research_cannot_settle",
+          "accepted_decision_or_contract_cannot_settle",
+          "not_delegated_basis",
+          "materially_different_consequences",
+          "no_question_approaches",
+          "conclusion"
+        ],
+        "no_question_sources": [
+          "repository_facts",
+          "accepted_decisions_or_contracts",
+          "delegated_authority",
+          "narrower_full_task_implementation"
+        ],
+        "accepted_conclusion": "unavoidable_user_owned_outcome",
+        "rejecting_task_satisfaction": "fully_satisfies_without_user_owned_outcome",
+        "question_wording_prescribed": false,
+        "alternatives_prescribed": false,
+        "user_selection_prescribed": false
+      },
+      "non_user_decision_counterfactual_applicability": "not_required_for_behavior_class",
+      "purpose": "bounded independent evidence and no-question counterfactual review without prescribing one Question expression or user selection",
       "visibility": "evaluator_input_only"
     },
     "batch_campaign_contract": {

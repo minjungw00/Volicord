@@ -315,6 +315,45 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     descriptor.pop("_evidence_directory", None)
     descriptor.pop("_evidence_file_sha256", None)
     descriptor.pop("evidence", None)
+    bypassable = copy.deepcopy(descriptor)
+    bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
+        "counterfactual_review"
+    ]
+    bypassable_counterfactual["no_question_approaches"][0].update({
+        "task_satisfaction": "fully_satisfies_without_user_owned_outcome",
+        "assessment": (
+            "A narrower implementation fully satisfies the frozen request without choosing the claimed public outcome."
+        ),
+    })
+    bypassable_path = parent / "bypassable-user-owned-input.json"
+    campaign.write_json(bypassable_path, bypassable)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+    except campaign.CampaignError as error:
+        assert "defensible no-question path" in str(error)
+    else:
+        raise AssertionError("bypassable user_owned_decision descriptor sealed")
+
+    disagreement = copy.deepcopy(descriptor)
+    disagreement_agreement = disagreement["behavior_review"]["independent_review"][
+        "fact_authority_agreement"
+    ]
+    disagreement_agreement.update({
+        "status": "unresolved_conflict",
+        "conflicts": [
+            "Evaluator and reviewer disagree whether the active owner delegates the outcome."
+        ],
+        "resolution_basis": "The cited evidence has not resolved the authority disagreement.",
+    })
+    disagreement_path = parent / "unresolved-review-disagreement-input.json"
+    campaign.write_json(disagreement_path, disagreement)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, disagreement_path)
+    except campaign.CampaignError as error:
+        assert "disagreement blocks sealing" in str(error)
+    else:
+        raise AssertionError("unresolved evaluator/reviewer disagreement sealed")
+
     leaked = copy.deepcopy(descriptor)
     leaked["behavior_review"]["independent_review"]["basis"] = leaked["work_user_task"]
     leaked_path = parent / "leaked-evaluator-input.json"
@@ -325,6 +364,19 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         assert "evaluator-only material" in str(error)
     else:
         raise AssertionError("evaluator material entered the operator run sheet")
+
+    accepted_path = parent / "unavoidable-user-owned-input.json"
+    campaign.write_json(accepted_path, descriptor)
+    sealed = campaign.seal_cycle(root, "volicord", 1, accepted_path)
+    assert sealed["behavior_class"] == "user_owned_decision"
+    sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
+    assert descriptor["work_user_task"] in sealed_run_sheet
+    assert (
+        descriptor["behavior_review"]["independent_review"]["counterfactual_review"][
+            "specific_unresolved_outcome"
+        ]
+        not in sealed_run_sheet
+    )
 
     target = parent / "pinned-target"
     target.mkdir()
@@ -796,6 +848,9 @@ def main() -> int:
             "campaign_level_human_review_operations",
             "strict_current_cli_positive_and_obsolete_negative_cases",
             "sealed_evaluator_operator_isolation",
+            "bypassable_user_owned_descriptor_rejected_before_sealing",
+            "unavoidable_user_owned_descriptor_sealed",
+            "unresolved_fact_authority_disagreement_blocks_sealing",
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",

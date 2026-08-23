@@ -954,13 +954,38 @@ def load_definition() -> dict[str, Any]:
     ):
         raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
     behavior_review = evidence.get("behavior_review", {})
-    if behavior_review != {
-            "kind": "phase8_behavior_review",
-            "accepted_classifications": list(BEHAVIOR_CLASSES),
-            "required_independent_review_status": "accepted",
-            "purpose": "bounded independent evidence review without prescribing one Question expression or user selection",
-            "visibility": "evaluator_input_only",
-        }:
+    agreement_contract = behavior_review.get("fact_authority_agreement", {})
+    counterfactual_contract = behavior_review.get("user_owned_counterfactual_review", {})
+    if (
+        behavior_review.get("kind") != "phase8_behavior_review"
+        or behavior_review.get("accepted_classifications") != list(BEHAVIOR_CLASSES)
+        or behavior_review.get("required_independent_review_status") != "accepted"
+        or behavior_review.get("required_independent_review_fields")
+        != [
+            "status",
+            "reviewer_role",
+            "basis",
+            "fact_authority_agreement",
+            "counterfactual_review",
+        ]
+        or agreement_contract.get("accepted_statuses")
+        != ["agreed", "resolved_from_evidence"]
+        or agreement_contract.get("sealing_blocked_status") != "unresolved_conflict"
+        or counterfactual_contract.get("applicability")
+        != "required_for_user_owned_decision"
+        or counterfactual_contract.get("accepted_conclusion")
+        != "unavoidable_user_owned_outcome"
+        or counterfactual_contract.get("rejecting_task_satisfaction")
+        != "fully_satisfies_without_user_owned_outcome"
+        or counterfactual_contract.get("question_wording_prescribed") is not False
+        or counterfactual_contract.get("alternatives_prescribed") is not False
+        or counterfactual_contract.get("user_selection_prescribed") is not False
+        or behavior_review.get("non_user_decision_counterfactual_applicability")
+        != "not_required_for_behavior_class"
+        or behavior_review.get("purpose")
+        != "bounded independent evidence and no-question counterfactual review without prescribing one Question expression or user selection"
+        or behavior_review.get("visibility") != "evaluator_input_only"
+    ):
         raise ValueError("the Phase 8 behavior-review contract changed")
     batch = evidence.get("batch_campaign_contract", {})
     if (
@@ -1382,7 +1407,13 @@ def plain_user_task_error(value: Any, field: str) -> str | None:
     return None
 
 
-def bounded_text_list_errors(value: Any, field: str, *, minimum: int = 0) -> list[str]:
+def bounded_text_list_errors(
+    value: Any,
+    field: str,
+    *,
+    minimum: int = 0,
+    owner: str = "evaluation_basis",
+) -> list[str]:
     if (
         not isinstance(value, list)
         or len(value) < minimum
@@ -1393,7 +1424,7 @@ def bounded_text_list_errors(value: Any, field: str, *, minimum: int = 0) -> lis
             for item in value
         )
     ):
-        return [f"evaluation_basis.{field} must contain bounded unique text entries"]
+        return [f"{owner}.{field} must contain bounded unique text entries"]
     return []
 
 
@@ -1516,15 +1547,179 @@ def behavior_review_errors(
     if len(reference_keys) != len(set(reference_keys)):
         errors.append("behavior_review.provenance_references must be unique")
     independent = value.get("independent_review")
+    required_independent_fields = {
+        "status",
+        "reviewer_role",
+        "basis",
+        "fact_authority_agreement",
+        "counterfactual_review",
+    }
+    if not isinstance(independent, dict) or set(independent) != required_independent_fields:
+        errors.append("behavior_review requires the current independent review fields")
+        return errors
     if (
-        not isinstance(independent, dict)
-        or set(independent) != {"status", "reviewer_role", "basis"}
-        or independent.get("status") != "accepted"
+        independent.get("status") != "accepted"
         or independent.get("reviewer_role") != "campaign_preparation_independent_reviewer"
         or not nonempty_string(independent.get("basis"))
         or len(independent.get("basis", "").encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
     ):
         errors.append("behavior_review requires an accepted independent review")
+    errors.extend(
+        fact_authority_agreement_errors(
+            independent.get("fact_authority_agreement"),
+            len(references),
+        )
+    )
+    errors.extend(
+        counterfactual_review_errors(
+            independent.get("counterfactual_review"),
+            behavior_class,
+        )
+    )
+    return errors
+
+
+def fact_authority_agreement_errors(value: Any, reference_count: int) -> list[str]:
+    required = {
+        "status",
+        "evaluator_conclusions",
+        "reviewer_conclusions",
+        "conflicts",
+        "resolution_basis",
+        "provenance_reference_indices",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        return ["independent review requires the current fact/authority agreement fields"]
+    errors: list[str] = []
+    status = value.get("status")
+    if status not in {"agreed", "resolved_from_evidence", "unresolved_conflict"}:
+        errors.append("fact/authority agreement status is unsupported")
+    for field in ("evaluator_conclusions", "reviewer_conclusions"):
+        errors.extend(
+            bounded_text_list_errors(
+                value.get(field),
+                field,
+                minimum=1,
+                owner="fact_authority_agreement",
+            )
+        )
+    errors.extend(
+        bounded_text_list_errors(
+            value.get("conflicts"),
+            "conflicts",
+            owner="fact_authority_agreement",
+        )
+    )
+    basis = value.get("resolution_basis")
+    if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+        errors.append("fact/authority agreement requires a bounded resolution basis")
+    indices = value.get("provenance_reference_indices")
+    if (
+        not isinstance(indices, list)
+        or not indices
+        or len(indices) != len(set(indices))
+        or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
+        or any(index < 0 or index >= reference_count for index in indices)
+    ):
+        errors.append("fact/authority agreement must cite inspectable provenance references")
+    conflicts = value.get("conflicts") if isinstance(value.get("conflicts"), list) else []
+    if status == "agreed" and conflicts:
+        errors.append("agreed fact/authority conclusions cannot retain conflicts")
+    if status == "resolved_from_evidence" and not conflicts:
+        errors.append("resolved fact/authority disagreement must identify the resolved conflicts")
+    if status == "unresolved_conflict":
+        errors.append("unresolved evaluator/reviewer fact or authority disagreement blocks sealing")
+    return errors
+
+
+def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
+    required = {
+        "applicability",
+        "specific_unresolved_outcome",
+        "frozen_task_necessity",
+        "repository_research_cannot_settle",
+        "accepted_decision_or_contract_cannot_settle",
+        "not_delegated_basis",
+        "materially_different_consequences",
+        "no_question_approaches",
+        "conclusion",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        return ["independent review requires the current no-question counterfactual fields"]
+    errors: list[str] = []
+    if behavior_class != "user_owned_decision":
+        if value != {
+            "applicability": "not_required_for_behavior_class",
+            "specific_unresolved_outcome": None,
+            "frozen_task_necessity": None,
+            "repository_research_cannot_settle": None,
+            "accepted_decision_or_contract_cannot_settle": None,
+            "not_delegated_basis": None,
+            "materially_different_consequences": [],
+            "no_question_approaches": [],
+            "conclusion": "not_applicable",
+        }:
+            errors.append(
+                "non-user-decision behavior classes use a non-applicable counterfactual without Decision ceremony"
+            )
+        return errors
+
+    if value.get("applicability") != "required_for_user_owned_decision":
+        errors.append("user_owned_decision requires an independent no-question counterfactual")
+    for field in (
+        "specific_unresolved_outcome",
+        "frozen_task_necessity",
+        "repository_research_cannot_settle",
+        "accepted_decision_or_contract_cannot_settle",
+        "not_delegated_basis",
+    ):
+        field_value = value.get(field)
+        if (
+            not nonempty_string(field_value)
+            or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
+        ):
+            errors.append(f"counterfactual_review.{field} must be bounded non-empty text")
+    errors.extend(
+        bounded_text_list_errors(
+            value.get("materially_different_consequences"),
+            "materially_different_consequences",
+            minimum=2,
+            owner="counterfactual_review",
+        )
+    )
+    approaches = value.get("no_question_approaches")
+    if not isinstance(approaches, list) or not approaches or len(approaches) > 16:
+        errors.append("user_owned_decision requires bounded no-question approaches")
+        approaches = []
+    for index, approach in enumerate(approaches):
+        prefix = f"counterfactual_review.no_question_approaches[{index}]"
+        if not isinstance(approach, dict) or set(approach) != {
+            "approach",
+            "task_satisfaction",
+            "assessment",
+        }:
+            errors.append(f"{prefix} must contain the current counterfactual fields")
+            continue
+        for field in ("approach", "assessment"):
+            field_value = approach.get(field)
+            if (
+                not nonempty_string(field_value)
+                or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
+            ):
+                errors.append(f"{prefix}.{field} must be bounded non-empty text")
+        satisfaction = approach.get("task_satisfaction")
+        if satisfaction not in {
+            "fails_frozen_task",
+            "implicitly_chooses_same_user_owned_outcome",
+            "fully_satisfies_without_user_owned_outcome",
+        }:
+            errors.append(f"{prefix}.task_satisfaction is unsupported")
+        if satisfaction == "fully_satisfies_without_user_owned_outcome":
+            errors.append(
+                "a defensible no-question path fully satisfies the frozen task and prevents user_owned_decision sealing"
+            )
+    if value.get("conclusion") != "unavoidable_user_owned_outcome":
+        errors.append("accepted user_owned_decision requires an unavoidable user-owned outcome conclusion")
     return errors
 
 
@@ -4530,6 +4725,54 @@ def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
 
 
 def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
+    if behavior_class == "user_owned_decision":
+        counterfactual_review = {
+            "applicability": "required_for_user_owned_decision",
+            "specific_unresolved_outcome": (
+                "The stable operator-facing error-detail policy remains unresolved."
+            ),
+            "frozen_task_necessity": (
+                "Improving the named public error policy necessarily selects what stable detail operators receive."
+            ),
+            "repository_research_cannot_settle": (
+                "Repository inspection establishes the existing envelope but cannot choose the user-valued stability and troubleshooting trade-off."
+            ),
+            "accepted_decision_or_contract_cannot_settle": (
+                "The active truthful-failure contract does not prescribe the public detail boundary."
+            ),
+            "not_delegated_basis": (
+                "Delegation covers implementation structure, not the externally observable error policy."
+            ),
+            "materially_different_consequences": [
+                "Concise stable errors reduce automation churn but require separate diagnostic inspection.",
+                "Detailed public errors improve immediate troubleshooting but enlarge the compatibility surface.",
+            ],
+            "no_question_approaches": [
+                {
+                    "approach": "Keep the existing public error policy and only refactor internals.",
+                    "task_satisfaction": "fails_frozen_task",
+                    "assessment": "It preserves behavior and therefore does not improve the requested public error policy.",
+                },
+                {
+                    "approach": "Choose a conventional concise error and add private diagnostics.",
+                    "task_satisfaction": "implicitly_chooses_same_user_owned_outcome",
+                    "assessment": "It completes the task only by selecting the same unresolved public detail boundary.",
+                },
+            ],
+            "conclusion": "unavoidable_user_owned_outcome",
+        }
+    else:
+        counterfactual_review = {
+            "applicability": "not_required_for_behavior_class",
+            "specific_unresolved_outcome": None,
+            "frozen_task_necessity": None,
+            "repository_research_cannot_settle": None,
+            "accepted_decision_or_contract_cannot_settle": None,
+            "not_delegated_basis": None,
+            "materially_different_consequences": [],
+            "no_question_approaches": [],
+            "conclusion": "not_applicable",
+        }
     return {
         "kind": "phase8_behavior_review",
         "classification": behavior_class,
@@ -4548,7 +4791,22 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
         "independent_review": {
             "status": "accepted",
             "reviewer_role": "campaign_preparation_independent_reviewer",
-            "basis": "Independent control-session review accepted the bounded user-owned classification.",
+            "basis": "Independent control-session review accepted the bounded behavior classification.",
+            "fact_authority_agreement": {
+                "status": "agreed",
+                "evaluator_conclusions": [
+                    "The repository and active owner evidence support the selected behavior class."
+                ],
+                "reviewer_conclusions": [
+                    "Independent inspection reached the same repository-fact and authority conclusion."
+                ],
+                "conflicts": [],
+                "resolution_basis": (
+                    "The cited active-owner evidence resolves the relevant authority boundary."
+                ),
+                "provenance_reference_indices": [0],
+            },
+            "counterfactual_review": counterfactual_review,
         },
     }
 
@@ -5849,6 +6107,46 @@ def self_test() -> int:
     }
     if cycle_descriptor_errors(valid_descriptor):
         raise AssertionError("valid naturalistic plain-task descriptor was rejected")
+    for non_user_class in BEHAVIOR_CLASSES[1:]:
+        review_errors = behavior_review_errors(
+            fixture_behavior_review(non_user_class),
+            non_user_class,
+        )
+        if review_errors:
+            raise AssertionError(
+                f"{non_user_class} gained mandatory user-decision ceremony: {review_errors}"
+            )
+    bypassable = json.loads(json.dumps(valid_descriptor))
+    bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
+        "counterfactual_review"
+    ]
+    bypassable_counterfactual["no_question_approaches"][0].update(
+        {
+            "task_satisfaction": "fully_satisfies_without_user_owned_outcome",
+            "assessment": (
+                "A narrower diagnostics-only change fully satisfies the frozen task without selecting the claimed public policy."
+            ),
+        }
+    )
+    bypassable_errors = cycle_descriptor_errors(bypassable)
+    if not any("defensible no-question path" in error for error in bypassable_errors):
+        raise AssertionError("bypassable user_owned_decision descriptor qualified")
+    disagreement = json.loads(json.dumps(valid_descriptor))
+    agreement = disagreement["behavior_review"]["independent_review"][
+        "fact_authority_agreement"
+    ]
+    agreement.update(
+        {
+            "status": "unresolved_conflict",
+            "conflicts": [
+                "Evaluator and reviewer disagree whether the active contract delegates the public outcome."
+            ],
+            "resolution_basis": "No inspectable owner evidence has resolved the disagreement yet.",
+        }
+    )
+    disagreement_errors = cycle_descriptor_errors(disagreement)
+    if not any("disagreement blocks sealing" in error for error in disagreement_errors):
+        raise AssertionError("unresolved evaluator/reviewer disagreement qualified")
     for label, mutation in (
         ("missing work task", lambda value: value.pop("work_user_task")),
         ("missing evaluation basis", lambda value: value.pop("evaluation_basis")),
@@ -5874,6 +6172,18 @@ def self_test() -> int:
                 {"status": "pending"}
             ),
         ),
+        (
+            "obsolete independent review form",
+            lambda value: value["behavior_review"].update(
+                {
+                    "independent_review": {
+                        "status": "accepted",
+                        "reviewer_role": "campaign_preparation_independent_reviewer",
+                        "basis": "The old form cannot seal.",
+                    }
+                }
+            ),
+        ),
     ):
         invalid_descriptor = json.loads(json.dumps(valid_descriptor))
         mutation(invalid_descriptor)
@@ -5887,6 +6197,7 @@ def self_test() -> int:
             "repository fact class mismatch": "classification",
             "class position mismatch": "matrix position",
             "unaccepted independent review": "accepted independent review",
+            "obsolete independent review form": "current independent review fields",
         }[label]
         if not any(expected_error in error for error in errors):
             raise AssertionError(f"{label} descriptor qualified")
@@ -8073,6 +8384,10 @@ def self_test() -> int:
         "naturalistic_work_scope_contract": "passed",
         "small_python_no_interruption_cycle": "passed",
         "independent_behavior_review_required": "passed",
+        "user_owned_no_question_counterfactual_required": "passed",
+        "bypassable_user_owned_descriptor_rejected": "passed",
+        "fact_authority_disagreement_blocks_sealing": "passed",
+        "non_user_decision_classes_remain_non_ceremonial": "passed",
         "repository_fact_contract_and_delegated_choice_rejected": "passed",
         "terminal_checkpoint_single_and_pause_completion_selection": "passed",
         "malformed_final_checkpoint_no_fallback": "passed",

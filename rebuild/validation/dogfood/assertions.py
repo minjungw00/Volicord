@@ -57,6 +57,10 @@ def main() -> int:
         "evaluation_basis",
         "behavior_class",
         "behavior_review",
+        "fact_authority_agreement",
+        "counterfactual_review",
+        "fully_satisfies_without_user_owned_outcome",
+        "unavoidable_user_owned_outcome",
         "research_or_no_question",
         "delegated_implementation_choice",
         "exploratory_uncertainty",
@@ -240,6 +244,32 @@ def main() -> int:
     ):
         if basis_field not in definition:
             raise AssertionError(f"Phase 8 definition is missing evaluation-basis field {basis_field}")
+    behavior_review = real_session.get("behavior_review", {})
+    agreement = behavior_review.get("fact_authority_agreement", {})
+    counterfactual = behavior_review.get("user_owned_counterfactual_review", {})
+    if (
+        behavior_review.get("required_independent_review_fields")
+        != [
+            "status",
+            "reviewer_role",
+            "basis",
+            "fact_authority_agreement",
+            "counterfactual_review",
+        ]
+        or agreement.get("sealing_blocked_status") != "unresolved_conflict"
+        or set(agreement.get("accepted_statuses", []))
+        != {"agreed", "resolved_from_evidence"}
+        or counterfactual.get("applicability") != "required_for_user_owned_decision"
+        or counterfactual.get("accepted_conclusion") != "unavoidable_user_owned_outcome"
+        or counterfactual.get("rejecting_task_satisfaction")
+        != "fully_satisfies_without_user_owned_outcome"
+        or counterfactual.get("question_wording_prescribed") is not False
+        or counterfactual.get("alternatives_prescribed") is not False
+        or counterfactual.get("user_selection_prescribed") is not False
+        or behavior_review.get("non_user_decision_counterfactual_applicability")
+        != "not_required_for_behavior_class"
+    ):
+        raise AssertionError("Phase 8 independent counterfactual-review contract is incomplete")
     blocker_contract = real_session.get("work_blocker_qualification", {})
     if blocker_contract != {
         "subcommand": "qualify-work-blocker",

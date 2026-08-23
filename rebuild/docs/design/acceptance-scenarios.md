@@ -420,6 +420,11 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - terminal branch 상태
 - behavior class별 expected outcome: no-question, resolved-by-research, delegated-choice reuse,
   prototype/research/defer와 genuine user-owned Decision
+- `user_owned_decision` descriptor는 independent reviewer가 exact frozen task의 repository fact,
+  accepted authority, delegation과 narrower full-task path를 검토한 뒤에도 unresolved
+  externally meaningful outcome이 unavoidable임을 보일 때만 봉인된다.
+- claimed outcome을 고르지 않는 defensible complete no-question path 또는 unresolved
+  evaluator/reviewer fact·authority disagreement가 있으면 봉인을 거부한다.
 
 ### 수동 평가
 
