@@ -71,6 +71,14 @@ architecture `components`/`relationships`, `generated_interpretations`와 `evide
 canonical, Candidate, analyzer, publication 또는 provider mutation capability를 받지
 않는다.
 
+`ProjectUnderstanding`의 local deterministic explanation은 verified canonical,
+Structural Fact와 Semantic Result만 조합한 `deterministic_derived` presentation layer다.
+각 item은 사용한 entity, relation, Decision, Source와 snapshot identity를 보존하고,
+optional model/agent `generated_interpretation`과 합치지 않는다. 이 path는 background
+provider를 요구하거나 새 topology를 만들지 않으며 bundled Viewer의 fixed English/Korean
+locale만 실현한다. 그 밖의 requested-language generated body 성공은 host realization
+계약을 계속 사용하고 local deterministic explanation으로 임의 충족했다고 표시하지 않는다.
+
 ## 2. First project-scoped automatic Recall
 
 새 agent session의 첫 `project-scoped` 요청에서는 bounded, read-only Recall을

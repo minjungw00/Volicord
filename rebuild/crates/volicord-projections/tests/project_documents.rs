@@ -25,9 +25,9 @@ use volicord_projections::{
     FixedLocale, GeneratorIdentity, MapRelationClass, NarrativeRealization,
     NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectProjectionInputs,
     ProjectionBound, ProjectionHealth, ProjectionIssueKind, RealizedNarrativeClaim,
-    RealizedNarrativeSection, RequestedDestination, UnderstandingBound,
-    GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
-    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
+    RealizedNarrativeSection, RequestedDestination, UnderstandingBound, UnderstandingEvidenceClass,
+    UnderstandingExplanationKind, GENERATED_DOCUMENT_METADATA_VERSION,
+    RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AgentInterpretation, AnalysisSnapshot, CanonicalGrounding,
@@ -709,8 +709,63 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .any(|question| question.question_id == open_question.id));
     assert!(!understanding.architecture.components.is_empty());
     assert!(!understanding.architecture.relationships.is_empty());
+    assert!(!understanding.deterministic_explanations.is_empty());
     assert_eq!(understanding.generated_interpretations.len(), 1);
     assert!(!understanding.evidence.snapshots.is_empty());
+    assert_eq!(canonical, canonical_before);
+    assert_eq!(candidates, candidates_before);
+
+    let mut local_analysis = analysis.clone();
+    local_analysis.agent_interpretations.clear();
+    let local_projection = build_projection_fixture(
+        &canonical,
+        &candidates,
+        &local_analysis,
+        project.id,
+        ProjectionBound::default(),
+    );
+    let local_understanding = build_project_understanding(
+        &local_projection,
+        UnderstandingBound {
+            max_items_per_section: 64,
+        },
+    );
+    assert!(local_understanding.generated_interpretations.is_empty());
+    assert!(local_understanding
+        .deterministic_explanations
+        .iter()
+        .any(|item| item.kind == UnderstandingExplanationKind::Component));
+    assert!(local_understanding
+        .deterministic_explanations
+        .iter()
+        .any(|item| item.kind == UnderstandingExplanationKind::Flow));
+    let decision_effect = local_understanding
+        .deterministic_explanations
+        .iter()
+        .find(|item| {
+            item.kind == UnderstandingExplanationKind::DecisionImpact
+                && item.decision_basis.contains(&active_decision.id)
+        })
+        .ok_or("deterministic Decision effect missing")?;
+    assert!(!decision_effect.entity_basis.is_empty());
+    assert!(!decision_effect.source_basis.is_empty());
+    assert!(decision_effect
+        .evidence_classes
+        .contains(&UnderstandingEvidenceClass::CanonicalDecision));
+    for explanation in &local_understanding.deterministic_explanations {
+        assert!(!explanation.identity.is_empty());
+        assert!(!explanation.english.is_empty());
+        assert!(!explanation.korean.is_empty());
+        assert!(!explanation.evidence_classes.is_empty());
+        assert!(
+            !explanation.entity_basis.is_empty() || !explanation.decision_basis.is_empty(),
+            "explanation lacks inspectable entity/Decision basis: {}",
+            explanation.identity
+        );
+        if explanation.kind == UnderstandingExplanationKind::Flow {
+            assert!(!explanation.relation_basis.is_empty());
+        }
+    }
     assert_eq!(canonical, canonical_before);
     assert_eq!(candidates, candidates_before);
 

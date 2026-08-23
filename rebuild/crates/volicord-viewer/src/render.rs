@@ -16,7 +16,8 @@ use volicord_projections::{
     CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
     GeneratorIdentity, InspectionHealth, MapRelation, MapRelationClass, NarrativeRealizationState,
     OutputFormat, ProjectProjection, ProjectUnderstanding, ProjectionHealth, ProjectionIssueKind,
-    RequestedDestination, UnderstandingBound,
+    RequestedDestination, UnderstandingBound, UnderstandingEvidenceClass, UnderstandingExplanation,
+    UnderstandingExplanationKind,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -602,12 +603,26 @@ fn render_project_understanding(
             .take(level_limit(request.explanation_level))
         {
             html.push_str(&format!(
-                "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\"><h4>{}</h4><p><strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p></article>",
+                "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\"><h4>{}</h4><p><strong>{}:</strong> {}</p>",
                 escape(&decision_choice_label(&decision.decision.choice, request.locale)),
                 escape(text(request.locale, "Rationale", "근거")),
-                escape(decision.decision.user_rationale.as_deref().unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음"))),
-                escape(text(request.locale, "Affected code", "영향받는 코드")),
-                escape(&bounded_names(&decision.affected_code_entities, 4, request.locale)),
+                escape(decision.decision.user_rationale.as_deref().unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음")))
+            ));
+            if let Some(explanation) =
+                understanding
+                    .deterministic_explanations
+                    .iter()
+                    .find(|explanation| {
+                        explanation.kind == UnderstandingExplanationKind::DecisionImpact
+                            && explanation
+                                .decision_basis
+                                .contains(&decision.decision.decision_id)
+                    })
+            {
+                render_deterministic_explanation(html, request, explanation);
+            }
+            html.push_str(&format!(
+                "<p><strong>{}:</strong> {}</p></article>",
                 escape(text(request.locale, "Known link gaps", "알려진 연결 빈틈")),
                 escape(&bounded_names(&decision.known_link_gaps, 3, request.locale))
             ));
@@ -670,6 +685,12 @@ fn render_project_understanding(
         "Verified fact",
         "검증된 사실",
     )));
+    html.push_str("</span><span class=\"deterministic-derived\" data-statement-role=\"deterministic-derived\">");
+    html.push_str(&escape(text(
+        request.locale,
+        "Deterministic explanation",
+        "결정론적 설명",
+    )));
     html.push_str("</span><span class=\"generated-interpretation\" data-statement-role=\"generated-interpretation\">");
     html.push_str(&escape(text(
         request.locale,
@@ -677,6 +698,30 @@ fn render_project_understanding(
         "생성된 해석",
     )));
     html.push_str("</span></div>");
+    let architecture_explanations = understanding
+        .deterministic_explanations
+        .iter()
+        .filter(|explanation| explanation.kind != UnderstandingExplanationKind::DecisionImpact)
+        .take(level_limit(request.explanation_level))
+        .collect::<Vec<_>>();
+    if architecture_explanations.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No verified component or relationship basis is available for a deterministic explanation; no architecture narrative was inferred.",
+                "결정론적 설명에 사용할 검증된 컴포넌트 또는 관계 근거가 없습니다. 아키텍처 서술을 추론하지 않았습니다.",
+            ),
+        );
+    } else {
+        html.push_str(
+            "<div class=\"grounded-explanations\" data-statement-role=\"deterministic-derived\">",
+        );
+        for explanation in architecture_explanations {
+            render_deterministic_explanation(html, request, explanation);
+        }
+        html.push_str("</div>");
+    }
     render_grounded_diagram(
         html,
         request,
@@ -728,6 +773,139 @@ fn render_project_understanding(
 
     render_understanding_evidence(html, request, understanding);
     section_end(html);
+}
+
+fn render_deterministic_explanation(
+    html: &mut String,
+    request: &ViewerRequest,
+    explanation: &UnderstandingExplanation,
+) {
+    let narrative = match request.locale {
+        ViewerLocale::English => &explanation.english,
+        ViewerLocale::Korean => &explanation.korean,
+    };
+    html.push_str(&format!(
+        "<article class=\"deterministic-derived explanation-item\" data-statement-role=\"deterministic-derived\" data-explanation-kind=\"{}\" data-explanation-id=\"{}\"><p>{}</p>",
+        explanation_kind_key(explanation.kind),
+        escape(&explanation.identity),
+        escape(narrative)
+    ));
+    html.push_str(&format!(
+        "<details class=\"explanation-evidence\"><summary>{}</summary><dl class=\"explanation-basis\">",
+        escape(text(request.locale, "Inspect evidence basis", "근거 확인"))
+    ));
+    definition(
+        html,
+        text(request.locale, "Evidence class", "근거 분류"),
+        &explanation
+            .evidence_classes
+            .iter()
+            .map(|class| explanation_evidence_class_label(*class, request.locale))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+    definition(
+        html,
+        text(request.locale, "Entities", "엔터티"),
+        &bounded_names(&explanation.entity_basis, 8, request.locale),
+    );
+    definition(
+        html,
+        text(request.locale, "Relations", "관계"),
+        &bounded_names(&explanation.relation_basis, 8, request.locale),
+    );
+    definition(
+        html,
+        "Decisions",
+        &bounded_names(
+            &explanation
+                .decision_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    definition(
+        html,
+        "Sources",
+        &bounded_names(
+            &explanation
+                .source_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    definition(
+        html,
+        "Analysis Snapshots",
+        &bounded_names(
+            &explanation
+                .analysis_snapshot_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    definition(
+        html,
+        "Repository Snapshots",
+        &bounded_names(
+            &explanation
+                .repository_snapshot_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    definition(
+        html,
+        text(request.locale, "Known gaps", "알려진 빈틈"),
+        &bounded_names(&explanation.known_gaps, 6, request.locale),
+    );
+    html.push_str("</dl></details></article>");
+}
+
+fn definition(html: &mut String, term: &str, description: &str) {
+    html.push_str(&format!(
+        "<div><dt>{}</dt><dd>{}</dd></div>",
+        escape(term),
+        escape(description)
+    ));
+}
+
+const fn explanation_kind_key(kind: UnderstandingExplanationKind) -> &'static str {
+    match kind {
+        UnderstandingExplanationKind::Component => "component",
+        UnderstandingExplanationKind::Relationship => "relationship",
+        UnderstandingExplanationKind::Flow => "flow",
+        UnderstandingExplanationKind::DecisionImpact => "decision-impact",
+        UnderstandingExplanationKind::Gap => "gap",
+    }
+}
+
+fn explanation_evidence_class_label(
+    class: UnderstandingEvidenceClass,
+    locale: ViewerLocale,
+) -> &'static str {
+    match class {
+        UnderstandingEvidenceClass::StructuralFact => text(locale, "structural fact", "구조 사실"),
+        UnderstandingEvidenceClass::SemanticResult => {
+            text(locale, "semantic result", "의미 분석 결과")
+        }
+        UnderstandingEvidenceClass::CanonicalDecision => {
+            text(locale, "canonical Decision", "canonical 결정")
+        }
+        UnderstandingEvidenceClass::CapabilityGap => text(locale, "capability gap", "기능 빈틈"),
+    }
 }
 
 fn render_narrative_availability(
@@ -3185,7 +3363,7 @@ fn escape(value: &str) -> String {
 }
 
 const STYLE: &str = r#"<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line{stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line{stroke:#c084fc;stroke-dasharray:6 4}.diagram-edge path{fill:#94a3b8}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line{stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line{stroke:#c084fc;stroke-dasharray:6 4}.diagram-edge path{fill:#94a3b8}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
 @media (max-width:44rem){main{padding:1rem}.level-nav{display:grid;grid-template-columns:1fr}.level-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid,.understanding-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.05rem}.button-row button,button{width:100%}}
 </style>"#;
 

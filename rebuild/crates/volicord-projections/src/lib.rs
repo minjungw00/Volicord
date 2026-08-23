@@ -41,6 +41,7 @@ pub use recall::{
 pub use trigger::{RecallTriggerOutcome, SessionRecallTrigger};
 pub use understanding::{
     build_project_understanding, ProjectUnderstanding, UnderstandingArchitecture,
-    UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingNextStep,
+    UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
+    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
     UnderstandingOmission, UnderstandingWork,
 };

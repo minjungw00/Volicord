@@ -232,15 +232,113 @@ fn arbitrary_generated_language_instruction_cannot_become_html_language_syntax()
 fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     let (temporary, viewer, project) = setup();
     fs::write(
-        temporary.path().join("service.py"),
-        "def run():\n    return 'ok'\n",
+        temporary.path().join("package.json"),
+        "{\"name\":\"grounded-viewer\",\"type\":\"module\"}\n",
+    )
+    .expect("write package fixture");
+    fs::write(
+        temporary.path().join("tsconfig.json"),
+        "{\"compilerOptions\":{\"strict\":true,\"target\":\"ES2022\"},\"include\":[\"src\"]}\n",
+    )
+    .expect("write TypeScript configuration fixture");
+    fs::create_dir(temporary.path().join("src")).expect("create source fixture directory");
+    fs::write(
+        temporary.path().join("src/service.ts"),
+        "export function run(): string { return 'ok'; }\n",
     )
     .expect("write service fixture");
     fs::write(
-        temporary.path().join("app.py"),
-        "from service import run\n\ndef main():\n    return run()\n",
+        temporary.path().join("src/app.ts"),
+        "import { run } from './service.js';\nexport function main(): string { return run(); }\n",
     )
     .expect("write application fixture");
+    let mut store = Store::open(viewer.operations().layout().canonical_store()).expect("store");
+    let revision = store.get_project(project).expect("Project").revision;
+    let user_turn = store
+        .record_source(
+            OperationId::from_bytes([71; 16]),
+            project,
+            SourceDraft {
+                expected_project_revision: revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "viewer-test".into(),
+                    session: "session-grounded-explanation".into(),
+                    turn: "Keep the application entry point in src/app.ts".into(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "owner".into(),
+                },
+                observer: None,
+                availability: Availability::Available,
+            },
+        )
+        .expect("user Source")
+        .value;
+    let question = store
+        .create_question(
+            OperationId::from_bytes([72; 16]),
+            project,
+            QuestionDraft {
+                expected_project_revision: revision,
+                prompt_basis: "Where should the application entry point remain?".into(),
+                source_basis: vec![user_turn.id],
+                dependencies: Vec::new(),
+                alternatives: vec![QuestionAlternative {
+                    key: "app-file".into(),
+                    label: "Keep src/app.ts".into(),
+                    consequence: "src/app.ts remains the declared entry-point scope".into(),
+                }],
+                recommendation: AgentRecommendation {
+                    alternative_key: Some("app-file".into()),
+                    rationale: "the current application flow starts there".into(),
+                    source_basis: vec![user_turn.id],
+                },
+                trade_offs: Vec::new(),
+                uncertainty: Vec::new(),
+                material_scope: vec!["src/app.ts".into()],
+                materiality: QuestionMateriality::Material,
+                presentation_order: 1,
+                why_it_matters_now: "the Viewer should connect Decisions to code".into(),
+                established_facts: Vec::new(),
+                assumptions: Vec::new(),
+                known_limits: Vec::new(),
+                what_the_answer_unlocks: vec!["grounded Decision impact".into()],
+                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                research_state: QuestionResearchState::ReadyToAsk,
+            },
+        )
+        .expect("Question")
+        .value;
+    let decision = store
+        .record_question_response(
+            OperationId::from_bytes([73; 16]),
+            project,
+            QuestionResponseDraft {
+                expected_project_revision: revision,
+                question_id: question.id,
+                question_revision: question.revision,
+                user_turn_source: UserTurnSource::Existing(user_turn.id),
+                displayed_alternative_keys: vec!["app-file".into()],
+                displayed_recommendation_key: Some("app-file".into()),
+                response: ExplicitQuestionResponse::Choice {
+                    alternative_key: "app-file".into(),
+                    user_rationale: Some("keep the entry point easy to find".into()),
+                },
+                applicability: ApplicabilityScope {
+                    paths: vec!["src/app.ts".into()],
+                    components: Vec::new(),
+                    work_contexts: Vec::new(),
+                },
+                assumptions: Vec::new(),
+                revisit_triggers: Vec::new(),
+            },
+        )
+        .expect("Decision response")
+        .value
+        .decision
+        .expect("Decision");
+    drop(store);
     viewer
         .operations()
         .analyze(project, Vec::new())
@@ -257,6 +355,16 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     );
     assert!(!understanding.architecture.components.is_empty());
     assert!(!understanding.architecture.relationships.is_empty());
+    assert!(understanding.generated_interpretations.is_empty());
+    assert!(!understanding.deterministic_explanations.is_empty());
+    assert!(understanding
+        .deterministic_explanations
+        .iter()
+        .any(|item| !item.relation_basis.is_empty()));
+    let canonical_before = viewer
+        .operations()
+        .canonical_basis(project)
+        .expect("canonical basis before rendering");
 
     let request = ViewerRequest {
         project_id: project,
@@ -274,6 +382,28 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     assert!(html.contains("role=\"img\" aria-labelledby="));
     assert!(html.contains("<title id=\"architecture-topology-title\""));
     assert!(html.contains("<desc id=\"architecture-topology-description\""));
+    assert!(html.contains("data-statement-role=\"deterministic-derived\""));
+    assert!(html.contains("data-explanation-kind=\"component\""));
+    assert!(
+        html.contains("data-explanation-kind=\"flow\""),
+        "available deterministic explanations: {:?}",
+        understanding
+            .deterministic_explanations
+            .iter()
+            .map(|item| (item.kind, item.english.as_str(), &item.relation_basis))
+            .collect::<Vec<_>>()
+    );
+    assert!(html.contains("data-explanation-kind=\"decision-impact\""));
+    assert!(html.contains("Inspect evidence basis"));
+    assert!(html.contains(&decision.id.to_string()));
+    assert!(html.contains("not proof of implementation"));
+    assert!(!html.contains("class=\"interpretation-layer\""));
+    for explanation in &understanding.deterministic_explanations {
+        assert!(html.contains(&format!("data-explanation-id=\"{}\"", explanation.identity)));
+        for relation in &explanation.relation_basis {
+            assert!(html.contains(relation));
+        }
+    }
     for relation in &understanding.architecture.relationships {
         if relation.target_entity.is_some() {
             assert!(
@@ -303,6 +433,28 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     assert!(!snapshot.contains("<script"));
     assert!(!snapshot.contains(" href="));
     assert!(!snapshot.contains(" src="));
+    assert!(snapshot.contains("data-statement-role=\"deterministic-derived\""));
+    let korean = viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::Korean,
+                explanation_level: ExplanationLevel::Deep,
+                requested_language: "한국어".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("render Korean grounded explanation Viewer")
+        .html;
+    assert!(korean.contains("결정론적 설명"));
+    assert!(korean.contains("근거 확인"));
+    assert!(korean.contains("target은 resolve되지 않았습니다"));
+    let canonical_after = viewer
+        .operations()
+        .canonical_basis(project)
+        .expect("canonical basis after rendering");
+    assert_eq!(canonical_before, canonical_after);
 }
 
 #[test]
