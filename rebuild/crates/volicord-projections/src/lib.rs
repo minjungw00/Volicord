@@ -9,6 +9,7 @@ mod documents;
 mod project;
 mod recall;
 mod trigger;
+mod understanding;
 
 pub use candidate_inspection::{
     inspect_candidate, CandidateContentAccess, CandidateContentOmission, CandidateInspection,
@@ -36,3 +37,8 @@ pub use recall::{
     ResumeBrief,
 };
 pub use trigger::{RecallTriggerOutcome, SessionRecallTrigger};
+pub use understanding::{
+    build_project_understanding, ProjectUnderstanding, UnderstandingArchitecture,
+    UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingNextStep,
+    UnderstandingOmission, UnderstandingWork,
+};

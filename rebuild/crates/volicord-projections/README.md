@@ -22,6 +22,12 @@ documents.
   aggregation. Deterministic section-bound omissions are represented once per
   affected scope with an exact omitted count; Analysis and Source degradation
   stays explicit and retains its concrete identity.
+- `ProjectUnderstanding` is the bounded, human-oriented read model over that
+  immutable projection. It directly separates current, completed, and
+  remaining work; grounded next steps; active Decision rationale and code
+  impact; material Questions; risks and limits; evidence/freshness; and
+  deterministic architecture topology. Agent interpretations remain in a
+  separate collection and never become canonical or repository facts.
 - Document generation produces Project & Architecture Guide, Decision Report,
   Implementation Plan, and Handoff / Resume bodies. Structural Fact, Semantic
   Result, and explicit Agent Interpretation claims remain distinct and carry

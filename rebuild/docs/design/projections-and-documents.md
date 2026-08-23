@@ -61,6 +61,16 @@ Record identity, raw envelope, hash, provider request, audit field와 lifecycle 
 inspectable하게 유지하되 ordinary reading hierarchy 뒤의 explicit detail/audit disclosure에
 둔다. 이 hierarchy는 grounding을 삭제하거나 low-level inspection을 막지 않는다.
 
+Production read interface의 `ProjectUnderstanding`은 bounded section으로
+`goals_and_why`, `current_work`, `completed_work`, `remaining_work`, `next_steps`,
+`active_decisions`, `open_questions`, `risks_assumptions_and_limits`, inspectable
+architecture `components`/`relationships`, `generated_interpretations`와 `evidence`를
+분리해 제공한다. Architecture topology는 Repository Intelligence entity/relation을
+복제한 read basis이고, realization이나 Viewer가 node/edge를 추가하는 authority가
+아니다. 각 section bound의 exact omitted count를 별도로 제공하며 이 read interface는
+canonical, Candidate, analyzer, publication 또는 provider mutation capability를 받지
+않는다.
+
 ## 2. First project-scoped automatic Recall
 
 새 agent session의 첫 `project-scoped` 요청에서는 bounded, read-only Recall을

@@ -18,12 +18,13 @@ use volicord_inquiry::{
     CandidateRetention, CandidateStore, SubmissionOutcome,
 };
 use volicord_projections::{
-    build_project_projection, generate_documents, BriefDecisionState, CandidateContentAccess,
-    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateDependencyState,
-    CandidateProjectionInput, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
-    FixedLocale, GeneratorIdentity, MapRelationClass, OutputFormat, ProjectProjection,
-    ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssueKind,
-    RequestedDestination, GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+    build_project_projection, build_project_understanding, generate_documents, BriefDecisionState,
+    CandidateContentAccess, CandidateDependencyFailure, CandidateDependencyFailureKind,
+    CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionKind, ClaimClass,
+    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, MapRelationClass, OutputFormat,
+    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth,
+    ProjectionIssueKind, RequestedDestination, UnderstandingBound,
+    GENERATED_DOCUMENT_METADATA_VERSION, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
     RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 use volicord_repository_intelligence::{
@@ -676,6 +677,60 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .iter()
         .any(|item| item.kind == CanonicalInspectionKind::ContextItem));
     assert_eq!(projection.candidate_inspection.len(), 1);
+
+    let understanding = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 64,
+        },
+    );
+    assert_eq!(understanding.project_id, project.id);
+    assert_eq!(understanding.goals_and_why.len(), 1);
+    assert_eq!(
+        understanding.current_work.as_ref().map(|work| work.state),
+        Some(WorkState::Completed)
+    );
+    assert_eq!(understanding.completed_work.len(), 1);
+    assert!(understanding.remaining_work.is_empty());
+    assert!(understanding
+        .next_steps
+        .iter()
+        .any(|step| step.text == "review source-grounding gaps"));
+    assert!(understanding.active_decisions.iter().any(|decision| {
+        decision.decision.decision_id == active_decision.id
+            && !decision.affected_code_entities.is_empty()
+            && !decision.link_basis.is_empty()
+    }));
+    assert!(understanding
+        .open_questions
+        .iter()
+        .any(|question| question.question_id == open_question.id));
+    assert!(!understanding.architecture.components.is_empty());
+    assert!(!understanding.architecture.relationships.is_empty());
+    assert_eq!(understanding.generated_interpretations.len(), 1);
+    assert!(!understanding.evidence.snapshots.is_empty());
+    assert_eq!(canonical, canonical_before);
+    assert_eq!(candidates, candidates_before);
+
+    let tightly_bounded = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 1,
+        },
+    );
+    assert_eq!(
+        tightly_bounded,
+        build_project_understanding(
+            &projection,
+            UnderstandingBound {
+                max_items_per_section: 1,
+            }
+        )
+    );
+    assert!(tightly_bounded
+        .omissions
+        .iter()
+        .all(|omission| omission.omitted_count > 0));
 
     let explicit_destination = repository_root.join("generated/guide.md");
     let before_files = files_under(&repository_root);
