@@ -279,7 +279,8 @@
       "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
-      "change continuation produces a relevant repository change after Recall and inspection plus separate numeric-exit validation after that change",
+      "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
+      "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
       "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
       "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
       "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify"

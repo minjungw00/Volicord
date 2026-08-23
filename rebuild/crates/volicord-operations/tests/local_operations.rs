@@ -362,6 +362,90 @@ fn clean_git_baseline_attributes_a_later_changed_file() -> Result<(), Box<dyn st
 
 #[cfg(target_os = "linux")]
 #[test]
+fn resumed_pre_write_baseline_attributes_source_document_and_configuration_without_python_caches(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Resume attribution fixture", Some(&repository))?
+        .project;
+    let goal = operations.record_current_host_user_context(
+        project.id,
+        "codex".into(),
+        "fresh-resume-attribution".into(),
+        "Continue the bounded repository work".into(),
+        ContextItemRole::Goal,
+        "Continue the bounded repository work".into(),
+    )?;
+
+    let ProjectResolution::Found {
+        project: resolved, ..
+    } = operations.resolve_project(&repository)?
+    else {
+        return Err("fresh resume did not resolve the existing Project".into());
+    };
+    assert_eq!(resolved.id, project.id);
+    assert_eq!(
+        operations.recall(resolved.id)?.goals_and_why[0].statement,
+        "Continue the bounded repository work"
+    );
+    let baseline = operations
+        .analyze(resolved.id, Vec::new())?
+        .value
+        .ok_or("resume baseline analysis has no value")?
+        .analysis
+        .identity;
+
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn resumed() -> u32 { 43 }\n",
+    )?;
+    fs::write(repository.join("README.md"), "# Resumed work\n")?;
+    fs::write(
+        repository.join("pyproject.toml"),
+        "[tool.pytest.ini_options]\n",
+    )?;
+    fs::create_dir_all(repository.join(".pytest_cache/v/cache"))?;
+    fs::write(repository.join(".pytest_cache/v/cache/nodeids"), "[]\n")?;
+    fs::create_dir_all(repository.join(".mypy_cache/3.12"))?;
+    fs::write(repository.join(".mypy_cache/3.12/module.json"), "{}\n")?;
+
+    let checkpoint = operations.record_grounded_checkpoint(grounded_draft(
+        resolved.id,
+        goal.context_item_id,
+        baseline,
+    ))?;
+    assert_eq!(
+        checkpoint.changed_paths,
+        ["README.md", "pyproject.toml", "src/lib.rs"]
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn generated_python_cache_only_activity_has_no_meaningful_checkpoint_changed_path(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_temporary, operations, repository) = fixture()?;
+    initialize_git(&repository)?;
+    let project = operations
+        .initialize_project("Cache-only attribution fixture", Some(&repository))?
+        .project;
+    let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
+
+    fs::create_dir_all(repository.join(".pytest_cache/v/cache"))?;
+    fs::write(repository.join(".pytest_cache/v/cache/nodeids"), "[]\n")?;
+    fs::create_dir_all(repository.join(".mypy_cache/3.12"))?;
+    fs::write(repository.join(".mypy_cache/3.12/module.json"), "{}\n")?;
+
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert!(checkpoint.changed_paths.is_empty());
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn unchanged_pre_existing_dirty_path_is_not_current_work() -> Result<(), Box<dyn std::error::Error>>
 {
     let (_temporary, operations, repository) = fixture()?;

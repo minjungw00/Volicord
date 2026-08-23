@@ -382,8 +382,13 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("call project_resolve first"));
     assert!(first_512.contains("recall must succeed before inspecting, editing, or continuing"));
     assert!(first_512.contains("not_found result requires explicit project_initialize"));
-    assert!(first_512.contains("current-host Goal"));
-    assert!(first_512.contains("repository baseline"));
+    assert!(instructions.contains("current-host Goal"));
+    assert!(
+        instructions.contains("call repository_analyze before the first ordinary repository write")
+    );
+    assert!(instructions.contains("retain its returned pre-work Analysis Snapshot identity"));
+    assert!(instructions
+        .contains("Never use an Analysis Snapshot first captured after the bounded work"));
     assert!(instructions.contains(volicord_operations::MATERIAL_DECISION_SCREENING));
     assert!(instructions.contains("a repository/environment fact is researched"));
     assert!(instructions.contains("accepted contract or applicable Decision is applied"));
@@ -445,6 +450,10 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["inquiry_frontier"].contains("present each actual alternative"));
     assert!(descriptions["decision_record"].contains("not a user Decision"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
+    assert!(
+        descriptions["repository_analyze"].contains("before the first ordinary repository write")
+    );
+    assert!(descriptions["repository_analyze"].contains("pre-work Checkpoint baseline"));
     assert!(descriptions["repository_analyze"]
         .contains("repository_source_id as the canonical source_ids basis"));
     assert!(descriptions["repository_analyze"]
@@ -453,6 +462,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["repository_analyze"].contains("background_semantic_operation"));
     assert!(descriptions["checkpoint_record"].contains("numeric exit status"));
     assert!(descriptions["checkpoint_record"].contains("output-only text is insufficient"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("first captured after the bounded work is conceptually invalid"));
 }
 
 #[test]
@@ -473,6 +484,7 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
     );
     assert_eq!(response["result"]["isError"], false, "{response}");
     let result = structured(&response);
+    assert_eq!(result["project_id"], project);
     assert!(matches!(
         result["state"].as_str(),
         Some("succeeded" | "partial")

@@ -99,6 +99,7 @@ REAL_SESSION_CHECKS = (
     "fresh_resume_without_prior_context",
     "repository_bound_project_resolution",
     "recall_precedes_inspection_and_continuation",
+    "resume_pre_work_repository_baseline",
     "recall_matches_checkpoint_decision_and_context",
     "meaningful_recalled_continuation",
     "canonical_bundle_and_provenance",
@@ -873,7 +874,8 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
-            "change continuation produces a relevant repository change after Recall and inspection plus separate numeric-exit validation after that change",
+            "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
+            "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
             "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
             "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
             "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify",
@@ -1795,7 +1797,11 @@ def relevant_continuation_paths(paths: list[str], next_step: Any) -> list[str]:
     generic = {"src", "source", "test", "tests", "lib", "crates", "file", "code"}
     result: list[str] = []
     for path in paths:
-        if looks_like_synthetic_marker(path) or Path(path).suffix.lower() in {".txt", ".marker"}:
+        if (
+            looks_like_synthetic_marker(path)
+            or Path(path).suffix.lower() in {".txt", ".marker"}
+            or generated_repository_path(path)
+        ):
             continue
         candidate = Path(path)
         terms = {path.casefold(), candidate.name.casefold(), candidate.stem.casefold()}
@@ -1803,6 +1809,21 @@ def relevant_continuation_paths(paths: list[str], next_step: Any) -> list[str]:
         if any(term not in generic and term in lowered for term in terms):
             result.append(path)
     return sorted(set(result))
+
+
+def generated_repository_path(path: str) -> bool:
+    return any(
+        part in {
+            "build",
+            "dist",
+            "target",
+            ".cache",
+            "__pycache__",
+            ".pytest_cache",
+            ".mypy_cache",
+        }
+        for part in Path(path).parts
+    )
 
 
 def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: int | None) -> bool:
@@ -2041,7 +2062,29 @@ def build_work_blocker_result(
         if call.arguments.get("role") == "goal"
         and call.arguments.get("user_turn") == descriptor.get("work_user_task")
     ]
-    baseline_calls = capture.successful_calls("repository_analyze")
+    baseline_call = unique_call(capture, "repository_analyze")
+    checkpoint_call = terminal_checkpoint_call(capture)
+    meaningful_changes = meaningful_work_path_observations(capture)
+    first_work_change = min(
+        (observation.sequence for observation in meaningful_changes),
+        default=None,
+    )
+    baseline_analysis_id = (
+        baseline_call.result.get("analysis_snapshot_id")
+        if baseline_call is not None
+        else None
+    )
+    baseline_grounding_observed = (
+        baseline_call is not None
+        and first_work_change is not None
+        and checkpoint_call is not None
+        and nonempty_string(baseline_analysis_id)
+        and baseline_call.arguments.get("project_id")
+        == baseline_call.result.get("project_id")
+        and baseline_call.completion_sequence < first_work_change
+        and checkpoint_call.arguments.get("baseline_analysis_snapshot_id")
+        == baseline_analysis_id
+    )
     candidate_actions = {
         call.arguments.get("action")
         for call in capture.successful_calls("candidate_manage")
@@ -2060,7 +2103,7 @@ def build_work_blocker_result(
     observed = {
         "project_session_entry": bool(project_entries),
         "goal_context_operation": bool(goal_calls),
-        "repository_baseline_operation": bool(baseline_calls),
+        "repository_baseline_operation": baseline_grounding_observed,
         "behavior_class_evidence": descriptor.get("behavior_class") in BEHAVIOR_CLASSES,
         "material_question_candidate_lifecycle": material_question_lifecycle,
         "explicit_current_host_user_decision_operation": bool(
@@ -2611,7 +2654,7 @@ def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
         if any(
             not looks_like_synthetic_marker(path)
             and Path(path).suffix.lower() not in {".txt", ".marker"}
-            and not any(part in {"build", "dist", "target"} for part in Path(path).parts)
+            and not generated_repository_path(path)
             for path in observation.paths
         )
     ]
@@ -2937,7 +2980,11 @@ def real_session_evidence(
         and baseline_call.arguments.get("project_id") == bundle.project_id
         and baseline_call.result.get("project_id") == bundle.project_id
         and nonempty_string(baseline_analysis_id)
-        and initialize_call.sequence < goal_call.sequence < baseline_call.sequence < first_work_change
+        and initialize_call.sequence
+        < goal_call.sequence
+        < baseline_call.sequence
+        <= baseline_call.completion_sequence
+        < first_work_change
         and any(command.sequence < baseline_call.sequence for command in clean_statuses)
     )
 
@@ -2960,6 +3007,7 @@ def real_session_evidence(
     )
     resolve_call = unique_call(resume_capture, "project_resolve")
     recall_call = unique_call(resume_capture, "recall")
+    resume_baseline_call = unique_call(resume_capture, "repository_analyze")
     resolved_binding = (
         resolve_call.result.get("binding")
         if resolve_call is not None and isinstance(resolve_call.result.get("binding"), dict)
@@ -3026,6 +3074,43 @@ def real_session_evidence(
         and first_inspection is not None
         and not prior_inspections
         and recall_call.completion_sequence < first_inspection
+    )
+    first_resume_write = min(
+        (
+            observation.sequence
+            for observation in resume_capture.path_observations
+            if any(not generated_repository_path(path) for path in observation.paths)
+        ),
+        default=None,
+    ) if resume_capture is not None else None
+    resume_baseline_analysis_id = (
+        resume_baseline_call.result.get("analysis_snapshot_id")
+        if resume_baseline_call is not None
+        else None
+    )
+    resume_baseline_checkpoint_calls = (
+        resume_capture.successful_calls("checkpoint_record")
+        if resume_capture is not None
+        else []
+    )
+    resume_baseline_ok = (
+        resume_capture is not None
+        and bundle is not None
+        and recall_call is not None
+        and resume_baseline_call is not None
+        and nonempty_string(resume_baseline_analysis_id)
+        and resume_baseline_call.arguments.get("project_id") == bundle.project_id
+        and resume_baseline_call.result.get("project_id") == bundle.project_id
+        and recall_call.completion_sequence < resume_baseline_call.sequence
+        and (
+            first_resume_write is None
+            or resume_baseline_call.completion_sequence < first_resume_write
+        )
+        and all(
+            call.arguments.get("baseline_analysis_snapshot_id")
+            == resume_baseline_analysis_id
+            for call in resume_baseline_checkpoint_calls
+        )
     )
     turns_before_recall = (
         [turn for turn in resume_capture.user_turns if turn.sequence < recall_call.sequence]
@@ -3129,6 +3214,7 @@ def real_session_evidence(
         recall_match_ok
         and fresh_ok
         and ordering_ok
+        and resume_baseline_ok
         and bool(relevant_resume_paths)
         and resume_validation_ok
     )
@@ -3158,6 +3244,7 @@ def real_session_evidence(
         recall_match_ok
         and fresh_ok
         and ordering_ok
+        and resume_baseline_ok
         and checkpoint_work_state == "completed"
         and recalled_work_state == "completed"
         and not continuation_paths
@@ -3191,6 +3278,7 @@ def real_session_evidence(
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
         "repository_bound_project_resolution": evidence_check(references_present, resolution_ok),
         "recall_precedes_inspection_and_continuation": evidence_check(references_present, ordering_ok),
+        "resume_pre_work_repository_baseline": evidence_check(references_present, resume_baseline_ok),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
         "meaningful_recalled_continuation": evidence_check(references_present, continuation_ok),
         **{
@@ -3209,6 +3297,8 @@ def real_session_evidence(
             "fresh_resume_session": fresh_ok,
             "repository_bound_project_resolution": resolution_ok,
             "recall_before_inspection_and_continuation": ordering_ok,
+            "pre_work_repository_baseline": resume_baseline_ok,
+            "pre_work_analysis_snapshot_id": resume_baseline_analysis_id,
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
             "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
@@ -4835,6 +4925,9 @@ def real_session_fixture(
     repository_source = "0f" * 16
     candidate = "10" * 16
     binding = "11" * 16
+    resume_baseline_analysis = "12" * 32
+    resume_baseline_repository = "13" * 32
+    resume_repository_source = "14" * 16
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
@@ -5064,7 +5157,7 @@ def real_session_fixture(
     patch_text = (
         "*** Begin Patch\n"
         + "".join(
-            f"*** Update File: /phase8/repository/{path}\n@@\n-old\n+new\n"
+            f"*** Update File: {repository_cwd}/{path}\n@@\n-old\n+new\n"
             for path in work_paths
         )
         + "*** End Patch"
@@ -5287,7 +5380,7 @@ def real_session_fixture(
                 "stderr": "",
                 "success": True,
                 "changes": {
-                    f"/phase8/repository/{path}": {
+                    f"{repository_cwd}/{path}": {
                         "type": "update",
                         "unified_diff": "@@ -1 +1 @@\n-old\n+new\n",
                         "move_path": None,
@@ -5353,10 +5446,15 @@ def real_session_fixture(
     resolve_call = f"{kind}-resolve-call-{cycle}"
     recall_call = f"{kind}-recall-call-{cycle}"
     inspect_call = f"{kind}-inspect-call-{cycle}"
+    resume_baseline_call = f"{kind}-resume-baseline-call-{cycle}"
     resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
     resume_verification_call = f"{kind}-resume-verification-call-{cycle}"
     resume_verification_command = "python3 -m unittest tests.test_resume"
-    resume_patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/resume.rs\n@@\n+continued\n*** End Patch"
+    resume_patch_text = (
+        "*** Begin Patch\n"
+        f"*** Update File: {repository_cwd}/src/resume.rs\n"
+        "@@\n+continued\n*** End Patch"
+    )
     resume_events = [
         session_meta(resume_session),
         activation_message(),
@@ -5449,6 +5547,23 @@ def real_session_fixture(
             inspect_call,
             {"health": "available", "overview": {}, "repository_map": {}, "decision_context_code": [], "issues": [], "read_only": True},
         ),
+        mcp_call(
+            resume_turn,
+            resume_baseline_call,
+            "repository_analyze",
+            {"project_id": project},
+            fallback="??",
+        ),
+        custom_output(
+            resume_turn,
+            resume_baseline_call,
+            {
+                "project_id": project,
+                "analysis_snapshot_id": resume_baseline_analysis,
+                "repository_snapshot_id": resume_baseline_repository,
+                "repository_source_id": resume_repository_source,
+            },
+        ),
         custom_call(
             resume_turn,
             resume_patch_call,
@@ -5464,7 +5579,7 @@ def real_session_fixture(
                 "stderr": "",
                 "success": True,
                 "changes": {
-                    "/phase8/repository/src/resume.rs": {
+                    f"{repository_cwd}/src/resume.rs": {
                         "type": "update",
                         "unified_diff": "@@ -0,0 +1 @@\n+continued\n",
                         "move_path": None,
@@ -8097,6 +8212,54 @@ def self_test() -> int:
         absent_resolution, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["repository_bound_project_resolution"] != "failed":
         raise AssertionError("fresh resume without repository-bound Project resolution qualified")
+
+    absent_resume_baseline = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(absent_resume_baseline, "resume", "resume-baseline-call")
+    if real_session_evidence(
+        absent_resume_baseline, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["resume_pre_work_repository_baseline"] != "failed":
+        raise AssertionError("fresh resume without a retained pre-work baseline qualified")
+
+    post_edit_resume_baseline = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    post_edit_path, post_edit_events = capture_events(post_edit_resume_baseline, "resume")
+    baseline_indexes = [
+        index
+        for index, value in enumerate(post_edit_events)
+        if "resume-baseline-call" in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    baseline_values = [post_edit_events[index] for index in baseline_indexes]
+    without_baseline = [
+        value
+        for index, value in enumerate(post_edit_events)
+        if index not in set(baseline_indexes)
+    ]
+    patch_index = next(
+        index
+        for index, value in enumerate(without_baseline)
+        if value.get("payload", {}).get("type") == "patch_apply_end"
+    )
+    post_edit_events = (
+        without_baseline[: patch_index + 1]
+        + baseline_values
+        + without_baseline[patch_index + 1 :]
+    )
+    store_capture(
+        post_edit_resume_baseline,
+        "resume",
+        post_edit_path,
+        post_edit_events,
+    )
+    if real_session_evidence(
+        post_edit_resume_baseline,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["resume_pre_work_repository_baseline"] != "failed":
+        raise AssertionError("first post-edit resume analysis qualified as the baseline")
 
     replacement_project = real_session_fixture("volicord", 1, revision, evidence_directory)
     replacement_path, replacement_events = capture_events(replacement_project, "resume")

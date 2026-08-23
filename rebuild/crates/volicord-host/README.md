@@ -20,7 +20,13 @@ the canonical Source and Context Item identities; a `goal` recorded this way is
 available to ordinary Recall without creating a Decision.
 
 `repository_analyze` returns the existing Analysis and Repository Snapshot
-identities needed to bound an ordinary work unit. For Git worktrees, that exact
+identities needed to bound an ordinary work unit. Every fresh initialized or
+resumed meaningful repository-work session calls it after initialization or
+successful Recall and before the first ordinary repository write, then retains
+the returned Analysis Snapshot identity for its eventual grounded Checkpoint.
+An Analysis Snapshot first captured after the bounded work is not a valid
+conceptual baseline; current provenance cannot prove edit ordering, so callers
+must preserve this pre-write order rather than infer it later. For Git worktrees, that exact
 Analysis Snapshot owns the machine-observed baseline dirty paths; callers do
 not submit them. `checkpoint_record` takes the canonical Goal Context identity
 and baseline Analysis identity, observes the repository again, and derives

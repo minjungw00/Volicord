@@ -59,7 +59,7 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
 
 fn server_instructions() -> String {
     format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize, a current-host Goal through context_record, and a repository baseline through repository_analyze. After Recall or baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, use candidate_manage for Candidate research, readiness, and promotion, inquiry_frontier for the promoted Question, and decision_record for the explicit current-host response. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize and a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, use candidate_manage for Candidate research, readiness, and promotion, inquiry_frontier for the promoted Question, and decision_record for the explicit current-host response. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
     )
 }
 
@@ -298,6 +298,7 @@ impl HostAdapter {
     }
 
     fn repository_analyze(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
         let excludes = args
             .get("excluded_paths")
             .and_then(Value::as_array)
@@ -311,7 +312,7 @@ impl HostAdapter {
             .unwrap_or_default();
         let result = self
             .operations
-            .analyze(project(args)?, excludes)
+            .analyze(project_id, excludes)
             .map_err(operation_error)?;
         let analysis_snapshot_id = result
             .value
@@ -326,7 +327,7 @@ impl HostAdapter {
             .as_ref()
             .map(|value| value.analysis.repository_source.identity().to_string());
         Ok(
-            json!({"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
+            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
         )
     }
 
@@ -1257,7 +1258,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (
-            "Run authorized local repository inventory and structural analysis. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. It performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
+            "Run authorized local repository inventory and structural analysis. In every fresh initialized or resumed meaningful work session, call this after initialization or successful Recall and before the first ordinary repository write; retain the returned analysis_snapshot_id as that bounded session's pre-work Checkpoint baseline. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. It performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1307,7 +1308,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "checkpoint_record" => (
-            "Record a grounded Checkpoint from a canonical Goal, repository baseline/current analysis, applicable Decisions, and truthful verification evidence. A passed or failed verification requires the numeric exit status from the same actually observed command execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
+            "Record a grounded Checkpoint from a canonical Goal, the exact pre-work Analysis Snapshot retained for this bounded session, current analysis, applicable Decisions, and truthful verification evidence. The baseline_analysis_snapshot_id must identify an analysis captured after initialization or successful Recall and before the first ordinary repository write; a snapshot first captured after the bounded work is conceptually invalid even when snapshot provenance cannot prove edit ordering. A passed or failed verification requires the numeric exit status from the same actually observed command execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

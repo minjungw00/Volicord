@@ -501,6 +501,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 ### 기대 사용자 경험
 
 - 에이전트는 일반 도구로 작업하며 ordinary write permission을 요청하지 않는다.
+- Fresh initialized/resumed session은 initialization 또는 Recall 뒤, 첫 ordinary repository
+  write 전에 local repository analysis baseline을 만들고 그 exact Analysis Snapshot identity를
+  bounded work의 Checkpoint까지 유지한다.
 - 변경된 path와 적용 Decision을 구분한다.
 - existing dirty change를 현재 작업 결과로 잘못 귀속하지 않는다.
 - 의미 있는 작업 완료, pause 또는 handoff에서 하나의 Checkpoint를 만든다.
@@ -525,6 +528,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 일반 파일 쓰기를 Write Ticket이나 동등한 ceremony로 차단
 - 실행하지 않은 테스트를 성공으로 기록
 - 기존 dirty file을 현재 Checkpoint 변경으로 자동 포함
+- bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
 - user review가 없다는 이유만으로 실제 완료 상태 왜곡
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint 생성
 
@@ -532,6 +536,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - Checkpoint serialization과 restart
 - changed path basis
+- fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - work, verification, review와 acceptance 상태 독립성
 - known limits와 non-goals 보존
 - session-end Candidate와 canonical promotion 차이

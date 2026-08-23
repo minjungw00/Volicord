@@ -140,6 +140,8 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
     let repository = tempfile::tempdir()?;
     fs::create_dir_all(repository.path().join("vendor/lib"))?;
     fs::create_dir_all(repository.path().join("target/debug"))?;
+    fs::create_dir_all(repository.path().join("python/.pytest_cache/v/cache"))?;
+    fs::create_dir_all(repository.path().join("python/.mypy_cache/3.12"))?;
     fs::create_dir_all(repository.path().join("private"))?;
     fs::write(repository.path().join("main.py"), "print('ok')\n")?;
     fs::write(repository.path().join("image.bin"), [0_u8, 1, 2, 3])?;
@@ -149,6 +151,26 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
     fs::write(
         repository.path().join("target/debug/out.rs"),
         "fn generated() {}\n",
+    )?;
+    fs::write(
+        repository
+            .path()
+            .join("python/.pytest_cache/v/cache/nodeids"),
+        "[]\n",
+    )?;
+    fs::write(
+        repository
+            .path()
+            .join("python/.mypy_cache/3.12/module.json"),
+        "{}\n",
+    )?;
+    fs::write(
+        repository.path().join("python/pyproject.toml"),
+        "[tool.pytest.ini_options]\n",
+    )?;
+    fs::write(
+        repository.path().join("python/test_feature.py"),
+        "def test_feature():\n    assert True\n",
     )?;
     fs::write(
         repository.path().join("private/secret.txt"),
@@ -162,12 +184,37 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
     assert_classification(&analysis, "ignored.log", InventoryClassification::Ignored)?;
     assert_classification(&analysis, "vendor", InventoryClassification::Vendor)?;
     assert_classification(&analysis, "target", InventoryClassification::Generated)?;
+    assert_classification(
+        &analysis,
+        "python/.pytest_cache",
+        InventoryClassification::Generated,
+    )?;
+    assert_classification(
+        &analysis,
+        "python/.mypy_cache",
+        InventoryClassification::Generated,
+    )?;
     assert_classification(&analysis, "private", InventoryClassification::Excluded)?;
     assert_classification(&analysis, "image.bin", InventoryClassification::Binary)?;
     assert!(snapshot
         .excluded_areas
         .iter()
         .any(|area| area.path == "ignored.log"));
+    for meaningful in ["python/pyproject.toml", "python/test_feature.py"] {
+        assert_classification(&analysis, meaningful, InventoryClassification::Included)?;
+    }
+    assert!(!analysis
+        .inventory
+        .entries
+        .iter()
+        .any(
+            |entry| entry.area.path == "python/.pytest_cache/v/cache/nodeids"
+                || entry.area.path == "python/.mypy_cache/3.12/module.json"
+        ));
+    assert!(!analysis.structural_facts.iter().any(|fact| {
+        fact.entity.area.path.starts_with("python/.pytest_cache/")
+            || fact.entity.area.path.starts_with("python/.mypy_cache/")
+    }));
     let overall = analysis
         .capabilities
         .iter()

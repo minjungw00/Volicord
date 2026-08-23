@@ -784,9 +784,12 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         raise CampaignError("resume capture must come from a distinct fresh session")
     resolves = capture.successful_calls("project_resolve")
     recalls = capture.successful_calls("recall")
+    baselines = capture.successful_calls("repository_analyze")
     if len(resolves) != 1 or len(recalls) != 1 or capture.successful_calls("project_initialize"):
         raise CampaignError("resume must resolve one existing Project and must not initialize a replacement")
-    resolve, recall = resolves[0], recalls[0]
+    if len(baselines) != 1:
+        raise CampaignError("resume must establish exactly one pre-work repository analysis baseline")
+    resolve, recall, baseline = resolves[0], recalls[0], baselines[0]
     project_id = resolve.result.get("project_id")
     if (
         resolve.result.get("status") != "found"
@@ -795,8 +798,11 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         or project_id != recall.result.get("project_id")
         or project_id != state.get("project_id")
         or resolve.sequence >= recall.sequence
+        or baseline.arguments.get("project_id") != project_id
+        or baseline.result.get("project_id") != project_id
+        or recall.completion_sequence >= baseline.sequence
     ):
-        raise CampaignError("resume Project resolution/Recall identity or ordering is invalid")
+        raise CampaignError("resume Project resolution/Recall/baseline identity or ordering is invalid")
     if any(
         command.sequence < recall.sequence and command_is_repository_inspection(command.parsed_command)
         for command in capture.commands
@@ -806,6 +812,8 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         for call in capture.calls(operation)
     ) or any(item.sequence < recall.sequence for item in capture.path_observations):
         raise CampaignError("resume inspected or changed the repository before Recall")
+    if any(item.sequence <= baseline.completion_sequence for item in capture.path_observations):
+        raise CampaignError("resume changed the repository before the pre-work analysis baseline completed")
     return str(project_id)
 
 

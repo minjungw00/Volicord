@@ -481,7 +481,14 @@ fn classify_path(
         values.insert(InventoryClassification::Vendor);
     } else if matches!(
         basename,
-        "target" | "dist" | "build" | "coverage" | ".cache" | "__pycache__"
+        "target"
+            | "dist"
+            | "build"
+            | "coverage"
+            | ".cache"
+            | "__pycache__"
+            | ".pytest_cache"
+            | ".mypy_cache"
     ) {
         values.remove(&InventoryClassification::Included);
         values.insert(InventoryClassification::Generated);

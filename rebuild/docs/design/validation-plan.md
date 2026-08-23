@@ -722,6 +722,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - large context with truncation
 - stale Source와 superseded Decision
 - ordinary work with unrelated dirty changes
+- fresh/resumed work에서 Recall 뒤 첫 ordinary repository write 전 Analysis Snapshot baseline
+- bounded work 뒤 처음 만든 Analysis Snapshot을 Checkpoint baseline으로 제출하는 rollout
 - completed, paused와 handoff boundary
 - verification pass, fail와 not-run
 - pending/promoted/dismissed/expired Candidate와 Candidate Inspection degradation
@@ -733,6 +735,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - omitted count와 reason
 - repeated Decision/Question rate
 - dirty change attribution
+- pre-write baseline/first-write/Checkpoint baseline identity ordering
 - Checkpoint false-positive/false-negative
 - work/verification/review state separation
 - Candidate promotion authorization/disposition과 inspection attribute completeness
@@ -744,6 +747,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - first project-scoped request에서 bounded brief를 제공한다.
 - active, stale, superseded와 unavailable context를 구분한다.
 - existing dirty changes를 current Checkpoint 변경으로 포함하지 않는다.
+- fresh/resumed meaningful work는 first ordinary repository write 전에 만든 exact Analysis
+  Snapshot을 Checkpoint baseline으로 사용하며 first post-work analysis는 이를 대신하지 않는다.
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint를 만들지 않는다.
 - new session이 goal, rationale, current state, open Questions와 next step을 복구한다.
 - Candidate Inspection이 existence, kind, provenance, collection scope, retention/expiry,
@@ -937,6 +942,13 @@ Project와 같으며 current binding identity/revision을 포함해야 한다. �
 Recall은 이 successful resolution 뒤, repository inspection/continuation 전에 발생한다.
 Resume session은 identity를 얻기 위해 `project_initialize`로 replacement Project를
 만들 수 없다. Work/resume session의 global distinctness 조건은 그대로 유지한다.
+
+Fresh resume session은 successful Recall 뒤 local `repository_analyze` baseline을 만들고
+그 Analysis Snapshot identity를 첫 ordinary repository write 전에 보존한다. Change
+continuation의 eventual grounded Checkpoint는 이 exact pre-write identity를 사용하며 first
+post-edit analysis는 baseline으로 qualification되지 않는다. Current provenance가 edit ordering을
+deterministically 증명하지 못하므로 timestamp나 dirty-state heuristic으로 이를 대체하지 않고
+rollout operation order와 exact identity linkage로 검증한다.
 
 Resume continuation은 두 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
 relevant repository change와 그 뒤의 별도 numeric-exit validation을 요구한다.
