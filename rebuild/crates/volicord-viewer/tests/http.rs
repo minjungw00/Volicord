@@ -114,7 +114,9 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     assert!(overview.contains("fr-CA"));
     assert!(deep.contains("data-explanation-level=\"deep\""));
     assert!(deep.contains("프로젝트 개요"));
-    assert!(deep.contains("절대 대상 경로"));
+    assert!(deep.contains("요청 언어 본문"));
+    assert!(deep.contains("사용 불가"));
+    assert!(!deep.contains("절대 대상 경로"));
     assert_ne!(overview, deep);
 
     let source = server

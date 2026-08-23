@@ -12,10 +12,11 @@ use volicord_operations::{
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
-    BriefDecisionState, CandidateDependencyState, CanonicalInspectionKind, ClaimClass,
-    DocumentKind, DocumentRequest, DocumentSet, FixedLocale, GeneratorIdentity, InspectionHealth,
-    MapRelationClass, OutputFormat, ProjectProjection, ProjectionHealth, ProjectionIssueKind,
-    RequestedDestination,
+    build_project_understanding, BriefDecisionState, CandidateDependencyState,
+    CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
+    GeneratorIdentity, InspectionHealth, MapRelation, MapRelationClass, NarrativeRealizationState,
+    OutputFormat, ProjectProjection, ProjectUnderstanding, ProjectionHealth, ProjectionIssueKind,
+    RequestedDestination, UnderstandingBound,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -157,6 +158,12 @@ impl ViewerAdapter {
             .operations
             .project_projection(request.project_id)
             .map_err(|error| ViewerError::new(format!("cannot build Project view: {error}")))?;
+        let understanding = build_project_understanding(
+            &projection,
+            UnderstandingBound {
+                max_items_per_section: 32,
+            },
+        );
         let health = self.operations.health(Some(request.project_id));
         let privacy = self.operations.privacy_status(request.project_id).ok();
         let document_request = DocumentRequest {
@@ -251,6 +258,7 @@ impl ViewerAdapter {
                 request.locale
             ))
         ));
+        render_project_understanding(&mut html, request, &understanding, &documents);
         render_overview(&mut html, request, &projection);
         render_status(&mut html, request, &projection, &health);
         render_decisions(&mut html, request, &projection);
@@ -409,9 +417,578 @@ impl ViewerAdapter {
             .documents(project_id, &request)
             .map_err(|error| ViewerError::new(error.to_string()))?;
         let document = select_document(&documents, kind);
+        if let NarrativeRealizationState::Unavailable { reason } =
+            &document.metadata.narrative_realization
+        {
+            return Err(ViewerError::new(format!(
+                "requested-language document unavailable: {reason}"
+            )));
+        }
         self.operations
             .publish_document(document, format, destination)
             .map_err(|error| ViewerError::new(error.to_string()))
+    }
+}
+
+fn render_project_understanding(
+    html: &mut String,
+    request: &ViewerRequest,
+    understanding: &ProjectUnderstanding,
+    documents: &DocumentSet,
+) {
+    section_start(
+        html,
+        "project-understanding",
+        text(request.locale, "Project Understanding", "프로젝트 이해"),
+    );
+    html.push_str(&format!(
+        "<p class=\"understanding-lead\"><strong>{}</strong> — {}</p>",
+        escape(&understanding.project_name),
+        escape(text(
+            request.locale,
+            "A grounded explanation of purpose, work, Decisions, code, and what comes next.",
+            "목적, 작업, 결정, 코드와 다음 단계를 근거에 따라 설명합니다."
+        ))
+    ));
+    render_narrative_availability(html, request, documents);
+
+    heading(
+        html,
+        3,
+        text(
+            request.locale,
+            "What this project is for",
+            "이 프로젝트의 목적",
+        ),
+    );
+    if understanding.goals_and_why.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No grounded Project goal is recorded.",
+                "근거가 있는 프로젝트 목표가 기록되지 않았습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<ul class=\"understanding-list verified-facts\" data-statement-role=\"verified-canonical\">");
+        for goal in understanding
+            .goals_and_why
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(html, &goal.statement);
+        }
+        html.push_str("</ul>");
+    }
+
+    heading(
+        html,
+        3,
+        text(request.locale, "What has happened", "무엇이 이루어졌는가"),
+    );
+    if understanding.completed_work.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No completed work Checkpoint is recorded.",
+                "완료된 작업 체크포인트가 기록되지 않았습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<ul class=\"understanding-list completed-work\">");
+        for work in understanding
+            .completed_work
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            let change = work.meaningful_change.as_deref().unwrap_or(&work.goal);
+            list_item(
+                html,
+                &format!(
+                    "{} — {}: {}",
+                    work.goal,
+                    text(request.locale, "meaningful change", "의미 있는 변경"),
+                    change
+                ),
+            );
+        }
+        html.push_str("</ul>");
+    }
+
+    heading(
+        html,
+        3,
+        text(
+            request.locale,
+            "Current state and remaining work",
+            "현재 상태와 남은 작업",
+        ),
+    );
+    if let Some(work) = &understanding.current_work {
+        html.push_str(&format!(
+            "<p class=\"work-state\" data-work-state=\"{}\"><strong>{}:</strong> {} — {}</p>",
+            work_state_key(work.state),
+            escape(text(request.locale, "Current work", "현재 작업")),
+            escape(work_state_label(work.state, request.locale)),
+            escape(&work.goal)
+        ));
+    } else {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No current work Checkpoint is recorded.",
+                "현재 작업 체크포인트가 기록되지 않았습니다.",
+            ),
+        );
+    }
+    if !understanding.remaining_work.is_empty() {
+        html.push_str("<ul class=\"understanding-list remaining-work\">");
+        for work in understanding
+            .remaining_work
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(html, &format!("{} — {}", work.goal, work.next_step));
+        }
+        html.push_str("</ul>");
+    }
+    if understanding.next_steps.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No grounded next step is recorded.",
+                "근거가 있는 다음 단계가 기록되지 않았습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<ol class=\"understanding-list next-steps\">");
+        for step in understanding
+            .next_steps
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(html, &step.text);
+        }
+        html.push_str("</ol>");
+    }
+
+    heading(
+        html,
+        3,
+        text(
+            request.locale,
+            "Major Decisions and why",
+            "주요 결정과 이유",
+        ),
+    );
+    if understanding.active_decisions.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No active Decisions are recorded.",
+                "활성 결정이 기록되지 않았습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<div class=\"understanding-grid decisions\">");
+        for decision in understanding
+            .active_decisions
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            html.push_str(&format!(
+                "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\"><h4>{}</h4><p><strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p></article>",
+                escape(&decision_choice_label(&decision.decision.choice, request.locale)),
+                escape(text(request.locale, "Rationale", "근거")),
+                escape(decision.decision.user_rationale.as_deref().unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음"))),
+                escape(text(request.locale, "Affected code", "영향받는 코드")),
+                escape(&bounded_names(&decision.affected_code_entities, 4, request.locale)),
+                escape(text(request.locale, "Known link gaps", "알려진 연결 빈틈")),
+                escape(&bounded_names(&decision.known_link_gaps, 3, request.locale))
+            ));
+        }
+        html.push_str("</div>");
+    }
+
+    heading(
+        html,
+        3,
+        text(request.locale, "Open material Questions", "열린 주요 질문"),
+    );
+    if understanding.open_questions.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No open Questions.",
+                "열린 질문이 없습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<ul class=\"understanding-list open-questions\">");
+        for question in understanding
+            .open_questions
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(
+                html,
+                &format!(
+                    "{} — {}: {}",
+                    question.prompt,
+                    text(request.locale, "unlocks", "해제되는 작업"),
+                    bounded_names(&question.what_the_answer_unlocks, 3, request.locale)
+                ),
+            );
+        }
+        html.push_str("</ul>");
+    }
+
+    heading(
+        html,
+        3,
+        text(
+            request.locale,
+            "How the architecture and code connect",
+            "아키텍처와 코드의 연결 방식",
+        ),
+    );
+    html.push_str("<div class=\"fact-legend\" aria-label=\"");
+    html.push_str(&escape(text(
+        request.locale,
+        "Explanation provenance legend",
+        "설명 출처 범례",
+    )));
+    html.push_str("\"><span class=\"verified-fact\" data-statement-role=\"verified-fact\">");
+    html.push_str(&escape(text(
+        request.locale,
+        "Verified fact",
+        "검증된 사실",
+    )));
+    html.push_str("</span><span class=\"generated-interpretation\" data-statement-role=\"generated-interpretation\">");
+    html.push_str(&escape(text(
+        request.locale,
+        "Generated interpretation",
+        "생성된 해석",
+    )));
+    html.push_str("</span></div>");
+    render_grounded_diagram(
+        html,
+        request,
+        understanding,
+        "architecture-topology",
+        text(
+            request.locale,
+            "Component and dependency topology",
+            "컴포넌트 및 의존성 토폴로지",
+        ),
+        |_| true,
+    );
+    render_grounded_diagram(
+        html,
+        request,
+        understanding,
+        "flow-topology",
+        text(
+            request.locale,
+            "Inspectable code flow",
+            "검사 가능한 코드 흐름",
+        ),
+        is_flow_relation,
+    );
+
+    if !understanding.generated_interpretations.is_empty() {
+        html.push_str(
+            "<div class=\"interpretation-layer\" data-statement-role=\"generated-interpretation\">",
+        );
+        heading(
+            html,
+            4,
+            text(request.locale, "Generated interpretations", "생성된 해석"),
+        );
+        for interpretation in understanding
+            .generated_interpretations
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            html.push_str(&format!(
+                "<article class=\"generated-interpretation\"><p>{}</p><p class=\"muted\"><strong>{}:</strong> {}</p></article>",
+                escape(&interpretation.text),
+                escape(text(request.locale, "Known gaps", "알려진 빈틈")),
+                escape(&bounded_names(&interpretation.known_gaps, 3, request.locale))
+            ));
+        }
+        html.push_str("</div>");
+    }
+
+    render_understanding_evidence(html, request, understanding);
+    section_end(html);
+}
+
+fn render_narrative_availability(
+    html: &mut String,
+    request: &ViewerRequest,
+    documents: &DocumentSet,
+) {
+    let state = &documents
+        .project_architecture_guide
+        .metadata
+        .narrative_realization;
+    match state {
+        NarrativeRealizationState::FixedLocale => html.push_str(&format!(
+            "<p class=\"narrative-state state\" data-state=\"complete\"><strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Narrative language", "서술 언어")),
+            escape(text(request.locale, "fixed locale realized", "고정 locale로 실현됨"))
+        )),
+        NarrativeRealizationState::Unavailable { reason } => html.push_str(&format!(
+            "<p class=\"narrative-state state\" data-state=\"unavailable\"><strong>{}:</strong> {} — {}. {}</p>",
+            escape(text(request.locale, "Requested-language narrative", "요청 언어 서술")),
+            escape(&request.requested_language),
+            escape(text(request.locale, "unavailable", "사용 불가")),
+            escape(reason)
+        )),
+        NarrativeRealizationState::HostRealized { .. } => html.push_str(&format!(
+            "<p class=\"narrative-state state\" data-state=\"complete\"><strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Narrative language", "서술 언어")),
+            escape(text(request.locale, "active-host realized", "현재 host가 실현함"))
+        )),
+    }
+}
+
+fn render_grounded_diagram(
+    html: &mut String,
+    request: &ViewerRequest,
+    understanding: &ProjectUnderstanding,
+    diagram_id: &str,
+    title: &str,
+    include_relation: fn(&MapRelation) -> bool,
+) {
+    let limit = match request.explanation_level {
+        ExplanationLevel::Overview => 8,
+        ExplanationLevel::Working => 16,
+        ExplanationLevel::Deep => 24,
+    };
+    let nodes = understanding
+        .architecture
+        .components
+        .iter()
+        .take(limit)
+        .collect::<Vec<_>>();
+    let positions = nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| {
+            let column = index % 3;
+            let row = index / 3;
+            (node.identity.as_str(), (40 + column * 280, 45 + row * 110))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let relations = understanding
+        .architecture
+        .relationships
+        .iter()
+        .filter(|relation| include_relation(relation))
+        .filter(|relation| {
+            positions.contains_key(relation.source_entity.as_str())
+                && relation
+                    .target_entity
+                    .as_deref()
+                    .is_some_and(|target| positions.contains_key(target))
+        })
+        .collect::<Vec<_>>();
+    html.push_str(&format!(
+        "<figure class=\"grounded-diagram\" data-diagram=\"{}\"><figcaption>{}</figcaption>",
+        escape(diagram_id),
+        escape(title)
+    ));
+    if nodes.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No inspectable repository nodes are available for this diagram.",
+                "이 도식에 사용할 검사 가능한 저장소 노드가 없습니다.",
+            ),
+        );
+        html.push_str("</figure>");
+        return;
+    }
+    let rows = nodes.len().div_ceil(3);
+    let height = 90 + rows * 110;
+    let title_id = format!("{diagram_id}-title");
+    let description_id = format!("{diagram_id}-description");
+    html.push_str(&format!(
+        "<svg viewBox=\"0 0 900 {height}\" role=\"img\" aria-labelledby=\"{} {}\" xmlns=\"http://www.w3.org/2000/svg\"><title id=\"{}\">{}</title><desc id=\"{}\">{}</desc><defs><marker id=\"{}-arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\"/></marker></defs>",
+        escape(&title_id),
+        escape(&description_id),
+        escape(&title_id),
+        escape(title),
+        escape(&description_id),
+        escape(text(request.locale, "Every displayed node and arrow comes from an inspectable Repository Intelligence entity or relation.", "표시된 모든 노드와 화살표는 검사 가능한 Repository Intelligence 엔터티 또는 관계에서 옵니다.")),
+        escape(diagram_id)
+    ));
+    for relation in &relations {
+        let Some(target) = relation.target_entity.as_deref() else {
+            continue;
+        };
+        let Some((source_x, source_y)) = positions.get(relation.source_entity.as_str()) else {
+            continue;
+        };
+        let Some((target_x, target_y)) = positions.get(target) else {
+            continue;
+        };
+        html.push_str(&format!(
+            "<g class=\"diagram-edge\" data-relation-id=\"{}\" data-relation-class=\"{}\" data-source-entity=\"{}\" data-target-entity=\"{}\"><title>{}: {} → {}</title><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" marker-end=\"url(#{}-arrow)\"/></g>",
+            escape(&relation.identity),
+            map_relation_class_key(relation.class),
+            escape(&relation.source_entity),
+            escape(target),
+            escape(&relation.kind),
+            escape(&relation.source_entity),
+            escape(target),
+            source_x + 110,
+            source_y + 32,
+            target_x + 110,
+            target_y + 32,
+            escape(diagram_id)
+        ));
+    }
+    for node in &nodes {
+        let Some((x, y)) = positions.get(node.identity.as_str()) else {
+            continue;
+        };
+        html.push_str(&format!(
+            "<g class=\"diagram-node\" data-entity-id=\"{}\" data-analysis-snapshot=\"{}\"><title>{} — {}</title><rect x=\"{}\" y=\"{}\" width=\"220\" height=\"64\" rx=\"8\"/><text x=\"{}\" y=\"{}\">{}</text><text class=\"diagram-node-kind\" x=\"{}\" y=\"{}\">{}</text></g>",
+            escape(&node.identity),
+            node.analysis_snapshot,
+            escape(&node.display_name),
+            escape(&code_entity_kind_label(&node.kind, request.locale)),
+            x,
+            y,
+            x + 12,
+            y + 27,
+            escape(&diagram_label(&node.display_name)),
+            x + 12,
+            y + 49,
+            escape(&code_entity_kind_label(&node.kind, request.locale))
+        ));
+    }
+    html.push_str("</svg>");
+    if relations.is_empty() {
+        html.push_str(&format!(
+            "<p class=\"diagram-gap\">{}</p>",
+            escape(text(
+                request.locale,
+                "No inspectable relationship of this kind is available; no edge was inferred.",
+                "이 종류의 검사 가능한 관계가 없어 edge를 추론하지 않았습니다."
+            ))
+        ));
+    }
+    html.push_str(&format!(
+        "<p class=\"bound\">{} {} · {} {}.</p></figure>",
+        nodes.len(),
+        escape(text(request.locale, "grounded nodes", "근거 있는 노드")),
+        relations.len(),
+        escape(text(request.locale, "grounded edges", "근거 있는 edge"))
+    ));
+}
+
+fn render_understanding_evidence(
+    html: &mut String,
+    request: &ViewerRequest,
+    understanding: &ProjectUnderstanding,
+) {
+    html.push_str(&format!(
+        "<details class=\"understanding-evidence\"><summary>{}</summary><p>{}: {} · {}: {} · {}: {}</p>",
+        escape(text(request.locale, "Grounding, freshness, and known gaps", "근거, 최신성 및 알려진 빈틈")),
+        escape(text(request.locale, "Sources", "Source")),
+        understanding.evidence.sources.len(),
+        escape(text(request.locale, "Analysis snapshots", "Analysis Snapshot")),
+        understanding.evidence.snapshots.len(),
+        escape(text(request.locale, "Known issues", "알려진 문제")),
+        understanding.evidence.issues.len()
+    ));
+    if understanding.known_limits.is_empty() && understanding.architecture.gaps.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No additional known limit is reported.",
+                "추가로 보고된 알려진 한계가 없습니다.",
+            ),
+        );
+    } else {
+        html.push_str("<ul class=\"gap-list\">");
+        for limit in understanding
+            .known_limits
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(html, limit);
+        }
+        for gap in understanding
+            .architecture
+            .gaps
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(html, &format!("{} — {}", gap.area, gap.reason));
+        }
+        html.push_str("</ul>");
+    }
+    if request.explanation_level == ExplanationLevel::Deep {
+        html.push_str("<ul class=\"audit-list source-basis\">");
+        for source in understanding.evidence.sources.iter().take(20) {
+            list_item(
+                html,
+                &format!("Source {} — {:?}", source.source.id, source.freshness),
+            );
+        }
+        html.push_str("</ul>");
+    }
+    html.push_str("</details>");
+}
+
+fn is_flow_relation(relation: &MapRelation) -> bool {
+    [
+        "CallsSyntactically",
+        "Imports",
+        "Includes",
+        "References",
+        "ResolvesTo",
+        "InstantiatedBy",
+    ]
+    .iter()
+    .any(|kind| relation.kind.contains(kind))
+}
+
+fn diagram_label(value: &str) -> String {
+    let mut label = value.chars().take(28).collect::<String>();
+    if value.chars().count() > 28 {
+        label.push('…');
+    }
+    label
+}
+
+const fn map_relation_class_key(class: MapRelationClass) -> &'static str {
+    match class {
+        MapRelationClass::StructuralFact => "structural-fact",
+        MapRelationClass::SemanticResult => "semantic-result",
+    }
+}
+
+const fn work_state_key(state: WorkState) -> &'static str {
+    match state {
+        WorkState::InProgress => "in-progress",
+        WorkState::Paused => "paused",
+        WorkState::Completed => "completed",
+        WorkState::Abandoned => "abandoned",
+        WorkState::Superseded => "superseded",
     }
 }
 
@@ -1397,6 +1974,17 @@ fn render_documents(
             document.metadata.included_decisions.len(),
             document.metadata.used_sources.len()
         ));
+        if let NarrativeRealizationState::Unavailable { reason } =
+            &document.metadata.narrative_realization
+        {
+            html.push_str(&format!(
+                "<p class=\"state\" data-state=\"unavailable\"><strong>{}:</strong> {}. {}</p></details>",
+                escape(text(request.locale, "Requested-language body", "요청 언어 본문")),
+                escape(text(request.locale, "unavailable", "사용 불가")),
+                escape(reason)
+            ));
+            continue;
+        }
         for section in &document.body.sections {
             html.push_str(&format!(
                 "<section class=\"preview-section\"><h3>{}</h3>",
@@ -1456,7 +2044,14 @@ fn render_documents(
         html.push_str("</details>");
     }
     html.push_str("</div>");
-    if let Some(request_authenticity) = request_authenticity {
+    let export_available = !matches!(
+        documents
+            .project_architecture_guide
+            .metadata
+            .narrative_realization,
+        NarrativeRealizationState::Unavailable { .. }
+    );
+    if let Some(request_authenticity) = request_authenticity.filter(|_| export_available) {
         html.push_str(&format!(
             "<form class=\"action-form\" method=\"post\" action=\"/documents/export\"><fieldset><legend>{}</legend><label>{} <select name=\"kind\">",
             escape(text(request.locale, "Export generated document", "생성 문서 내보내기")),
@@ -1476,6 +2071,15 @@ fn render_documents(
             escape(text(request.locale, "Export", "내보내기"))
         ));
         empty_state(html, text(request.locale, "Export writes only to an explicit absolute destination and never adopts the document automatically.", "내보내기는 명시한 절대 경로에만 쓰며 문서를 자동 채택하지 않습니다."));
+    } else if !export_available {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "Export is unavailable until the active host supplies a grounded requested-language realization.",
+                "현재 host가 근거 있는 요청 언어 실현을 제공할 때까지 내보내기를 사용할 수 없습니다.",
+            ),
+        );
     }
     section_end(html);
 }
@@ -2581,8 +3185,8 @@ fn escape(value: &str) -> String {
 }
 
 const STYLE: &str = r#"<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
-@media (max-width:44rem){main{padding:1rem}.level-nav{display:grid;grid-template-columns:1fr}.level-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list{padding-left:1.05rem}.button-row button,button{width:100%}}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line{stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line{stroke:#c084fc;stroke-dasharray:6 4}.diagram-edge path{fill:#94a3b8}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
+@media (max-width:44rem){main{padding:1rem}.level-nav{display:grid;grid-template-columns:1fr}.level-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid,.understanding-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.05rem}.button-row button,button{width:100%}}
 </style>"#;
 
 #[allow(dead_code)]

@@ -14,6 +14,7 @@ use volicord_operations::{
     ConfirmationDecision, GuardedEffectCategory, GuardedEffectDraft, GuardedRisk, LocalOperations,
     RequestingProvenance, RuntimeLayout,
 };
+use volicord_projections::{build_project_understanding, UnderstandingBound};
 use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRequest};
 
 fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
@@ -96,7 +97,7 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
                 project_id: project,
                 locale: ViewerLocale::English,
                 explanation_level: ExplanationLevel::Deep,
-                requested_language: "fr-CA".into(),
+                requested_language: "en".into(),
                 guarded_request: None,
             },
             "test-request-authenticity",
@@ -112,6 +113,7 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
     assert_eq!(repository_entries_before, repository_entries_after);
     assert!(page.html.starts_with("<!doctype html><html lang=\"en\">"));
     for expected in [
+        "Project Understanding",
         "Project overview",
         "Repository Map",
         "Current Decisions",
@@ -121,17 +123,23 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         "Privacy and provider",
         "Document preview / export",
         "Health and usable capability",
-        "fr-CA",
+        "Narrative language",
+        "fixed locale realized",
     ] {
         assert!(page.html.contains(expected), "missing {expected}");
     }
     let overview = page.html.find("id=\"project-overview\"").expect("overview");
+    let understanding = page
+        .html
+        .find("id=\"project-understanding\"")
+        .expect("Project Understanding");
     let decisions = page.html.find("id=\"decisions\"").expect("decisions");
     let health = page.html.find("id=\"health\"").expect("health");
     let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
     let repository = page.html.find("id=\"repository-map\"").expect("repository");
     assert!(
-        overview < health
+        understanding < overview
+            && overview < health
             && health < decisions
             && decisions < checkpoints
             && checkpoints < repository
@@ -155,6 +163,8 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
     assert!(page.html.contains("class=\"document-preview\""));
     assert!(page.html.contains("class=\"preview-section\""));
     assert!(!page.html.contains("<pre>"));
+    assert!(page.html.contains("data-statement-role=\"verified-fact\""));
+    assert!(page.html.contains("data-diagram=\"architecture-topology\""));
 }
 
 #[test]
@@ -212,6 +222,87 @@ fn arbitrary_generated_language_instruction_cannot_become_html_language_syntax()
         .html
         .contains("fr-CA&quot; data-unsafe=&quot;&lt;&amp;"));
     assert!(!page.html.contains("lang=\"fr-CA&quot;"));
+    assert!(page.html.contains("data-state=\"unavailable\""));
+    assert!(page.html.contains("no active-host narrative realizer"));
+    assert!(!page.html.contains("class=\"preview-section\""));
+    assert!(!page.html.contains("action=\"/documents/export\""));
+}
+
+#[test]
+fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
+    let (temporary, viewer, project) = setup();
+    fs::write(
+        temporary.path().join("service.py"),
+        "def run():\n    return 'ok'\n",
+    )
+    .expect("write service fixture");
+    fs::write(
+        temporary.path().join("app.py"),
+        "from service import run\n\ndef main():\n    return run()\n",
+    )
+    .expect("write application fixture");
+    viewer
+        .operations()
+        .analyze(project, Vec::new())
+        .expect("analyze diagram fixture");
+    let projection = viewer
+        .operations()
+        .project_projection(project)
+        .expect("Project projection");
+    let understanding = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 32,
+        },
+    );
+    assert!(!understanding.architecture.components.is_empty());
+    assert!(!understanding.architecture.relationships.is_empty());
+
+    let request = ViewerRequest {
+        project_id: project,
+        locale: ViewerLocale::English,
+        explanation_level: ExplanationLevel::Deep,
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let html = viewer
+        .render(&request, "test-request-authenticity")
+        .expect("render diagram Viewer")
+        .html;
+    assert!(html.contains("data-diagram=\"architecture-topology\""));
+    assert!(html.contains("data-diagram=\"flow-topology\""));
+    assert!(html.contains("role=\"img\" aria-labelledby="));
+    assert!(html.contains("<title id=\"architecture-topology-title\""));
+    assert!(html.contains("<desc id=\"architecture-topology-description\""));
+    for relation in &understanding.architecture.relationships {
+        if relation.target_entity.is_some() {
+            assert!(
+                html.contains(&format!("data-relation-id=\"{}\"", relation.identity)),
+                "missing inspectable relation {}",
+                relation.identity
+            );
+        }
+    }
+    for node in &understanding.architecture.components {
+        assert!(
+            html.contains(&format!("data-entity-id=\"{}\"", node.identity)),
+            "missing inspectable entity {}",
+            node.identity
+        );
+    }
+    for forbidden in ["<script", "cdn", "mermaid", "graphviz", " src=\""] {
+        assert!(!html.contains(forbidden), "found {forbidden}");
+    }
+    let snapshot = viewer
+        .render_snapshot(&request, TimestampMicros::from_unix_micros(777_000))
+        .expect("render grounded diagram snapshot")
+        .html;
+    assert!(snapshot.contains("data-viewer-mode=\"snapshot\""));
+    assert!(snapshot.contains("data-diagram=\"architecture-topology\""));
+    assert!(snapshot.contains("role=\"img\" aria-labelledby="));
+    assert!(!snapshot.contains("<script"));
+    assert!(!snapshot.contains(" href="));
+    assert!(!snapshot.contains(" src="));
 }
 
 #[test]

@@ -437,6 +437,17 @@ basis는 ordinary reading path를 방해하지 않는 closed audit disclosure에
 Snapshot 생성과 local publication은 background provider opt-in이나 external sharing/upload가
 아니며 자동 network transmission을 수행하지 않는다.
 
+Production Viewer의 first reading section은 `ProjectUnderstanding`의 goal/why,
+completed/current/remaining work, next step, active Decision rationale와 affected code,
+open material Question, risk/limit, architecture, interpretation과 evidence를 이 순서의
+human explanation으로 구성한다. Verified canonical/structural/semantic layer와 generated
+interpretation layer는 `data-statement-role`과 서로 다른 visual treatment로 구분한다.
+Component/dependency와 flow figure는 self-contained accessible inline SVG이며 각 node는
+Repository Intelligence entity, 각 edge는 resolved relation identity와 endpoint를
+`data-entity-id`/`data-relation-id`로 보존한다. Narrative realization은 이 topology를
+추가·삭제할 수 없다. Raw canonical rows, opaque identity와 exhaustive relation audit은
+deep 또는 closed evidence disclosure에 남는다.
+
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer
 framework 또는 conversion library를 선택하지 않는다. Output format은 canonical
 portable-context bundle format이나 storage schema가 아니다.

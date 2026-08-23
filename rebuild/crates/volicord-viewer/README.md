@@ -26,7 +26,10 @@ remains readable after the Runtime is no longer available. Sharing the file is
 a separate user-controlled action outside this command.
 
 Fixed product text is bundled in English and Korean. `--language` records an
-arbitrary requested generated-content language without an allowlist.
+arbitrary requested generated-content language without an allowlist. Because
+the local Viewer has no active-host realizer, an arbitrary language displays a
+truthful unavailable/degraded notice and never presents its fixed English body
+as requested-language success.
 
 The loopback HTTP surface renders current Project state for every `GET /`
 request. Query parameters select `level=overview|working|deep`, `locale=en|ko`,
@@ -35,8 +38,14 @@ supersession and forgetting, explicit document export, and exact Guarded
 confirmation forms submit to Local Operations; the viewer does not persist or
 reinterpret their domain state.
 
-`overview` and `working` lead with Goal, current work and verification,
-Decision consequence, open Questions, next step, and material degradation.
+Every level begins with the bounded `ProjectUnderstanding` read model: Goal and
+why, completed/current/remaining work, next steps, Decision rationale and code
+impact, material Questions, architecture, generated interpretations, evidence,
+freshness, and gaps. Inline accessible SVG component/dependency and flow
+diagrams are drawn only from inspectable entity/relation topology and require
+no JavaScript, CDN, or external renderer. `overview` and `working` lead with
+Goal, current work and verification, Decision consequence, open Questions,
+next step, and material degradation.
 Opaque identities, raw relations, canonical records, and detailed capability
 evidence are subordinate to `deep` or closed audit disclosure; they are not
 removed from the shared Project projection.
