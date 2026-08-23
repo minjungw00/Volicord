@@ -88,7 +88,7 @@ Artifacts
 
 보고서에는 raw 전체 source나 secret를 복제하지 않는다. 필요한 artifact는 ignored experiment output에 두고 maintained report에는 path, hash와 요약만 기록한다.
 
-### 3.1 Maintained final, V11과 documentation handoff lifecycle
+### 3.1 Maintained final, provider qualification, V11과 documentation handoff lifecycle
 
 Production/test candidate를 봉인하는 exact final, V11 acceptance와 그 결과를 해석하는
 documentation conclusion은 서로 다른 책임이다. Maintained lifecycle은 다음 한 방향이다.
@@ -97,6 +97,7 @@ documentation conclusion은 서로 다른 책임이다. Maintained lifecycle은 
 implementation and focused checks
 → admission gate
 → exact final once
+→ separately authorized production provider qualification once
 → same-session V11 once
 → sanitized evidence archive creation and independent verification
 → sanitized evidence capsule
@@ -105,7 +106,9 @@ implementation and focused checks
 
 `rebuild/scripts/validate admission`은 exact final을 시작하기 전에 독립 실행할 수 있는
 machine-readable preflight다. 현재 clean worktree와 candidate HEAD, validation runner와
-V11 self-check, required fixture identity/integrity, executable, disposable filesystem/runtime
+V11 self-check, architecture contracts, realistic Repository Intelligence, redesigned
+Dogfood campaign/harness와 provider qualification self-check, required fixture
+identity/integrity, executable, disposable filesystem/runtime
 home, repository-owned bounded disk estimate, loopback, Codex executable/authentication,
 technical external-network state와 maintained authenticated V11 transmission을 평가한다.
 Blocker가 하나라도 있으면 exact final command count와 official V11 command count는 모두
@@ -128,9 +131,12 @@ entry point다. Admission이 통과하면 gate parent process는 admission에서
 다시 확인하고 existing final owner의 ordered command vector를 정확히 한 번 실행한다.
 그 호출이 직접 반환한 새 `summary.json`만 읽으며 older ignored artifact를 검색하거나
 대체하지 않는다. 모든 exact command와 `failure_count = 0`을 확인한 경우에만 그 같은
-path와 HEAD를 existing V11 preflight에 전달한다. Preflight가 통과한 경우에만 official
+HEAD에서 separately authorized production-provider qualification을 정확히 한 번
+실행한다. 이 stage가 통과한 경우에만 final path와 HEAD를 existing V11 preflight에
+전달한다. Preflight가 통과한 경우에만 official
 V11을 정확히 한 번 실행하고 credential-retention audit을 수행한다. Final failure는
-final retry 또는 V11을 만들지 않고, V11 failure는 final retry를 만들지 않는다. Direct
+provider/V11이나 final retry를 만들지 않고, provider failure는 V11이나 final retry를
+만들지 않으며, V11 failure도 final/provider retry를 만들지 않는다. Direct
 `rebuild/scripts/validate final` invocation은 이 lifecycle을 우회할 수 없도록 거부한다.
 
 Exact final의 command vector, ordering, invocation count와 orchestration owner는 이 단일
@@ -171,6 +177,8 @@ stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 �
 - V11 status/result SHA-256, fixture identity, required-step/status count,
   `phase_8_ready`, credential-audit count/result, target별 authenticated Codex
   classification과 reported active Decision revisit-trigger ID
+- production provider qualification status/evidence SHA-256, exact provider/model/source
+  scope, usable success/degradation outcome와 raw material non-retention state
 - sanitized evidence archive filename/SHA-256/size/member count, independent verification
   status와 archive 이전 prerequisite completion state
 

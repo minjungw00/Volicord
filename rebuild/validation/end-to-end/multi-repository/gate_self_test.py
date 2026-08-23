@@ -54,11 +54,25 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
         ),
         "validation_runner_self_check": passed("validation_runner_self_check"),
         "v11_harness_self_check": passed("v11_harness_self_check"),
+        **{
+            name: passed(name)
+            for name in (
+                "architecture_contracts",
+                "architecture_contracts_self_test",
+                "repository_intelligence_realistic_qualification",
+                "dogfood_harness_self_test",
+                "dogfood_campaign_self_test",
+                "provider_qualification_self_test",
+            )
+        },
         "required_fixture_identities": passed(
             "required_fixture_identities",
             fixtures=[
                 {"id": "v01-python", "validation_id": "V01", "content_sha256": "a" * 64},
                 {"id": "v11-polyglot-medium", "validation_id": "V11", "content_sha256": "b" * 64},
+                {"id": "repository-intelligence-realistic-v1", "validation_id": "RI-REALISTIC", "content_sha256": "f" * 64},
+                {"id": "v12-current-codex-mcp-completion", "validation_id": "V12", "content_sha256": "1" * 64},
+                {"id": "v07-background-provider-bounded-rust", "validation_id": "V07", "content_sha256": "2" * 64},
             ],
         ),
         "fixture_manifest_integrity": passed("fixture_manifest_integrity"),
@@ -122,7 +136,14 @@ def synthetic_dependency_evidence() -> dict[str, Any]:
     }
 
 
-def admission(root: Path, *, authorization: str | None = None, loopback_failed: bool = False) -> dict[str, Any]:
+def admission(
+    root: Path,
+    *,
+    authorization: str | None = None,
+    provider_authorization: str | None = None,
+    provider_model: str | None = None,
+    loopback_failed: bool = False,
+) -> dict[str, Any]:
     overrides = admission_overrides()
     if loopback_failed:
         overrides["local_loopback"] = gate.check(
@@ -133,6 +154,8 @@ def admission(root: Path, *, authorization: str | None = None, loopback_failed: 
         )
     return gate.evaluate_admission(
         authorization_assertion=authorization,
+        provider_authorization_assertion=provider_authorization,
+        provider_model=provider_model,
         external_network="available",
         artifact_root=root,
         command_runner=unused_command_runner,
@@ -151,14 +174,16 @@ class Owners:
         final_passes: bool = True,
         preflight_passes: bool = True,
         v11_passes: bool = True,
+        provider_passes: bool = True,
         revisit_assessment: dict[str, Any] | None = None,
     ):
         self.root = root
         self.final_passes = final_passes
         self.preflight_passes = preflight_passes
         self.v11_passes = v11_passes
+        self.provider_passes = provider_passes
         self.revisit_assessment = revisit_assessment
-        self.counts = {"final": 0, "preflight": 0, "v11": 0, "audit": 0}
+        self.counts = {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
         self.final_path: Path | None = None
         self.preflight_path: Path | None = None
         self.v11_result: dict[str, Any] | None = None
@@ -197,6 +222,61 @@ class Owners:
             {"status": "passed" if self.preflight_passes else "failed"},
             {"exit_code": 0 if self.preflight_passes else 1},
         )
+
+    def provider(self, candidate_head: str) -> tuple[dict[str, Any] | None, dict[str, Any], Path]:
+        self.counts["provider"] += 1
+        path = self.root / "provider-evidence.json"
+        evidence = {
+            "schema_version": 1,
+            "qualification_id": "background-provider-openai-codex-v1",
+            "production_head": candidate_head,
+            "authorization": {
+                "assertion_id": gate.PROVIDER_AUTHORIZATION_ASSERTION,
+                "distinct_from_v11": True,
+                "supplied_by": "current_invocation",
+            },
+            "provider": {
+                "identity": "openai-codex",
+                "model": "synthetic-model",
+                "transport": "authenticated installed Codex CLI",
+                "provider_side_deletion": "unsupported_by_adapter",
+            },
+            "fixture": {
+                "id": "background-provider-bounded-rust-v1",
+                "source_count": 1,
+                "source_locator": "src/lib.rs",
+                "original_bytes": 632,
+                "transmitted_bytes": 632,
+                "content_sha256": "3" * 64,
+                "maintained_bytes": 632,
+            },
+            "success": {
+                "guarded_outcome": "dispatched_and_completed",
+                "provider_request_outcome": "completed",
+                "transmission_outcome": "transmitted",
+                "repository_snapshot": "4" * 64,
+                "analysis_snapshot": "5" * 64,
+                "semantic_annotation_count": 3,
+                "annotation_provenance_complete": True,
+            },
+            "degradation": {
+                "trigger": "configured executable unavailable",
+                "guarded_confirmation_consumed": True,
+                "provider_request_outcome": "provider_unavailable",
+                "transmission_outcome": "not_transmitted",
+                "local_canonical_continuity": True,
+            },
+            "retained_evidence": {
+                "source_body": False,
+                "provider_response_body": False,
+                "credential": False,
+            },
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(evidence), encoding="utf-8")
+        return (evidence if self.provider_passes else None), {
+            "exit_code": 0 if self.provider_passes else 1
+        }, path
 
     def v11(
         self,
@@ -254,6 +334,7 @@ def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners) -> t
         admission=admitted,
         final_commands=FINAL_COMMANDS,
         final_owner=owners.final,
+        provider_owner=owners.provider,
         preflight_owner=owners.preflight,
         v11_owner=owners.v11,
         audit_owner=owners.audit,
@@ -296,12 +377,18 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
 
-        loopback_blocked = admission(root / "loopback", authorization=gate.AUTHORIZATION_ASSERTION, loopback_failed=True)
+        loopback_blocked = admission(
+            root / "loopback",
+            authorization=gate.AUTHORIZATION_ASSERTION,
+            provider_authorization=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            provider_model="synthetic-model",
+            loopback_failed=True,
+        )
         owners = Owners(root / "loopback-owners")
         capsule, counts = run_orchestration(root / "loopback-gate", loopback_blocked, owners)
         assert capsule["blocking_classification"] == "environment_blocked"
         assert counts["final"] == 0 and counts["official_v11"] == 0
-        assert owners.counts == {"final": 0, "preflight": 0, "v11": 0, "audit": 0}
+        assert owners.counts == {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
 
         authorization_blocked = admission(root / "authorization")
         owners = Owners(root / "authorization-owners")
@@ -318,14 +405,31 @@ def main() -> int:
             for value in capsule["admission_checks"]
         )
 
-        admitted = admission(root / "admitted", authorization=gate.AUTHORIZATION_ASSERTION)
+        v11_only = admission(
+            root / "v11-only",
+            authorization=gate.AUTHORIZATION_ASSERTION,
+            provider_model="synthetic-model",
+        )
+        assert v11_only["blocking_classification"] == "authorization_blocked"
+        assert any(
+            check["name"] == "operator_provider_source_transmission_authorization"
+            and check["status"] == "authorization_blocked"
+            for check in v11_only["checks"]
+        )
+
+        admitted = admission(
+            root / "admitted",
+            authorization=gate.AUTHORIZATION_ASSERTION,
+            provider_authorization=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            provider_model="synthetic-model",
+        )
         assert admitted["eligible"] is True
         owners = Owners(root / "success-owners")
         old = root / "older-unrelated-final.json"
         old.write_text('{"outcome":"succeeded","failure_count":0}\n', encoding="utf-8")
         capsule, counts = run_orchestration(root / "success-gate", admitted, owners)
-        assert counts == {"final": 1, "preflight": 1, "official_v11": 1, "credential_audit": 1}
-        assert owners.counts == {"final": 1, "preflight": 1, "v11": 1, "audit": 1}
+        assert counts == {"final": 1, "provider_live_qualification": 1, "preflight": 1, "official_v11": 1, "credential_audit": 1}
+        assert owners.counts == {"final": 1, "provider": 1, "preflight": 1, "v11": 1, "audit": 1}
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
         pending_capsule = gate.stage_evidence_archive(capsule)
@@ -389,6 +493,7 @@ def main() -> int:
             "decision_revisit_trigger_assessment", "decision_revisit_trigger_source",
             "admission_checks", "pre_final_candidate_check", "execution_environment", "dependency_snapshot",
             "gate_configuration", "phase_8_ready",
+            "live_provider_qualification",
             "evidence_archive",
         }
         assert required_capsule_keys <= capsule.keys()
@@ -407,10 +512,14 @@ def main() -> int:
         assert configuration["argv"] == [
             "rebuild/scripts/validate", "gate", "--external-network", "available",
             "--authorize-external-transmission", gate.AUTHORIZATION_ASSERTION,
+            "--authorize-provider-source-transmission", gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            "--provider-model", "synthetic-model",
         ]
         assert configuration["technical_external_network_assertion"] == "available"
         assert configuration["authorization_assertion_id"] == gate.AUTHORIZATION_ASSERTION
+        assert configuration["provider_authorization_assertion_id"] == gate.PROVIDER_AUTHORIZATION_ASSERTION
         assert configuration["external_transmission"] == gate.EXTERNAL_TRANSMISSION
+        assert configuration["provider_external_transmission"] == gate.PROVIDER_EXTERNAL_TRANSMISSION
         assert set(configuration["same_session_artifact_flow"].values()) == {True}
         for sentinel in SECRET_SENTINELS:
             assert sentinel not in encoded
@@ -428,6 +537,23 @@ def main() -> int:
         assert capsule["final_summary_sha256"]
         assert capsule["official_v11"]["status"] == "not_run"
         assert capsule["authenticated_codex_outcomes"] == []
+        assert capsule["phase_8_ready"] is False
+
+        owners = Owners(root / "provider-failure-owners", provider_passes=False)
+        capsule, counts = run_orchestration(root / "provider-failure-gate", admitted, owners)
+        assert capsule["blocking_classification"] == "provider_live_qualification_failed"
+        assert counts == {
+            "final": 1,
+            "provider_live_qualification": 1,
+            "preflight": 0,
+            "official_v11": 0,
+            "credential_audit": 0,
+        }
+        assert owners.counts == {
+            "final": 1, "provider": 1, "preflight": 0, "v11": 0, "audit": 0,
+        }
+        assert capsule["live_provider_qualification"]["status"] == "failed"
+        assert capsule["official_v11"]["status"] == "not_run"
         assert capsule["phase_8_ready"] is False
 
         active_assessment = copy.deepcopy(harness.read_decision_revisit_assessment())
@@ -485,7 +611,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 15,
+        "scenarios": 16,
         "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

@@ -306,6 +306,10 @@ def stderr_text(result: dict[str, Any]) -> str:
     return Path(result["stderr"]).read_text(encoding="utf-8")
 
 
+def contains_hangul(value: str) -> bool:
+    return any("\uac00" <= character <= "\ud7a3" for character in value)
+
+
 def cli_json(
     recorder: Recorder,
     label: str,
@@ -313,11 +317,12 @@ def cli_json(
     env: dict[str, str],
     *args: str,
     runtime: Path | None = None,
+    cwd: Path = ROOT,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    argv = [str(cli)]
+    argv = [str(cli), "--json"]
     if runtime is not None:
         argv += ["--runtime", str(runtime)]
-    result = recorder.run(label, argv + list(args), env)
+    result = recorder.run(label, argv + list(args), env, cwd=cwd)
     if result["exit_code"] != 0:
         return None, result
     try:
@@ -373,11 +378,12 @@ def qualify_candidate_dependency_failures(
                 path.unlink()
                 path.mkdir()
             cli_result, cli_operation = cli_json(
-                recorder, f"candidate-{fault}-cli", cli, env, "candidates", project_id
+                recorder, f"candidate-{fault}-cli", cli, env,
+                "--project", project_id, "advanced", "candidates"
             )
             canonical, canonical_operation = cli_json(
                 recorder, f"candidate-{fault}-canonical", cli, env,
-                "canonical", "inspect", project_id,
+                "--project", project_id, "advanced", "records", "list",
             )
             host = None
             cleanup: dict[str, Any] = {}
@@ -689,7 +695,10 @@ def rehearse_target(
     mcp_binary = prefix / "bin/volicord-mcp"
     installation_only = install["exit_code"] == 0 and not (codex_home / "config.toml").exists()
     activation = recorder.run(
-        "codex-enable", [str(cli), "codex", "enable", str(repository)], env
+        "codex-enable",
+        [str(cli), "--repository", str(repository), "codex", "enable"],
+        env,
+        cwd=repository,
     ) if installation_only else {"exit_code": None}
     codex_home.joinpath("config.toml").write_text(
         f'[projects.{json.dumps(str(repository.resolve()))}]\ntrust_level = "trusted"\n',
@@ -712,7 +721,7 @@ def rehearse_target(
         return {"class": target_kind, "identity": identity, "steps": steps}
 
     initialized, init_op = cli_json(
-        recorder, "project-init", cli, env, "project", "init", f"V11 {target_kind}", "--repository", str(repository)
+        recorder, "project-init", cli, env, "init", f"V11 {target_kind}", cwd=repository
     )
     project_id = initialized.get("project_id") if initialized else None
     steps["project_binding"] = step(
@@ -755,7 +764,12 @@ def rehearse_target(
         direct=mcp_evidence, authenticated=codex_result,
     )
 
-    analysis, analysis_op = cli_json(recorder, "analyze", cli, env, "analyze", project_id)
+    status_before, status_before_op = cli_json(
+        recorder, "project-understanding-before-analysis", cli, env, "status", cwd=repository
+    )
+    analysis, analysis_op = cli_json(
+        recorder, "analyze", cli, env, "analyze", cwd=repository
+    )
     analysis_ok = analysis is not None and analysis.get("state") in {"succeeded", "partial"}
     steps["repository_analysis"] = step(
         "passed" if analysis_ok else "failed", "inventory/capability analysis returned structured coverage",
@@ -768,10 +782,111 @@ def rehearse_target(
         understanding_cleanup = host.close()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         understanding, understanding_ok, understanding_cleanup = {"error": str(error)}, False, {}
+    try:
+        language_host = Mcp(mcp_binary, env)
+        language_host.initialize()
+        language_plan, language_plan_ok = language_host.tool(
+            "document_preview",
+            {
+                "project_id": project_id,
+                "kind": "handoff-resume",
+                "format": "markdown",
+                "language": "ko-KR",
+                "locale": "en",
+            },
+        )
+        plan = (language_plan or {}).get("plan", {})
+        realization = {
+            "plan_fingerprint": plan.get("plan_fingerprint"),
+            "title": "프로젝트 인수인계와 작업 재개",
+            "sections": [
+                {
+                    "key": section.get("key"),
+                    "title": f"한국어 설명: {section.get('source_title', '')}",
+                    "claims": [
+                        {
+                            "identity": claim.get("identity"),
+                            "text": f"한국어 설명: {claim.get('source_text', '')}",
+                        }
+                        for claim in section.get("claims", [])
+                    ],
+                }
+                for section in plan.get("sections", [])
+            ],
+            "generator": {
+                "generator": "v11-current-host",
+                "agent": "codex",
+                "model": "deterministic-v11-realizer",
+            },
+        }
+        realized_document, realized_ok = language_host.tool(
+            "document_preview",
+            {
+                "project_id": project_id,
+                "kind": "handoff-resume",
+                "format": "markdown",
+                "language": "ko-KR",
+                "locale": "en",
+                "realization": realization,
+            },
+        )
+        language_cleanup = language_host.close()
+        language_ok = bool(
+            language_plan_ok
+            and language_plan
+            and language_plan.get("outcome") == "realization_required"
+            and realized_ok
+            and realized_document
+            and realized_document.get("outcome") == "realized"
+            and realized_document.get("requested_language") == "ko-KR"
+            and contains_hangul(realized_document.get("content", ""))
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        language_plan = realized_document = {"error": str(error)}
+        language_cleanup = {}
+        language_ok = False
+    viewer_snapshot = target_root / "project-understanding.html"
+    viewer_result, viewer_operation = cli_json(
+        recorder,
+        "project-understanding-viewer-snapshot",
+        cli,
+        env,
+        "viewer",
+        "export",
+        "--output",
+        str(viewer_snapshot),
+        "--level",
+        "working",
+        "--language",
+        "en",
+        cwd=repository,
+    )
+    status_ok = bool(
+        status_before
+        and status_before.get("operation") == "project_status"
+        and isinstance(status_before.get("architecture"), dict)
+        and isinstance(status_before.get("evidence"), dict)
+    )
     steps["source_grounded_understanding"] = step(
-        "passed" if understanding_ok and understanding and understanding.get("repository_map", {}).get("entity_count", 0) > 0 else "failed",
-        "MCP repository understanding exposed source-bound entities and gaps",
-        result=understanding, cleanup=understanding_cleanup,
+        "passed"
+        if understanding_ok
+        and understanding
+        and understanding.get("repository_map", {}).get("entity_count", 0) > 0
+        and status_ok
+        and viewer_result
+        and viewer_snapshot.is_file()
+        and language_ok
+        else "failed",
+        "task-oriented CLI status, MCP understanding, and the Viewer snapshot exposed grounded Project Understanding",
+        cli_status=status_before,
+        cli_status_operation=status_before_op,
+        mcp_result=understanding,
+        cleanup=understanding_cleanup,
+        viewer_result=viewer_result,
+        viewer_operation=viewer_operation,
+        requested_language_plan=language_plan,
+        requested_language_realization=realized_document,
+        requested_language_cleanup=language_cleanup,
     )
 
     candidate_tools = {
@@ -971,14 +1086,16 @@ def rehearse_target(
 
     provider_source_path = PROVIDER_SOURCE_PATHS[target_kind]
     provider_opt_in_source, provider_source_op = cli_json(
-        recorder, "provider-opt-in-source", cli, env, "canonical", "user-source", project_id,
-        "cli", "cli", "Enable the bounded V11 background semantic provider scope",
+        recorder, "provider-opt-in-source", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "cli", "--session", "cli", "--text",
+        "Enable the bounded V11 background semantic provider scope",
     )
     provider_opt_in, provider_opt_in_op = (None, {"exit_code": None})
     if provider_opt_in_source:
         provider_opt_in, provider_opt_in_op = cli_json(
-            recorder, "provider-opt-in", cli, env, "privacy", "enable", project_id,
-            "v11-unavailable-provider", "v11-model", provider_opt_in_source["identity"], provider_source_path,
+            recorder, "provider-opt-in", cli, env, "--project", project_id,
+            "privacy", "enable", "v11-unavailable-provider", "v11-model",
+            "--source", provider_opt_in_source["identity"], "--scope", provider_source_path,
         )
     guarded_status = "failed"
     provider_status = "failed"
@@ -1147,9 +1264,10 @@ def rehearse_target(
     checkpoint_target = "next Codex session"
     if decision_source_id:
         checkpoint_value, checkpoint_op = cli_json(
-            recorder, "checkpoint", cli, env, "checkpoint", "record", project_id, "handoff",
-            decision_source_id, f"Rehearse {target_kind} after the explicit Decision",
-            checkpoint_next_step, checkpoint_target,
+            recorder, "checkpoint", cli, env, "--project", project_id,
+            "advanced", "checkpoint", "handoff", "--source", decision_source_id,
+            "--goal", f"Rehearse {target_kind} after the explicit Decision",
+            "--next-step", checkpoint_next_step, "--handoff-to", checkpoint_target,
         )
     checkpoint_status = "passed" if checkpoint_value else (
         "unsupported" if unsupported_cli(checkpoint_op) else "failed"
@@ -1160,7 +1278,9 @@ def rehearse_target(
         decision_source_id=decision_source_id, handoff_target=checkpoint_target,
         checkpoint=checkpoint_value, operation=checkpoint_op,
     )
-    recall_before, recall_op = cli_json(recorder, "recall", cli, env, "recall", project_id)
+    recall_before, recall_op = cli_json(
+        recorder, "recall", cli, env, "recall", cwd=repository
+    )
     try:
         restarted = Mcp(mcp_binary, env)
         restarted.initialize()
@@ -1185,13 +1305,18 @@ def rehearse_target(
     )
 
     base_bundle = target_root / "base.volicord.json"
-    exported, export_op = cli_json(recorder, "bundle-export", cli, env, "portable", "export", project_id, str(base_bundle))
+    exported, export_op = cli_json(
+        recorder, "bundle-export", cli, env, "context", "export", "--output", str(base_bundle), cwd=repository
+    )
     clone_result = recorder.run("clone-target", ["git", "clone", "--quiet", "--no-hardlinks", str(repository), str(clone)], env)
-    imported, import_op = cli_json(recorder, "bundle-import", cli, env, "portable", "import", str(base_bundle), runtime=clone_runtime)
+    imported, import_op = cli_json(
+        recorder, "bundle-import", cli, env, "context", "import", "--input", str(base_bundle), runtime=clone_runtime
+    )
     bound, bind_op = (None, {"exit_code": None})
     if imported:
         bound, bind_op = cli_json(
-            recorder, "clone-bind", cli, env, "project", "bind", project_id, str(clone), runtime=clone_runtime
+            recorder, "clone-bind", cli, env, "--project", project_id,
+            "--repository", str(clone), "bind", runtime=clone_runtime
         )
     portability_ok = bool(exported and clone_result["exit_code"] == 0 and imported and bound)
     portability_status = "passed" if portability_ok else (
@@ -1208,48 +1333,58 @@ def rehearse_target(
     conflict_operations: list[dict[str, Any]] = []
     if portability_ok and decision_id:
         source_a, source_a_op = cli_json(
-            recorder, "diverge-a-source", cli, env, "canonical", "user-source", project_id,
-            "codex", "clone-a", "Choose the remote branch in clone A",
+            recorder, "diverge-a-source", cli, env, "--project", project_id,
+            "advanced", "records", "source", "--host", "codex", "--session", "clone-a",
+            "--text", "Choose the remote branch in clone A",
         )
         source_b, source_b_op = cli_json(
-            recorder, "diverge-b-source", cli, env, "canonical", "user-source", project_id,
-            "codex", "clone-b", "Retain the local branch in clone B", runtime=clone_runtime,
+            recorder, "diverge-b-source", cli, env, "--project", project_id,
+            "advanced", "records", "source", "--host", "codex", "--session", "clone-b",
+            "--text", "Retain the local branch in clone B", runtime=clone_runtime,
         )
         conflict_operations.extend([source_a_op, source_b_op])
         if source_a:
             local_decision, local_decision_op = cli_json(
-                recorder, "diverge-a-decision", cli, env, "canonical", "supersede-decision",
-                project_id, decision_id, source_a["identity"], "remote", "Clone A chooses remote augmentation",
+                recorder, "diverge-a-decision", cli, env, "--project", project_id,
+                "advanced", "records", "supersede-decision", decision_id,
+                "--source", source_a["identity"], "--alternative", "remote",
+                "--rationale", "Clone A chooses remote augmentation",
             )
             conflict_operations.append(local_decision_op)
         if source_b:
             incoming_decision, incoming_decision_op = cli_json(
-                recorder, "diverge-b-decision", cli, env, "canonical", "supersede-decision",
-                project_id, decision_id, source_b["identity"], "local", "Clone B retains local context",
+                recorder, "diverge-b-decision", cli, env, "--project", project_id,
+                "advanced", "records", "supersede-decision", decision_id,
+                "--source", source_b["identity"], "--alternative", "local",
+                "--rationale", "Clone B retains local context",
                 runtime=clone_runtime,
             )
             conflict_operations.append(incoming_decision_op)
         bundle_a = target_root / "a.volicord.json"
         bundle_b = target_root / "b.volicord.json"
         bundle_a_value, bundle_a_op = cli_json(
-            recorder, "diverge-a-export", cli, env, "portable", "export", project_id, str(bundle_a)
+            recorder, "diverge-a-export", cli, env, "--project", project_id,
+            "context", "export", "--output", str(bundle_a)
         )
         bundle_b_value, bundle_b_op = cli_json(
-            recorder, "diverge-b-export", cli, env, "portable", "export", project_id, str(bundle_b),
+            recorder, "diverge-b-export", cli, env, "--project", project_id,
+            "context", "export", "--output", str(bundle_b),
             runtime=clone_runtime,
         )
         conflict_operations.extend([bundle_a_op, bundle_b_op])
         if bundle_a_value and bundle_b_value:
             comparison, comparison_op = cli_json(
-                recorder, "divergent-compare", cli, env, "portable", "compare", str(bundle_b),
-                "--base", str(base_bundle),
+                recorder, "divergent-compare", cli, env, "context", "compare",
+                "--input", str(bundle_b), "--base", str(base_bundle),
             )
             conflict_operations.append(comparison_op)
             if comparison and source_a:
                 resolution, resolution_op = cli_json(
-                    recorder, "divergent-resolution", cli, env, "portable", "resolve", str(bundle_b),
-                    comparison["conflict_set_identity"], str(comparison["conflict_revision"]),
-                    source_a["identity"], "context-branch", "--base", str(base_bundle),
+                    recorder, "divergent-resolution", cli, env, "context", "resolve",
+                    "--input", str(bundle_b), "--conflict-set", comparison["conflict_set_identity"],
+                    "--revision", str(comparison["conflict_revision"]),
+                    "--source", source_a["identity"], "--mode", "context-branch",
+                    "--base", str(base_bundle),
                 )
                 conflict_operations.append(resolution_op)
     conflicts = comparison.get("conflicts", []) if comparison else []
@@ -1273,40 +1408,48 @@ def rehearse_target(
     )
 
     correction_authorization, correction_source_op = cli_json(
-        recorder, "correction-authorization", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11-correction", "Correct the integrated Decision rationale",
+        recorder, "correction-authorization", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "codex", "--session", "v11-correction",
+        "--text", "Correct the integrated Decision rationale",
     )
     corrected = None
     correction_op = {"exit_code": None}
     if correction_authorization and local_decision:
         corrected, correction_op = cli_json(
-            recorder, "correct-decision", cli, env, "canonical", "correct-decision", project_id,
-            local_decision["identity"], str(local_decision["revision"]), correction_authorization["identity"],
-            "Remote augmentation Clone A chooses",
+            recorder, "correct-decision", cli, env, "--project", project_id,
+            "advanced", "records", "correct-decision", local_decision["identity"],
+            "--revision", str(local_decision["revision"]),
+            "--source", correction_authorization["identity"],
+            "--text", "Remote augmentation Clone A chooses",
         )
     supersession_authorization, supersession_source_op = cli_json(
-        recorder, "supersession-authorization", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11-supersession", "Return the integrated Decision to the local boundary",
+        recorder, "supersession-authorization", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "codex", "--session", "v11-supersession",
+        "--text", "Return the integrated Decision to the local boundary",
     )
     superseded = None
     supersession_op = {"exit_code": None}
     if supersession_authorization and local_decision and corrected:
         superseded, supersession_op = cli_json(
-            recorder, "supersede-corrected-decision", cli, env, "canonical", "supersede-decision",
-            project_id, local_decision["identity"], supersession_authorization["identity"], "local",
-            "Keep canonical context local after evaluating the explicit provider boundary",
+            recorder, "supersede-corrected-decision", cli, env, "--project", project_id,
+            "advanced", "records", "supersede-decision", local_decision["identity"],
+            "--source", supersession_authorization["identity"], "--alternative", "local",
+            "--rationale", "Keep canonical context local after evaluating the explicit provider boundary",
         )
     deletion_authorization, deletion_source_op = cli_json(
-        recorder, "deletion-authorization", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11", "Authorize deletion of the disposable V11 Source",
+        recorder, "deletion-authorization", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "codex", "--session", "v11",
+        "--text", "Authorize deletion of the disposable V11 Source",
     )
     disposable_source, disposable_source_op = cli_json(
-        recorder, "disposable-source", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11", "Disposable Source created by the integrated V11 journey",
+        recorder, "disposable-source", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "codex", "--session", "v11",
+        "--text", "Disposable Source created by the integrated V11 journey",
     )
     cleanup_control_source, cleanup_control_source_op = cli_json(
-        recorder, "cleanup-control-source", cli, env, "canonical", "user-source", project_id,
-        "codex", "v11", "Unrelated Source that must survive the V11 forgetting journey",
+        recorder, "cleanup-control-source", cli, env, "--project", project_id,
+        "advanced", "records", "source", "--host", "codex", "--session", "v11",
+        "--text", "Unrelated Source that must survive the V11 forgetting journey",
     )
     cleanup_control_state = target_root / "forgetting-control-state.json"
     cleanup_control_result = target_root / "forgetting-control-result.json"
@@ -1333,13 +1476,15 @@ def rehearse_target(
     deletion = None
     if deletion_authorization and disposable_source and cleanup_seed_op.get("exit_code") == 0:
         deletion, deletion_op = cli_json(
-            recorder, "forget-source", cli, env, "canonical", "forget", project_id,
-            "source", disposable_source["identity"], deletion_authorization["identity"],
+            recorder, "forget-source", cli, env, "--project", project_id,
+            "advanced", "records", "forget", "source", disposable_source["identity"],
+            "--source", deletion_authorization["identity"],
         )
     else:
         deletion_op = {"exit_code": None}
     canonical_after_mutations, canonical_after_mutations_op = cli_json(
-        recorder, "canonical-after-mutations", cli, env, "canonical", "inspect", project_id
+        recorder, "canonical-after-mutations", cli, env,
+        "--project", project_id, "advanced", "records", "list"
     )
     if deletion and cleanup_control_state.is_file():
         cleanup_inspect_op = recorder.run(
@@ -1400,26 +1545,47 @@ def rehearse_target(
     )
 
     canonical_before_docs = target_root / "before-documents.json"
-    cli_json(recorder, "docs-before-bundle", cli, env, "portable", "export", project_id, str(canonical_before_docs))
+    cli_json(
+        recorder, "docs-before-bundle", cli, env, "context", "export", "--output", str(canonical_before_docs), cwd=repository
+    )
     document_results = []
     for kind in DOCUMENT_KINDS:
         for format_name, suffix in (("markdown", "md"), ("html", "html")):
             destination = target_root / "documents" / f"{kind}.{suffix}"
             destination.parent.mkdir(parents=True, exist_ok=True)
             value, operation = cli_json(
-                recorder, f"document-{kind}-{format_name}", cli, env, "documents", "export",
-                project_id, kind, format_name, str(destination), "en",
+                recorder, f"document-{kind}-{format_name}", cli, env,
+                "document", "export", kind, "--format", format_name,
+                "--output", str(destination), "--language", "en", cwd=repository,
             )
             document_results.append({"kind": kind, "format": format_name, "result": value, "operation": operation})
     canonical_after_docs = target_root / "after-documents.json"
-    cli_json(recorder, "docs-after-bundle", cli, env, "portable", "export", project_id, str(canonical_after_docs))
-    docs_ok = all(item["result"] for item in document_results) and canonical_before_docs.read_bytes() == canonical_after_docs.read_bytes()
+    cli_json(
+        recorder, "docs-after-bundle", cli, env, "context", "export", "--output", str(canonical_after_docs), cwd=repository
+    )
+    published_documents = all(
+        item["result"]
+        and item["result"].get("outcome") != "unavailable"
+        and Path(item["result"]["destination"]).is_file()
+        and Path(item["result"]["destination"]).stat().st_size > 0
+        for item in document_results
+    )
+    docs_ok = (
+        published_documents
+        and language_ok
+        and canonical_before_docs.read_bytes() == canonical_after_docs.read_bytes()
+    )
     steps["document_outputs"] = step(
-        "passed" if docs_ok else "failed", "all four Markdown and self-contained HTML outputs were published without canonical mutation",
-        documents=document_results, canonical_unchanged=canonical_before_docs.read_bytes() == canonical_after_docs.read_bytes(),
+        "passed" if docs_ok else "failed", "all four Markdown and self-contained HTML outputs were published, and the current host realized the requested Korean body without canonical mutation",
+        documents=document_results,
+        published_documents=published_documents,
+        requested_language_body_realized=language_ok,
+        canonical_unchanged=canonical_before_docs.read_bytes() == canonical_after_docs.read_bytes(),
     )
 
-    privacy, privacy_op = cli_json(recorder, "privacy-status", cli, env, "privacy", "status", project_id)
+    privacy, privacy_op = cli_json(
+        recorder, "privacy-status", cli, env, "privacy", "status", cwd=repository
+    )
     provider_evidence.update({"privacy": privacy, "privacy_operation": privacy_op})
     steps["provider_failure"] = step(
         provider_status,
@@ -1430,7 +1596,9 @@ def rehearse_target(
     malformed = repository / ("src/v11_broken.rs" if target_kind == "volicord" else "v11_broken.py")
     malformed.parent.mkdir(parents=True, exist_ok=True)
     malformed.write_text("fn broken( {\n" if malformed.suffix == ".rs" else "def broken(:\n", encoding="utf-8")
-    parser_result, parser_op = cli_json(recorder, "parser-degradation", cli, env, "analyze", project_id)
+    parser_result, parser_op = cli_json(
+        recorder, "parser-degradation", cli, env, "analyze", cwd=repository
+    )
     parser_status = "passed" if parser_result and parser_result.get("state") == "partial" and parser_result.get("failed_scopes") else "failed"
     steps["parser_failure"] = step(
         parser_status, "malformed language area was analyzed and required scoped failure/partial reporting",
@@ -1438,12 +1606,20 @@ def rehearse_target(
     )
 
     stored_at = Path(parser_result["stored_at"]) if parser_result and parser_result.get("stored_at") else None
-    recall_pre_recovery, _ = cli_json(recorder, "recovery-recall-before", cli, env, "recall", project_id)
+    recall_pre_recovery, _ = cli_json(
+        recorder, "recovery-recall-before", cli, env, "recall", cwd=repository
+    )
     if stored_at and stored_at.is_file():
         stored_at.write_bytes(b"{ controlled V11 derived corruption")
-        degraded_health, health_op = cli_json(recorder, "corrupt-health", cli, env, "health", project_id)
-        repaired, repair_op = cli_json(recorder, "derived-repair", cli, env, "repair", project_id, "derived-analysis")
-        recall_post_recovery, _ = cli_json(recorder, "recovery-recall-after", cli, env, "recall", project_id)
+        degraded_health, health_op = cli_json(
+            recorder, "corrupt-health", cli, env, "doctor", "check", cwd=repository
+        )
+        repaired, repair_op = cli_json(
+            recorder, "derived-repair", cli, env, "doctor", "repair", cwd=repository
+        )
+        recall_post_recovery, _ = cli_json(
+            recorder, "recovery-recall-after", cli, env, "recall", cwd=repository
+        )
         recovery_ok = (
             degraded_health and degraded_health.get("state") == "degraded" and repaired and
             repaired.get("state") in {"succeeded", "partial"} and
@@ -1818,6 +1994,38 @@ def self_check() -> int:
         raise AssertionError("polyglot fixture lost three languages or documentation")
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
+    source = Path(__file__).read_text(encoding="utf-8")
+    obsolete_pairs = {
+        ("project", "init"),
+        ("canonical", "user-source"),
+        ("portable", "export"),
+        ("documents", "export"),
+        ("checkpoint", "record"),
+    }
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "cli_json"
+        ):
+            continue
+        literal_arguments = [
+            argument.value
+            for argument in node.args
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        ]
+        for pair in zip(literal_arguments, literal_arguments[1:]):
+            if pair in obsolete_pairs:
+                raise AssertionError(f"V11 retained an obsolete CLI vector: {pair}")
+    for current in (
+        'argv = [str(cli), "--json"]',
+        '"viewer",',
+        '"document_preview",',
+        '"ko-KR",',
+        'contains_hangul(realized_document.get("content", ""))',
+    ):
+        if current not in source:
+            raise AssertionError(f"V11 lost a current public-journey contract: {current}")
     assert_candidate_repository_source_contract()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()

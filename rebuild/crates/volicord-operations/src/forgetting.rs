@@ -454,7 +454,6 @@ mod tests {
             10,
         )?;
         assert_eq!(prepared.state, ForgettingState::Prepared);
-        drop(prepared);
         let mut reopened = ForgettingStore::open(&path)?;
         assert_eq!(reopened.get(operation_id)?.state, ForgettingState::Prepared);
         assert_eq!(

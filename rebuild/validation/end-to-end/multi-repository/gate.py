@@ -21,12 +21,24 @@ ROOT = Path(__file__).resolve().parents[4]
 REBUILD_ROOT = ROOT / "rebuild"
 HERE = Path(__file__).resolve().parent
 HARNESS = HERE / "harness.py"
+ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
+REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
+DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
+DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
+PROVIDER_QUALIFICATION = REBUILD_ROOT / "validation/privacy/background-provider-qualification/harness.py"
 FIXTURE_MANIFEST = REBUILD_ROOT / "validation/shared/fixture-manifest.json"
 FIXTURE_CHECKER = REBUILD_ROOT / "scripts/check-fixture-manifest"
 RESOURCE_ESTIMATE = HERE / "resource-estimate.json"
-REQUIRED_FIXTURE_IDS = ("v01-python", "v11-polyglot-medium")
+REQUIRED_FIXTURE_IDS = (
+    "v01-python",
+    "v11-polyglot-medium",
+    "repository-intelligence-realistic-v1",
+    "v12-current-codex-mcp-completion",
+    "v07-background-provider-bounded-rust",
+)
 FINAL_COMMAND_LABELS = ("cargo_metadata", "cargo_fmt", "cargo_clippy", "cargo_test")
 AUTHORIZATION_ASSERTION = "v11-openai-codex-project-health-three-targets"
+PROVIDER_AUTHORIZATION_ASSERTION = "openai-codex-background-semantic-bounded-rust-v1"
 VERSION_OUTPUT_LIMIT_BYTES = 4096
 TOOL_VERSION_COMMANDS = {
     "python": ("python3", "--version"),
@@ -47,6 +59,16 @@ EXTERNAL_TRANSMISSION = {
     "scope": ["volicord", "small-python", "polyglot-medium"],
     "source_scope": "bounded V11 prompt, Project identity, and project_health tool result; no intended repository source body",
     "authorization_assertion": AUTHORIZATION_ASSERTION,
+}
+PROVIDER_EXTERNAL_TRANSMISSION = {
+    "required": True,
+    "destination": "OpenAI Codex service used by the installed Codex CLI",
+    "purpose": "qualify the production background semantic provider against one bounded maintained Rust source",
+    "scope": [
+        "rebuild/validation/privacy/background-provider-qualification/fixtures/bounded-rust/src/lib.rs"
+    ],
+    "source_scope": "the maintained bounded-rust fixture's src/lib.rs source body, at most 4096 bytes",
+    "authorization_assertion": PROVIDER_AUTHORIZATION_ASSERTION,
 }
 
 Check = dict[str, Any]
@@ -140,6 +162,8 @@ def dependency_snapshot(candidate_head: str | None) -> dict[str, Any]:
 def gate_configuration(
     *,
     authorization_assertion: str | None,
+    provider_authorization_assertion: str | None,
+    provider_model: str | None,
     external_network: str,
 ) -> dict[str, Any]:
     argv = [
@@ -153,6 +177,12 @@ def gate_configuration(
         argv.extend(("--authorize-external-transmission", AUTHORIZATION_ASSERTION))
     elif authorization_assertion is not None:
         argv_status = "unrecognized_authorization_assertion_not_retained"
+    if provider_authorization_assertion == PROVIDER_AUTHORIZATION_ASSERTION:
+        argv.extend(("--authorize-provider-source-transmission", PROVIDER_AUTHORIZATION_ASSERTION))
+    elif provider_authorization_assertion is not None:
+        argv_status = "unrecognized_authorization_assertion_not_retained"
+    if provider_model:
+        argv.extend(("--provider-model", provider_model))
     return {
         "argv": argv,
         "argv_status": argv_status,
@@ -162,7 +192,14 @@ def gate_configuration(
             if authorization_assertion == AUTHORIZATION_ASSERTION
             else None
         ),
+        "provider_authorization_assertion_id": (
+            PROVIDER_AUTHORIZATION_ASSERTION
+            if provider_authorization_assertion == PROVIDER_AUTHORIZATION_ASSERTION
+            else None
+        ),
+        "provider_model": provider_model,
         "external_transmission": EXTERNAL_TRANSMISSION,
+        "provider_external_transmission": PROVIDER_EXTERNAL_TRANSMISSION,
     }
 
 
@@ -406,6 +443,8 @@ def authentication_check() -> Check:
 def evaluate_admission(
     *,
     authorization_assertion: str | None,
+    provider_authorization_assertion: str | None = None,
+    provider_model: str | None = None,
     external_network: str,
     artifact_root: Path,
     command_runner: CommandRunner,
@@ -436,6 +475,21 @@ def evaluate_admission(
         v11_result = command_runner(artifact_root / "v11-self-check", (str(HARNESS), "self-check"))
         v11 = command_check("v11_harness_self_check", v11_result, "V11 harness self-check completed")
     checks.append(v11)
+
+    maintained_self_checks = (
+        ("architecture_contracts", (str(ARCHITECTURE_CHECKER),)),
+        ("architecture_contracts_self_test", (str(ARCHITECTURE_CHECKER), "--self-test")),
+        ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),
+        ("dogfood_harness_self_test", (sys.executable, str(DOGFOOD_HARNESS), "self-test")),
+        ("dogfood_campaign_self_test", (sys.executable, str(DOGFOOD_CAMPAIGN_SELF_TEST))),
+        ("provider_qualification_self_test", (sys.executable, str(PROVIDER_QUALIFICATION), "--self-test")),
+    )
+    for name, argv in maintained_self_checks:
+        support = overrides.get(name)
+        if support is None:
+            support_result = command_runner(artifact_root / name.replace("_", "-"), argv)
+            support = command_check(name, support_result, f"{name.replace('_', ' ')} completed")
+        checks.append(support)
 
     identity_check = overrides.get("required_fixture_identities")
     identities: list[dict[str, str]] = []
@@ -481,6 +535,13 @@ def evaluate_admission(
         transmission=EXTERNAL_TRANSMISSION,
     )
     checks.append(overrides.get(transmission["name"], transmission))
+    provider_transmission = check(
+        "production_provider_external_transmission",
+        "passed",
+        "the maintained production-provider qualification requires one bounded source transmission",
+        transmission=PROVIDER_EXTERNAL_TRANSMISSION,
+    )
+    checks.append(overrides.get(provider_transmission["name"], provider_transmission))
 
     authorized = authorization_assertion == AUTHORIZATION_ASSERTION
     authorization = check(
@@ -493,6 +554,29 @@ def evaluate_admission(
         required_assertion=AUTHORIZATION_ASSERTION,
     )
     checks.append(overrides.get(authorization["name"], authorization))
+
+    provider_authorized = provider_authorization_assertion == PROVIDER_AUTHORIZATION_ASSERTION
+    provider_authorization = check(
+        "operator_provider_source_transmission_authorization",
+        "passed" if provider_authorized else "authorization_blocked",
+        "the current invocation carries the exact bounded provider-source authorization assertion"
+        if provider_authorized
+        else "the current invocation lacks the exact bounded provider-source authorization assertion",
+        authorized=provider_authorized,
+        required_assertion=PROVIDER_AUTHORIZATION_ASSERTION,
+        distinct_from_v11=True,
+    )
+    checks.append(overrides.get(provider_authorization["name"], provider_authorization))
+    model_available = isinstance(provider_model, str) and bool(provider_model.strip())
+    provider_model_check = check(
+        "provider_qualification_model",
+        "passed" if model_available else "environment_blocked",
+        "the exact provider qualification model is configured"
+        if model_available
+        else "the provider qualification requires an exact model name",
+        model=provider_model,
+    )
+    checks.append(overrides.get(provider_model_check["name"], provider_model_check))
 
     statuses = {value["status"] for value in checks}
     eligible = statuses == {"passed"}
@@ -517,11 +601,15 @@ def evaluate_admission(
         "dependency_snapshot": dependency_evidence or dependency_snapshot(candidate_head),
         "gate_configuration": gate_configuration(
             authorization_assertion=authorization_assertion,
+            provider_authorization_assertion=provider_authorization_assertion,
+            provider_model=provider_model,
             external_network=external_network,
         ),
         "external_transmission": EXTERNAL_TRANSMISSION,
+        "provider_external_transmission": PROVIDER_EXTERNAL_TRANSMISSION,
         "final_command_count": 0,
         "official_v11_command_count": 0,
+        "provider_live_qualification_command_count": 0,
     }
 
 
@@ -562,6 +650,55 @@ def exact_final_passed(summary: dict[str, Any], final_commands: Sequence[Sequenc
         and isinstance(commands, list)
         and len(commands) == len(final_commands)
         and all(value.get("argv") == list(expected) for value, expected in zip(commands, final_commands))
+    )
+
+
+def provider_qualification_passed(
+    evidence: dict[str, Any] | None,
+    candidate_head: str,
+    expected_model: str | None,
+) -> bool:
+    if not isinstance(evidence, dict):
+        return False
+    authorization = evidence.get("authorization")
+    provider = evidence.get("provider")
+    fixture = evidence.get("fixture")
+    success = evidence.get("success")
+    degradation = evidence.get("degradation")
+    retained = evidence.get("retained_evidence")
+    return bool(
+        evidence.get("schema_version") == 1
+        and evidence.get("qualification_id") == "background-provider-openai-codex-v1"
+        and evidence.get("production_head") == candidate_head
+        and isinstance(authorization, dict)
+        and authorization.get("assertion_id") == PROVIDER_AUTHORIZATION_ASSERTION
+        and authorization.get("distinct_from_v11") is True
+        and isinstance(provider, dict)
+        and provider.get("identity") == "openai-codex"
+        and isinstance(expected_model, str)
+        and bool(expected_model.strip())
+        and provider.get("model") == expected_model
+        and isinstance(fixture, dict)
+        and fixture.get("id") == "background-provider-bounded-rust-v1"
+        and fixture.get("source_locator") == "src/lib.rs"
+        and fixture.get("source_count") == 1
+        and isinstance(fixture.get("transmitted_bytes"), int)
+        and 0 < fixture["transmitted_bytes"] <= 4096
+        and isinstance(success, dict)
+        and success.get("guarded_outcome") == "dispatched_and_completed"
+        and success.get("provider_request_outcome") == "completed"
+        and success.get("transmission_outcome") == "transmitted"
+        and isinstance(success.get("semantic_annotation_count"), int)
+        and success["semantic_annotation_count"] > 0
+        and success.get("annotation_provenance_complete") is True
+        and isinstance(degradation, dict)
+        and degradation.get("guarded_confirmation_consumed") is True
+        and degradation.get("provider_request_outcome") == "provider_unavailable"
+        and degradation.get("transmission_outcome") == "not_transmitted"
+        and degradation.get("local_canonical_continuity") is True
+        and isinstance(retained, dict)
+        and set(retained) == {"source_body", "provider_response_body", "credential"}
+        and all(value is False for value in retained.values())
     )
 
 
@@ -648,6 +785,9 @@ def make_capsule(
     blocking_classification: str | None,
     final_summary: dict[str, Any] | None = None,
     final_summary_hash: str | None = None,
+    provider_qualification: dict[str, Any] | None = None,
+    provider_qualification_hash: str | None = None,
+    provider_qualification_status: str = "not_run",
     v11_result: dict[str, Any] | None = None,
     v11_result_hash: str | None = None,
     credential_audit: dict[str, Any] | None = None,
@@ -687,6 +827,11 @@ def make_capsule(
         },
         "final_aggregate": final_view,
         "final_summary_sha256": final_summary_hash,
+        "live_provider_qualification": {
+            "status": provider_qualification_status,
+            "evidence_sha256": provider_qualification_hash,
+            "evidence": provider_qualification,
+        },
         "official_v11": {
             "status": v11_result.get("status", "not_run") if v11_result else "not_run",
             "result_sha256": v11_result_hash,
@@ -720,6 +865,7 @@ def make_capsule(
             and revisit_triggers == []
             and credential_audit
             and credential_audit.get("status") == "passed"
+            and provider_qualification is not None
             and blocking_classification is None
         ),
     }
@@ -816,12 +962,13 @@ def orchestrate(
     admission: dict[str, Any],
     final_commands: Sequence[Sequence[str]],
     final_owner: Callable[[], tuple[dict[str, Any], Path]],
+    provider_owner: Callable[[str], tuple[dict[str, Any] | None, dict[str, Any], Path]],
     preflight_owner: Callable[[str, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     v11_owner: Callable[[str, Path, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     audit_owner: Callable[[Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     pre_final_check_owner: Callable[[str], Check] = pre_final_repository_check,
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    counts = {"final": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
+    counts = {"final": 0, "provider_live_qualification": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
     candidate_head = admission.get("candidate_head")
     if not admission.get("eligible"):
         capsule = make_capsule(
@@ -869,6 +1016,28 @@ def orchestrate(
             final_artifact_produced=True,
         ), counts
 
+    counts["provider_live_qualification"] += 1
+    provider_qualification, provider_execution, provider_path = provider_owner(candidate_head)
+    provider_hash = sha256(provider_path) if provider_path.is_file() else None
+    expected_provider_model = admission.get("gate_configuration", {}).get("provider_model")
+    if (
+        provider_execution.get("exit_code", provider_execution.get("wrapper_exit_code")) != 0
+        or not provider_qualification_passed(
+            provider_qualification, candidate_head, expected_provider_model
+        )
+    ):
+        return make_capsule(
+            admission=admission,
+            candidate_head=candidate_head,
+            blocking_classification="provider_live_qualification_failed",
+            final_summary=final_summary,
+            final_summary_hash=final_hash,
+            provider_qualification_hash=provider_hash,
+            provider_qualification_status="failed",
+            pre_final_check=pre_final,
+            final_artifact_produced=True,
+        ), counts
+
     counts["preflight"] += 1
     preflight, preflight_execution = preflight_owner(candidate_head, final_path)
     if preflight_execution.get("exit_code", preflight_execution.get("wrapper_exit_code")) != 0 or not preflight or preflight.get("status") != "passed":
@@ -878,6 +1047,9 @@ def orchestrate(
             blocking_classification="v11_preflight_failed",
             final_summary=final_summary,
             final_summary_hash=final_hash,
+            provider_qualification=provider_qualification,
+            provider_qualification_hash=provider_hash,
+            provider_qualification_status="passed",
             pre_final_check=pre_final,
             final_artifact_produced=True,
             preflight_consumed_final_artifact=True,
@@ -917,6 +1089,9 @@ def orchestrate(
         blocking_classification=blocking,
         final_summary=final_summary,
         final_summary_hash=final_hash,
+        provider_qualification=provider_qualification,
+        provider_qualification_hash=provider_hash,
+        provider_qualification_status="passed",
         v11_result=v11_result,
         v11_result_hash=v11_hash,
         credential_audit=audit,

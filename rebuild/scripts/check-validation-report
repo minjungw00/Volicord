@@ -49,7 +49,7 @@ FINAL_COMMANDS = (
     ),
     (
         "cargo", "clippy", "--manifest-path", "rebuild/Cargo.toml",
-        "--workspace", "--all-targets", "--all-features",
+        "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings",
     ),
     (
         "cargo", "test", "--manifest-path", "rebuild/Cargo.toml",
@@ -368,16 +368,109 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         )
     if admission_status == "eligible" and authorization_assertion_id is None:
         errors.append("capsule eligible admission requires an authorization assertion ID")
+    provider_authorization_assertion_id = configuration.get(
+        "provider_authorization_assertion_id"
+    )
+    if admission_status == "eligible":
+        nonempty_string(
+            provider_authorization_assertion_id,
+            "gate_configuration.provider_authorization_assertion_id",
+            errors,
+        )
+        nonempty_string(
+            configuration.get("provider_model"),
+            "gate_configuration.provider_model",
+            errors,
+        )
     transmission = mapping(configuration.get("external_transmission"), "gate_configuration.external_transmission", errors)
     for key in ("destination", "purpose", "source_scope", "authorization_assertion"):
         nonempty_string(transmission.get(key), f"gate_configuration.external_transmission.{key}", errors)
     scopes = sequence(transmission.get("scope"), "gate_configuration.external_transmission.scope", errors)
     if not scopes or not all(isinstance(value, str) and value for value in scopes):
         errors.append("capsule external transmission target scope is incomplete")
+    provider_transmission = mapping(
+        configuration.get("provider_external_transmission"),
+        "gate_configuration.provider_external_transmission",
+        errors,
+    )
+    for key in ("destination", "purpose", "source_scope", "authorization_assertion"):
+        nonempty_string(
+            provider_transmission.get(key),
+            f"gate_configuration.provider_external_transmission.{key}",
+            errors,
+        )
+    provider_scopes = sequence(
+        provider_transmission.get("scope"),
+        "gate_configuration.provider_external_transmission.scope",
+        errors,
+    )
+    if len(provider_scopes) != 1 or not all(
+        isinstance(value, str) and value for value in provider_scopes
+    ):
+        errors.append("capsule provider transmission source scope must identify one bounded fixture")
     flow = mapping(configuration.get("same_session_artifact_flow"), "gate_configuration.same_session_artifact_flow", errors)
     for key in FLOW_KEYS:
         if not isinstance(flow.get(key), bool):
             errors.append(f"capsule artifact-flow fact must be a boolean: {key}")
+
+    provider_qualification = mapping(
+        capsule.get("live_provider_qualification"),
+        "live_provider_qualification",
+        errors,
+    )
+    provider_status = nonempty_string(
+        provider_qualification.get("status"),
+        "live_provider_qualification.status",
+        errors,
+    )
+    if provider_status not in {"not_run", "passed", "failed"}:
+        errors.append("capsule live provider qualification status is invalid")
+    provider_evidence = provider_qualification.get("evidence")
+    provider_hash = provider_qualification.get("evidence_sha256")
+    provider_passed = provider_status == "passed"
+    if provider_status == "not_run":
+        if provider_hash is not None or provider_evidence is not None:
+            errors.append("capsule provider-not-run state contains provider evidence")
+    elif provider_passed:
+        digest(provider_hash, "live_provider_qualification.evidence_sha256", errors)
+    else:
+        optional_digest(provider_hash, "live_provider_qualification.evidence_sha256", errors)
+    if provider_passed:
+        evidence = mapping(provider_evidence, "live_provider_qualification.evidence", errors)
+        authorization = mapping(evidence.get("authorization"), "live_provider_qualification.evidence.authorization", errors)
+        provider = mapping(evidence.get("provider"), "live_provider_qualification.evidence.provider", errors)
+        fixture = mapping(evidence.get("fixture"), "live_provider_qualification.evidence.fixture", errors)
+        success = mapping(evidence.get("success"), "live_provider_qualification.evidence.success", errors)
+        degradation = mapping(evidence.get("degradation"), "live_provider_qualification.evidence.degradation", errors)
+        retained = mapping(evidence.get("retained_evidence"), "live_provider_qualification.evidence.retained_evidence", errors)
+        semantic_count = success.get("semantic_annotation_count")
+        provider_evidence_valid = (
+            evidence.get("schema_version") == 1
+            and evidence.get("qualification_id") == "background-provider-openai-codex-v1"
+            and evidence.get("production_head") == candidate_head
+            and authorization.get("assertion_id") == provider_transmission.get("authorization_assertion")
+            and authorization.get("distinct_from_v11") is True
+            and provider.get("identity") == "openai-codex"
+            and provider.get("model") == configuration.get("provider_model")
+            and fixture.get("id") == "background-provider-bounded-rust-v1"
+            and fixture.get("source_locator") == "src/lib.rs"
+            and success.get("guarded_outcome") == "dispatched_and_completed"
+            and success.get("provider_request_outcome") == "completed"
+            and success.get("transmission_outcome") == "transmitted"
+            and isinstance(semantic_count, int)
+            and semantic_count > 0
+            and success.get("annotation_provenance_complete") is True
+            and degradation.get("guarded_confirmation_consumed") is True
+            and degradation.get("provider_request_outcome") == "provider_unavailable"
+            and degradation.get("transmission_outcome") == "not_transmitted"
+            and degradation.get("local_canonical_continuity") is True
+            and set(retained) == {"source_body", "provider_response_body", "credential"}
+            and all(value is False for value in retained.values())
+        )
+        if not provider_evidence_valid:
+            errors.append("capsule passed provider qualification lacks bounded success/degradation evidence")
+    elif provider_evidence is not None:
+        errors.append("capsule non-passing provider qualification contains provider evidence")
 
     official = mapping(capsule.get("official_v11"), "official_v11", errors)
     official_status = nonempty_string(official.get("status"), "official_v11.status", errors)
@@ -548,6 +641,8 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if not final_started
         else (True, False, False)
         if not final_passed
+        else (True, False, False)
+        if provider_status == "failed"
         else (True, True, True)
         if official_started
         else (True, True, False)
@@ -577,11 +672,16 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
             errors.append("capsule dirty-worktree blocker lacks supporting pre-final evidence")
 
     if not final_started:
-        if official_started or outcomes or audit_status != "not_run":
+        if provider_status != "not_run" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule final-not-run state contains later-stage evidence")
     elif not final_passed:
-        if blocking != "final_failed" or official_started or outcomes or audit_status != "not_run":
+        if blocking != "final_failed" or provider_status != "not_run" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule final failure contains inconsistent V11 evidence")
+    elif provider_status == "failed":
+        if blocking != "provider_live_qualification_failed" or official_started or outcomes or audit_status != "not_run":
+            errors.append("capsule provider failure contains inconsistent later-stage evidence")
+    elif provider_status != "passed":
+        errors.append("capsule passed final must run the live provider qualification exactly once")
     elif not official_started:
         if blocking != "v11_preflight_failed" or outcomes or audit_status != "not_run":
             errors.append("capsule V11 preflight failure contains inconsistent official V11 evidence")
@@ -626,6 +726,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         admission_status == "eligible"
         and blocking is None
         and final_passed
+        and provider_passed
         and official_status == "passed"
         and official_ready is True
         and audit_status == "passed"
@@ -655,6 +756,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     technical_prerequisites_passed = (
         admission_status == "eligible"
         and final_passed
+        and provider_passed
         and official_status == "passed"
         and official_ready is True
         and audit_status == "passed"
@@ -752,6 +854,15 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
             configuration["authorization_assertion_id"],
             errors,
         )
+    for key in ("provider_authorization_assertion_id", "provider_model"):
+        if configuration.get(key) is not None:
+            require(
+                commands_section,
+                "Commands and configuration",
+                key,
+                configuration[key],
+                errors,
+            )
     for key, value in configuration["same_session_artifact_flow"].items():
         require(commands_section, "Commands and configuration", key, value, errors)
     final = capsule["final_aggregate"]
@@ -777,12 +888,45 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
         transmission["authorization_assertion"],
         errors,
     )
+    provider_transmission = configuration["provider_external_transmission"]
+    for key in ("destination", "purpose", "source_scope", "authorization_assertion"):
+        require(
+            privacy,
+            "Privacy and external transmission",
+            f"provider_external_transmission.{key}",
+            provider_transmission[key],
+            errors,
+        )
+    for source in provider_transmission["scope"]:
+        require(
+            privacy,
+            "Privacy and external transmission",
+            "provider_external_transmission.scope",
+            source,
+            errors,
+        )
     audit = capsule["credential_retention_audit"]
     if audit["status"] != "not_run":
         for key, value in audit.items():
             require(privacy, "Privacy and external transmission", f"credential_retention_audit.{key}", value, errors)
 
     official = capsule["official_v11"]
+    provider_qualification = capsule["live_provider_qualification"]
+    require(
+        acceptance,
+        "Acceptance results",
+        "live_provider_qualification.status",
+        provider_qualification["status"],
+        errors,
+    )
+    if provider_qualification["status"] != "not_run":
+        require(
+            observed,
+            "Observed results",
+            "live_provider_qualification.evidence_sha256",
+            provider_qualification["evidence_sha256"],
+            errors,
+        )
     if official["status"] != "not_run":
         for key in ("status", "result_sha256", "required_step_count", "phase_8_ready"):
             require(observed, "Observed results", f"official_v11.{key}", official[key], errors)
@@ -881,6 +1025,7 @@ def self_test_capsule() -> dict[str, Any]:
         "admission_checks": [
             {"name": "candidate_identity_and_clean_worktree", "status": "passed"},
             {"name": "operator_external_transmission_authorization", "status": "passed"},
+            {"name": "operator_provider_source_transmission_authorization", "status": "passed"},
         ],
         "pre_final_candidate_check": {
             "name": "pre_final_candidate_identity_and_clean_worktree",
@@ -901,10 +1046,12 @@ def self_test_capsule() -> dict[str, Any]:
             "fixture_manifest": {"path": "rebuild/validation/shared/fixture-manifest.json", "status": "available", "sha256": "d" * 64},
         },
         "gate_configuration": {
-            "argv": ["rebuild/scripts/validate", "gate", "--external-network", "available", "--authorize-external-transmission", "v11-test-authorization"],
+            "argv": ["rebuild/scripts/validate", "gate", "--external-network", "available", "--authorize-external-transmission", "v11-test-authorization", "--authorize-provider-source-transmission", "provider-test-authorization", "--provider-model", "test-model"],
             "argv_status": "complete",
             "technical_external_network_assertion": "available",
             "authorization_assertion_id": "v11-test-authorization",
+            "provider_authorization_assertion_id": "provider-test-authorization",
+            "provider_model": "test-model",
             "external_transmission": {
                 "required": True,
                 "destination": "test Codex service",
@@ -912,6 +1059,14 @@ def self_test_capsule() -> dict[str, Any]:
                 "scope": ["volicord", "small-python", "polyglot-medium"],
                 "source_scope": "bounded prompt and tool result; no source body",
                 "authorization_assertion": "v11-test-authorization",
+            },
+            "provider_external_transmission": {
+                "required": True,
+                "destination": "test Codex service",
+                "purpose": "one bounded provider qualification",
+                "scope": ["rebuild/validation/privacy/background-provider-qualification/fixtures/bounded-rust/src/lib.rs"],
+                "source_scope": "one bounded maintained Rust source body",
+                "authorization_assertion": "provider-test-authorization",
             },
             "same_session_artifact_flow": {
                 "final_artifact_produced_by_gate": True,
@@ -924,6 +1079,36 @@ def self_test_capsule() -> dict[str, Any]:
             "commands": final_commands,
         },
         "final_summary_sha256": "e" * 64,
+        "live_provider_qualification": {
+            "status": "passed",
+            "evidence_sha256": "6" * 64,
+            "evidence": {
+                "schema_version": 1,
+                "qualification_id": "background-provider-openai-codex-v1",
+                "production_head": head,
+                "authorization": {
+                    "assertion_id": "provider-test-authorization",
+                    "distinct_from_v11": True,
+                    "supplied_by": "current_invocation",
+                },
+                "provider": {"identity": "openai-codex", "model": "test-model"},
+                "fixture": {"id": "background-provider-bounded-rust-v1", "source_locator": "src/lib.rs"},
+                "success": {
+                    "guarded_outcome": "dispatched_and_completed",
+                    "provider_request_outcome": "completed",
+                    "transmission_outcome": "transmitted",
+                    "semantic_annotation_count": 3,
+                    "annotation_provenance_complete": True,
+                },
+                "degradation": {
+                    "guarded_confirmation_consumed": True,
+                    "provider_request_outcome": "provider_unavailable",
+                    "transmission_outcome": "not_transmitted",
+                    "local_canonical_continuity": True,
+                },
+                "retained_evidence": {"source_body": False, "provider_response_body": False, "credential": False},
+            },
+        },
         "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 3, "status_counts": {"passed": 3}, "phase_8_ready": True},
         "required_identities": {"candidate_head": head, "fixtures": [{"id": "fixture-one", "validation_id": "V11", "content_sha256": "1" * 64}]},
         "credential_retention_audit": {"status": "passed", "auth_named_file_count": 0, "credential_content_match_count": 0, "scan_error_count": 0},
@@ -1009,13 +1194,21 @@ def self_test_report(capsule: dict[str, Any]) -> str:
         *final_lines,
     ))
     official = capsule["official_v11"]
+    observed_values: dict[str, Any] = {}
+    provider_qualification = capsule["live_provider_qualification"]
+    if provider_qualification["status"] != "not_run":
+        observed_values["live_provider_qualification"] = {
+            "evidence_sha256": provider_qualification["evidence_sha256"]
+        }
     if official["status"] != "not_run":
-        content["Observed results"] = "\n".join(flat_lines({
-            "official_v11": {key: value for key, value in official.items() if key != "status_counts"},
-        }))
+        observed_values["official_v11"] = {
+            key: value for key, value in official.items() if key != "status_counts"
+        }
         content["Coverage and failures"] = "\n".join(flat_lines({
             "official_v11": {"status_counts": official["status_counts"]},
         }))
+    if observed_values:
+        content["Observed results"] = "\n".join(flat_lines(observed_values))
     audit_lines = (
         flat_lines({"credential_retention_audit": capsule["credential_retention_audit"]})
         if capsule["credential_retention_audit"]["status"] != "not_run"
@@ -1024,6 +1217,8 @@ def self_test_report(capsule: dict[str, Any]) -> str:
     content["Privacy and external transmission"] = "\n".join((
         *flat_lines({"external_transmission": capsule["gate_configuration"]["external_transmission"]}),
         *(f"external_transmission.scope = {target}" for target in capsule["gate_configuration"]["external_transmission"]["scope"]),
+        *flat_lines({"provider_external_transmission": capsule["gate_configuration"]["provider_external_transmission"]}),
+        *(f"provider_external_transmission.scope = {source}" for source in capsule["gate_configuration"]["provider_external_transmission"]["scope"]),
         *audit_lines,
     ))
     content["Acceptance results"] = "\n".join((
@@ -1031,6 +1226,9 @@ def self_test_report(capsule: dict[str, Any]) -> str:
             "admission_status": capsule["admission_status"],
             "blocking_classification": capsule["blocking_classification"],
             "evidence_archive": capsule["evidence_archive"],
+            "live_provider_qualification": {
+                "status": capsule["live_provider_qualification"]["status"]
+            },
             "phase_8_ready": capsule["phase_8_ready"],
         }),
         *(
@@ -1095,6 +1293,13 @@ def self_test() -> int:
         capsule["evidence_archive"]["prerequisites_passed"] = False
         capsule["phase_8_ready"] = False
 
+    def without_provider(capsule: dict[str, Any]) -> None:
+        capsule["live_provider_qualification"] = {
+            "status": "not_run",
+            "evidence_sha256": None,
+            "evidence": None,
+        }
+
     admission_blocked = copy.deepcopy(fully_passed)
     admission_blocked["admission_status"] = "blocked"
     admission_blocked["blocking_classification"] = "authorization_blocked"
@@ -1112,6 +1317,7 @@ def self_test() -> int:
     }
     admission_blocked["final_summary_sha256"] = None
     without_official_v11(admission_blocked)
+    without_provider(admission_blocked)
     assert check_capsule_semantics(
         self_test_report(admission_blocked), admission_blocked
     ) == []
@@ -1125,6 +1331,7 @@ def self_test() -> int:
 
     final_failed = copy.deepcopy(fully_passed)
     without_official_v11(final_failed)
+    without_provider(final_failed)
     final_failed["blocking_classification"] = "final_failed"
     final_failed["gate_configuration"]["same_session_artifact_flow"] = {
         FLOW_KEYS[0]: True,
@@ -1137,6 +1344,23 @@ def self_test() -> int:
         "outcome": "failed", "exit_code": 9,
     })
     assert check_capsule_semantics(self_test_report(final_failed), final_failed) == []
+
+    provider_failed = copy.deepcopy(fully_passed)
+    without_official_v11(provider_failed)
+    provider_failed["blocking_classification"] = "provider_live_qualification_failed"
+    provider_failed["live_provider_qualification"] = {
+        "status": "failed",
+        "evidence_sha256": "6" * 64,
+        "evidence": None,
+    }
+    provider_failed["gate_configuration"]["same_session_artifact_flow"] = {
+        FLOW_KEYS[0]: True,
+        FLOW_KEYS[1]: False,
+        FLOW_KEYS[2]: False,
+    }
+    assert check_capsule_semantics(
+        self_test_report(provider_failed), provider_failed
+    ) == []
 
     impossible_final = copy.deepcopy(final_failed)
     impossible_final["official_v11"] = copy.deepcopy(fully_passed["official_v11"])
@@ -1279,7 +1503,7 @@ def self_test() -> int:
             else:
                 raise AssertionError("ignored local capsule was accepted")
     print(
-        "validation report checker self-test passed; lifecycle scenarios: 7; "
+        "validation report checker self-test passed; lifecycle scenarios: 8; "
         "copied-capsule boundary: passed"
     )
     return 0

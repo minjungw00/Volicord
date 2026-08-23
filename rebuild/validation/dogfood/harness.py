@@ -240,9 +240,11 @@ def linux_process_tree_procfs_unavailability() -> str | None:
     if len(statm_fields) < 2:
         return "linux_procfs_statm_malformed"
     try:
-        int(statm_fields[1])
+        resident_pages = int(statm_fields[1])
     except ValueError:
         return "linux_procfs_statm_malformed"
+    if resident_pages <= 0:
+        return "linux_procfs_resident_pages_unavailable"
     try:
         children = (
             Path("/proc") / str(process_id) / "task" / str(process_id) / "children"
@@ -485,14 +487,16 @@ def repeated_resource_rehearsal(
             return failed_rehearsal("rehearsal_destination_ownership_ambiguous")
         analysis = recorder.run(
             f"resource-{repetition}-analyze",
-            [str(cli), "analyze", project_id],
+            [str(cli), "--json", "--project", project_id, "analyze"],
             environment,
         )
         document = recorder.run(
             f"resource-{repetition}-document",
             [
-                str(cli), "documents", "export", project_id,
-                "project-architecture-guide", "html", str(repeated_document), "en",
+                str(cli), "--json", "--project", project_id,
+                "document", "export", "project-architecture-guide",
+                "--format", "html", "--output", str(repeated_document),
+                "--language", "en",
             ],
             environment,
         )
@@ -5474,8 +5478,8 @@ def self_test() -> int:
             "import os\n"
             "from pathlib import Path\n"
             "import sys\n"
-            "if sys.argv[1:3] == ['documents', 'export']:\n"
-            "    destination = Path(sys.argv[-2])\n"
+            "if 'document' in sys.argv and 'export' in sys.argv:\n"
+            "    destination = Path(sys.argv[sys.argv.index('--output') + 1])\n"
             "    try:\n"
             "        with destination.open('xb') as output:\n"
             "            output.write(b'fixed no-replace document\\n')\n"

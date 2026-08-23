@@ -26,6 +26,11 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/end-to-end/multi-repository/gate.py",
     "rebuild/validation/end-to-end/multi-repository/harness.py",
     "rebuild/scripts/check-fixture-manifest",
+    "rebuild/scripts/check-architecture-contracts",
+    "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
+    "rebuild/validation/dogfood/harness.py",
+    "rebuild/validation/dogfood/campaign_self_test.py",
+    "rebuild/validation/privacy/background-provider-qualification/harness.py",
 )
 V11_TARGETS = {"volicord", "small-python", "polyglot-medium"}
 V11_EXECUTION_ROOTS = {"repository", "clone"}
@@ -33,9 +38,12 @@ KNOWN_EXECUTABLES = {
     "bash",
     "cargo",
     "check-fixture-manifest",
+    "check-architecture-contracts",
     "codex",
     "git",
     "harness.py",
+    "assertions.py",
+    "campaign_self_test.py",
     "install.sh",
     "python",
     "python3",
@@ -59,6 +67,9 @@ CARGO_SHAPES = (
             "--workspace",
             "--all-targets",
             "--all-features",
+            "--",
+            "-D",
+            "warnings",
         ),
         {2},
     ),
@@ -92,27 +103,29 @@ CARGO_SHAPES = (
     ),
 )
 VOLICORD_SHAPES = (
-    (("codex", "enable"), 3, {}, {2}),
-    (("project", "init"), 5, {3: "--repository"}, {4}),
-    (("project", "bind"), 4, {}, {3}),
-    (("analyze",), 2, {}, set()),
-    (("canonical", "user-source"), 6, {}, set()),
-    (("privacy", "enable"), 7, {}, set()),
-    (("checkpoint", "record"), 8, {}, set()),
-    (("recall",), 2, {}, set()),
-    (("portable", "export"), 4, {}, {3}),
-    (("portable", "import"), 3, {}, {2}),
-    (("canonical", "supersede-decision"), 7, {}, set()),
-    (("portable", "compare"), 5, {3: "--base"}, {2, 4}),
-    (("portable", "resolve"), 9, {7: "--base"}, {2, 8}),
-    (("canonical", "correct-decision"), 7, {}, set()),
-    (("canonical", "forget"), 6, {}, set()),
-    (("canonical", "inspect"), 3, {}, set()),
-    (("documents", "export"), 7, {}, {5}),
-    (("privacy", "status"), 3, {}, set()),
-    (("health",), 2, {}, set()),
-    (("repair",), 3, {}, set()),
-    (("candidates",), 2, {}, set()),
+    (("codex", "enable"), 2, {}, set()),
+    (("init",), 2, {}, set()),
+    (("bind",), 1, {}, set()),
+    (("status",), 1, {}, set()),
+    (("analyze",), 1, {}, set()),
+    (("advanced", "records", "source"), 9, {3: "--host", 5: "--session", 7: "--text"}, set()),
+    (("privacy", "enable"), 8, {4: "--source", 6: "--scope"}, set()),
+    (("advanced", "checkpoint"), 11, {3: "--source", 5: "--goal", 7: "--next-step", 9: "--handoff-to"}, set()),
+    (("recall",), 1, {}, set()),
+    (("context", "export"), 4, {2: "--output"}, {3}),
+    (("context", "import"), 4, {2: "--input"}, {3}),
+    (("advanced", "records", "supersede-decision"), 9, {4: "--source", 6: "--alternative", 8: "--rationale"}, set()),
+    (("context", "compare"), 6, {2: "--input", 4: "--base"}, {3, 5}),
+    (("context", "resolve"), 14, {2: "--input", 4: "--conflict-set", 6: "--revision", 8: "--source", 10: "--mode", 12: "--base"}, {3, 13}),
+    (("advanced", "records", "correct-decision"), 9, {4: "--revision", 6: "--source", 8: "--text"}, set()),
+    (("advanced", "records", "forget"), 7, {5: "--source"}, set()),
+    (("advanced", "records", "list"), 3, {}, set()),
+    (("document", "export"), 9, {3: "--format", 5: "--output", 7: "--language"}, {6}),
+    (("privacy", "status"), 2, {}, set()),
+    (("doctor", "check"), 2, {}, set()),
+    (("doctor", "repair"), 2, {}, set()),
+    (("advanced", "candidates"), 2, {}, set()),
+    (("viewer", "export"), 8, {2: "--output", 4: "--level", 6: "--language"}, {3}),
 )
 
 
@@ -355,10 +368,24 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
 
     if executable == "volicord":
         offset = 1
-        if len(argv) >= 3 and argv[1] == "--runtime":
-            structural(1, "flag")
-            path(2)
-            offset = 3
+        while offset < len(argv):
+            if argv[offset] == "--json":
+                structural(offset, "flag")
+                offset += 1
+            elif argv[offset] in {"--runtime", "--repository"} and offset + 1 < len(argv):
+                structural(offset, "flag")
+                path(offset + 1)
+                offset += 2
+            elif argv[offset] == "--project" and offset + 1 < len(argv):
+                structural(offset, "flag")
+                redact(offset + 1, "project_identity")
+                offset += 2
+            elif argv[offset] == "--locale" and offset + 1 < len(argv) and argv[offset + 1] in {"en", "ko"}:
+                structural(offset, "flag")
+                structural(offset + 1, "closed_structural_value")
+                offset += 2
+            else:
+                break
         arguments = argv[offset:]
         for prefix, expected_length, fixed, path_indexes in VOLICORD_SHAPES:
             if len(arguments) != expected_length or tuple(arguments[: len(prefix)]) != prefix:
@@ -381,8 +408,25 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
         return roles
 
     if executable == "harness.py":
+        if (
+            len(argv) == 8
+            and argv[1] == "--live"
+            and argv[2] == "--authorize-source-transmission"
+            and argv[3] == "openai-codex-background-semantic-bounded-rust-v1"
+            and argv[4] == "--model"
+            and argv[6] == "--evidence-output"
+        ):
+            structural(1, "subcommand")
+            structural(2, "flag")
+            structural(3, "closed_structural_value")
+            structural(4, "flag")
+            redact(5, "provider_model")
+            structural(6, "flag")
+            path(7)
+            return roles
         shapes = {
             "self-check": (2, {}, set()),
+            "self-test": (2, {}, set()),
             "credential-audit": (4, {2: "--artifact-dir"}, {3}),
             "preflight": (
                 6,
@@ -423,6 +467,16 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
     if executable == "check-fixture-manifest":
         if len(argv) == 2:
             path(1)
+        return roles
+
+    if executable == "check-architecture-contracts":
+        if len(argv) == 1:
+            return roles
+        if len(argv) == 2 and argv[1] == "--self-test":
+            structural(1, "subcommand")
+        return roles
+
+    if executable in {"assertions.py", "campaign_self_test.py"}:
         return roles
 
     if executable == "install.sh":
@@ -561,8 +615,14 @@ def sanitized_admission(value: dict[str, Any]) -> dict[str, Any]:
         "dependency_snapshot": value.get("dependency_snapshot", {}),
         "gate_configuration": value.get("gate_configuration", {}),
         "external_transmission": value.get("external_transmission", {}),
+        "provider_external_transmission": value.get(
+            "provider_external_transmission", {}
+        ),
         "final_command_count": value.get("final_command_count"),
         "official_v11_command_count": value.get("official_v11_command_count"),
+        "provider_live_qualification_command_count": value.get(
+            "provider_live_qualification_command_count"
+        ),
     }
 
 

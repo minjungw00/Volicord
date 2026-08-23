@@ -36,7 +36,7 @@ surface, not a Volicord product command or production architecture.
   the tar, while the existing 512 KiB compressed-archive limit remains separate.
 - `rebuild/scripts/check-validation-report --self-test` proves generic report
   compatibility plus positive and negative capsule-backed semantics for
-  admission-blocked, final-failed, V11-preflight-failed,
+  admission-blocked, final-failed, provider-live-qualification-failed, V11-preflight-failed,
   official-V11-failed, and fully-passed lifecycles. It also rejects impossible
   stage combinations and missing success evidence; neither exact final nor
   official V11 is invoked.
@@ -45,14 +45,16 @@ surface, not a Volicord product command or production architecture.
   working directory, timestamps, duration, complete separate stdout/stderr,
   exit code, and termination details.
 - `rebuild/scripts/validate admission` evaluates the current clean candidate,
-  runner/V11 self-checks, fixture integrity, executables, writable disposable
+  runner/V11, architecture, realistic RI, Dogfood campaign/harness, and
+  provider self-checks, required fixture identity/integrity, executables, writable disposable
   homes, the maintained resource estimate, loopback, Codex authentication,
   technical external-network state, and the exact bounded transmission
   authorization. It prints a structured result and retains `admission.json`
   below ignored validation state; a blocked result runs neither final nor V11.
 - `rebuild/scripts/validate gate` repeats admission in its own session, invokes
   an immediate live clean-worktree/HEAD recheck, invokes the existing ordered
-  four-command final owner exactly once, passes only the returned summary to
+  four-command final owner exactly once, invokes the separately authorized
+  production provider qualification once, passes only the returned summary to
   V11 preflight, invokes official V11 at most once, runs the V11
   credential-retention audit, creates and independently verifies the sanitized
   evidence archive, and only then prints a fully ready sanitized handoff capsule.
@@ -425,28 +427,39 @@ execution environment can reach the service. It does not authorize a
 transmission. Missing or escalation-dependent technical access is an
 `environment_blocked` admission result.
 
-The only accepted authorization assertion is:
+The two accepted authorization assertions are independent:
 
 ```text
 --authorize-external-transmission v11-openai-codex-project-health-three-targets
+--authorize-provider-source-transmission openai-codex-background-semantic-bounded-rust-v1
 ```
 
-It covers the maintained journey's three authenticated Codex turns for the
+The first covers the maintained journey's three authenticated Codex turns for the
 `volicord`, `small-python`, and `polyglot-medium` targets. Their destination is
 the OpenAI Codex service used by the installed Codex CLI; their purpose is to
 select the installed `project_health` MCP tool; their intended source scope is
 the bounded V11 prompt, Project identity, and tool result, not repository
-source bodies. Credentials, generic network access, sandbox escalation,
+source bodies.
+The second covers one production-provider qualification transmission to that
+same service for the sole maintained source
+`rebuild/validation/privacy/background-provider-qualification/fixtures/bounded-rust/src/lib.rs`
+(at most 4096 bytes), for the purpose of qualifying bounded semantic analysis;
+it excludes every other repository source. Credentials, generic network access,
+sandbox escalation,
 Project provider opt-in, an earlier report, or an earlier session cannot
-supply this assertion. Admission records only whether the exact assertion was
-present, not operator authorization prose or credential contents.
+supply either assertion, and neither assertion supplies the other. Provider
+qualification also requires `--provider-model <exact-model>`. Admission records
+only the exact assertion IDs and model, not operator authorization prose or
+credential contents.
 
 Preflight-only example:
 
 ```text
 rebuild/scripts/validate admission \
   --external-network available \
-  --authorize-external-transmission v11-openai-codex-project-health-three-targets
+  --authorize-external-transmission v11-openai-codex-project-health-three-targets \
+  --authorize-provider-source-transmission openai-codex-background-semantic-bounded-rust-v1 \
+  --provider-model <exact-model>
 ```
 
 Exact gate example (reserved for the one authorized final/V11 session):
@@ -454,7 +467,9 @@ Exact gate example (reserved for the one authorized final/V11 session):
 ```text
 rebuild/scripts/validate gate \
   --external-network available \
-  --authorize-external-transmission v11-openai-codex-project-health-three-targets
+  --authorize-external-transmission v11-openai-codex-project-health-three-targets \
+  --authorize-provider-source-transmission openai-codex-background-semantic-bounded-rust-v1 \
+  --provider-model <exact-model>
 ```
 
 Admission writes its current structured result to the path reported on
@@ -519,11 +534,14 @@ Its bounded cross-session evidence is:
   scope, and source scope;
 - exact-final aggregate status, failure count, summary hash, and each command's
   actual `argv`, outcome, exit/termination/spawn state, and duration;
-- same-gate final artifact production and consumption facts for V11 preflight
+- same-gate final artifact production, provider live-qualification identity/result,
+  and consumption facts for V11 preflight
   and official V11;
 - official V11 status/result hash and status counts, authenticated target
   classifications, credential-audit result/counts, `phase_8_ready`, and active
   Decision revisit-trigger state;
+- production provider live-qualification status/evidence hash, bounded provider/model/source
+  scope, usable success/degradation outcome, and raw-material non-retention state;
 - sanitized evidence archive identity, size/member count, prerequisite state,
   and independent verifier outcome.
 

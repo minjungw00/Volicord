@@ -39,6 +39,9 @@ EVIDENCE_ARCHIVE_SELF_TEST = (
     REBUILD_ROOT / "validation/end-to-end/multi-repository/evidence_archive_self_test.py"
 )
 EVIDENCE_ARCHIVE_VERIFIER = REBUILD_ROOT / "scripts/verify-validation-archive"
+PROVIDER_QUALIFICATION = (
+    REBUILD_ROOT / "validation/privacy/background-provider-qualification/harness.py"
+)
 FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
     (
         "cargo",
@@ -66,6 +69,9 @@ FINAL_COMMANDS: tuple[tuple[str, ...], ...] = (
         "--workspace",
         "--all-targets",
         "--all-features",
+        "--",
+        "-D",
+        "warnings",
     ),
     (
         "cargo",
@@ -271,7 +277,7 @@ def self_test() -> int:
     expected_final = (
         "cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1",
         "cargo fmt --manifest-path rebuild/Cargo.toml --all -- --check",
-        "cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features",
+        "cargo clippy --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features -- -D warnings",
         "cargo test --manifest-path rebuild/Cargo.toml --workspace --all-targets --all-features",
     )
     assert_self_test(tuple(shlex.join(command) for command in FINAL_COMMANDS) == expected_final, "final command contract")
@@ -343,9 +349,13 @@ def load_evidence_archive_module() -> object:
     return module
 
 
-def lifecycle_options(arguments: Sequence[str]) -> tuple[str, str | None]:
+def lifecycle_options(
+    arguments: Sequence[str],
+) -> tuple[str, str | None, str | None, str | None]:
     external_network = "unknown"
     authorization = None
+    provider_authorization = None
+    provider_model = None
     remaining = list(arguments)
     while remaining:
         option = remaining.pop(0)
@@ -355,9 +365,13 @@ def lifecycle_options(arguments: Sequence[str]) -> tuple[str, str | None]:
                 raise ValueError("--external-network must be available, unavailable, or requires-escalation")
         elif option == "--authorize-external-transmission" and remaining:
             authorization = remaining.pop(0)
+        elif option == "--authorize-provider-source-transmission" and remaining:
+            provider_authorization = remaining.pop(0)
+        elif option == "--provider-model" and remaining:
+            provider_model = remaining.pop(0)
         else:
             raise ValueError(f"unknown or incomplete lifecycle option: {option}")
-    return external_network, authorization
+    return external_network, authorization, provider_authorization, provider_model
 
 
 def gate_command_runner(directory: Path, argv: Sequence[str]) -> dict[str, object]:
@@ -366,10 +380,12 @@ def gate_command_runner(directory: Path, argv: Sequence[str]) -> dict[str, objec
 
 def run_admission(arguments: Sequence[str]) -> int:
     gate = load_gate_module()
-    external_network, authorization = lifecycle_options(arguments)
+    external_network, authorization, provider_authorization, provider_model = lifecycle_options(arguments)
     run_directory = new_run_directory("admission")
     result = gate.evaluate_admission(
         authorization_assertion=authorization,
+        provider_authorization_assertion=provider_authorization,
+        provider_model=provider_model,
         external_network=external_network,
         artifact_root=run_directory,
         command_runner=gate_command_runner,
@@ -384,10 +400,12 @@ def run_admission(arguments: Sequence[str]) -> int:
 def run_gate(arguments: Sequence[str]) -> int:
     gate = load_gate_module()
     evidence_archive = load_evidence_archive_module()
-    external_network, authorization = lifecycle_options(arguments)
+    external_network, authorization, provider_authorization, provider_model = lifecycle_options(arguments)
     run_directory = new_run_directory("v11-gate")
     admission = gate.evaluate_admission(
         authorization_assertion=authorization,
+        provider_authorization_assertion=provider_authorization,
+        provider_model=provider_model,
         external_network=external_network,
         artifact_root=run_directory / "admission-checks",
         command_runner=gate_command_runner,
@@ -412,6 +430,28 @@ def run_gate(arguments: Sequence[str]) -> int:
                 "--final-artifact", str(final_path),
             ),
         )
+
+    def provider_owner(
+        candidate_head: str,
+    ) -> tuple[dict[str, object] | None, dict[str, object], Path]:
+        evidence_path = run_directory / "live-provider-qualification" / "evidence.json"
+        result, execution = gate.run_json_command(
+            gate_command_runner,
+            run_directory / "live-provider-qualification",
+            (
+                str(PROVIDER_QUALIFICATION),
+                "--live",
+                "--authorize-source-transmission",
+                provider_authorization or "",
+                "--model",
+                provider_model or "",
+                "--evidence-output",
+                str(evidence_path),
+            ),
+        )
+        if isinstance(result, dict) and result.get("production_head") != candidate_head:
+            result = None
+        return result, execution, evidence_path
 
     def v11_owner(
         candidate_head: str,
@@ -442,6 +482,7 @@ def run_gate(arguments: Sequence[str]) -> int:
         admission=admission,
         final_commands=FINAL_COMMANDS,
         final_owner=final_owner,
+        provider_owner=provider_owner,
         preflight_owner=preflight_owner,
         v11_owner=v11_owner,
         audit_owner=audit_owner,
@@ -537,8 +578,10 @@ def usage() -> int:
         "  rebuild/scripts/validate final  # gate-owned; direct invocation is refused\n"
         "  rebuild/scripts/validate admission [--external-network <state>] "
         "[--authorize-external-transmission <assertion>]\n"
+        "    [--authorize-provider-source-transmission <assertion>] [--provider-model <model>]\n"
         "  rebuild/scripts/validate gate [--external-network <state>] "
-        "[--authorize-external-transmission <assertion>]",
+        "[--authorize-external-transmission <assertion>] "
+        "[--authorize-provider-source-transmission <assertion>] [--provider-model <model>]",
         file=sys.stderr,
     )
     return 2

@@ -140,18 +140,24 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
     for payload in SENSITIVE_OPERANDS:
         command = [
             "volicord",
-            "canonical",
-            "user-source",
+            "--json",
+            "--project",
             "project-identity",
+            "advanced",
+            "records",
+            "source",
+            "--host",
             "codex",
+            "--session",
             "v11",
+            "--text",
             payload,
         ]
         projected = builder.sanitized_argv(command, ROOT, gate)
-        assert projected["argv"][:3] == ["volicord", "canonical", "user-source"]
+        assert projected["argv"][:3] == ["volicord", "--json", "--project"]
         assert projected["argv"][-1] == "<redacted:sensitive-operand>"
         assert projected["non_structural_argument_roles"][-1] == [
-            6,
+            12,
             "redacted",
             "sensitive_operand",
         ]
@@ -159,12 +165,16 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         privacy = builder.sanitized_argv(
             [
                 "volicord",
+                "--json",
+                "--project",
+                "project-identity",
                 "privacy",
                 "enable",
-                "project-identity",
                 "provider",
                 "model",
+                "--source",
                 "decision-identity",
+                "--scope",
                 payload,
             ],
             ROOT,
@@ -221,6 +231,45 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
     assert exact_final["non_structural_argument_roles"] == [
         [3, "projected", "repository_path"]
     ]
+
+    warning_clean_clippy = builder.sanitized_argv(
+        [
+            "cargo", "clippy", "--manifest-path", "rebuild/Cargo.toml",
+            "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings",
+        ],
+        ROOT,
+        gate,
+    )
+    assert warning_clean_clippy["argv"][-3:] == ["--", "-D", "warnings"]
+
+    provider_live = builder.sanitized_argv(
+        [
+            str(ROOT / "rebuild/validation/privacy/background-provider-qualification/harness.py"),
+            "--live",
+            "--authorize-source-transmission",
+            "openai-codex-background-semantic-bounded-rust-v1",
+            "--model",
+            "private-exact-model",
+            "--evidence-output",
+            str(gate / "provider-live-qualification/evidence.json"),
+        ],
+        ROOT,
+        gate,
+    )
+    assert provider_live["argv"][3] == "openai-codex-background-semantic-bounded-rust-v1"
+    assert provider_live["argv"][5] == "<redacted:provider-model>"
+    assert provider_live["argv"][7] == "<gate-artifact>/provider-live-qualification/evidence.json"
+
+    current_commands = (
+        (["volicord", "--json", "--repository", str(root), "codex", "enable"], ("codex", "enable")),
+        (["volicord", "--json", "viewer", "export", "--output", str(root / "understanding.html"), "--level", "project", "--language", "en"], ("viewer", "export")),
+        (["volicord", "--json", "document", "export", "handoff-resume", "--format", "html", "--output", str(root / "handoff.html"), "--language", "en"], ("document", "export")),
+    )
+    for command, subcommands in current_commands:
+        projected = builder.sanitized_argv(command, ROOT, gate)
+        assert projected["argv"][0:2] == ["volicord", "--json"]
+        assert all(value in projected["argv"] for value in subcommands)
+        assert not any(role[2] == "unknown_operand" for role in projected["non_structural_argument_roles"])
 
     family_shapes = (
         ([str(ROOT / "rebuild/scripts/validate"), "self-test"], ["validate", "self-test"]),
@@ -335,11 +384,17 @@ def integration_archive(root: Path) -> tuple[Path, str]:
                 execution(
                     [
                         "volicord",
-                        "canonical",
-                        "user-source",
+                        "--json",
+                        "--project",
                         "project-identity",
+                        "advanced",
+                        "records",
+                        "source",
+                        "--host",
                         "codex",
+                        "--session",
                         "v11",
+                        "--text",
                         payload,
                     ],
                     target,
@@ -499,11 +554,17 @@ def production_scale_archive(root: Path) -> dict[str, int]:
         commands.append(
             [
                 "volicord",
-                "canonical",
-                "user-source",
+                "--json",
+                "--project",
                 "project-identity",
+                "advanced",
+                "records",
+                "source",
+                "--host",
                 "codex",
+                "--session",
                 "v11",
+                "--text",
                 SENSITIVE_OPERANDS[index % len(SENSITIVE_OPERANDS)],
             ]
         )
