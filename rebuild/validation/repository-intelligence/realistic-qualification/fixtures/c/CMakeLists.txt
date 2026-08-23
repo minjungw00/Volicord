@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.18)
+project(realistic_c C)
+add_library(records src/record.c src/codec.c)
+target_include_directories(records PUBLIC include)
+add_executable(record_test tests/test_record.c)
+target_link_libraries(record_test PRIVATE records)

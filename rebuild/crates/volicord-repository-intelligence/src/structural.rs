@@ -2402,8 +2402,9 @@ mod tests {
     #[test]
     fn injected_adapter_failure_is_bounded_to_one_language(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../validation/repository-intelligence/polyglot-structural/fixtures/polyglot");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../validation/repository-intelligence/realistic-qualification/fixtures/polyglot",
+        );
         let grounding = crate::canonical::test_repository_grounding(
             ProjectId::from_bytes([0x31; 16]),
             SourceId::from_bytes([0x32; 16]),

@@ -1,0 +1,10 @@
+{
+  "schema": "contracts/greeting.request.v1.schema.json",
+  "endpoint": "/v1/greet",
+  "components": {
+    "gateway": "java/src/main/java/relay/Gateway.java",
+    "formatter": "python/src/relay_worker/worker.py",
+    "client": "typescript/src/client.ts"
+  },
+  "boundary": "file-schema-plus-http"
+}

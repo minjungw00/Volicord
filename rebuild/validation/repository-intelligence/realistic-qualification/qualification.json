@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "qualification_id": "repository-intelligence-realistic-v1",
+  "tier_1": {
+    "license": "CC0-1.0",
+    "origin": "Self-authored maintained adversarial fixtures.",
+    "languages": [
+      {
+        "language": "java",
+        "path": "fixtures/java",
+        "difficult_constructs": ["overloads", "annotations", "same-name classes", "syntax damage"]
+      },
+      {
+        "language": "python",
+        "path": "fixtures/python",
+        "difficult_constructs": ["decorators", "dynamic imports", "same-name modules", "syntax damage"]
+      },
+      {
+        "language": "javascript",
+        "path": "fixtures/javascript",
+        "difficult_constructs": ["wildcard re-export", "decorators", "dynamic imports", "syntax damage"]
+      },
+      {
+        "language": "typescript",
+        "path": "fixtures/typescript",
+        "difficult_constructs": ["overloads", "declaration merging", "conditional types", "decorators", "dynamic imports", "syntax damage"]
+      },
+      {
+        "language": "c",
+        "path": "fixtures/c",
+        "difficult_constructs": ["preprocessor macros", "conditional compilation", "same-name static functions", "syntax damage"]
+      },
+      {
+        "language": "cpp",
+        "path": "fixtures/cpp",
+        "difficult_constructs": ["nested namespaces", "templates", "preprocessor conditionals", "same-name classes", "syntax damage"]
+      },
+      {
+        "language": "rust",
+        "path": "fixtures/rust",
+        "difficult_constructs": ["workspace modules", "macros", "cfg", "same-name structs", "syntax damage"]
+      }
+    ],
+    "semantic_gold": {
+      "ecosystems": ["java_maven", "typescript_node", "rust_cargo"],
+      "queried_relations": ["references", "implements"],
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "scope": "Only curated, locally source-resolvable relation queries are scored; unresolved and unsupported relations remain explicit and are excluded from the denominator."
+    },
+    "polyglot": {
+      "path": "fixtures/polyglot",
+      "languages": ["java", "python", "typescript"],
+      "boundary_manifest": "fixtures/polyglot/system.json",
+      "contract": "fixtures/polyglot/contracts/greeting.request.v1.schema.json",
+      "boundary_kinds": ["http", "file_schema"],
+      "grounding_markers": ["/v1/greet", "greeting.request.v1"]
+    },
+    "assertions": [
+      "stable_same_snapshot_identity_and_serialization",
+      "incremental_refresh_matches_full_analysis",
+      "unaffected_source_ranges_remain_stable",
+      "per_language_partial_and_unresolved_honesty",
+      "one_adapter_failure_preserves_other_language_results",
+      "no_repository_wide_structural_completeness_generalization",
+      "source_grounded_cross_component_boundary",
+      "curated_semantic_precision_and_recall"
+    ]
+  },
+  "tier_2": {
+    "working_state": "rebuild/.local/repository-intelligence/external-corpus",
+    "source_bodies_committed": false,
+    "absence_state": "environment_blocked",
+    "repositories_manifest": "external-repositories.json"
+  }
+}

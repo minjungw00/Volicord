@@ -1,0 +1,3 @@
+[project]
+name = "relay-worker"
+version = "1.0.0"

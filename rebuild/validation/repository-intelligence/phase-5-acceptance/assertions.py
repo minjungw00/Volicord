@@ -48,6 +48,11 @@ REQUIREMENT_TESTS = {
     "canonical_grounding_no_mutation": "canonical_grounding_validation_has_no_mutation_authority",
     "deterministic_grounded_reference_serialization": "grounded_reference_serialization_is_deterministic_and_current_only",
     "all_canonical_reference_ingress_grounded": "automatic_and_manual_reference_ingress_is_grounded_before_consumption",
+    "realistic_seven_language_partial_honesty": "all_seven_realistic_repositories_are_multi_file_partial_and_source_ranged",
+    "realistic_same_name_scope_identity": "realistic_same_name_declarations_remain_scope_distinct",
+    "realistic_incremental_range_stability": "incremental_refresh_matches_full_analysis_and_preserves_unaffected_ranges",
+    "realistic_semantic_precision_recall": "curated_semantic_queries_keep_per_ecosystem_precision_and_recall",
+    "realistic_polyglot_boundary_grounding": "polyglot_boundary_is_config_and_schema_grounded_without_completeness_generalization",
 }
 
 EXPECTED_V01 = {
@@ -62,6 +67,7 @@ EXPECTED_V01 = {
     "v01-out-of-set",
 }
 EXPECTED_V02 = {"v02-java-maven", "v02-typescript-node", "v02-rust-cargo"}
+EXPECTED_REALISTIC = {"repository-intelligence-realistic-v1"}
 
 
 def require(condition: bool, message: str) -> None:
@@ -94,8 +100,15 @@ def main() -> int:
     fixtures = manifest.get("fixtures", [])
     v01 = {item.get("id") for item in fixtures if item.get("validation_id") == "V01"}
     v02 = {item.get("id") for item in fixtures if item.get("validation_id") == "V02"}
+    realistic = {
+        item.get("id") for item in fixtures if item.get("validation_id") == "RI-REALISTIC"
+    }
     require(v01 == EXPECTED_V01, "V01 fixture matrix changed without acceptance mapping")
     require(v02 == EXPECTED_V02, "V02 ecosystem matrix changed without acceptance mapping")
+    require(
+        realistic == EXPECTED_REALISTIC,
+        "realistic qualification fixture changed without acceptance mapping",
+    )
 
     cargo = [
         "cargo",
@@ -123,6 +136,7 @@ def main() -> int:
                 "polyglot_fixture_count": 1,
                 "fallback_fixture_count": 1,
                 "semantic_ecosystem_count": len(EXPECTED_V02),
+                "realistic_qualification_fixture_count": len(EXPECTED_REALISTIC),
                 "status": "passed",
             },
             indent=2,

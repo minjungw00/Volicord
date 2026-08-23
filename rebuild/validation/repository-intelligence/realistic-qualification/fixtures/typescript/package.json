@@ -1,0 +1,5 @@
+{
+  "name": "realistic-typescript",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}

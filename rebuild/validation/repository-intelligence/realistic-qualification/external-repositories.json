@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "input_policy": {
+    "working_state": "rebuild/.local/repository-intelligence/external-corpus",
+    "source_bodies_committed": false,
+    "revision_must_match": true,
+    "license_file_must_exist": true,
+    "missing_checkout_status": "environment_blocked"
+  },
+  "repositories": [
+    {
+      "id": "pallets-click",
+      "origin": "https://github.com/pallets/click.git",
+      "revision": "2c8cd3ac958a7eb316d67f2d316c27086c4c0369",
+      "license": "BSD-3-Clause",
+      "license_files": ["LICENSE.txt"],
+      "expected_languages": ["python"],
+      "bounded_input": ["src/click", "tests", "pyproject.toml", "LICENSE.txt"],
+      "purpose": "Qualify nested Python packages, decorators, tests, imports, and realistic library scale."
+    },
+    {
+      "id": "burntsushi-ripgrep",
+      "origin": "https://github.com/BurntSushi/ripgrep.git",
+      "revision": "3fce3b5bb0236da2df6d99672afb8a719642eca7",
+      "license": "Unlicense OR MIT",
+      "license_files": ["UNLICENSE", "LICENSE-MIT"],
+      "expected_languages": ["rust"],
+      "bounded_input": ["crates", "Cargo.toml", "tests", "UNLICENSE", "LICENSE-MIT"],
+      "purpose": "Qualify a multi-crate Rust workspace with macros, cfg, tests, and production-scale modules."
+    },
+    {
+      "id": "tree-sitter",
+      "origin": "https://github.com/tree-sitter/tree-sitter.git",
+      "revision": "74b7d0c951ebdab16a8a4d64e7cf81e56046408a",
+      "license": "MIT",
+      "license_files": ["LICENSE"],
+      "expected_languages": ["c", "javascript", "rust"],
+      "bounded_input": ["lib", "cli", "test", "Cargo.toml", "package.json", "LICENSE"],
+      "purpose": "Qualify a real polyglot parser/tooling repository without treating one language's result as repository-wide completeness."
+    }
+  ]
+}

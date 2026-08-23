@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "experimentalDecorators": true,
+    "moduleResolution": "NodeNext"
+  },
+  "include": ["src", "test"]
+}

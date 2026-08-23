@@ -1,0 +1,8 @@
+{
+  "$id": "greeting.request.v1",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" }
+  }
+}

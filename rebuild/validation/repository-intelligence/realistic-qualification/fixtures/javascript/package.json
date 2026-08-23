@@ -1,0 +1,5 @@
+{
+  "name": "realistic-javascript",
+  "type": "module",
+  "exports": { ".": "./src/index.js" }
+}

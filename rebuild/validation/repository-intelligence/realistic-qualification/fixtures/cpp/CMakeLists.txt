@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.18)
+project(realistic_cpp CXX)
+add_library(models src/model.cpp src/other.cpp)
+target_include_directories(models PUBLIC include)
+add_executable(model_test tests/test_model.cpp)
+target_link_libraries(model_test PRIVATE models)

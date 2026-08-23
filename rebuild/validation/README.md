@@ -108,6 +108,7 @@ validation assets use capability-based paths:
 shared/fixture-manifest.json
 shared/report-template.md
 repository-intelligence/polyglot-structural/
+repository-intelligence/realistic-qualification/
 repository-intelligence/phase-5-acceptance/
 canonical-context/portability/
 inquiry/frontier-resume/
@@ -575,3 +576,15 @@ The Phase 5 acceptance orchestrator maps maintained fixture and requirement
 identifiers to Production Rust tests. It owns orchestration and evidence
 accounting only; analyzer and product semantics remain in the Production Rust
 subsystem.
+
+The realistic Repository Intelligence qualification adds a maintained Tier 1
+seven-language adversarial corpus and an optional Tier 2 public-repository
+corpus. Tier 2 source is never committed: `external_corpus.py fetch` places
+revision-pinned sparse checkouts under ignored `rebuild/.local/` state, while
+`status` reports an absent checkout as `environment_blocked`. Run both tiers
+through the repository-local focused runner:
+
+```text
+rebuild/scripts/validate focused realistic-external-fetch -- python3 rebuild/validation/repository-intelligence/realistic-qualification/external_corpus.py fetch
+rebuild/scripts/validate focused realistic-corpus-qualification -- python3 rebuild/validation/repository-intelligence/realistic-qualification/assertions.py
+```

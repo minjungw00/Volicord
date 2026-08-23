@@ -308,6 +308,33 @@
       "license": "CC0-1.0"
     },
     {
+      "id": "repository-intelligence-realistic-v1",
+      "validation_id": "RI-REALISTIC",
+      "path": "rebuild/validation/repository-intelligence/realistic-qualification/fixtures",
+      "purpose": "Qualify Production Repository Intelligence against maintained adversarial multi-file Java, Python, JavaScript, TypeScript, C, C++, Rust, and source-grounded polyglot repositories, including stable incremental behavior and three curated semantic ecosystems.",
+      "expected_entities": [
+        "seven-language multi-file structural corpus",
+        "same-name declarations in distinct paths and scopes",
+        "damaged-source usable remainder with source ranges",
+        "three independently scored semantic ecosystems"
+      ],
+      "expected_relations": [
+        "cross-file imports/includes/exports and calls",
+        "curated references and implementations",
+        "HTTP and file/schema polyglot component boundary",
+        "incremental refresh equivalence and unaffected range stability"
+      ],
+      "expected_unsupported": [
+        "compiler-complete overload and type resolution",
+        "dynamic import and decorator runtime behavior",
+        "preprocessor, template instantiation, macro expansion, and cfg-selected meaning",
+        "repository-wide completeness inferred from one language or area"
+      ],
+      "content_sha256": "df249af327700395d99953374bc9837b7435eb94a562dd6f5fd231ff25b47d36",
+      "origin": "Self-authored maintained Tier 1 qualification corpus; third-party Tier 2 sources remain in ignored validation state.",
+      "license": "CC0-1.0"
+    },
+    {
       "id": "v03-canonical-scenario",
       "validation_id": "V03",
       "path": "rebuild/validation/canonical-context/portability/fixtures",
