@@ -1,0 +1,46 @@
+{
+  "authorization": {
+    "assertion_id": "openai-codex-background-semantic-bounded-rust-v1",
+    "distinct_from_v11": true,
+    "supplied_by": "caller"
+  },
+  "degradation": {
+    "guarded_confirmation_consumed": true,
+    "local_canonical_continuity": true,
+    "provider_request_outcome": "provider_unavailable",
+    "transmission_outcome": "not_transmitted",
+    "trigger": "configured executable unavailable"
+  },
+  "fixture": {
+    "content_sha256": "13bd3a5d20d64636b24c5298b671e988662cb6d327c4649411ed0903d31ce97c",
+    "id": "background-provider-bounded-rust-v1",
+    "maintained_bytes": 632,
+    "original_bytes": 632,
+    "source_count": 1,
+    "source_locator": "src/lib.rs",
+    "transmitted_bytes": 632
+  },
+  "production_head": "fa133cd2c8cf4cf1639ff556ff6bff41b6600d98",
+  "provider": {
+    "identity": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "provider_side_deletion": "unsupported_by_adapter",
+    "transport": "authenticated installed Codex CLI"
+  },
+  "qualification_id": "background-provider-openai-codex-v1",
+  "retained_evidence": {
+    "credential": false,
+    "provider_response_body": false,
+    "source_body": false
+  },
+  "schema_version": 1,
+  "success": {
+    "analysis_snapshot": "aca4eae07cd251a013d52b7fd018081704d09a411d1cf5344a2b213355364e7a",
+    "annotation_provenance_complete": true,
+    "guarded_outcome": "dispatched_and_completed",
+    "provider_request_outcome": "completed",
+    "repository_snapshot": "23e5252585b72a416d8ef36179f0b4519caccf8a0216ae379d20a60a8cf40699",
+    "semantic_annotation_count": 3,
+    "transmission_outcome": "transmitted"
+  }
+}

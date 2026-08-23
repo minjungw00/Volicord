@@ -625,6 +625,27 @@ external semantic provider 없이 핵심 기능을 사용할 수 있고, interac
 - Project opt-in, network, authentication과 별개인 current-invocation exact
   provider/purpose/source-scope transmission authorization 전에는 dispatch하지 않는다.
 
+### Maintained production-provider qualification
+
+`rebuild/validation/privacy/background-provider-qualification/`은 V07의 production
+dispatcher/transport evidence owner다. Maintained entrypoint는 network-free `--self-test`와
+explicit `--live` mode를 분리한다. Live mode는 caller가 exact assertion
+`openai-codex-background-semantic-bounded-rust-v1`을
+`--authorize-source-transmission`으로 전달할 때만 실행한다. 이 assertion은 V11의
+`v11-openai-codex-project-health-three-targets`와 다르며 서로 대신할 수 없다.
+
+승인 범위는 authenticated OpenAI Codex service의 `openai-codex` provider, caller가
+명시한 exact model, `qualify the bounded background semantic provider fixture` purpose,
+`semantic_annotation` capability와 maintained one-file
+`fixtures/bounded-rust/src/lib.rs` Source뿐이다. Harness는 승인을 생성하거나 저장하지
+않고, missing/다른 assertion이면 fixture read와 live subprocess 전에
+`authorization_blocked`로 종료한다. Sanitized evaluation은 request outcome, manifest
+locator/byte count, snapshot/provenance completeness와 degradation classification만 보존하며
+Source body, provider response body/event stream, credential과 raw provider artifact는
+보존하지 않는다. Live success 뒤 missing configured executable을 사용한 독립 요청으로
+`provider_unavailable`, `not_transmitted`, Guarded confirmation consumption과 local canonical
+continuity를 함께 확인한다. Provider-side deletion은 unsupported로 남긴다.
+
 ## 12. V08 — Linux install과 Codex integration
 
 ### 목표

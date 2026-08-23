@@ -696,6 +696,31 @@
       "content_sha256": "23e894a67950aebd149ecb305d592275312497a902449e2969d5b09e9018413d",
       "origin": "Sanitized self-authored representative derived from the observed current Phase 8 Codex Extension completion envelope.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v07-background-provider-bounded-rust",
+      "validation_id": "V07",
+      "path": "rebuild/validation/privacy/background-provider-qualification/fixtures/bounded-rust",
+      "purpose": "Exercise exactly one bounded, non-sensitive, self-authored Rust Source through the production openai-codex background semantic provider adapter without authorizing repository or private project source.",
+      "expected_entities": [
+        "rust|src/lib.rs|struct|PulseWindow|3",
+        "rust|src/lib.rs|field|samples|4",
+        "rust|src/lib.rs|method|new|8",
+        "rust|src/lib.rs|method|average|12",
+        "rust|src/lib.rs|test|averages_a_bounded_window|24"
+      ],
+      "expected_relations": [
+        "calls_syntactically|PulseWindow.average|self.samples.iter",
+        "tests|tests.averages_a_bounded_window|rust"
+      ],
+      "expected_unsupported": [
+        "the fixture does not authorize transmission of any repository or private project Source",
+        "the qualification cannot prove provider-side deletion",
+        "the bounded marker filter is not a complete arbitrary-secret detector"
+      ],
+      "content_sha256": "13bd3a5d20d64636b24c5298b671e988662cb6d327c4649411ed0903d31ce97c",
+      "origin": "Self-authored bounded non-sensitive fixture for the V07 production background semantic-provider qualification.",
+      "license": "CC0-1.0"
     }
   ]
 }
