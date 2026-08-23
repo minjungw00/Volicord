@@ -3,11 +3,14 @@ use crate::{
     ConfirmationDecision, ConfirmationRequestId, Error, GuardedEffectCategory, GuardedEffectDraft,
     GuardedRisk, LocalOperations, RequestingProvenance, RuntimeLayout,
 };
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde_json::{json, Value};
 use std::{
+    env,
     ffi::{OsStr, OsString},
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::Command as ProcessCommand,
 };
 use volicord_context::{
     BundleComparison, BundleConflictClass, BundleMergeStatus, CanonicalRecordId, CheckpointDraft,
@@ -21,8 +24,8 @@ use volicord_privacy::{
     SourceExclusionPolicy,
 };
 use volicord_projections::{
-    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, NarrativeRealizationState,
-    OutputFormat, RequestedDestination,
+    build_project_understanding, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
+    NarrativeRealizationState, OutputFormat, RequestedDestination, UnderstandingBound,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,78 +58,1181 @@ where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
 {
-    match execute(args.into_iter().map(Into::into).collect(), input, stdout) {
-        Ok(()) => CliExit::SUCCESS,
+    let mut argv = vec![OsString::from("volicord")];
+    argv.extend(args.into_iter().map(Into::into));
+    let matches = match command().try_get_matches_from(argv) {
+        Ok(matches) => matches,
         Err(error) => {
-            let _ = writeln!(stderr, "{}", error.message());
-            if error.message().starts_with("usage:") {
+            let exit = if error.use_stderr() {
                 CliExit::USAGE
             } else {
-                CliExit::FAILURE
+                CliExit::SUCCESS
+            };
+            if error.use_stderr() {
+                let _ = write!(stderr, "{error}");
+            } else {
+                let _ = write!(stdout, "{error}");
             }
+            return exit;
+        }
+    };
+    match execute(matches, input, stdout) {
+        Ok(()) => CliExit::SUCCESS,
+        Err(error) => {
+            let _ = writeln!(stderr, "Error: {}", error.message());
+            let _ = writeln!(
+                stderr,
+                "Try 'volicord --help' or the command's '--help' for usage."
+            );
+            CliExit::FAILURE
         }
     }
 }
 
-fn execute(
-    mut args: Vec<OsString>,
-    input: &mut dyn Read,
-    stdout: &mut dyn Write,
-) -> Result<(), Error> {
-    let runtime = if args
-        .first()
-        .is_some_and(|value| value == OsStr::new("--runtime"))
-    {
-        if args.len() < 3 {
-            return Err(usage("--runtime requires an absolute path and a command"));
-        }
-        let value = PathBuf::from(args.remove(1));
-        args.remove(0);
-        RuntimeLayout::new(value)?
+fn execute(matches: ArgMatches, input: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), Error> {
+    let runtime = if let Some(value) = matches.get_one::<PathBuf>("runtime") {
+        RuntimeLayout::new(value.clone())?
     } else {
         RuntimeLayout::from_environment()?
     };
-    let mut cursor = Cursor::new(args);
-    let command = cursor.next("command")?;
-    if command == "codex" {
-        let rendered = crate::codex::execute(runtime, &mut cursor, input)?;
-        cursor.done()?;
-        if let Some(value) = rendered {
-            serde_json::to_writer_pretty(&mut *stdout, &value)
-                .map_err(|error| Error::with_source("cannot render CLI result", error))?;
-            writeln!(stdout)
-                .map_err(|error| Error::with_source("cannot write CLI result", error))?;
-        }
-        return Ok(());
-    }
-    let operations = LocalOperations::new(runtime);
-    let value = match command.as_str() {
-        "project" => project(&operations, &mut cursor)?,
-        "health" => health(&operations, &mut cursor)?,
-        "analyze" => analyze(&operations, &mut cursor, false)?,
-        "rebuild" => rebuild(&operations, &mut cursor)?,
-        "reindex" => reindex(&operations, &mut cursor)?,
-        "repair" => repair(&operations, &mut cursor)?,
-        "portable" => portable(&operations, &mut cursor)?,
-        "canonical" => canonical(&operations, &mut cursor)?,
-        "candidates" => candidates(&operations, &mut cursor)?,
-        "privacy" => privacy(&operations, &mut cursor)?,
-        "recall" => recall(&operations, &mut cursor)?,
-        "documents" => documents(&operations, &mut cursor)?,
-        "inquiry" => inquiry(&operations, &mut cursor)?,
-        "checkpoint" => checkpoint(&operations, &mut cursor)?,
-        "guarded" => guarded(&operations, &mut cursor)?,
-        "help" | "--help" | "-h" => json!({"usage": USAGE}),
-        _ => return Err(usage("unknown command")),
+    let format = OutputMode {
+        json: matches.get_flag("json"),
+        locale: match matches
+            .get_one::<String>("locale")
+            .map(String::as_str)
+            .unwrap_or("en")
+        {
+            "ko" => CliLocale::Korean,
+            _ => CliLocale::English,
+        },
     };
-    cursor.done()?;
-    serde_json::to_writer_pretty(&mut *stdout, &value)
-        .map_err(|error| Error::with_source("cannot render CLI result", error))?;
-    writeln!(stdout).map_err(|error| Error::with_source("cannot write CLI result", error))?;
+    let selection = ProjectSelection {
+        explicit: matches
+            .get_one::<String>("project")
+            .map(|value| project_id(value))
+            .transpose()?,
+        repository: matches.get_one::<PathBuf>("repository").cloned(),
+    };
+    let (name, command_matches) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a command is required"))?;
+    let operations = LocalOperations::new(runtime.clone());
+    let value = dispatch(
+        name,
+        command_matches,
+        &operations,
+        &runtime,
+        &selection,
+        input,
+    )?;
+    if let Some(value) = value {
+        render(&value, format, stdout)?;
+    }
     Ok(())
 }
 
-const USAGE: &str = "volicord [--runtime ABSOLUTE_PATH] <project|health|analyze|rebuild|reindex|repair|portable|canonical|candidates|privacy|recall|documents|inquiry|checkpoint|guarded|codex> ...";
+const USAGE: &str = "volicord [OPTIONS] <COMMAND>";
+
+#[derive(Clone, Copy)]
+enum CliLocale {
+    English,
+    Korean,
+}
+
+#[derive(Clone, Copy)]
+struct OutputMode {
+    json: bool,
+    locale: CliLocale,
+}
+
+struct ProjectSelection {
+    explicit: Option<ProjectId>,
+    repository: Option<PathBuf>,
+}
+
+fn command() -> Command {
+    Command::new("volicord")
+        .about("Understand a repository, preserve its decisions, and resume work")
+        .long_about("Volicord is a local-first project understanding and decision-memory tool. Ordinary project commands resolve the repository from --repository or the current directory, so a Project ID is rarely needed.")
+        .arg_required_else_help(true)
+        .disable_help_subcommand(true)
+        .after_help("Examples:\n  volicord init \"My Project\"\n  volicord status\n  volicord analyze\n  volicord recall\n  volicord document preview handoff-resume\n  volicord context export --output /tmp/project.volicord.json\n  volicord doctor check")
+        .arg(path_arg("runtime", "runtime", "Use an explicit Runtime Home").global(true))
+        .arg(path_arg("repository", "repository", "Resolve the Project from this repository").global(true))
+        .arg(Arg::new("project").long("project").value_name("PROJECT_ID").help("Select a Project explicitly when repository resolution is ambiguous").global(true))
+        .arg(Arg::new("json").long("json").help("Emit machine-readable JSON").action(ArgAction::SetTrue).global(true))
+        .arg(Arg::new("locale").long("locale").value_name("LOCALE").value_parser(["en", "ko"]).default_value("en").help("Locale for fixed CLI text: en or ko").global(true))
+        .subcommand(Command::new("init").about("Initialize and bind a Project to a repository").arg(Arg::new("name").value_name("NAME").help("Project display name")).arg(Arg::new("no_bind").long("no-bind").help("Initialize without binding a repository").action(ArgAction::SetTrue)).after_help("Examples:\n  volicord init \"Payments Service\"\n  volicord --repository /work/payments init \"Payments Service\""))
+        .subcommand(Command::new("bind").about("Bind an existing Project to this repository").arg(Arg::new("revision").long("revision").value_name("REVISION")).after_help("Example:\n  volicord --project PROJECT_ID --repository /work/clone bind"))
+        .subcommand(Command::new("status").about("Show current Project Understanding").after_help("Example:\n  volicord status\n\nUse --json for automation and --project only when path-based resolution is ambiguous."))
+        .subcommand(Command::new("analyze").about("Analyze the current repository").arg(repeat_arg("exclude", "PATH", "Exclude a repository-relative path")))
+        .subcommand(Command::new("recall").about("Resume from bounded Project memory"))
+        .subcommand(Command::new("questions").about("Show the current material Question frontier").arg(repeat_arg("scope", "SCOPE", "Restrict the material scope")))
+        .subcommand(Command::new("decisions").about("Inspect current and historical Decisions"))
+        .subcommand(document_command())
+        .subcommand(viewer_command())
+        .subcommand(context_command())
+        .subcommand(privacy_command())
+        .subcommand(doctor_command())
+        .subcommand(codex_command())
+        .subcommand(advanced_command())
+}
+
+fn path_arg(id: &'static str, long: &'static str, help: &'static str) -> Arg {
+    Arg::new(id)
+        .long(long)
+        .value_name("PATH")
+        .value_parser(clap::value_parser!(PathBuf))
+        .help(help)
+}
+
+fn repeat_arg(id: &'static str, value: &'static str, help: &'static str) -> Arg {
+    Arg::new(id)
+        .long(id)
+        .value_name(value)
+        .action(ArgAction::Append)
+        .help(help)
+}
+
+fn document_command() -> Command {
+    let kind = || {
+        Arg::new("kind")
+            .value_name("KIND")
+            .required(true)
+            .value_parser([
+                "project-architecture-guide",
+                "decision-report",
+                "implementation-plan",
+                "handoff-resume",
+            ])
+    };
+    let format = || {
+        Arg::new("format")
+            .long("format")
+            .value_name("FORMAT")
+            .value_parser(["markdown", "html"])
+            .default_value("markdown")
+    };
+    let language = || {
+        Arg::new("language")
+            .long("language")
+            .value_name("LANGUAGE")
+            .default_value("en")
+    };
+    Command::new("document")
+        .about("Preview or export source-grounded documents")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("preview")
+                .about("Preview a generated document")
+                .arg(kind())
+                .arg(format())
+                .arg(language()),
+        )
+        .subcommand(
+            Command::new("export")
+                .about("Export a generated document to an explicit destination")
+                .arg(kind())
+                .arg(format())
+                .arg(language())
+                .arg(path_arg("output", "output", "Absolute output path").required(true)),
+        )
+}
+
+fn viewer_command() -> Command {
+    Command::new("viewer")
+        .about("Open or locate the local Project Understanding Viewer")
+        .subcommand_required(true)
+        .subcommand(Command::new("locate").about("Show the Viewer executable path"))
+        .subcommand(
+            Command::new("open")
+                .about("Run the local Viewer until interrupted")
+                .arg(Arg::new("bind").long("bind").value_name("LOOPBACK_ADDRESS"))
+                .arg(viewer_level())
+                .arg(viewer_language()),
+        )
+        .subcommand(
+            Command::new("export")
+                .about("Export a self-contained read-only Viewer snapshot")
+                .arg(path_arg("output", "output", "Absolute snapshot destination").required(true))
+                .arg(viewer_level())
+                .arg(viewer_language()),
+        )
+}
+
+fn viewer_level() -> Arg {
+    Arg::new("level")
+        .long("level")
+        .value_name("LEVEL")
+        .value_parser(["overview", "working", "deep"])
+        .default_value("working")
+}
+
+fn viewer_language() -> Arg {
+    Arg::new("language")
+        .long("language")
+        .value_name("LANGUAGE")
+        .default_value("en")
+}
+
+fn context_command() -> Command {
+    Command::new("context")
+        .about("Export, import, compare, and merge portable context")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("export")
+                .about("Export the current Project's portable context")
+                .arg(path_arg("output", "output", "Absolute bundle destination").required(true)),
+        )
+        .subcommand(
+            Command::new("import")
+                .about("Import portable context")
+                .arg(path_arg("input", "input", "Absolute bundle source").required(true)),
+        )
+        .subcommand(
+            Command::new("compare")
+                .about("Compare an incoming portable bundle")
+                .arg(path_arg("input", "input", "Absolute incoming bundle").required(true))
+                .arg(path_arg("base", "base", "Absolute common-base bundle")),
+        )
+        .subcommand(
+            Command::new("merge")
+                .about("Automatically merge only conflict-free portable context")
+                .arg(path_arg("input", "input", "Absolute incoming bundle").required(true))
+                .arg(path_arg("base", "base", "Absolute common-base bundle")),
+        )
+        .subcommand(
+            Command::new("resolve")
+                .about("Apply an explicit user resolution to a portable conflict")
+                .arg(path_arg("input", "input", "Absolute incoming bundle").required(true))
+                .arg(
+                    Arg::new("conflict_set")
+                        .long("conflict-set")
+                        .required(true)
+                        .value_name("IDENTITY"),
+                )
+                .arg(
+                    Arg::new("revision")
+                        .long("revision")
+                        .required(true)
+                        .value_name("REVISION"),
+                )
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .required(true)
+                        .value_name("SOURCE_ID"),
+                )
+                .arg(Arg::new("mode").long("mode").required(true).value_parser([
+                    "choose-local",
+                    "choose-incoming",
+                    "context-branch",
+                    "explicit-merged",
+                ]))
+                .arg(path_arg("base", "base", "Absolute common-base bundle"))
+                .arg(path_arg(
+                    "merged_bundle",
+                    "merged-bundle",
+                    "Absolute explicitly merged bundle",
+                )),
+        )
+}
+
+fn privacy_command() -> Command {
+    Command::new("privacy")
+        .about("Inspect or change background provider authorization")
+        .subcommand_required(true)
+        .subcommand(Command::new("status").about("Show local privacy and provider configuration"))
+        .subcommand(
+            Command::new("enable")
+                .about("Enable a provider for explicit source scopes")
+                .arg(Arg::new("provider").required(true))
+                .arg(Arg::new("model").required(true))
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .required(true)
+                        .value_name("SOURCE_ID"),
+                )
+                .arg(
+                    repeat_arg("scope", "SCOPE", "Authorize an exact source scope").required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("disable")
+                .about("Disable provider use without revoking its policy history")
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .required(true)
+                        .value_name("SOURCE_ID"),
+                ),
+        )
+        .subcommand(
+            Command::new("revoke")
+                .about("Revoke provider authorization")
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .required(true)
+                        .value_name("SOURCE_ID"),
+                ),
+        )
+}
+
+fn doctor_command() -> Command {
+    Command::new("doctor")
+        .about("Inspect health and recover rebuildable state")
+        .subcommand_required(true)
+        .subcommand(Command::new("check").about("Check runtime and current Project health"))
+        .subcommand(
+            Command::new("repair")
+                .about("Repair derived analysis or an interrupted forgetting operation")
+                .arg(
+                    Arg::new("forgetting")
+                        .long("forgetting")
+                        .value_name("OPERATION_ID"),
+                )
+                .arg(repeat_arg(
+                    "exclude",
+                    "PATH",
+                    "Exclude a repository-relative path",
+                )),
+        )
+        .subcommand(
+            Command::new("reindex")
+                .about("Discard and rebuild the current Project's derived index")
+                .arg(repeat_arg(
+                    "exclude",
+                    "PATH",
+                    "Exclude a repository-relative path",
+                )),
+        )
+}
+
+fn codex_command() -> Command {
+    Command::new("codex")
+        .about("Manage the repository-scoped Codex integration")
+        .subcommand_required(true)
+        .subcommand(Command::new("enable").about("Enable Volicord for a trusted repository"))
+        .subcommand(
+            Command::new("disable").about("Remove only Volicord-owned repository integration"),
+        )
+        .subcommand(Command::new("hook").hide(true))
+}
+
+fn advanced_command() -> Command {
+    Command::new("advanced")
+        .about("Audit, canonical-memory, checkpoint, and Guarded fallback operations")
+        .subcommand_required(true)
+        .subcommand(records_command())
+        .subcommand(Command::new("candidates").about("Inspect bounded Session Candidate metadata"))
+        .subcommand(
+            Command::new("checkpoint")
+                .about("Record a source-grounded Checkpoint")
+                .arg(Arg::new("kind").required(true).value_parser([
+                    "completion",
+                    "pause",
+                    "handoff",
+                ]))
+                .arg(Arg::new("source").long("source").required(true))
+                .arg(Arg::new("goal").long("goal").required(true))
+                .arg(Arg::new("next_step").long("next-step").required(true))
+                .arg(Arg::new("handoff_to").long("handoff-to")),
+        )
+        .subcommand(guarded_command())
+}
+
+fn records_command() -> Command {
+    Command::new("records")
+        .about("Inspect or explicitly maintain canonical records")
+        .subcommand_required(true)
+        .subcommand(Command::new("list").about("Inspect canonical records"))
+        .subcommand(
+            Command::new("source")
+                .about("Record a current-host user Source")
+                .arg(Arg::new("host").long("host").required(true))
+                .arg(Arg::new("session").long("session").required(true))
+                .arg(Arg::new("text").long("text").required(true)),
+        )
+        .subcommand(record_change(
+            "correct-context",
+            "Correct Context Item wording",
+        ))
+        .subcommand(record_change(
+            "correct-decision",
+            "Correct Decision rationale wording",
+        ))
+        .subcommand(
+            Command::new("supersede-decision")
+                .about("Supersede a Decision with an explicit user choice")
+                .arg(Arg::new("identity").required(true))
+                .arg(Arg::new("source").long("source").required(true))
+                .arg(Arg::new("alternative").long("alternative").required(true))
+                .arg(Arg::new("rationale").long("rationale")),
+        )
+        .subcommand(
+            Command::new("forget")
+                .about("Forget one canonical record with user authorization")
+                .arg(Arg::new("kind").required(true).value_parser([
+                    "source",
+                    "question",
+                    "decision",
+                    "context_item",
+                    "checkpoint",
+                ]))
+                .arg(Arg::new("identity").required(true))
+                .arg(Arg::new("source").long("source").required(true)),
+        )
+}
+
+fn record_change(name: &'static str, about: &'static str) -> Command {
+    Command::new(name)
+        .about(about)
+        .arg(Arg::new("identity").required(true))
+        .arg(Arg::new("revision").long("revision").required(true))
+        .arg(Arg::new("source").long("source").required(true))
+        .arg(Arg::new("text").long("text").required(true))
+}
+
+fn guarded_command() -> Command {
+    let response = |name: &'static str, about: &'static str| {
+        Command::new(name)
+            .about(about)
+            .arg(Arg::new("request").required(true))
+            .arg(Arg::new("revision").long("revision").required(true))
+            .arg(Arg::new("fingerprint").long("fingerprint").required(true))
+            .arg(Arg::new("host").long("host").required(true))
+            .arg(Arg::new("session").long("session").required(true))
+            .arg(Arg::new("response").long("response").required(true))
+    };
+    Command::new("guarded")
+        .about("Use the exact-match CLI fallback for a high-risk effect")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("request")
+                .about("Create a Guarded Effect Candidate")
+                .arg(Arg::new("category").required(true).value_parser([
+                    "destructive-delete",
+                    "migration",
+                    "external-publication",
+                    "cost",
+                    "credential",
+                    "external-source-transmission",
+                    "external-message",
+                    "production-data",
+                    "security-setting",
+                ]))
+                .arg(Arg::new("action").long("action").required(true))
+                .arg(Arg::new("target").long("target").required(true))
+                .arg(Arg::new("effect").long("effect").required(true))
+                .arg(Arg::new("risk").long("risk").required(true))
+                .arg(Arg::new("expires").long("expires").required(true))
+                .arg(
+                    repeat_arg("scope", "SCOPE", "Bind the request to an exact scope")
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("show")
+                .about("Inspect an exact Guarded request")
+                .arg(Arg::new("request").required(true)),
+        )
+        .subcommand(response("confirm", "Confirm an exact Guarded request"))
+        .subcommand(response("deny", "Deny an exact Guarded request"))
+}
+
+fn dispatch(
+    name: &str,
+    matches: &ArgMatches,
+    operations: &LocalOperations,
+    runtime: &RuntimeLayout,
+    selection: &ProjectSelection,
+    input: &mut dyn Read,
+) -> Result<Option<Value>, Error> {
+    let value = match name {
+        "init" => {
+            let repository = if matches.get_flag("no_bind") {
+                None
+            } else {
+                Some(repository_path(selection)?)
+            };
+            let name = matches
+                .get_one::<String>("name")
+                .cloned()
+                .or_else(|| {
+                    repository
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(OsStr::to_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "Volicord Project".to_owned());
+            let mut cursor = cursor(["init", name.as_str()]);
+            if let Some(repository) = repository {
+                cursor.push("--repository");
+                cursor.push(path_text(&repository)?);
+            }
+            project(operations, &mut cursor)?
+        }
+        "bind" => {
+            let selected_project = selection.explicit.ok_or_else(|| Error::new("bind requires --project PROJECT_ID; portable Project identity cannot be inferred from a new clone"))?;
+            let repository = repository_path(selection)?;
+            let mut cursor = cursor([
+                "bind",
+                &selected_project.to_string(),
+                path_text(&repository)?,
+            ]);
+            if let Some(revision) = matches.get_one::<String>("revision") {
+                cursor.push("--revision");
+                cursor.push(revision);
+            }
+            project(operations, &mut cursor)?
+        }
+        "status" => status(operations, resolve_project(operations, selection)?)?,
+        "analyze" => {
+            let project = resolve_project(operations, selection)?;
+            let mut cursor = cursor([project.to_string()]);
+            append_many(&mut cursor, matches, "exclude", "--exclude");
+            analyze(operations, &mut cursor, false)?
+        }
+        "recall" => {
+            let mut cursor = cursor([resolve_project(operations, selection)?.to_string()]);
+            recall(operations, &mut cursor)?
+        }
+        "questions" => {
+            let mut cursor = cursor([
+                "frontier",
+                &resolve_project(operations, selection)?.to_string(),
+            ]);
+            append_values(&mut cursor, matches, "scope");
+            inquiry(operations, &mut cursor)?
+        }
+        "decisions" => decisions(operations, resolve_project(operations, selection)?)?,
+        "document" => dispatch_document(operations, selection, matches)?,
+        "viewer" => return dispatch_viewer(runtime, operations, selection, matches),
+        "context" => dispatch_context(operations, selection, matches)?,
+        "privacy" => dispatch_privacy(operations, selection, matches)?,
+        "doctor" => dispatch_doctor(operations, selection, matches)?,
+        "advanced" => dispatch_advanced(operations, selection, matches)?,
+        "codex" => {
+            let (action, _) = matches
+                .subcommand()
+                .ok_or_else(|| Error::new("a Codex action is required"))?;
+            let repository = repository_path(selection)?;
+            let mut cursor = cursor([action, path_text(&repository)?]);
+            let value = crate::codex::execute(runtime.clone(), &mut cursor, input)?;
+            cursor.done()?;
+            return Ok(value);
+        }
+        _ => return Err(Error::new("unsupported command")),
+    };
+    Ok(Some(value))
+}
+
+fn dispatch_document(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a document action is required"))?;
+    let project = resolve_project(operations, selection)?;
+    let kind = required(args, "kind")?;
+    let format = required(args, "format")?;
+    let mut values = vec![
+        action.to_owned(),
+        project.to_string(),
+        kind.to_owned(),
+        format.to_owned(),
+    ];
+    if action == "export" {
+        values.push(path_text(required_path(args, "output")?)?.to_owned());
+    }
+    values.push(required(args, "language")?.to_owned());
+    let mut cursor = Cursor::from_strings(values);
+    documents(operations, &mut cursor)
+}
+
+fn dispatch_context(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a context action is required"))?;
+    let mut values = vec![action.to_owned()];
+    match action {
+        "export" => {
+            values.push(resolve_project(operations, selection)?.to_string());
+            values.push(path_text(required_path(args, "output")?)?.to_owned());
+        }
+        "import" => values.push(path_text(required_path(args, "input")?)?.to_owned()),
+        "compare" | "merge" => {
+            values.push(path_text(required_path(args, "input")?)?.to_owned());
+            push_optional_path(&mut values, args, "base", "--base")?;
+        }
+        "resolve" => {
+            values.push(path_text(required_path(args, "input")?)?.to_owned());
+            values.push(required(args, "conflict_set")?.to_owned());
+            values.push(required(args, "revision")?.to_owned());
+            values.push(required(args, "source")?.to_owned());
+            values.push(required(args, "mode")?.to_owned());
+            push_optional_path(&mut values, args, "base", "--base")?;
+            push_optional_path(&mut values, args, "merged_bundle", "--merged-bundle")?;
+        }
+        _ => return Err(Error::new("unsupported context action")),
+    }
+    let mut cursor = Cursor::from_strings(values);
+    portable(operations, &mut cursor)
+}
+
+fn dispatch_privacy(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a privacy action is required"))?;
+    let project = resolve_project(operations, selection)?;
+    let mut values = vec![action.to_owned(), project.to_string()];
+    match action {
+        "status" => {}
+        "enable" => {
+            values.push(required(args, "provider")?.to_owned());
+            values.push(required(args, "model")?.to_owned());
+            values.push(required(args, "source")?.to_owned());
+            values.extend(many(args, "scope"));
+        }
+        "disable" | "revoke" => values.push(required(args, "source")?.to_owned()),
+        _ => return Err(Error::new("unsupported privacy action")),
+    }
+    let mut cursor = Cursor::from_strings(values);
+    privacy(operations, &mut cursor)
+}
+
+fn dispatch_doctor(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a doctor action is required"))?;
+    match action {
+        "check" => {
+            let project = resolve_project_optional(operations, selection)?;
+            let mut cursor =
+                Cursor::from_strings(project.map(|id| vec![id.to_string()]).unwrap_or_default());
+            health(operations, &mut cursor)
+        }
+        "repair" => {
+            let project = resolve_project(operations, selection)?;
+            let mut values = vec![project.to_string()];
+            if let Some(operation) = args.get_one::<String>("forgetting") {
+                values.extend(["forgetting".to_owned(), operation.to_owned()]);
+            } else {
+                values.push("derived-analysis".to_owned());
+                append_many_strings(&mut values, args, "exclude", "--exclude");
+            }
+            let mut cursor = Cursor::from_strings(values);
+            repair(operations, &mut cursor)
+        }
+        "reindex" => {
+            let mut cursor = cursor([resolve_project(operations, selection)?.to_string()]);
+            append_many(&mut cursor, args, "exclude", "--exclude");
+            reindex(operations, &mut cursor)
+        }
+        _ => Err(Error::new("unsupported doctor action")),
+    }
+}
+
+fn dispatch_advanced(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (group, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("an advanced action is required"))?;
+    let project = resolve_project(operations, selection)?;
+    match group {
+        "records" => dispatch_records(operations, project, args),
+        "candidates" => {
+            let mut cursor = cursor([project.to_string()]);
+            candidates(operations, &mut cursor)
+        }
+        "checkpoint" => {
+            let kind = required(args, "kind")?;
+            let mut values = vec![
+                "record".to_owned(),
+                project.to_string(),
+                kind.to_owned(),
+                required(args, "source")?.to_owned(),
+                required(args, "goal")?.to_owned(),
+                required(args, "next_step")?.to_owned(),
+            ];
+            if let Some(target) = args.get_one::<String>("handoff_to") {
+                values.push(target.clone());
+            }
+            let mut cursor = Cursor::from_strings(values);
+            checkpoint(operations, &mut cursor)
+        }
+        "guarded" => dispatch_guarded(operations, project, args),
+        _ => Err(Error::new("unsupported advanced action")),
+    }
+}
+
+fn dispatch_records(
+    operations: &LocalOperations,
+    project: ProjectId,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a record action is required"))?;
+    let mut values = vec![action.to_owned(), project.to_string()];
+    match action {
+        "list" => values[0] = "inspect".to_owned(),
+        "source" => {
+            values[0] = "user-source".to_owned();
+            values.extend([
+                required(args, "host")?.to_owned(),
+                required(args, "session")?.to_owned(),
+                required(args, "text")?.to_owned(),
+            ]);
+        }
+        "correct-context" | "correct-decision" => values.extend([
+            required(args, "identity")?.to_owned(),
+            required(args, "revision")?.to_owned(),
+            required(args, "source")?.to_owned(),
+            required(args, "text")?.to_owned(),
+        ]),
+        "supersede-decision" => {
+            values.extend([
+                required(args, "identity")?.to_owned(),
+                required(args, "source")?.to_owned(),
+                required(args, "alternative")?.to_owned(),
+            ]);
+            if let Some(rationale) = args.get_one::<String>("rationale") {
+                values.push(rationale.clone());
+            }
+        }
+        "forget" => values.extend([
+            required(args, "kind")?.to_owned(),
+            required(args, "identity")?.to_owned(),
+            required(args, "source")?.to_owned(),
+        ]),
+        _ => return Err(Error::new("unsupported record action")),
+    }
+    let mut cursor = Cursor::from_strings(values);
+    canonical(operations, &mut cursor)
+}
+
+fn dispatch_guarded(
+    operations: &LocalOperations,
+    project: ProjectId,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a Guarded action is required"))?;
+    let mut values = vec![action.to_owned()];
+    match action {
+        "request" => {
+            values.extend([
+                project.to_string(),
+                required(args, "category")?.to_owned(),
+                required(args, "action")?.to_owned(),
+                required(args, "target")?.to_owned(),
+                required(args, "effect")?.to_owned(),
+                required(args, "risk")?.to_owned(),
+                required(args, "expires")?.to_owned(),
+            ]);
+            values.extend(many(args, "scope"));
+        }
+        "show" => values.push(required(args, "request")?.to_owned()),
+        "confirm" | "deny" => values.extend([
+            required(args, "request")?.to_owned(),
+            required(args, "revision")?.to_owned(),
+            required(args, "fingerprint")?.to_owned(),
+            required(args, "host")?.to_owned(),
+            required(args, "session")?.to_owned(),
+            required(args, "response")?.to_owned(),
+        ]),
+        _ => return Err(Error::new("unsupported Guarded action")),
+    }
+    let mut cursor = Cursor::from_strings(values);
+    guarded(operations, &mut cursor)
+}
+
+fn repository_path(selection: &ProjectSelection) -> Result<PathBuf, Error> {
+    match &selection.repository {
+        Some(path) => Ok(path.clone()),
+        None => env::current_dir().map_err(|error| {
+            Error::with_source("cannot determine the current repository path", error)
+        }),
+    }
+}
+
+fn resolve_project(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+) -> Result<ProjectId, Error> {
+    if let Some(project) = selection.explicit {
+        return Ok(project);
+    }
+    let repository = repository_path(selection)?;
+    match operations.resolve_project(&repository)? {
+        crate::ProjectResolution::Found { project, .. } => Ok(project.id),
+        crate::ProjectResolution::NotFound { canonical_repository_path } => Err(Error::new(format!(
+            "no Project is bound to {}; run 'volicord init' here, or use '--project PROJECT_ID' when selecting an existing Project",
+            canonical_repository_path.display()
+        ))),
+    }
+}
+
+fn resolve_project_optional(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+) -> Result<Option<ProjectId>, Error> {
+    if selection.explicit.is_some() {
+        return Ok(selection.explicit);
+    }
+    match operations.resolve_project(&repository_path(selection)?)? {
+        crate::ProjectResolution::Found { project, .. } => Ok(Some(project.id)),
+        crate::ProjectResolution::NotFound { .. } => Ok(None),
+    }
+}
+
+fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Error> {
+    let projection = operations.project_projection(project)?;
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    Ok(json!({
+        "operation":"project_status",
+        "project_id":understanding.project_id.to_string(),
+        "project_name":understanding.project_name,
+        "health":debug_name(understanding.health),
+        "canonical_revision":understanding.canonical_revision,
+        "goals":understanding.goals_and_why.into_iter().map(|item| item.statement).collect::<Vec<_>>(),
+        "current_work":understanding.current_work.map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"meaningful_change":work.meaningful_change,"changed_paths":work.changed_paths,"next_step":work.next_step})),
+        "completed_work":understanding.completed_work.into_iter().map(|work| json!({"goal":work.goal,"next_step":work.next_step})).collect::<Vec<_>>(),
+        "remaining_work":understanding.remaining_work.into_iter().map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"next_step":work.next_step})).collect::<Vec<_>>(),
+        "next_steps":understanding.next_steps.into_iter().map(|step| step.text).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.into_iter().map(|item| json!({"identity":item.decision.decision_id.to_string(),"revision":item.decision.revision,"choice":format!("{:?}",item.decision.choice),"rationale":item.decision.user_rationale,"affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps})).collect::<Vec<_>>(),
+        "open_questions":understanding.open_questions.into_iter().map(|item| json!({"identity":item.question_id.to_string(),"revision":item.revision,"prompt":item.prompt,"on_frontier":item.on_current_frontier})).collect::<Vec<_>>(),
+        "risks_assumptions_and_limits":understanding.risks_assumptions_and_limits.into_iter().map(|item| item.statement).chain(understanding.known_limits).collect::<Vec<_>>(),
+        "architecture": {"components":understanding.architecture.components.len(),"relationships":understanding.architecture.relationships.len(),"gaps":understanding.architecture.gaps.into_iter().map(|gap| gap.reason).collect::<Vec<_>>()},
+        "evidence": {"sources":understanding.evidence.sources.len(),"snapshots":understanding.evidence.snapshots.len(),"issues":understanding.evidence.issues.into_iter().map(|issue| issue.reason).collect::<Vec<_>>()},
+        "omissions":understanding.omissions.into_iter().map(|item| json!({"section":item.section,"count":item.omitted_count})).collect::<Vec<_>>()
+    }))
+}
+
+fn decisions(operations: &LocalOperations, project: ProjectId) -> Result<Value, Error> {
+    let brief = operations.recall(project)?;
+    Ok(json!({
+        "operation":"decisions",
+        "project_id":brief.project_id.to_string(),
+        "project_name":brief.project_name,
+        "decisions":brief.decisions.into_iter().map(|decision| json!({
+            "identity":decision.decision_id.to_string(),
+            "revision":decision.revision,
+            "state":debug_name(decision.state),
+            "choice":format!("{:?}", decision.choice),
+            "user_rationale":decision.user_rationale,
+            "recommendation_rationale":decision.recommendation_rationale,
+            "assumptions":decision.assumptions,
+            "revisit_triggers":decision.revisit_triggers,
+            "known_limits":decision.known_limits,
+            "source_basis":decision.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()
+        })).collect::<Vec<_>>()
+    }))
+}
+
+fn dispatch_viewer(
+    runtime: &RuntimeLayout,
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Option<Value>, Error> {
+    let (action, args) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("a Viewer action is required"))?;
+    let executable = viewer_executable()?;
+    if action == "locate" {
+        return Ok(Some(json!({"operation":"viewer_locate","path":executable})));
+    }
+    let project = resolve_project(operations, selection)?;
+    if !executable.is_file() {
+        return Err(Error::new(format!(
+            "Viewer executable was not found at {}; install volicord-viewer beside volicord or run 'volicord viewer locate'",
+            executable.display()
+        )));
+    }
+    let mut command = ProcessCommand::new(&executable);
+    command
+        .arg("--runtime")
+        .arg(runtime.root())
+        .arg("--project")
+        .arg(project.to_string())
+        .arg("--locale")
+        .arg(
+            matches
+                .get_one::<String>("locale")
+                .map(String::as_str)
+                .unwrap_or("en"),
+        )
+        .arg("--level")
+        .arg(required(args, "level")?)
+        .arg("--language")
+        .arg(required(args, "language")?);
+    if action == "open" {
+        if let Some(bind) = args.get_one::<String>("bind") {
+            command.arg("--bind").arg(bind);
+        }
+    } else if action == "export" {
+        command
+            .arg("--snapshot")
+            .arg(required_path(args, "output")?);
+    } else {
+        return Err(Error::new("unsupported Viewer action"));
+    }
+    let status = command
+        .status()
+        .map_err(|error| Error::with_source("cannot start the Viewer", error))?;
+    if !status.success() {
+        return Err(Error::new(format!("Viewer exited with {status}")));
+    }
+    Ok(Some(
+        json!({"operation":format!("viewer_{action}"),"project_id":project.to_string(),"executable":executable,"outcome":"completed"}),
+    ))
+}
+
+fn viewer_executable() -> Result<PathBuf, Error> {
+    let executable = env::current_exe()
+        .map_err(|error| Error::with_source("cannot locate the volicord executable", error))?;
+    Ok(executable
+        .parent()
+        .ok_or_else(|| Error::new("the volicord executable has no parent directory"))?
+        .join("volicord-viewer"))
+}
+
+fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(), Error> {
+    if mode.json {
+        serde_json::to_writer_pretty(&mut *stdout, value)
+            .map_err(|error| Error::with_source("cannot render CLI result", error))?;
+        writeln!(stdout).map_err(|error| Error::with_source("cannot write CLI result", error))?;
+        return Ok(());
+    }
+    if value.get("operation").and_then(Value::as_str) == Some("document_preview") {
+        if let Some(content) = value.get("content").and_then(Value::as_str) {
+            write!(stdout, "{content}")
+                .map_err(|error| Error::with_source("cannot write document preview", error))?;
+            if !content.ends_with('\n') {
+                writeln!(stdout)
+                    .map_err(|error| Error::with_source("cannot write document preview", error))?;
+            }
+            return Ok(());
+        }
+    }
+    let operation = value
+        .get("operation")
+        .and_then(Value::as_str)
+        .unwrap_or("result");
+    writeln!(stdout, "{}", operation_title(operation, mode.locale))
+        .map_err(|error| Error::with_source("cannot write CLI result", error))?;
+    if let Some(object) = value.as_object() {
+        for (key, field) in object {
+            if key != "operation" {
+                render_field(stdout, key, field, 0, mode.locale)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn render_field(
+    stdout: &mut dyn Write,
+    key: &str,
+    value: &Value,
+    indent: usize,
+    locale: CliLocale,
+) -> Result<(), Error> {
+    let padding = "  ".repeat(indent);
+    let label = field_label(key, locale);
+    match value {
+        Value::Null => write_line(stdout, format_args!("{padding}{label}: -")),
+        Value::Bool(value) => write_line(stdout, format_args!("{padding}{label}: {value}")),
+        Value::Number(value) => write_line(stdout, format_args!("{padding}{label}: {value}")),
+        Value::String(value) => write_line(stdout, format_args!("{padding}{label}: {value}")),
+        Value::Array(values) if values.is_empty() => {
+            write_line(stdout, format_args!("{padding}{label}: -"))
+        }
+        Value::Array(values) => {
+            write_line(stdout, format_args!("{padding}{label}:"))?;
+            for item in values {
+                match item {
+                    Value::Object(fields) => {
+                        write_line(stdout, format_args!("{padding}  -"))?;
+                        for (child, value) in fields {
+                            render_field(stdout, child, value, indent + 2, locale)?;
+                        }
+                    }
+                    Value::String(value) => {
+                        write_line(stdout, format_args!("{padding}  - {value}"))?
+                    }
+                    other => write_line(stdout, format_args!("{padding}  - {other}"))?,
+                }
+            }
+            Ok(())
+        }
+        Value::Object(fields) => {
+            write_line(stdout, format_args!("{padding}{label}:"))?;
+            for (child, value) in fields {
+                render_field(stdout, child, value, indent + 1, locale)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn write_line(stdout: &mut dyn Write, args: std::fmt::Arguments<'_>) -> Result<(), Error> {
+    stdout
+        .write_fmt(args)
+        .and_then(|()| stdout.write_all(b"\n"))
+        .map_err(|error| Error::with_source("cannot write CLI result", error))
+}
+
+fn operation_title(operation: &str, locale: CliLocale) -> String {
+    let english = match operation {
+        "project_init" => "Project initialized",
+        "project_bind" => "Project bound",
+        "project_status" => "Project Understanding",
+        "analyze" => "Repository analysis",
+        "recall" => "Recall",
+        "inquiry_frontier" => "Current Questions",
+        "decisions" => "Decisions",
+        "health" => "Volicord doctor",
+        "privacy_status" => "Privacy and provider configuration",
+        "viewer_locate" => "Viewer location",
+        _ => operation,
+    };
+    match locale {
+        CliLocale::English => english.to_owned(),
+        CliLocale::Korean => match operation {
+            "project_init" => "프로젝트를 초기화했습니다".to_owned(),
+            "project_bind" => "프로젝트를 연결했습니다".to_owned(),
+            "project_status" => "프로젝트 이해".to_owned(),
+            "analyze" => "저장소 분석".to_owned(),
+            "recall" => "리콜".to_owned(),
+            "inquiry_frontier" => "현재 질문".to_owned(),
+            "decisions" => "결정".to_owned(),
+            "health" => "Volicord 진단".to_owned(),
+            "privacy_status" => "개인정보 및 제공자 설정".to_owned(),
+            "viewer_locate" => "뷰어 위치".to_owned(),
+            _ => english.to_owned(),
+        },
+    }
+}
+
+fn field_label(key: &str, locale: CliLocale) -> String {
+    let english = key.replace('_', " ");
+    if matches!(locale, CliLocale::English) {
+        return english;
+    }
+    match key {
+        "project_name" => "프로젝트 이름".into(),
+        "health" | "state" => "상태".into(),
+        "goals" => "목표와 이유".into(),
+        "current_work" => "현재 작업".into(),
+        "completed_work" => "완료된 작업".into(),
+        "remaining_work" => "남은 작업".into(),
+        "next_steps" | "next_step" => "다음 단계".into(),
+        "active_decisions" | "decisions" => "결정".into(),
+        "open_questions" => "열린 질문".into(),
+        "risks_assumptions_and_limits" => "위험, 가정 및 한계".into(),
+        "architecture" => "아키텍처".into(),
+        "evidence" => "근거".into(),
+        "issues" => "문제".into(),
+        "path" => "경로".into(),
+        _ => english,
+    }
+}
+
+fn required<'a>(matches: &'a ArgMatches, id: &str) -> Result<&'a str, Error> {
+    matches
+        .get_one::<String>(id)
+        .map(String::as_str)
+        .ok_or_else(|| Error::new(format!("missing required {id}")))
+}
+
+fn required_path<'a>(matches: &'a ArgMatches, id: &str) -> Result<&'a Path, Error> {
+    matches
+        .get_one::<PathBuf>(id)
+        .map(PathBuf::as_path)
+        .ok_or_else(|| Error::new(format!("missing required {id}")))
+}
+
+fn path_text(path: &Path) -> Result<&str, Error> {
+    path.to_str()
+        .ok_or_else(|| Error::new("path must be valid UTF-8"))
+}
+
+fn many(matches: &ArgMatches, id: &str) -> Vec<String> {
+    matches
+        .get_many::<String>(id)
+        .map(|values| values.cloned().collect())
+        .unwrap_or_default()
+}
+
+fn append_values(cursor: &mut Cursor, matches: &ArgMatches, id: &str) {
+    for value in many(matches, id) {
+        cursor.push(value);
+    }
+}
+
+fn append_many(cursor: &mut Cursor, matches: &ArgMatches, id: &str, option: &str) {
+    for value in many(matches, id) {
+        cursor.push(option);
+        cursor.push(value);
+    }
+}
+
+fn append_many_strings(values: &mut Vec<String>, matches: &ArgMatches, id: &str, option: &str) {
+    for value in many(matches, id) {
+        values.push(option.to_owned());
+        values.push(value);
+    }
+}
+
+fn push_optional_path(
+    values: &mut Vec<String>,
+    matches: &ArgMatches,
+    id: &str,
+    option: &str,
+) -> Result<(), Error> {
+    if let Some(path) = matches.get_one::<PathBuf>(id) {
+        values.push(option.to_owned());
+        values.push(path_text(path)?.to_owned());
+    }
+    Ok(())
+}
+
+fn cursor<I, S>(values: I) -> Cursor
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    Cursor::new(
+        values
+            .into_iter()
+            .map(|value| value.as_ref().to_os_string())
+            .collect(),
+    )
+}
 
 pub(crate) fn usage(detail: &str) -> Error {
     Error::new(format!("usage: {USAGE}\n{detail}"))
@@ -209,15 +1315,6 @@ fn analyze(
         "stored_at":analysis.stored_at, "completed_scopes":result.partial.completed_scopes, "failed_scopes":result.partial.failed_scopes,
         "omitted_scopes":result.partial.omitted_scopes, "diagnostic":result.diagnostic
     }))
-}
-
-fn rebuild(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
-    if cursor.next("rebuild target")? != "analysis" {
-        return Err(usage(
-            "rebuild currently supports only: rebuild analysis PROJECT",
-        ));
-    }
-    analyze(operations, cursor, true)
 }
 
 fn reindex(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
@@ -1009,6 +2106,12 @@ impl Cursor {
             index: 0,
             previous: None,
         }
+    }
+    fn from_strings(args: Vec<String>) -> Self {
+        Self::new(args.into_iter().map(OsString::from).collect())
+    }
+    fn push(&mut self, value: impl Into<OsString>) {
+        self.args.push(value.into());
     }
     pub(crate) fn next(&mut self, label: &str) -> Result<String, Error> {
         let value = self

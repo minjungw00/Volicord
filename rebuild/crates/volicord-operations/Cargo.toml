@@ -13,6 +13,7 @@ name = "volicord"
 path = "src/main.rs"
 
 [dependencies]
+clap = "4.6.2"
 getrandom = { version = "0.3.4", features = ["std"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

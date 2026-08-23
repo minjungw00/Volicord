@@ -177,8 +177,10 @@ idempotently 수행한다. `completed`는 세 owner postcondition이 모두 검�
 기록하고, provider deletion outcome은 local completion state에 합치지 않는다.
 Local Operations는 이 invariant에 한해 durable forgetting operation identity를 받는
 explicit recovery를 제공한다. CLI의 safe next action은
-`volicord repair <PROJECT> forgetting <OPERATION_ID>`이며 stored target과 authorization
-Source를 사용해 missing owner cleanup/post-check만 reconcile한다. Caller가 새 user fact나
+bound repository에서 `volicord doctor repair --forgetting <OPERATION_ID>`이며,
+repository resolution을 사용할 수 없는 source-independent recovery에서는
+`--project <PROJECT_ID>`를 추가한다. stored target과 authorization Source를 사용해
+missing owner cleanup/post-check만 reconcile한다. Caller가 새 user fact나
 provider deletion success를 제공했다고 추론하지 않는다.
 
 ## 6. Retry ownership

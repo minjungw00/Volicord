@@ -1,229 +1,53 @@
-use rusqlite::Connection;
 use serde_json::Value;
-use std::{
-    collections::BTreeSet,
-    fs,
-    sync::{Arc, Barrier},
-    thread,
-};
+use std::{fs, path::Path, process::Command};
 use volicord_operations::{run_cli, CliExit};
 
 #[test]
-fn document_cli_reports_requested_language_realizer_unavailable_without_publishing_english(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let temporary = tempfile::tempdir()?;
-    let runtime = temporary.path().join("runtime");
-    let runtime_text = runtime.to_str().ok_or("runtime path")?;
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    assert_eq!(
-        run_cli(
-            ["--runtime", runtime_text, "project", "init", "Language CLI"],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS
-    );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing Project ID")?;
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "documents",
-                "preview",
-                project,
-                "handoff-resume",
-                "markdown",
-                "es",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let preview: Value = serde_json::from_slice(&output)?;
-    assert_eq!(preview["outcome"], "unavailable");
-    assert_eq!(preview["requested_language"], "es");
-    assert!(preview.get("content").is_none());
-    assert_eq!(preview["published"], false);
-    Ok(())
-}
-
-#[test]
-fn candidate_cli_rejects_dependency_failures_as_empty_success(
-) -> Result<(), Box<dyn std::error::Error>> {
-    for fault in ["unsupported", "corrupt", "unavailable"] {
-        let temporary = tempfile::tempdir()?;
-        let runtime = temporary.path().join("runtime");
-        let runtime_text = runtime.to_str().ok_or("runtime path")?;
-        let mut output = Vec::new();
-        let mut error = Vec::new();
-        assert_eq!(
-            run_cli(
-                [
-                    "--runtime",
-                    runtime_text,
-                    "project",
-                    "init",
-                    "Candidate CLI"
-                ],
-                &mut output,
-                &mut error,
-            ),
-            CliExit::SUCCESS,
-            "{fault}: {}",
-            String::from_utf8_lossy(&error)
-        );
-        let initialized: Value = serde_json::from_slice(&output)?;
-        let project = initialized["project_id"]
-            .as_str()
-            .ok_or("missing Project ID")?;
-        let candidate_store = runtime.join("candidates.sqlite3");
-        match fault {
-            "unsupported" => {
-                Connection::open(&candidate_store)?.execute(
-                    "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
-                    [],
-                )?;
-            }
-            "corrupt" => {
-                Connection::open(&candidate_store)?.execute("DROP TABLE candidates", [])?;
-            }
-            "unavailable" => {
-                fs::remove_file(&candidate_store)?;
-                fs::create_dir(&candidate_store)?;
-            }
-            _ => unreachable!(),
-        }
-        output.clear();
-        error.clear();
-        assert_eq!(
-            run_cli(
-                ["--runtime", runtime_text, "candidates", project],
-                &mut output,
-                &mut error,
-            ),
-            CliExit::SUCCESS,
-            "{fault}: {}",
-            String::from_utf8_lossy(&error)
-        );
-        let inspection: Value = serde_json::from_slice(&output)?;
-        assert_eq!(inspection["health"], "degraded", "{fault}: {inspection}");
-        assert_eq!(inspection["candidates"], serde_json::json!([]));
+fn help_is_hierarchical_and_obsolete_public_forms_are_rejected() {
+    let (exit, output, error) = cli(["--help"]);
+    assert_eq!(exit, CliExit::SUCCESS);
+    assert!(error.is_empty());
+    for command in [
+        "status",
+        "analyze",
+        "recall",
+        "questions",
+        "decisions",
+        "document",
+        "viewer",
+        "context",
+        "privacy",
+        "doctor",
+        "codex",
+        "advanced",
+    ] {
+        assert!(output.contains(command), "missing {command} in {output}");
     }
-    Ok(())
-}
+    assert!(output.contains("volicord status"));
+    assert!(output.contains("--json"));
 
-#[test]
-fn concurrent_cli_writers_preserve_every_committed_source() -> Result<(), Box<dyn std::error::Error>>
-{
-    const WRITERS: usize = 8;
-    let temporary = tempfile::tempdir()?;
-    let runtime = temporary.path().join("runtime");
-    let runtime_text = runtime.to_str().ok_or("runtime path")?;
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "project",
-                "init",
-                "Concurrent CLI",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing Project ID")?
-        .to_owned();
-    let barrier = Arc::new(Barrier::new(WRITERS));
-    let mut writers = Vec::new();
-    for index in 0..WRITERS {
-        let runtime = runtime.clone();
-        let project = project.clone();
-        let barrier = Arc::clone(&barrier);
-        writers.push(thread::spawn(move || {
-            barrier.wait();
-            let mut output = Vec::new();
-            let mut error = Vec::new();
-            let runtime = runtime.to_str().expect("runtime path");
-            let turn = format!("concurrent CLI writer {index}");
-            assert_eq!(
-                run_cli(
-                    [
-                        "--runtime",
-                        runtime,
-                        "canonical",
-                        "user-source",
-                        &project,
-                        "cli-test",
-                        "bounded-concurrency",
-                        &turn,
-                    ],
-                    &mut output,
-                    &mut error,
-                ),
-                CliExit::SUCCESS,
-                "writer {index}: {}",
-                String::from_utf8_lossy(&error)
-            );
-            let result: Value = serde_json::from_slice(&output).expect("writer JSON");
-            result["identity"]
-                .as_str()
-                .expect("Source identity")
-                .to_owned()
-        }));
+    let (exit, output, error) = cli(["document", "--help"]);
+    assert_eq!(exit, CliExit::SUCCESS);
+    assert!(error.is_empty());
+    assert!(output.contains("preview"));
+    assert!(output.contains("export"));
+
+    for obsolete in [
+        vec!["project", "init", "Old"],
+        vec!["canonical", "inspect"],
+        vec!["portable", "export"],
+        vec!["guarded", "show"],
+        vec!["documents", "preview"],
+    ] {
+        let (exit, _, error) = cli(obsolete);
+        assert_eq!(exit, CliExit::USAGE);
+        assert!(error.contains("Usage:"), "{error}");
+        assert!(error.contains("tip:") || error.contains("unrecognized subcommand"));
     }
-    let identities = writers
-        .into_iter()
-        .map(|writer| writer.join().expect("CLI writer"))
-        .collect::<BTreeSet<_>>();
-    assert_eq!(identities.len(), WRITERS);
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            ["--runtime", runtime_text, "canonical", "inspect", &project],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let inspection: Value = serde_json::from_slice(&output)?;
-    let persisted = inspection["records"]
-        .as_array()
-        .ok_or("canonical records")?
-        .iter()
-        .filter_map(|record| record["identity"].as_str())
-        .collect::<BTreeSet<_>>();
-    assert!(identities
-        .iter()
-        .all(|identity| persisted.contains(identity.as_str())));
-    Ok(())
 }
 
 #[test]
-fn cli_initializes_binds_analyzes_and_inspects_without_raw_storage_access(
+fn bound_repository_journey_needs_no_project_id_and_defaults_to_human_output(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
     let runtime = temporary.path().join("runtime");
@@ -234,478 +58,228 @@ fn cli_initializes_binds_analyzes_and_inspects_without_raw_storage_access(
         "def main():\n    return 0\n",
     )?;
 
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    let exit = run_cli(
-        [
-            "--runtime",
-            runtime.to_str().ok_or("runtime path is not UTF-8")?,
-            "project",
-            "init",
-            "CLI Fixture",
-            "--repository",
-            repository.to_str().ok_or("repository path is not UTF-8")?,
-        ],
-        &mut output,
-        &mut error,
-    );
-    assert_eq!(
-        exit,
-        CliExit::SUCCESS,
+    let init = Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .current_dir(&repository)
+        .arg("--runtime")
+        .arg(&runtime)
+        .args(["init", "CLI Fixture"])
+        .output()?;
+    assert!(
+        init.status.success(),
         "{}",
-        String::from_utf8_lossy(&error)
+        String::from_utf8_lossy(&init.stderr)
     );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing Project ID")?;
+    let init_text = String::from_utf8(init.stdout)?;
+    assert!(init_text.starts_with("Project initialized\n"));
+    assert!(!init_text.trim_start().starts_with('{'));
 
-    output.clear();
-    error.clear();
-    let exit = run_cli(
-        [
-            "--runtime",
-            runtime.to_str().ok_or("runtime path is not UTF-8")?,
-            "analyze",
-            project,
-        ],
-        &mut output,
-        &mut error,
-    );
-    assert_eq!(
-        exit,
-        CliExit::SUCCESS,
+    let status = binary(&runtime, &repository, ["status"])?;
+    assert!(
+        status.status.success(),
         "{}",
-        String::from_utf8_lossy(&error)
+        String::from_utf8_lossy(&status.stderr)
     );
-    let analyzed: Value = serde_json::from_slice(&output)?;
-    assert!(matches!(
-        analyzed["state"].as_str(),
-        Some("succeeded" | "partial")
-    ));
+    let status_text = String::from_utf8(status.stdout)?;
+    assert!(status_text.starts_with("Project Understanding\n"));
+    assert!(status_text.contains("project name: CLI Fixture"));
+    assert!(status_text.contains("current work:"));
+    assert!(status_text.contains("architecture:"));
+    assert!(!status_text.trim_start().starts_with('{'));
 
-    output.clear();
-    error.clear();
-    let exit = run_cli(
-        [
-            "--runtime",
-            runtime.to_str().ok_or("runtime path is not UTF-8")?,
-            "canonical",
-            "inspect",
-            project,
-        ],
-        &mut output,
-        &mut error,
-    );
-    assert_eq!(
-        exit,
-        CliExit::SUCCESS,
+    let status_json = binary(&runtime, &repository, ["--json", "status"])?;
+    assert!(status_json.status.success());
+    let status_json: Value = serde_json::from_slice(&status_json.stdout)?;
+    assert_eq!(status_json["operation"], "project_status");
+    assert_eq!(status_json["project_name"], "CLI Fixture");
+    assert!(status_json["project_id"].is_string());
+    assert!(status_json["architecture"].is_object());
+
+    let analyzed = binary(&runtime, &repository, ["analyze"])?;
+    assert!(
+        analyzed.status.success(),
         "{}",
-        String::from_utf8_lossy(&error)
+        String::from_utf8_lossy(&analyzed.stderr)
     );
-    let inspection: Value = serde_json::from_slice(&output)?;
-    assert_eq!(inspection["operation"], "canonical_inspect");
-    assert!(inspection["records"]
-        .as_array()
-        .is_some_and(|records| !records.is_empty()));
-    Ok(())
-}
+    let analyzed = String::from_utf8(analyzed.stdout)?;
+    assert!(analyzed.starts_with("Repository analysis\n"));
+    assert!(analyzed.contains("analysis snapshot:"));
 
-#[test]
-fn cli_runs_derived_repair_and_reindex_and_rejects_canonical_repair(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let temporary = tempfile::tempdir()?;
-    let runtime = temporary.path().join("runtime");
-    let repository = temporary.path().join("repository");
-    fs::create_dir(&repository)?;
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime.to_str().ok_or("runtime path")?,
-                "project",
-                "init",
-                "Fixture",
-                "--repository",
-                repository.to_str().ok_or("repository path")?
-            ],
-            &mut output,
-            &mut error
-        ),
-        CliExit::SUCCESS
-    );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing project")?
-        .to_owned();
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime.to_str().ok_or("runtime path")?,
-                "analyze",
-                &project,
-            ],
-            &mut output,
-            &mut error
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime.to_str().ok_or("runtime path")?,
-                "repair",
-                &project,
-                "canonical"
-            ],
-            &mut output,
-            &mut error
-        ),
-        CliExit::FAILURE
-    );
-    assert!(String::from_utf8_lossy(&error).contains("unsupported repair scope"));
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime.to_str().ok_or("runtime path")?,
-                "repair",
-                &project,
-                "derived-analysis"
-            ],
-            &mut output,
-            &mut error
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let repair: Value = serde_json::from_slice(&output)?;
-    assert_eq!(repair["kind"], "derivedanalysisrepair");
-    assert!(repair["analysis_snapshot"].is_string());
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime.to_str().ok_or("runtime path")?,
-                "reindex",
-                &project
-            ],
-            &mut output,
-            &mut error
-        ),
-        CliExit::SUCCESS
-    );
-    let reindex: Value = serde_json::from_slice(&output)?;
-    assert_eq!(reindex["kind"], "derivedrebuild");
-    assert!(reindex["analysis_snapshot"].is_string());
-    Ok(())
-}
-
-#[test]
-fn cli_guarded_fallback_preserves_request_revision_fingerprint_and_source_linkage(
-) -> Result<(), Box<dyn std::error::Error>> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let temporary = tempfile::tempdir()?;
-    let runtime = temporary.path().join("runtime");
-    let repository = temporary.path().join("repository");
-    fs::create_dir(&repository)?;
-    let runtime_text = runtime.to_str().ok_or("runtime path")?;
-    let repository_text = repository.to_str().ok_or("repository path")?;
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "project",
-                "init",
-                "Fixture",
-                "--repository",
-                repository_text,
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS
-    );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing project")?
-        .to_owned();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros();
-    let expiration = (now + 60_000_000).to_string();
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "guarded",
-                "request",
-                &project,
-                "external-publication",
-                "publish",
-                "registry.example/release",
-                "publish release",
-                "external users can observe it",
-                &expiration,
-                "artifact:release",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let request: Value = serde_json::from_slice(&output)?;
-    let identity = request["confirmation_request_identity"]
-        .as_str()
-        .ok_or("missing request ID")?
-        .to_owned();
-    let revision = request["request_revision"]
-        .as_u64()
-        .ok_or("missing revision")?
-        .to_string();
-    let fingerprint = request["effect_fingerprint"]
-        .as_str()
-        .ok_or("missing fingerprint")?
-        .to_owned();
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "guarded",
-                "confirm",
-                &identity,
-                &revision,
-                &fingerprint,
-                "codex",
-                "session-42",
-                "I confirm this exact effect",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let confirmation: Value = serde_json::from_slice(&output)?;
-    assert_eq!(confirmation["confirmation_request_identity"], identity);
-    assert_eq!(
-        confirmation["request_revision"],
-        request["request_revision"]
-    );
-    assert_eq!(confirmation["effect_fingerprint"], fingerprint);
-    assert!(confirmation["user_response_source_id"].as_str().is_some());
-    Ok(())
-}
-
-#[test]
-fn cli_handoff_requires_and_records_an_explicit_target_without_changing_other_kinds(
-) -> Result<(), Box<dyn std::error::Error>> {
-    use volicord_context::{CanonicalReadOptions, ProjectId, Store};
-
-    let temporary = tempfile::tempdir()?;
-    let runtime = temporary.path().join("runtime");
-    let runtime_text = runtime.to_str().ok_or("runtime path")?;
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "project",
-                "init",
-                "Checkpoint Fixture",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS
-    );
-    let initialized: Value = serde_json::from_slice(&output)?;
-    let project = initialized["project_id"]
-        .as_str()
-        .ok_or("missing Project ID")?
-        .to_owned();
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "canonical",
-                "user-source",
-                &project,
-                "cli",
-                "checkpoint-test",
-                "record an explicit checkpoint",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS
-    );
-    let source: Value = serde_json::from_slice(&output)?;
-    let source = source["identity"]
-        .as_str()
-        .ok_or("missing Source ID")?
-        .to_owned();
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "checkpoint",
-                "record",
-                &project,
-                "handoff",
-                &source,
-                "handoff goal",
-                "continue work",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::USAGE
-    );
-    assert!(String::from_utf8_lossy(&error).contains("missing explicit handoff target"));
-
-    let project_id = ProjectId::from_bytes(parse_hex_identity(&project)?);
-    let store = Store::open(runtime.join("canonical.sqlite3"))?;
-    assert!(store
-        .read_canonical_basis(
-            project_id,
-            CanonicalReadOptions {
-                include_checkpoint_history: true,
-            },
-        )?
-        .checkpoint_history
-        .is_empty());
-    drop(store);
-
-    for kind in ["completion", "pause"] {
-        output.clear();
-        error.clear();
-        assert_eq!(
-            run_cli(
-                [
-                    "--runtime",
-                    runtime_text,
-                    "checkpoint",
-                    "record",
-                    &project,
-                    kind,
-                    &source,
-                    "ordinary checkpoint goal",
-                    "continue ordinary work",
-                ],
-                &mut output,
-                &mut error,
-            ),
-            CliExit::SUCCESS,
-            "{}",
-            String::from_utf8_lossy(&error)
+    for command in ["recall", "questions", "decisions"] {
+        let result = binary(&runtime, &repository, [command])?;
+        assert!(
+            result.status.success(),
+            "{command}: {}",
+            String::from_utf8_lossy(&result.stderr)
         );
+        assert!(!String::from_utf8(result.stdout)?
+            .trim_start()
+            .starts_with('{'));
     }
-    let store = Store::open(runtime.join("canonical.sqlite3"))?;
-    let before_handoff = store.read_canonical_basis(
-        project_id,
-        CanonicalReadOptions {
-            include_checkpoint_history: true,
-        },
-    )?;
-    assert_eq!(before_handoff.checkpoint_history.len(), 2);
-    assert!(before_handoff
-        .checkpoint_history
-        .iter()
-        .all(|checkpoint| checkpoint.handoff_to.is_none()));
-    drop(store);
-
-    output.clear();
-    error.clear();
-    assert_eq!(
-        run_cli(
-            [
-                "--runtime",
-                runtime_text,
-                "checkpoint",
-                "record",
-                &project,
-                "handoff",
-                &source,
-                "handoff goal",
-                "continue work",
-                "next Codex session",
-            ],
-            &mut output,
-            &mut error,
-        ),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&error)
-    );
-    let store = Store::open(runtime.join("canonical.sqlite3"))?;
-    let after_handoff = store.read_canonical_basis(
-        project_id,
-        CanonicalReadOptions {
-            include_checkpoint_history: true,
-        },
-    )?;
-    assert_eq!(after_handoff.checkpoint_history.len(), 3);
-    assert_eq!(
-        after_handoff
-            .latest_checkpoint
-            .as_ref()
-            .and_then(|checkpoint| checkpoint.handoff_to.as_deref()),
-        Some("next Codex session")
-    );
     Ok(())
 }
 
-fn parse_hex_identity(value: &str) -> Result<[u8; 16], Box<dyn std::error::Error>> {
-    if value.len() != 32 {
-        return Err("identity must contain 32 hexadecimal digits".into());
+#[test]
+fn task_groups_keep_portable_privacy_doctor_document_viewer_and_guarded_paths_reachable(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository)?;
+    initialize(&runtime, &repository)?;
+
+    for args in [
+        vec!["privacy", "status"],
+        vec!["doctor", "check"],
+        vec!["viewer", "locate"],
+        vec!["advanced", "candidates"],
+        vec!["advanced", "records", "list"],
+    ] {
+        let (exit, output, error) = project_cli(&runtime, &repository, args);
+        assert_eq!(exit, CliExit::SUCCESS, "{error}");
+        assert!(!output.trim_start().starts_with('{'));
     }
-    let mut bytes = [0_u8; 16];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-        bytes[index] = u8::from_str_radix(std::str::from_utf8(pair)?, 16)?;
+
+    let bundle = temporary.path().join("portable.json");
+    let (exit, output, error) = project_cli(
+        &runtime,
+        &repository,
+        vec!["--json", "context", "export", "--output", text(&bundle)?],
+    );
+    assert_eq!(exit, CliExit::SUCCESS, "{error}");
+    let exported: Value = serde_json::from_str(&output)?;
+    assert_eq!(exported["operation"], "portable_export");
+    assert!(bundle.is_file());
+
+    let (exit, output, error) = project_cli(
+        &runtime,
+        &repository,
+        vec![
+            "--json",
+            "document",
+            "preview",
+            "handoff-resume",
+            "--language",
+            "es",
+        ],
+    );
+    assert_eq!(exit, CliExit::SUCCESS, "{error}");
+    let preview: Value = serde_json::from_str(&output)?;
+    assert_eq!(preview["outcome"], "unavailable");
+    assert_eq!(preview["requested_language"], "es");
+    assert!(preview.get("content").is_none());
+
+    let expiration = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_micros()
+        + 60_000_000)
+        .to_string();
+    let (exit, output, error) = project_cli(
+        &runtime,
+        &repository,
+        vec![
+            "--json",
+            "advanced",
+            "guarded",
+            "request",
+            "external-publication",
+            "--action",
+            "publish",
+            "--target",
+            "registry.example/release",
+            "--effect",
+            "publish release",
+            "--risk",
+            "external users can observe it",
+            "--expires",
+            &expiration,
+            "--scope",
+            "artifact:release",
+        ],
+    );
+    assert_eq!(exit, CliExit::SUCCESS, "{error}");
+    let request: Value = serde_json::from_str(&output)?;
+    assert_eq!(request["operation"], "guarded_request");
+    assert!(request["effect_fingerprint"].is_string());
+    Ok(())
+}
+
+#[test]
+fn korean_fixed_output_and_actionable_unbound_error_are_available(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository)?;
+    initialize(&runtime, &repository)?;
+
+    let (exit, output, error) =
+        project_cli(&runtime, &repository, vec!["--locale", "ko", "status"]);
+    assert_eq!(exit, CliExit::SUCCESS, "{error}");
+    assert!(output.starts_with("프로젝트 이해\n"));
+    assert!(output.contains("프로젝트 이름:"));
+
+    let unbound = temporary.path().join("unbound");
+    fs::create_dir(&unbound)?;
+    let (exit, _, error) = project_cli(&runtime, &unbound, vec!["status"]);
+    assert_eq!(exit, CliExit::FAILURE);
+    assert!(error.contains("no Project is bound"));
+    assert!(error.contains("volicord init"));
+    assert!(error.contains("--project PROJECT_ID"));
+    Ok(())
+}
+
+fn initialize(runtime: &Path, repository: &Path) -> Result<Value, Box<dyn std::error::Error>> {
+    let (exit, output, error) =
+        project_cli(runtime, repository, vec!["--json", "init", "CLI Fixture"]);
+    if exit != CliExit::SUCCESS {
+        return Err(error.into());
     }
-    Ok(bytes)
+    Ok(serde_json::from_str(&output)?)
+}
+
+fn binary<const N: usize>(
+    runtime: &Path,
+    repository: &Path,
+    args: [&str; N],
+) -> Result<std::process::Output, std::io::Error> {
+    Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .current_dir(repository)
+        .arg("--runtime")
+        .arg(runtime)
+        .args(args)
+        .output()
+}
+
+fn project_cli<'a>(
+    runtime: &'a Path,
+    repository: &'a Path,
+    args: Vec<&'a str>,
+) -> (CliExit, String, String) {
+    let mut command = vec![
+        "--runtime",
+        runtime.to_str().expect("runtime UTF-8"),
+        "--repository",
+        repository.to_str().expect("repository UTF-8"),
+    ];
+    command.extend(args);
+    cli(command)
+}
+
+fn cli<I, S>(args: I) -> (CliExit, String, String)
+where
+    I: IntoIterator<Item = S>,
+    S: Into<std::ffi::OsString>,
+{
+    let mut output = Vec::new();
+    let mut error = Vec::new();
+    let exit = run_cli(args, &mut output, &mut error);
+    (
+        exit,
+        String::from_utf8(output).expect("stdout UTF-8"),
+        String::from_utf8(error).expect("stderr UTF-8"),
+    )
+}
+
+fn text(path: &Path) -> Result<&str, Box<dyn std::error::Error>> {
+    path.to_str().ok_or_else(|| "path is not UTF-8".into())
 }

@@ -294,8 +294,8 @@ impl LocalOperations {
                             kind: HealthIssueKind::RepairRequired,
                             scope: format!("forgetting:{}", operation.operation_id),
                             detail: format!(
-                                "canonical forgetting cleanup is {:?}; safe next action: volicord repair {} forgetting {}",
-                                operation.state, operation.project_id, operation.operation_id
+                                "canonical forgetting cleanup is {:?}; safe next action from the bound repository: volicord doctor repair --forgetting {} (or add --project {} when repository resolution is unavailable)",
+                                operation.state, operation.operation_id, operation.project_id
                             ),
                         });
                     }

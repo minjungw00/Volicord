@@ -27,11 +27,11 @@ test ! -e "$test_home/.codex/config.toml"
 test_repository="$install_tmp/repository"
 mkdir -p "$test_repository"
 git -C "$test_repository" init --quiet
-"$test_prefix/bin/volicord" --runtime "$test_runtime" codex enable "$test_repository" >/dev/null
+"$test_prefix/bin/volicord" --runtime "$test_runtime" --repository "$test_repository" codex enable >/dev/null
 test -f "$test_repository/.codex/config.toml"
 grep -F "[mcp_servers.volicord]" "$test_repository/.codex/config.toml" >/dev/null
 grep -F "[[hooks.SessionStart]]" "$test_repository/.codex/config.toml" >/dev/null
-"$test_prefix/bin/volicord" codex disable "$test_repository" >/dev/null
+"$test_prefix/bin/volicord" --repository "$test_repository" codex disable >/dev/null
 test ! -e "$test_repository/.codex/config.toml"
 
 "$test_prefix/bin/volicord" --runtime "$test_runtime" project init "Install smoke" >/dev/null

@@ -52,11 +52,15 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
             [
                 "--runtime",
                 runtime.to_str().ok_or("runtime path is not UTF-8")?,
-                "canonical",
-                "forget",
+                "--project",
                 &fixture.project_id.to_string(),
+                "--json",
+                "advanced",
+                "records",
+                "forget",
                 "source",
                 &fixture.target_source.to_string(),
+                "--source",
                 &fixture.authorization_source.to_string(),
             ],
             &mut forget_stdout,
@@ -98,9 +102,12 @@ fn successful_forgetting_cleans_related_local_content_and_replays_after_restart(
             [
                 "--runtime",
                 runtime.to_str().ok_or("runtime path is not UTF-8")?,
-                "repair",
+                "--project",
                 &fixture.project_id.to_string(),
-                "forgetting",
+                "--json",
+                "doctor",
+                "repair",
+                "--forgetting",
                 &operation_id.to_string(),
             ],
             &mut stdout,
@@ -252,8 +259,8 @@ fn post_canonical_checkpoint_failure_is_repair_required_and_read_barrier_survive
         .find(|issue| issue.kind == HealthIssueKind::RepairRequired)
         .ok_or("forgetting repair health issue missing")?;
     assert!(health_issue.detail.contains(&format!(
-        "volicord repair {} forgetting {}",
-        fixture.project_id, partial.operation_id
+        "volicord doctor repair --forgetting {} (or add --project {} when repository resolution is unavailable)",
+        partial.operation_id, fixture.project_id
     )));
     assert!(fixture
         .operations

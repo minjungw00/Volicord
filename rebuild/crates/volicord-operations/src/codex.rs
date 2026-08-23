@@ -320,7 +320,7 @@ fn canonical_executable(path: &Path, label: &str) -> Result<PathBuf, Error> {
 
 fn hook_command(volicord: &Path, runtime: &Path, repository: &Path) -> String {
     format!(
-        "{} --runtime {} codex hook {}",
+        "{} --runtime {} --repository {} codex hook",
         shell_quote(volicord),
         shell_quote(runtime),
         shell_quote(repository)
@@ -947,9 +947,10 @@ mod tests {
                 [
                     "--runtime",
                     runtime.to_str().expect("runtime path"),
+                    "--repository",
+                    authorized.to_str().expect("authorized path"),
                     "codex",
                     "hook",
-                    authorized.to_str().expect("authorized path"),
                 ],
                 &mut input,
                 &mut stdout,

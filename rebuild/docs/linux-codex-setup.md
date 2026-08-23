@@ -18,8 +18,36 @@ Installation does not register a user-global MCP server. Explicitly authorize
 each repository that should expose Volicord to Codex:
 
 ```text
-volicord codex enable /absolute/repository
+volicord --repository /absolute/repository codex enable
 ```
+
+## Repository workflow CLI
+
+Run ordinary commands from a bound repository. Volicord resolves the Project
+from the current directory; `--repository /absolute/path` selects another
+repository and `--project PROJECT_ID` is an explicit disambiguation fallback.
+
+```text
+volicord init "Project name"
+volicord status
+volicord analyze
+volicord recall
+volicord questions
+volicord decisions
+volicord document preview handoff-resume
+volicord viewer open
+volicord context export --output /absolute/project.volicord.json
+volicord privacy status
+volicord doctor check
+volicord doctor repair
+volicord doctor reindex
+```
+
+Output is human-readable by default. Add `--json` for automation and
+`--locale ko` for bundled Korean fixed strings. Use `volicord --help` and
+command-level `--help` to discover options and examples. Canonical audit,
+Candidate inspection, explicit Checkpoint recording, and the Guarded CLI
+fallback are grouped under `volicord advanced`.
 
 `--runtime /absolute/runtime` or `VOLICORD_RUNTIME_DIR` selects the Runtime Home
 recorded for that repository. Enable canonicalizes the repository, locates the
@@ -43,7 +71,7 @@ hooks are preserved.
 Remove only Volicord-owned repository activation with:
 
 ```text
-volicord codex disable /absolute/repository
+volicord --repository /absolute/repository codex disable
 ```
 
 Disable rejects changed ownership state instead of guessing, removes its exact
@@ -59,9 +87,9 @@ Portable conflict handling uses the canonical three-way comparison and merge
 owner through these CLI commands:
 
 ```text
-volicord portable compare INCOMING_BUNDLE [--base COMMON_BASE_BUNDLE]
-volicord portable merge INCOMING_BUNDLE [--base COMMON_BASE_BUNDLE]
-volicord portable resolve INCOMING_BUNDLE CONFLICT_SET REVISION USER_SOURCE MODE [--base COMMON_BASE_BUNDLE] [--merged-bundle EXPLICIT_MERGED_BUNDLE]
+volicord context compare --input INCOMING_BUNDLE [--base COMMON_BASE_BUNDLE]
+volicord context merge --input INCOMING_BUNDLE [--base COMMON_BASE_BUNDLE]
+volicord context resolve --input INCOMING_BUNDLE --conflict-set CONFLICT_SET --revision REVISION --source USER_SOURCE --mode MODE [--base COMMON_BASE_BUNDLE] [--merged-bundle EXPLICIT_MERGED_BUNDLE]
 ```
 
 `MODE` is `choose-local`, `choose-incoming`, `context-branch`, or

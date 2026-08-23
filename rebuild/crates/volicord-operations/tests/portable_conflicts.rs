@@ -70,8 +70,9 @@ fn public_portable_flow_preserves_conflict_revision_source_and_all_resolution_mo
         let compared = cli(
             &runtime,
             &[
-                "portable",
+                "context",
                 "compare",
+                "--input",
                 incoming_bundle.to_str().ok_or("incoming path")?,
                 "--base",
                 base_bundle.to_str().ok_or("base path")?,
@@ -101,12 +102,17 @@ fn public_portable_flow_preserves_conflict_revision_source_and_all_resolution_mo
             .as_str()
             .ok_or("conflict-set identity")?;
         let mut args = vec![
-            "portable",
+            "context",
             "resolve",
+            "--input",
             incoming_bundle.to_str().ok_or("incoming path")?,
+            "--conflict-set",
             conflict_set,
+            "--revision",
             &revision,
+            "--source",
             &base.authorization_text,
+            "--mode",
             mode,
             "--base",
             base_bundle.to_str().ok_or("base path")?,
@@ -144,7 +150,11 @@ fn public_portable_flow_preserves_conflict_revision_source_and_all_resolution_mo
 }
 
 fn cli(runtime: &Path, args: &[&str]) -> Result<Value, Box<dyn std::error::Error>> {
-    let mut command = vec!["--runtime", runtime.to_str().ok_or("runtime path")?];
+    let mut command = vec![
+        "--runtime",
+        runtime.to_str().ok_or("runtime path")?,
+        "--json",
+    ];
     command.extend_from_slice(args);
     let mut output = Vec::new();
     let mut error = Vec::new();
