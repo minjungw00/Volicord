@@ -295,6 +295,13 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         ),
         (
             [
+                str(ROOT / "rebuild/scripts/check-architecture-contracts"),
+                "--self-test",
+            ],
+            ["check-architecture-contracts", "--self-test"],
+        ),
+        (
+            [
                 str(ROOT / "rebuild/install.sh"),
                 "--prefix",
                 str(gate / "official-v11/work/small-python/prefix"),
@@ -363,6 +370,25 @@ def integration_archive(root: Path) -> tuple[Path, str]:
                     "--workspace",
                     "--all-targets",
                     "--all-features",
+                ],
+                ROOT,
+            )
+        ),
+        encoding="utf-8",
+    )
+    architecture_result = (
+        gate
+        / "admission-checks"
+        / "architecture-contracts-self-test"
+        / "result.json"
+    )
+    architecture_result.parent.mkdir(parents=True)
+    architecture_result.write_text(
+        json.dumps(
+            execution(
+                [
+                    str(ROOT / "rebuild/scripts/check-architecture-contracts"),
+                    "--self-test",
                 ],
                 ROOT,
             )
@@ -513,6 +539,14 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         14,
         "redacted",
         "private_prompt",
+    ]
+    architecture_process = next(
+        process
+        for process in processes["processes"]
+        if process["argv"] == ["check-architecture-contracts", "--self-test"]
+    )
+    assert architecture_process["non_structural_argument_roles"] == [
+        [0, "projected", "executable_path"]
     ]
     assert PROMPT_SENTINEL in codex_result.read_text(encoding="utf-8")
     for index, payload in enumerate(SENSITIVE_OPERANDS, start=2):
@@ -783,6 +817,33 @@ def main() -> int:
         )
         assert run_verifier(non_current_archive).returncode == 1
 
+        unknown_structural_payloads = payloads()
+        unknown_structural_execution = builder.sanitized_execution(
+            execution(
+                [
+                    str(ROOT / "rebuild/scripts/check-architecture-contracts"),
+                    "--self-test",
+                ],
+                ROOT,
+            ),
+            ROOT,
+            root,
+        )
+        unknown_structural_execution["argv"][1] = "--unrecognized-structural-flag"
+        unknown_structural_payloads["processes.json"]["processes"] = [
+            unknown_structural_execution
+        ]
+        unknown_structural_archive = root / "unknown-structural-flag.tar.gz"
+        builder.write_archive(
+            unknown_structural_archive,
+            candidate_head=HEAD,
+            payloads=unknown_structural_payloads,
+            source_final_summary_sha256=None,
+        )
+        unknown_structural_result = run_verifier(unknown_structural_archive)
+        assert unknown_structural_result.returncode == 1
+        assert "unapproved structural value" in unknown_structural_result.stderr
+
         prohibited_payloads = payloads()
         prohibited_payloads["processes.json"] = {
             "kind": "sanitized_gate_processes",
@@ -863,6 +924,8 @@ def main() -> int:
             "flag_shaped_content_operand",
             "shell_python_git_config_payloads",
             "exact_final_command_shape",
+            "maintained_architecture_self_test_shape",
+            "unknown_structural_flag_rejection",
             "official_v11_harness_shape",
             "volicord_product_path_shapes",
             "verifier_execution_shape",

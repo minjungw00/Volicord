@@ -80,6 +80,10 @@ RESOURCE_HEALTH_METRICS = (
     "stale_temporary_file_count",
     "operation_latency_ms",
 )
+REAL_RESOURCE_OBSERVATION_MODE = (
+    "linux_procfs_filesystem_storage_and_operation_latency"
+)
+SELF_TEST_RESOURCE_OBSERVATION_MODE = "injected_self_test_observer"
 REAL_SESSION_CHECKS = (
     "repository_scoped_activation",
     "naturalistic_prompt_integrity",
@@ -354,6 +358,29 @@ def bounded_process_result(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def repeated_resource_diagnostic(
+    kind: str,
+    *,
+    round_number: int | None = None,
+    operation: str | None = None,
+    metric: str | None = None,
+    observed: Any = None,
+    deltas: list[int] | None = None,
+) -> dict[str, Any]:
+    diagnostic: dict[str, Any] = {"kind": kind}
+    if round_number is not None:
+        diagnostic["round"] = round_number
+    if operation is not None:
+        diagnostic["operation"] = operation
+    if metric is not None:
+        diagnostic["metric"] = metric
+    if observed is not None:
+        diagnostic["observed"] = observed
+    if deltas is not None:
+        diagnostic["deltas"] = deltas
+    return diagnostic
+
+
 def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]:
     if len(rounds) < 3:
         return {
@@ -361,39 +388,60 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
             "conclusion": "insufficient_repeated_observations",
             "unexplained_cumulative_growth_observed": None,
             "metric_deltas": {},
+            "diagnostic": repeated_resource_diagnostic(
+                "insufficient_repeated_observations",
+                observed={"round_count": len(rounds), "required_minimum": 3},
+            ),
         }
-    if any(
-        set(round_value.get("operations", {})) != set(RESOURCE_OPERATIONS)
-        for round_value in rounds
-    ):
-        return {
-            "status": "unsupported",
-            "conclusion": "repeated_operation_evidence_incomplete",
-            "unexplained_cumulative_growth_observed": None,
-            "metric_deltas": {},
-        }
-    if any(
-        operation.get("exit_code") != 0 or operation.get("termination") is not None
-        for round_value in rounds
-        for operation in round_value.get("operations", {}).values()
-    ):
-        return {
-            "status": "failed",
-            "conclusion": "repeated_operation_failed",
-            "unexplained_cumulative_growth_observed": None,
-            "metric_deltas": {},
-        }
-    if any(
-        not isinstance(round_value.get(name), int)
-        for round_value in rounds
-        for name in (*RESOURCE_STORAGE_METRICS, *RESOURCE_HEALTH_METRICS)
-    ):
-        return {
-            "status": "unsupported",
-            "conclusion": "resource_measurement_unavailable",
-            "unexplained_cumulative_growth_observed": None,
-            "metric_deltas": {},
-        }
+    for index, round_value in enumerate(rounds, start=1):
+        operations = round_value.get("operations", {})
+        if set(operations) != set(RESOURCE_OPERATIONS):
+            return {
+                "status": "unsupported",
+                "conclusion": "repeated_operation_evidence_incomplete",
+                "unexplained_cumulative_growth_observed": None,
+                "metric_deltas": {},
+                "diagnostic": repeated_resource_diagnostic(
+                    "repeated_operation_evidence_incomplete",
+                    round_number=round_value.get("round", index),
+                    observed={
+                        "missing": sorted(set(RESOURCE_OPERATIONS) - set(operations)),
+                        "unexpected": sorted(set(operations) - set(RESOURCE_OPERATIONS)),
+                    },
+                ),
+            }
+        for operation_name, operation in operations.items():
+            if operation.get("exit_code") != 0 or operation.get("termination") is not None:
+                return {
+                    "status": "failed",
+                    "conclusion": "repeated_operation_failed",
+                    "unexplained_cumulative_growth_observed": None,
+                    "metric_deltas": {},
+                    "diagnostic": repeated_resource_diagnostic(
+                        "repeated_operation_failed",
+                        round_number=round_value.get("round", index),
+                        operation=operation_name,
+                        observed={
+                            "exit_code": operation.get("exit_code"),
+                            "termination": operation.get("termination"),
+                            "spawn_failed": operation.get("spawn_failed", False),
+                        },
+                    ),
+                }
+        for name in (*RESOURCE_STORAGE_METRICS, *RESOURCE_HEALTH_METRICS):
+            if not isinstance(round_value.get(name), int):
+                return {
+                    "status": "unsupported",
+                    "conclusion": "resource_measurement_unavailable",
+                    "unexplained_cumulative_growth_observed": None,
+                    "metric_deltas": {},
+                    "diagnostic": repeated_resource_diagnostic(
+                        "resource_measurement_unavailable",
+                        round_number=round_value.get("round", index),
+                        metric=name,
+                        observed={"value_type": type(round_value.get(name)).__name__},
+                    ),
+                }
     deltas = {
         name: [
             rounds[index][name] - rounds[index - 1][name]
@@ -412,6 +460,38 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
     leaked_processes = any(round_value["process_count"] > 1 for round_value in rounds)
     failures = cumulative or stale_temporary_files or leaked_processes
     stable = all(all(value == 0 for value in values) for values in post_warmup.values())
+    diagnostic = None
+    if stale_temporary_files:
+        failed_index, failed_round = next(
+            (index, value)
+            for index, value in enumerate(rounds, start=1)
+            if value["stale_temporary_file_count"] > 0
+        )
+        diagnostic = repeated_resource_diagnostic(
+            "stale_temporary_files_observed",
+            round_number=failed_round.get("round", failed_index),
+            metric="stale_temporary_file_count",
+            observed=failed_round["stale_temporary_file_count"],
+        )
+    elif leaked_processes:
+        failed_index, failed_round = next(
+            (index, value)
+            for index, value in enumerate(rounds, start=1)
+            if value["process_count"] > 1
+        )
+        diagnostic = repeated_resource_diagnostic(
+            "descendant_process_leak_observed",
+            round_number=failed_round.get("round", failed_index),
+            metric="process_count",
+            observed=failed_round["process_count"],
+        )
+    elif cumulative:
+        diagnostic = repeated_resource_diagnostic(
+            "unexplained_cumulative_growth_or_latency_degradation_observed",
+            metric=cumulative[0],
+            deltas=deltas[cumulative[0]],
+            observed={"all_cumulative_metrics": cumulative},
+        )
     return {
         "status": "failed" if failures else "passed",
         "conclusion": (
@@ -430,6 +510,31 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
         "descendant_process_leak_observed": leaked_processes,
         "cumulative_growth_metrics": cumulative,
         "metric_deltas": deltas,
+        "diagnostic": diagnostic,
+    }
+
+
+def observe_repeated_resource_round(
+    runtime: Path,
+    document_output_bytes: int | None,
+    operations: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    """Collect the real Phase 8 Linux process, filesystem, storage, and latency evidence."""
+
+    process_count, open_file_descriptor_count = current_process_resource_counts()
+    return {
+        "runtime_home_bytes": directory_bytes(runtime),
+        "derived_state_bytes": directory_bytes(runtime / "analysis"),
+        "document_output_bytes": document_output_bytes,
+        "process_count": process_count,
+        "open_file_descriptor_count": open_file_descriptor_count,
+        "runtime_file_count": directory_file_count(runtime),
+        "stale_temporary_file_count": stale_temporary_file_count(runtime),
+        "operation_latency_ms": int(sum(
+            value.get("duration_ms", 0)
+            for value in operations
+            if isinstance(value.get("duration_ms"), (int, float))
+        )),
     }
 
 
@@ -440,6 +545,10 @@ def repeated_resource_rehearsal(
     base_env: dict[str, str],
     project_id: str | None,
     repetition_count: int,
+    *,
+    resource_observer: Callable[
+        [Path, int | None, tuple[dict[str, Any], ...]], dict[str, Any]
+    ] | None = None,
 ) -> dict[str, Any]:
     target_root = cycle_root / "work" / kind
     cli = target_root / "prefix/bin/volicord"
@@ -469,7 +578,21 @@ def repeated_resource_rehearsal(
     def destination_present() -> bool:
         return repeated_document.exists() or repeated_document.is_symlink()
 
-    def failed_rehearsal(conclusion: str) -> dict[str, Any]:
+    observation_mode = (
+        REAL_RESOURCE_OBSERVATION_MODE
+        if resource_observer is None
+        else SELF_TEST_RESOURCE_OBSERVATION_MODE
+    )
+    observer = resource_observer or observe_repeated_resource_round
+
+    def failed_rehearsal(
+        conclusion: str,
+        *,
+        round_number: int | None = None,
+        operation: str | None = None,
+        metric: str | None = None,
+        observed: Any = None,
+    ) -> dict[str, Any]:
         return {
             "status": "failed",
             "conclusion": conclusion,
@@ -478,15 +601,33 @@ def repeated_resource_rehearsal(
             "operations_per_round": list(RESOURCE_OPERATIONS),
             "fixed_input_and_destination": True,
             "universal_product_ceiling_applied": False,
+            "observation_mode": observation_mode,
+            "diagnostic": repeated_resource_diagnostic(
+                conclusion,
+                round_number=round_number,
+                operation=operation,
+                metric=metric,
+                observed=observed,
+            ),
             "rounds": rounds,
         }
 
     if destination_present():
-        return failed_rehearsal("rehearsal_destination_preexisting")
+        return failed_rehearsal(
+            "rehearsal_destination_preexisting",
+            round_number=0,
+            operation="document_projection",
+            observed={"cleanup_condition": "destination_present_before_rehearsal"},
+        )
 
     for repetition in range(1, repetition_count + 1):
         if destination_present():
-            return failed_rehearsal("rehearsal_destination_ownership_ambiguous")
+            return failed_rehearsal(
+                "rehearsal_destination_ownership_ambiguous",
+                round_number=repetition,
+                operation="document_projection",
+                observed={"cleanup_condition": "destination_present_before_round"},
+            )
         analysis = recorder.run(
             f"resource-{repetition}-analyze",
             [str(cli), "--json", "--repository", str(repository), "analyze"],
@@ -529,14 +670,18 @@ def repeated_resource_rehearsal(
             environment,
         )
         try:
-            process_count, open_file_descriptor_count = current_process_resource_counts()
-        except OSError:
-            return failed_rehearsal("linux_process_or_file_descriptor_observation_unavailable")
-        operation_latency_ms = int(sum(
-            value.get("duration_ms", 0)
-            for value in (analysis, document, repair)
-            if isinstance(value.get("duration_ms"), (int, float))
-        ))
+            observation = observer(
+                runtime,
+                document_output_bytes,
+                (analysis, document, repair),
+            )
+        except OSError as error:
+            return failed_rehearsal(
+                "linux_process_or_file_descriptor_observation_unavailable",
+                round_number=repetition,
+                metric="process_count_or_open_file_descriptor_count",
+                observed={"error_class": type(error).__name__},
+            )
         rounds.append({
             "round": repetition,
             "operations": {
@@ -544,14 +689,7 @@ def repeated_resource_rehearsal(
                 "document_projection": bounded_process_result(document),
                 "derived_analysis_repair": bounded_process_result(repair),
             },
-            "runtime_home_bytes": directory_bytes(runtime),
-            "derived_state_bytes": directory_bytes(runtime / "analysis"),
-            "document_output_bytes": document_output_bytes,
-            "process_count": process_count,
-            "open_file_descriptor_count": open_file_descriptor_count,
-            "runtime_file_count": directory_file_count(runtime),
-            "stale_temporary_file_count": stale_temporary_file_count(runtime),
-            "operation_latency_ms": operation_latency_ms,
+            **observation,
         })
         if document_identity is not None:
             try:
@@ -570,7 +708,12 @@ def repeated_resource_rehearsal(
                         if destination_present():
                             ownership_failure = "rehearsal_destination_reappeared_after_cleanup"
         if ownership_failure is not None:
-            return failed_rehearsal(ownership_failure)
+            return failed_rehearsal(
+                ownership_failure,
+                round_number=repetition,
+                operation="document_projection",
+                observed={"cleanup_condition": ownership_failure},
+            )
     conclusion = repeated_resource_conclusion(rounds)
     return {
         **conclusion,
@@ -578,6 +721,7 @@ def repeated_resource_rehearsal(
         "operations_per_round": list(RESOURCE_OPERATIONS),
         "fixed_input_and_destination": True,
         "universal_product_ceiling_applied": False,
+        "observation_mode": observation_mode,
         "rounds": rounds,
     }
 
@@ -3533,6 +3677,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 repeated.get("unexplained_cumulative_growth_observed") is not False
                 or repeated.get("universal_product_ceiling_applied") is not False
                 or repeated.get("fixed_input_and_destination") is not True
+                or repeated.get("observation_mode") != REAL_RESOURCE_OBSERVATION_MODE
                 or tuple(repeated.get("operations_per_round", []))
                 != RESOURCE_OPERATIONS
                 or repeated.get("repetition_count")
@@ -5428,6 +5573,7 @@ def self_test() -> int:
     if (
         stable_resources["status"] != "passed"
         or stable_resources["unexplained_cumulative_growth_observed"] is not False
+        or stable_resources["diagnostic"] is not None
     ):
         raise AssertionError("stable repeated resources did not qualify")
     growing_rounds = json.loads(json.dumps(stable_rounds))
@@ -5437,6 +5583,7 @@ def self_test() -> int:
     if (
         growing_resources["status"] != "failed"
         or growing_resources["unexplained_cumulative_growth_observed"] is not True
+        or growing_resources["diagnostic"].get("metric") != "runtime_home_bytes"
     ):
         raise AssertionError("unexplained cumulative resource growth qualified")
     for metric in (
@@ -5451,26 +5598,70 @@ def self_test() -> int:
         if (
             conclusion["status"] != "failed"
             or metric not in conclusion["cumulative_growth_metrics"]
+            or conclusion["diagnostic"].get("metric") != metric
         ):
             raise AssertionError(f"cumulative {metric} degradation qualified")
     leaked_process_rounds = json.loads(json.dumps(stable_rounds))
     leaked_process_rounds[-1]["process_count"] = 2
-    if repeated_resource_conclusion(leaked_process_rounds)["status"] != "failed":
+    leaked_processes = repeated_resource_conclusion(leaked_process_rounds)
+    if (
+        leaked_processes["status"] != "failed"
+        or leaked_processes["diagnostic"].get("round") != 4
+        or leaked_processes["diagnostic"].get("metric") != "process_count"
+    ):
         raise AssertionError("descendant process leakage qualified")
     stale_temporary_rounds = json.loads(json.dumps(stable_rounds))
     stale_temporary_rounds[-1]["stale_temporary_file_count"] = 1
-    if repeated_resource_conclusion(stale_temporary_rounds)["status"] != "failed":
+    stale_temporary = repeated_resource_conclusion(stale_temporary_rounds)
+    if (
+        stale_temporary["status"] != "failed"
+        or stale_temporary["diagnostic"].get("round") != 4
+        or stale_temporary["diagnostic"].get("metric")
+        != "stale_temporary_file_count"
+    ):
         raise AssertionError("stale temporary file accumulation qualified")
-    if repeated_resource_conclusion(stable_rounds[:2])["status"] != "unsupported":
+    insufficient = repeated_resource_conclusion(stable_rounds[:2])
+    if (
+        insufficient["status"] != "unsupported"
+        or insufficient["diagnostic"].get("observed", {}).get("round_count") != 2
+    ):
         raise AssertionError("unobserved repeated resources were treated as measured")
     incomplete_rounds = json.loads(json.dumps(stable_rounds))
     incomplete_rounds[0]["operations"].pop("document_projection")
-    if repeated_resource_conclusion(incomplete_rounds)["status"] != "unsupported":
+    incomplete = repeated_resource_conclusion(incomplete_rounds)
+    if (
+        incomplete["status"] != "unsupported"
+        or incomplete["diagnostic"].get("round") != 1
+        or incomplete["diagnostic"].get("observed", {}).get("missing")
+        != ["document_projection"]
+    ):
         raise AssertionError("incomplete repeated-operation evidence qualified")
     failed_rounds = json.loads(json.dumps(stable_rounds))
     failed_rounds[1]["operations"]["repository_analysis"]["exit_code"] = 7
-    if repeated_resource_conclusion(failed_rounds)["status"] != "failed":
+    failed_operation = repeated_resource_conclusion(failed_rounds)
+    if (
+        failed_operation["status"] != "failed"
+        or failed_operation["diagnostic"].get("round") != 2
+        or failed_operation["diagnostic"].get("operation") != "repository_analysis"
+        or failed_operation["diagnostic"].get("observed", {}).get("exit_code") != 7
+    ):
         raise AssertionError("failed repeated resource operation qualified")
+
+    def stable_self_test_resource_observer(
+        _runtime: Path,
+        document_output_bytes: int | None,
+        _operations: tuple[dict[str, Any], ...],
+    ) -> dict[str, Any]:
+        return {
+            "runtime_home_bytes": 0,
+            "derived_state_bytes": 0,
+            "document_output_bytes": document_output_bytes,
+            "process_count": 1,
+            "open_file_descriptor_count": 8,
+            "runtime_file_count": 0,
+            "stale_temporary_file_count": 0,
+            "operation_latency_ms": 20,
+        }
 
     def install_no_replace_resource_fake(cycle_root: Path, kind: str) -> Path:
         fake = cycle_root / "work" / kind / "prefix/bin/volicord"
@@ -5504,6 +5695,7 @@ def self_test() -> int:
         os.environ.copy(),
         "11" * 16,
         definition["resource_qualification"]["repeated_resource_repetition_count"],
+        resource_observer=stable_self_test_resource_observer,
     )
     rehearsal_destination = (
         rehearsal_root
@@ -5511,6 +5703,7 @@ def self_test() -> int:
     )
     if (
         rehearsal["status"] != "passed"
+        or rehearsal.get("observation_mode") != SELF_TEST_RESOURCE_OBSERVATION_MODE
         or len(rehearsal["rounds"]) != 4
         or any(
             round_value["operations"]["document_projection"]["exit_code"] != 0
@@ -5539,10 +5732,13 @@ def self_test() -> int:
         os.environ.copy(),
         "22" * 16,
         definition["resource_qualification"]["repeated_resource_repetition_count"],
+        resource_observer=stable_self_test_resource_observer,
     )
     if (
         preexisting["status"] != "failed"
         or preexisting["conclusion"] != "rehearsal_destination_preexisting"
+        or preexisting["diagnostic"].get("round") != 0
+        or preexisting["diagnostic"].get("operation") != "document_projection"
         or preexisting_recorder.sequence != 0
         or preexisting_destination.read_bytes() != b"pre-existing destination\n"
     ):
@@ -5559,6 +5755,7 @@ def self_test() -> int:
         failed_export_environment,
         "33" * 16,
         definition["resource_qualification"]["repeated_resource_repetition_count"],
+        resource_observer=stable_self_test_resource_observer,
     )
     failed_export_destination = (
         failed_export_root
@@ -5568,6 +5765,8 @@ def self_test() -> int:
         failed_export["status"] != "failed"
         or failed_export["conclusion"]
         != "failed_document_export_created_unowned_destination"
+        or failed_export["diagnostic"].get("round") != 1
+        or failed_export["diagnostic"].get("operation") != "document_projection"
         or not failed_export_destination.is_file()
     ):
         raise AssertionError("failed export incorrectly acquired rehearsal cleanup ownership")
@@ -6123,6 +6322,7 @@ def self_test() -> int:
         "operations_per_round": list(RESOURCE_OPERATIONS),
         "fixed_input_and_destination": True,
         "universal_product_ceiling_applied": False,
+        "observation_mode": REAL_RESOURCE_OBSERVATION_MODE,
         "rounds": stable_rounds,
     }
     qualifying_peak = {
@@ -7939,6 +8139,9 @@ def self_test() -> int:
         "linux_process_tree_environment_classification": "passed",
         "resource_measurement_unavailable_blocks_qualification": "passed",
         "resource_process_truth_preserved": "passed",
+        "repeated_resource_bounded_failure_diagnostics": "passed",
+        "repeated_resource_injected_self_test_observer": "passed",
+        "repeated_resource_real_observer_required_for_qualification": "passed",
         "repeated_resource_no_replace_rounds": "passed",
         "repeated_resource_strict_current_cli_and_obsolete_rejection": "passed",
         "repeated_resource_preexisting_destination_rejected": "passed",

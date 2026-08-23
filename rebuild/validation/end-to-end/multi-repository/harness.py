@@ -7,6 +7,7 @@ import argparse
 import ast
 from contextlib import contextmanager
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -308,6 +309,96 @@ def stderr_text(result: dict[str, Any]) -> str:
 
 def contains_hangul(value: str) -> bool:
     return any("\uac00" <= character <= "\ud7a3" for character in value)
+
+
+def viewer_project_understanding_evidence(
+    snapshot: Path,
+    understanding: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Inspect readable, grounded Viewer content without retaining the HTML body."""
+
+    if not snapshot.is_file():
+        return {
+            "status": "failed",
+            "checks": {"snapshot_available": False},
+            "entity_count": 0,
+            "explanation_count": 0,
+            "diagram_count": 0,
+            "grounded_relation_count": 0,
+        }
+    content = snapshot.read_text(encoding="utf-8")
+    node_ids = set(re.findall(
+        r'<g class="diagram-node" data-entity-id="([^"]+)"',
+        content,
+    ))
+    relations = re.findall(
+        r'<g class="diagram-edge" data-relation-id="([^"]+)" '
+        r'data-relation-class="([^"]+)" data-source-entity="([^"]+)" '
+        r'data-target-entity="([^"]+)"',
+        content,
+    )
+    explanations = re.findall(
+        r'<article class="deterministic-derived explanation-item"[^>]*>'
+        r'<p>([^<]+)</p>',
+        content,
+    )
+    repository_entities = (
+        understanding.get("repository_map", {}).get("entities", [])
+        if isinstance(understanding, dict)
+        else []
+    )
+    named_entities = [
+        entity.get("name")
+        for entity in repository_entities
+        if isinstance(entity, dict) and isinstance(entity.get("name"), str)
+    ]
+    grounded_relations = [
+        relation
+        for relation in relations
+        if relation[0]
+        and relation[2] in node_ids
+        and relation[3] in node_ids
+    ]
+    checks = {
+        "snapshot_available": True,
+        "project_understanding_heading": (
+            "Project Understanding" in content
+            and "How the architecture and code connect" in content
+        ),
+        "readable_repository_entity": any(
+            len(name.strip()) >= 2 and html.escape(name, quote=True) in content
+            for name in named_entities
+        ),
+        "readable_grounded_explanation": any(
+            len(explanation.strip()) >= 24 for explanation in explanations
+        ),
+        "fact_interpretation_distinction": all(
+            marker in content
+            for marker in (
+                'data-statement-role="verified-fact"',
+                'data-statement-role="deterministic-derived"',
+                'data-statement-role="generated-interpretation"',
+            )
+        ),
+        "grounded_architecture_diagram": (
+            'data-diagram="architecture-topology"' in content
+            and bool(node_ids)
+            and bool(grounded_relations)
+        ),
+        "grounded_flow_diagram": 'data-diagram="flow-topology"' in content,
+        "inspectable_explanation_basis": (
+            'class="explanation-evidence"' in content
+            and 'data-relation-id="' in content
+        ),
+    }
+    return {
+        "status": "passed" if all(checks.values()) else "failed",
+        "checks": checks,
+        "entity_count": len(node_ids),
+        "explanation_count": len(explanations),
+        "diagram_count": content.count('<figure class="grounded-diagram"'),
+        "grounded_relation_count": len(grounded_relations),
+    }
 
 
 def cli_json(
@@ -861,6 +952,10 @@ def rehearse_target(
         "en",
         cwd=repository,
     )
+    viewer_understanding = viewer_project_understanding_evidence(
+        viewer_snapshot,
+        understanding if isinstance(understanding, dict) else None,
+    )
     status_ok = bool(
         status_before
         and status_before.get("operation") == "project_status"
@@ -875,6 +970,7 @@ def rehearse_target(
         and status_ok
         and viewer_result
         and viewer_snapshot.is_file()
+        and viewer_understanding["status"] == "passed"
         and language_ok
         else "failed",
         "task-oriented CLI status, MCP understanding, and the Viewer snapshot exposed grounded Project Understanding",
@@ -884,6 +980,7 @@ def rehearse_target(
         cleanup=understanding_cleanup,
         viewer_result=viewer_result,
         viewer_operation=viewer_operation,
+        viewer_understanding=viewer_understanding,
         requested_language_plan=language_plan,
         requested_language_realization=realized_document,
         requested_language_cleanup=language_cleanup,
@@ -2023,9 +2120,54 @@ def self_check() -> int:
         '"document_preview",',
         '"ko-KR",',
         'contains_hangul(realized_document.get("content", ""))',
+        'viewer_understanding = viewer_project_understanding_evidence(',
+        'viewer_understanding["status"] == "passed"',
+        'provider_request_after.get("outcome") == "provider_unavailable"',
+        '"local_canonical": local_canonical',
     ):
         if current not in source:
             raise AssertionError(f"V11 lost a current public-journey contract: {current}")
+    with tempfile.TemporaryDirectory(prefix="volicord-v11-viewer-contract-") as directory:
+        viewer_contract = Path(directory) / "project-understanding.html"
+        viewer_contract.write_text(
+            '<!doctype html><html lang="en"><body><h1>Project Understanding</h1>'
+            '<h2>How the architecture and code connect</h2>'
+            '<span data-statement-role="verified-fact">Verified fact</span>'
+            '<span data-statement-role="deterministic-derived">Deterministic explanation</span>'
+            '<span data-statement-role="generated-interpretation">Generated interpretation</span>'
+            '<p>Service</p><div class="grounded-explanations">'
+            '<article class="deterministic-derived explanation-item" '
+            'data-explanation-kind="component-role"><p>Service owns a grounded and readable '
+            'repository component responsibility.</p><details class="explanation-evidence">'
+            '<summary>Inspect evidence basis</summary></details></article></div>'
+            '<figure class="grounded-diagram" data-diagram="architecture-topology">'
+            '<g class="diagram-node" data-entity-id="service"></g>'
+            '<g class="diagram-node" data-entity-id="client"></g>'
+            '<g class="diagram-edge" data-relation-id="calls" '
+            'data-relation-class="structural" data-source-entity="client" '
+            'data-target-entity="service"></g></figure>'
+            '<figure class="grounded-diagram" data-diagram="flow-topology"></figure>'
+            '</body></html>',
+            encoding="utf-8",
+        )
+        viewer_contract_result = viewer_project_understanding_evidence(
+            viewer_contract,
+            {"repository_map": {"entities": [{"name": "Service"}]}},
+        )
+        if viewer_contract_result["status"] != "passed":
+            raise AssertionError("grounded Viewer Project Understanding did not qualify")
+        viewer_contract.write_text(
+            viewer_contract.read_text(encoding="utf-8").replace(
+                'class="diagram-edge"',
+                'class="ungrounded-edge"',
+            ),
+            encoding="utf-8",
+        )
+        if viewer_project_understanding_evidence(
+            viewer_contract,
+            {"repository_map": {"entities": [{"name": "Service"}]}},
+        )["status"] != "failed":
+            raise AssertionError("ungrounded Viewer diagram qualified")
     assert_candidate_repository_source_contract()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
@@ -2086,6 +2228,7 @@ def self_check() -> int:
         "evidence_driven_steps": len(REQUIRED_STEPS),
         "required_step_policy_regressions": "passed",
         "candidate_structured_repository_source_regression": "passed",
+        "viewer_project_understanding_contract": "passed",
         "authentication_lifecycle": "passed",
         "credential_retention_audit": "passed",
         "decision_revisit_trigger_assessment": "passed",

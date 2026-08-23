@@ -101,6 +101,7 @@ PORTABLE_STRUCTURAL_ARGUMENTS = {
     "--skip-git-repo-check",
     "--test",
     "--scope",
+    "--self-test",
     "--session",
     "--source",
     "--text",
