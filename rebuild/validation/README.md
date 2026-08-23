@@ -44,6 +44,14 @@ surface, not a Volicord product command or production architecture.
   the exact argument vector from the repository root and records the command,
   working directory, timestamps, duration, complete separate stdout/stderr,
   exit code, and termination details.
+- `python3 rebuild/validation/shared/current_cli_parity.py --binary
+  rebuild/target/debug/volicord` executes maintained Dogfood/V08 command shapes
+  against the actual current Clap parser and requires the corresponding removed
+  forms to fail as usage errors.
+- `rebuild/validation/shared/strict_fake_volicord.py` is bounded self-test
+  support for Dogfood campaign and repeated-resource paths. It accepts only the
+  maintained repository-selected command ordering and fails every unexpected
+  option, command, or subcommand.
 - `rebuild/scripts/validate admission` evaluates the current clean candidate,
   runner/V11, architecture, realistic RI, Dogfood campaign/harness, and
   provider self-checks, required fixture identity/integrity, executables, writable disposable
@@ -316,8 +324,9 @@ byte-for-byte. It preserves a terminal work blocker even when the matching
 resume exists and continues parsing later captures only for bounded diagnostic
 and extractable evidence. Missing activation remains
 `operator_environment_invalid`. For each safely identifiable cycle it derives
-the Project ID, invokes the installed candidate's supported `portable export`,
-completes descriptor evidence references and hashes, and invokes the supported `documents export`
+the Project ID, invokes the installed candidate's repository-selected
+`context export --output`, completes descriptor evidence references and hashes,
+and invokes the supported `document export`
 path for `project-architecture-guide`, `decision-report`,
 `implementation-plan`, and `handoff-resume` in both Markdown and
 self-contained HTML. A deterministic per-cycle summary records every

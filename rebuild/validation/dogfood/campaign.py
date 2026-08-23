@@ -451,9 +451,15 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
     binary = Path(campaign["candidate_binary"])
     manifest = repository / ".codex/volicord-integration.json"
     if manifest.exists():
-        run_checked([str(binary), "--runtime", state["runtime_home"], "codex", "disable", str(repository)])
+        run_checked([
+            str(binary), "--runtime", state["runtime_home"], "--json",
+            "--repository", str(repository), "codex", "disable",
+        ])
     result = run_checked(
-        [str(binary), "--runtime", state["runtime_home"], "codex", "enable", str(repository)]
+        [
+            str(binary), "--runtime", state["runtime_home"], "--json",
+            "--repository", str(repository), "codex", "enable",
+        ]
     )
     if result.get("project_trust") != "user_controlled":
         raise CampaignError("Codex enable did not preserve user-controlled trust")
@@ -720,16 +726,19 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
     return str(project_id)
 
 
-def default_export(binary: Path, runtime: Path, project_id: str, destination: Path) -> None:
+def default_export(binary: Path, runtime: Path, repository: Path, destination: Path) -> None:
     completed = subprocess.run(
-        [str(binary), "--runtime", str(runtime), "portable", "export", project_id, str(destination)],
+        [
+            str(binary), "--runtime", str(runtime), "--repository", str(repository),
+            "context", "export", "--output", str(destination),
+        ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
     )
     if completed.returncode != 0 or not destination.is_file():
-        raise CampaignError("candidate portable export failed")
+        raise CampaignError("candidate context export failed")
 
 
 def runtime_summary(runtime: Path, repository: Path, work_activation: bool, resume_activation: bool) -> dict[str, Any]:
@@ -761,7 +770,7 @@ def runtime_summary(runtime: Path, repository: Path, work_activation: bool, resu
 def generate_document(
     binary: Path,
     runtime: Path,
-    project_id: str,
+    repository: Path,
     kind: str,
     format_name: str,
     destination: Path,
@@ -769,8 +778,9 @@ def generate_document(
 ) -> dict[str, Any]:
     completed = subprocess.run(
         [
-            str(binary), "--runtime", str(runtime), "documents", "export", project_id,
-            kind, format_name, str(destination), language,
+            str(binary), "--runtime", str(runtime), "--repository", str(repository),
+            "document", "export", kind, "--format", format_name,
+            "--output", str(destination), "--language", language,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -889,9 +899,9 @@ def collect_document_evidence(
     cycle: int,
     binary: Path,
     runtime: Path,
-    project_id: str,
+    repository: Path,
     language: str,
-    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]],
+    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Path]]:
     directory = cycle_root(root, kind, cycle) / "evidence/generated-documents"
     directory.mkdir(parents=True, exist_ok=True)
@@ -905,7 +915,7 @@ def collect_document_evidence(
                 result = documenter(
                     binary,
                     runtime,
-                    project_id,
+                    repository,
                     document_kind,
                     format_name,
                     destination,
@@ -985,8 +995,8 @@ def extract_resume_evidence(
     capture: Any,
     destination: Path,
     *,
-    exporter: Callable[[Path, Path, str, Path], None] = default_export,
-    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    exporter: Callable[[Path, Path, Path, Path], None] = default_export,
+    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
     final_state: str = "resume_collected",
 ) -> dict[str, Any]:
@@ -997,12 +1007,13 @@ def extract_resume_evidence(
     project_id = inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
     runtime = Path(state["runtime_home"])
+    repository = Path(state["repository_path"])
     bundle = cycle_root(root, kind, cycle) / "context.bundle.json"
-    exporter(binary, runtime, project_id, bundle)
+    exporter(binary, runtime, repository, bundle)
     try:
         canonical = harness.load_canonical_bundle(bundle)
     except (OSError, EvidenceError) as error:
-        raise CampaignError("portable export is not a supported canonical bundle") from error
+        raise CampaignError("context export is not a supported canonical bundle") from error
     if canonical.project_id != project_id:
         raise CampaignError("portable bundle Project identity does not match the resume capture")
     descriptor["evidence"] = {
@@ -1035,7 +1046,7 @@ def extract_resume_evidence(
         cycle,
         binary,
         runtime,
-        project_id,
+        repository,
         campaign.get("document_language", "en"),
         documenter,
     )
@@ -1117,8 +1128,8 @@ def collect_resume(
     cycle: int,
     raw_capture: Path,
     *,
-    exporter: Callable[[Path, Path, str, Path], None] = default_export,
-    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    exporter: Callable[[Path, Path, Path, Path], None] = default_export,
+    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
@@ -1242,8 +1253,8 @@ def collect_batch(
     root: Path,
     raw_paths: list[Path],
     *,
-    exporter: Callable[[Path, Path, str, Path], None] = default_export,
-    documenter: Callable[[Path, Path, str, str, str, Path, str], dict[str, Any]] = generate_document,
+    exporter: Callable[[Path, Path, Path, Path], None] = default_export,
+    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = load_campaign(root)

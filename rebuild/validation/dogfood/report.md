@@ -126,7 +126,8 @@ blocker cannot be repaired by a later resume, while missing activation remains
 an operator/environment-invalid classification. The helper still parses later
 captures for bounded diagnostics and safely available extraction. It verifies
 Project resolution and Recall order and invokes the installed candidate's
-supported portable export plus all four supported generated-document exports
+supported repository-selected context export plus all four supported
+generated-document exports
 in Markdown and self-contained HTML and the public static Viewer snapshot
 export. Per-kind/per-format and Viewer-snapshot status, bounded failure basis,
 relative path, bytes, and SHA-256 are recorded in private evidence; the

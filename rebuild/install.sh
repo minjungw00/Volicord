@@ -30,7 +30,7 @@ mkdir -p "$bin_dir" "$runtime_dir"
 install -m 755 "$script_dir/target/release/volicord" "$bin_dir/volicord"
 install -m 755 "$script_dir/target/release/volicord-viewer" "$bin_dir/volicord-viewer"
 install -m 755 "$script_dir/target/release/volicord-mcp" "$bin_dir/volicord-mcp"
-VOLICORD_RUNTIME_DIR="$runtime_dir" "$bin_dir/volicord" health >/dev/null
+VOLICORD_RUNTIME_DIR="$runtime_dir" "$bin_dir/volicord" doctor check >/dev/null
 
 echo "Installed Volicord executables in $bin_dir"
 echo "Runtime data: $runtime_dir"

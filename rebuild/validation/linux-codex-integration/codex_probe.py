@@ -146,16 +146,19 @@ def main() -> int:
                 run(
                     [
                         str(prefix / "bin" / "volicord"),
-                        "project",
-                        "init",
-                        "Authenticated Codex Probe",
+                        "--json",
                         "--repository",
                         str(repository),
+                        "init",
+                        "Authenticated Codex Probe",
                     ],
                     env,
                 ).stdout
             )
-            run([str(prefix / "bin" / "volicord"), "codex", "enable", str(repository)], env)
+            run([
+                str(prefix / "bin" / "volicord"),
+                "--repository", str(repository), "codex", "enable",
+            ], env)
             codex_home.joinpath("config.toml").write_text(
                 f'[projects.{json.dumps(str(repository.resolve()))}]\ntrust_level = "trusted"\n',
                 encoding="utf-8",

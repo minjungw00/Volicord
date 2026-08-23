@@ -61,7 +61,7 @@ EXPECTED_COMMITS = {
         "fix: authenticate local viewer mutations",
     ),
 }
-CURRENT_ENTRY_BASELINE = "1c9aaed51374b60693d9acec5bdd0410c87eb018"
+CURRENT_ENTRY_BASELINE = "7077924cc042763f492a31318e6e8ce0d36597ed"
 
 
 def require(condition: bool, message: str) -> None:

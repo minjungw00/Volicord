@@ -17,11 +17,12 @@ import harness
 
 
 REVISION = "ab" * 20
+STRICT_FAKE = campaign.ROOT / "rebuild/validation/shared/strict_fake_volicord.py"
 
 
 def write_fake_binary(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    shutil.copyfile(STRICT_FAKE, path)
     path.chmod(0o755)
     viewer = path.with_name("volicord-viewer")
     viewer.write_text(
@@ -136,8 +137,8 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
 
 
 def exporter_from(source: Path):
-    def export(_binary: Path, _runtime: Path, project_id: str, destination: Path) -> None:
-        assert project_id == "01" * 16
+    def export(_binary: Path, _runtime: Path, repository: Path, destination: Path) -> None:
+        assert repository.name == "repository"
         shutil.copyfile(source, destination)
     return export
 
@@ -145,13 +146,13 @@ def exporter_from(source: Path):
 def documenter(
     _binary: Path,
     _runtime: Path,
-    project_id: str,
+    repository: Path,
     kind: str,
     format_name: str,
     destination: Path,
     language: str,
 ) -> dict[str, object]:
-    assert project_id == "01" * 16
+    assert repository.name == "repository"
     assert kind in campaign.DOCUMENT_KINDS
     assert format_name in {name for name, _suffix in campaign.DOCUMENT_FORMATS}
     assert language == "en"
@@ -162,7 +163,7 @@ def documenter(
 def failed_documenter(
     binary: Path,
     runtime: Path,
-    project_id: str,
+    repository: Path,
     kind: str,
     format_name: str,
     destination: Path,
@@ -170,7 +171,7 @@ def failed_documenter(
 ) -> dict[str, object]:
     if kind == "implementation-plan":
         return {"status": "failed", "basis": "fixture document kind unavailable"}
-    return documenter(binary, runtime, project_id, kind, format_name, destination, language)
+    return documenter(binary, runtime, repository, kind, format_name, destination, language)
 
 
 def snapshotter(
@@ -229,11 +230,41 @@ def prepared_batch(
 
 
 def batch_exporter(bundles: dict[str, Path]):
-    def export(_binary: Path, _runtime: Path, project_id: str, destination: Path) -> None:
-        assert project_id == "01" * 16
+    def export(_binary: Path, _runtime: Path, repository: Path, destination: Path) -> None:
+        assert repository.name == "repository"
         shutil.copyfile(bundles[destination.parent.name], destination)
 
     return export
+
+
+def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
+    runtime = parent / "strict-runtime"
+    repository = parent / "strict-repository"
+    repository.mkdir()
+    current = [
+        "--runtime", str(runtime), "--repository", str(repository),
+        "codex", "enable",
+    ]
+    accepted = subprocess.run([str(binary), *current], text=True, capture_output=True, check=False)
+    assert accepted.returncode == 0
+    assert json.loads(accepted.stdout)["project_trust"] == "user_controlled"
+    rejected = (
+        ["portable", "export", "11" * 16, str(parent / "old.bundle")],
+        ["documents", "export", "11" * 16, "handoff-resume", "markdown", str(parent / "old.md"), "en"],
+        ["repair", "11" * 16, "derived-analysis"],
+        ["reindex", "11" * 16],
+        ["codex", "enable", str(repository)],
+        ["codex", "--repository", str(repository), "enable"],
+        ["unexpected"],
+    )
+    for argv in rejected:
+        result = subprocess.run(
+            [str(binary), "--runtime", str(runtime), *argv],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 2, (argv, result.returncode, result.stdout, result.stderr)
 
 
 def assert_blockers(parent: Path, binary: Path) -> None:
@@ -752,6 +783,7 @@ def main() -> int:
         parent = Path(temporary)
         binary = parent / "candidate/bin/volicord"
         write_fake_binary(binary)
+        assert_strict_cli_contract(parent, binary)
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
         assert_batch_workflow(parent, binary)
@@ -762,6 +794,7 @@ def main() -> int:
         "status": "passed",
         "checks": [
             "campaign_level_human_review_operations",
+            "strict_current_cli_positive_and_obsolete_negative_cases",
             "sealed_evaluator_operator_isolation",
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",

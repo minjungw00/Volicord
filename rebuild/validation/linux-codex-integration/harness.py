@@ -139,6 +139,41 @@ def schema_variants(schema: dict[str, Any]) -> list[dict[str, Any]]:
     return variants if isinstance(variants, list) else [schema]
 
 
+def assert_concrete_schema_node(
+    name: str, schema: dict[str, Any], *, description_required: bool = True
+) -> None:
+    if description_required:
+        require(isinstance(schema.get("description"), str), f"{name} is undescribed")
+    variants = schema.get("oneOf")
+    if isinstance(variants, list):
+        require(bool(variants), f"{name} advertises no usable variants")
+        for index, variant in enumerate(variants):
+            require(isinstance(variant, dict), f"{name}.oneOf[{index}] is not concrete")
+            assert_concrete_schema_node(
+                f"{name}.oneOf[{index}]", variant, description_required=False
+            )
+        return
+    kind = schema.get("type")
+    require(
+        kind in {"string", "integer", "array", "object"},
+        f"{name} uses an unsupported client-visible type",
+    )
+    if kind == "array":
+        items = schema.get("items")
+        require(isinstance(items, dict), f"{name} has no item schema")
+        assert_concrete_schema_node(f"{name}[]", items, description_required=False)
+    elif kind == "object":
+        require(schema.get("additionalProperties") is False, f"{name} permits undocumented properties")
+        properties = schema.get("properties")
+        required = schema.get("required")
+        require(isinstance(properties, dict) and properties, f"{name} has no properties")
+        require(isinstance(required, list), f"{name} has no required-field declaration")
+        require(set(required) <= set(properties), f"{name} requires an undocumented property")
+        for field, child in properties.items():
+            require(isinstance(child, dict), f"{name}.{field} schema is not concrete")
+            assert_concrete_schema_node(f"{name}.{field}", child)
+
+
 def assert_concrete_schema(name: str, schema: dict[str, Any]) -> None:
     variants = schema_variants(schema)
     require(bool(variants), f"{name} advertises no usable input shape")
@@ -155,13 +190,7 @@ def assert_concrete_schema(name: str, schema: dict[str, Any]) -> None:
         require(set(required) <= set(properties), f"{name} requires an undocumented property")
         for field, child in properties.items():
             require(isinstance(child, dict), f"{name}.{field} schema is not concrete")
-            require(isinstance(child.get("description"), str), f"{name}.{field} is undescribed")
-            require(
-                child.get("type") in {"string", "integer", "array"},
-                f"{name}.{field} uses an unsupported client-visible type",
-            )
-            if child.get("type") == "array":
-                require(isinstance(child.get("items"), dict), f"{name}.{field} has no item schema")
+            assert_concrete_schema_node(f"{name}.{field}", child)
 
 
 def schema_error(schema: dict[str, Any], value: Any, path: str = "arguments") -> str | None:
@@ -299,8 +328,12 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
     names = [entry["name"] for entry in catalog]
     require(names == EXPECTED_TOOLS, "high-level MCP catalog changed")
     instructions = initialized["result"].get("instructions", "")
-    require("resolve the current repository" in instructions, "Project resolution guidance missing")
-    require("Recall precedes repository inspection" in instructions, "fresh-session Recall boundary missing")
+    require("call project_resolve first" in instructions, "Project resolution guidance missing")
+    require(
+        "recall must succeed before inspecting, editing, or continuing repository work"
+        in instructions,
+        "fresh-session Recall boundary missing",
+    )
     require("explicit current-host user response" in instructions, "user Decision boundary missing")
     return catalog
 
@@ -478,18 +511,28 @@ def exercise_analysis_recovery(
     (second_repository / "main.go").write_text("package main\n", encoding="utf-8")
     first = json.loads(
         run(
-            [str(cli), "project", "init", "Repair Project", "--repository", str(first_repository)],
+            [
+                str(cli), "--json", "--repository", str(first_repository),
+                "init", "Repair Project",
+            ],
             env,
         ).stdout
     )["project_id"]
     second = json.loads(
         run(
-            [str(cli), "project", "init", "Unrelated Project", "--repository", str(second_repository)],
+            [
+                str(cli), "--json", "--repository", str(second_repository),
+                "init", "Unrelated Project",
+            ],
             env,
         ).stdout
     )["project_id"]
-    first_analysis = json.loads(run([str(cli), "analyze", first], env).stdout)
-    second_analysis = json.loads(run([str(cli), "analyze", second], env).stdout)
+    first_analysis = json.loads(run(
+        [str(cli), "--json", "--repository", str(first_repository), "analyze"], env
+    ).stdout)
+    second_analysis = json.loads(run(
+        [str(cli), "--json", "--repository", str(second_repository), "analyze"], env
+    ).stdout)
     first_path = Path(first_analysis["stored_at"])
     second_path = Path(second_analysis["stored_at"])
     first_value = json.loads(first_path.read_text(encoding="utf-8"))
@@ -498,49 +541,43 @@ def exercise_analysis_recovery(
     stable_source = json.loads(run(
         [
             str(cli),
-            "canonical",
-            "user-source",
-            first,
-            "v08-recovery",
-            "canonical-preservation",
-            "Preserve this canonical state across derived recovery",
+            "--json", "--repository", str(first_repository),
+            "advanced", "records", "source",
+            "--host", "v08-recovery",
+            "--session", "canonical-preservation",
+            "--text", "Preserve this canonical state across derived recovery",
         ],
         env,
     ).stdout)
     run(
         [
             str(cli),
-            "checkpoint",
-            "record",
-            first,
-            "pause",
-            stable_source["identity"],
-            "Preserve user-owned recovery meaning",
-            "Repair and reindex from fresh repository observations",
+            "--json", "--repository", str(first_repository),
+            "advanced", "checkpoint", "pause",
+            "--source", stable_source["identity"],
+            "--goal", "Preserve user-owned recovery meaning",
+            "--next-step", "Repair and reindex from fresh repository observations",
         ],
         env,
     )
     disposable_source = json.loads(run(
         [
             str(cli),
-            "canonical",
-            "user-source",
-            first,
-            "v08-recovery",
-            "forgetting-state",
-            "Forget this disposable source before recovery",
+            "--json", "--repository", str(first_repository),
+            "advanced", "records", "source",
+            "--host", "v08-recovery",
+            "--session", "forgetting-state",
+            "--text", "Forget this disposable source before recovery",
         ],
         env,
     ).stdout)
     run(
         [
             str(cli),
-            "canonical",
-            "forget",
-            first,
-            "source",
+            "--json", "--repository", str(first_repository),
+            "advanced", "records", "forget", "source",
             disposable_source["identity"],
-            stable_source["identity"],
+            "--source", stable_source["identity"],
         ],
         env,
     )
@@ -548,8 +585,14 @@ def exercise_analysis_recovery(
     after_repair_bundle = temporary / "repair-after.json"
     after_reindex_bundle = temporary / "reindex-after.json"
     second_bundle = temporary / "unrelated-before.json"
-    run([str(cli), "portable", "export", first, str(before_bundle)], env)
-    run([str(cli), "portable", "export", second, str(second_bundle)], env)
+    run([
+        str(cli), "--repository", str(first_repository),
+        "context", "export", "--output", str(before_bundle),
+    ], env)
+    run([
+        str(cli), "--repository", str(second_repository),
+        "context", "export", "--output", str(second_bundle),
+    ], env)
     second_bundle_bytes = second_bundle.read_bytes()
     initial_lineage = analysis_lineage(
         first_path,
@@ -566,7 +609,9 @@ def exercise_analysis_recovery(
         "REPAIRED_CURRENT = True\n", encoding="utf-8"
     )
     first_path.write_bytes(b"{ controlled corrupt derived analysis")
-    degraded = json.loads(run([str(cli), "health", first], env).stdout)
+    degraded = json.loads(run([
+        str(cli), "--json", "--repository", str(first_repository), "doctor", "check",
+    ], env).stdout)
     require(degraded["state"] == "degraded", "corrupt analysis was not observable as degraded")
     require(
         any(
@@ -576,7 +621,9 @@ def exercise_analysis_recovery(
         "corrupt Project analysis scope was not diagnosed",
     )
 
-    repaired = json.loads(run([str(cli), "repair", first, "derived-analysis"], env).stdout)
+    repaired = json.loads(run([
+        str(cli), "--json", "--repository", str(first_repository), "doctor", "repair",
+    ], env).stdout)
     require(repaired["kind"] == "derivedanalysisrepair", "repair used the wrong recovery kind")
     require(repaired["discarded_entries"] == 1, "repair did not discard the corrupt owned entry")
     require(Path(repaired["stored_at"]).is_file(), "repair did not publish a fresh analysis")
@@ -587,8 +634,13 @@ def exercise_analysis_recovery(
         "src/repair-current.py" in json.dumps(repaired_value),
         "repair did not read current repository content",
     )
-    require(json.loads(run([str(cli), "health", first], env).stdout)["state"] == "healthy", "repair did not restore health")
-    run([str(cli), "portable", "export", first, str(after_repair_bundle)], env)
+    require(json.loads(run([
+        str(cli), "--json", "--repository", str(first_repository), "doctor", "check",
+    ], env).stdout)["state"] == "healthy", "repair did not restore health")
+    run([
+        str(cli), "--repository", str(first_repository),
+        "context", "export", "--output", str(after_repair_bundle),
+    ], env)
     repaired_lineage = analysis_lineage(
         repaired_path,
         first,
@@ -613,14 +665,19 @@ def exercise_analysis_recovery(
         "repair rewrote the initial repository Source instead of preserving history",
     )
     require(second_path.read_bytes() == second_bytes, "repair changed another Project's derived state")
-    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-repair.json")], env)
+    run([
+        str(cli), "--repository", str(second_repository), "context", "export",
+        "--output", str(temporary / "unrelated-after-repair.json"),
+    ], env)
     require(
         (temporary / "unrelated-after-repair.json").read_bytes() == second_bundle_bytes,
         "repair changed another Project's canonical state",
     )
 
     (first_repository / "src/current.py").write_text("CURRENT = True\n", encoding="utf-8")
-    reindexed = json.loads(run([str(cli), "reindex", first], env).stdout)
+    reindexed = json.loads(run([
+        str(cli), "--json", "--repository", str(first_repository), "doctor", "reindex",
+    ], env).stdout)
     require(reindexed["kind"] == "derivedrebuild", "reindex used the wrong recovery kind")
     require(
         reindexed["analysis_snapshot"] != repaired["analysis_snapshot"],
@@ -633,7 +690,10 @@ def exercise_analysis_recovery(
         "src/current.py" in json.dumps(reindexed_value),
         "reindex did not observe current authoritative repository input",
     )
-    run([str(cli), "portable", "export", first, str(after_reindex_bundle)], env)
+    run([
+        str(cli), "--repository", str(first_repository),
+        "context", "export", "--output", str(after_reindex_bundle),
+    ], env)
     reindexed_lineage = analysis_lineage(
         reindexed_path,
         first,
@@ -654,7 +714,10 @@ def exercise_analysis_recovery(
         "captured initial analysis provenance changed in memory",
     )
     require(second_path.read_bytes() == second_bytes, "reindex changed another Project's derived state")
-    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-reindex.json")], env)
+    run([
+        str(cli), "--repository", str(second_repository), "context", "export",
+        "--output", str(temporary / "unrelated-after-reindex.json"),
+    ], env)
     require(
         (temporary / "unrelated-after-reindex.json").read_bytes() == second_bundle_bytes,
         "reindex changed another Project's canonical state",
@@ -676,10 +739,18 @@ def exercise_analysis_recovery(
         second_path.read_bytes(),
         second_bundle_bytes,
     )
-    unsupported = run([str(cli), "repair", first, "canonical"], env, expected=1)
-    require("unsupported repair scope" in unsupported.stderr, "unsupported repair appeared successful")
-    run([str(cli), "portable", "export", first, str(temporary / "unsupported-after.json")], env)
-    run([str(cli), "portable", "export", second, str(temporary / "unrelated-after-unsupported.json")], env)
+    unsupported = run([
+        str(cli), "--repository", str(first_repository), "doctor", "repair", "canonical",
+    ], env, expected=2)
+    require("Usage:" in unsupported.stderr, "removed repair scope did not fail at the parser")
+    run([
+        str(cli), "--repository", str(first_repository), "context", "export",
+        "--output", str(temporary / "unsupported-after.json"),
+    ], env)
+    run([
+        str(cli), "--repository", str(second_repository), "context", "export",
+        "--output", str(temporary / "unrelated-after-unsupported.json"),
+    ], env)
     unsupported_after = (
         (temporary / "unsupported-after.json").read_bytes(),
         reindexed_path.read_bytes(),
@@ -771,7 +842,9 @@ def main() -> int:
             ["git", "-C", str(repository), "status", "--short"], env
         ).stdout
         enabled = json.loads(
-            run([str(cli), "codex", "enable", str(repository)], env).stdout
+            run([
+                str(cli), "--json", "--repository", str(repository), "codex", "enable",
+            ], env).stdout
         )
         require(enabled["project_trust"] == "user_controlled", "Volicord claimed project trust")
         project_config = (repository / ".codex/config.toml").read_text(encoding="utf-8")
@@ -792,7 +865,10 @@ def main() -> int:
         )
         initialized = json.loads(
             run(
-                [str(cli), "project", "init", "V08 Project", "--repository", str(repository)],
+                [
+                    str(cli), "--json", "--repository", str(repository),
+                    "init", "V08 Project",
+                ],
                 env,
             ).stdout
         )
@@ -858,16 +934,14 @@ def main() -> int:
             run(
                 [
                     str(cli),
-                    "guarded",
-                    "request",
-                    project_id,
-                    "external-publication",
-                    "publish schema fixture",
-                    "registry/schema-fixture",
-                    "publish a public schema fixture",
-                    "public artifact",
-                    expiration,
-                    "release:schema-fixture",
+                    "--json", "--repository", str(repository),
+                    "advanced", "guarded", "request", "external-publication",
+                    "--action", "publish schema fixture",
+                    "--target", "registry/schema-fixture",
+                    "--effect", "publish a public schema fixture",
+                    "--risk", "public artifact",
+                    "--expires", expiration,
+                    "--scope", "release:schema-fixture",
                 ],
                 env,
             ).stdout
@@ -906,11 +980,15 @@ def main() -> int:
         else:
             raise AssertionError("missing MCP executable unexpectedly launched")
 
-        recall_before = json.loads(run([str(cli), "recall", project_id], env).stdout)
+        recall_before = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "recall",
+        ], env).stdout)
         canonical = runtime / "canonical.sqlite3"
         canonical_size = canonical.stat().st_size
         disabled = json.loads(
-            run([str(cli), "codex", "disable", str(repository)], env).stdout
+            run([
+                str(cli), "--json", "--repository", str(repository), "codex", "disable",
+            ], env).stdout
         )
         require(disabled["changed"] is True, "repository Codex integration was not disabled")
         require(not (repository / ".codex/config.toml").exists(), "disable left owned config")
@@ -937,9 +1015,11 @@ def main() -> int:
             ],
             env,
         )
-        recall_after = json.loads(run([str(cli), "recall", project_id], env).stdout)
+        recall_after = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "recall",
+        ], env).stdout)
         require(recall_after == recall_before, "reinstall changed canonical Recall")
-        run([str(cli), "codex", "enable", str(repository)], env)
+        run([str(cli), "--repository", str(repository), "codex", "enable"], env)
 
         recovery_evidence = exercise_analysis_recovery(cli, env, temporary, runtime)
 

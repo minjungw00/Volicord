@@ -51,6 +51,7 @@ from architecture_owners import ACTIVE_ARCHITECTURE_OWNER_PATHS  # noqa: E402
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 V11_HARNESS = ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"
+STRICT_FAKE_CLI = ROOT / "rebuild/validation/shared/strict_fake_volicord.py"
 DECISION_REGISTER = ROOT / "rebuild/docs/design/open-decisions.md"
 ALLOWED_STATUS = {
     "passed", "failed", "partial", "unsupported", "skipped", "environment_blocked"
@@ -452,6 +453,7 @@ def repeated_resource_rehearsal(
         }
     home = target_root / "home"
     runtime = target_root / "runtime"
+    repository = target_root / "repository"
     environment = base_env | {
         "HOME": str(home),
         "XDG_DATA_HOME": str(home / ".local/share"),
@@ -487,13 +489,13 @@ def repeated_resource_rehearsal(
             return failed_rehearsal("rehearsal_destination_ownership_ambiguous")
         analysis = recorder.run(
             f"resource-{repetition}-analyze",
-            [str(cli), "--json", "--project", project_id, "analyze"],
+            [str(cli), "--json", "--repository", str(repository), "analyze"],
             environment,
         )
         document = recorder.run(
             f"resource-{repetition}-document",
             [
-                str(cli), "--json", "--project", project_id,
+                str(cli), "--json", "--repository", str(repository),
                 "document", "export", "project-architecture-guide",
                 "--format", "html", "--output", str(repeated_document),
                 "--language", "en",
@@ -523,7 +525,7 @@ def repeated_resource_rehearsal(
             ownership_failure = "failed_document_export_created_unowned_destination"
         repair = recorder.run(
             f"resource-{repetition}-repair",
-            [str(cli), "repair", project_id, "derived-analysis"],
+            [str(cli), "--repository", str(repository), "doctor", "repair"],
             environment,
         )
         try:
@@ -5473,28 +5475,28 @@ def self_test() -> int:
     def install_no_replace_resource_fake(cycle_root: Path, kind: str) -> Path:
         fake = cycle_root / "work" / kind / "prefix/bin/volicord"
         fake.parent.mkdir(parents=True, exist_ok=True)
-        fake.write_text(
-            f"#!{sys.executable}\n"
-            "import os\n"
-            "from pathlib import Path\n"
-            "import sys\n"
-            "if 'document' in sys.argv and 'export' in sys.argv:\n"
-            "    destination = Path(sys.argv[sys.argv.index('--output') + 1])\n"
-            "    try:\n"
-            "        with destination.open('xb') as output:\n"
-            "            output.write(b'fixed no-replace document\\n')\n"
-            "    except FileExistsError:\n"
-            "        raise SystemExit(17)\n"
-            "    if os.environ.get('PHASE8_FAKE_DOCUMENT_FAIL_AFTER_CREATE') == '1':\n"
-            "        raise SystemExit(19)\n"
-            "raise SystemExit(0)\n",
-            encoding="utf-8",
-        )
-        fake.chmod(0o755)
+        fake.symlink_to(STRICT_FAKE_CLI)
+        (cycle_root / "work" / kind / "repository").mkdir()
         return fake
 
     rehearsal_root = evidence_directory / "rehearsal-pass"
     install_no_replace_resource_fake(rehearsal_root, "volicord")
+    strict_repository = rehearsal_root / "work/volicord/repository"
+    for obsolete in (
+        ["repair", "11" * 16, "derived-analysis"],
+        ["reindex", "11" * 16],
+        ["documents", "export", "11" * 16, "project-architecture-guide", "html", "old.html", "en"],
+        ["doctor", "--repository", str(strict_repository), "repair"],
+        ["unknown"],
+    ):
+        rejected = subprocess.run(
+            [str(rehearsal_root / "work/volicord/prefix/bin/volicord"), *obsolete],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if rejected.returncode != 2:
+            raise AssertionError(f"strict repeated-resource fake accepted obsolete argv: {obsolete}")
     rehearsal = repeated_resource_rehearsal(
         "volicord",
         rehearsal_root,
@@ -7938,6 +7940,7 @@ def self_test() -> int:
         "resource_measurement_unavailable_blocks_qualification": "passed",
         "resource_process_truth_preserved": "passed",
         "repeated_resource_no_replace_rounds": "passed",
+        "repeated_resource_strict_current_cli_and_obsolete_rejection": "passed",
         "repeated_resource_preexisting_destination_rejected": "passed",
         "repeated_resource_failed_export_not_owned": "passed",
         "repeated_resource_stability": "passed",
