@@ -379,6 +379,325 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         assert projected["argv"][: len(expected_prefix)] == expected_prefix
 
 
+def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], Path]]:
+    path = str(gate / "artifact")
+    manifest = "rebuild/Cargo.toml"
+    source = "private-source-identity"
+    volicord_prefix = [
+        "volicord",
+        "--json",
+        "--runtime",
+        str(gate / "runtime"),
+        "--repository",
+        str(ROOT),
+        "--project",
+        "private-project-identity",
+        "--locale",
+        "en",
+    ]
+    volicord_commands = [
+        ("volicord_codex_enable", ["codex", "enable"]),
+        ("volicord_init", ["init", "Private project title"]),
+        ("volicord_bind", ["bind"]),
+        ("volicord_status", ["status"]),
+        ("volicord_analyze", ["analyze"]),
+        (
+            "volicord_advanced_records_source",
+            [
+                "advanced", "records", "source", "--host", "codex", "--session",
+                "private-session", "--text", "private source body",
+            ],
+        ),
+        (
+            "volicord_privacy_enable",
+            [
+                "privacy", "enable", "private-provider", "private-model", "--source",
+                source, "--scope", "private/source.rs",
+            ],
+        ),
+        (
+            "volicord_advanced_checkpoint",
+            [
+                "advanced", "checkpoint", "completed", "--source", source, "--goal",
+                "private goal", "--next-step", "private next step", "--handoff-to",
+                "private handoff",
+            ],
+        ),
+        ("volicord_recall", ["recall"]),
+        ("volicord_context_export", ["context", "export", "--output", path]),
+        ("volicord_context_import", ["context", "import", "--input", path]),
+        (
+            "volicord_advanced_records_supersede_decision",
+            [
+                "advanced", "records", "supersede-decision", "private-decision", "--source",
+                source, "--alternative", "private alternative", "--rationale",
+                "private rationale",
+            ],
+        ),
+        (
+            "volicord_context_compare",
+            ["context", "compare", "--input", path, "--base", str(gate / "base")],
+        ),
+        (
+            "volicord_context_resolve",
+            [
+                "context", "resolve", "--input", path, "--conflict-set", "private-conflict",
+                "--revision", "private-revision", "--source", source, "--mode",
+                "private-mode", "--base", str(gate / "base"),
+            ],
+        ),
+        (
+            "volicord_advanced_records_correct_decision",
+            [
+                "advanced", "records", "correct-decision", "private-decision", "--revision",
+                "private-revision", "--source", source, "--text", "private correction",
+            ],
+        ),
+        (
+            "volicord_advanced_records_forget",
+            [
+                "advanced", "records", "forget", "source", "private-record", "--source",
+                source,
+            ],
+        ),
+        ("volicord_advanced_records_list", ["advanced", "records", "list"]),
+        (
+            "volicord_document_export",
+            [
+                "document", "export", "handoff-resume", "--format", "markdown", "--output",
+                path, "--language", "en",
+            ],
+        ),
+        ("volicord_privacy_status", ["privacy", "status"]),
+        ("volicord_doctor_check", ["doctor", "check"]),
+        ("volicord_doctor_repair", ["doctor", "repair"]),
+        ("volicord_advanced_candidates", ["advanced", "candidates"]),
+        (
+            "volicord_viewer_export",
+            [
+                "viewer", "export", "--output", path, "--level", "working", "--language",
+                "ko",
+            ],
+        ),
+    ]
+    cases: list[tuple[str, list[str], Path]] = [
+        ("python_inline", ["python", "-c", "private program", "private argument"], ROOT),
+        ("python_module", ["python3", "-m", "private.module", "private argument"], ROOT),
+        ("bash_inline", ["bash", "-c", "private program"], ROOT),
+        ("sh_inline", ["sh", "-c", "private program"], ROOT),
+        ("zsh_inline", ["zsh", "-c", "private program"], ROOT),
+        ("codex_exec", codex_argv(gate, PROMPT_SENTINEL), ROOT),
+        (
+            "cargo_metadata",
+            ["cargo", "metadata", "--manifest-path", manifest, "--no-deps", "--format-version", "1"],
+            ROOT,
+        ),
+        (
+            "cargo_fmt",
+            ["cargo", "fmt", "--manifest-path", manifest, "--all", "--", "--check"],
+            ROOT,
+        ),
+        (
+            "cargo_clippy",
+            [
+                "cargo", "clippy", "--manifest-path", manifest, "--workspace", "--all-targets",
+                "--all-features", "--", "-D", "warnings",
+            ],
+            ROOT,
+        ),
+        (
+            "cargo_test",
+            [
+                "cargo", "test", "--manifest-path", manifest, "--workspace", "--all-targets",
+                "--all-features",
+            ],
+            ROOT,
+        ),
+        (
+            "cargo_v11_fixture_control",
+            [
+                "cargo", "test", "--manifest-path", manifest, "-p", "volicord-operations",
+                "--test", "v11_fixture_control", "--all-features", "--", "--exact",
+                "seed_and_inspect_v11_forgetting_control", "--nocapture",
+            ],
+            ROOT,
+        ),
+        ("git_add", ["git", "add", manifest], ROOT),
+        ("git_clone", ["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(gate / "clone")], ROOT),
+        (
+            "git_commit_with_config",
+            [
+                "git", "-c", "user.name=private", "-c", "user.email=private@example.invalid",
+                "commit", "--quiet", "-m", "private message",
+            ],
+            ROOT,
+        ),
+        ("git_init", ["git", "init"], ROOT),
+        ("git_init_quiet", ["git", "init", "--quiet"], ROOT),
+        ("git_rev_parse", ["git", "rev-parse", "HEAD"], ROOT),
+    ]
+    cases.extend(
+        (name, [*volicord_prefix, *arguments], ROOT)
+        for name, arguments in volicord_commands
+    )
+    cases.extend(
+        [
+            (
+                "volicord_locale_ko_closed_value",
+                ["volicord", "--locale", "ko", "status"],
+                ROOT,
+            ),
+            (
+                "provider_live_harness",
+                [
+                    str(ROOT / "rebuild/validation/privacy/background-provider-qualification/harness.py"),
+                    "--live", "--authorize-source-transmission",
+                    "openai-codex-background-semantic-bounded-rust-v1", "--model",
+                    "private-model", "--evidence-output", path,
+                ],
+                ROOT,
+            ),
+            ("v11_harness_self_check", [str(HERE / "harness.py"), "self-check"], ROOT),
+            ("v11_harness_self_test", [str(HERE / "harness.py"), "self-test"], ROOT),
+            (
+                "v11_harness_credential_audit",
+                [str(HERE / "harness.py"), "credential-audit", "--artifact-dir", path],
+                ROOT,
+            ),
+            (
+                "v11_harness_preflight",
+                [
+                    str(HERE / "harness.py"), "preflight", "--validated-head", HEAD,
+                    "--final-artifact", path,
+                ],
+                ROOT,
+            ),
+            (
+                "v11_harness_run",
+                [
+                    str(HERE / "harness.py"), "run", "--validated-head", HEAD,
+                    "--final-artifact", path, "--output-dir", str(gate / "output"),
+                ],
+                ROOT,
+            ),
+            (
+                "archive_verifier",
+                [str(VERIFIER), path, "--expected-candidate", HEAD],
+                ROOT,
+            ),
+            (
+                "fixture_checker",
+                [str(ROOT / "rebuild/scripts/check-fixture-manifest"), manifest],
+                ROOT,
+            ),
+            (
+                "architecture_checker",
+                [str(ROOT / "rebuild/scripts/check-architecture-contracts")],
+                ROOT,
+            ),
+            (
+                "architecture_checker_self_test",
+                [str(ROOT / "rebuild/scripts/check-architecture-contracts"), "--self-test"],
+                ROOT,
+            ),
+            (
+                "realistic_qualification_assertions",
+                [str(ROOT / "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py")],
+                ROOT,
+            ),
+            (
+                "dogfood_campaign_self_test",
+                [str(ROOT / "rebuild/validation/dogfood/campaign_self_test.py")],
+                ROOT,
+            ),
+            (
+                "installer",
+                [str(ROOT / "rebuild/install.sh"), "--prefix", path, "--runtime-dir", str(gate / "runtime")],
+                ROOT,
+            ),
+            ("validate_self_test", [str(ROOT / "rebuild/scripts/validate"), "self-test"], ROOT),
+            (
+                "validate_gate_self_test",
+                [str(ROOT / "rebuild/scripts/validate"), "gate-self-test"],
+                ROOT,
+            ),
+            (
+                "validate_gate_entrypoint_self_test",
+                [str(ROOT / "rebuild/scripts/validate"), "gate-entrypoint-self-test"],
+                ROOT,
+            ),
+            (
+                "validate_evidence_archive_self_test",
+                [str(ROOT / "rebuild/scripts/validate"), "evidence-archive-self-test"],
+                ROOT,
+            ),
+        ]
+    )
+    return cases
+
+
+def grammar_completeness_archives(root: Path) -> dict[str, object]:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
+    ).stdout.strip()
+    base = root / "grammar-completeness"
+    cases = command_grammar_cases(root, base)
+    names: list[str] = []
+    for index, (name, argv, cwd) in enumerate(cases):
+        gate = base
+        result = gate / "collector" / f"{index:03d}-{name}" / "result.json"
+        result.parent.mkdir(parents=True)
+        result.write_text(json.dumps(execution(argv, cwd)), encoding="utf-8")
+        archive_payloads = payloads()
+        admission = archive_payloads["admission.json"]
+        capsule = archive_payloads["capsule.json"]
+        gate_result = archive_payloads["gate-result.json"]
+        tracked = archive_payloads["tracked-files.json"]
+        assert isinstance(admission, dict)
+        assert isinstance(capsule, dict)
+        assert isinstance(gate_result, dict)
+        assert isinstance(tracked, dict)
+        admission["candidate_head"] = head
+        capsule["validated_candidate_head"] = head
+        gate_result["candidate_head"] = head
+        tracked["candidate_head"] = head
+        identity = builder.create_review_archive(
+            repository_root=ROOT,
+            gate_directory=gate,
+            candidate_head=head,
+            admission=admission,
+            capsule=capsule,
+            gate_result=gate_result,
+            final_summary=None,
+        )
+        verified = run_verifier(Path(identity["path"]), head)
+        if verified.returncode != 0:
+            raise AssertionError(
+                f"current command grammar family {name} failed independent verification: "
+                f"{verified.stderr.strip()}"
+            )
+        with tarfile.open(Path(identity["path"]), "r:gz") as retained:
+            processes = json.loads(
+                retained.extractfile("validation-evidence/processes.json").read()
+            )
+        artifact = f"collector/{index:03d}-{name}/result.json"
+        process = next(
+            item for item in processes["processes"] if item["artifact"] == artifact
+        )
+        unknown_roles = [
+            role
+            for role in process["non_structural_argument_roles"]
+            if role[2] in {"unknown_executable", "unknown_operand"}
+        ]
+        if unknown_roles:
+            raise AssertionError(
+                f"current command grammar family {name} fell back to unknown argv roles: "
+                f"{unknown_roles}"
+            )
+        names.append(name)
+    return {"family_count": len(names), "families": names}
+
+
 def integration_archive(root: Path) -> tuple[Path, str]:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
@@ -763,6 +1082,7 @@ def rewrite_archive(
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-evidence-archive-self-test-") as directory:
         root = Path(directory)
+        grammar = grammar_completeness_archives(root)
         integration_archive(root)
         scale = production_scale_archive(root)
         archive = root / "positive.tar.gz"
@@ -963,7 +1283,120 @@ def main() -> int:
         )
         unknown_structural_result = run_verifier(unknown_structural_archive)
         assert unknown_structural_result.returncode == 1
-        assert "unapproved structural value" in unknown_structural_result.stderr
+        assert "command-family grammar" in unknown_structural_result.stderr
+
+        unknown_executable_payloads = payloads()
+        unknown_executable = builder.sanitized_execution(
+            execution(["unrecognized-command", "private operand"], ROOT), ROOT, root
+        )
+        unknown_executable["argv"][0] = "unrecognized-command"
+        unknown_executable["non_structural_argument_roles"] = [
+            role
+            for role in unknown_executable["non_structural_argument_roles"]
+            if role[0] != 0
+        ]
+        unknown_executable_payloads["processes.json"]["processes"] = [unknown_executable]
+        unknown_executable_archive = root / "unknown-executable-marked-structural.tar.gz"
+        builder.write_archive(
+            unknown_executable_archive,
+            candidate_head=HEAD,
+            payloads=unknown_executable_payloads,
+            source_final_summary_sha256=None,
+        )
+        unknown_executable_result = run_verifier(unknown_executable_archive)
+        assert unknown_executable_result.returncode == 1
+        assert "executable is not approved" in unknown_executable_result.stderr
+
+        unknown_subcommand_payloads = payloads()
+        unknown_subcommand = builder.sanitized_execution(
+            execution(["volicord", "unknown-subcommand"], ROOT), ROOT, root
+        )
+        unknown_subcommand["argv"][1] = "unknown-subcommand"
+        unknown_subcommand["non_structural_argument_roles"] = [
+            role
+            for role in unknown_subcommand["non_structural_argument_roles"]
+            if role[0] != 1
+        ]
+        unknown_subcommand_payloads["processes.json"]["processes"] = [unknown_subcommand]
+        unknown_subcommand_archive = root / "unknown-volicord-subcommand.tar.gz"
+        builder.write_archive(
+            unknown_subcommand_archive,
+            candidate_head=HEAD,
+            payloads=unknown_subcommand_payloads,
+            source_final_summary_sha256=None,
+        )
+        unknown_subcommand_result = run_verifier(unknown_subcommand_archive)
+        assert unknown_subcommand_result.returncode == 1
+        assert "volicord command-family grammar" in unknown_subcommand_result.stderr
+
+        invalid_position_payloads = payloads()
+        invalid_position = builder.sanitized_execution(
+            execution(["volicord", "doctor", "check"], ROOT), ROOT, root
+        )
+        invalid_position["argv"][2] = "context"
+        invalid_position_payloads["processes.json"]["processes"] = [invalid_position]
+        invalid_position_archive = root / "valid-token-invalid-position.tar.gz"
+        builder.write_archive(
+            invalid_position_archive,
+            candidate_head=HEAD,
+            payloads=invalid_position_payloads,
+            source_final_summary_sha256=None,
+        )
+        invalid_position_result = run_verifier(invalid_position_archive)
+        assert invalid_position_result.returncode == 1
+        assert "volicord command-family grammar" in invalid_position_result.stderr
+
+        sensitive_structural_payloads = payloads()
+        sensitive_structural = builder.sanitized_execution(
+            execution(
+                [
+                    "volicord", "advanced", "records", "source", "--host", "codex",
+                    "--session", "private-session", "--text", "private source body",
+                ],
+                ROOT,
+            ),
+            ROOT,
+            root,
+        )
+        sensitive_index = len(sensitive_structural["argv"]) - 1
+        sensitive_structural["argv"][sensitive_index] = "status"
+        sensitive_structural["non_structural_argument_roles"] = [
+            role
+            for role in sensitive_structural["non_structural_argument_roles"]
+            if role[0] != sensitive_index
+        ]
+        sensitive_structural_payloads["processes.json"]["processes"] = [
+            sensitive_structural
+        ]
+        sensitive_structural_archive = root / "sensitive-operand-marked-structural.tar.gz"
+        builder.write_archive(
+            sensitive_structural_archive,
+            candidate_head=HEAD,
+            payloads=sensitive_structural_payloads,
+            source_final_summary_sha256=None,
+        )
+        sensitive_structural_result = run_verifier(sensitive_structural_archive)
+        assert sensitive_structural_result.returncode == 1
+        assert "volicord command-family grammar" in sensitive_structural_result.stderr
+
+        malformed_roles_payloads = payloads()
+        malformed_roles = builder.sanitized_execution(
+            execution(["volicord", "status"], ROOT), ROOT, root
+        )
+        malformed_roles["non_structural_argument_roles"] = [
+            [1, "structural", "structural_token"]
+        ]
+        malformed_roles_payloads["processes.json"]["processes"] = [malformed_roles]
+        malformed_roles_archive = root / "malformed-structural-role-metadata.tar.gz"
+        builder.write_archive(
+            malformed_roles_archive,
+            candidate_head=HEAD,
+            payloads=malformed_roles_payloads,
+            source_final_summary_sha256=None,
+        )
+        malformed_roles_result = run_verifier(malformed_roles_archive)
+        assert malformed_roles_result.returncode == 1
+        assert "role record is invalid" in malformed_roles_result.stderr
 
         prohibited_payloads = payloads()
         prohibited_payloads["processes.json"] = {
@@ -1049,6 +1482,7 @@ def main() -> int:
     print(json.dumps({
         "kind": "validation_evidence_archive_self_test",
         "status": "passed",
+        "grammar_completeness": grammar,
         "production_scale": scale,
         "scenarios": [
             "positive",
@@ -1062,6 +1496,11 @@ def main() -> int:
             "exact_final_command_shape",
             "maintained_architecture_self_test_shape",
             "unknown_structural_flag_rejection",
+            "unknown_executable_marked_structural_rejection",
+            "unknown_volicord_subcommand_rejection",
+            "valid_structural_token_invalid_position_rejection",
+            "sensitive_operand_marked_structural_rejection",
+            "malformed_structural_role_metadata_rejection",
             "official_v11_harness_shape",
             "volicord_product_path_shapes",
             "verifier_execution_shape",

@@ -63,141 +63,134 @@ REQUIRED_PAYLOADS = {
     "tracked-files.json",
 }
 OPTIONAL_PAYLOADS = {"final-summary.json"}
-PORTABLE_STRUCTURAL_ARGUMENTS = {
-    "--",
-    "--all",
-    "--all-features",
-    "--all-targets",
-    "--alternative",
-    "--artifact-dir",
-    "--authorize-source-transmission",
-    "--ask-for-approval",
-    "--base",
-    "--conflict-set",
-    "--check",
-    "--config",
-    "--dangerously-bypass-hook-trust",
-    "--ephemeral",
-    "--exact",
-    "--format",
-    "--expected-candidate",
-    "--final-artifact",
-    "--format-version",
-    "--json",
-    "--goal",
-    "--handoff-to",
-    "--host",
-    "--input",
-    "--language",
-    "--level",
-    "--live",
-    "--manifest-path",
-    "--evidence-output",
-    "--model",
-    "--mode",
-    "--next-step",
-    "--no-deps",
-    "--no-hardlinks",
-    "--nocapture",
-    "--output-dir",
-    "--output",
-    "--project",
-    "--prefix",
-    "--quiet",
-    "--repository",
-    "--runtime",
-    "--runtime-dir",
-    "--rationale",
-    "--revision",
-    "--sandbox",
-    "--skip-git-repo-check",
-    "--test",
-    "--scope",
-    "--self-test",
-    "--session",
-    "--source",
-    "--text",
-    "--validated-head",
-    "--workspace",
-    "-C",
-    "-D",
-    "-c",
-    "-m",
-    "-p",
-    "1",
-    "HEAD",
-    "add",
-    "analyze",
-    "advanced",
-    "assertions.py",
+PORTABLE_EXECUTABLES = {
     "bash",
-    "bind",
-    "candidates",
-    "canonical",
     "cargo",
     "check-fixture-manifest",
     "check-architecture-contracts",
-    "campaign_self_test.py",
-    "checkpoint",
-    "clippy",
-    "clone",
     "codex",
-    "commit",
-    "compare",
-    "correct-decision",
-    "credential-audit",
-    "documents",
-    "document",
-    "enable",
-    "evidence-archive-self-test",
-    "exec",
-    "export",
-    "fmt",
-    "forget",
-    "gate-entrypoint-self-test",
-    "gate-self-test",
     "git",
     "harness.py",
-    "health",
-    "import",
-    "init",
-    "inspect",
+    "assertions.py",
+    "campaign_self_test.py",
     "install.sh",
-    "metadata",
-    "never",
-    "openai-codex-background-semantic-bounded-rust-v1",
-    "portable",
-    "preflight",
-    "privacy",
-    "project",
     "python",
     "python3",
-    "read-only",
-    "recall",
-    "record",
-    "records",
-    "repair",
-    "resolve",
-    "rev-parse",
-    "run",
-    "self-check",
-    "self-test",
-    "source",
-    "seed_and_inspect_v11_forgetting_control",
     "sh",
-    "status",
-    "supersede-decision",
-    "test",
-    "user-source",
-    "viewer",
-    "v11_fixture_control",
     "validate",
     "verify-validation-archive",
     "volicord",
-    "volicord-operations",
-    "warnings",
     "zsh",
 }
+CARGO_SHAPES = (
+    ("metadata", "--manifest-path", None, "--no-deps", "--format-version", "1"),
+    ("fmt", "--manifest-path", None, "--all", "--", "--check"),
+    (
+        "clippy",
+        "--manifest-path",
+        None,
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings",
+    ),
+    (
+        "test",
+        "--manifest-path",
+        None,
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+    ),
+    (
+        "test",
+        "--manifest-path",
+        None,
+        "-p",
+        "volicord-operations",
+        "--test",
+        "v11_fixture_control",
+        "--all-features",
+        "--",
+        "--exact",
+        "seed_and_inspect_v11_forgetting_control",
+        "--nocapture",
+    ),
+)
+VOLICORD_SHAPES = (
+    ("codex", "enable"),
+    ("init", ("redacted", "sensitive_operand")),
+    ("bind",),
+    ("status",),
+    ("analyze",),
+    (
+        "advanced", "records", "source", "--host",
+        ("redacted", "sensitive_operand"), "--session",
+        ("redacted", "sensitive_operand"), "--text",
+        ("redacted", "sensitive_operand"),
+    ),
+    (
+        "privacy", "enable", ("redacted", "sensitive_operand"),
+        ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"), "--scope",
+        ("redacted", "sensitive_operand"),
+    ),
+    (
+        "advanced", "checkpoint", ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"), "--goal",
+        ("redacted", "sensitive_operand"), "--next-step",
+        ("redacted", "sensitive_operand"), "--handoff-to",
+        ("redacted", "sensitive_operand"),
+    ),
+    ("recall",),
+    ("context", "export", "--output", ("path",)),
+    ("context", "import", "--input", ("path",)),
+    (
+        "advanced", "records", "supersede-decision",
+        ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"), "--alternative",
+        ("redacted", "sensitive_operand"), "--rationale",
+        ("redacted", "sensitive_operand"),
+    ),
+    ("context", "compare", "--input", ("path",), "--base", ("path",)),
+    (
+        "context", "resolve", "--input", ("path",), "--conflict-set",
+        ("redacted", "sensitive_operand"), "--revision",
+        ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"), "--mode",
+        ("redacted", "sensitive_operand"), "--base", ("path",),
+    ),
+    (
+        "advanced", "records", "correct-decision",
+        ("redacted", "sensitive_operand"), "--revision",
+        ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"), "--text",
+        ("redacted", "sensitive_operand"),
+    ),
+    (
+        "advanced", "records", "forget",
+        ("redacted", "sensitive_operand"),
+        ("redacted", "sensitive_operand"), "--source",
+        ("redacted", "sensitive_operand"),
+    ),
+    ("advanced", "records", "list"),
+    (
+        "document", "export", ("redacted", "sensitive_operand"), "--format",
+        ("redacted", "sensitive_operand"), "--output", ("path",), "--language",
+        ("redacted", "sensitive_operand"),
+    ),
+    ("privacy", "status"),
+    ("doctor", "check"),
+    ("doctor", "repair"),
+    ("advanced", "candidates"),
+    (
+        "viewer", "export", "--output", ("path",), "--level",
+        ("redacted", "sensitive_operand"), "--language",
+        ("redacted", "sensitive_operand"),
+    ),
+)
 PORTABLE_ROLE_CLASSIFICATIONS = {"projected", "redacted"}
 PORTABLE_ROLES = {
     "candidate_identity",
@@ -315,6 +308,242 @@ def verify_argv_policy(value: Any, location: str) -> None:
         fail(f"invalid portable argv policy in {location}")
 
 
+def argument_matches(
+    argv: list[str],
+    roles_by_index: dict[int, tuple[str, str]],
+    index: int,
+    expected: object,
+) -> bool:
+    argument = argv[index]
+    role = roles_by_index.get(index)
+    if expected == ("executable",):
+        return argument in PORTABLE_EXECUTABLES and role in {
+            None,
+            ("projected", "executable_path"),
+        }
+    if expected == ("path",):
+        return (
+            role is not None
+            and (
+                (role[0] == "projected" and role[1] in PROJECTED_ROLES - {"executable_path"})
+                or (
+                    role[0] == "redacted"
+                    and role[1]
+                    in {
+                        "escaping_relative_path",
+                        "external_absolute_path",
+                        "unrecognized_relative_path",
+                    }
+                )
+            )
+        )
+    if isinstance(expected, tuple) and len(expected) == 2 and expected[0] == "redacted":
+        return role == expected and argument == f"<redacted:{expected[1].replace('_', '-')}>"
+    return isinstance(expected, str) and role is None and argument == expected
+
+
+def argv_matches(
+    argv: list[str],
+    roles_by_index: dict[int, tuple[str, str]],
+    expected: tuple[object, ...] | list[object],
+) -> bool:
+    return len(argv) == len(expected) and all(
+        argument_matches(argv, roles_by_index, index, item)
+        for index, item in enumerate(expected)
+    )
+
+
+def verify_git_argv(
+    argv: list[str], roles_by_index: dict[int, tuple[str, str]]
+) -> bool:
+    expected: list[object] = [("executable",)]
+    index = 1
+    while index + 1 < len(argv) and argv[index] == "-c":
+        expected.extend(("-c", ("redacted", "config_payload")))
+        index += 2
+    if index >= len(argv):
+        return False
+    suffixes: dict[str, tuple[object, ...]] = {
+        "add": (("path",),),
+        "clone": ("--quiet", "--no-hardlinks", ("path",), ("path",)),
+        "commit": ("--quiet", "-m", ("redacted", "message_payload")),
+        "init": (),
+        "rev-parse": ("HEAD",),
+    }
+    subcommand = argv[index]
+    suffix = suffixes.get(subcommand)
+    if suffix is None:
+        return False
+    expected.append(subcommand)
+    if subcommand == "init" and argv[index + 1 :] == ["--quiet"]:
+        expected.append("--quiet")
+    else:
+        expected.extend(suffix)
+    return argv_matches(argv, roles_by_index, expected)
+
+
+def verify_volicord_argv(
+    argv: list[str], roles_by_index: dict[int, tuple[str, str]]
+) -> bool:
+    expected_prefix: list[object] = [("executable",)]
+    offset = 1
+    while offset < len(argv):
+        if argv[offset] == "--json":
+            expected_prefix.append("--json")
+            offset += 1
+        elif argv[offset] in {"--runtime", "--repository"} and offset + 1 < len(argv):
+            expected_prefix.extend((argv[offset], ("path",)))
+            offset += 2
+        elif argv[offset] == "--project" and offset + 1 < len(argv):
+            expected_prefix.extend(("--project", ("redacted", "project_identity")))
+            offset += 2
+        elif (
+            argv[offset] == "--locale"
+            and offset + 1 < len(argv)
+            and argv[offset + 1] in {"en", "ko"}
+        ):
+            expected_prefix.extend(("--locale", argv[offset + 1]))
+            offset += 2
+        else:
+            break
+    return any(
+        argv_matches(argv, roles_by_index, [*expected_prefix, *shape])
+        for shape in VOLICORD_SHAPES
+    )
+
+
+def verify_current_command_grammar(
+    argv: list[str],
+    roles_by_index: dict[int, tuple[str, str]],
+    location: str,
+) -> None:
+    unknown_executable = ("redacted", "unknown_executable")
+    if roles_by_index.get(0) == unknown_executable:
+        if argv[0] != "<redacted:unknown-executable>" or any(
+            roles_by_index.get(index) != ("redacted", "unknown_operand")
+            for index in range(1, len(argv))
+        ):
+            fail(f"portable unknown command is not conservatively redacted in {location}")
+        return
+
+    executable = argv[0]
+    if executable not in PORTABLE_EXECUTABLES or roles_by_index.get(0) not in {
+        None,
+        ("projected", "executable_path"),
+    }:
+        fail(f"portable argv executable is not approved in {location}")
+
+    matched = False
+    if executable in {"python", "python3", "bash", "sh", "zsh"}:
+        if len(argv) >= 3 and argv[1] in {"-c", "-m"}:
+            expected = [
+                ("executable",),
+                argv[1],
+                ("redacted", "inline_program" if argv[1] == "-c" else "module_operand"),
+                *[("redacted", "program_argument") for _ in argv[3:]],
+            ]
+            matched = argv_matches(argv, roles_by_index, expected)
+    elif executable == "codex":
+        matched = argv_matches(
+            argv,
+            roles_by_index,
+            (
+                ("executable",),
+                "--dangerously-bypass-hook-trust",
+                "--ask-for-approval",
+                "never",
+                "--config",
+                ("redacted", "config_payload"),
+                "exec",
+                "--ephemeral",
+                "--json",
+                "--sandbox",
+                "read-only",
+                "--skip-git-repo-check",
+                "-C",
+                ("path",),
+                ("redacted", "private_prompt"),
+            ),
+        )
+    elif executable == "cargo":
+        matched = any(
+            argv_matches(
+                argv,
+                roles_by_index,
+                (("executable",), *[("path",) if item is None else item for item in shape]),
+            )
+            for shape in CARGO_SHAPES
+        )
+    elif executable == "git":
+        matched = verify_git_argv(argv, roles_by_index)
+    elif executable == "volicord":
+        matched = verify_volicord_argv(argv, roles_by_index)
+    elif executable == "harness.py":
+        shapes = (
+            (("executable",), "self-check"),
+            (("executable",), "self-test"),
+            (("executable",), "credential-audit", "--artifact-dir", ("path",)),
+            (
+                ("executable",), "preflight", "--validated-head",
+                ("redacted", "candidate_identity"), "--final-artifact", ("path",),
+            ),
+            (
+                ("executable",), "run", "--validated-head",
+                ("redacted", "candidate_identity"), "--final-artifact", ("path",),
+                "--output-dir", ("path",),
+            ),
+            (
+                ("executable",), "--live", "--authorize-source-transmission",
+                "openai-codex-background-semantic-bounded-rust-v1", "--model",
+                ("redacted", "provider_model"), "--evidence-output", ("path",),
+            ),
+        )
+        matched = any(argv_matches(argv, roles_by_index, shape) for shape in shapes)
+    elif executable == "verify-validation-archive":
+        matched = argv_matches(
+            argv,
+            roles_by_index,
+            (
+                ("executable",), ("path",), "--expected-candidate",
+                ("redacted", "candidate_identity"),
+            ),
+        )
+    elif executable == "check-fixture-manifest":
+        matched = argv_matches(argv, roles_by_index, (("executable",), ("path",)))
+    elif executable == "check-architecture-contracts":
+        matched = any(
+            argv_matches(argv, roles_by_index, shape)
+            for shape in (
+                (("executable",),),
+                (("executable",), "--self-test"),
+            )
+        )
+    elif executable in {"assertions.py", "campaign_self_test.py"}:
+        matched = argv_matches(argv, roles_by_index, (("executable",),))
+    elif executable == "install.sh":
+        matched = argv_matches(
+            argv,
+            roles_by_index,
+            (("executable",), "--prefix", ("path",), "--runtime-dir", ("path",)),
+        )
+    elif executable == "validate":
+        matched = len(argv) == 2 and argv[1] in {
+            "evidence-archive-self-test",
+            "gate-entrypoint-self-test",
+            "gate-self-test",
+            "self-test",
+        } and argv_matches(argv, roles_by_index, (("executable",), argv[1]))
+
+    if matched:
+        return
+    if all(
+        roles_by_index.get(index) == ("redacted", "unknown_operand")
+        for index in range(1, len(argv))
+    ):
+        return
+    fail(f"portable argv violates the current {executable} command-family grammar in {location}")
+
+
 def verify_portable_execution(value: Any, location: str) -> None:
     if not isinstance(value, dict):
         fail(f"invalid portable execution in {location}")
@@ -346,8 +575,8 @@ def verify_portable_execution(value: Any, location: str) -> None:
         )
         argument = argv[index]
         if classification == "structural":
-            if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
-                fail(f"portable argv retains an unapproved structural value in {location}")
+            if argument.startswith("<redacted:"):
+                fail(f"portable argv marks a redaction as structural in {location}")
         elif classification == "redacted":
             if role in PROJECTED_ROLES:
                 fail(f"portable argv redaction uses a projected role in {location}")
@@ -357,7 +586,7 @@ def verify_portable_execution(value: Any, location: str) -> None:
         elif role not in PROJECTED_ROLES:
             fail(f"portable argv projection uses a non-path role in {location}")
         elif role == "executable_path":
-            if argument not in PORTABLE_STRUCTURAL_ARGUMENTS:
+            if argument not in PORTABLE_EXECUTABLES:
                 fail(f"portable projected executable is unapproved in {location}")
         elif argument != "." and not argument.startswith(PORTABLE_PATH_PREFIXES):
             fail(f"portable projected path is invalid in {location}")
@@ -368,6 +597,7 @@ def verify_portable_execution(value: Any, location: str) -> None:
         code_index = argv.index("-c") + 1
         if code_index >= len(argv) or not argv[code_index].startswith("<redacted:"):
             fail(f"portable Python execution retains an inline program in {location}")
+    verify_current_command_grammar(argv, roles_by_index, location)
 
 
 def verify_process_payloads(contents: dict[str, bytes]) -> None:
