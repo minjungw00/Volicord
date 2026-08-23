@@ -159,28 +159,26 @@ user task, repository/cycle/revision identity, hidden evaluation material, and
 the bounded capture and canonical-bundle references used for qualification.
 The user tasks state a real repository outcome and ordinary safety or scope
 constraints. They do not prescribe the material Question, alternatives,
-recommendation, expected choice, Volicord operation order, Checkpoint contents,
+recommendation, user selection, Volicord operation order, Checkpoint contents,
 a path reserved for the next session, or an instruction to perform Recall.
 
-When a latent material Decision needs a stable review basis, its user-owned
-dimension, established repository facts, reason inspection cannot decide the
-choice, viable alternatives, recommendation, and material consequence live in
-the hidden decision oracle. The oracle is evaluator input only. The observed
-Question is still compared with those facts and the user-owned dimension, and
-that comparison does not automatically pass the subjective Question-relevance
-observation.
+Each descriptor carries a bounded evaluator-only `evaluation_basis`: the
+behavior class, repository facts, accepted contract constraints, delegated
+boundaries, non-exhaustive possible material concerns, consequences, facts the
+agent should research instead of asking the user, and current relevance. It
+does not define one valid Question wording, alternative set, recommendation,
+or user selection.
 
-Every descriptor also carries a hidden `materiality_review` prepared by the
+Every descriptor also carries a hidden `behavior_review` prepared by the
 campaign control session. Its single typed provenance representation can bind
 content hashes either to one of the nine current active architecture owners at
 the candidate revision or to a safe path in the cycle's exact pinned target
 revision. Qualification re-reads those Git objects and rejects inactive owner
 documents, traversal, missing files, wrong revisions, and stale hashes. The
-review still records why neither facts nor accepted contracts determine the
-choice, why the choice is not an explicitly delegated implementation detail,
-the user-visible consequence, and an independent-review outcome. Only
-`user_owned_material` with an accepted independent review is descriptor-valid;
-typed provenance does not mechanically prove semantic materiality.
+review records the evidence-backed classification, user ownership and silent
+choice risk, and an independent-review outcome. All four maintained behavior
+classes require accepted independent review; typed provenance does not
+mechanically prove the classification.
 
 Work-session research, Inquiry, current-host Decision provenance, ordinary
 work, numeric-exit verification, and Checkpoint creation are observed from the
@@ -206,18 +204,14 @@ Deterministic journey success remains independent from the optional
 campaign-level review of Question relevance, Decision comprehension,
 interruption cost, document fidelity/readability, and Viewer usability.
 
-The hidden decision oracle includes one bounded
-`work_task_materiality_basis`: exact ordinary user-task text that makes the
-user-owned dimension material to the work outcome. After case-folding and
-whitespace-collapse normalization, that basis must occur in `work_user_task` itself; an
-occurrence only in `fresh_resume_user_task` is invalid. The basis must not
-disclose hidden alternatives, the recommendation, or the expected choice.
-
-The work capture must show Candidate submission, source-grounded repository
-research, and reviewed material promotion through `candidate_manage` before
-the resulting Question can appear in `inquiry_frontier`. Only an explicit
+For `user_owned_decision`, the work capture must show Candidate submission,
+source-grounded repository research, reviewed material promotion through
+`candidate_manage`, and a Question in `inquiry_frontier`. Only an explicit
 current-host user response can qualify `decision_record`; the agent's own
-recommendation or implementation preference cannot.
+recommendation or implementation preference cannot. For
+`research_or_no_question`, `delegated_implementation_choice`, and
+`exploratory_uncertainty`, the absence of Candidate, Question, and Decision can
+be the correct passing outcome.
 
 Before those product behaviors are judged, work-capture intake verifies that
 the repository-scoped SessionStart activation context is present. Its absence
@@ -227,7 +221,7 @@ remain explicit operator actions.
 
 The current result schema reports `automated_qualification`, `human_review`,
 and `replacement_qualification` separately. The automated `run` path covers
-three repository classes, two cycles per class, and two globally distinct
+three repository classes, four behavior-class cycles per class, and two globally distinct
 fresh VS Code Codex sessions per cycle, plus every maintained machine check.
 It exits successfully when those checks pass even if human review is
 `not_provided`; in that state replacement is `pending_human_review` and neither
@@ -246,9 +240,10 @@ python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
 ```
 
 The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
-required high-level Project, Goal Context, repository baseline, material
-Question Candidate/promotion, explicit current-host Decision, or grounded
-Checkpoint operations are terminal when absent from a completed work capture;
+required high-level Project, Goal Context, repository baseline, behavior-class
+evidence, or grounded Checkpoint operations are terminal when absent from a
+completed work capture. Material Question Candidate/promotion and explicit
+current-host Decision are additionally required only for `user_owned_decision`;
 a later resume cannot retroactively put them in that session. If the capture
 cannot prove a required semantic fact, the harness requires normal full
 qualification instead of inventing a blocker. A positive work session cannot
@@ -256,7 +251,7 @@ be converted into an early failure. The result always records
 `campaign_complete = false`, `replacement_pass_candidate = false`, and
 `phase_9_ready = false`, identifies later sessions/checks as `not_run`, and
 retains only bounded identities, failed checks, and the capture hash—not task
-text, the hidden oracle, source bodies, credentials, or raw provider content.
+text, hidden evaluation material, source bodies, credentials, or raw provider content.
 
 The maintained internal campaign helper reduces evidence handling without
 creating or coaching a naturalistic session:
@@ -270,16 +265,16 @@ rebuild/scripts/dogfood-campaign prepare \
 ```
 
 `prepare` verifies the clean candidate and source identities, performs a
-candidate-local install, and creates six revision-pinned disposable repository
+candidate-local install, and creates twelve revision-pinned disposable repository
 workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
-under the private evaluator plane; the run sheet and optional campaign-level
+under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control agent completes an
 evaluator input and invokes `seal-cycle`. Sealing verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes,
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
 paths. `activate-cycle`, `activate-all`, and rollout collection reject unsealed cycles. The run-sheet
-leak check rejects exact hidden oracle/review material and deliberately marked
+leak check rejects exact hidden evaluation/review material and deliberately marked
 evaluator-only sentinels. This is workflow/evidence isolation, not an OS
 security boundary against deliberately opening evaluator files. The helper
 never grants Codex repository or hook trust; the operator reviews and grants
@@ -288,15 +283,15 @@ trust in VS Code.
 The roles remain separate throughout a campaign:
 
 - The evaluator/control agent researches the actual repositories, prepares and
-  independently reviews the hidden materiality/oracle data, and seals each
+  independently reviews the hidden evaluation basis and behavior review, and seals each
   descriptor through the helper. Evaluator data stays out of operator-facing
   instructions and examples; the operator is never asked to inspect or edit a
   descriptor.
 - The naturalistic operator inspects and trusts the intended repository,
   explicitly approves the SessionStart hook, opens every required fresh VS
   Code Codex session, and sends only the frozen work/resume tasks from the run
-  sheet. The operator supplies genuine answers to material Questions, preserves
-  all twelve raw rollouts, and provides them once after the sessions finish.
+  sheet. The operator supplies answers only to genuine material Questions,
+  preserves all twenty-four raw rollouts, and provides them once after the sessions finish.
 - The helper owns campaign setup, sealed-descriptor validation, operator
   run-sheet generation, byte-exact rollout intake and hashing,
   activation/setup classification, early blocker gating, Project-ID
@@ -305,10 +300,10 @@ The roles remain separate throughout a campaign:
   evidence completion, repository-manifest assembly, deterministic
   campaign-level review sampling, and bounded review packaging.
 
-After all six descriptors are sealed, `activate-all` may enable the six
+After all twelve descriptors are sealed, `activate-all` may enable the twelve
 repository-scoped integrations before the chats begin. It never grants
-repository or hook trust. `collect-batch` accepts either twelve explicit paths
-or one directory containing exactly twelve files. Before changing campaign
+repository or hook trust. `collect-batch` accepts either twenty-four explicit paths
+or one directory containing exactly twenty-four files. Before changing campaign
 state it maps the unordered captures to the sealed work/resume slots using the
 frozen first task, exact workspace and revision, VS Code source/originator,
 fresh session identity, and SessionStart activation. Ambiguous, missing,
@@ -347,7 +342,7 @@ it is not interchangeable with a generated document and does not share the
 document-adoption lifecycle.
 
 `finalize-manifest` deterministically assembles `repositories.json` after all
-six resume captures. Run the automated Dogfood evaluation without subjective
+twelve resume captures. Run the automated Dogfood evaluation without subjective
 inputs. If replacement qualification is needed, create one campaign-level
 review artifact from the immutable automated result:
 
@@ -357,11 +352,15 @@ rebuild/scripts/dogfood-campaign prepare-human-review \
   --automated-result /absolute/private/automated-result.json
 ```
 
-The artifact deterministically selects the lowest automated-passed cycle in
-each repository class for Question relevance, Decision comprehension, and
-interruption cost; the small-Python and polyglot samples for simple/complex
-documents; the polyglot static snapshot for readability; and the Volicord live
-Viewer sample in `en` and `ko` for keyboard, focus, color, and zoom review.
+The artifact requires review of every automated-passed interaction cycle.
+Each cycle covers Question necessity, unnecessary interruption, user
+ownership, Decision comprehension when applicable, repository-analysis and
+structural-navigation usefulness, semantic value and honesty, CLI usability,
+Viewer understanding, and all four documents' fidelity, usefulness, remaining
+work accuracy, grounding distinction, and requested-language body. Polyglot
+cycles additionally cover cross-language/component/config/API/process
+comprehension. Volicord live Viewer samples in `en` and `ko` cover keyboard,
+focus, color, narrow layout, and zoom accessibility.
 Every human criterion is `not_provided` initially. After bounded review,
 `qualify-review` combines that artifact with the byte-identical automated
 result and does not rerun the sessions or machine evaluation. A human failure
@@ -370,7 +369,7 @@ override any automated failure.
 
 `package-review`
 then creates a deterministic bounded archive containing campaign metadata,
-the manifest, six descriptors and derived review views, hash inventory,
+the manifest, twelve descriptors and derived review views, hash inventory,
 canonical bundles, the campaign-level human review when present,
 runtime/activation summaries, blocker records
 when present, and all generated-document summaries, review indexes, Markdown,
@@ -388,19 +387,19 @@ ownership, or the capsule lifecycle described below.
 
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
-`phase_9_ready = false`. Exact final and same-session official V11 passed for
-production/test candidate `fc3f9cac54e9c82e838fc2940b59d00166acc142`:
+`phase_9_ready = false`. Exact final and same-session official V11 passed for a
+prior predecessor-contract candidate:
 admission was `eligible`, exact final succeeded with zero failures, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger
 was reported, the sanitized evidence archive was independently verified, and
-`phase_8_ready = true`. This candidate is eligible for a
-fresh naturalistic Dogfood campaign, but its Dogfood state is `not_run`.
+`phase_8_ready = true` under that prior contract. The redesigned campaign has
+no sealed candidate; its technical entry and Dogfood state are `not_run`.
 
-Automated Dogfood has not run for this candidate and campaign-level human
+Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden
 evaluator material is independently reviewed and sealed, the user approves
-repository/hook trust, completes all twelve fresh naturalistic chats without
+repository/hook trust, completes all twenty-four fresh naturalistic chats without
 per-session evidence processing, and supplies the raw rollouts once to
 `collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
 activation summaries, four document kinds, and static Viewer snapshots.
@@ -409,15 +408,14 @@ replacement pending rather than failing automation, while human review can
 never override a machine failure.
 
 Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
-observations, and session identities remain non-reusable for this candidate.
+observations, and session identities remain non-reusable for a future candidate.
 Any predecessor Small Python cycle is diagnostic only and is not qualifying
-evidence for the sealed candidate.
-Replacement passage remains pending/false, and Phase 9 may not begin. The
-documentation-only conclusion is outside the sealed production/test candidate.
-Qualifying Dogfood must run from a separate clean worktree whose actual Git
-`HEAD` is exactly that sealed candidate. A later documentation-only branch HEAD
-cannot qualify by passing the sealed commit only as a harness
-`--candidate-head` argument.
+evidence for the redesigned campaign.
+Replacement passage remains pending/false, and Phase 9 may not begin. After a
+later technical-entry gate seals a candidate, qualifying Dogfood must run from
+a separate clean worktree whose actual Git `HEAD` is exactly that candidate. A
+different support-branch HEAD cannot qualify by passing only a candidate
+argument.
 
 ## Admission, authorization, and handoff
 

@@ -54,10 +54,12 @@ def main() -> int:
         "current_host_user_turn",
         "work_user_task",
         "fresh_resume_user_task",
-        "decision_oracle",
-        "work_task_materiality_basis",
-        "materiality_review",
-        "user_owned_material",
+        "evaluation_basis",
+        "behavior_class",
+        "behavior_review",
+        "research_or_no_question",
+        "delegated_implementation_choice",
+        "exploratory_uncertainty",
         "campaign_preparation_independent_reviewer",
         "terminal_checkpoint_call",
         "verified_state_continuation",
@@ -73,7 +75,7 @@ def main() -> int:
         "phase8_dogfood_blocker_result",
         "naturalistic_prompt_integrity",
         "task_goal_basis",
-        "question_relevance_review",
+        "inquiry_behavior_basis",
         "continuation_basis",
         "check-descriptors",
         "batch_campaign_contract",
@@ -115,15 +117,33 @@ def main() -> int:
     real_session = definition_value["real_session_evidence"]
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
-        or real_session.get("full_replacement_session_count") != 12
-        or definition_value.get("candidate_cycle_count") != 2
+        or real_session.get("full_replacement_session_count") != 24
+        or definition_value.get("candidate_cycle_count") != 4
+        or tuple(definition_value.get("behavior_classes", [])) != (
+            "user_owned_decision",
+            "research_or_no_question",
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        )
         or len(definition_value.get("repository_classes", {})) != 3
         or len(definition_value["repository_classes"])
         * definition_value["candidate_cycle_count"]
         * real_session["required_codex_sessions_per_cycle"]
-        != 12
+        != 24
     ):
-        raise AssertionError("Phase 8 no longer requires twelve distinct real Codex sessions")
+        raise AssertionError("Phase 8 no longer requires twenty-four distinct real Codex sessions")
+    small_rules = definition_value["repository_classes"]["small-python"]
+    polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
+    if (
+        small_rules.get("minimum_files", 0) < 8
+        or small_rules.get("production_source_files_required", 0) < 3
+        or small_rules.get("test_files_required", 0) < 2
+        or small_rules.get("configuration_required") is not True
+        or small_rules.get("trivial_arithmetic_or_example_disallowed") is not True
+        or polyglot_rules.get("component_boundary_required") is not True
+        or polyglot_rules.get("cross_language_config_api_or_process_work_required") is not True
+    ):
+        raise AssertionError("Phase 8 repository suitability contracts are incomplete")
     resources = definition_value.get("resource_qualification", {})
     if (
         resources.get("supported_operating_system") != "Linux"
@@ -209,17 +229,17 @@ def main() -> int:
     ):
         if linkage not in definition:
             raise AssertionError(f"Phase 8 definition is missing plain-task Goal linkage {linkage}")
-    for oracle_field in (
-        "work_task_materiality_basis",
-        "user_owned_dimension",
-        "established_repository_facts",
-        "why_repository_inspection_cannot_decide",
-        "viable_alternatives",
-        "recommendation",
-        "material_consequence",
+    for basis_field in (
+        "repository_facts",
+        "accepted_contract_constraints",
+        "delegated_boundaries",
+        "possible_material_concerns",
+        "consequences",
+        "facts_not_for_user",
+        "current_relevance",
     ):
-        if oracle_field not in definition:
-            raise AssertionError(f"Phase 8 definition is missing hidden oracle field {oracle_field}")
+        if basis_field not in definition:
+            raise AssertionError(f"Phase 8 definition is missing evaluation-basis field {basis_field}")
     blocker_contract = real_session.get("work_blocker_qualification", {})
     if blocker_contract != {
         "subcommand": "qualify-work-blocker",
@@ -235,7 +255,7 @@ def main() -> int:
     batch_contract = real_session.get("batch_campaign_contract", {})
     if (
         batch_contract.get("operation") != "collect-batch"
-        or batch_contract.get("required_raw_rollout_count") != 12
+        or batch_contract.get("required_raw_rollout_count") != 24
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
         or "read_only_static_viewer_snapshot"
@@ -247,7 +267,15 @@ def main() -> int:
         human_review.get("artifact_kind") != "phase8_dogfood_human_review"
         or human_review.get("machine_accessibility_may_be_overridden") is not False
         or human_review.get("sampling_algorithm")
-        != "lowest_automated_passed_cycle_by_repository_class"
+        != "every_automated_passed_interaction_cycle"
+        or human_review.get("every_cycle_review_surfaces")
+        != [
+            "interaction",
+            "generated_documents",
+            "viewer_snapshot",
+            "repository_intelligence",
+            "cli_usability",
+        ]
         or set(human_review.get("live_viewer_locales", [])) != {"en", "ko"}
     ):
         raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")

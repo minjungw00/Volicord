@@ -2,9 +2,9 @@
 
 ## Status
 
-Not run. Technical Phase 8 entry is eligible for the sealed production/test
-candidate `fc3f9cac54e9c82e838fc2940b59d00166acc142`, but a fresh naturalistic
-Dogfood campaign has not begun for that candidate.
+Not run. No production/test candidate has been sealed for the redesigned
+four-behavior-class campaign. The prior technical-entry capsule is historical
+evidence and cannot qualify this campaign contract.
 
 - `replacement_gate = pending`
 - `replacement_pass_candidate = false`
@@ -12,17 +12,18 @@ Dogfood campaign has not begun for that candidate.
 - `automated_qualification = not_run`
 - `human_review = not_provided`
 
-The later documentation-only conclusion is outside the sealed candidate and
-does not extend its production/test evidence.
+This support redesign does not establish technical entry, automated Dogfood,
+replacement passage, or Phase 9 readiness.
 
 ## Goal
 
 Run and review a completely fresh naturalistic campaign for the sealed
 candidate across the three maintained repository classes. The campaign must
-show whether real VS Code Codex sessions independently discover and promote a
-material Question, obtain an explicit user Decision, create a grounded terminal
-Checkpoint, and resume from repository resolution and Recall without prompt
-choreography.
+show whether real VS Code Codex sessions choose the appropriate inquiry outcome
+across user-owned, research/no-question, delegated, and exploratory work;
+record an explicit Decision only when genuinely required; create a grounded
+terminal Checkpoint; and resume from repository resolution and Recall without
+prompt choreography.
 
 ## Accepted decisions being validated
 
@@ -37,19 +38,18 @@ choreography.
 
 ## Input repositories and revisions
 
-The production/test candidate is exactly
-`fc3f9cac54e9c82e838fc2940b59d00166acc142`. No repository descriptor,
+The redesigned campaign has no sealed production/test candidate. No repository descriptor,
 workspace, Runtime Home, rollout, bundle, observation, blocker result, or
 session identity currently qualifies it.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
-The campaign then creates two fresh cycles per class. No prior campaign input
+The campaign then creates four fresh behavior-class cycles per class. No prior campaign input
 may be reused.
 
 ## Environment and tool versions
 
-The copied gate capsule records Linux `x86_64`, CPython `3.12.3`, Git `2.43.0`,
+The prior gate capsule records Linux `x86_64`, CPython `3.12.3`, Git `2.43.0`,
 Cargo `1.97.1`, Rust `1.97.1`, and Codex CLI `0.145.0` for the sealed technical
 entry. A new naturalistic campaign must record its own actual operating
 environment; the sealed V11 environment does not substitute for Dogfood.
@@ -65,20 +65,20 @@ passed.
 Evaluator/control owns the hidden preparation work:
 
 - research each actual repository and pin its qualifying revision;
-- prepare and independently review hidden materiality and decision-oracle data;
+- prepare and independently review the bounded evaluation basis and behavior classification;
 - seal each descriptor through the maintained helper before any operator run;
-- keep evaluator alternatives, recommendation, expected choice, materiality
-  reasoning, and provenance out of operator-facing instructions and examples.
+- keep evaluator facts, contract constraints, delegated boundaries, possible
+  concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
 
 The naturalistic operator owns the actions that cannot be truthfully automated:
 
 - inspect and trust the intended repository and explicitly approve its
   SessionStart hook where required;
-- open twelve globally distinct fresh VS Code Codex chats: work and fresh
-  resume sessions for two cycles in each of three repository classes;
+- open twenty-four globally distinct fresh VS Code Codex chats: work and fresh
+  resume sessions for four behavior-class cycles in each of three repository classes;
 - send only the frozen work or resume task from the generated run sheet;
-- provide actual answers to the material Questions shown in those sessions;
-- preserve all twelve raw rollouts for one batch intake.
+- provide actual answers only to genuine material Questions shown in those sessions;
+- preserve all twenty-four raw rollouts for one batch intake.
 
 The operator does not inspect or edit evaluator descriptors. The helper owns
 campaign setup, sealed-descriptor validation, operator run-sheet generation,
@@ -91,31 +91,31 @@ review packaging.
 
 ## Commands and configuration
 
-Start the new campaign from a separate clean worktree whose actual `HEAD` is
-the sealed candidate:
+After a later technical-entry gate seals a candidate, start the new campaign
+from a separate clean worktree whose actual `HEAD` is that candidate:
 
 ```text
 rebuild/scripts/dogfood-campaign prepare \
   --campaign-root /absolute/private/campaign \
   --campaign-id <new-campaign-identity> \
-  --candidate-head fc3f9cac54e9c82e838fc2940b59d00166acc142 \
+  --candidate-head <new-sealed-candidate-head> \
   --repositories <three-repository-input.json>
 ```
 
 Complete each evaluator input under the private control plane and use
-`seal-cycle` before exposing the generated operator run sheet. After all six
+`seal-cycle` before exposing the generated operator run sheet. After all twelve
 descriptors are sealed, use `activate-all`; it enables the repository-scoped
-integration but does not grant repository or hook trust. Run all twelve chats
+integration but does not grant repository or hook trust. Run all twenty-four chats
 without per-chat collection, preserve their raw rollouts, and then use
-`collect-batch` with twelve explicit paths or one directory containing exactly
-twelve files. Then use `finalize-manifest` and `package-review`. The automated
+`collect-batch` with twenty-four explicit paths or one directory containing exactly
+twenty-four files. Then use `finalize-manifest` and `package-review`. The automated
 Dogfood result may pass with `human_review = not_provided`, while replacement
 remains `pending_human_review` and `replacement_pass_candidate = false`. If a
 replacement-usability conclusion is needed, use `prepare-human-review` on the
 immutable automated result, complete its deterministic campaign-level samples,
 and use `qualify-review`; neither operation reruns Dogfood. The operator
 material contains the frozen tasks and paths but
-not the oracle, materiality reasoning, recommendation, expected choice, or
+not the evaluation basis, behavior reasoning, or
 provenance. Typed provenance is reverified against an active architecture owner
 at the candidate revision or a real file at the pinned target revision.
 
@@ -145,8 +145,8 @@ documents and does not share their adoption lifecycle.
 
 ## Observed results
 
-The copied capsule and independently verified archive establish only the
-technical entry state:
+The prior capsule and independently verified archive establish only the
+historical technical entry state for the predecessor campaign contract:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -157,17 +157,21 @@ technical entry state:
 - same-gate final/V11 artifact ownership valid;
 - no active accepted-Decision revisit trigger reported by official V11.
 
-No naturalistic Dogfood result exists for the current candidate. V11 is
+No naturalistic Dogfood result exists for the redesigned campaign. V11 is
 scripted conformance and is not naturalistic Dogfood passage.
 
 ## Coverage and failures
 
-Technical Phase 8 entry is passed/eligible. Naturalistic activation, Question
-discovery and relevance, explicit Decision comprehension, terminal Checkpoint
-selection, fresh-session Project resolution and Recall, interruption cost,
-document readability, Viewer usability, and repeated resource behavior are all
-`not_run` for the current candidate. Automated Dogfood is `not_run`; optional
-campaign-level human review is `not_provided`.
+Historical technical Phase 8 entry evidence is passed/eligible only for the
+predecessor contract. Naturalistic activation, Question
+necessity and relevance, no-question behavior, user ownership, Decision
+comprehension when applicable, terminal Checkpoint selection, fresh-session
+Project resolution and Recall, interruption cost, Repository Intelligence and
+CLI usefulness, document fidelity/usefulness, Viewer understanding, and repeated
+resource behavior are all `not_run` for the redesigned campaign. Every
+automated-passed cycle requires interaction, document, Viewer snapshot,
+Repository Intelligence, and CLI human review for replacement qualification.
+Automated Dogfood is `not_run`; campaign-level human review is `not_provided`.
 
 Absence of Dogfood evidence is not a product failure, but it leaves the
 replacement gate pending and cannot support Phase 9 readiness.
@@ -175,7 +179,11 @@ replacement gate pending and cannot support Phase 9 readiness.
 ## Performance and resource observations
 
 No naturalistic campaign timing, output-size, Runtime-size, or sustained
-resource result exists for this candidate. The exact-final command durations
+resource result exists for this candidate. The maintained fixed-input repeated
+operation check measures Runtime and Derived bytes, document bytes, process
+count, open file descriptors, Runtime file count, stale temporary files, and
+operation latency after warm-up; cumulative growth, stale temporary files, or
+descendant-process leaks fail qualification. The exact-final command durations
 in the technical gate capsule are not Dogfood resource evidence.
 
 ## Privacy and external transmission
@@ -184,7 +192,7 @@ Keep the campaign root and raw rollouts in private ignored state. Ordinary
 independent review requires two private artifacts: the byte-exact raw rollout
 archive and the bounded review package. The package contains bounded campaign
 metadata, descriptors and review views, hashes, canonical bundles, the
-optional campaign-level human review, Runtime/activation summaries, blocker records when present, and
+campaign-level human review when provided, Runtime/activation summaries, blocker records when present, and
 all four generated document kinds in Markdown and self-contained HTML. Raw
 rollouts remain outside the default package.
 
@@ -197,10 +205,10 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `fc3f9cac54e9c82e838fc2940b59d00166acc142` |
-| Technical Phase 8 entry | `eligible`; passed capsule-backed gate evidence |
+| Sealed production/test candidate | `not_established` |
+| Technical Phase 8 entry | `not_run` for redesigned contract; prior capsule is historical |
 | Naturalistic Dogfood | `not_run` |
-| Complete twelve-session campaign | `not_run` |
+| Complete twenty-four-session campaign | `not_run` |
 | Automated Dogfood qualification | `not_run` |
 | Campaign-level human review | `not_provided` |
 | Replacement gate | `pending` |
@@ -219,18 +227,18 @@ separate private archive for the independent review handoff.
 ## Recommended implementation choice
 
 Use the maintained campaign helper to prepare a new candidate-bound campaign,
-run all twelve genuine sessions, and obtain the automated result first. Add the
-optional campaign-level human review only when evaluating replacement.
+run all twenty-four genuine sessions, and obtain the automated result first. Add the
+campaign-level human review when evaluating replacement.
 
 ## Rejected alternatives and reasons
 
-- Do not qualify a documentation branch by passing the sealed commit only as a
+- Do not qualify a support branch by passing a different commit only as a
   harness candidate argument; the campaign worktree's actual `HEAD` must equal
-  the sealed candidate.
+  the later sealed candidate.
 - Do not reuse any previous descriptor, Runtime Home, workspace, rollout,
   bundle, observation, blocker result, or session identity.
 - Treat any predecessor Small Python cycle only as non-qualifying diagnostic
-  evidence; do not reuse it for the current candidate.
+  evidence; do not reuse it for the redesigned campaign.
 - Do not treat V11 as naturalistic passage or infer replacement readiness from
   technical entry eligibility.
 - Do not require a manual full Runtime Home extraction for routine evidence
@@ -249,9 +257,9 @@ assessment or a replacement-gate conclusion.
 
 ## Follow-up work
 
-Prepare one completely fresh helper-owned campaign for the sealed candidate,
-have the control agent research and seal the six evaluator descriptors, grant
-trust manually, activate all six repository integrations, run the twelve
+After technical entry seals a new candidate, prepare one completely fresh helper-owned campaign,
+have the control agent research and seal the twelve evaluator descriptors, grant
+trust manually, activate all twelve repository integrations, run the twenty-four
 required work/resume chats with only the frozen tasks, answer the actual
 material Questions, provide all raw rollouts once to batch collection, assemble
 the manifest, and provide the raw rollout archive with the bounded default

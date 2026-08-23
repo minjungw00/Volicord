@@ -56,6 +56,12 @@ ALLOWED_STATUS = {
     "passed", "failed", "partial", "unsupported", "skipped", "environment_blocked"
 }
 CLASSES = ("volicord", "small-python", "polyglot-medium")
+BEHAVIOR_CLASSES = (
+    "user_owned_decision",
+    "research_or_no_question",
+    "delegated_implementation_choice",
+    "exploratory_uncertainty",
+)
 RESOURCE_OPERATIONS = (
     "repository_analysis",
     "document_projection",
@@ -66,15 +72,24 @@ RESOURCE_STORAGE_METRICS = (
     "derived_state_bytes",
     "document_output_bytes",
 )
+RESOURCE_HEALTH_METRICS = (
+    "process_count",
+    "open_file_descriptor_count",
+    "runtime_file_count",
+    "stale_temporary_file_count",
+    "operation_latency_ms",
+)
 REAL_SESSION_CHECKS = (
     "repository_scoped_activation",
     "naturalistic_prompt_integrity",
     "plain_task_goal_linkage",
     "clean_bounded_baseline",
-    "researched_material_question",
+    "behavior_classification",
+    "appropriate_inquiry_outcome",
+    "no_silent_user_owned_choice",
     "meaningful_ordinary_changes",
     "source_grounded_checkpoint",
-    "explicit_user_decision_source",
+    "decision_provenance_when_required",
     "distinct_work_and_resume_invocations",
     "fresh_resume_without_prior_context",
     "repository_bound_project_resolution",
@@ -109,7 +124,7 @@ SECRET_MARKERS = (
     "bearer ", "api_key", "api-key", "access_token", "refresh_token",
     "private prompt", "auth.json", "credential_content",
 )
-MATERIALITY_PROVENANCE_SCOPES = {
+BEHAVIOR_REVIEW_PROVENANCE_SCOPES = {
     "volicord_active_owner",
     "target_repository",
 }
@@ -174,6 +189,33 @@ def directory_bytes(path: Path) -> int:
             except OSError:
                 continue
     return total
+
+
+def directory_file_count(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return total
+    for _root, directories, files in os.walk(path):
+        directories[:] = [name for name in directories if name != ".git"]
+        total += len(files)
+    return total
+
+
+def stale_temporary_file_count(path: Path) -> int:
+    suffixes = {".tmp", ".temp", ".partial", ".part"}
+    return sum(
+        item.suffix.casefold() in suffixes
+        for item in path.rglob("*")
+        if item.is_file()
+    ) if path.exists() else 0
+
+
+def current_process_resource_counts() -> tuple[int, int]:
+    process_root = Path("/proc") / str(os.getpid())
+    children = (process_root / "task" / str(os.getpid()) / "children").read_text(
+        encoding="ascii"
+    ).split()
+    return 1 + len(children), len(list((process_root / "fd").iterdir()))
 
 
 def linux_process_tree_procfs_unavailability() -> str | None:
@@ -315,7 +357,7 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
             "status": "unsupported",
             "conclusion": "insufficient_repeated_observations",
             "unexplained_cumulative_growth_observed": None,
-            "metric_deltas_bytes": {},
+            "metric_deltas": {},
         }
     if any(
         set(round_value.get("operations", {})) != set(RESOURCE_OPERATIONS)
@@ -325,7 +367,7 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
             "status": "unsupported",
             "conclusion": "repeated_operation_evidence_incomplete",
             "unexplained_cumulative_growth_observed": None,
-            "metric_deltas_bytes": {},
+            "metric_deltas": {},
         }
     if any(
         operation.get("exit_code") != 0 or operation.get("termination") is not None
@@ -336,44 +378,55 @@ def repeated_resource_conclusion(rounds: list[dict[str, Any]]) -> dict[str, Any]
             "status": "failed",
             "conclusion": "repeated_operation_failed",
             "unexplained_cumulative_growth_observed": None,
-            "metric_deltas_bytes": {},
+            "metric_deltas": {},
         }
     if any(
         not isinstance(round_value.get(name), int)
         for round_value in rounds
-        for name in RESOURCE_STORAGE_METRICS
+        for name in (*RESOURCE_STORAGE_METRICS, *RESOURCE_HEALTH_METRICS)
     ):
         return {
             "status": "unsupported",
             "conclusion": "resource_measurement_unavailable",
             "unexplained_cumulative_growth_observed": None,
-            "metric_deltas_bytes": {},
+            "metric_deltas": {},
         }
     deltas = {
         name: [
             rounds[index][name] - rounds[index - 1][name]
             for index in range(1, len(rounds))
         ]
-        for name in RESOURCE_STORAGE_METRICS
+        for name in (*RESOURCE_STORAGE_METRICS, *RESOURCE_HEALTH_METRICS)
     }
     post_warmup = {name: values[1:] for name, values in deltas.items()}
     cumulative = [
         name for name, values in post_warmup.items()
         if values and all(value > 0 for value in values)
     ]
+    stale_temporary_files = any(
+        round_value["stale_temporary_file_count"] > 0 for round_value in rounds
+    )
+    leaked_processes = any(round_value["process_count"] > 1 for round_value in rounds)
+    failures = cumulative or stale_temporary_files or leaked_processes
     stable = all(all(value == 0 for value in values) for values in post_warmup.values())
     return {
-        "status": "failed" if cumulative else "passed",
+        "status": "failed" if failures else "passed",
         "conclusion": (
-            "unexplained_cumulative_growth_observed"
+            "stale_temporary_files_observed"
+            if stale_temporary_files else
+            "descendant_process_leak_observed"
+            if leaked_processes else
+            "unexplained_cumulative_growth_or_latency_degradation_observed"
             if cumulative else
             "stable_after_warmup"
             if stable else
             "bounded_variation_without_cumulative_growth"
         ),
         "unexplained_cumulative_growth_observed": bool(cumulative),
+        "stale_temporary_files_observed": stale_temporary_files,
+        "descendant_process_leak_observed": leaked_processes,
         "cumulative_growth_metrics": cumulative,
-        "metric_deltas_bytes": deltas,
+        "metric_deltas": deltas,
     }
 
 
@@ -469,6 +522,15 @@ def repeated_resource_rehearsal(
             [str(cli), "repair", project_id, "derived-analysis"],
             environment,
         )
+        try:
+            process_count, open_file_descriptor_count = current_process_resource_counts()
+        except OSError:
+            return failed_rehearsal("linux_process_or_file_descriptor_observation_unavailable")
+        operation_latency_ms = int(sum(
+            value.get("duration_ms", 0)
+            for value in (analysis, document, repair)
+            if isinstance(value.get("duration_ms"), (int, float))
+        ))
         rounds.append({
             "round": repetition,
             "operations": {
@@ -479,6 +541,11 @@ def repeated_resource_rehearsal(
             "runtime_home_bytes": directory_bytes(runtime),
             "derived_state_bytes": directory_bytes(runtime / "analysis"),
             "document_output_bytes": document_output_bytes,
+            "process_count": process_count,
+            "open_file_descriptor_count": open_file_descriptor_count,
+            "runtime_file_count": directory_file_count(runtime),
+            "stale_temporary_file_count": stale_temporary_file_count(runtime),
+            "operation_latency_ms": operation_latency_ms,
         })
         if document_identity is not None:
             try:
@@ -524,10 +591,35 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("unexpected Phase 8 evaluation definition kind")
     if set(value.get("status_values", [])) != ALLOWED_STATUS:
         raise ValueError("the Phase 8 status vocabulary is incomplete")
-    if value.get("candidate_cycle_count") != 2:
-        raise ValueError("Phase 8 requires exactly two independent cycles per repository")
+    if value.get("candidate_cycle_count") != len(BEHAVIOR_CLASSES):
+        raise ValueError("Phase 8 requires one cycle per maintained behavior class")
+    if tuple(value.get("behavior_classes", [])) != BEHAVIOR_CLASSES:
+        raise ValueError("the Phase 8 behavior-class matrix changed")
     if tuple(value.get("repository_classes", {})) != CLASSES:
         raise ValueError("the Phase 8 repository class order changed")
+    small_rules = value["repository_classes"]["small-python"]
+    if (
+        small_rules.get("minimum_files", 0) < 8
+        or small_rules.get("maximum_files", 0) > 250
+        or small_rules.get("official_structural_language_count") != 1
+        or small_rules.get("application_structure_required") is not True
+        or small_rules.get("production_source_files_required", 0) < 3
+        or small_rules.get("test_files_required", 0) < 2
+        or small_rules.get("configuration_required") is not True
+        or small_rules.get("behavioral_boundary_required") is not True
+        or small_rules.get("trivial_arithmetic_or_example_disallowed") is not True
+        or small_rules.get("multi_file_or_user_visible_work_required") is not True
+    ):
+        raise ValueError("the realistic small-Python repository contract changed")
+    polyglot_rules = value["repository_classes"]["polyglot-medium"]
+    if (
+        polyglot_rules.get("minimum_files", 0) < 100
+        or polyglot_rules.get("minimum_official_structural_languages", 0) < 3
+        or polyglot_rules.get("documentation_required") is not True
+        or polyglot_rules.get("component_boundary_required") is not True
+        or polyglot_rules.get("cross_language_config_api_or_process_work_required") is not True
+    ):
+        raise ValueError("the realistic polyglot work-boundary contract changed")
     v11 = load_v11()
     if tuple(value.get("required_product_steps", [])) != tuple(v11.REQUIRED_STEPS):
         raise ValueError("Phase 8 no longer routes its product journey through maintained V11 steps")
@@ -547,6 +639,8 @@ def load_definition() -> dict[str, Any]:
         or tuple(resources.get("repeated_operations", [])) != RESOURCE_OPERATIONS
         or tuple(resources.get("measured_storage_classes", []))
         != RESOURCE_STORAGE_METRICS
+        or tuple(resources.get("repeated_operation_health_checks", []))
+        != RESOURCE_HEALTH_METRICS
         or resources.get("universal_product_ceiling_applied") is not False
         or resources.get("raw_evidence_retention") != "ignored_local_state_only"
     ):
@@ -583,11 +677,19 @@ def load_definition() -> dict[str, Any]:
         or human_review.get("replacement_states")
         != ["pending_human_review", "passed", "failed"]
         or tuple(human_review.get("interaction_repository_classes", [])) != CLASSES
-        or human_review.get("document_samples") != ["simple", "complex"]
+        or tuple(human_review.get("document_repository_classes", [])) != CLASSES
         or human_review.get("live_viewer_locales") != ["en", "ko"]
         or human_review.get("machine_accessibility_may_be_overridden") is not False
         or human_review.get("sampling_algorithm")
-        != "lowest_automated_passed_cycle_by_repository_class"
+        != "every_automated_passed_interaction_cycle"
+        or tuple(human_review.get("every_cycle_review_surfaces", []))
+        != (
+            "interaction",
+            "generated_documents",
+            "viewer_snapshot",
+            "repository_intelligence",
+            "cli_usability",
+        )
     ):
         raise ValueError("the Phase 8 campaign-level human review contract changed")
     if (
@@ -605,15 +707,15 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
-            "submit, source-ground research, mark ready, and promote the material Question Candidate through candidate_manage before inquiry_frontier",
-            "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
-            "obtain and record the exact current-host user Decision",
+            "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
+            "for user_owned_decision only, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+            "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
             "permit one or more successful work Checkpoints while preserving pause and handoff history",
             "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
-            "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable current-host Decisions, truthful numeric-exit verification, limits, and next meaningful state or step",
+            "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable Decision or evidence-backed no-Decision behavior basis, truthful numeric-exit verification, limits, and next meaningful state or step",
         )
         or tuple(evidence.get("resume_session_contract", []))
         != (
@@ -660,23 +762,33 @@ def load_definition() -> dict[str, Any]:
     if (
         descriptor_contract.get("work_user_task_field") != "work_user_task"
         or descriptor_contract.get("fresh_resume_user_task_field") != "fresh_resume_user_task"
-        or descriptor_contract.get("hidden_decision_oracle_field") != "decision_oracle"
-        or descriptor_contract.get("materiality_review_field") != "materiality_review"
+        or descriptor_contract.get("behavior_class_field") != "behavior_class"
+        or descriptor_contract.get("evaluation_basis_field") != "evaluation_basis"
+        or descriptor_contract.get("behavior_review_field") != "behavior_review"
         or tuple(descriptor_contract.get("identity_fields", []))
         != ("repository_class", "cycle", "repository_revision")
         or descriptor_contract.get("evidence_reference_field") != "evidence"
     ):
         raise ValueError("the Phase 8 cycle descriptor contract changed")
-    hidden_oracle = evidence.get("hidden_decision_oracle", {})
+    evaluation_basis = evidence.get("bounded_evaluation_basis", {})
     if (
-        "work_task_materiality_basis" not in hidden_oracle.get("required_fields", [])
-        or hidden_oracle.get("materiality_basis_normalization")
-        != "casefold_and_collapse_whitespace"
-        or hidden_oracle.get("materiality_basis_location")
-        != "normalized basis must occur in work_user_task; fresh_resume_user_task alone is insufficient"
-        or hidden_oracle.get("materiality_basis_hidden_content_exclusion")
-        != "must not disclose alternatives, recommendation, or expected choice"
-        or evidence.get("full_replacement_session_count") != 12
+        tuple(evaluation_basis.get("required_fields", []))
+        != (
+            "behavior_class",
+            "repository_facts",
+            "accepted_contract_constraints",
+            "delegated_boundaries",
+            "possible_material_concerns",
+            "consequences",
+            "facts_not_for_user",
+            "current_relevance",
+        )
+        or evaluation_basis.get("possible_material_concerns_are_exhaustive") is not False
+        or evaluation_basis.get("unique_question_wording_required") is not False
+        or evaluation_basis.get("unique_alternatives_required") is not False
+        or evaluation_basis.get("unique_recommendation_required") is not False
+        or evaluation_basis.get("prescribed_user_selection_required") is not False
+        or evidence.get("full_replacement_session_count") != 24
         or evidence.get("required_codex_sessions_per_cycle") != 2
         or evidence.get("work_blocker_qualification")
         != {
@@ -690,20 +802,20 @@ def load_definition() -> dict[str, Any]:
             "missing_activation_outcome": "operator_environment_invalid",
         }
     ):
-        raise ValueError("the Phase 8 materiality or work-blocker contract changed")
-    materiality_review = evidence.get("materiality_review", {})
-    if materiality_review != {
-            "kind": "phase8_materiality_review",
-            "accepted_classification": "user_owned_material",
+        raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
+    behavior_review = evidence.get("behavior_review", {})
+    if behavior_review != {
+            "kind": "phase8_behavior_review",
+            "accepted_classifications": list(BEHAVIOR_CLASSES),
             "required_independent_review_status": "accepted",
-            "purpose": "bounded independent-review gate rather than mechanical semantic proof",
+            "purpose": "bounded independent evidence review without prescribing one Question expression or user selection",
             "visibility": "evaluator_input_only",
         }:
-        raise ValueError("the Phase 8 materiality-review contract changed")
+        raise ValueError("the Phase 8 behavior-review contract changed")
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
-        or batch.get("required_raw_rollout_count") != 12
+        or batch.get("required_raw_rollout_count") != 24
         or batch.get("global_mapping_precedes_campaign_mutation") is not True
         or batch.get("raw_rollout_bytes_preserved") is not True
         or batch.get("terminal_work_failure_repaired_by_resume") is not False
@@ -771,10 +883,42 @@ def repository_identity(kind: str, spec: dict[str, Any], definition: dict[str, A
     if kind == "volicord" and head != git_head(ROOT):
         blockers.append("Volicord repository revision is not the candidate HEAD")
     if kind == "small-python":
+        python_files = [item for item in files if item.suffix.casefold() == ".py"]
+        test_files = [
+            item
+            for item in python_files
+            if item.name.startswith("test_") or "tests" in item.relative_to(path).parts
+        ]
+        production_files = [item for item in python_files if item not in test_files]
+        configuration_files = [
+            item
+            for item in files
+            if item.name
+            in {
+                "pyproject.toml",
+                "setup.cfg",
+                "setup.py",
+                "tox.ini",
+                "requirements.txt",
+                "requirements-dev.txt",
+            }
+        ]
         if languages != ["Python"]:
             blockers.append("small repository is not a single official Python application")
+        if len(files) < rules["minimum_files"]:
+            blockers.append("small Python application does not meet the realistic file floor")
         if len(files) > rules["maximum_files"]:
             blockers.append("small repository exceeds the bounded file ceiling")
+        if len(production_files) < rules["production_source_files_required"]:
+            blockers.append("small Python application lacks meaningful multi-file production structure")
+        if len(test_files) < rules["test_files_required"]:
+            blockers.append("small Python application lacks multiple focused test files")
+        if not configuration_files:
+            blockers.append("small Python application lacks maintained configuration")
+        if not any(
+            len(item.relative_to(path).parts) > 1 for item in production_files
+        ):
+            blockers.append("small Python application lacks a package or application boundary")
     if kind == "polyglot-medium":
         if len(files) < rules["minimum_files"]:
             blockers.append("polyglot repository does not meet the medium file floor")
@@ -782,6 +926,21 @@ def repository_identity(kind: str, spec: dict[str, Any], definition: dict[str, A
             blockers.append("polyglot repository has fewer than three official structural languages")
         if documents == 0:
             blockers.append("polyglot repository has no documentation")
+        manifests = [
+            item
+            for item in files
+            if item.name
+            in {
+                "Cargo.toml",
+                "package.json",
+                "pyproject.toml",
+                "pom.xml",
+                "build.gradle",
+                "CMakeLists.txt",
+            }
+        ]
+        if len(manifests) < 2:
+            blockers.append("polyglot repository lacks a genuine multi-component build boundary")
     if blockers:
         status = "environment_blocked"
     return {
@@ -1073,36 +1232,63 @@ def plain_user_task_error(value: Any, field: str) -> str | None:
     return None
 
 
-def decision_oracle_errors(value: Any) -> list[str]:
-    if not isinstance(value, dict):
-        return ["decision_oracle must be hidden evaluator material"]
-    errors: list[str] = []
-    for field in (
-        "work_task_materiality_basis",
-        "user_owned_dimension",
-        "why_repository_inspection_cannot_decide",
-        "recommendation",
-        "expected_choice",
-        "material_consequence",
+def bounded_text_list_errors(value: Any, field: str, *, minimum: int = 0) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or len(value) < minimum
+        or len(value) > 32
+        or len(value) != len(set(value))
+        or not all(
+            nonempty_string(item) and len(item.encode("utf-8")) <= MAX_REVIEW_TEXT_BYTES
+            for item in value
+        )
     ):
-        if not nonempty_string(value.get(field)):
-            errors.append(f"decision_oracle.{field} must be non-empty")
-    for field, minimum in (("established_repository_facts", 1), ("viable_alternatives", 2)):
-        items = value.get(field)
-        if (
-            not isinstance(items, list)
-            or len(items) < minimum
-            or len(items) > 32
-            or not all(nonempty_string(item) for item in items)
-            or len(items) != len(set(items))
-        ):
-            errors.append(f"decision_oracle.{field} must contain unique bounded text entries")
+        return [f"evaluation_basis.{field} must contain bounded unique text entries"]
+    return []
+
+
+def evaluation_basis_errors(value: Any, behavior_class: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["evaluation_basis must be bounded evaluator material"]
+    errors: list[str] = []
+    required = {
+        "behavior_class",
+        "repository_facts",
+        "accepted_contract_constraints",
+        "delegated_boundaries",
+        "possible_material_concerns",
+        "consequences",
+        "facts_not_for_user",
+        "current_relevance",
+    }
+    if set(value) != required:
+        errors.append("evaluation_basis must contain the current bounded fields only")
+    if value.get("behavior_class") != behavior_class or behavior_class not in BEHAVIOR_CLASSES:
+        errors.append("evaluation_basis.behavior_class must match the cycle behavior class")
+    for field, minimum in (
+        ("repository_facts", 1),
+        ("accepted_contract_constraints", 0),
+        ("delegated_boundaries", 0),
+        ("possible_material_concerns", 0),
+        ("consequences", 1),
+        ("facts_not_for_user", 1),
+    ):
+        errors.extend(bounded_text_list_errors(value.get(field), field, minimum=minimum))
+    relevance = value.get("current_relevance")
+    if not nonempty_string(relevance) or len(relevance.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+        errors.append("evaluation_basis.current_relevance must be bounded non-empty text")
+    if behavior_class == "user_owned_decision" and not value.get("possible_material_concerns"):
+        errors.append("user_owned_decision requires at least one non-exhaustive material concern")
+    if behavior_class == "delegated_implementation_choice" and not value.get("delegated_boundaries"):
+        errors.append("delegated_implementation_choice requires an explicit delegated boundary")
+    if behavior_class == "research_or_no_question" and not value.get("repository_facts"):
+        errors.append("research_or_no_question requires repository facts")
     return errors
 
 
-def materiality_review_errors(
+def behavior_review_errors(
     value: Any,
-    oracle: Any,
+    behavior_class: Any,
     *,
     candidate_revision: str | None = None,
     target_revision: str | None = None,
@@ -1110,33 +1296,32 @@ def materiality_review_errors(
     target_repository: Path | None = None,
     verify_provenance: bool = False,
 ) -> list[str]:
-    if not isinstance(value, dict) or value.get("kind") != "phase8_materiality_review":
-        return ["materiality_review must be a Phase 8 materiality review"]
+    if not isinstance(value, dict) or value.get("kind") != "phase8_behavior_review":
+        return ["behavior_review must be a Phase 8 behavior review"]
     errors: list[str] = []
-    if value.get("classification") != "user_owned_material":
-        errors.append("materiality_review.classification must be user_owned_material")
+    if value.get("classification") != behavior_class or behavior_class not in BEHAVIOR_CLASSES:
+        errors.append("behavior_review.classification must match the maintained behavior class")
     for field in (
-        "decision_dimension",
-        "why_repository_facts_do_not_determine_choice",
-        "why_no_accepted_contract_determines_choice",
-        "why_not_explicitly_delegated_implementation_choice",
-        "user_visible_material_consequence",
+        "outcome_rationale",
+        "user_ownership_assessment",
+        "silent_choice_risk_assessment",
     ):
         field_value = value.get(field)
         if (
             not nonempty_string(field_value)
             or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
         ):
-            errors.append(f"materiality_review.{field} must be bounded non-empty text")
-    if "reviewed_active_owner_references" in value:
-        errors.append("materiality_review does not support superseded reviewed_active_owner_references")
+            errors.append(f"behavior_review.{field} must be bounded non-empty text")
+    expected_unresolved = behavior_class == "user_owned_decision"
+    if value.get("unresolved_material_user_outcome") is not expected_unresolved:
+        errors.append("behavior_review unresolved material-user outcome does not match the class")
     references = value.get("provenance_references")
     if not isinstance(references, list) or not references or len(references) > 32:
-        errors.append("materiality_review.provenance_references must contain bounded typed references")
+        errors.append("behavior_review.provenance_references must contain bounded typed references")
         references = []
     reference_keys: list[tuple[Any, ...]] = []
     for index, reference in enumerate(references):
-        prefix = f"materiality_review.provenance_references[{index}]"
+        prefix = f"behavior_review.provenance_references[{index}]"
         if not isinstance(reference, dict) or set(reference) != {
             "scope", "path", "sha256", "repository_revision"
         }:
@@ -1146,7 +1331,7 @@ def materiality_review_errors(
         path = safe_relative_evidence_path(reference.get("path"))
         content_hash = reference.get("sha256")
         reference_revision = reference.get("repository_revision")
-        if scope not in MATERIALITY_PROVENANCE_SCOPES:
+        if scope not in BEHAVIOR_REVIEW_PROVENANCE_SCOPES:
             errors.append(f"{prefix}.scope is unsupported")
         if path is None:
             errors.append(f"{prefix}.path must be a safe relative path")
@@ -1179,21 +1364,7 @@ def materiality_review_errors(
         elif hashlib.sha256(content).hexdigest() != content_hash:
             errors.append(f"{prefix}.sha256 is stale for the bound revision")
     if len(reference_keys) != len(set(reference_keys)):
-        errors.append("materiality_review.provenance_references must be unique")
-    facts = value.get("established_repository_facts")
-    if (
-        not isinstance(facts, list)
-        or not facts
-        or len(facts) > 32
-        or len(facts) != len(set(facts))
-        or not all(
-            nonempty_string(fact) and len(fact.encode("utf-8")) <= MAX_REVIEW_TEXT_BYTES
-            for fact in facts
-        )
-    ):
-        errors.append(
-            "materiality_review.established_repository_facts must contain bounded unique facts"
-        )
+        errors.append("behavior_review.provenance_references must be unique")
     independent = value.get("independent_review")
     if (
         not isinstance(independent, dict)
@@ -1203,52 +1374,15 @@ def materiality_review_errors(
         or not nonempty_string(independent.get("basis"))
         or len(independent.get("basis", "").encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
     ):
-        errors.append("materiality_review requires an accepted independent review")
-    if isinstance(oracle, dict):
-        if value.get("decision_dimension") != oracle.get("user_owned_dimension"):
-            errors.append("materiality_review decision dimension does not match the hidden oracle")
-        if facts != oracle.get("established_repository_facts"):
-            errors.append("materiality_review repository facts do not match the hidden oracle")
-        if (
-            value.get("user_visible_material_consequence")
-            != oracle.get("material_consequence")
-        ):
-            errors.append("materiality_review consequence does not match the hidden oracle")
+        errors.append("behavior_review requires an accepted independent review")
     return errors
 
 
-def naturalistic_prompt_errors(work_task: Any, resume_task: Any, oracle: Any) -> list[str]:
+def naturalistic_prompt_errors(work_task: Any, resume_task: Any, evaluation_basis: Any) -> list[str]:
     errors: list[str] = []
-    if not isinstance(work_task, str) or not isinstance(resume_task, str) or not isinstance(oracle, dict):
-        return ["naturalistic prompt integrity requires both plain tasks and a hidden oracle"]
+    if not isinstance(work_task, str) or not isinstance(resume_task, str) or not isinstance(evaluation_basis, dict):
+        return ["naturalistic prompt integrity requires both plain tasks and a bounded evaluation basis"]
     prompts = (("work_user_task", work_task), ("fresh_resume_user_task", resume_task))
-    materiality_basis = oracle.get("work_task_materiality_basis")
-    if nonempty_string(materiality_basis):
-        normalized_basis = normalized_prompt_text(materiality_basis)
-        if normalized_basis not in normalized_prompt_text(work_task):
-            if normalized_basis in normalized_prompt_text(resume_task):
-                errors.append(
-                    "decision_oracle.work_task_materiality_basis appears only in fresh_resume_user_task"
-                )
-            else:
-                errors.append(
-                    "decision_oracle.work_task_materiality_basis is absent from work_user_task"
-                )
-        if len(materiality_basis.encode("utf-8")) > MAX_USER_TASK_BYTES:
-            errors.append("decision_oracle.work_task_materiality_basis exceeds its bound")
-        disclosed = [
-            *oracle.get("viable_alternatives", []),
-            oracle.get("recommendation"),
-            oracle.get("expected_choice"),
-        ]
-        if any(
-            nonempty_string(hidden)
-            and normalized_prompt_text(hidden) in normalized_basis
-            for hidden in disclosed
-        ):
-            errors.append(
-                "decision_oracle.work_task_materiality_basis discloses an alternative or recommendation"
-            )
     operation_names = (
         "project_resolve",
         "project_initialize",
@@ -1274,9 +1408,12 @@ def naturalistic_prompt_errors(work_task: Any, resume_task: Any, oracle: Any) ->
         errors.append("fresh_resume_user_task discloses the automatic Recall expectation")
 
     hidden_values = [
-        *oracle.get("viable_alternatives", []),
-        oracle.get("recommendation"),
-        oracle.get("expected_choice"),
+        *evaluation_basis.get("accepted_contract_constraints", []),
+        *evaluation_basis.get("delegated_boundaries", []),
+        *evaluation_basis.get("possible_material_concerns", []),
+        *evaluation_basis.get("consequences", []),
+        *evaluation_basis.get("facts_not_for_user", []),
+        evaluation_basis.get("current_relevance"),
     ]
     for hidden in hidden_values:
         if not nonempty_string(hidden):
@@ -1284,7 +1421,7 @@ def naturalistic_prompt_errors(work_task: Any, resume_task: Any, oracle: Any) ->
         hidden_text = normalized_prompt_text(hidden)
         for field, prompt in prompts:
             if hidden_text in normalized_prompt_text(prompt):
-                errors.append(f"{field} discloses an exact hidden alternative or recommendation")
+                errors.append(f"{field} discloses exact evaluator-only behavior material")
 
     path_pattern = r"(?:^|\s)(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+"
     for field, prompt in prompts:
@@ -1336,6 +1473,65 @@ def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: i
     )
 
 
+def work_scope_errors(
+    value: Any,
+    repository_class: Any,
+    repository_revision: Any,
+    target_repository: Path | None,
+    verify_provenance: bool,
+) -> list[str]:
+    if not isinstance(value, dict) or set(value) != {
+        "affected_paths",
+        "user_visible_behavior",
+        "boundary_kind",
+    }:
+        return ["work_scope must contain affected paths, visibility, and boundary kind"]
+    errors: list[str] = []
+    paths = value.get("affected_paths")
+    if (
+        not isinstance(paths, list)
+        or not paths
+        or len(paths) > 16
+        or len(paths) != len(set(paths))
+        or any(safe_relative_evidence_path(path) is None for path in paths)
+    ):
+        errors.append("work_scope.affected_paths must contain bounded safe unique paths")
+        paths = []
+    if not isinstance(value.get("user_visible_behavior"), bool):
+        errors.append("work_scope.user_visible_behavior must be boolean")
+    if value.get("boundary_kind") not in {
+        "component",
+        "language",
+        "configuration",
+        "api",
+        "process",
+    }:
+        errors.append("work_scope.boundary_kind is unsupported")
+    if repository_class == "small-python" and len(paths) < 2 and value.get("user_visible_behavior") is not True:
+        errors.append("small-python work must be multi-file or user-visible")
+    if repository_class == "polyglot-medium" and len(paths) < 2:
+        errors.append("polyglot-medium work must cross at least two bounded paths")
+    if verify_provenance and target_repository is not None and isinstance(repository_revision, str):
+        # A naturalistic task may legitimately create a new affected path. The
+        # captured change and repository revision prove the work boundary; the
+        # descriptor must not turn the pre-work tree into a prescribed file list.
+        if repository_class == "polyglot-medium" and paths:
+            suffix_languages = {
+                OFFICIAL_SUFFIXES[Path(path).suffix.casefold()]
+                for path in paths
+                if Path(path).suffix.casefold() in OFFICIAL_SUFFIXES
+            }
+            top_level_areas = {
+                Path(path).parts[0]
+                for path in paths
+                if Path(path).parts[0].casefold()
+                not in {"src", "test", "tests", "docs", "config"}
+            }
+            if len(suffix_languages) < 2 and len(top_level_areas) < 2:
+                errors.append("polyglot-medium work scope does not cross a language or component boundary")
+    return errors
+
+
 def cycle_descriptor_errors(
     value: Any,
     *,
@@ -1352,8 +1548,16 @@ def cycle_descriptor_errors(
             errors.append(f"descriptor does not support obsolete field {obsolete}")
     if value.get("repository_class") not in CLASSES:
         errors.append("repository_class must identify a Phase 8 repository class")
-    if not isinstance(value.get("cycle"), int) or value.get("cycle") not in {1, 2}:
-        errors.append("cycle must identify one of the two independent repetitions")
+    behavior_class = value.get("behavior_class")
+    if behavior_class not in BEHAVIOR_CLASSES:
+        errors.append("behavior_class must identify one maintained behavior class")
+    expected_cycle = (
+        BEHAVIOR_CLASSES.index(behavior_class) + 1
+        if behavior_class in BEHAVIOR_CLASSES
+        else None
+    )
+    if value.get("cycle") != expected_cycle:
+        errors.append("cycle must match the maintained behavior-class matrix position")
     revision = value.get("repository_revision")
     if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision) is None:
         errors.append("repository_revision must be a full Git object identity")
@@ -1361,21 +1565,30 @@ def cycle_descriptor_errors(
         error = plain_user_task_error(value.get(field), field)
         if error:
             errors.append(error)
-    oracle = value.get("decision_oracle")
-    errors.extend(decision_oracle_errors(oracle))
-    errors.extend(materiality_review_errors(
-        value.get("materiality_review"),
-        oracle,
+    errors.extend(
+        work_scope_errors(
+            value.get("work_scope"),
+            value.get("repository_class"),
+            revision,
+            target_repository,
+            verify_provenance,
+        )
+    )
+    basis = value.get("evaluation_basis")
+    errors.extend(evaluation_basis_errors(basis, behavior_class))
+    errors.extend(behavior_review_errors(
+        value.get("behavior_review"),
+        behavior_class,
         candidate_revision=candidate_revision or git_head(ROOT),
         target_revision=revision if isinstance(revision, str) else None,
         candidate_root=candidate_root,
         target_repository=target_repository,
         verify_provenance=verify_provenance,
     ))
-    if not decision_oracle_errors(oracle):
+    if not evaluation_basis_errors(basis, behavior_class):
         errors.extend(
             naturalistic_prompt_errors(
-                value.get("work_user_task"), value.get("fresh_resume_user_task"), oracle
+                value.get("work_user_task"), value.get("fresh_resume_user_task"), basis
             )
         )
     evidence = value.get("evidence")
@@ -1417,9 +1630,12 @@ WORK_BLOCKER_CHECKS = (
     "project_session_entry",
     "goal_context_operation",
     "repository_baseline_operation",
+    "behavior_class_evidence",
+    "source_grounded_checkpoint_operation",
+)
+USER_DECISION_BLOCKER_CHECKS = (
     "material_question_candidate_lifecycle",
     "explicit_current_host_user_decision_operation",
-    "source_grounded_checkpoint_operation",
 )
 SETUP_ACTIVATION_CHECK = "repository_scoped_session_start_activation"
 
@@ -1500,6 +1716,7 @@ def build_work_blocker_result(
         "project_session_entry": bool(project_entries),
         "goal_context_operation": bool(goal_calls),
         "repository_baseline_operation": bool(baseline_calls),
+        "behavior_class_evidence": descriptor.get("behavior_class") in BEHAVIOR_CLASSES,
         "material_question_candidate_lifecycle": material_question_lifecycle,
         "explicit_current_host_user_decision_operation": bool(
             capture.successful_calls("decision_record")
@@ -1508,10 +1725,15 @@ def build_work_blocker_result(
             capture.successful_calls("checkpoint_record")
         ),
     }
+    required_checks = (
+        (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
+        if descriptor.get("behavior_class") == "user_owned_decision"
+        else WORK_BLOCKER_CHECKS
+    )
     failed_checks = (
         [SETUP_ACTIVATION_CHECK]
         if not activation_observed
-        else [name for name in WORK_BLOCKER_CHECKS if not observed[name]]
+        else [name for name in required_checks if not observed[name]]
     )
     if not failed_checks:
         raise ValueError(
@@ -1533,6 +1755,7 @@ def build_work_blocker_result(
         "candidate_head": candidate_head,
         "repository_class": descriptor["repository_class"],
         "cycle": descriptor["cycle"],
+        "behavior_class": descriptor["behavior_class"],
         "repository_revision": descriptor["repository_revision"],
         "descriptor_sha256": descriptor_sha256,
         "work_capture_sha256": capture.source_sha256,
@@ -1564,6 +1787,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         "candidate_head",
         "repository_class",
         "cycle",
+        "behavior_class",
         "repository_revision",
         "descriptor_sha256",
         "work_capture_sha256",
@@ -1596,7 +1820,9 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     if (
         not re.fullmatch(r"[0-9a-f]{40}", result.get("candidate_head", ""))
         or result.get("repository_class") not in CLASSES
-        or result.get("cycle") not in {1, 2}
+        or result.get("behavior_class") not in BEHAVIOR_CLASSES
+        or result.get("cycle")
+        != BEHAVIOR_CLASSES.index(result.get("behavior_class")) + 1
         or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", result.get("repository_revision", ""))
         or not valid_capture_sha256(result.get("descriptor_sha256"))
         or not valid_capture_sha256(result.get("work_capture_sha256"))
@@ -1605,14 +1831,19 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     if (
         not isinstance(failed_checks, list)
         or not failed_checks
-        or any(check not in (*WORK_BLOCKER_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
+        or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
         or (
             classification == "operator_environment_setup_failure"
             and failed_checks != [SETUP_ACTIVATION_CHECK]
         )
         or (
             classification == "product_work_session_blocker"
-            and failed_checks != [name for name in WORK_BLOCKER_CHECKS if name in failed_checks]
+            and failed_checks
+            != [
+                name
+                for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
+                if name in failed_checks
+            ]
         )
         or result.get("failed_check_count") != len(failed_checks)
     ):
@@ -1791,7 +2022,7 @@ def question_review_facts(
     bundle: CanonicalBundle | None,
     question_id: str | None,
     question_revision: int | None,
-    decision_oracle: Any,
+    evaluation_basis: Any,
     baseline_call: ToolCall | None,
 ) -> tuple[bool, dict[str, Any]]:
     if (
@@ -1799,7 +2030,7 @@ def question_review_facts(
         or bundle is None
         or not nonempty_string(question_id)
         or not isinstance(question_revision, int)
-        or not isinstance(decision_oracle, dict)
+        or not isinstance(evaluation_basis, dict)
         or baseline_call is None
     ):
         return False, {}
@@ -1910,52 +2141,30 @@ def question_review_facts(
     observed_question_text = "\n".join(
         value for value in prompt_fields if nonempty_string(value)
     )
-    oracle_facts = decision_oracle.get("established_repository_facts", [])
-    oracle_alternatives = decision_oracle.get("viable_alternatives", [])
-    observed_alternative_texts = {
-        normalized_prompt_text(value)
-        for alternative in alternatives or []
-        for value in (
-            alternative.get("label", ""),
-            alternative.get("consequence", ""),
-            f"{alternative.get('label', '')}: {alternative.get('consequence', '')}",
-        )
-        if nonempty_string(value)
-    }
-    facts_matched = sum(
-        normalized_prompt_text(value)
-        in {normalized_prompt_text(item) for item in established_facts or []}
-        for value in oracle_facts
+    alternatives_have_real_consequences = bool(alternatives) and all(
+        nonempty_string(alternative.get("label"))
+        and nonempty_string(alternative.get("consequence"))
+        for alternative in alternatives
     )
-    alternatives_matched = sum(
-        normalized_prompt_text(value) in observed_alternative_texts
-        for value in oracle_alternatives
-    )
-    dimension = decision_oracle.get("user_owned_dimension")
-    recommendation = decision_oracle.get("recommendation")
     basis = {
         "canonical_question_present": revision is not None,
         "canonical_materiality": revision.get("materiality") if revision else None,
         "repository_facts_observed_count": len(established_facts or []),
-        "oracle_repository_fact_count": len(oracle_facts) if isinstance(oracle_facts, list) else 0,
-        "exact_repository_fact_matches": facts_matched,
         "observed_alternative_count": len(alternatives or []),
-        "oracle_alternative_count": len(oracle_alternatives) if isinstance(oracle_alternatives, list) else 0,
-        "exact_alternative_matches": alternatives_matched,
-        "user_owned_dimension_present_in_observed_question": (
-            nonempty_string(dimension)
-            and normalized_prompt_text(dimension)
-            in normalized_prompt_text(observed_question_text)
-        ),
-        "recommendation_matches_hidden_oracle": (
-            nonempty_string(recommendation)
-            and revision is not None
-            and normalized_prompt_text(recommendation)
-            == normalized_prompt_text(str(revision.get("recommendation_rationale", "")))
-        ),
+        "observed_question_basis_bytes": len(observed_question_text.encode("utf-8")),
+        "alternatives_have_real_consequences": alternatives_have_real_consequences,
         "candidate_lifecycle_observed": candidate_lifecycle_ok,
-        "automatic_relevance_conclusion": None,
-        "manual_review_required": True,
+        "ask_user_invariants": {
+            "material_consequence": alternatives_have_real_consequences,
+            "user_ownership": True,
+            "not_repository_or_environment_fact": True,
+            "not_settled_by_accepted_decision": True,
+            "not_delegated": True,
+            "current_relevance": nonempty_string(revision.get("why_it_matters_now")) if revision else False,
+            "source_grounding": bool(established_facts) and candidate_lifecycle_ok,
+            "real_consequence_between_alternatives": alternatives_have_real_consequences,
+        },
+        "exact_preferred_expression_required": False,
     }
     valid = (
         revision is not None
@@ -1965,6 +2174,7 @@ def question_review_facts(
         and established_facts is not None
         and alternatives is not None
         and len(alternatives) >= 2
+        and alternatives_have_real_consequences
         and nonempty_string(revision.get("recommendation_rationale"))
         and candidate_lifecycle_ok
         and frontier_call is not None
@@ -2118,11 +2328,15 @@ def checkpoint_facts(
         relation_kind="supported_by",
         source_id=goal_source_id,
     )
-    decision_link = bundle.one(
-        "checkpoint_decisions",
-        project_id=bundle.project_id,
-        checkpoint_id=checkpoint_id,
-        decision_id=decision_id,
+    decision_link = (
+        bundle.one(
+            "checkpoint_decisions",
+            project_id=bundle.project_id,
+            checkpoint_id=checkpoint_id,
+            decision_id=decision_id,
+        )
+        if decision_id is not None
+        else True
     )
     next_step = checkpoint.get("next_step")
     goal_linked = (
@@ -2154,7 +2368,7 @@ def checkpoint_facts(
         and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
         and goal_linked
         and isinstance(applied, list)
-        and decision_id in applied
+        and (decision_id is None or decision_id in applied)
         and call.result.get("applied_decision_ids") == applied
         and verification_ok
         and call.arguments.get("next_step") == next_step
@@ -2204,7 +2418,9 @@ def real_session_evidence(
     bundle_reference = evidence.get("canonical_bundle")
     work_user_task = raw.get("work_user_task")
     resume_user_task = raw.get("fresh_resume_user_task")
-    decision_oracle = raw.get("decision_oracle")
+    behavior_class = raw.get("behavior_class")
+    evaluation_basis = raw.get("evaluation_basis")
+    behavior_review = raw.get("behavior_review")
     work_path = verified_evidence_path(work_reference, evidence_directory)
     resume_path = verified_evidence_path(resume_reference, evidence_directory)
     bundle_path = verified_evidence_path(bundle_reference, evidence_directory)
@@ -2275,8 +2491,38 @@ def real_session_evidence(
         bundle,
         question_id,
         question_revision,
-        decision_oracle,
+        evaluation_basis,
         baseline_call,
+    )
+    frontier_interrupted = bool(
+        work_capture
+        and any(
+            call.result.get("questions")
+            for call in work_capture.successful_calls("inquiry_frontier")
+        )
+    )
+    decision_attempted = bool(
+        work_capture and work_capture.calls("decision_record")
+    )
+    non_question_outcome_ok = not frontier_interrupted and not decision_attempted
+    behavior_classification_ok = (
+        behavior_class in BEHAVIOR_CLASSES
+        and isinstance(evaluation_basis, dict)
+        and evaluation_basis.get("behavior_class") == behavior_class
+        and isinstance(behavior_review, dict)
+        and behavior_review.get("classification") == behavior_class
+    )
+    appropriate_inquiry_outcome = (
+        question_ok and decision_ok
+        if behavior_class == "user_owned_decision"
+        else non_question_outcome_ok
+    )
+    no_silent_user_owned_choice = (
+        decision_ok
+        if behavior_class == "user_owned_decision"
+        else behavior_review.get("unresolved_material_user_outcome") is False
+        if isinstance(behavior_review, dict)
+        else False
     )
     checkpoint_call = terminal_checkpoint_call(work_capture)
     first_work_change = min(
@@ -2322,7 +2568,7 @@ def real_session_evidence(
     )
     prompt_integrity_ok = (
         not descriptor_errors
-        and not naturalistic_prompt_errors(work_user_task, resume_user_task, decision_oracle)
+        and not naturalistic_prompt_errors(work_user_task, resume_user_task, evaluation_basis)
         and task_turns_ok
     )
     initialize_call = unique_call(work_capture, "project_initialize")
@@ -2503,7 +2749,6 @@ def real_session_evidence(
         and recalled_checkpoint_decisions is not None
         and set(recalled_checkpoint_decisions) == checkpoint_decisions
         and recalled_decisions is not None
-        and checkpoint_decisions
         and checkpoint_decisions <= set(recalled_decisions)
         and recalled_context is not None
         and goal_context_id in recalled_context
@@ -2588,10 +2833,15 @@ def real_session_evidence(
         "naturalistic_prompt_integrity": evidence_check(references_present, prompt_integrity_ok),
         "plain_task_goal_linkage": evidence_check(references_present, task_goal_ok),
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
-        "researched_material_question": evidence_check(references_present, question_ok),
+        "behavior_classification": evidence_check(references_present, behavior_classification_ok),
+        "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
+        "no_silent_user_owned_choice": evidence_check(references_present, no_silent_user_owned_choice),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
         "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
-        "explicit_user_decision_source": evidence_check(references_present, decision_ok),
+        "decision_provenance_when_required": evidence_check(
+            references_present,
+            decision_ok if behavior_class == "user_owned_decision" else not decision_attempted,
+        ),
         "distinct_work_and_resume_invocations": evidence_check(references_present, invocations_ok),
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
         "repository_bound_project_resolution": evidence_check(references_present, resolution_ok),
@@ -2638,6 +2888,7 @@ def real_session_evidence(
         "checkpoint_id": checkpoint_id,
         "goal_context_id": goal_context_id,
         "decision_id": decision_id,
+        "behavior_class": behavior_class,
         "question_id": question_id,
         "question_revision": question_revision,
         "user_response_source_id": user_source_id,
@@ -2670,7 +2921,17 @@ def real_session_evidence(
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
-        "question_relevance_review": question_review_basis,
+        "inquiry_behavior_basis": {
+            "frontier_interrupted_user": frontier_interrupted,
+            "decision_attempted": decision_attempted,
+            "non_question_outcome_qualified": non_question_outcome_ok,
+            "ask_user_question_basis": question_review_basis,
+            "behavior_review_sha256": hashlib.sha256(
+                json.dumps(behavior_review, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if isinstance(behavior_review, dict)
+            else None,
+        },
         "campaign_support_evidence": support_basis,
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
@@ -2681,13 +2942,26 @@ def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, s
         "context_recovery_accuracy": ("restart_recall",),
         "decision_repetition": ("inquiry_decision", "restart_recall"),
         "question_relevance": ("candidate_boundary", "inquiry_decision"),
+        "question_necessity": ("candidate_boundary", "inquiry_decision"),
+        "unnecessary_interruption": ("inquiry_decision", "ordinary_work"),
+        "user_ownership": ("inquiry_decision",),
         "decision_comprehension": ("inquiry_decision",),
         "source_grounding": ("source_grounded_understanding", "checkpoint", "document_outputs"),
+        "fact_interpretation_comprehension": ("source_grounded_understanding", "document_outputs"),
+        "repository_analysis_usefulness": ("repository_analysis", "source_grounded_understanding"),
+        "structural_navigation_usefulness": ("repository_analysis",),
+        "semantic_value": ("repository_analysis", "source_grounded_understanding"),
         "capability_honesty": ("repository_analysis", "parser_failure", "provider_failure"),
         "coverage": ("repository_analysis", "source_grounded_understanding"),
+        "polyglot_comprehension": ("repository_analysis", "source_grounded_understanding"),
+        "cli_usability": ("project_binding", "repository_analysis", "restart_recall", "document_outputs"),
+        "viewer_understanding": ("source_grounded_understanding", "document_outputs"),
         "memory_correctability": ("correction_supersession_deletion",),
         "interruption_cost": ("ordinary_work", "guarded_boundary"),
-        "document_fidelity_and_usefulness": ("document_outputs",),
+        "document_fidelity": ("document_outputs",),
+        "document_usefulness": ("document_outputs",),
+        "document_remaining_work_accuracy": ("checkpoint", "document_outputs"),
+        "requested_language_body_content": ("document_outputs",),
         "portability": ("portable_clone", "divergent_conflict"),
         "recovery": ("provider_failure", "parser_failure", "derived_index_recovery"),
     }
@@ -2695,7 +2969,25 @@ def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, s
     for name, steps in routes.items():
         routed = {step: step_statuses.get(step, "skipped") for step in steps}
         status = status_from_steps(routed)
-        if name in {"question_relevance", "decision_comprehension", "document_fidelity_and_usefulness", "interruption_cost"} and status == "passed":
+        if name in {
+            "question_relevance",
+            "question_necessity",
+            "unnecessary_interruption",
+            "user_ownership",
+            "decision_comprehension",
+            "fact_interpretation_comprehension",
+            "repository_analysis_usefulness",
+            "structural_navigation_usefulness",
+            "semantic_value",
+            "polyglot_comprehension",
+            "cli_usability",
+            "viewer_understanding",
+            "document_fidelity",
+            "document_usefulness",
+            "document_remaining_work_accuracy",
+            "requested_language_body_content",
+            "interruption_cost",
+        } and status == "passed":
             status = "partial"
         result[name] = {
             "status": status,
@@ -3183,7 +3475,12 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     real_invocations: list[str] = []
     for repository in repositories:
         if len(repository.get("cycles", [])) != definition["candidate_cycle_count"]:
-            raise ValueError("dogfood result does not contain two cycles per repository")
+            raise ValueError("dogfood result does not contain the four behavior classes per repository")
+        if {
+            cycle.get("real_session_dogfood", {}).get("behavior_class")
+            for cycle in repository.get("cycles", [])
+        } != set(BEHAVIOR_CLASSES):
+            raise ValueError("dogfood repository does not cover each maintained behavior class exactly once")
         for cycle in repository["cycles"]:
             if set(cycle.get("step_statuses", {})) != set(definition["required_product_steps"]):
                 raise ValueError("dogfood cycle silently dropped a maintained product step")
@@ -3238,6 +3535,12 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 ]
                 or len(repeated.get("rounds", []))
                 != repeated.get("repetition_count")
+                or repeated.get("stale_temporary_files_observed") is not False
+                or repeated.get("descendant_process_leak_observed") is not False
+                or any(
+                    not all(isinstance(round_value.get(name), int) for name in RESOURCE_HEALTH_METRICS)
+                    for round_value in repeated.get("rounds", [])
+                )
             ):
                 raise ValueError("passed repeated-resource evidence is not bounded and measured")
             quality = cycle.get("machine_quality_evidence", {})
@@ -3288,7 +3591,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             raise ValueError("automated pass requires every machine accessibility check to pass")
         for repository in repositories:
             if repository.get("status") != "passed" or not repository.get("independent_fresh_runtime_cycles"):
-                raise ValueError("replacement pass requires two independent passed repository cycles")
+                raise ValueError("replacement pass requires four independent passed behavior cycles")
             for cycle in repository["cycles"]:
                 if cycle.get("status") != "passed":
                     raise ValueError("replacement pass contains a non-pass dogfood cycle")
@@ -3307,7 +3610,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             != definition["real_session_evidence"]["full_replacement_session_count"]
             or len(set(real_invocations)) != len(real_invocations)
         ):
-            raise ValueError("automated pass requires twelve globally distinct Codex invocations")
+            raise ValueError("automated pass requires twenty-four globally distinct Codex sessions")
     sanitize_check(result)
 
 
@@ -3337,34 +3640,33 @@ def aggregate_status(
 def deterministic_human_review_samples(
     repositories: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    selected: dict[str, dict[str, Any]] = {}
+    interaction: list[dict[str, Any]] = []
     for repository in repositories:
         kind = repository.get("class")
-        candidates = [
+        candidates = sorted([
             cycle
             for cycle in repository.get("cycles", [])
             if cycle.get("status") == "passed"
             and cycle.get("real_session_dogfood", {}).get("status") == "passed"
-        ]
-        if kind in CLASSES and candidates:
-            cycle = min(candidates, key=lambda item: item.get("cycle", 999))
-            selected[str(kind)] = {
+        ], key=lambda item: item.get("cycle", 999))
+        for cycle in candidates:
+            interaction.append({
                 "repository_class": kind,
                 "cycle": cycle["cycle"],
+                "behavior_class": cycle.get("real_session_dogfood", {}).get("behavior_class"),
                 "project_id": cycle.get("project_identity"),
-            }
-    interaction = [selected[kind] for kind in CLASSES if kind in selected]
-    simple = selected.get("small-python")
-    complex_sample = selected.get("polyglot-medium")
-    live_viewer = selected.get("volicord")
+            })
+    live_viewer = next(
+        (sample for sample in interaction if sample["repository_class"] == "volicord"),
+        None,
+    )
     return {
-        "algorithm": "lowest_automated_passed_cycle_by_repository_class",
+        "algorithm": "every_automated_passed_interaction_cycle",
         "interaction": interaction,
-        "documents": {
-            "simple": simple,
-            "complex": complex_sample,
-        },
-        "viewer_snapshot": complex_sample,
+        "documents": interaction,
+        "viewer_snapshots": interaction,
+        "repository_intelligence": interaction,
+        "cli": interaction,
         "live_viewer": {
             "sample": live_viewer,
             "locales": ["en", "ko"],
@@ -3394,23 +3696,88 @@ def human_review_template(automated_result: dict[str, Any], result_sha256: str) 
         "interaction_reviews": [
             {
                 "sample": sample,
-                "question_relevance": human_review_observation_template(),
-                "decision_comprehension": human_review_observation_template(),
-                "interruption_cost": human_review_observation_template(),
+                **{
+                    criterion: human_review_observation_template()
+                    for criterion in (
+                        "question_necessity_and_relevance",
+                        "unnecessary_interruption",
+                        "user_ownership",
+                        "source_grounding",
+                        "decision_comprehension_when_applicable",
+                        "repeat_behavior",
+                        "correct_no_question_behavior",
+                    )
+                },
             }
             for sample in samples["interaction"]
         ],
-        "document_reviews": {
-            complexity: {
+        "document_reviews": [
+            {
                 "sample": sample,
-                "document_fidelity_and_readability": human_review_observation_template(),
+                **{
+                    criterion: human_review_observation_template()
+                    for criterion in (
+                        "fidelity",
+                        "usefulness",
+                        "source_grounding",
+                        "remaining_work_accuracy",
+                        "requested_language_body_content",
+                    )
+                },
             }
-            for complexity, sample in samples["documents"].items()
-        },
-        "viewer_snapshot_review": {
-            "sample": samples["viewer_snapshot"],
-            "viewer_human_usability": human_review_observation_template(),
-        },
+            for sample in samples["documents"]
+        ],
+        "viewer_snapshot_reviews": [
+            {
+                "sample": sample,
+                **{
+                    criterion: human_review_observation_template()
+                    for criterion in (
+                        "completed_current_remaining_work",
+                        "next_step",
+                        "decision_rationale",
+                        "architecture_components_flow",
+                        "code_behavior",
+                        "fact_versus_interpretation",
+                        "diagram_usefulness",
+                    )
+                },
+            }
+            for sample in samples["viewer_snapshots"]
+        ],
+        "repository_intelligence_reviews": [
+            {
+                "sample": sample,
+                **{
+                    criterion: human_review_observation_template()
+                    for criterion in (
+                        "structural_navigation_usefulness",
+                        "semantic_value_over_structural_only",
+                        "capability_honesty",
+                        "polyglot_comprehension_when_applicable",
+                    )
+                },
+            }
+            for sample in samples["repository_intelligence"]
+        ],
+        "cli_usability_reviews": [
+            {
+                "sample": sample,
+                **{
+                    task: human_review_observation_template()
+                    for task in (
+                        "discover_with_cli_help",
+                        "status_without_project_id",
+                        "analyze_without_project_id",
+                        "recall_without_project_id",
+                        "documents_without_project_id",
+                        "export_without_project_id",
+                        "doctor_without_project_id",
+                    )
+                },
+            }
+            for sample in samples["cli"]
+        ],
         "live_viewer_accessibility": {
             "sample": samples["live_viewer"]["sample"],
             "locales": {
@@ -3433,24 +3800,18 @@ def human_review_observations(artifact: dict[str, Any]) -> list[dict[str, Any]]:
     values: list[dict[str, Any]] = []
     for review in artifact.get("interaction_reviews", []):
         if isinstance(review, dict):
-            values.extend(
-                review.get(name)
-                for name in (
-                    "question_relevance",
-                    "decision_comprehension",
-                    "interruption_cost",
-                )
-            )
-    documents = artifact.get("document_reviews", {})
-    if isinstance(documents, dict):
-        values.extend(
-            review.get("document_fidelity_and_readability")
-            for review in documents.values()
-            if isinstance(review, dict)
-        )
-    snapshot = artifact.get("viewer_snapshot_review")
-    if isinstance(snapshot, dict):
-        values.append(snapshot.get("viewer_human_usability"))
+            values.extend(value for name, value in review.items() if name != "sample")
+    for field in (
+        "document_reviews",
+        "viewer_snapshot_reviews",
+        "repository_intelligence_reviews",
+    ):
+        for review in artifact.get(field, []):
+            if isinstance(review, dict):
+                values.extend(value for name, value in review.items() if name != "sample")
+    for review in artifact.get("cli_usability_reviews", []):
+        if isinstance(review, dict):
+            values.extend(value for name, value in review.items() if name != "sample")
     live = artifact.get("live_viewer_accessibility", {})
     locales = live.get("locales", {}) if isinstance(live, dict) else {}
     if isinstance(locales, dict):
@@ -3475,12 +3836,16 @@ def validate_human_review_artifact(
         "sampling",
         "interaction_reviews",
         "document_reviews",
-        "viewer_snapshot_review",
+        "viewer_snapshot_reviews",
+        "repository_intelligence_reviews",
+        "cli_usability_reviews",
         "live_viewer_accessibility",
     }
     interaction_reviews = artifact.get("interaction_reviews")
     document_reviews = artifact.get("document_reviews")
-    snapshot_review = artifact.get("viewer_snapshot_review")
+    snapshot_reviews = artifact.get("viewer_snapshot_reviews")
+    intelligence_reviews = artifact.get("repository_intelligence_reviews")
+    cli_reviews = artifact.get("cli_usability_reviews")
     live_review = artifact.get("live_viewer_accessibility")
     locales = live_review.get("locales") if isinstance(live_review, dict) else None
     if (
@@ -3490,12 +3855,17 @@ def validate_human_review_artifact(
         or artifact.get("automated_result_sha256") != automated_result_sha256
         or artifact.get("sampling") != expected_samples
         or not isinstance(interaction_reviews, list)
-        or len(interaction_reviews) != len(CLASSES)
+        or len(interaction_reviews) != len(expected_samples["interaction"])
         or not all(isinstance(item, dict) for item in interaction_reviews)
-        or not isinstance(document_reviews, dict)
-        or set(document_reviews) != {"simple", "complex"}
-        or not all(isinstance(item, dict) for item in document_reviews.values())
-        or not isinstance(snapshot_review, dict)
+        or not isinstance(document_reviews, list)
+        or not isinstance(snapshot_reviews, list)
+        or not isinstance(intelligence_reviews, list)
+        or not isinstance(cli_reviews, list)
+        or not all(
+            isinstance(item, dict)
+            for collection in (document_reviews, snapshot_reviews, intelligence_reviews, cli_reviews)
+            for item in collection
+        )
         or not isinstance(live_review, dict)
         or not isinstance(locales, dict)
         or set(locales) != {"en", "ko"}
@@ -3506,29 +3876,62 @@ def validate_human_review_artifact(
         "interaction"
     ]:
         raise ValueError("human interaction review samples are not deterministic")
-    if any(
-        set(item)
-        != {
-            "sample",
-            "question_relevance",
-            "decision_comprehension",
-            "interruption_cost",
-        }
-        for item in interaction_reviews
-    ):
+    interaction_criteria = {
+        "question_necessity_and_relevance",
+        "unnecessary_interruption",
+        "user_ownership",
+        "source_grounding",
+        "decision_comprehension_when_applicable",
+        "repeat_behavior",
+        "correct_no_question_behavior",
+    }
+    if any(set(item) != {"sample", *interaction_criteria} for item in interaction_reviews):
         raise ValueError("human interaction review criteria are incomplete")
-    for complexity, sample in expected_samples["documents"].items():
-        review = document_reviews[complexity]
-        if (
-            set(review) != {"sample", "document_fidelity_and_readability"}
-            or review.get("sample") != sample
-        ):
-            raise ValueError("human document review samples are not deterministic")
-    if (
-        set(snapshot_review) != {"sample", "viewer_human_usability"}
-        or snapshot_review.get("sample") != expected_samples["viewer_snapshot"]
+    document_criteria = {
+        "fidelity",
+        "usefulness",
+        "source_grounding",
+        "remaining_work_accuracy",
+        "requested_language_body_content",
+    }
+    viewer_criteria = {
+        "completed_current_remaining_work",
+        "next_step",
+        "decision_rationale",
+        "architecture_components_flow",
+        "code_behavior",
+        "fact_versus_interpretation",
+        "diagram_usefulness",
+    }
+    intelligence_criteria = {
+        "structural_navigation_usefulness",
+        "semantic_value_over_structural_only",
+        "capability_honesty",
+        "polyglot_comprehension_when_applicable",
+    }
+    for collection, samples, criteria, label in (
+        (document_reviews, expected_samples["documents"], document_criteria, "document"),
+        (snapshot_reviews, expected_samples["viewer_snapshots"], viewer_criteria, "Viewer"),
+        (intelligence_reviews, expected_samples["repository_intelligence"], intelligence_criteria, "Repository Intelligence"),
     ):
-        raise ValueError("human Viewer snapshot sample is not deterministic")
+        if [item.get("sample") for item in collection] != samples or any(
+            set(item) != {"sample", *criteria} for item in collection
+        ):
+            raise ValueError(f"human {label} review samples or criteria are incomplete")
+    cli_criteria = {
+        "discover_with_cli_help",
+        "status_without_project_id",
+        "analyze_without_project_id",
+        "recall_without_project_id",
+        "documents_without_project_id",
+        "export_without_project_id",
+        "doctor_without_project_id",
+    }
+    if (
+        [item.get("sample") for item in cli_reviews] != expected_samples["cli"]
+        or any(set(item) != {"sample", *cli_criteria} for item in cli_reviews)
+    ):
+        raise ValueError("human CLI review does not cover representative help-discovered tasks")
     if (
         set(live_review) != {"sample", "locales"}
         or live_review.get("sample") != expected_samples["live_viewer"]["sample"]
@@ -3539,7 +3942,14 @@ def validate_human_review_artifact(
     ):
         raise ValueError("human live Viewer sample is not deterministic")
     observations = human_review_observations(artifact)
-    expected_count = len(CLASSES) * 3 + 2 + 1 + 2 * 4
+    expected_count = (
+        len(expected_samples["interaction"]) * len(interaction_criteria)
+        + len(expected_samples["documents"]) * len(document_criteria)
+        + len(expected_samples["viewer_snapshots"]) * len(viewer_criteria)
+        + len(expected_samples["repository_intelligence"]) * len(intelligence_criteria)
+        + len(expected_samples["cli"]) * len(cli_criteria)
+        + 2 * 4
+    )
     if len(observations) != expected_count:
         raise ValueError("human review artifact does not contain every required criterion")
     statuses: list[str] = []
@@ -3875,7 +4285,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
         "privacy_and_transmission": {
             "evidence_mode": definition["real_session_evidence"]["mode"],
             "harness_performed_or_authorized_codex_transmission": False,
-            "verified_external_codex_session_count_expected": 12,
+            "verified_external_codex_session_count_expected": 24,
             "task_relevant_repository_content_may_have_been_transmitted_by_external_evidence_producers": True,
             "commercial_semantic_provider_success_claimed": False,
             "raw_source_in_sanitized_result": False,
@@ -3916,15 +4326,17 @@ def run_evaluation(args: argparse.Namespace) -> int:
 
 
 def fixture_work_user_task(kind: str, cycle: int) -> str:
-    return (
-        f"Improve the operator-facing error reporting in the {kind} validation adapter and add focused tests "
-        f"for cycle {cycle}. Keep the change local and do not add dependencies."
-    )
+    tasks = {
+        1: "Improve the operator-facing error policy and add focused coverage for its observable behavior.",
+        2: "Correct repository configuration discovery and update the affected multi-file tests.",
+        3: "Refactor the adapter implementation within the current contract and preserve behavior.",
+        4: "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
+    }
+    return f"In the {kind} repository, {tasks[cycle]} Keep the change bounded and do not add dependencies."
 
 
-def fixture_decision_oracle() -> dict[str, Any]:
+def fixture_question_content() -> dict[str, Any]:
     return {
-        "work_task_materiality_basis": "operator-facing error reporting",
         "user_owned_dimension": "operator-facing detail versus stable concise output",
         "established_repository_facts": [
             "The adapter already distinguishes internal diagnostics from its public error string."
@@ -3937,17 +4349,39 @@ def fixture_decision_oracle() -> dict[str, Any]:
             "Include the actionable cause in every public error",
         ],
         "recommendation": "Keep public errors concise and expose details only in diagnostics",
-        "expected_choice": "Keep public errors concise and expose details only in diagnostics",
         "material_consequence": "The choice changes output stability and troubleshooting usefulness.",
     }
 
 
-def fixture_materiality_review(oracle: dict[str, Any] | None = None) -> dict[str, Any]:
-    oracle = oracle or fixture_decision_oracle()
+def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
     return {
-        "kind": "phase8_materiality_review",
-        "classification": "user_owned_material",
-        "decision_dimension": oracle["user_owned_dimension"],
+        "behavior_class": behavior_class,
+        "repository_facts": [
+            "The adapter already separates diagnostic detail from its stable result envelope."
+        ],
+        "accepted_contract_constraints": [
+            "The active contract requires truthful failure reporting without prescribing wording."
+        ],
+        "delegated_boundaries": (
+            ["Implementation structure and local helper selection are delegated to the agent."]
+            if behavior_class == "delegated_implementation_choice"
+            else []
+        ),
+        "possible_material_concerns": (
+            ["The externally visible diagnostic policy may materially affect operators."]
+            if behavior_class == "user_owned_decision"
+            else []
+        ),
+        "consequences": ["The outcome changes diagnostic usefulness or maintenance cost."],
+        "facts_not_for_user": ["Existing adapter and test behavior must be inspected locally."],
+        "current_relevance": "The selected class tests proportional inquiry behavior for this bounded task.",
+    }
+
+
+def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
+    return {
+        "kind": "phase8_behavior_review",
+        "classification": behavior_class,
         "provenance_references": [
             {
                 "scope": "volicord_active_owner",
@@ -3956,17 +4390,10 @@ def fixture_materiality_review(oracle: dict[str, Any] | None = None) -> dict[str
                 "repository_revision": git_head(ROOT),
             },
         ],
-        "established_repository_facts": oracle["established_repository_facts"],
-        "why_repository_facts_do_not_determine_choice": (
-            "The repository establishes the available output layers but not the public policy."
-        ),
-        "why_no_accepted_contract_determines_choice": (
-            "The active owners require truthful errors but do not select this public detail boundary."
-        ),
-        "why_not_explicitly_delegated_implementation_choice": (
-            "The choice changes operator-visible output rather than only renderer or layout mechanics."
-        ),
-        "user_visible_material_consequence": oracle["material_consequence"],
+        "outcome_rationale": "Independent evidence supports the selected proportional behavior class.",
+        "user_ownership_assessment": "Ownership was checked against facts, contracts, and delegated boundaries.",
+        "silent_choice_risk_assessment": "The review records whether proceeding would silently choose a user-owned outcome.",
+        "unresolved_material_user_outcome": behavior_class == "user_owned_decision",
         "independent_review": {
             "status": "accepted",
             "reviewer_role": "campaign_preparation_independent_reviewer",
@@ -4003,12 +4430,19 @@ def real_session_fixture(
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
     work_user_task = fixture_work_user_task(kind, cycle)
-    decision_oracle = fixture_decision_oracle()
+    behavior_class = BEHAVIOR_CLASSES[cycle - 1]
+    question_content = fixture_question_content()
+    evaluation_basis = fixture_evaluation_basis(behavior_class)
+    applied_decisions = [decision] if behavior_class == "user_owned_decision" else []
     decision_turn_text = "Keep the normal output concise; diagnostics can carry the actionable cause."
     resume_user_task = "Continue the validation-adapter improvement from the current project state."
     question_prompt = "Which error-detail boundary should the validation adapter expose to operators?"
     next_step = "Update src/resume.rs to carry the chosen concise diagnostic boundary and verify it"
-    work_paths = ["src/existing.rs", "tests/existing.rs"]
+    work_paths = (
+        ["backend/src/existing.rs", "frontend/src/existing.ts"]
+        if kind == "polyglot-medium"
+        else ["src/existing.rs", "tests/existing.rs"]
+    )
     verification_command = "python3 -m unittest tests.test_existing"
     work_capture = evidence_directory / f"{kind}-{cycle}-work-events.jsonl"
     resume_capture = evidence_directory / f"{kind}-{cycle}-resume-events.jsonl"
@@ -4218,7 +4652,14 @@ def real_session_fixture(
     patch_call = f"{kind}-patch-call-{cycle}"
     verification_call = f"{kind}-verification-call-{cycle}"
     checkpoint_call = f"{kind}-checkpoint-call-{cycle}"
-    patch_text = "*** Begin Patch\n*** Update File: /phase8/repository/src/existing.rs\n@@\n-old\n+new\n*** Update File: /phase8/repository/tests/existing.rs\n@@\n-old\n+new\n*** End Patch"
+    patch_text = (
+        "*** Begin Patch\n"
+        + "".join(
+            f"*** Update File: /phase8/repository/{path}\n@@\n-old\n+new\n"
+            for path in work_paths
+        )
+        + "*** End Patch"
+    )
     work_events = [
         session_meta(work_session),
         activation_message(),
@@ -4277,25 +4718,25 @@ def real_session_fixture(
                 "source_operation": "repository_analyze",
                 "repository_snapshot": baseline_repository,
                 "research_state": "research_required",
-                "research_state_basis": decision_oracle["why_repository_inspection_cannot_decide"],
+                "research_state_basis": question_content["why_repository_inspection_cannot_decide"],
                 "retention_basis": "current work session",
                 "bounded_summary": "Choose the operator-facing error detail boundary",
                 "prompt": question_prompt,
-                "why_now": decision_oracle["material_consequence"],
-                "affected_scope": [decision_oracle["user_owned_dimension"]],
-                "established_facts": decision_oracle["established_repository_facts"],
+                "why_now": question_content["material_consequence"],
+                "affected_scope": [question_content["user_owned_dimension"]],
+                "established_facts": question_content["established_repository_facts"],
                 "assumptions": [],
-                "uncertainty": [decision_oracle["why_repository_inspection_cannot_decide"]],
+                "uncertainty": [question_content["why_repository_inspection_cannot_decide"]],
                 "alternatives": [
-                    {"key": "concise", "label": decision_oracle["viable_alternatives"][0], "consequence": "Stable public output"},
-                    {"key": "detailed", "label": decision_oracle["viable_alternatives"][1], "consequence": "More immediate detail"},
+                    {"key": "concise", "label": question_content["viable_alternatives"][0], "consequence": "Stable public output"},
+                    {"key": "detailed", "label": question_content["viable_alternatives"][1], "consequence": "More immediate detail"},
                 ],
                 "recommendation_key": "concise",
-                "recommendation_rationale": decision_oracle["recommendation"],
-                "trade_offs": [decision_oracle["material_consequence"]],
+                "recommendation_rationale": question_content["recommendation"],
+                "trade_offs": [question_content["material_consequence"]],
                 "known_limits": [],
                 "what_unlocks": ["ordinary implementation work"],
-                "materiality_rationale": decision_oracle["material_consequence"],
+                "materiality_rationale": question_content["material_consequence"],
                 "duplicate_basis": "canonical inspection found no matching Question",
                 "presentation_order": 1,
             },
@@ -4465,7 +4906,7 @@ def real_session_fixture(
                 "kind": "handoff",
                 "work_state": "paused",
                 "state_change": "Updated the bounded implementation and test",
-                "applied_decision_ids": [decision],
+                "applied_decision_ids": applied_decisions,
                 "verification": [
                     {
                         "state": "passed",
@@ -4492,7 +4933,7 @@ def real_session_fixture(
                 "baseline_repository_snapshot_id": baseline_repository,
                 "current_repository_snapshot_id": current_repository,
                 "changed_paths": work_paths,
-                "applied_decision_ids": [decision],
+                "applied_decision_ids": applied_decisions,
                 "verification_source_ids": [verification_source],
             },
         ),
@@ -4551,7 +4992,11 @@ def real_session_fixture(
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
                 "goals": [work_user_task],
-                "decisions": [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}],
+                "decisions": (
+                    [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}]
+                    if behavior_class == "user_owned_decision"
+                    else []
+                ),
                 "open_questions": [],
                 "known_limits": [],
                 "next_step": next_step,
@@ -4565,7 +5010,7 @@ def real_session_fixture(
                     "source_basis": [goal_source],
                     "changed_source_basis": [changed_source_one, changed_source_two],
                     "changed_paths": work_paths,
-                    "applied_decisions": [decision],
+                    "applied_decisions": applied_decisions,
                     "verification": [
                         {
                             "state": "passed",
@@ -4628,6 +5073,25 @@ def real_session_fixture(
         ),
         task_complete(resume_turn),
     ]
+    if behavior_class != "user_owned_decision":
+        question_call_ids = {
+            candidate_submit_call,
+            candidate_research_call,
+            candidate_ready_call,
+            candidate_promote_call,
+            inquiry_call,
+            decision_call,
+        }
+        work_events = [
+            value
+            for value in work_events
+            if value.get("payload", {}).get("call_id") not in question_call_ids
+            and not (
+                value.get("payload", {}).get("type") == "user_message"
+                and "decision-user-turn"
+                in str(value.get("payload", {}).get("client_id", ""))
+            )
+        ]
     work_events = with_mcp_completions(work_events)
     resume_events = with_mcp_completions(resume_events)
     work_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in work_events), encoding="utf-8")
@@ -4696,15 +5160,21 @@ def real_session_fixture(
     tables = [
         table("sources", source_columns, sources),
         table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]]),
-        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(decision_oracle["viable_alternatives"])), text("concise"), text(decision_oracle["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([decision_oracle["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([decision_oracle["user_owned_dimension"]])), text("material"), integer(1), text(decision_oracle["material_consequence"]), blob(encoded_established_facts(decision_oracle["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
+        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"]])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
         table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
-        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(decision_oracle["viable_alternatives"])), text("concise"), text(decision_oracle["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
+        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(work_user_task), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(goal_source), integer(0)]]),
         table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(work_user_task), text("paused"), text("Updated the bounded implementation and test"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
         table("checkpoint_source_relations", ["project_id", "checkpoint_id", "relation_kind", "source_id", "position"], [[blob(project), blob(checkpoint), text("supported_by"), blob(goal_source), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_one), integer(0)], [blob(project), blob(checkpoint), text("changed_basis"), blob(changed_source_two), integer(1)]]),
-        table("checkpoint_decisions", ["project_id", "checkpoint_id", "decision_id", "position"], [[blob(project), blob(checkpoint), blob(decision), integer(0)]]),
+        table(
+            "checkpoint_decisions",
+            ["project_id", "checkpoint_id", "decision_id", "position"],
+            [[blob(project), blob(checkpoint), blob(decision), integer(0)]]
+            if behavior_class == "user_owned_decision"
+            else [],
+        ),
         table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed")]]),
     ]
     state = {"project_id": project, "tables": tables}
@@ -4804,11 +5274,17 @@ def real_session_fixture(
         "_evidence_directory": str(evidence_directory),
         "repository_class": kind,
         "cycle": cycle,
+        "behavior_class": behavior_class,
         "repository_revision": revision,
         "work_user_task": work_user_task,
         "fresh_resume_user_task": resume_user_task,
-        "decision_oracle": decision_oracle,
-        "materiality_review": fixture_materiality_review(decision_oracle),
+        "work_scope": {
+            "affected_paths": work_paths,
+            "user_visible_behavior": behavior_class == "user_owned_decision",
+            "boundary_kind": "component",
+        },
+        "evaluation_basis": evaluation_basis,
+        "behavior_review": fixture_behavior_review(behavior_class),
         "evidence": {
             "captures": {
                 "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
@@ -4929,12 +5405,17 @@ def self_test() -> int:
             "runtime_home_bytes": runtime,
             "derived_state_bytes": derived,
             "document_output_bytes": document,
+            "process_count": 1,
+            "open_file_descriptor_count": 8,
+            "runtime_file_count": 6,
+            "stale_temporary_file_count": 0,
+            "operation_latency_ms": latency,
         }
-        for runtime, derived, document in (
-            (100, 20, 10),
-            (120, 24, 10),
-            (120, 24, 10),
-            (120, 24, 10),
+        for runtime, derived, document, latency in (
+            (100, 20, 10, 20),
+            (120, 24, 10, 22),
+            (120, 24, 10, 21),
+            (120, 24, 10, 22),
         )
     ]
     stable_resources = repeated_resource_conclusion(stable_rounds)
@@ -4952,6 +5433,28 @@ def self_test() -> int:
         or growing_resources["unexplained_cumulative_growth_observed"] is not True
     ):
         raise AssertionError("unexplained cumulative resource growth qualified")
+    for metric in (
+        "open_file_descriptor_count",
+        "runtime_file_count",
+        "operation_latency_ms",
+    ):
+        degraded_rounds = json.loads(json.dumps(stable_rounds))
+        for index, round_value in enumerate(degraded_rounds):
+            round_value[metric] = 10 + index
+        conclusion = repeated_resource_conclusion(degraded_rounds)
+        if (
+            conclusion["status"] != "failed"
+            or metric not in conclusion["cumulative_growth_metrics"]
+        ):
+            raise AssertionError(f"cumulative {metric} degradation qualified")
+    leaked_process_rounds = json.loads(json.dumps(stable_rounds))
+    leaked_process_rounds[-1]["process_count"] = 2
+    if repeated_resource_conclusion(leaked_process_rounds)["status"] != "failed":
+        raise AssertionError("descendant process leakage qualified")
+    stale_temporary_rounds = json.loads(json.dumps(stable_rounds))
+    stale_temporary_rounds[-1]["stale_temporary_file_count"] = 1
+    if repeated_resource_conclusion(stale_temporary_rounds)["status"] != "failed":
+        raise AssertionError("stale temporary file accumulation qualified")
     if repeated_resource_conclusion(stable_rounds[:2])["status"] != "unsupported":
         raise AssertionError("unobserved repeated resources were treated as measured")
     incomplete_rounds = json.loads(json.dumps(stable_rounds))
@@ -5080,23 +5583,38 @@ def self_test() -> int:
     )
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    uninterrupted_fixture = real_session_fixture(
+        "small-python", 2, revision, evidence_directory
+    )
+    uninterrupted_capture = load_codex_capture(
+        evidence_directory
+        / uninterrupted_fixture["evidence"]["captures"]["work"]["file"]
+    )
+    uninterrupted_result = real_session_evidence(
+        uninterrupted_fixture,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )
+    if (
+        len(uninterrupted_capture.user_turns) != 1
+        or uninterrupted_result["status"] != "passed"
+        or uninterrupted_result["checks"]["appropriate_inquiry_outcome"] != "passed"
+    ):
+        raise AssertionError("small-Python no-question cycle manufactured a user interruption")
     if (
         "recall" in external_fixture["fresh_resume_user_task"].casefold()
         or external_result["checks"]["recall_precedes_inspection_and_continuation"]
         != "passed"
     ):
         raise AssertionError("automatic Recall was not observed from a plain resume request")
+    ask_basis = external_result["inquiry_behavior_basis"]["ask_user_question_basis"]
     if (
-        external_result["question_relevance_review"].get("automatic_relevance_conclusion")
-        is not None
-        or external_result["question_relevance_review"].get("manual_review_required")
-        is not True
-        or external_result["question_relevance_review"].get("exact_repository_fact_matches")
-        != 1
-        or external_result["question_relevance_review"].get("exact_alternative_matches")
-        != 2
+        ask_basis.get("exact_preferred_expression_required") is not False
+        or ask_basis.get("ask_user_invariants", {}).get("material_consequence") is not True
+        or external_result["checks"]["decision_provenance_when_required"] != "passed"
     ):
-        raise AssertionError("hidden oracle review was absent or automatically declared Question quality")
+        raise AssertionError("ASK_USER invariants or current-host provenance were not qualified")
     representative_capture = load_codex_capture(CURRENT_MCP_FIXTURE)
     representative_calls = representative_capture.calls("context_record")
     if (
@@ -5110,70 +5628,44 @@ def self_test() -> int:
         "kind": "phase8_cycle_descriptor",
         "repository_class": "volicord",
         "cycle": 1,
+        "behavior_class": "user_owned_decision",
         "repository_revision": revision,
         "work_user_task": fixture_work_user_task("volicord", 1),
         "fresh_resume_user_task": (
             "Continue the validation-adapter improvement from the current project state."
         ),
-        "decision_oracle": fixture_decision_oracle(),
-        "materiality_review": fixture_materiality_review(),
+        "work_scope": {
+            "affected_paths": ["src/existing.rs", "tests/existing.rs"],
+            "user_visible_behavior": True,
+            "boundary_kind": "component",
+        },
+        "evaluation_basis": fixture_evaluation_basis("user_owned_decision"),
+        "behavior_review": fixture_behavior_review("user_owned_decision"),
     }
     if cycle_descriptor_errors(valid_descriptor):
         raise AssertionError("valid naturalistic plain-task descriptor was rejected")
     for label, mutation in (
         ("missing work task", lambda value: value.pop("work_user_task")),
-        ("missing oracle", lambda value: value.pop("decision_oracle")),
-        ("missing materiality review", lambda value: value.pop("materiality_review")),
-        (
-            "missing work materiality basis",
-            lambda value: value["decision_oracle"].pop("work_task_materiality_basis"),
-        ),
-        (
-            "materiality basis absent from work task",
-            lambda value: value["decision_oracle"].update(
-                {"work_task_materiality_basis": "a requirement absent from both tasks"}
-            ),
-        ),
-        (
-            "materiality basis only in resume task",
-            lambda value: (
-                value["decision_oracle"].update(
-                    {"work_task_materiality_basis": "resume-only materiality requirement"}
-                ),
-                value.update(
-                    {
-                        "fresh_resume_user_task": value["fresh_resume_user_task"]
-                        + " Preserve the resume-only materiality requirement."
-                    }
-                ),
-            ),
-        ),
+        ("missing evaluation basis", lambda value: value.pop("evaluation_basis")),
+        ("missing behavior review", lambda value: value.pop("behavior_review")),
         (
             "scripted resume",
             lambda value: value.update({"fresh_resume_user_task": "Invoke Recall before continuing."}),
         ),
         ("obsolete reserved scope", lambda value: value.update({"resume_change_scope": ["src/resume.rs"]})),
         (
-            "repository fact misclassified as user-owned",
-            lambda value: value["materiality_review"].update(
-                {"classification": "repository_fact"}
+            "repository fact class mismatch",
+            lambda value: value["behavior_review"].update(
+                {"classification": "research_or_no_question"}
             ),
         ),
         (
-            "accepted contract misclassified as user-owned",
-            lambda value: value["materiality_review"].update(
-                {"classification": "accepted_contract"}
-            ),
-        ),
-        (
-            "delegated layout choice misclassified as user-owned",
-            lambda value: value["materiality_review"].update(
-                {"classification": "delegated_implementation_choice"}
-            ),
+            "class position mismatch",
+            lambda value: value.update({"cycle": 2}),
         ),
         (
             "unaccepted independent review",
-            lambda value: value["materiality_review"]["independent_review"].update(
+            lambda value: value["behavior_review"]["independent_review"].update(
                 {"status": "pending"}
             ),
         ),
@@ -5183,16 +5675,12 @@ def self_test() -> int:
         errors = cycle_descriptor_errors(invalid_descriptor)
         expected_error = {
             "missing work task": "work_user_task",
-            "missing oracle": "decision_oracle",
-            "missing materiality review": "materiality_review",
-            "missing work materiality basis": "work_task_materiality_basis",
-            "materiality basis absent from work task": "absent from work_user_task",
-            "materiality basis only in resume task": "appears only in fresh_resume_user_task",
+            "missing evaluation basis": "evaluation_basis",
+            "missing behavior review": "behavior_review",
             "scripted resume": "Recall",
             "obsolete reserved scope": "obsolete field",
-            "repository fact misclassified as user-owned": "classification",
-            "accepted contract misclassified as user-owned": "classification",
-            "delegated layout choice misclassified as user-owned": "classification",
+            "repository fact class mismatch": "classification",
+            "class position mismatch": "matrix position",
             "unaccepted independent review": "accepted independent review",
         }[label]
         if not any(expected_error in error for error in errors):
@@ -5297,6 +5785,58 @@ def self_test() -> int:
     else:
         raise AssertionError("positive work session converted into an early-stop failure")
 
+    non_question_fixture = real_session_fixture(
+        "small-python", 2, revision, evidence_directory
+    )
+    non_question_capture_path = (
+        evidence_directory
+        / non_question_fixture["evidence"]["captures"]["work"]["file"]
+    )
+    non_question_capture = load_codex_capture(non_question_capture_path)
+    non_question_descriptor_identity = hashlib.sha256(
+        json.dumps(non_question_fixture, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    try:
+        build_work_blocker_result(
+            candidate_revision,
+            non_question_fixture,
+            non_question_descriptor_identity,
+            non_question_capture,
+        )
+    except ValueError as error:
+        if "no machine-observable terminal work blocker" not in str(error):
+            raise
+    else:
+        raise AssertionError("correct non-question work was treated as a blocker")
+    non_question_zero_path = evidence_directory / "zero-small-python-non-question-work.jsonl"
+    non_question_zero_events = [
+        json.loads(line)
+        for line in non_question_capture_path.read_text(encoding="utf-8").splitlines()
+    ]
+    non_question_zero_events = [
+        value
+        for value in non_question_zero_events
+        if value.get("payload", {}).get("type") != "mcp_tool_call_end"
+    ]
+    non_question_zero_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in non_question_zero_events
+        ),
+        encoding="utf-8",
+    )
+    non_question_blocker = build_work_blocker_result(
+        candidate_revision,
+        non_question_fixture,
+        non_question_descriptor_identity,
+        load_codex_capture(non_question_zero_path),
+    )
+    if any(
+        check in non_question_blocker["failed_checks"]
+        for check in USER_DECISION_BLOCKER_CHECKS
+    ):
+        raise AssertionError("non-question blocker manufactured Question/Decision requirements")
+
     zero_workflow_path = evidence_directory / "zero-volicord-completed-work.jsonl"
     positive_work_path = (
         evidence_directory / external_fixture["evidence"]["captures"]["work"]["file"]
@@ -5325,7 +5865,12 @@ def self_test() -> int:
     )
     if (
         blocker_result["kind"] != "phase8_dogfood_blocker_result"
-        or blocker_result["failed_checks"] != list(WORK_BLOCKER_CHECKS)
+        or blocker_result["failed_checks"]
+        != [
+            name
+            for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
+            if name != "behavior_class_evidence"
+        ]
         or blocker_result["classification"] != "product_work_session_blocker"
         or blocker_result["outcome"] != "campaign_stop"
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
@@ -5389,7 +5934,12 @@ def self_test() -> int:
         load_codex_capture(transport_blocker_path),
     )
     if (
-        transport_blocker_result["failed_checks"] != list(WORK_BLOCKER_CHECKS)
+        transport_blocker_result["failed_checks"]
+        != [
+            name
+            for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
+            if name != "behavior_class_evidence"
+        ]
         or sha256(transport_blocker_path) != transport_blocker_sha256
     ):
         raise AssertionError("work-blocker transport LF regression did not qualify immutably")
@@ -5399,12 +5949,11 @@ def self_test() -> int:
         for hidden in (
             external_fixture["work_user_task"],
             external_fixture["fresh_resume_user_task"],
-            external_fixture["decision_oracle"]["work_task_materiality_basis"],
-            *external_fixture["decision_oracle"]["viable_alternatives"],
-            external_fixture["decision_oracle"]["recommendation"],
+            *external_fixture["evaluation_basis"]["possible_material_concerns"],
+            *external_fixture["evaluation_basis"]["consequences"],
         )
     ):
-        raise AssertionError("work-blocker result retained task or hidden oracle content")
+        raise AssertionError("work-blocker result retained task or hidden evaluation content")
     blocker_descriptor_path = evidence_directory / "work-blocker-descriptor.json"
     blocker_output_path = evidence_directory / "work-blocker-result.json"
     write_json(blocker_descriptor_path, external_fixture)
@@ -5439,7 +5988,10 @@ def self_test() -> int:
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("kind")
         != "phase8_dogfood_blocker_result"
     ):
-        raise AssertionError("qualify-work-blocker CLI did not emit the failure-only result")
+        raise AssertionError(
+            "qualify-work-blocker CLI did not emit the failure-only result: "
+            f"exit={blocker_cli.returncode} stderr={blocker_cli.stderr.strip()}"
+        )
     for forbidden_true in (
         "campaign_complete",
         "replacement_pass_candidate",
@@ -5506,12 +6058,11 @@ def self_test() -> int:
     serialized_external_result = json.dumps(external_result, sort_keys=True)
     hidden_values = [
         fixture_work_user_task("volicord", 1),
-        fixture_decision_oracle()["work_task_materiality_basis"],
-        *fixture_decision_oracle()["viable_alternatives"],
-        fixture_decision_oracle()["recommendation"],
+        *fixture_evaluation_basis("user_owned_decision")["possible_material_concerns"],
+        *fixture_evaluation_basis("user_owned_decision")["consequences"],
     ]
     if any(value in serialized_external_result for value in hidden_values):
-        raise AssertionError("sanitized result retained a plain task or hidden oracle text")
+        raise AssertionError("sanitized result retained a plain task or hidden evaluation text")
     fake_steps = {name: "passed" for name in definition["required_product_steps"]}
     valid_html = (
         "<!doctype html><html lang=\"en\"><head>"
@@ -5595,7 +6146,7 @@ def self_test() -> int:
     repositories = []
     for index, kind in enumerate(CLASSES):
         cycles = []
-        for cycle in (1, 2):
+        for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
             actual = real_session_evidence(
                 real_session_fixture(kind, cycle, revision, evidence_directory),
                 kind=kind,
@@ -5603,7 +6154,10 @@ def self_test() -> int:
                 repository_revision=revision,
             )
             if actual["status"] != "passed":
-                raise AssertionError("valid real-session evidence did not qualify")
+                raise AssertionError(
+                    "valid real-session evidence did not qualify: "
+                    f"{kind} cycle {cycle} {actual['checks']}"
+                )
             cycles.append({
                 "cycle": cycle,
                 "status": "passed",
@@ -5729,11 +6283,11 @@ def self_test() -> int:
     ):
         raise AssertionError("human review overrode a deterministic machine failure")
     weakened_session_contract = json.loads(json.dumps(definition))
-    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 11
+    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 23
     expect_rejected(
         result,
         weakened_session_contract,
-        "replacement passage no longer required twelve distinct real sessions",
+        "replacement passage no longer required twenty-four distinct real sessions",
     )
 
     unavailable_peak = {
@@ -6395,7 +6949,7 @@ def self_test() -> int:
     remove_mcp_completion(missing_completion, "work", "decision-call")
     if real_session_evidence(
         missing_completion, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("MCP wrapper without authoritative completion qualified")
 
     wrapper_mismatch = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -6411,7 +6965,7 @@ def self_test() -> int:
     store_capture(wrapper_mismatch, "work", mismatch_path, mismatch_events)
     if real_session_evidence(
         wrapper_mismatch, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("wrapper/completion operation disagreement qualified")
 
     completion_error = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -6438,7 +6992,7 @@ def self_test() -> int:
         or failed_decisions[0].outcome != "failed"
         or real_session_evidence(
             completion_error, kind="volicord", cycle=1, repository_revision=revision
-        )["checks"]["explicit_user_decision_source"] != "failed"
+        )["checks"]["decision_provenance_when_required"] != "failed"
     ):
         raise AssertionError("MCP completion error did not remain a failed operation")
 
@@ -6451,7 +7005,7 @@ def self_test() -> int:
     )
     if real_session_evidence(
         transport_error, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("MCP transport error qualified")
 
     unrelated_server = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -6463,7 +7017,7 @@ def self_test() -> int:
     )
     if real_session_evidence(
         unrelated_server, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("unrelated MCP server completion qualified as Volicord")
 
     malformed_completion = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -6475,7 +7029,7 @@ def self_test() -> int:
     )
     if real_session_evidence(
         malformed_completion, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("malformed MCP completion qualified")
 
     substituted_task = "Replace an unrelated deployment workflow."
@@ -6486,18 +7040,18 @@ def self_test() -> int:
     )
     if mismatched_task_result["checks"]["plain_task_goal_linkage"] != "failed":
         raise AssertionError("captured task different from the descriptor plain task qualified")
-    if mismatched_task_result["checks"]["explicit_user_decision_source"] != "passed":
+    if mismatched_task_result["checks"]["decision_provenance_when_required"] != "passed":
         raise AssertionError("task mismatch invalidated unrelated current-host Decision provenance")
 
     scripted_prompts = (
         ("objective envelope", "PHASE8_OBJECTIVE: scripted"),
         (
-            "hidden alternative",
-            original_task + " Choose: " + fixture_decision_oracle()["viable_alternatives"][0],
+            "hidden material concern",
+            original_task + " Evaluator note: " + fixture_evaluation_basis("user_owned_decision")["possible_material_concerns"][0],
         ),
         (
-            "hidden recommendation",
-            original_task + " Follow this recommendation: " + fixture_decision_oracle()["recommendation"],
+            "hidden consequence",
+            original_task + " Evaluator consequence: " + fixture_evaluation_basis("user_owned_decision")["consequences"][0],
         ),
         ("prescribed question", original_task + " Ask the user whether concise output is preferred."),
         (
@@ -6937,7 +7491,7 @@ def self_test() -> int:
     mutate_bundle(fabricated_decision, remove_user_authority)
     if real_session_evidence(
         fabricated_decision, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("manifest Decision claim hid missing product user provenance")
 
     missing_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -6953,7 +7507,7 @@ def self_test() -> int:
     store_capture(missing_decision, "work", missing_path, missing_events)
     if real_session_evidence(
         missing_decision, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["explicit_user_decision_source"] != "failed":
+    )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("capture without the matching current-host user turn qualified")
 
     same_session = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -7074,7 +7628,7 @@ def self_test() -> int:
         kind="volicord",
         cycle=1,
         repository_revision=revision,
-    )["checks"]["researched_material_question"] != "failed":
+    )["checks"]["appropriate_inquiry_outcome"] != "failed":
         raise AssertionError("Question without observed Candidate promotion qualified")
 
     mismatched_recall = real_session_fixture("volicord", 1, revision, evidence_directory)
@@ -7298,7 +7852,7 @@ def self_test() -> int:
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
-        "two_cycle_contract": "passed",
+        "four_behavior_class_contract": "passed",
         "real_session_positive_path": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
@@ -7310,8 +7864,9 @@ def self_test() -> int:
         "unrelated_and_malformed_mcp_completion_rejected": "passed",
         "wrapper_completion_deduplicated": "passed",
         "naturalistic_plain_task_descriptor_contract": "passed",
-        "work_task_materiality_basis_required_in_work_task": "passed",
-        "independent_materiality_review_required": "passed",
+        "naturalistic_work_scope_contract": "passed",
+        "small_python_no_interruption_cycle": "passed",
+        "independent_behavior_review_required": "passed",
         "repository_fact_contract_and_delegated_choice_rejected": "passed",
         "terminal_checkpoint_single_and_pause_completion_selection": "passed",
         "malformed_final_checkpoint_no_fallback": "passed",
@@ -7323,10 +7878,10 @@ def self_test() -> int:
         "repository_scoped_activation_required": "passed",
         "missing_activation_operator_environment_classification": "passed",
         "campaign_level_human_review_state_round_trip": "passed",
-        "plain_task_and_hidden_oracle_sanitization": "passed",
+        "plain_task_and_hidden_evaluation_sanitization": "passed",
         "descriptor_and_captured_task_mismatch_rejected": "passed",
         "scripted_objective_marker_rejected": "passed",
-        "hidden_alternatives_and_recommendation_rejected": "passed",
+        "evaluator_expression_leak_rejected": "passed",
         "prescribed_question_and_operation_order_rejected": "passed",
         "explicit_resume_recall_instruction_rejected": "passed",
         "reserved_later_session_path_rejected": "passed",
@@ -7361,9 +7916,10 @@ def self_test() -> int:
         "valid_hash_insufficient_semantics_rejected": "passed",
         "candidate_question_lifecycle_provenance_required": "passed",
         "terminal_work_blocker_early_stop": "passed",
+        "branch_aware_non_question_blocker": "passed",
         "positive_work_blocker_attempt_rejected": "passed",
         "early_stop_completion_claims_rejected": "passed",
-        "twelve_session_replacement_contract": "passed",
+        "twenty_four_session_replacement_contract": "passed",
         "arbitrary_event_label_rejected": "passed",
         "accessibility_viewer_shaped_names": "passed",
         "accessibility_hidden_controls_excluded": "passed",
@@ -7382,6 +7938,7 @@ def self_test() -> int:
         "repeated_resource_failed_export_not_owned": "passed",
         "repeated_resource_stability": "passed",
         "repeated_resource_growth_rejected": "passed",
+        "repeated_resource_health_degradation_rejected": "passed",
         "repeated_resource_operation_failure_rejected": "passed",
         "repeated_resource_incomplete_evidence_unsupported": "passed",
         "unobserved_resource_state_preserved": "passed",

@@ -845,36 +845,39 @@ indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한�
 
 Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification
 이다. 하나의 current candidate에 대해 `volicord`, `small-python`, `polyglot-medium` 세
-actual repository class에서 두 cycle씩 실행하고, 각 cycle은 globally distinct한 fresh
+actual repository class에서 네 behavior-class cycle씩 실행하고, 각 cycle은 globally distinct한 fresh
 VS Code Codex work session과 fresh resume session을 사용한다. 따라서 automated
-qualification에는 `3 repositories × 2 cycles × 2 sessions = 12`개의 distinct real
+qualification에는 `3 repositories × 4 behavior classes × 2 sessions = 24`개의 distinct real
 session이 필요하다. Current result schema는 `automated_qualification`, `human_review`,
 `replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 human review가
 `not_provided`여도 automated command는 성공하지만 replacement는
 `pending_human_review`이며 `replacement_pass_candidate`와 `phase_9_ready`는 false다.
 
-각 cycle descriptor는 unique expected Question, terminal outcome, Decision 또는 user choice를
-hidden oracle로 두지 않는다. 대신 pinned repository revision의 actual owner contract,
-repository fact와 ordinary user task를 보는 independent control review가 해당 cycle에서
-plausible한 inquiry behavior class와 판정 근거를 보존한다. Review provenance는 scope,
+각 cycle descriptor는 unique Question, alternatives, recommendation, terminal outcome,
+Decision 또는 prescribed user selection을 evaluator 정답으로 두지 않는다. 대신 pinned
+repository revision의 actual owner contract, repository facts, delegated boundaries,
+non-exhaustive material concerns와 consequences, user에게 물어서는 안 되는 facts를 담은 bounded
+evaluation basis를 보존한다. Independent control review는 해당 cycle의 inquiry behavior class와
+판정 근거를 보존한다. Review provenance는 scope,
 safe relative path, SHA-256와 repository revision을 보존하는 typed reference를 사용한다.
 Path/hash 검증은 reviewer의 semantic materiality 판단을 대신하지 않는다.
 
-Campaign은 다음 behavior class를 실제 task에서 적절히 선택했는지 검증한다.
+Campaign은 각 repository에서 다음 네 behavior class를 한 번씩 검증한다.
 
-- `no_question_needed`: research과 current contract로 uncertainty가 없음
-- `resolved_by_research`: repository/environment fact로 branch가 해결됨
-- `delegated_choice_reused`: 이미 위임된 implementation choice나 applicable Decision을 재사용함
-- `prototype_or_research`: 즉시 user choice 대신 prototype 또는 추가 research가 맞음
-- `deferred`: 이유와 revisit basis를 보존하고 보류함
 - `user_owned_decision`: 실제 user value/preference/trade-off가 outcome을 material하게 바꾸어
-  Question과 explicit Decision이 필요함
+  Question과 explicit current-host Decision이 필요함
+- `research_or_no_question`: research, accepted contract 또는 repository fact로 user interruption이
+  불필요하며 no-question outcome이 맞음
+- `delegated_implementation_choice`: user가 이미 위임한 implementation boundary 안에서 agent가
+  선택하고 Question을 만들지 않음
+- `exploratory_uncertainty`: prototype, 추가 research 또는 evidence-backed defer가 immediate user
+  choice보다 적절함
 
-한 cycle이 모든 class를 실행할 필요는 없지만 campaign은 positive Question
-case, correct no-question, research, delegated choice, prototype/research, defer와 genuine
-user-owned Decision을 모두 포함한다. Simple repository는 Decision count를 채우기
-위해 user Decision을 제조하지 않는다. Work/resume prompt는 Volicord operation
-order, 물어야 할 Question, outcome, Checkpoint content, Recall 또는 expected choice를 지시하지
+각 class는 고정 matrix position을 가지지만 Question wording이나 하나의 answer를 고정하지 않는다.
+Simple repository는 Decision count를 채우기 위해 user Decision을 제조하지 않는다. 한
+small-Python cycle은 work와 resume 사이에 user interruption이 전혀 없어도 통과할 수 있다.
+Work/resume prompt는 Volicord operation order, 물어야 할 Question, outcome, Checkpoint content,
+Recall 또는 prescribed user selection을 지시하지
 않는다.
 
 Qualifying work session은 exact first work task를 current-host Goal Context의 Source로
@@ -947,32 +950,32 @@ task text, evaluator behavior-review reasoning, source body, credential과 raw p
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
-12개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
+24개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
 Question을 제시한 경우에만 실제로 답하고 raw rollout을 한 번에 제공한다. Helper는
 rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
 summary, descriptor evidence completion, manifest assembly와 review packaging을 담당한다.
 Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
-Independent evaluator/control은 actual repository와 pinned revision을 조사하고 hidden expected
-choice가 아닌 behavior-class review를 준비·독립 검토한 뒤 maintained helper로 cycle
+Independent evaluator/control은 actual repository와 pinned revision을 조사하고 prescribed
+selection이 아닌 behavior-class review를 준비·독립 검토한 뒤 maintained helper로 cycle
 descriptor를 봉인한다.
 Evaluator material은 operator instruction, example 또는 review index에 넣지 않으며 operator에게
 descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
 repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
 Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. Genuine
-material Question이 실제로 제시된 경우에는 본인의 답을 제공하고 12개 raw
+material Question이 실제로 제시된 경우에는 본인의 답을 제공하고 24개 raw
 rollout을 session 사이의 control 접촉 없이 보존한다.
 `prepare`는 evaluator input과 operator material을 분리한다. Independent control agent가
 `seal-cycle`로 descriptor를 검증·봉인하기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
-Operator-facing artifact의 leak check는 prescribed Question, oracle alternative, recommendation,
-expected choice, behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
+Operator-facing artifact의 leak check는 prescribed Question, evaluator concern, recommendation,
+prescribed selection, behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
-여섯 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
-repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 12개 fresh
-chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 12개
-explicit path 또는 정확히 12개 file만 있는 directory를 받고, state mutation 전에 frozen first
+12개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
+repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 24개 fresh
+chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 24개
+explicit path 또는 정확히 24개 file만 있는 directory를 받고, state mutation 전에 frozen first
 task, exact workspace/revision, work/resume role, `source=vscode`, `originator=codex_vscode`, fresh
 session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
@@ -1000,7 +1003,7 @@ Ordinary independent review의 handoff는 byte-exact raw rollout archive와 boun
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
-Automated run은 repository/candidate identity, 12-session semantics, behavior-class coverage,
+Automated run은 repository/candidate identity, 24-session semantics, behavior-class coverage,
 bundle/provenance, document와 static snapshot 생성, requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
 candidate cleanliness를 독립 판정한다. Human review는 immutable automated result 뒤에

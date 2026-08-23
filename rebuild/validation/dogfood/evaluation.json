@@ -8,7 +8,13 @@
     "skipped",
     "environment_blocked"
   ],
-  "candidate_cycle_count": 2,
+  "candidate_cycle_count": 4,
+  "behavior_classes": [
+    "user_owned_decision",
+    "research_or_no_question",
+    "delegated_implementation_choice",
+    "exploratory_uncertainty"
+  ],
   "repository_classes": {
     "volicord": {
       "actual_repository_required": true,
@@ -17,13 +23,23 @@
     "small-python": {
       "actual_repository_required": true,
       "maximum_files": 250,
-      "official_structural_language_count": 1
+      "minimum_files": 8,
+      "official_structural_language_count": 1,
+      "application_structure_required": true,
+      "production_source_files_required": 3,
+      "test_files_required": 2,
+      "configuration_required": true,
+      "behavioral_boundary_required": true,
+      "trivial_arithmetic_or_example_disallowed": true,
+      "multi_file_or_user_visible_work_required": true
     },
     "polyglot-medium": {
       "actual_repository_required": true,
       "minimum_files": 100,
       "minimum_official_structural_languages": 3,
-      "documentation_required": true
+      "documentation_required": true,
+      "component_boundary_required": true,
+      "cross_language_config_api_or_process_work_required": true
     }
   },
   "required_product_steps": [
@@ -50,13 +66,26 @@
     "context_recovery_accuracy",
     "decision_repetition",
     "question_relevance",
+    "question_necessity",
+    "unnecessary_interruption",
+    "user_ownership",
     "decision_comprehension",
     "source_grounding",
+    "fact_interpretation_comprehension",
+    "repository_analysis_usefulness",
+    "structural_navigation_usefulness",
+    "semantic_value",
     "capability_honesty",
     "coverage",
+    "polyglot_comprehension",
+    "cli_usability",
+    "viewer_understanding",
     "memory_correctability",
     "interruption_cost",
-    "document_fidelity_and_usefulness",
+    "document_fidelity",
+    "document_usefulness",
+    "document_remaining_work_accuracy",
+    "requested_language_body_content",
     "portability",
     "recovery"
   ],
@@ -87,6 +116,13 @@
       "document_output_bytes"
     ],
     "cumulative_growth_basis": "after one warm-up round, a measured storage class increases on every remaining fixed-input, fixed-destination round",
+    "repeated_operation_health_checks": [
+      "process_count",
+      "open_file_descriptor_count",
+      "runtime_file_count",
+      "stale_temporary_file_count",
+      "operation_latency_ms"
+    ],
     "universal_product_ceiling_applied": false,
     "raw_evidence_retention": "ignored_local_state_only"
   },
@@ -153,9 +189,10 @@
       "small-python",
       "polyglot-medium"
     ],
-    "document_samples": [
-      "simple",
-      "complex"
+    "document_repository_classes": [
+      "volicord",
+      "small-python",
+      "polyglot-medium"
     ],
     "live_viewer_locales": [
       "en",
@@ -168,7 +205,14 @@
       "narrow_and_zoomed_presentation"
     ],
     "machine_accessibility_may_be_overridden": false,
-    "sampling_algorithm": "lowest_automated_passed_cycle_by_repository_class"
+    "sampling_algorithm": "every_automated_passed_interaction_cycle",
+    "every_cycle_review_surfaces": [
+      "interaction",
+      "generated_documents",
+      "viewer_snapshot",
+      "repository_intelligence",
+      "cli_usability"
+    ]
   },
   "fixture_regression_command": [
     "python3",
@@ -178,7 +222,7 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
-    "full_replacement_session_count": 12,
+    "full_replacement_session_count": 24,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
@@ -196,8 +240,9 @@
     "cycle_descriptor_contract": {
       "work_user_task_field": "work_user_task",
       "fresh_resume_user_task_field": "fresh_resume_user_task",
-      "hidden_decision_oracle_field": "decision_oracle",
-      "materiality_review_field": "materiality_review",
+      "behavior_class_field": "behavior_class",
+      "evaluation_basis_field": "evaluation_basis",
+      "behavior_review_field": "behavior_review",
       "identity_fields": [
         "repository_class",
         "cycle",
@@ -219,15 +264,15 @@
       "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
       "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
-      "submit, source-ground research, mark ready, and promote the material Question Candidate through candidate_manage before inquiry_frontier",
-      "independently research and present a material Question without receiving its alternatives or recommendation in the user task",
-      "obtain and record the exact current-host user Decision",
+      "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
+      "for user_owned_decision only, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+      "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
       "perform real repository work after the baseline",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
       "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
       "permit one or more successful work Checkpoints while preserving pause and handoff history",
       "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
-      "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable current-host Decisions, truthful numeric-exit verification, limits, and next meaningful state or step"
+      "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable Decision or evidence-backed no-Decision behavior basis, truthful numeric-exit verification, limits, and next meaningful state or step"
     ],
     "resume_session_contract": [
       "repository-scoped SessionStart activation is observed before continuation behavior is judged",
@@ -264,35 +309,42 @@
         "fresh_session_recall_same_goal_identity_and_materially_consistent_statement"
       ]
     },
-    "hidden_decision_oracle": {
+    "bounded_evaluation_basis": {
       "required_fields": [
-        "work_task_materiality_basis",
-        "user_owned_dimension",
-        "established_repository_facts",
-        "why_repository_inspection_cannot_decide",
-        "viable_alternatives",
-        "recommendation",
-        "material_consequence"
+        "behavior_class",
+        "repository_facts",
+        "accepted_contract_constraints",
+        "delegated_boundaries",
+        "possible_material_concerns",
+        "consequences",
+        "facts_not_for_user",
+        "current_relevance"
       ],
       "visibility": "evaluator_input_only",
-      "materiality_basis_normalization": "casefold_and_collapse_whitespace",
-      "materiality_basis_location": "normalized basis must occur in work_user_task; fresh_resume_user_task alone is insufficient",
-      "materiality_basis_hidden_content_exclusion": "must not disclose alternatives, recommendation, or expected choice",
-      "question_relevance_result": "manual_observation_independent_from_deterministic_journey_success"
+      "possible_material_concerns_are_exhaustive": false,
+      "unique_question_wording_required": false,
+      "unique_alternatives_required": false,
+      "unique_recommendation_required": false,
+      "prescribed_user_selection_required": false
     },
-    "materiality_review": {
-      "kind": "phase8_materiality_review",
-      "accepted_classification": "user_owned_material",
+    "behavior_review": {
+      "kind": "phase8_behavior_review",
+      "accepted_classifications": [
+        "user_owned_decision",
+        "research_or_no_question",
+        "delegated_implementation_choice",
+        "exploratory_uncertainty"
+      ],
       "required_independent_review_status": "accepted",
-      "purpose": "bounded independent-review gate rather than mechanical semantic proof",
+      "purpose": "bounded independent evidence review without prescribing one Question expression or user selection",
       "visibility": "evaluator_input_only"
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
-      "required_raw_rollout_count": 12,
+      "required_raw_rollout_count": 24,
       "input_modes": [
-        "twelve_explicit_paths",
-        "one_directory_with_exactly_twelve_files"
+        "twenty_four_explicit_paths",
+        "one_directory_with_exactly_twenty_four_files"
       ],
       "mapping_evidence": [
         "exact_repository_workspace",

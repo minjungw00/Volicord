@@ -215,7 +215,7 @@ def prepared_batch(
     captures: list[Path] = []
     bundles: dict[str, Path] = {}
     for kind in campaign.CLASSES:
-        for cycle in (1, 2):
+        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
             descriptor, work, resume, bundle = fixture_for(
                 parent / f"{name}-fixtures",
                 kind,
@@ -285,7 +285,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     descriptor.pop("_evidence_file_sha256", None)
     descriptor.pop("evidence", None)
     leaked = copy.deepcopy(descriptor)
-    leaked["materiality_review"]["independent_review"]["basis"] = leaked["work_user_task"]
+    leaked["behavior_review"]["independent_review"]["basis"] = leaked["work_user_task"]
     leaked_path = parent / "leaked-evaluator-input.json"
     campaign.write_json(leaked_path, leaked)
     try:
@@ -314,14 +314,14 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert candidate_revision is not None
     base = copy.deepcopy(descriptor)
     base["repository_revision"] = target_revision
-    owner = base["materiality_review"]["provenance_references"][0]
+    owner = base["behavior_review"]["provenance_references"][0]
     target_reference = {
         "scope": "target_repository",
         "path": "CONTRACT.md",
         "sha256": hashlib.sha256(b"pinned target contract\n").hexdigest(),
         "repository_revision": target_revision,
     }
-    base["materiality_review"]["provenance_references"].append(target_reference)
+    base["behavior_review"]["provenance_references"].append(target_reference)
     assert not harness.cycle_descriptor_errors(
         base,
         candidate_revision=candidate_revision,
@@ -331,26 +331,26 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     invalid_cases = []
     nonexistent_owner = copy.deepcopy(base)
-    nonexistent_owner["materiality_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/not-an-owner.md"
+    nonexistent_owner["behavior_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/not-an-owner.md"
     invalid_cases.append(("current active architecture owner", nonexistent_owner))
     inactive_owner = copy.deepcopy(base)
-    inactive_owner["materiality_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/product-charter.md"
-    inactive_owner["materiality_review"]["provenance_references"][0]["sha256"] = harness.sha256(campaign.ROOT / "rebuild/docs/design/product-charter.md")
+    inactive_owner["behavior_review"]["provenance_references"][0]["path"] = "rebuild/docs/design/product-charter.md"
+    inactive_owner["behavior_review"]["provenance_references"][0]["sha256"] = harness.sha256(campaign.ROOT / "rebuild/docs/design/product-charter.md")
     invalid_cases.append(("current active architecture owner", inactive_owner))
     stale_owner = copy.deepcopy(base)
-    stale_owner["materiality_review"]["provenance_references"][0]["sha256"] = "00" * 32
+    stale_owner["behavior_review"]["provenance_references"][0]["sha256"] = "00" * 32
     invalid_cases.append(("stale", stale_owner))
     traversal = copy.deepcopy(base)
-    traversal["materiality_review"]["provenance_references"][1]["path"] = "../CONTRACT.md"
+    traversal["behavior_review"]["provenance_references"][1]["path"] = "../CONTRACT.md"
     invalid_cases.append(("safe relative path", traversal))
     missing = copy.deepcopy(base)
-    missing["materiality_review"]["provenance_references"][1]["path"] = "MISSING.md"
+    missing["behavior_review"]["provenance_references"][1]["path"] = "MISSING.md"
     invalid_cases.append(("does not exist", missing))
     stale_target = copy.deepcopy(base)
-    stale_target["materiality_review"]["provenance_references"][1]["sha256"] = "11" * 32
+    stale_target["behavior_review"]["provenance_references"][1]["sha256"] = "11" * 32
     invalid_cases.append(("stale", stale_target))
     wrong_revision = copy.deepcopy(base)
-    wrong_revision["materiality_review"]["provenance_references"][1]["repository_revision"] = "22" * 20
+    wrong_revision["behavior_review"]["provenance_references"][1]["repository_revision"] = "22" * 20
     invalid_cases.append(("wrong pinned target revision", wrong_revision))
     for expected, value in invalid_cases:
         errors = harness.cycle_descriptor_errors(
@@ -371,14 +371,14 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
-    assert len({capture.session_id for _path, capture in mapped.values()}) == 12
+    assert len({capture.session_id for _path, capture in mapped.values()}) == 24
 
     directory = parent / "unordered-rollouts"
     directory.mkdir()
     for index, source in enumerate(reversed(captures)):
         shutil.copyfile(source, directory / f"capture-{index:02}.jsonl")
     directory_paths = campaign.batch_rollout_paths(None, directory)
-    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 12
+    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 24
     try:
         campaign.map_batch_rollouts(root, captures[:-1])
     except campaign.CampaignError as error:
@@ -431,11 +431,11 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         activation = campaign.activate_all(root)
     finally:
         campaign.run_checked = original_run_checked
-    assert activation["cycle_count"] == 6
+    assert activation["cycle_count"] == 12
     assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
 
     for kind in campaign.CLASSES:
-        for cycle in (1, 2):
+        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
             runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
             (runtime / "canonical.sqlite3").write_bytes(b"BATCH-PRIVATE-STORE")
             derived = runtime / "derived/analysis/private"
@@ -451,10 +451,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert summary["outcome"] == "evidence_collected"
     assert summary["session_distinctness"] == {
         "status": "passed",
-        "expected_count": 12,
-        "observed_count": 12,
+        "expected_count": 24,
+        "observed_count": 24,
     }
-    assert len(summary["cycles"]) == 6
+    assert len(summary["cycles"]) == 12
     for item in summary["cycles"]:
         assert item["supported_evidence_complete"] is True
         assert item["terminal_work_failure_preserved"] is False
@@ -487,7 +487,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
         assert "batch-intake-summary.json" in names
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 12
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(
             any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts)
@@ -573,7 +573,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     prepare(root, parent / "successful-sources", binary)
     fixtures: dict[tuple[str, int], tuple[dict[str, object], Path, Path, Path]] = {}
     for kind in campaign.CLASSES:
-        for cycle in (1, 2):
+        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
             descriptor, work, resume, bundle = fixture_for(parent, kind, cycle)
             fixtures[(kind, cycle)] = (descriptor, work, resume, bundle)
             install_descriptor(root, kind, cycle, descriptor)
@@ -646,13 +646,13 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     archive = campaign.build_review_package(root, parent / "review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
-        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 6
-        assert len([name for name in names if name.startswith("materiality-reviews/") and name.endswith(".json")]) == 7
-        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 48
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
-        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 6
-        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 6
-        assert len([name for name in names if name.startswith("operator/document-review/")]) == 6
+        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 12
+        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 13
+        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 96
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 12
+        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 12
+        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 12
+        assert len([name for name in names if name.startswith("operator/document-review/")]) == 12
         assert "operator/human-review.json" in names
         assert "qualified-result.json" in names
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
@@ -670,7 +670,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         root, parent / "review-with-raw.tar.gz", include_raw=True
     )
     with tarfile.open(raw_archive, "r:gz") as opened:
-        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 12
+        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 24
 
 
 def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
@@ -763,10 +763,10 @@ def main() -> int:
         "checks": [
             "campaign_level_human_review_operations",
             "sealed_evaluator_operator_isolation",
-            "typed_materiality_provenance_verification",
+            "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
-            "unordered_twelve_rollout_batch_mapping",
+            "unordered_twenty_four_rollout_batch_mapping",
             "missing_duplicate_and_wrong_identity_batch_rejection",
             "batch_terminal_work_failure_preserved_with_later_resume",
             "batch_activation_all_preserves_user_controlled_trust",
