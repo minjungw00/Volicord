@@ -19,6 +19,11 @@ exact current-host user turn as a user-authored Context Item. It returns both
 the canonical Source and Context Item identities; a `goal` recorded this way is
 available to ordinary Recall without creating a Decision.
 
+After `project_resolve` returns `not_found`, `project_initialize` accepts the
+repository without a display name and derives the initial Project display name
+only from the canonical repository-root basename. A user-supplied display name
+is preserved; callers must not substitute an ancestor directory or model guess.
+
 `repository_analyze` returns the existing Analysis and Repository Snapshot
 identities needed to bound an ordinary work unit. Every fresh initialized or
 resumed meaningful repository-work session calls it after initialization or

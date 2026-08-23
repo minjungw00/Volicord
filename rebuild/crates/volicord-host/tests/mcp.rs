@@ -382,6 +382,9 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("call project_resolve first"));
     assert!(first_512.contains("recall must succeed before inspecting, editing, or continuing"));
     assert!(first_512.contains("not_found result requires explicit project_initialize"));
+    assert!(instructions.contains("omit display_name unless the user supplied one"));
+    assert!(instructions.contains("canonical repository-root basename names the Project"));
+    assert!(instructions.contains("Preserve and send display_name when the user did supply it"));
     assert!(instructions.contains("current-host Goal"));
     assert!(
         instructions.contains("call repository_analyze before the first ordinary repository write")
@@ -445,6 +448,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .to_lowercase()
         .contains("read-only"));
     assert!(descriptions["project_initialize"].contains("after resolution"));
+    assert!(descriptions["project_initialize"].contains("canonical repository-root basename"));
+    assert!(descriptions["project_initialize"].contains("preserve it exactly"));
     assert!(descriptions["recall"].contains("Recall must succeed before repository inspection"));
     assert!(descriptions["inquiry_frontier"].contains("candidate_manage"));
     assert!(descriptions["inquiry_frontier"].contains("present each actual alternative"));
@@ -680,9 +685,10 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     let initialized = call(
         &mut adapter,
         "project_initialize",
-        json!({"display_name":"Resolved Project","repository":repository}),
+        json!({"repository":repository}),
     );
     assert_eq!(initialized["result"]["isError"], false, "{initialized}");
+    assert_eq!(structured(&initialized)["display_name"], "repository");
     let project = structured(&initialized)["project_id"]
         .as_str()
         .expect("Project identity")
@@ -712,6 +718,53 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
             .canonical_basis(project_id)
             .expect("after resolution")
     );
+}
+
+#[test]
+fn project_initialize_uses_the_exact_repository_root_basename_unless_name_is_explicit() {
+    let temporary = tempdir().expect("temporary directory");
+    let repository = temporary
+        .path()
+        .join("misleading-Volicord")
+        .join("rebuild")
+        .join("tree-sitter");
+    fs::create_dir_all(&repository).expect("nested repository");
+    let explicit_repository = temporary
+        .path()
+        .join("another-outer-name")
+        .join("inferred-looking-name");
+    fs::create_dir_all(&explicit_repository).expect("explicit repository");
+    let operations = LocalOperations::new(
+        RuntimeLayout::new(temporary.path().join("runtime")).expect("runtime layout"),
+    );
+    let mut adapter = HostAdapter::new(operations);
+
+    let missing = call(&mut adapter, "project_initialize", json!({}));
+    assert_eq!(missing["result"]["isError"], true, "{missing}");
+    assert!(structured(&missing)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("does not match any allowed shape")));
+    assert!(!adapter.operations().layout().root().exists());
+
+    let derived = call(
+        &mut adapter,
+        "project_initialize",
+        json!({"repository":repository}),
+    );
+    assert_eq!(derived["result"]["isError"], false, "{derived}");
+    assert_eq!(structured(&derived)["display_name"], "tree-sitter");
+    assert_eq!(
+        structured(&derived)["binding"],
+        json!(fs::canonicalize(&repository).expect("canonical nested repository")),
+    );
+
+    let explicit = call(
+        &mut adapter,
+        "project_initialize",
+        json!({"display_name":"User Chosen Name","repository":explicit_repository}),
+    );
+    assert_eq!(explicit["result"]["isError"], false, "{explicit}");
+    assert_eq!(structured(&explicit)["display_name"], "User Chosen Name");
 }
 
 #[test]
@@ -2353,7 +2406,10 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
     };
     match name {
         "project_resolve" => vec![shape(&["repository"], &["repository"])],
-        "project_initialize" => vec![shape(&["display_name", "repository"], &["display_name"])],
+        "project_initialize" => vec![
+            shape(&["display_name", "repository"], &["display_name"]),
+            shape(&["repository"], &["repository"]),
+        ],
         "project_health" => vec![shape(&["project_id"], &[])],
         "recall"
         | "repository_understanding"

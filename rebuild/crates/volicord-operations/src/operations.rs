@@ -131,6 +131,27 @@ impl LocalOperations {
         })
     }
 
+    pub fn initialize_project_from_repository(
+        &self,
+        repository: &Path,
+    ) -> Result<ProjectInitialization, Error> {
+        let root = RepositoryRoot::open(repository).map_err(|error| {
+            Error::with_source("repository initialization path is invalid", error)
+        })?;
+        let display_name = root
+            .canonical_path()
+            .file_name()
+            .and_then(OsStr::to_str)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                Error::new(
+                    "canonical repository root has no non-empty UTF-8 basename for the Project display name",
+                )
+            })?
+            .to_owned();
+        self.initialize_project(display_name, Some(root.canonical_path()))
+    }
+
     pub fn bind_project(
         &self,
         project_id: ProjectId,

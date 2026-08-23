@@ -34,6 +34,47 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
 }
 
 #[test]
+fn repository_initialization_derives_only_the_canonical_root_basename_and_preserves_explicit_names(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let derived_repository = temporary
+        .path()
+        .join("misleading-Volicord")
+        .join("rebuild")
+        .join("tree-sitter");
+    fs::create_dir_all(&derived_repository)?;
+    let explicit_repository = temporary
+        .path()
+        .join("another-outer-name")
+        .join("derived-looking-name");
+    fs::create_dir_all(&explicit_repository)?;
+    let operations = LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime"))?);
+
+    let derived = operations.initialize_project_from_repository(&derived_repository)?;
+    assert_eq!(derived.project.display_name, "tree-sitter");
+    assert_eq!(
+        derived
+            .binding
+            .ok_or("derived Project was not bound")?
+            .binding
+            .absolute_path,
+        fs::canonicalize(&derived_repository)?,
+    );
+
+    let explicit = operations.initialize_project("User Chosen Name", Some(&explicit_repository))?;
+    assert_eq!(explicit.project.display_name, "User Chosen Name");
+    assert_eq!(
+        explicit
+            .binding
+            .ok_or("explicit Project was not bound")?
+            .binding
+            .absolute_path,
+        fs::canonicalize(&explicit_repository)?,
+    );
+    Ok(())
+}
+
+#[test]
 fn candidate_store_states_remain_typed_in_partial_project_projections(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_healthy_root, healthy, healthy_repository) = fixture()?;

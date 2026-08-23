@@ -21,7 +21,7 @@ pub const MATERIAL_DECISION_SCREENING: &str = "Classify the unresolved outcome a
 
 fn activation_context() -> String {
     format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, then record the current-host Goal. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain that returned pre-work Analysis Snapshot identity for the eventual grounded Checkpoint. Never use an Analysis Snapshot first captured after the bounded work as its baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize; omit display_name unless the user supplied one so the canonical repository-root basename names the Project, and preserve a user-supplied display_name exactly. Then record the current-host Goal. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain that returned pre-work Analysis Snapshot identity for the eventual grounded Checkpoint. Never use an Analysis Snapshot first captured after the bounded work as its baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
     )
 }
 
@@ -898,6 +898,9 @@ mod tests {
             assert!(context.contains("STOP before repository inspection, edits, or continuation"));
             assert!(context
                 .contains("successfully Recall before inspecting, editing, or continuing work"));
+            assert!(context.contains("omit display_name unless the user supplied one"));
+            assert!(context.contains("canonical repository-root basename names the Project"));
+            assert!(context.contains("preserve a user-supplied display_name exactly"));
             assert!(context.contains("record the current-host Goal"));
             assert!(context
                 .contains("call repository_analyze before the first ordinary repository write"));
