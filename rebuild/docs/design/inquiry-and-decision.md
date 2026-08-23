@@ -149,6 +149,37 @@ materiality에 맞는 behavior를 선택한 결과다.
 - 간단한 repository와 자명한 bounded task에서 qualification을 위해 Question이나
   Decision을 제조하지 않는다.
 
+Materiality screen은 구현 방법의 개수가 아니라 outcome의 consequence와 ownership을
+판정한다. 관련 current owner, applicable Decision/contract와 repository/environment
+fact를 먼저 확인한 뒤 다음을 구분한다.
+
+- repository/environment fact는 조사하며 user Question으로 바꾸지 않는다.
+- accepted contract 또는 applicable Decision은 재질문 없이 적용한다.
+- 명시적으로 위임된 implementation choice는 위임 범위 안에서 agent가 선택한다.
+- exploratory uncertainty는 필요에 따라 research, bounded prototype, deferment 또는
+  inspectable revisit basis로 전환할 수 있으며 user Decision을 강제하지 않는다.
+- 여러 viable outcome 사이에 material하게 다른 consequence가 남고 그 outcome이
+  user-owned이면 선택하거나 구현하기 전에 기존 Candidate, Inquiry와 Decision path를
+  사용한다.
+
+Repository research 뒤에도 externally observable behavior를 material하게 다르게 만드는
+여러 viable outcome이 남으면 한 option이 더 narrow, conventional, simple,
+backwards-looking, agent-recommended이거나 다른 subsystem을 건드리지 않고 구현 가능하다는
+이유만으로 implementation detail로 재분류하지 않는다. 이미 결정되거나 위임되지 않은
+경우 stable public API의 도입·shape, user-visible default, externally visible diagnostic와
+error contract, compatibility behavior, downstream user/automation에 노출되는
+generated/package/output default, privacy/security policy, support/maintenance policy와 그 밖의
+externally observable policy는 strong user-owned signal이다. 새 public field, stable error
+attribute, generated artifact policy 또는 default를 local convenience 때문에 고르는 것도
+outcome을 고르는 행위다.
+
+Public detail이 있다는 사실만으로 Question을 만들지는 않는다. Trivial detail 또는
+material consequence가 없는 구현 multiplicity는 agent-owned일 수 있다. Ownership이
+불확실하면 current owner, Decision/contract와 repository fact를 다시 확인하고, 그래도
+material uncertainty가 남을 때 기존 Candidate/research path를 사용한다. Branch가 research,
+Decision/contract, delegation, prototype evidence, deferment 또는 user Decision으로 실제
+해결된 뒤 ordinary edit에는 별도 approval ceremony를 추가하지 않는다.
+
 ## 5. Question presentation
 
 Frontier의 각 Question은 최소 다음을 함께 표시한다.

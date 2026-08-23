@@ -17,7 +17,13 @@ const CONFIG_NAME: &str = "config.toml";
 const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
-const ACTIVATION_CONTEXT: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, record the current-host Goal, and establish a repository baseline. After Recall or baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. Resolve repository and environment facts through research rather than asking the user. Apply accepted Decisions and active contracts without reopening them. Make delegated implementation choices within their stated boundaries; multiple viable implementations, trivial public behavior, conventional defaults, or implementation detail alone do not make a choice user-owned. Research or no Question, delegated implementation choice, prototype or further research, deferment with a revisit basis, and a genuine user-owned Decision are all valid outcomes. Use research or a bounded prototype when it can resolve uncertainty, and defer with an inspectable reason when the outcome need not be chosen now. Only when a currently relevant unresolved outcome remains genuinely material, is owned by the user, has real consequences between alternatives, cannot be answered from repository or environment facts, is not settled by an accepted Decision or contract, and has not been delegated: STOP before choosing or implementing that outcome and use the existing Question and Decision path. For that outcome, submit a Question Candidate, attach source-grounded research, review materiality, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, then record and apply the Decision. An agent recommendation is never a user Decision. Once applicable Decisions, contracts, research, delegation, prototype evidence, or deferment resolve the current branch, ordinary code edits require no new approval ceremony. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
+pub const MATERIAL_DECISION_SCREENING: &str = "Classify the unresolved outcome after inspecting the relevant current owner, applicable Decisions or contracts, and repository or environment facts: a repository/environment fact is researched and never asked as a user Question; an accepted contract or applicable Decision is applied without reopening it; a delegated implementation choice is chosen by the agent within the delegated boundary; exploratory uncertainty may lead to research, a bounded prototype, deferment, or a recorded revisit basis without a forced user Decision; and a genuinely material user-owned unresolved outcome stops before the outcome is chosen, then uses the existing Candidate, Inquiry, and Decision path. Materiality depends on consequence and ownership, not merely on multiple code implementations or the presence of a public detail. When research leaves multiple viable outcomes that materially change externally observable behavior, do not reclassify the outcome as an implementation detail merely because one option is narrower, conventional, simpler, backwards-looking, recommended by the agent, or implementable without touching another subsystem. Strong user-owned signals, when not already decided or delegated, include the introduction or shape of a stable public API, user-visible default behavior, an externally visible diagnostic or error contract, compatibility behavior, generated/package/output defaults exposed to downstream users or automation, privacy or security policy, support or maintenance policy, and other externally observable policy whose viable alternatives have materially different consequences. Choosing a new public field, stable error attribute, generated artifact policy, or default because it appears locally convenient still chooses the outcome. Do not turn trivial public details into user Questions: the test remains material consequence and ownership. If authority is still materially uncertain after inspecting the current owner, Decisions, contracts, and repository facts, use the existing Candidate and research path; never use a user Question to resolve a repository fact. For a material user-owned unresolved outcome, submit a Question Candidate, attach source-grounded repository research, review materiality, mark it ready, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, record the Decision, and only then implement that outcome. An agent recommendation or a conventional, simple, narrow, backwards-looking, or locally isolated option is not authority. Once research, an applicable Decision or contract, delegation, prototype evidence, deferment, or a user Decision resolves the branch, ordinary code edits require no additional approval ceremony.";
+
+fn activation_context() -> String {
+    format!(
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize, record the current-host Goal, and establish a repository baseline. After Recall or baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+    )
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct OwnershipManifest {
@@ -276,7 +282,7 @@ fn session_start(repository: &Path, input: &mut dyn Read) -> Result<Option<Value
     Ok(Some(json!({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": ACTIVATION_CONTEXT,
+            "additionalContext": activation_context(),
         }
     })))
 }
@@ -884,7 +890,7 @@ mod tests {
             );
             assert_eq!(
                 output["hookSpecificOutput"]["additionalContext"],
-                ACTIVATION_CONTEXT
+                activation_context()
             );
             let context = output["hookSpecificOutput"]["additionalContext"]
                 .as_str()
@@ -895,38 +901,31 @@ mod tests {
             assert!(context.contains("record the current-host Goal"));
             assert!(context.contains("establish a repository baseline"));
             assert!(context.contains("proceed with ordinary work without manufacturing"));
-            assert!(context.contains("Resolve repository and environment facts through research"));
-            assert!(context.contains("Apply accepted Decisions and active contracts"));
-            assert!(context.contains("Make delegated implementation choices"));
-            assert!(context.contains("trivial public behavior"));
-            assert!(context.contains("Research or no Question"));
-            assert!(context.contains("prototype or further research"));
-            assert!(context.contains("deferment with a revisit basis"));
-            assert!(context.contains("genuine user-owned Decision"));
-            assert!(context.contains("Only when a currently relevant unresolved outcome"));
-            assert!(context.contains("has real consequences between alternatives"));
-            assert!(context.contains("is not settled by an accepted Decision or contract"));
-            assert!(context.contains("has not been delegated"));
-            assert!(context.contains("STOP before choosing or implementing that outcome"));
-            assert!(context.contains("attach source-grounded research"));
+            assert!(context.contains(MATERIAL_DECISION_SCREENING));
+            assert!(context.contains("a repository/environment fact is researched"));
+            assert!(context.contains("exploratory uncertainty may lead to research"));
+            assert!(context.contains("genuinely material user-owned unresolved outcome"));
+            assert!(context.contains("introduction or shape of a stable public API"));
+            assert!(context.contains("generated/package/output defaults"));
+            assert!(context.contains("Choosing a new public field, stable error attribute"));
+            assert!(context.contains("narrower, conventional, simpler, backwards-looking"));
+            assert!(context.contains("Do not turn trivial public details into user Questions"));
+            assert!(context.contains("never use a user Question to resolve a repository fact"));
+            assert!(context.contains("attach source-grounded repository research"));
             assert!(context.contains("explicitly promote it"));
             assert!(
                 context.contains("present its actual alternatives, recommendation, and trade-offs")
             );
             assert!(context.contains("explicit current-host user response"));
-            assert!(context.contains("record and apply the Decision"));
-            assert!(context.contains("ordinary code edits require no new approval ceremony"));
+            assert!(context.contains("record the Decision, and only then implement that outcome"));
+            assert!(context.contains("ordinary code edits require no additional approval ceremony"));
             assert!(context
                 .contains("same actually observed command execution with a numeric exit status"));
             assert!(context.contains("output-only text is insufficient"));
             assert!(
                 context.contains("Meaningful completed or paused work uses a grounded Checkpoint")
             );
-            assert!(!context.contains("before the first ordinary repository write"));
-            assert!(!context.contains("screen every unresolved choice"));
-            assert!(!context.contains("exactly one category"));
-            assert!(!context.contains("Public invalid-input behavior"));
-            assert!(!context.contains("batch-failure continuation policy"));
+            assert!(!context.contains("trivial public behavior"));
         }
         let encoded = event(&unauthorized, "startup");
         let mut input = encoded.as_slice();

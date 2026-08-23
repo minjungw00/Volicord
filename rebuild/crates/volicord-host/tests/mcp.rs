@@ -384,37 +384,32 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("not_found result requires explicit project_initialize"));
     assert!(first_512.contains("current-host Goal"));
     assert!(first_512.contains("repository baseline"));
-    assert!(instructions.contains("before the first ordinary repository write"));
-    assert!(instructions.contains("exactly one category"));
-    assert!(instructions.contains("repository/environment fact--resolve through research"));
-    assert!(instructions.contains("accepted repository/product contract--apply it"));
-    assert!(instructions.contains("delegated implementation choice--the agent may choose"));
-    assert!(instructions.contains("material user-owned outcome--STOP before implementing"));
+    assert!(instructions.contains(volicord_operations::MATERIAL_DECISION_SCREENING));
+    assert!(instructions.contains("a repository/environment fact is researched"));
+    assert!(instructions.contains("accepted contract or applicable Decision is applied"));
+    assert!(instructions.contains("delegated implementation choice is chosen by the agent"));
+    assert!(instructions.contains("exploratory uncertainty may lead to research"));
+    assert!(instructions.contains("genuinely material user-owned unresolved outcome"));
+    assert!(instructions.contains("introduction or shape of a stable public API"));
     assert!(instructions.contains("user-visible default behavior"));
-    assert!(instructions.contains("CLI/API compatibility behavior"));
-    assert!(instructions.contains("externally observable error or failure policy"));
-    assert!(instructions.contains("privacy/security posture"));
-    assert!(instructions.contains("maintenance/support policy"));
-    assert!(instructions.contains("Public invalid-input behavior"));
-    assert!(instructions.contains("batch-failure continuation policy"));
-    assert!(instructions.contains("explicitly delegated by active architecture/product contracts"));
-    assert!(instructions.contains("including renderer/layout/detail choices"));
-    assert!(instructions.contains("library default, conventional behavior"));
-    assert!(instructions.contains("implementation simplicity, or agent recommendation"));
+    assert!(instructions.contains("externally visible diagnostic or error contract"));
+    assert!(instructions.contains("compatibility behavior"));
+    assert!(instructions.contains("generated/package/output defaults"));
+    assert!(instructions.contains("privacy or security policy"));
+    assert!(instructions.contains("support or maintenance policy"));
+    assert!(instructions.contains("Choosing a new public field, stable error attribute"));
+    assert!(instructions.contains("narrower, conventional, simpler, backwards-looking"));
+    assert!(instructions.contains("Do not turn trivial public details into user Questions"));
     assert!(instructions.contains("attach source-grounded repository research"));
-    assert!(instructions.contains("review materiality, mark it ready, and explicitly promote it"));
+    assert!(instructions.contains("review materiality, mark it ready, explicitly promote it"));
     assert!(
-        instructions.contains("present the actual alternatives, recommendation, and trade-offs")
+        instructions.contains("present its actual alternatives, recommendation, and trade-offs")
     );
     assert!(instructions.contains("explicit current-host user response"));
     assert!(instructions.contains("candidate_manage"));
-    assert!(instructions.contains("only then apply that Decision"));
-    assert!(instructions
-        .contains("Never substitute an agent recommendation or implementation preference"));
-    assert!(instructions.contains("facts remain research and must not be asked of the user"));
-    assert!(instructions
-        .contains("accepted repository/product contract--apply it and do not reopen it"));
-    assert!(instructions.contains("ordinary code edits require no new approval ceremony"));
+    assert!(instructions.contains("only then implement that outcome"));
+    assert!(instructions.contains("never use a user Question to resolve a repository fact"));
+    assert!(instructions.contains("ordinary code edits require no additional approval ceremony"));
     assert!(instructions.contains("repository_analyze is authorized local analysis"));
     assert!(instructions
         .contains("background_semantic_operation is the separate explicit provider boundary"));

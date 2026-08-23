@@ -28,6 +28,7 @@ use volicord_operations::{
     GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
     HealthState, LocalOperations, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
     ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
+    MATERIAL_DECISION_SCREENING,
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
@@ -56,7 +57,11 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
     "guarded_interaction",
 ];
 
-const SERVER_INSTRUCTIONS: &str = "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize, a current-host Goal through context_record, and a repository baseline through repository_analyze. After that baseline and before the first ordinary repository write, screen every unresolved choice relevant to the requested outcome into exactly one category: repository/environment fact--resolve through research, not a user Question; accepted repository/product contract--apply it and do not reopen it to manufacture a Question; delegated implementation choice--the agent may choose within the active contract; implementation choices explicitly delegated by active architecture/product contracts, including renderer/layout/detail choices, are not user Questions; or material user-owned outcome--STOP before implementing that outcome and use the existing Question and Decision path. Strong material signals include user-visible default behavior, CLI/API compatibility behavior, externally observable error or failure policy, privacy/security posture, maintenance/support policy, and any outcome where repository research leaves multiple viable policies that materially change what the user or downstream automation experiences. Public invalid-input behavior and batch-failure continuation policy are material observable outcomes when research leaves multiple viable policies. A library default, conventional behavior, implementation simplicity, or agent recommendation does not authorize selecting a material user-owned outcome. For such an outcome, use candidate_manage to submit the Question Candidate, attach source-grounded repository research, review materiality, mark it ready, and explicitly promote it. Then read inquiry_frontier, present the actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, call decision_record, and only then apply that Decision. Repository/environment facts remain research and must not be asked of the user. Never substitute an agent recommendation or implementation preference for a user Decision. Once applicable Decisions and contracts resolve the material outcome, ordinary code edits require no new approval ceremony. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony.";
+fn server_instructions() -> String {
+    format!(
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize, a current-host Goal through context_record, and a repository baseline through repository_analyze. After Recall or baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, use candidate_manage for Candidate research, readiness, and promotion, inquiry_frontier for the promoted Question, and decision_record for the explicit current-host response. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+    )
+}
 
 #[derive(Debug)]
 pub struct HostError {
@@ -135,7 +140,7 @@ impl HostAdapter {
             "protocolVersion": params.and_then(|value| value.get("protocolVersion")).and_then(Value::as_str).unwrap_or("2025-06-18"),
             "capabilities":{"tools":{"listChanged":false}},
             "serverInfo":{"name":"volicord","version":env!("CARGO_PKG_VERSION")},
-            "instructions":SERVER_INSTRUCTIONS
+            "instructions":server_instructions()
         }))
     }
 
@@ -1263,7 +1268,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read current promoted material Questions. Before implementation, present each actual alternative, recommendation, and trade-off and obtain an explicit current-host response. Repository-resolvable facts remain research; submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
+            "Read current promoted material Questions. Before choosing a genuinely material user-owned unresolved outcome, present each actual alternative, recommendation, and trade-off and obtain an explicit current-host response. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1341,7 +1346,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "candidate_manage" => (
-            "Explicitly submit and research an agent Question Candidate, promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision.",
+            "Explicitly submit and research an agent Question Candidate when ownership or materiality remains unresolved after owner, Decision, contract, and repository-fact inspection; promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision. Never use a Question Candidate to ask for a repository fact or to add ceremony to delegated, exploratory, or trivial choices.",
             json!({"oneOf": candidate_management_schemas()}),
             ToolBehavior::DestructiveClosed,
         ),
@@ -1586,7 +1591,11 @@ fn candidate_management_schemas() -> Vec<Value> {
             ),
             (
                 "why_now",
-                text_schema("Why the Question materially matters now", 1, 4096),
+                text_schema(
+                    "Why an externally meaningful user-owned outcome materially matters now",
+                    1,
+                    4096,
+                ),
             ),
             (
                 "affected_scope",
@@ -1621,7 +1630,11 @@ fn candidate_management_schemas() -> Vec<Value> {
             ),
             (
                 "materiality_rationale",
-                text_schema("Agent materiality-assessment rationale", 1, 4096),
+                text_schema(
+                    "Consequence-and-ownership rationale after owner, Decision, contract, and repository-fact inspection",
+                    1,
+                    4096,
+                ),
             ),
             (
                 "duplicate_basis",

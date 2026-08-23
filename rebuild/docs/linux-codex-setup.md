@@ -87,7 +87,22 @@ choices are handled by the agent. Research or no-question work,
 prototype/research, and explicit deferment are valid outcomes. Only a genuinely
 material, currently relevant, unresolved user-owned outcome stops before that
 outcome is chosen and uses the source-grounded Question and current-host
-Decision path. Ordinary repository edits require no approval ceremony.
+Decision path.
+
+Materiality follows consequence and ownership, not the number of possible code
+implementations or whether a detail is public. After current owners, applicable
+Decisions/contracts, and repository facts are inspected, stable public API
+shape, user-visible defaults, external diagnostics or error contracts,
+compatibility behavior, downstream generated/package/output defaults,
+privacy/security policy, and support/maintenance policy are strong user-owned
+signals when viable outcomes have materially different consequences and the
+choice was not already decided or delegated. A narrow, conventional, simple,
+backwards-looking, agent-recommended, or locally isolated option is not
+authority to choose such an outcome. Trivial public details do not become
+Questions, repository facts are never asked as user Questions, and exploratory
+uncertainty may still lead to research, a bounded prototype, deferment, or a
+revisit basis. Once the branch is resolved, ordinary repository edits require
+no approval ceremony.
 
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or

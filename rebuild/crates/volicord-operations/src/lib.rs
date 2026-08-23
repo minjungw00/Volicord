@@ -15,6 +15,7 @@ mod operations;
 mod provider;
 
 pub use cli::{run_cli, run_cli_with_input, CliExit};
+pub use codex::MATERIAL_DECISION_SCREENING;
 pub use error::Error;
 pub use forgetting::ForgettingState;
 pub use guarded::{
