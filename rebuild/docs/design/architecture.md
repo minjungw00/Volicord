@@ -392,9 +392,13 @@ create, bind 또는 revise하지 않으며 match가 없으면 explicit not-found
 initialization은 별도의 explicit intent로 남긴다.
 Repository path와 함께 explicit initialization을 요청했지만 user가 display name을 제공하지
 않았다면 Adapter는 이름을 추측하거나 ancestor directory/model knowledge에서 가져오지 않고
-Local Operations가 local Git metadata에 unambiguous한 `origin` repository slug가 있으면
-network request 없이 이를 bounded initial display-name hint로 사용하고, usable local Git
-identity가 없을 때만 canonical repository root의 basename으로 fallback한다.
+Local Operations가 local Git metadata의 unambiguous한 `origin`을 확인하고, absolute local
+repository 또는 안전하게 해석되는 local file URL이면 explicit small hop bound와 canonical
+visited guard 안에서 그 repository의 `origin` metadata를 계속 확인한다. Network request나
+repository source-body read 없이 도달한 non-local upstream repository slug를 strongest bounded
+initial display-name hint로 사용하고, lineage가 unreadable, malformed, cyclic 또는 over-depth이면
+usable immediate-origin slug를 유지한다. Usable Git hint가 없을 때만 canonical repository
+root의 basename으로 fallback한다.
 User가 display name을 제공했다면 그 이름을 그대로 보존한다. 이름과 repository path가 모두
 없는 initialization은 유효한 intent가 아니다. 이 display default는 path-independent Project
 identity나 binding/clone/worktree identity를 결정하지 않으며 existing Project를 rename하지

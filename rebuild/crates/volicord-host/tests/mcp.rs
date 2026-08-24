@@ -449,7 +449,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .to_lowercase()
         .contains("read-only"));
     assert!(descriptions["project_initialize"].contains("after resolution"));
-    assert!(descriptions["project_initialize"].contains("local Git origin repository slug"));
+    assert!(descriptions["project_initialize"].contains("local Git origin lineage"));
+    assert!(descriptions["project_initialize"].contains("immediate origin hint"));
     assert!(descriptions["project_initialize"].contains("canonical repository-root basename"));
     assert!(descriptions["project_initialize"].contains("preserve it exactly"));
     assert!(descriptions["recall"].contains("Recall must succeed before repository inspection"));
@@ -725,7 +726,7 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
 #[test]
 fn project_initialize_prefers_repository_native_identity_unless_name_is_explicit() {
     let temporary = tempdir().expect("temporary directory");
-    let source = temporary.path().join("tree-sitter");
+    let source = temporary.path().join("polyglot-medium");
     fs::create_dir_all(&source).expect("source repository");
     assert!(Command::new("git")
         .arg("-C")
@@ -733,6 +734,18 @@ fn project_initialize_prefers_repository_native_identity_unless_name_is_explicit
         .args(["init", "-q"])
         .status()
         .expect("git init")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&source)
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/tree-sitter/tree-sitter.git",
+        ])
+        .status()
+        .expect("upstream origin")
         .success());
     let repository = temporary
         .path()
@@ -746,11 +759,37 @@ fn project_initialize_prefers_repository_native_identity_unless_name_is_explicit
         .status()
         .expect("git clone")
         .success());
-    let explicit_repository = temporary
-        .path()
-        .join("another-outer-name")
-        .join("inferred-looking-name");
-    fs::create_dir_all(&explicit_repository).expect("explicit repository");
+    let explicit_source = temporary.path().join("small-python");
+    fs::create_dir(&explicit_source).expect("explicit source repository");
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&explicit_source)
+        .args(["init", "-q"])
+        .status()
+        .expect("explicit git init")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&explicit_source)
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:pallets/itsdangerous.git",
+        ])
+        .status()
+        .expect("explicit upstream origin")
+        .success());
+    let explicit_repository = temporary.path().join("explicit-cycle").join("repository");
+    fs::create_dir_all(explicit_repository.parent().expect("explicit clone parent"))
+        .expect("explicit clone parent");
+    assert!(Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&explicit_source)
+        .arg(&explicit_repository)
+        .status()
+        .expect("explicit git clone")
+        .success());
     let operations = LocalOperations::new(
         RuntimeLayout::new(temporary.path().join("runtime")).expect("runtime layout"),
     );

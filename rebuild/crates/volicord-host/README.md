@@ -21,11 +21,13 @@ available to ordinary Recall without creating a Decision.
 
 After `project_resolve` returns `not_found`, `project_initialize` accepts the
 repository without a display name and derives the initial Project display name
-from an unambiguous bounded repository slug in local Git `origin` metadata when
-available, without network access, and otherwise from the canonical
-repository-root basename. A user-supplied display name is preserved; callers
-must not substitute an ancestor directory or model guess. This hint does not
-rename an existing Project or determine Project, clone, or worktree identity.
+from the strongest unambiguous repository slug in a bounded local Git `origin`
+lineage when available, without network or source-body access. Cyclic,
+over-depth, unreadable, or malformed lineage retains a safe immediate hint,
+then falls back to the canonical repository-root basename when no Git hint is
+usable. A user-supplied display name is preserved; callers must not substitute
+an ancestor directory or model guess. This hint does not rename an existing
+Project or determine Project, clone, or worktree identity.
 
 `repository_analyze` returns the existing Analysis and Repository Snapshot
 identities needed to bound an ordinary work unit. Every fresh initialized or

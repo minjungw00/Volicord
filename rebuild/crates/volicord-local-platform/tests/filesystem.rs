@@ -168,6 +168,7 @@ fn repository_name_hint_uses_unambiguous_local_origin_metadata() {
             "file:///var/tmp/source-repository.git",
             Some("source-repository"),
         ),
+        ("../relative-source.git", Some("relative-source")),
         ("/", None),
         ("https://example.invalid/unsafe%20name.git", None),
     ] {
@@ -182,34 +183,138 @@ fn repository_name_hint_uses_unambiguous_local_origin_metadata() {
         );
         git(&repository, &["remote", "remove", "origin"]);
     }
+
+    git(
+        &repository,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/first.git",
+        ],
+    );
+    git(
+        &repository,
+        &[
+            "config",
+            "--add",
+            "remote.origin.url",
+            "https://example.invalid/second.git",
+        ],
+    );
+    let layout = GitWorktreeLayout::resolve(&repository)
+        .expect("layout")
+        .expect("Git repository");
+    assert_eq!(layout.repository_name_hint(), None);
 }
 
 #[test]
-fn filesystem_origin_survives_cloning_into_a_generic_directory_name() {
+fn repository_name_hint_follows_two_hop_local_clone_lineage() {
     let temporary = tempdir().expect("temporary directory");
-    let source = temporary.path().join("tree-sitter");
-    let clone = temporary.path().join("campaign").join("repository");
-    fs::create_dir_all(&source).expect("source");
+    for (alias, upstream, expected, use_file_url) in [
+        (
+            "polyglot-medium",
+            "https://github.com/tree-sitter/tree-sitter.git",
+            "tree-sitter",
+            false,
+        ),
+        (
+            "small-python",
+            "git@github.com:pallets/itsdangerous.git",
+            "itsdangerous",
+            true,
+        ),
+    ] {
+        let source = temporary.path().join(alias);
+        fs::create_dir(&source).expect("source");
+        git(&source, &["init", "-q"]);
+        git(&source, &["remote", "add", "origin", upstream]);
+        let clone = temporary.path().join(format!("{alias}-cycle/repository"));
+        let clone_origin = if use_file_url {
+            format!("file://{}", source.display())
+        } else {
+            source.display().to_string()
+        };
+        clone_repository(&clone_origin, &clone);
+
+        let layout = GitWorktreeLayout::resolve(&clone)
+            .expect("layout")
+            .expect("Git clone");
+        assert_eq!(layout.repository_name_hint().as_deref(), Some(expected));
+    }
+}
+
+#[test]
+fn repository_name_hint_keeps_immediate_fallback_when_lineage_has_no_stronger_origin() {
+    let temporary = tempdir().expect("temporary directory");
+    let source = temporary.path().join("campaign-alias");
+    fs::create_dir(&source).expect("source");
     git(&source, &["init", "-q"]);
-    fs::create_dir_all(clone.parent().expect("clone parent")).expect("campaign");
-    let output = Command::new("git")
-        .args(["clone", "-q"])
-        .arg(&source)
-        .arg(&clone)
-        .output()
-        .expect("git clone");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let clone = temporary.path().join("cycle/repository");
+    clone_repository(&source.display().to_string(), &clone);
 
     let layout = GitWorktreeLayout::resolve(&clone)
         .expect("layout")
         .expect("Git clone");
     assert_eq!(
         layout.repository_name_hint().as_deref(),
-        Some("tree-sitter")
+        Some("campaign-alias")
+    );
+}
+
+#[test]
+fn repository_name_hint_terminates_cycles_and_over_depth_lineage() {
+    let temporary = tempdir().expect("temporary directory");
+    let cycle_a = temporary.path().join("cycle-a");
+    let cycle_b = temporary.path().join("cycle-b");
+    for repository in [&cycle_a, &cycle_b] {
+        fs::create_dir(repository).expect("cycle repository");
+        git(repository, &["init", "-q"]);
+    }
+    git(
+        &cycle_a,
+        &["remote", "add", "origin", &cycle_b.display().to_string()],
+    );
+    git(
+        &cycle_b,
+        &["remote", "add", "origin", &cycle_a.display().to_string()],
+    );
+    let cycle_layout = GitWorktreeLayout::resolve(&cycle_a)
+        .expect("cycle layout")
+        .expect("Git repository");
+    assert_eq!(
+        cycle_layout.repository_name_hint().as_deref(),
+        Some("cycle-b")
+    );
+
+    let chain = (0..10)
+        .map(|index| temporary.path().join(format!("chain-{index}")))
+        .collect::<Vec<_>>();
+    for repository in &chain {
+        fs::create_dir(repository).expect("chain repository");
+        git(repository, &["init", "-q"]);
+    }
+    for pair in chain.windows(2) {
+        git(
+            &pair[0],
+            &["remote", "add", "origin", &pair[1].display().to_string()],
+        );
+    }
+    git(
+        chain.last().expect("last chain repository"),
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/tree-sitter/tree-sitter.git",
+        ],
+    );
+    let chain_layout = GitWorktreeLayout::resolve(&chain[0])
+        .expect("chain layout")
+        .expect("Git repository");
+    assert_eq!(
+        chain_layout.repository_name_hint().as_deref(),
+        Some("chain-1")
     );
 }
 
@@ -577,6 +682,20 @@ fn git(repository: &std::path::Path, arguments: &[&str]) {
     assert!(
         output.status.success(),
         "git failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn clone_repository(origin: &str, destination: &std::path::Path) {
+    fs::create_dir_all(destination.parent().expect("clone parent")).expect("clone parent");
+    let output = Command::new("git")
+        .args(["clone", "-q", origin])
+        .arg(destination)
+        .output()
+        .expect("git clone");
+    assert!(
+        output.status.success(),
+        "git clone failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 }

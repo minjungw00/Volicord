@@ -1236,7 +1236,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "project_initialize" => (
-            "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding. When repository is supplied without display_name, prefer a bounded local Git origin repository slug and fall back to the canonical repository-root basename; when the user supplied display_name, preserve it exactly.",
+            "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding. When repository is supplied without display_name, prefer the strongest bounded repository slug from local Git origin lineage and fall back through the immediate origin hint to the canonical repository-root basename; when the user supplied display_name, preserve it exactly.",
             json!({"oneOf": [
                 object_schema(
                     vec![

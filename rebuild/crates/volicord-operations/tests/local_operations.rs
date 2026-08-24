@@ -33,53 +33,98 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
     Ok((temporary, operations, repository))
 }
 
+fn clone_from_local_alias(
+    root: &Path,
+    alias: &str,
+    upstream: Option<&str>,
+    cycle: &str,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let source = root.join(alias);
+    fs::create_dir(&source)?;
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&source)
+        .args(["init", "-q"])
+        .status()?
+        .success());
+    if let Some(upstream) = upstream {
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args(["remote", "add", "origin", upstream])
+            .status()?
+            .success());
+    }
+    let repository = root.join(cycle).join("repository");
+    fs::create_dir_all(repository.parent().ok_or("clone parent")?)?;
+    assert!(Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&source)
+        .arg(&repository)
+        .status()?
+        .success());
+    Ok(repository)
+}
+
 #[test]
 fn repository_initialization_prefers_local_git_identity_then_falls_back_and_preserves_explicit_names(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
-    let source_repository = temporary.path().join("tree-sitter");
-    fs::create_dir_all(&source_repository)?;
-    assert!(Command::new("git")
-        .arg("-C")
-        .arg(&source_repository)
-        .args(["init", "-q"])
-        .status()?
-        .success());
-    let derived_repository = temporary.path().join("campaign").join("repository");
-    fs::create_dir_all(derived_repository.parent().ok_or("clone parent")?)?;
-    assert!(Command::new("git")
-        .args(["clone", "-q"])
-        .arg(&source_repository)
-        .arg(&derived_repository)
-        .status()?
-        .success());
-    let fallback_repository = temporary
-        .path()
-        .join("misleading-Volicord")
-        .join("rebuild")
-        .join("fallback-name");
-    fs::create_dir_all(&fallback_repository)?;
-    fs::create_dir_all(&derived_repository)?;
-    let explicit_repository = temporary
-        .path()
-        .join("another-outer-name")
-        .join("derived-looking-name");
-    fs::create_dir_all(&explicit_repository)?;
+    let tree_sitter_repository = clone_from_local_alias(
+        temporary.path(),
+        "polyglot-medium",
+        Some("https://github.com/tree-sitter/tree-sitter.git"),
+        "tree-cycle",
+    )?;
+    let small_python_repository = clone_from_local_alias(
+        temporary.path(),
+        "small-python",
+        Some("git@github.com:pallets/itsdangerous.git"),
+        "small-cycle",
+    )?;
+    let fallback_repository =
+        clone_from_local_alias(temporary.path(), "campaign-alias", None, "fallback-cycle")?;
+    let canonical_fallback_repository = temporary.path().join("canonical-fallback");
+    fs::create_dir(&canonical_fallback_repository)?;
+    let explicit_repository = clone_from_local_alias(
+        temporary.path(),
+        "explicit-alias",
+        Some("https://github.com/example/derived-looking-name.git"),
+        "explicit-cycle",
+    )?;
     let operations = LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime"))?);
 
-    let derived = operations.initialize_project_from_repository(&derived_repository)?;
-    assert_eq!(derived.project.display_name, "tree-sitter");
+    let tree_sitter = operations.initialize_project_from_repository(&tree_sitter_repository)?;
+    assert_eq!(tree_sitter.project.display_name, "tree-sitter");
     assert_eq!(
-        derived
+        tree_sitter
             .binding
-            .ok_or("derived Project was not bound")?
+            .ok_or("Tree-sitter Project was not bound")?
             .binding
             .absolute_path,
-        fs::canonicalize(&derived_repository)?,
+        fs::canonicalize(&tree_sitter_repository)?,
+    );
+
+    let small_python = operations.initialize_project_from_repository(&small_python_repository)?;
+    assert_eq!(small_python.project.display_name, "itsdangerous");
+    assert_eq!(
+        small_python
+            .binding
+            .ok_or("Small-Python Project was not bound")?
+            .binding
+            .absolute_path,
+        fs::canonicalize(&small_python_repository)?,
     );
 
     let fallback = operations.initialize_project_from_repository(&fallback_repository)?;
-    assert_eq!(fallback.project.display_name, "fallback-name");
+    assert_eq!(fallback.project.display_name, "campaign-alias");
+
+    let canonical_fallback =
+        operations.initialize_project_from_repository(&canonical_fallback_repository)?;
+    assert_eq!(
+        canonical_fallback.project.display_name,
+        "canonical-fallback"
+    );
 
     let explicit = operations.initialize_project("User Chosen Name", Some(&explicit_repository))?;
     assert_eq!(explicit.project.display_name, "User Chosen Name");

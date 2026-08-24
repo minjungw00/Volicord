@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     ffi::OsStr,
     fs::{self, File},
     io::{self, Read},
@@ -15,6 +16,7 @@ use std::os::unix::fs::PermissionsExt;
 const CONTROL_FILE_LIMIT: u64 = 4096;
 const GIT_CONFIG_LIMIT: u64 = 256 * 1024;
 const REPOSITORY_NAME_HINT_LIMIT: usize = 255;
+const LOCAL_ORIGIN_LINEAGE_HOP_LIMIT: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryPathError(String);
@@ -291,14 +293,41 @@ impl GitWorktreeLayout {
         self.linked_worktree
     }
 
-    /// Returns a bounded display-name hint from the local `origin` URL when it
-    /// is present and unambiguous. This is not a Project or clone identity.
+    /// Returns a bounded display-name hint from the local `origin` lineage when
+    /// it is present and unambiguous. This is not a Project or clone identity.
     pub fn repository_name_hint(&self) -> Option<String> {
+        let origin = self.origin_url()?;
+        let immediate_hint = repository_slug(&origin);
+        let mut current_origin = origin;
+        let mut visited = HashSet::from([self.common_dir.clone()]);
+
+        for _ in 0..LOCAL_ORIGIN_LINEAGE_HOP_LIMIT {
+            let Some(local_repository) = local_origin_repository_path(&current_origin) else {
+                return repository_slug(&current_origin).or(immediate_hint);
+            };
+            let Some(layout) = Self::resolve(local_repository).ok().flatten() else {
+                return immediate_hint;
+            };
+            if !visited.insert(layout.common_dir.clone()) {
+                return immediate_hint;
+            }
+            let Some(next_origin) = layout.origin_url() else {
+                return immediate_hint;
+            };
+            if local_origin_repository_path(&next_origin).is_none() {
+                return repository_slug(&next_origin).or(immediate_hint);
+            }
+            current_origin = next_origin;
+        }
+
+        immediate_hint
+    }
+
+    fn origin_url(&self) -> Option<String> {
         let config =
             read_bounded_regular_file(&self.common_dir.join("config"), GIT_CONFIG_LIMIT).ok()?;
         let config = std::str::from_utf8(&config).ok()?;
-        let origin = unambiguous_origin_url(config)?;
-        repository_slug(origin)
+        unambiguous_origin_url(config).map(str::to_owned)
     }
 }
 
@@ -474,6 +503,20 @@ fn repository_slug(origin: &str) -> Option<String> {
         return None;
     }
     Some(candidate.to_owned())
+}
+
+fn local_origin_repository_path(origin: &str) -> Option<PathBuf> {
+    if origin.contains(['\0', '\n', '\r', '?', '#', '\\']) {
+        return None;
+    }
+    if let Some(path) = origin.strip_prefix("file://") {
+        if !path.starts_with('/') || path.contains('%') {
+            return None;
+        }
+        return Some(PathBuf::from(path));
+    }
+    let path = Path::new(origin);
+    path.is_absolute().then(|| path.to_path_buf())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
