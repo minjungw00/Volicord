@@ -78,6 +78,9 @@ Evaluator/control owns the hidden preparation work:
 - seal each descriptor through the maintained helper before any operator run;
 - keep evaluator facts, contract constraints, delegated boundaries, possible
   concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
+- use the campaign-generated opaque slot and isolated pinned reviewer workspace;
+  do not expose repository class, logical cycle, behavior class, or matrix order
+  before the provisional review is fixed.
 
 The naturalistic operator owns the actions that cannot be truthfully automated:
 
@@ -129,6 +132,13 @@ material contains the frozen tasks and paths but
 not the evaluation basis, behavior reasoning, or
 provenance. Typed provenance is reverified against an active architecture owner
 at the candidate revision or a real file at the pinned target revision.
+New campaigns use cryptographically random opaque slot IDs for qualifying
+workspace, Runtime Home, reviewer preparation/template/provisional filenames,
+reviewer source workspaces, and operator labels. The operator sheet is ordered
+by opaque ID within repository groupings. Only the evaluator/steward-private,
+hash- and inventory-bound mapping connects a slot to repository class, logical
+cycle, expected behavior class, and authoritative descriptor. There is no
+cycle-numbered layout compatibility branch and no prior campaign is migrated.
 
 `collect-batch` maps all unordered inputs before mutating campaign state. It
 rejects ambiguous, missing, duplicate, wrong-task, wrong-workspace,
@@ -253,9 +263,9 @@ separate private archive for the independent review handoff.
 
 ## Recommended implementation choice
 
-Use the maintained campaign helper to prepare a new candidate-bound campaign,
-run all thirty genuine sessions, and obtain the automated result first. Add the
-campaign-level human review when evaluating replacement.
+Use the maintained campaign helper to prepare a new candidate-bound opaque-slot
+campaign, run all thirty genuine sessions, and obtain the automated result
+first. Add the campaign-level human review when evaluating replacement.
 
 ## Rejected alternatives and reasons
 
@@ -285,7 +295,7 @@ changing the accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
-After remediation passes a new technical entry, prepare one completely fresh helper-owned campaign,
+After remediation passes a new technical entry, prepare one completely fresh opaque-slot helper-owned campaign,
 have the control agent research and seal the fifteen evaluator descriptors, grant
 trust manually, activate all fifteen repository integrations, run the thirty
 required work/resume chats with only the frozen tasks, answer the actual

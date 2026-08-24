@@ -997,7 +997,33 @@ def load_definition() -> dict[str, Any]:
         != "phase8_blind_review_preparation"
         or blind_first.get("provisional_artifact_kind")
         != "phase8_provisional_behavior_review"
+        or blind_first.get("preparation_fields")
+        != [
+            "review_slot_id",
+            "candidate_head",
+            "repository_revision",
+            "reviewer_repository_path",
+            "work_user_task",
+            "fresh_resume_user_task",
+            "work_scope",
+            "owner_document_locations",
+        ]
+        or blind_first.get("provisional_fields")
+        != [
+            "review_slot_id",
+            "status",
+            "reviewer_role",
+            "preparation_sha256",
+            "classification",
+            "materiality_conclusion",
+            "material_outcome_unavoidable",
+            "operator_prompt_does_not_disclose_material_outcome",
+            "basis",
+            "provenance_reference_indices",
+        ]
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
+        or blind_first.get("reviewer_order") != "opaque_review_slot_id"
+        or blind_first.get("logical_identity_visible_before_provisional_fix") is not False
         or agreement_contract.get("accepted_statuses")
         != ["agreed", "resolved_from_evidence"]
         or agreement_contract.get("sealing_blocked_status") != "unresolved_conflict"
@@ -1017,6 +1043,20 @@ def load_definition() -> dict[str, Any]:
         or behavior_review.get("visibility") != "evaluator_input_only"
     ):
         raise ValueError("the Phase 8 behavior-review contract changed")
+    if evidence.get("opaque_slot_contract") != {
+        "identity_generation": "campaign_time_cryptographic_random_128_bit_token",
+        "stable_for_prepared_campaign": True,
+        "unique_within_campaign": True,
+        "derived_from_repository_or_cycle": False,
+        "physical_workspace_layout": "slots/<review_slot_id>/repository",
+        "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
+        "reviewer_artifact_naming": "review_slot_id_only",
+        "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
+        "private_mapping_visibility": "evaluator_steward_private_until_provisional_review_is_fixed",
+        "private_mapping_integrity": "campaign_bound_sha256_and_evidence_inventory",
+        "numeric_compatibility_branch": False,
+    }:
+        raise ValueError("the Phase 8 opaque-slot contract changed")
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
@@ -1682,14 +1722,19 @@ def blind_first_review_errors(
     reference_count: int,
 ) -> list[str]:
     errors: list[str] = []
-    if not isinstance(preparation, dict) or set(preparation) != {"kind", "sha256"}:
+    if not isinstance(preparation, dict) or set(preparation) != {
+        "kind",
+        "review_slot_id",
+        "sha256",
+    }:
         return ["independent review requires one blind review preparation reference"]
     if preparation.get("kind") != "phase8_blind_review_preparation_reference" or not valid_capture_sha256(
         preparation.get("sha256")
-    ):
+    ) or re.fullmatch(r"[0-9a-f]{32}", str(preparation.get("review_slot_id", ""))) is None:
         errors.append("blind review preparation reference is malformed")
     required = {
         "kind",
+        "review_slot_id",
         "status",
         "reviewer_role",
         "preparation_sha256",
@@ -1708,6 +1753,7 @@ def blind_first_review_errors(
         or provisional.get("status") != "recorded"
         or provisional.get("reviewer_role")
         != "campaign_preparation_independent_reviewer"
+        or provisional.get("review_slot_id") != preparation.get("review_slot_id")
         or provisional.get("preparation_sha256") != preparation.get("sha256")
         or provisional.get("classification") != behavior_class
     ):
@@ -5171,10 +5217,12 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
             "basis": "Independent control-session review accepted the bounded behavior classification.",
             "review_preparation": {
                 "kind": "phase8_blind_review_preparation_reference",
+                "review_slot_id": "11" * 16,
                 "sha256": "aa" * 32,
             },
             "provisional_review": {
                 "kind": "phase8_provisional_behavior_review",
+                "review_slot_id": "11" * 16,
                 "status": "recorded",
                 "reviewer_role": "campaign_preparation_independent_reviewer",
                 "preparation_sha256": "aa" * 32,

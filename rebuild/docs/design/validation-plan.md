@@ -900,10 +900,14 @@ materiality concern, Volicord/Inquiry/Question Candidate/Decision/Checkpoint/Rec
 class를 드러내지 않는다. Static leak check는 conservative supplement일 뿐이며 semantic
 non-disclosure는 independent review가 소유한다.
 
-Hidden review는 full evaluator basis를 보기 전에 candidate/repository identity와 revision,
-exact frozen tasks, work scope와 owner-document location만 담은 reviewer-preparation artifact로
-repository/owner를 조사하고 provisional classification/materiality conclusion을 hash-bound
-artifact로 고정한다. 그 뒤에만 evaluator concern, alternatives, recommendation과
+Hidden review는 full evaluator basis를 보기 전에 campaign-generated random
+`review_slot_id`, candidate와 pinned revision, exact frozen tasks, work scope,
+owner-document location과 `reviewer/workspaces/<review_slot_id>/repository`의 별도 pinned
+source-inspection clone만 담은 reviewer-preparation artifact로 repository/owner를 조사하고
+provisional classification/materiality conclusion을 같은 opaque ID와 preparation SHA-256에
+고정한다. Reviewer-visible preparation content, filename, workspace path와 index는 repository
+class, logical cycle, behavior class와 fixed matrix position을 포함하지 않으며 opaque-ID
+순서로 표시한다. 그 뒤에만 evaluator concern, alternatives, recommendation과
 counterfactual conclusion을 비교한다. Hidden descriptor는 provisional/final review가 모두
 `material_outcome_unavoidable = true`와
 `operator_prompt_does_not_disclose_material_outcome = true`를 기록해야 봉인된다. 이 경계는
@@ -1027,6 +1031,11 @@ rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
 summary, descriptor evidence completion, manifest assembly와 review packaging을 담당한다.
 Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+`prepare`는 모든 campaign mutation 전에 15개의 unique cryptographic-random opaque slot을
+만들고 qualifying repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
+Evaluator/steward-private mapping만 opaque slot을 repository class, logical cycle, expected
+behavior class와 authoritative descriptor에 연결하며 mapping은 campaign SHA-256와 evidence
+inventory에 묶인다. Numeric old/new layout branch나 prior campaign migration은 없다.
 Independent evaluator/control은 actual repository와 pinned revision을 조사하고 prescribed
 selection이 아닌 behavior-class review를 준비·독립 검토한 뒤 maintained helper로 cycle
 descriptor를 봉인한다.
@@ -1036,14 +1045,17 @@ repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승�
 Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. Genuine
 material Question이 실제로 제시된 경우에는 본인의 답을 제공하고 30개 raw
 rollout을 session 사이의 control 접촉 없이 보존한다.
-`prepare`는 evaluator input과 operator material을 분리한다. `prepare-review`는 exact
-repository/candidate identity와 revision, frozen work/resume tasks, work scope와 owner-document
-location만 reviewer plane에 동결하고 evaluator concerns, alternatives, recommendation,
+`prepare`는 evaluator input과 operator material을 분리한다. `prepare-review`는 opaque
+`review_slot_id`, exact candidate/pinned revision, frozen work/resume tasks, work scope,
+owner-document location과 opaque reviewer workspace만 reviewer plane에 동결하고 evaluator
+repository class/logical cycle mapping, concerns, alternatives, recommendation,
 user-owned outcome과 counterfactual conclusion은 제외한다. Independent control agent가 이
 artifact에 대한 provisional review를 고정한 뒤 `seal-cycle`로 full evaluator basis와 비교해
 descriptor를 검증·봉인하기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
-동결하며 exact work/resume task와 operational path만으로 operator run sheet를 다시 만든다.
+동결하며 exact work/resume task와 opaque authoritative workspace/Runtime path만으로 operator
+run sheet를 다시 만든다. Run sheet는 repository grouping 안에서도 opaque-ID 순서를 쓰며
+logical cycle label이나 behavior class를 표시하지 않는다.
 Operator-facing artifact의 leak check는 prescribed Question, evaluator concern, recommendation,
 prescribed selection, counterfactual approach, fact/authority agreement,
 behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence

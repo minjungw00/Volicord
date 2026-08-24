@@ -15,6 +15,7 @@ import io
 import json
 from pathlib import Path
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -48,6 +49,7 @@ RAW_NAMES = {"work.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = len(CLASSES) * len(BEHAVIOR_CLASSES) * 2
+REVIEW_SLOT_ID = re.compile(r"[0-9a-f]{32}")
 
 
 class CampaignError(ValueError):
@@ -82,6 +84,7 @@ def load_campaign(root: Path) -> dict[str, Any]:
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
+    validate_slot_mapping(root, value)
     return value
 
 
@@ -95,8 +98,106 @@ def cycle_key(kind: str, cycle: int) -> str:
     return f"{kind}-cycle-{cycle}"
 
 
-def cycle_root(root: Path, kind: str, cycle: int) -> Path:
-    return root / "cycles" / cycle_key(kind, cycle)
+def new_review_slot_id() -> str:
+    return secrets.token_hex(16)
+
+
+def opaque_order_reproduces_fixed_matrix(
+    assignments: list[tuple[str, int, str]],
+) -> bool:
+    for kind in CLASSES:
+        ordered = sorted(
+            (item for item in assignments if item[0] == kind),
+            key=lambda item: item[2],
+        )
+        if [number for _kind, number, _slot in ordered] == list(
+            range(1, len(BEHAVIOR_CLASSES) + 1)
+        ):
+            return True
+    return False
+
+
+def slot_mapping_path(root: Path) -> Path:
+    return root / "evaluator/slot-mapping.json"
+
+
+def slot_root(root: Path, review_slot_id: str) -> Path:
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+        raise CampaignError("review slot identity is malformed")
+    return root / "slots" / review_slot_id
+
+
+def cycle_state(
+    root: Path,
+    kind: str,
+    cycle: int,
+    campaign: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    campaign = campaign or load_campaign(root)
+    return campaign["cycles"][cycle_key(kind, cycle)]
+
+
+def cycle_root(
+    root: Path,
+    kind: str,
+    cycle: int,
+    campaign: dict[str, Any] | None = None,
+) -> Path:
+    return slot_root(root, cycle_state(root, kind, cycle, campaign)["review_slot_id"])
+
+
+def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: str) -> Path:
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+        raise CampaignError("review slot identity is malformed")
+    return root / plane / directory / f"{review_slot_id}.json"
+
+
+def slot_mapping_value(cycles: dict[str, Any]) -> dict[str, Any]:
+    entries = []
+    for key, state in cycles.items():
+        entries.append({
+            "review_slot_id": state["review_slot_id"],
+            "repository_class": state["repository_class"],
+            "logical_cycle": state["cycle"],
+            "expected_behavior_class": state["behavior_class"],
+            "repository_revision": state["repository_revision"],
+            "authoritative_workspace": state["repository_path"],
+            "reviewer_workspace": state["reviewer_repository_path"],
+            "evaluator_input": f"evaluator/inputs/{state['review_slot_id']}.json",
+            "authoritative_descriptor": f"evaluator/descriptors/{state['review_slot_id']}.json",
+            "private_cycle_key": key,
+        })
+    return {
+        "kind": "phase8_dogfood_opaque_slot_mapping",
+        "visibility": "evaluator_steward_private",
+        "entries": sorted(entries, key=lambda item: item["review_slot_id"]),
+    }
+
+
+def validate_slot_mapping(root: Path, campaign: dict[str, Any]) -> None:
+    path = slot_mapping_path(root)
+    if not path.is_file():
+        raise CampaignError("campaign-private opaque slot mapping is unavailable")
+    expected_hash = campaign.get("opaque_slot_mapping_sha256")
+    if not isinstance(expected_hash, str) or harness.sha256(path) != expected_hash:
+        raise CampaignError("campaign-private opaque slot mapping hash mismatch")
+    mapping = read_json(path)
+    cycles = campaign.get("cycles")
+    if not isinstance(mapping, dict) or not isinstance(cycles, dict):
+        raise CampaignError("campaign-private opaque slot mapping is malformed")
+    try:
+        expected_mapping = slot_mapping_value(cycles)
+    except (KeyError, TypeError) as error:
+        raise CampaignError("campaign-private opaque slot mapping is malformed") from error
+    if mapping != expected_mapping:
+        raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
+    ids = [entry.get("review_slot_id") for entry in mapping.get("entries", [])]
+    if (
+        len(ids) != len(CLASSES) * len(BEHAVIOR_CLASSES)
+        or len(ids) != len(set(ids))
+        or any(not isinstance(value, str) or REVIEW_SLOT_ID.fullmatch(value) is None for value in ids)
+    ):
+        raise CampaignError("campaign-private opaque slot mapping is duplicate or malformed")
 
 
 def inventory_path(root: Path) -> Path:
@@ -146,23 +247,115 @@ def copy_exact(source: Path, destination: Path) -> None:
 
 
 def evaluator_input_path(root: Path, kind: str, cycle: int) -> Path:
-    return root / "evaluator/inputs" / f"{cycle_key(kind, cycle)}.json"
+    state = cycle_state(root, kind, cycle)
+    return slot_artifact_path(root, "evaluator", "inputs", state["review_slot_id"])
 
 
 def evaluator_descriptor_path(root: Path, kind: str, cycle: int) -> Path:
-    return root / "evaluator/descriptors" / f"{cycle_key(kind, cycle)}.json"
+    state = cycle_state(root, kind, cycle)
+    return slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"])
 
 
 def reviewer_preparation_path(root: Path, kind: str, cycle: int) -> Path:
-    return root / "reviewer/preparations" / f"{cycle_key(kind, cycle)}.json"
+    state = cycle_state(root, kind, cycle)
+    return slot_artifact_path(root, "reviewer", "preparations", state["review_slot_id"])
 
 
 def reviewer_provisional_template_path(root: Path, kind: str, cycle: int) -> Path:
-    return root / "reviewer/templates" / f"{cycle_key(kind, cycle)}.json"
+    state = cycle_state(root, kind, cycle)
+    return slot_artifact_path(root, "reviewer", "templates", state["review_slot_id"])
 
 
 def reviewer_provisional_path(root: Path, kind: str, cycle: int) -> Path:
-    return root / "reviewer/provisional" / f"{cycle_key(kind, cycle)}.json"
+    state = cycle_state(root, kind, cycle)
+    return slot_artifact_path(root, "reviewer", "provisional", state["review_slot_id"])
+
+
+def reviewer_index_path(root: Path) -> Path:
+    return root / "reviewer/index.json"
+
+
+def render_reviewer_index(root: Path) -> Path:
+    campaign = load_campaign(root)
+    entries = []
+    for state in sorted(
+        campaign["cycles"].values(), key=lambda item: item["review_slot_id"]
+    ):
+        review_slot_id = state["review_slot_id"]
+        entries.append({
+            "review_slot_id": review_slot_id,
+            "preparation": f"preparations/{review_slot_id}.json",
+            "provisional_review_template": f"templates/{review_slot_id}.json",
+            "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
+        })
+    path = reviewer_index_path(root)
+    write_json(path, {
+        "kind": "phase8_blind_review_index",
+        "ordering": "opaque_review_slot_id",
+        "entries": entries,
+    })
+    return path
+
+
+def json_keys(value: Any) -> set[str]:
+    if isinstance(value, dict):
+        return set(value).union(*(json_keys(item) for item in value.values()))
+    if isinstance(value, list):
+        return set().union(*(json_keys(item) for item in value)) if value else set()
+    return set()
+
+
+def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
+    index = read_json(reviewer_index_path(root))
+    entries = index.get("entries") if isinstance(index, dict) else None
+    if (
+        not isinstance(index, dict)
+        or index.get("kind") != "phase8_blind_review_index"
+        or index.get("ordering") != "opaque_review_slot_id"
+        or not isinstance(entries, list)
+        or [item.get("review_slot_id") for item in entries]
+        != sorted(item.get("review_slot_id") for item in entries)
+    ):
+        raise CampaignError("blind reviewer index does not use opaque-slot ordering")
+    prohibited_keys = {
+        "behavior_class",
+        "cycle",
+        "logical_cycle",
+        "repository_class",
+        "evaluation_basis",
+        "possible_material_concerns",
+        "counterfactual_review",
+        "evaluator_recommendation",
+    }
+    for directory in ("preparations", "templates", "provisional"):
+        for path in sorted((root / "reviewer" / directory).glob("*.json")):
+            if REVIEW_SLOT_ID.fullmatch(path.stem) is None:
+                raise CampaignError("blind reviewer filename exposes a non-opaque identity")
+            value = read_json(path)
+            if json_keys(value).intersection(prohibited_keys):
+                raise CampaignError("blind reviewer artifact exposes evaluator identity or material")
+            if directory != "provisional" and any(
+                behavior_class in path.read_text(encoding="utf-8")
+                for behavior_class in BEHAVIOR_CLASSES
+            ):
+                raise CampaignError("blind reviewer artifact exposes a behavior class")
+    for entry in entries:
+        review_slot_id = entry.get("review_slot_id")
+        if not isinstance(review_slot_id, str) or REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+            raise CampaignError("blind reviewer index contains a malformed opaque slot")
+        expected = {
+            "review_slot_id": review_slot_id,
+            "preparation": f"preparations/{review_slot_id}.json",
+            "provisional_review_template": f"templates/{review_slot_id}.json",
+            "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
+        }
+        if entry != expected:
+            raise CampaignError("blind reviewer index contains a logical identity mapping")
+        workspace = root / "reviewer" / entry["reviewer_workspace"]
+        if workspace.resolve(strict=False) != (
+            root / "reviewer/workspaces" / review_slot_id / "repository"
+        ).resolve(strict=False):
+            raise CampaignError("blind reviewer workspace path is not opaque")
 
 
 def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
@@ -358,33 +551,48 @@ def assert_operator_artifacts_do_not_leak(root: Path) -> None:
             "EVALUATOR_ONLY" in text
             or any(value in text for value in hidden)
             or any(behavior_class in text for behavior_class in BEHAVIOR_CLASSES)
+            or re.search(r"\bcycle\s+[1-5]\b", text, flags=re.IGNORECASE)
+            or re.search(r"(?:^|[/\\])cycles(?:[/\\]|$)", text)
         ):
             raise CampaignError(f"operator-facing artifact exposes evaluator-only material: {relative(root, path)}")
 
 
 def render_operator_run_sheet(root: Path) -> Path:
     campaign = load_campaign(root)
-    entries: list[str] = []
+    entries_by_repository: dict[str, list[str]] = {kind: [] for kind in CLASSES}
     for kind in CLASSES:
-        for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
-            state = campaign["cycles"][cycle_key(kind, cycle)]
-            if state["state"] in {"prepared", "review_prepared"}:
+        states = sorted(
+            (
+                campaign["cycles"][cycle_key(kind, cycle)]
+                for cycle in range(1, len(BEHAVIOR_CLASSES) + 1)
+            ),
+            key=lambda item: item["review_slot_id"],
+        )
+        for state in states:
+            if state["state"] in {"prepared", "review_prepared", "provisional_recorded"}:
                 continue
+            cycle = state["cycle"]
             descriptor = read_json(evaluator_descriptor_path(root, kind, cycle))
-            entries.append(
-                f"## {kind} — cycle {cycle}\n\n"
+            review_slot_id = state["review_slot_id"]
+            entries_by_repository[kind].append(
+                f"### Slot `{review_slot_id}`\n\n"
                 f"- Repository: `{state['repository_path']}`\n"
                 f"- Runtime Home: `{state['runtime_home']}`\n"
-                f"- Work capture destination: `{cycle_root(root, kind, cycle) / 'evidence/work.rollout.jsonl'}`\n"
-                f"- Resume capture destination: `{cycle_root(root, kind, cycle) / 'evidence/resume.rollout.jsonl'}`\n\n"
-                "### Frozen work task\n\n"
+                f"- Work capture destination: `{slot_root(root, review_slot_id) / 'evidence/work.rollout.jsonl'}`\n"
+                f"- Resume capture destination: `{slot_root(root, review_slot_id) / 'evidence/resume.rollout.jsonl'}`\n\n"
+                "#### Frozen work task\n\n"
                 f"{descriptor['work_user_task']}\n\n"
-                "### Frozen resume task\n\n"
+                "#### Frozen resume task\n\n"
                 f"{descriptor['fresh_resume_user_task']}\n\n"
                 "Explicitly inspect and approve repository and hook trust in VS Code. Start each task "
                 "in its own fresh thread, send only the frozen task, and preserve the raw rollout file. "
                 "Do not run campaign collection between chats.\n"
             )
+    entries = [
+        f"## Repository `{kind}`\n\n" + "\n\n".join(entries_by_repository[kind])
+        for kind in CLASSES
+        if entries_by_repository[kind]
+    ]
     path = root / "operator/RUN-SHEET.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -396,7 +604,7 @@ def render_operator_run_sheet(root: Path) -> Path:
         "sealed, the campaign steward may run `activate-all`; activation never grants trust. Run all "
         "thirty fresh work/resume chats, preserve their raw rollouts, and provide the thirty files once "
         "through `collect-batch`. No per-chat control-session collection is required.\n\n"
-        + ("\n\n".join(entries) if entries else "No cycles are sealed for operator use yet.\n"),
+        + ("\n\n".join(entries) if entries else "No slots are sealed for operator use yet.\n"),
         encoding="utf-8",
     )
     assert_operator_artifacts_do_not_leak(root)
@@ -594,13 +802,19 @@ def prepare_review(
     if errors:
         raise CampaignError("review draft does not qualify: " + "; ".join(errors))
     references = descriptor["behavior_review"]["provenance_references"]
+    review_slot_id = state["review_slot_id"]
+    reviewer_repository = Path(state["reviewer_repository_path"])
+    if (
+        reviewer_repository.resolve(strict=False)
+        != (root / "reviewer/workspaces" / review_slot_id / "repository").resolve(strict=False)
+    ):
+        raise CampaignError("reviewer workspace is not bound to the opaque review slot")
     preparation = {
         "kind": "phase8_blind_review_preparation",
+        "review_slot_id": review_slot_id,
         "candidate_head": campaign["candidate_head"],
-        "repository_class": kind,
-        "cycle": cycle,
         "repository_revision": state["repository_revision"],
-        "repository_path": state["repository_path"],
+        "reviewer_repository_path": str(reviewer_repository),
         "work_user_task": descriptor["work_user_task"],
         "fresh_resume_user_task": descriptor["fresh_resume_user_task"],
         "work_scope": descriptor["work_scope"],
@@ -618,6 +832,7 @@ def prepare_review(
     preparation_sha256 = harness.sha256(preparation_path)
     provisional_template = {
         "kind": "phase8_provisional_behavior_review",
+        "review_slot_id": review_slot_id,
         "status": "pending",
         "reviewer_role": "campaign_preparation_independent_reviewer",
         "preparation_sha256": preparation_sha256,
@@ -634,10 +849,11 @@ def prepare_review(
     state["review_preparation_sha256"] = preparation_sha256
     save_campaign(root, campaign)
     register_artifact(root, preparation_path)
+    register_artifact(root, template_path)
+    assert_reviewer_artifacts_are_behavior_opaque(root)
     return {
         "kind": "phase8_blind_review_preparation_result",
-        "repository_class": kind,
-        "cycle": cycle,
+        "review_slot_id": review_slot_id,
         "preparation": relative(root, preparation_path),
         "preparation_sha256": preparation_sha256,
         "provisional_review_template": relative(root, template_path),
@@ -655,8 +871,48 @@ def seal_cycle(
     campaign = load_campaign(root)
     verify_inventory(root)
     state = campaign["cycles"][cycle_key(kind, cycle)]
-    if state.get("state") != "review_prepared":
+    if state.get("state") not in {"review_prepared", "provisional_recorded"}:
         raise CampaignError("cycle descriptor is already sealed and cannot be replaced")
+    preparation_path = reviewer_preparation_path(root, kind, cycle)
+    preparation = read_json(preparation_path)
+    if (
+        preparation.get("kind") != "phase8_blind_review_preparation"
+        or preparation.get("review_slot_id") != state.get("review_slot_id")
+        or harness.sha256(preparation_path) != state.get("review_preparation_sha256")
+    ):
+        raise CampaignError("blind reviewer preparation identity or hash changed")
+    provisional_destination = reviewer_provisional_path(root, kind, cycle)
+    if provisional_review_path.resolve() == provisional_destination.resolve():
+        raise CampaignError("provisional review input must remain separate until sealing")
+    provisional = read_json(provisional_review_path.resolve())
+    provisional_errors = harness.blind_first_review_errors(
+        {
+            "kind": "phase8_blind_review_preparation_reference",
+            "review_slot_id": state["review_slot_id"],
+            "sha256": state["review_preparation_sha256"],
+        },
+        provisional,
+        state["behavior_class"],
+        len(preparation.get("owner_document_locations", [])),
+    )
+    if provisional_errors:
+        raise CampaignError("provisional review does not qualify: " + "; ".join(provisional_errors))
+    if state["state"] == "review_prepared":
+        copy_exact(provisional_review_path.resolve(), provisional_destination)
+        state["state"] = "provisional_recorded"
+        state["provisional_review_sha256"] = harness.sha256(provisional_destination)
+        save_campaign(root, campaign)
+        register_artifact(root, provisional_destination)
+    elif (
+        not provisional_destination.is_file()
+        or harness.sha256(provisional_destination)
+        != state.get("provisional_review_sha256")
+        or harness.sha256(provisional_review_path.resolve())
+        != state.get("provisional_review_sha256")
+    ):
+        raise CampaignError("fixed provisional review cannot be replaced or altered")
+    assert_reviewer_artifacts_are_behavior_opaque(root)
+
     descriptor = read_json(prepared_descriptor.resolve())
     if "evidence" in descriptor:
         raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
@@ -666,35 +922,20 @@ def seal_cycle(
         raise CampaignError("evaluator descriptor is bound to the wrong behavior class")
     if descriptor.get("repository_revision") != state["repository_revision"]:
         raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
-    preparation_path = reviewer_preparation_path(root, kind, cycle)
-    preparation = read_json(preparation_path)
     if (
-        preparation.get("kind") != "phase8_blind_review_preparation"
-        or harness.sha256(preparation_path) != state.get("review_preparation_sha256")
-        or preparation.get("work_user_task") != descriptor.get("work_user_task")
+        preparation.get("work_user_task") != descriptor.get("work_user_task")
         or preparation.get("fresh_resume_user_task")
         != descriptor.get("fresh_resume_user_task")
         or preparation.get("work_scope") != descriptor.get("work_scope")
     ):
         raise CampaignError("sealed descriptor changed the blind reviewer preparation basis")
-    provisional = read_json(provisional_review_path.resolve())
     references = descriptor.get("behavior_review", {}).get("provenance_references", [])
-    provisional_errors = harness.blind_first_review_errors(
-        {
-            "kind": "phase8_blind_review_preparation_reference",
-            "sha256": state["review_preparation_sha256"],
-        },
-        provisional,
-        descriptor["behavior_class"],
-        len(references) if isinstance(references, list) else 0,
-    )
-    if provisional_errors:
-        raise CampaignError("provisional review does not qualify: " + "; ".join(provisional_errors))
     independent = descriptor.get("behavior_review", {}).get("independent_review")
     if not isinstance(independent, dict):
         raise CampaignError("evaluator descriptor has no independent review comparison")
     independent["review_preparation"] = {
         "kind": "phase8_blind_review_preparation_reference",
+        "review_slot_id": state["review_slot_id"],
         "sha256": state["review_preparation_sha256"],
     }
     independent["provisional_review"] = provisional
@@ -715,22 +956,16 @@ def seal_cycle(
     if destination.exists():
         raise CampaignError("authoritative evaluator descriptor already exists")
     write_json(destination, descriptor)
-    provisional_destination = reviewer_provisional_path(root, kind, cycle)
-    if provisional_review_path.resolve() == provisional_destination.resolve():
-        raise CampaignError("provisional review input must remain separate until sealing")
-    copy_exact(provisional_review_path.resolve(), provisional_destination)
     state["state"] = "sealed"
     state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
     save_campaign(root, campaign)
     run_sheet = render_operator_run_sheet(root)
     register_artifact(root, destination)
-    register_artifact(root, provisional_destination)
     register_artifact(root, run_sheet, replace=True)
+    assert_reviewer_artifacts_are_behavior_opaque(root)
     return {
         "kind": "phase8_dogfood_sealed_cycle",
-        "repository_class": kind,
-        "cycle": cycle,
-        "behavior_class": descriptor["behavior_class"],
+        "review_slot_id": state["review_slot_id"],
         "repository_revision": state["repository_revision"],
         "sealed_semantic_sha256": state["sealed_semantic_sha256"],
         "operator_run_sheet": relative(root, run_sheet),
@@ -774,9 +1009,10 @@ def activate_all(root: Path) -> dict[str, Any]:
     results = []
     for kind in CLASSES:
         for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
+            state = load_campaign(root)["cycles"][cycle_key(kind, cycle)]
             results.append({
                 "repository_class": kind,
-                "cycle": cycle,
+                "review_slot_id": state["review_slot_id"],
                 "result": activate_cycle(root, kind, cycle),
             })
     return {
@@ -796,6 +1032,7 @@ def prepare_campaign(
     candidate_binary: Path | None = None,
     enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
+    slot_id_factory: Callable[[], str] = new_review_slot_id,
 ) -> dict[str, Any]:
     root = root.resolve()
     if root.exists() and any(root.iterdir()):
@@ -824,39 +1061,87 @@ def prepare_campaign(
     failures = [item for item in identities if item["status"] != "passed"]
     if failures:
         raise CampaignError("one or more source repository identities do not qualify")
+    assignments: list[tuple[str, int, str]] = []
+    for _attempt in range(64):
+        assignments = [
+            (kind, number, slot_id_factory())
+            for kind in CLASSES
+            for number in range(1, len(BEHAVIOR_CLASSES) + 1)
+        ]
+        review_slot_ids = [
+            review_slot_id for _kind, _number, review_slot_id in assignments
+        ]
+        if (
+            len(review_slot_ids) != len(set(review_slot_ids))
+            or any(
+                not isinstance(review_slot_id, str)
+                or REVIEW_SLOT_ID.fullmatch(review_slot_id) is None
+                for review_slot_id in review_slot_ids
+            )
+        ):
+            raise CampaignError(
+                "opaque review slot generation produced a duplicate or malformed identity"
+            )
+        if not opaque_order_reproduces_fixed_matrix(assignments):
+            break
+    else:
+        raise CampaignError("opaque review slot generation could not produce a blind order")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
     binary = candidate_binary.resolve() if candidate_binary else install_candidate(root)
     if not binary.is_file():
         raise CampaignError("candidate binary is unavailable")
     cycles: dict[str, Any] = {}
-    for kind in CLASSES:
+    for kind, number, review_slot_id in assignments:
         spec = specs[kind]
         revision = candidate_head if kind == "volicord" else spec["revision"]
-        for number in range(1, len(BEHAVIOR_CLASSES) + 1):
-            key = cycle_key(kind, number)
-            destination = cycle_root(root, kind, number)
-            (destination / "evidence").mkdir(parents=True)
-            (destination / "runtime").mkdir()
-            repository = destination / "repository"
-            cloner(Path(spec["path"]).resolve(), repository, revision)
-            write_json(
-                evaluator_input_path(root, kind, number),
-                descriptor_skeleton(kind, number, revision, candidate_head),
-            )
-            cycles[key] = {
-                "repository_class": kind,
-                "cycle": number,
-                "behavior_class": BEHAVIOR_CLASSES[number - 1],
-                "repository_path": str(repository.resolve()),
-                "repository_revision": revision,
-                "runtime_home": str((destination / "runtime").resolve()),
-                "state": "prepared",
-                "sealed_semantic_sha256": None,
-                "review_preparation_sha256": None,
-                "project_id": None,
-                "codex_enabled": False,
-            }
+        destination = slot_root(root, review_slot_id)
+        reviewer_repository = root / "reviewer/workspaces" / review_slot_id / "repository"
+        cycles[cycle_key(kind, number)] = {
+            "review_slot_id": review_slot_id,
+            "repository_class": kind,
+            "cycle": number,
+            "behavior_class": BEHAVIOR_CLASSES[number - 1],
+            "repository_path": str((destination / "repository").resolve()),
+            "reviewer_repository_path": str(reviewer_repository.resolve()),
+            "repository_revision": revision,
+            "runtime_home": str((destination / "runtime").resolve()),
+            "state": "prepared",
+            "sealed_semantic_sha256": None,
+            "review_preparation_sha256": None,
+            "provisional_review_sha256": None,
+            "project_id": None,
+            "codex_enabled": False,
+        }
+    for state in sorted(cycles.values(), key=lambda item: item["review_slot_id"]):
+        review_slot_id = state["review_slot_id"]
+        destination = slot_root(root, review_slot_id)
+        (destination / "evidence").mkdir(parents=True)
+        (destination / "runtime").mkdir()
+        spec = specs[state["repository_class"]]
+        cloner(
+            Path(spec["path"]).resolve(),
+            Path(state["repository_path"]),
+            state["repository_revision"],
+        )
+        reviewer_repository = Path(state["reviewer_repository_path"])
+        reviewer_repository.parent.mkdir(parents=True, exist_ok=True)
+        cloner(
+            Path(spec["path"]).resolve(),
+            reviewer_repository,
+            state["repository_revision"],
+        )
+        write_json(
+            slot_artifact_path(root, "evaluator", "inputs", review_slot_id),
+            descriptor_skeleton(
+                state["repository_class"],
+                state["cycle"],
+                state["repository_revision"],
+                candidate_head,
+            ),
+        )
+    mapping = slot_mapping_value(cycles)
+    write_json(slot_mapping_path(root), mapping)
     campaign = {
         "kind": "phase8_dogfood_campaign",
         "schema_version": 1,
@@ -870,10 +1155,13 @@ def prepare_campaign(
         "terminal_outcome": None,
         "active_cycle_by_repository": {},
         "cycles": cycles,
+        "opaque_slot_mapping_sha256": harness.sha256(slot_mapping_path(root)),
     }
     write_json(root / "repository-input.json", raw_input)
     save_campaign(root, campaign)
     write_json(inventory_path(root), load_inventory(root))
+    reviewer_index = render_reviewer_index(root)
+    assert_reviewer_artifacts_are_behavior_opaque(root)
     run_sheet = render_operator_run_sheet(root)
     if enable:
         raise CampaignError("cycles must be evaluator-sealed before activation")
@@ -888,7 +1176,13 @@ def prepare_campaign(
         "repository_trust": "user_controlled_not_automated",
     }
     write_json(root / "preparation.json", preparation)
-    for path in (root / "repository-input.json", run_sheet, root / "preparation.json"):
+    for path in (
+        root / "repository-input.json",
+        slot_mapping_path(root),
+        reviewer_index,
+        run_sheet,
+        root / "preparation.json",
+    ):
         register_artifact(root, path)
     return preparation
 
@@ -1283,8 +1577,10 @@ def write_operator_document_review_index(
     cycle: int,
     summary: dict[str, Any],
 ) -> Path:
+    state = cycle_state(root, kind, cycle)
+    review_slot_id = state["review_slot_id"]
     lines = [
-        f"# Generated document review: {kind} cycle {cycle}",
+        f"# Generated document review: {kind} slot {review_slot_id}",
         "",
         f"Language: `{summary['language']}`",
         "",
@@ -1299,7 +1595,7 @@ def write_operator_document_review_index(
             else:
                 lines.append(f"- {format_name}: unavailable ({evidence['basis']})")
         lines.append("")
-    path = root / "operator/document-review" / f"{cycle_key(kind, cycle)}.md"
+    path = root / "operator/document-review" / f"{review_slot_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     assert_operator_artifacts_do_not_leak(root)
@@ -1894,20 +2190,26 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
         files[name] = path.read_bytes()
         if name.startswith("evaluator/descriptors/") and name.endswith(".json"):
             descriptor = read_json(path)
-            review_name = f"behavior-reviews/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
+            state = campaign["cycles"][cycle_key(
+                descriptor["repository_class"], descriptor["cycle"]
+            )]
+            review_slot_id = state["review_slot_id"]
+            review_name = f"behavior-reviews/{review_slot_id}.json"
             review_bytes = (json.dumps(descriptor["behavior_review"], indent=2, sort_keys=True) + "\n").encode()
             files[review_name] = review_bytes
             review_index.append({
+                "review_slot_id": review_slot_id,
                 "repository_class": descriptor["repository_class"],
-                "cycle": descriptor["cycle"],
+                "logical_cycle": descriptor["cycle"],
+                "expected_behavior_class": descriptor["behavior_class"],
                 "derived_archive_entry": review_name,
                 "authoritative_descriptor": name,
                 "sha256": hashlib.sha256(review_bytes).hexdigest(),
                 "blind_review_preparation": (
-                    f"reviewer/preparations/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
+                    f"reviewer/preparations/{review_slot_id}.json"
                 ),
                 "provisional_review": (
-                    f"reviewer/provisional/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
+                    f"reviewer/provisional/{review_slot_id}.json"
                 ),
             })
     if len(review_index) != len(CLASSES) * len(BEHAVIOR_CLASSES):

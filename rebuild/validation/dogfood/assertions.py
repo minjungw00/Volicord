@@ -280,6 +280,19 @@ def main() -> int:
             "counterfactual_review",
         ]
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
+        or blind_first.get("logical_identity_visible_before_provisional_fix") is not False
+        or blind_first.get("reviewer_order") != "opaque_review_slot_id"
+        or blind_first.get("preparation_fields")
+        != [
+            "review_slot_id",
+            "candidate_head",
+            "repository_revision",
+            "reviewer_repository_path",
+            "work_user_task",
+            "fresh_resume_user_task",
+            "work_scope",
+            "owner_document_locations",
+        ]
         or agreement.get("sealing_blocked_status") != "unresolved_conflict"
         or set(agreement.get("accepted_statuses", []))
         != {"agreed", "resolved_from_evidence"}
@@ -295,6 +308,38 @@ def main() -> int:
         != "not_required_for_behavior_class"
     ):
         raise AssertionError("Phase 8 independent counterfactual-review contract is incomplete")
+    opaque_slots = real_session.get("opaque_slot_contract", {})
+    if (
+        opaque_slots.get("identity_generation")
+        != "campaign_time_cryptographic_random_128_bit_token"
+        or opaque_slots.get("derived_from_repository_or_cycle") is not False
+        or opaque_slots.get("physical_workspace_layout")
+        != "slots/<review_slot_id>/repository"
+        or opaque_slots.get("reviewer_workspace_layout")
+        != "reviewer/workspaces/<review_slot_id>/repository"
+        or opaque_slots.get("private_mapping_integrity")
+        != "campaign_bound_sha256_and_evidence_inventory"
+        or opaque_slots.get("numeric_compatibility_branch") is not False
+    ):
+        raise AssertionError("Phase 8 opaque review-slot contract is incomplete")
+    for marker in (
+        "secrets.token_hex(16)",
+        "phase8_dogfood_opaque_slot_mapping",
+        "opaque_review_slot_id",
+        "reviewer/workspaces",
+    ):
+        if marker not in campaign_source:
+            raise AssertionError(f"Dogfood campaign helper is missing opaque-slot boundary {marker}")
+    for stale_public_identity in (
+        'root / "cycles"',
+        'f"{cycle_key(kind, cycle)}.json"',
+        'f"## {kind} — cycle {cycle}',
+        'f"# Generated document review: {kind} cycle {cycle}',
+    ):
+        if stale_public_identity in campaign_source:
+            raise AssertionError(
+                f"Dogfood reviewer/operator path retains fixed-cycle identity: {stale_public_identity}"
+            )
     blocker_contract = real_session.get("work_blocker_qualification", {})
     if blocker_contract != {
         "subcommand": "qualify-work-blocker",

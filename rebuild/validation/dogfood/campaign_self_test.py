@@ -71,7 +71,13 @@ def fake_identities() -> list[dict[str, object]]:
     ]
 
 
-def prepare(root: Path, source_root: Path, binary: Path) -> None:
+def prepare(
+    root: Path,
+    source_root: Path,
+    binary: Path,
+    *,
+    slot_id_factory=campaign.new_review_slot_id,
+) -> None:
     source = repository_input(root.parent / f"{root.name}-repositories.json", source_root)
     original_clean = harness.git_clean
     original_specs = harness.load_repository_specs
@@ -92,6 +98,7 @@ def prepare(root: Path, source_root: Path, binary: Path) -> None:
             candidate_binary=binary,
             enable=False,
             cloner=fake_clone,
+            slot_id_factory=slot_id_factory,
         )
     finally:
         harness.git_clean = original_clean
@@ -138,7 +145,8 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
         value["behavior_review"]["independent_review"]["provisional_review"]
     )
     provisional["preparation_sha256"] = preparation["preparation_sha256"]
-    provisional_path = root.parent / f"{campaign.cycle_key(kind, cycle)}-provisional.json"
+    provisional["review_slot_id"] = preparation["review_slot_id"]
+    provisional_path = root.parent / f"{preparation['review_slot_id']}-provisional.json"
     campaign.write_json(provisional_path, provisional)
     campaign.seal_cycle(root, kind, cycle, source, provisional_path)
 
@@ -232,7 +240,8 @@ def prepared_batch(
             )
             install_descriptor(root, kind, cycle, descriptor)
             captures.extend((work, resume))
-            bundles[campaign.cycle_key(kind, cycle)] = bundle
+            state = campaign.cycle_state(root, kind, cycle)
+            bundles[state["review_slot_id"]] = bundle
     return root, captures, bundles
 
 
@@ -274,6 +283,113 @@ def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
         assert result.returncode == 2, (argv, result.returncode, result.stdout, result.stderr)
 
 
+def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
+    duplicate_root = parent / "duplicate-slot-campaign"
+    try:
+        prepare(
+            duplicate_root,
+            parent / "duplicate-slot-sources",
+            binary,
+            slot_id_factory=lambda: "00" * 16,
+        )
+    except campaign.CampaignError as error:
+        assert "duplicate" in str(error)
+    else:
+        raise AssertionError("duplicate opaque slots mutated a campaign")
+    assert not duplicate_root.exists()
+
+    root = parent / "opaque-slot-campaign"
+    prepare(root, parent / "opaque-slot-sources", binary)
+    state = campaign.load_campaign(root)
+    assert len(state["cycles"]) == 15
+    slots = [item["review_slot_id"] for item in state["cycles"].values()]
+    assert len(slots) == len(set(slots)) == 15
+    assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)
+    for kind in campaign.CLASSES:
+        ordered_cycles = [
+            item["cycle"]
+            for item in sorted(
+                (
+                    value
+                    for value in state["cycles"].values()
+                    if value["repository_class"] == kind
+                ),
+                key=lambda value: value["review_slot_id"],
+            )
+        ]
+        assert ordered_cycles != [1, 2, 3, 4, 5]
+        assert {
+            item["behavior_class"]
+            for item in state["cycles"].values()
+            if item["repository_class"] == kind
+        } == set(campaign.BEHAVIOR_CLASSES)
+    for value in state["cycles"].values():
+        slot = value["review_slot_id"]
+        obvious = hashlib.sha256(
+            f"{value['repository_class']}:{value['cycle']}".encode("utf-8")
+        ).hexdigest()[:32]
+        assert slot != obvious
+        assert Path(value["repository_path"]).resolve() == (
+            root / "slots" / slot / "repository"
+        ).resolve()
+        assert Path(value["runtime_home"]).resolve() == (
+            root / "slots" / slot / "runtime"
+        ).resolve()
+        assert Path(value["reviewer_repository_path"]).resolve() == (
+            root / "reviewer/workspaces" / slot / "repository"
+        ).resolve()
+
+    index = campaign.read_json(campaign.reviewer_index_path(root))
+    assert index["ordering"] == "opaque_review_slot_id"
+    assert [entry["review_slot_id"] for entry in index["entries"]] == sorted(slots)
+    serialized_index = json.dumps(index, sort_keys=True)
+    assert "repository_class" not in serialized_index
+    assert "logical_cycle" not in serialized_index
+    assert not any(value in serialized_index for value in campaign.BEHAVIOR_CLASSES)
+
+    mapping_path = campaign.slot_mapping_path(root)
+    original_mapping = mapping_path.read_bytes()
+    mapping = json.loads(original_mapping)
+    mapping["entries"][0]["review_slot_id"], mapping["entries"][1]["review_slot_id"] = (
+        mapping["entries"][1]["review_slot_id"],
+        mapping["entries"][0]["review_slot_id"],
+    )
+    campaign.write_json(mapping_path, mapping)
+    try:
+        campaign.verify_inventory(root)
+    except campaign.CampaignError as error:
+        assert "hash mismatch" in str(error)
+    else:
+        raise AssertionError("swapped opaque slot mapping passed inventory verification")
+    try:
+        campaign.load_campaign(root)
+    except campaign.CampaignError as error:
+        assert "mapping" in str(error)
+    else:
+        raise AssertionError("swapped opaque slot mapping passed campaign binding")
+    mapping_path.write_bytes(original_mapping)
+    campaign.verify_inventory(root)
+    campaign_path = campaign.campaign_file(root)
+    original_campaign = campaign_path.read_bytes()
+    changed_campaign = json.loads(original_campaign)
+    first_key, second_key = list(changed_campaign["cycles"])[:2]
+    changed_campaign["cycles"][first_key]["review_slot_id"], changed_campaign["cycles"][
+        second_key
+    ]["review_slot_id"] = (
+        changed_campaign["cycles"][second_key]["review_slot_id"],
+        changed_campaign["cycles"][first_key]["review_slot_id"],
+    )
+    campaign.write_json(campaign_path, changed_campaign)
+    try:
+        campaign.load_campaign(root)
+    except campaign.CampaignError as error:
+        assert "mapping" in str(error)
+    else:
+        raise AssertionError("campaign-side opaque slot swap passed private mapping binding")
+    campaign_path.write_bytes(original_campaign)
+    campaign.load_campaign(root)
+
+
 def assert_blockers(parent: Path, binary: Path) -> None:
     blocker_root = parent / "blocker-campaign"
     prepare(blocker_root, parent / "blocker-sources", binary)
@@ -304,7 +420,6 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     run_sheet = root / "operator/RUN-SHEET.md"
     initial = run_sheet.read_text(encoding="utf-8")
     assert "descriptor" not in initial.casefold()
-    assert not list((root / "cycles").glob("*/descriptor.json"))
     try:
         campaign.activate_cycle(root, "volicord", 1)
     except campaign.CampaignError as error:
@@ -327,15 +442,38 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     preparation = campaign.prepare_review(root, "volicord", 1, draft_path)
     preparation_body = campaign.read_json(root / preparation["preparation"])
     serialized_preparation = json.dumps(preparation_body, sort_keys=True)
+    review_slot_id = preparation["review_slot_id"]
+    assert set(preparation_body) == {
+        "kind",
+        "review_slot_id",
+        "candidate_head",
+        "repository_revision",
+        "reviewer_repository_path",
+        "work_user_task",
+        "fresh_resume_user_task",
+        "work_scope",
+        "owner_document_locations",
+    }
+    assert preparation_body["review_slot_id"] == review_slot_id
+    assert Path(preparation["preparation"]).name == f"{review_slot_id}.json"
+    assert Path(preparation_body["reviewer_repository_path"]).resolve() == (
+        root / "reviewer/workspaces" / review_slot_id / "repository"
+    ).resolve()
     assert "evaluation_basis" not in serialized_preparation
     assert "counterfactual" not in serialized_preparation
     assert "possible_material_concerns" not in serialized_preparation
+    assert '"cycle"' not in serialized_preparation
+    assert '"repository_class"' not in serialized_preparation
+    assert not any(value in serialized_preparation for value in campaign.BEHAVIOR_CLASSES)
     provisional = copy.deepcopy(
         descriptor["behavior_review"]["independent_review"]["provisional_review"]
     )
     provisional["preparation_sha256"] = preparation["preparation_sha256"]
-    provisional_path = parent / "fixed-provisional-review.json"
+    provisional["review_slot_id"] = review_slot_id
+    provisional_path = parent / f"{review_slot_id}-fixed-provisional-review.json"
     campaign.write_json(provisional_path, provisional)
+    assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
+    assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     bypassable = copy.deepcopy(descriptor)
     bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
         "counterfactual_review"
@@ -354,6 +492,26 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         assert "defensible no-question path" in str(error)
     else:
         raise AssertionError("bypassable material user-owned descriptor sealed")
+    fixed_provisional = campaign.reviewer_provisional_path(root, "volicord", 1)
+    assert fixed_provisional.read_bytes() == provisional_path.read_bytes()
+    assert campaign.cycle_state(root, "volicord", 1)["state"] == "provisional_recorded"
+    assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
+    altered_provisional = copy.deepcopy(provisional)
+    altered_provisional["basis"] += " altered"
+    altered_provisional_path = parent / f"{review_slot_id}-altered-provisional.json"
+    campaign.write_json(altered_provisional_path, altered_provisional)
+    try:
+        campaign.seal_cycle(
+            root,
+            "volicord",
+            1,
+            bypassable_path,
+            altered_provisional_path,
+        )
+    except campaign.CampaignError as error:
+        assert "cannot be replaced or altered" in str(error)
+    else:
+        raise AssertionError("fixed provisional review was retroactively altered")
 
     disagreement = copy.deepcopy(descriptor)
     disagreement_agreement = disagreement["behavior_review"]["independent_review"][
@@ -391,8 +549,11 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     sealed = campaign.seal_cycle(
         root, "volicord", 1, accepted_path, provisional_path
     )
-    assert sealed["behavior_class"] == "explicit_user_owned_decision"
+    assert sealed["review_slot_id"] == review_slot_id
     sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
+    assert f"Slot `{review_slot_id}`" in sealed_run_sheet
+    assert "cycle 1" not in sealed_run_sheet.casefold()
+    assert "-cycle-" not in sealed_run_sheet
     assert descriptor["work_user_task"] in sealed_run_sheet
     assert (
         descriptor["behavior_review"]["independent_review"]["counterfactual_review"][
@@ -474,6 +635,28 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert "collect-batch" in run_sheet
     assert "collect-work" not in run_sheet
     assert "collect-resume" not in run_sheet
+    assert not any(value in run_sheet for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(f"cycle {number}" in run_sheet.casefold() for number in range(1, 6))
+    assert "-cycle-" not in run_sheet
+    for kind in campaign.CLASSES:
+        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
+            descriptor = campaign.read_json(
+                campaign.evaluator_descriptor_path(root, kind, cycle)
+            )
+            state = campaign.cycle_state(root, kind, cycle)
+            slot_heading = f"### Slot `{state['review_slot_id']}`"
+            start = run_sheet.index(slot_heading)
+            later_slots = [
+                position
+                for marker in ("\n### Slot `", "\n## Repository `")
+                if (position := run_sheet.find(marker, start + len(slot_heading))) >= 0
+            ]
+            end = min(later_slots, default=len(run_sheet))
+            slot_entry = run_sheet[start:end]
+            assert descriptor["work_user_task"] in slot_entry
+            assert descriptor["fresh_resume_user_task"] in slot_entry
+            assert state["repository_path"] in run_sheet
+            assert state["runtime_home"] in run_sheet
 
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
@@ -592,6 +775,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     archive = campaign.build_review_package(root, parent / "batch-review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
+        assert "evaluator/slot-mapping.json" in names
         assert "batch-intake-summary.json" in names
         assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 15
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
@@ -752,6 +936,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     archive = campaign.build_review_package(root, parent / "review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
+        assert "evaluator/slot-mapping.json" in names
         assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 15
         assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 16
         assert len([name for name in names if name.startswith("reviewer/preparations/")]) == 15
@@ -761,6 +946,23 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 15
         assert len([name for name in names if name.endswith("/documents-summary.json")]) == 15
         assert len([name for name in names if name.startswith("operator/document-review/")]) == 15
+        for prefix in (
+            "reviewer/preparations/",
+            "reviewer/provisional/",
+            "operator/document-review/",
+        ):
+            for name in (item for item in names if item.startswith(prefix)):
+                assert campaign.REVIEW_SLOT_ID.fullmatch(Path(name).stem)
+        review_index_file = opened.extractfile("behavior-reviews/index.json")
+        assert review_index_file is not None
+        review_index = json.loads(review_index_file.read())
+        assert len(review_index["reviews"]) == 15
+        assert all(
+            campaign.REVIEW_SLOT_ID.fullmatch(item["review_slot_id"])
+            and item["logical_cycle"] in range(1, 6)
+            and item["expected_behavior_class"] in campaign.BEHAVIOR_CLASSES
+            for item in review_index["reviews"]
+        )
         assert "operator/human-review.json" in names
         assert "qualified-result.json" in names
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
@@ -933,6 +1135,7 @@ def main() -> int:
         binary = parent / "candidate/bin/volicord"
         write_fake_binary(binary)
         assert_strict_cli_contract(parent, binary)
+        assert_opaque_slot_preparation(parent, binary)
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
         assert_batch_workflow(parent, binary)
@@ -945,6 +1148,13 @@ def main() -> int:
         "checks": [
             "campaign_level_human_review_operations",
             "strict_current_cli_positive_and_obsolete_negative_cases",
+            "opaque_slot_generation_and_private_mapping",
+            "duplicate_slot_rejected_before_campaign_mutation",
+            "reviewer_filename_workspace_and_order_opacity",
+            "provisional_review_fixed_before_evaluator_comparison",
+            "fixed_provisional_review_cannot_be_retroactively_altered",
+            "operator_slot_and_workspace_opacity",
+            "opaque_mapping_swap_tamper_detection",
             "sealed_evaluator_operator_isolation",
             "bypassable_user_owned_descriptor_rejected_before_sealing",
             "unavoidable_user_owned_descriptor_sealed",

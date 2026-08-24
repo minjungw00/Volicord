@@ -359,17 +359,17 @@
         "provisional_artifact_kind": "phase8_provisional_behavior_review",
         "preparation_visibility": "reviewer_input_without_evaluator_material",
         "preparation_fields": [
+          "review_slot_id",
           "candidate_head",
-          "repository_class",
-          "cycle",
           "repository_revision",
-          "repository_path",
+          "reviewer_repository_path",
           "work_user_task",
           "fresh_resume_user_task",
           "work_scope",
           "owner_document_locations"
         ],
         "provisional_fields": [
+          "review_slot_id",
           "status",
           "reviewer_role",
           "preparation_sha256",
@@ -380,7 +380,9 @@
           "basis",
           "provenance_reference_indices"
         ],
-        "evaluator_material_visible_before_provisional_fix": false
+        "evaluator_material_visible_before_provisional_fix": false,
+        "reviewer_order": "opaque_review_slot_id",
+        "logical_identity_visible_before_provisional_fix": false
       },
       "fact_authority_agreement": {
         "accepted_statuses": [
@@ -430,6 +432,19 @@
       "non_user_decision_counterfactual_applicability": "not_required_for_behavior_class",
       "purpose": "bounded independent evidence and no-question counterfactual review without prescribing one Question expression or user selection",
       "visibility": "evaluator_input_only"
+    },
+    "opaque_slot_contract": {
+      "identity_generation": "campaign_time_cryptographic_random_128_bit_token",
+      "stable_for_prepared_campaign": true,
+      "unique_within_campaign": true,
+      "derived_from_repository_or_cycle": false,
+      "physical_workspace_layout": "slots/<review_slot_id>/repository",
+      "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
+      "reviewer_artifact_naming": "review_slot_id_only",
+      "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
+      "private_mapping_visibility": "evaluator_steward_private_until_provisional_review_is_fixed",
+      "private_mapping_integrity": "campaign_bound_sha256_and_evidence_inventory",
+      "numeric_compatibility_branch": false
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",

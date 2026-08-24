@@ -343,6 +343,7 @@ success path가 필요하다. Final exact validation은 `rebuild/scripts/validat
 - [ ] Decision reuse와 revisit trigger
 - [ ] explicit/hidden user-owned Decision discovery와 no-question/research/delegation/prototype/defer qualification
 - [ ] hidden task semantic non-disclosure와 unavoidable-outcome counterfactual independent review
+- [ ] blind reviewer/operator preparation의 opaque slot, non-matrix ordering과 private mapping integrity
 
 ### Recall, UI와 documents
 
