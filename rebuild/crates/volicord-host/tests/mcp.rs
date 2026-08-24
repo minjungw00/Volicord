@@ -1327,8 +1327,31 @@ fn explicit_provider_denial_discards_the_live_preparation() {
 
 #[test]
 fn subsequent_host_interaction_cleans_an_expired_provider_preparation() {
-    let (_temporary, mut adapter, project, request) = setup_guarded_provider_request(100_000);
-    std::thread::sleep(std::time::Duration::from_millis(150));
+    use volicord_context::{Clock, SystemClock};
+
+    let (_temporary, mut adapter, project, request) = setup_guarded_provider_request(2_000_000);
+    let expiration = request["expiration_unix_micros"]
+        .as_i64()
+        .expect("prepared request expiration");
+    let after_preparation = SystemClock.now().expect("clock after preparation");
+    assert!(
+        after_preparation.as_unix_micros() < expiration,
+        "provider preparation must succeed while its request is still valid"
+    );
+    let remaining = u64::try_from(expiration - after_preparation.as_unix_micros())
+        .expect("positive remaining preparation lifetime");
+    std::thread::sleep(
+        std::time::Duration::from_micros(remaining)
+            .saturating_add(std::time::Duration::from_millis(50)),
+    );
+    assert!(
+        SystemClock
+            .now()
+            .expect("clock after expiration wait")
+            .as_unix_micros()
+            >= expiration,
+        "cleanup interaction must occur only after the prepared request expires"
+    );
 
     let health = call(
         &mut adapter,
