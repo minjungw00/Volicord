@@ -13,6 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 HARNESS = HERE / "harness.py"
+CAMPAIGN = HERE / "campaign.py"
 CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
@@ -20,10 +21,25 @@ CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 
 def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
+    campaign_source = CAMPAIGN.read_text(encoding="utf-8")
     event_source = CODEX_EVENTS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
     tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "unique_call"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == "repository_analyze"
+        ):
+            raise AssertionError(
+                "Dogfood qualification still assumes one successful repository analysis"
+            )
+    if "exactly one pre-work repository analysis baseline" in campaign_source:
+        raise AssertionError("campaign resume inspection still requires one analysis call")
     imports = {
         alias.name
         for node in ast.walk(tree)

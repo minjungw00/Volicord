@@ -201,6 +201,11 @@ identity and supplies the next meaningful state or step. A work capture may
 contain earlier pause or handoff Checkpoints; the latest Checkpoint candidate
 after the last meaningful repository change is selected, and a malformed final
 candidate cannot be hidden by falling back to earlier history.
+Successful repository analyses are not globally unique. The harness selects
+the analysis whose snapshot identity is explicitly retained by the applicable
+Checkpoint, then verifies the same Project and its completion after the Goal or
+Recall boundary and before the first meaningful write. Later analyses remain
+valid evidence but cannot replace that selected pre-work baseline.
 
 The fresh-resume task is likewise ordinary user language and does not mention
 Recall or contain a Project ID. Qualification requires successful
@@ -208,7 +213,9 @@ Recall or contain a Project ID. Qualification requires successful
 same Project before Recall. Recall must then precede repository inspection or
 continued work, and the resume session must not initialize a replacement
 Project merely to obtain an identity. Context recovery is derived from that
-Recall result. Continuation may either make a relevant change and validate it,
+Recall result. Every applicable resume Checkpoint is checked against its exact
+retained pre-work snapshot rather than a session-wide analysis count.
+Continuation may either make a relevant change and validate it,
 or inspect and numerically verify an already-completed recalled state without
 an artificial mutation. Paused or in-progress work cannot use the no-change
 path, and Recall without later inspection and validation does not qualify.

@@ -949,6 +949,12 @@ continuation의 eventual grounded Checkpoint는 이 exact pre-write identity를 
 post-edit analysis는 baseline으로 qualification되지 않는다. Current provenance가 edit ordering을
 deterministically 증명하지 못하므로 timestamp나 dirty-state heuristic으로 이를 대체하지 않고
 rollout operation order와 exact identity linkage로 검증한다.
+Work와 resume session에 추가 successful `repository_analyze`가 first write 전, write 뒤 또는
+validation 뒤 존재할 수 있다. Qualification은 analysis call count나 first-call heuristic을 쓰지
+않고 각 applicable Checkpoint의 `baseline_analysis_snapshot_id`와 일치하는 same-Project
+successful analysis evidence를 선택해 required Goal/Recall boundary 뒤와 first meaningful write
+전 completion을 검증한다. Unknown identity, wrong-Project analysis, pre-Recall resume analysis와
+post-write baseline substitution은 실패한다.
 
 Resume continuation은 두 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
 relevant repository change와 그 뒤의 별도 numeric-exit validation을 요구한다.

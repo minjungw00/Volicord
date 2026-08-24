@@ -756,6 +756,78 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 24
 
 
+def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
+    descriptor, _work, resume, _bundle = fixture_for(parent, "volicord", 1)
+    revision = harness.git_head(campaign.ROOT)
+    assert revision is not None
+    state = {
+        "repository_revision": revision,
+        "project_id": "01" * 16,
+        "work_session_id": "different-work-session",
+    }
+    capture = harness.load_codex_capture(resume)
+    assert len(capture.successful_calls("repository_analyze")) == 2
+    assert campaign.inspect_resume(capture, descriptor, state) == "01" * 16
+
+    def rewritten(name: str, marker: str, old: str, new: str) -> Path:
+        destination = parent / name
+        lines = []
+        for line in resume.read_text(encoding="utf-8").splitlines():
+            lines.append(line.replace(old, new) if marker in line else line)
+        destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return destination
+
+    cases = [
+        (
+            "post-write-selected.jsonl",
+            "resume-checkpoint-call",
+            "12" * 32,
+            "15" * 32,
+        ),
+        (
+            "wrong-project-baseline.jsonl",
+            "resume-baseline-call",
+            "01" * 16,
+            "ff" * 16,
+        ),
+        (
+            "unknown-baseline.jsonl",
+            "resume-checkpoint-call",
+            "12" * 32,
+            "ff" * 32,
+        ),
+    ]
+    for name, marker, old, new in cases:
+        invalid = harness.load_codex_capture(rewritten(name, marker, old, new))
+        try:
+            campaign.inspect_resume(invalid, descriptor, state)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError(f"invalid resume baseline qualified: {name}")
+
+    values = resume.read_text(encoding="utf-8").splitlines()
+    baseline = [line for line in values if "resume-baseline-call" in line]
+    remaining = [line for line in values if "resume-baseline-call" not in line]
+    recall_index = next(
+        index for index, line in enumerate(remaining) if "recall-call" in line
+    )
+    pre_recall = parent / "pre-recall-baseline.jsonl"
+    pre_recall.write_text(
+        "\n".join(remaining[:recall_index] + baseline + remaining[recall_index:])
+        + "\n",
+        encoding="utf-8",
+    )
+    try:
+        campaign.inspect_resume(
+            harness.load_codex_capture(pre_recall), descriptor, state
+        )
+    except campaign.CampaignError:
+        pass
+    else:
+        raise AssertionError("pre-Recall baseline qualified")
+
+
 def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
     root = parent / "failed-document-campaign"
     prepare(root, parent / "failed-document-sources", binary)
@@ -841,6 +913,7 @@ def main() -> int:
         assert_batch_workflow(parent, binary)
         assert_failed_document_kind_is_machine_failure(parent, binary)
         assert_campaign_level_human_review_operations(parent, binary)
+        assert_resume_baseline_identity_and_ordering(parent)
         assert_successful_campaign(parent, binary)
     print(json.dumps({
         "status": "passed",
@@ -859,6 +932,7 @@ def main() -> int:
             "batch_terminal_work_failure_preserved_with_later_resume",
             "batch_activation_all_preserves_user_controlled_trust",
             "automatic_project_identity_and_bundle_export",
+            "resume_baseline_identity_and_ordering",
             "four_kind_markdown_html_document_evidence",
             "static_viewer_snapshot_evidence",
             "failed_document_kind_is_machine_failure",
