@@ -34,14 +34,31 @@ fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn s
 }
 
 #[test]
-fn repository_initialization_derives_only_the_canonical_root_basename_and_preserves_explicit_names(
+fn repository_initialization_prefers_local_git_identity_then_falls_back_and_preserves_explicit_names(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
-    let derived_repository = temporary
+    let source_repository = temporary.path().join("tree-sitter");
+    fs::create_dir_all(&source_repository)?;
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&source_repository)
+        .args(["init", "-q"])
+        .status()?
+        .success());
+    let derived_repository = temporary.path().join("campaign").join("repository");
+    fs::create_dir_all(derived_repository.parent().ok_or("clone parent")?)?;
+    assert!(Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&source_repository)
+        .arg(&derived_repository)
+        .status()?
+        .success());
+    let fallback_repository = temporary
         .path()
         .join("misleading-Volicord")
         .join("rebuild")
-        .join("tree-sitter");
+        .join("fallback-name");
+    fs::create_dir_all(&fallback_repository)?;
     fs::create_dir_all(&derived_repository)?;
     let explicit_repository = temporary
         .path()
@@ -60,6 +77,9 @@ fn repository_initialization_derives_only_the_canonical_root_basename_and_preser
             .absolute_path,
         fs::canonicalize(&derived_repository)?,
     );
+
+    let fallback = operations.initialize_project_from_repository(&fallback_repository)?;
+    assert_eq!(fallback.project.display_name, "fallback-name");
 
     let explicit = operations.initialize_project("User Chosen Name", Some(&explicit_repository))?;
     assert_eq!(explicit.project.display_name, "User Chosen Name");

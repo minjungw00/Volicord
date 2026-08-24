@@ -138,17 +138,22 @@ impl LocalOperations {
         let root = RepositoryRoot::open(repository).map_err(|error| {
             Error::with_source("repository initialization path is invalid", error)
         })?;
-        let display_name = root
-            .canonical_path()
-            .file_name()
-            .and_then(OsStr::to_str)
-            .filter(|name| !name.is_empty())
+        let display_name = GitWorktreeLayout::resolve(root.canonical_path())
+            .ok()
+            .flatten()
+            .and_then(|layout| layout.repository_name_hint())
+            .or_else(|| {
+                root.canonical_path()
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+            })
             .ok_or_else(|| {
                 Error::new(
                     "canonical repository root has no non-empty UTF-8 basename for the Project display name",
                 )
-            })?
-            .to_owned();
+            })?;
         self.initialize_project(display_name, Some(root.canonical_path()))
     }
 

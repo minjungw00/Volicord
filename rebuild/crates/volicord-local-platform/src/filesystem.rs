@@ -13,6 +13,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 
 const CONTROL_FILE_LIMIT: u64 = 4096;
+const GIT_CONFIG_LIMIT: u64 = 256 * 1024;
+const REPOSITORY_NAME_HINT_LIMIT: usize = 255;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryPathError(String);
@@ -288,6 +290,16 @@ impl GitWorktreeLayout {
     pub const fn is_linked_worktree(&self) -> bool {
         self.linked_worktree
     }
+
+    /// Returns a bounded display-name hint from the local `origin` URL when it
+    /// is present and unambiguous. This is not a Project or clone identity.
+    pub fn repository_name_hint(&self) -> Option<String> {
+        let config =
+            read_bounded_regular_file(&self.common_dir.join("config"), GIT_CONFIG_LIMIT).ok()?;
+        let config = std::str::from_utf8(&config).ok()?;
+        let origin = unambiguous_origin_url(config)?;
+        repository_slug(origin)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -382,6 +394,86 @@ fn read_control_file(path: &Path) -> Result<String, RepositoryPathError> {
         ));
     }
     Ok(line.to_owned())
+}
+
+fn read_bounded_regular_file(path: &Path, limit: u64) -> Result<Vec<u8>, RepositoryPathError> {
+    let metadata = fs::symlink_metadata(path).map_err(path_error)?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > limit {
+        return Err(RepositoryPathError(
+            "Git metadata path must be a bounded regular file".to_owned(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    File::open(path)
+        .and_then(|mut file| file.read_to_end(&mut bytes))
+        .map_err(path_error)?;
+    Ok(bytes)
+}
+
+fn unambiguous_origin_url(config: &str) -> Option<&str> {
+    let mut in_origin = false;
+    let mut origin = None;
+    for raw_line in config.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if line.starts_with('[') {
+            let section = line.strip_prefix('[')?.strip_suffix(']')?.trim();
+            let mut parts = section.splitn(2, char::is_whitespace);
+            let kind = parts.next().unwrap_or_default();
+            let subsection = parts.next();
+            in_origin = kind.eq_ignore_ascii_case("remote")
+                && subsection
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .strip_prefix('"')
+                    .and_then(|value| value.strip_suffix('"'))
+                    == Some("origin");
+            continue;
+        }
+        if !in_origin {
+            continue;
+        }
+        let (key, value) = line.split_once('=')?;
+        if !key.trim().eq_ignore_ascii_case("url") {
+            continue;
+        }
+        let value = value.trim();
+        let value = if let Some(quoted) = value.strip_prefix('"') {
+            quoted.strip_suffix('"')?
+        } else {
+            value
+        };
+        if value.is_empty() || origin.replace(value).is_some() {
+            return None;
+        }
+    }
+    origin
+}
+
+fn repository_slug(origin: &str) -> Option<String> {
+    let origin = origin.trim();
+    if origin.is_empty()
+        || origin.len() > GIT_CONFIG_LIMIT as usize
+        || origin.contains(['\0', '\n', '\r', '?', '#', '\\'])
+    {
+        return None;
+    }
+    let origin = origin.trim_end_matches('/');
+    let candidate = origin.rsplit(['/', ':']).next()?;
+    let candidate = candidate.strip_suffix(".git").unwrap_or(candidate);
+    if candidate.is_empty()
+        || candidate == "."
+        || candidate == ".."
+        || candidate.len() > REPOSITORY_NAME_HINT_LIMIT
+        || !candidate
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return None;
+    }
+    Some(candidate.to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

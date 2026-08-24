@@ -148,6 +148,72 @@ fn separate_clone_keeps_a_distinct_local_coordinate() {
 }
 
 #[test]
+fn repository_name_hint_uses_unambiguous_local_origin_metadata() {
+    let temporary = tempdir().expect("temporary directory");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository).expect("repository");
+    git(&repository, &["init", "-q"]);
+
+    for (origin, expected) in [
+        (
+            "https://github.com/tree-sitter/tree-sitter.git",
+            Some("tree-sitter"),
+        ),
+        (
+            "git@github.com:pallets/itsdangerous.git",
+            Some("itsdangerous"),
+        ),
+        ("/var/tmp/Volicord.git", Some("Volicord")),
+        (
+            "file:///var/tmp/source-repository.git",
+            Some("source-repository"),
+        ),
+        ("/", None),
+        ("https://example.invalid/unsafe%20name.git", None),
+    ] {
+        git(&repository, &["remote", "add", "origin", origin]);
+        let layout = GitWorktreeLayout::resolve(&repository)
+            .expect("layout")
+            .expect("Git repository");
+        assert_eq!(
+            layout.repository_name_hint().as_deref(),
+            expected,
+            "{origin}"
+        );
+        git(&repository, &["remote", "remove", "origin"]);
+    }
+}
+
+#[test]
+fn filesystem_origin_survives_cloning_into_a_generic_directory_name() {
+    let temporary = tempdir().expect("temporary directory");
+    let source = temporary.path().join("tree-sitter");
+    let clone = temporary.path().join("campaign").join("repository");
+    fs::create_dir_all(&source).expect("source");
+    git(&source, &["init", "-q"]);
+    fs::create_dir_all(clone.parent().expect("clone parent")).expect("campaign");
+    let output = Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&source)
+        .arg(&clone)
+        .output()
+        .expect("git clone");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let layout = GitWorktreeLayout::resolve(&clone)
+        .expect("layout")
+        .expect("Git clone");
+    assert_eq!(
+        layout.repository_name_hint().as_deref(),
+        Some("tree-sitter")
+    );
+}
+
+#[test]
 fn dirty_and_source_fingerprints_change_without_claiming_project_identity() {
     let clean = DirtyObservation::from_porcelain_v2(b"").expect("clean status");
     let dirty = DirtyObservation::from_porcelain_v2(

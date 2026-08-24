@@ -383,7 +383,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(first_512.contains("recall must succeed before inspecting, editing, or continuing"));
     assert!(first_512.contains("not_found result requires explicit project_initialize"));
     assert!(instructions.contains("omit display_name unless the user supplied one"));
-    assert!(instructions.contains("canonical repository-root basename names the Project"));
+    assert!(instructions.contains("local repository-native identity can name the Project"));
+    assert!(instructions.contains("canonical repository-root basename only as fallback"));
     assert!(instructions.contains("Preserve and send display_name when the user did supply it"));
     assert!(instructions.contains("current-host Goal"));
     assert!(
@@ -448,6 +449,7 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .to_lowercase()
         .contains("read-only"));
     assert!(descriptions["project_initialize"].contains("after resolution"));
+    assert!(descriptions["project_initialize"].contains("local Git origin repository slug"));
     assert!(descriptions["project_initialize"].contains("canonical repository-root basename"));
     assert!(descriptions["project_initialize"].contains("preserve it exactly"));
     assert!(descriptions["recall"].contains("Recall must succeed before repository inspection"));
@@ -721,14 +723,29 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
 }
 
 #[test]
-fn project_initialize_uses_the_exact_repository_root_basename_unless_name_is_explicit() {
+fn project_initialize_prefers_repository_native_identity_unless_name_is_explicit() {
     let temporary = tempdir().expect("temporary directory");
+    let source = temporary.path().join("tree-sitter");
+    fs::create_dir_all(&source).expect("source repository");
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&source)
+        .args(["init", "-q"])
+        .status()
+        .expect("git init")
+        .success());
     let repository = temporary
         .path()
         .join("misleading-Volicord")
-        .join("rebuild")
-        .join("tree-sitter");
-    fs::create_dir_all(&repository).expect("nested repository");
+        .join("repository");
+    fs::create_dir_all(repository.parent().expect("clone parent")).expect("outer repository");
+    assert!(Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&source)
+        .arg(&repository)
+        .status()
+        .expect("git clone")
+        .success());
     let explicit_repository = temporary
         .path()
         .join("another-outer-name")

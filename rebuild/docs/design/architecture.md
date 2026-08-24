@@ -392,10 +392,13 @@ create, bind 또는 revise하지 않으며 match가 없으면 explicit not-found
 initialization은 별도의 explicit intent로 남긴다.
 Repository path와 함께 explicit initialization을 요청했지만 user가 display name을 제공하지
 않았다면 Adapter는 이름을 추측하거나 ancestor directory/model knowledge에서 가져오지 않고
-Local Operations가 canonical repository root의 basename만으로 initial display name을 만든다.
+Local Operations가 local Git metadata에 unambiguous한 `origin` repository slug가 있으면
+network request 없이 이를 bounded initial display-name hint로 사용하고, usable local Git
+identity가 없을 때만 canonical repository root의 basename으로 fallback한다.
 User가 display name을 제공했다면 그 이름을 그대로 보존한다. 이름과 repository path가 모두
 없는 initialization은 유효한 intent가 아니다. 이 display default는 path-independent Project
-identity나 binding identity를 결정하지 않는다.
+identity나 binding/clone/worktree identity를 결정하지 않으며 existing Project를 rename하지
+않는다.
 Canonical Context Kernel이 path와 독립적인 Project identity와 portable Source
 meaning을 만들고, Local Operations가 현재 clone과의 local binding을 소유한다.
 Canonical mutation이 commit된 뒤 binding result를 별도로 확정하며 한쪽 실패를 다른

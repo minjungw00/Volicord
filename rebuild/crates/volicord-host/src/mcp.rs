@@ -59,7 +59,7 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
 
 fn server_instructions() -> String {
     format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize; omit display_name unless the user supplied one so the canonical repository-root basename names the Project. Preserve and send display_name when the user did supply it. Then record a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, use candidate_manage for Candidate research, readiness, and promotion, inquiry_frontier for the promoted Question, and decision_record for the explicit current-host response. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize; omit display_name unless the user supplied one so local repository-native identity can name the Project, with canonical repository-root basename only as fallback. Preserve and send display_name when the user did supply it. Then record a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, use candidate_manage for Candidate research, readiness, and promotion, inquiry_frontier for the promoted Question, and decision_record for the explicit current-host response. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
     )
 }
 
@@ -1236,7 +1236,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "project_initialize" => (
-            "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding. When repository is supplied without display_name, derive the Project name only from the canonical repository-root basename; when the user supplied display_name, preserve it exactly.",
+            "Explicitly create and optionally bind a new Volicord Project after resolution found no existing repository binding. When repository is supplied without display_name, prefer a bounded local Git origin repository slug and fall back to the canonical repository-root basename; when the user supplied display_name, preserve it exactly.",
             json!({"oneOf": [
                 object_schema(
                     vec![
@@ -1246,7 +1246,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     &["display_name"],
                 ),
                 object_schema(
-                    vec![("repository", text_schema("Absolute repository path whose canonical root basename becomes the Project display name", 1, 4096))],
+                    vec![("repository", text_schema("Absolute repository path used to derive a local repository-native Project display name", 1, 4096))],
                     &["repository"],
                 ),
             ]}),
