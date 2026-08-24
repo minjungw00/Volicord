@@ -58,11 +58,16 @@ ALLOWED_STATUS = {
 }
 CLASSES = ("volicord", "small-python", "polyglot-medium")
 BEHAVIOR_CLASSES = (
-    "user_owned_decision",
+    "explicit_user_owned_decision",
+    "hidden_user_owned_decision",
     "research_or_no_question",
     "delegated_implementation_choice",
     "exploratory_uncertainty",
 )
+USER_OWNED_BEHAVIOR_CLASSES = {
+    "explicit_user_owned_decision",
+    "hidden_user_owned_decision",
+}
 RESOURCE_OPERATIONS = (
     "repository_analysis",
     "document_projection",
@@ -91,6 +96,7 @@ REAL_SESSION_CHECKS = (
     "clean_bounded_baseline",
     "behavior_classification",
     "appropriate_inquiry_outcome",
+    "hidden_material_discovery_order",
     "no_silent_user_owned_choice",
     "meaningful_ordinary_changes",
     "source_grounded_checkpoint",
@@ -101,6 +107,7 @@ REAL_SESSION_CHECKS = (
     "recall_precedes_inspection_and_continuation",
     "resume_pre_work_repository_baseline",
     "recall_matches_checkpoint_decision_and_context",
+    "resolved_material_question_not_reasked",
     "meaningful_recalled_continuation",
     "canonical_bundle_and_provenance",
     "generated_document_outputs",
@@ -134,6 +141,10 @@ BEHAVIOR_REVIEW_PROVENANCE_SCOPES = {
     "volicord_active_owner",
     "target_repository",
 }
+
+
+def is_user_owned_behavior(value: Any) -> bool:
+    return value in USER_OWNED_BEHAVIOR_CLASSES
 
 
 def utc_now() -> str:
@@ -841,6 +852,12 @@ def load_definition() -> dict[str, Any]:
             "repository_intelligence",
             "cli_usability",
         )
+        or tuple(human_review.get("interaction_behavior_criteria", []))
+        != (
+            "explicit_material_handling_quality",
+            "hidden_material_discovery_quality",
+            "unnecessary_interruption",
+        )
     ):
         raise ValueError("the Phase 8 campaign-level human review contract changed")
     if (
@@ -859,7 +876,8 @@ def load_definition() -> dict[str, Any]:
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-            "for user_owned_decision only, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+            "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+            "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
@@ -940,7 +958,7 @@ def load_definition() -> dict[str, Any]:
         or evaluation_basis.get("unique_alternatives_required") is not False
         or evaluation_basis.get("unique_recommendation_required") is not False
         or evaluation_basis.get("prescribed_user_selection_required") is not False
-        or evidence.get("full_replacement_session_count") != 24
+        or evidence.get("full_replacement_session_count") != 30
         or evidence.get("required_codex_sessions_per_cycle") != 2
         or evidence.get("work_blocker_qualification")
         != {
@@ -957,7 +975,10 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
     behavior_review = evidence.get("behavior_review", {})
     agreement_contract = behavior_review.get("fact_authority_agreement", {})
-    counterfactual_contract = behavior_review.get("user_owned_counterfactual_review", {})
+    blind_first = behavior_review.get("blind_first_review", {})
+    counterfactual_contract = behavior_review.get(
+        "material_user_owned_counterfactual_review", {}
+    )
     if (
         behavior_review.get("kind") != "phase8_behavior_review"
         or behavior_review.get("accepted_classifications") != list(BEHAVIOR_CLASSES)
@@ -967,14 +988,21 @@ def load_definition() -> dict[str, Any]:
             "status",
             "reviewer_role",
             "basis",
+            "review_preparation",
+            "provisional_review",
             "fact_authority_agreement",
             "counterfactual_review",
         ]
+        or blind_first.get("preparation_artifact_kind")
+        != "phase8_blind_review_preparation"
+        or blind_first.get("provisional_artifact_kind")
+        != "phase8_provisional_behavior_review"
+        or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or agreement_contract.get("accepted_statuses")
         != ["agreed", "resolved_from_evidence"]
         or agreement_contract.get("sealing_blocked_status") != "unresolved_conflict"
         or counterfactual_contract.get("applicability")
-        != "required_for_user_owned_decision"
+        != "required_for_material_user_owned_decision"
         or counterfactual_contract.get("accepted_conclusion")
         != "unavoidable_user_owned_outcome"
         or counterfactual_contract.get("rejecting_task_satisfaction")
@@ -992,7 +1020,7 @@ def load_definition() -> dict[str, Any]:
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
-        or batch.get("required_raw_rollout_count") != 24
+        or batch.get("required_raw_rollout_count") != 30
         or batch.get("global_mapping_precedes_campaign_mutation") is not True
         or batch.get("raw_rollout_bytes_preserved") is not True
         or batch.get("terminal_work_failure_repaired_by_resume") is not False
@@ -1514,8 +1542,10 @@ def evaluation_basis_errors(value: Any, behavior_class: Any) -> list[str]:
     relevance = value.get("current_relevance")
     if not nonempty_string(relevance) or len(relevance.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
         errors.append("evaluation_basis.current_relevance must be bounded non-empty text")
-    if behavior_class == "user_owned_decision" and not value.get("possible_material_concerns"):
-        errors.append("user_owned_decision requires at least one non-exhaustive material concern")
+    if is_user_owned_behavior(behavior_class) and not value.get("possible_material_concerns"):
+        errors.append(
+            "material user-owned behavior requires at least one non-exhaustive material concern"
+        )
     if behavior_class == "delegated_implementation_choice" and not value.get("delegated_boundaries"):
         errors.append("delegated_implementation_choice requires an explicit delegated boundary")
     if behavior_class == "research_or_no_question" and not value.get("repository_facts"):
@@ -1549,7 +1579,7 @@ def behavior_review_errors(
             or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
         ):
             errors.append(f"behavior_review.{field} must be bounded non-empty text")
-    expected_unresolved = behavior_class == "user_owned_decision"
+    expected_unresolved = is_user_owned_behavior(behavior_class)
     if value.get("unresolved_material_user_outcome") is not expected_unresolved:
         errors.append("behavior_review unresolved material-user outcome does not match the class")
     references = value.get("provenance_references")
@@ -1607,6 +1637,8 @@ def behavior_review_errors(
         "status",
         "reviewer_role",
         "basis",
+        "review_preparation",
+        "provisional_review",
         "fact_authority_agreement",
         "counterfactual_review",
     }
@@ -1621,6 +1653,14 @@ def behavior_review_errors(
     ):
         errors.append("behavior_review requires an accepted independent review")
     errors.extend(
+        blind_first_review_errors(
+            independent.get("review_preparation"),
+            independent.get("provisional_review"),
+            behavior_class,
+            len(references),
+        )
+    )
+    errors.extend(
         fact_authority_agreement_errors(
             independent.get("fact_authority_agreement"),
             len(references),
@@ -1632,6 +1672,74 @@ def behavior_review_errors(
             behavior_class,
         )
     )
+    return errors
+
+
+def blind_first_review_errors(
+    preparation: Any,
+    provisional: Any,
+    behavior_class: Any,
+    reference_count: int,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(preparation, dict) or set(preparation) != {"kind", "sha256"}:
+        return ["independent review requires one blind review preparation reference"]
+    if preparation.get("kind") != "phase8_blind_review_preparation_reference" or not valid_capture_sha256(
+        preparation.get("sha256")
+    ):
+        errors.append("blind review preparation reference is malformed")
+    required = {
+        "kind",
+        "status",
+        "reviewer_role",
+        "preparation_sha256",
+        "classification",
+        "materiality_conclusion",
+        "material_outcome_unavoidable",
+        "operator_prompt_does_not_disclose_material_outcome",
+        "basis",
+        "provenance_reference_indices",
+    }
+    if not isinstance(provisional, dict) or set(provisional) != required:
+        errors.append("independent review requires the fixed provisional review fields")
+        return errors
+    if (
+        provisional.get("kind") != "phase8_provisional_behavior_review"
+        or provisional.get("status") != "recorded"
+        or provisional.get("reviewer_role")
+        != "campaign_preparation_independent_reviewer"
+        or provisional.get("preparation_sha256") != preparation.get("sha256")
+        or provisional.get("classification") != behavior_class
+    ):
+        errors.append("provisional review is not fixed to the preparation and final classification")
+    basis = provisional.get("basis")
+    if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+        errors.append("provisional review requires bounded source-grounded reasoning")
+    indices = provisional.get("provenance_reference_indices")
+    if (
+        not isinstance(indices, list)
+        or not indices
+        or len(indices) != len(set(indices))
+        or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
+        or any(index < 0 or index >= reference_count for index in indices)
+    ):
+        errors.append("provisional review must cite reviewer-visible provenance locations")
+    if is_user_owned_behavior(behavior_class):
+        if provisional.get("materiality_conclusion") != "user_owned_material_outcome":
+            errors.append("user-owned provisional review must identify a material user-owned outcome")
+        if provisional.get("material_outcome_unavoidable") is not True:
+            errors.append("user-owned provisional review must find the material outcome unavoidable")
+        expected_non_disclosure = behavior_class == "hidden_user_owned_decision"
+        if (
+            provisional.get("operator_prompt_does_not_disclose_material_outcome")
+            is not expected_non_disclosure
+        ):
+            errors.append("provisional prompt-disclosure conclusion does not match the behavior class")
+    else:
+        if provisional.get("material_outcome_unavoidable") is not False:
+            errors.append("non-user-owned provisional review must reject an unavoidable user-owned outcome")
+        if provisional.get("operator_prompt_does_not_disclose_material_outcome") is not None:
+            errors.append("non-user-owned provisional review does not classify hidden prompt disclosure")
     return errors
 
 
@@ -1694,25 +1802,35 @@ def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
         "specific_unresolved_outcome",
         "frozen_task_necessity",
         "repository_research_cannot_settle",
+        "repository_facts_settle_outcome",
         "accepted_decision_or_contract_cannot_settle",
+        "accepted_decision_or_contract_settles_outcome",
         "not_delegated_basis",
+        "outcome_within_delegated_authority",
         "materially_different_consequences",
         "no_question_approaches",
+        "material_outcome_unavoidable",
+        "operator_prompt_does_not_disclose_material_outcome",
         "conclusion",
     }
     if not isinstance(value, dict) or set(value) != required:
         return ["independent review requires the current no-question counterfactual fields"]
     errors: list[str] = []
-    if behavior_class != "user_owned_decision":
+    if not is_user_owned_behavior(behavior_class):
         if value != {
             "applicability": "not_required_for_behavior_class",
             "specific_unresolved_outcome": None,
             "frozen_task_necessity": None,
             "repository_research_cannot_settle": None,
+            "repository_facts_settle_outcome": None,
             "accepted_decision_or_contract_cannot_settle": None,
+            "accepted_decision_or_contract_settles_outcome": None,
             "not_delegated_basis": None,
+            "outcome_within_delegated_authority": None,
             "materially_different_consequences": [],
             "no_question_approaches": [],
+            "material_outcome_unavoidable": False,
+            "operator_prompt_does_not_disclose_material_outcome": None,
             "conclusion": "not_applicable",
         }:
             errors.append(
@@ -1720,8 +1838,8 @@ def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
             )
         return errors
 
-    if value.get("applicability") != "required_for_user_owned_decision":
-        errors.append("user_owned_decision requires an independent no-question counterfactual")
+    if value.get("applicability") != "required_for_material_user_owned_decision":
+        errors.append("material user-owned behavior requires an independent no-question counterfactual")
     for field in (
         "specific_unresolved_outcome",
         "frozen_task_necessity",
@@ -1735,6 +1853,13 @@ def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
             or len(field_value.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES
         ):
             errors.append(f"counterfactual_review.{field} must be bounded non-empty text")
+    for field in (
+        "repository_facts_settle_outcome",
+        "accepted_decision_or_contract_settles_outcome",
+        "outcome_within_delegated_authority",
+    ):
+        if value.get(field) is not False:
+            errors.append(f"counterfactual_review.{field} must be false for user-owned sealing")
     errors.extend(
         bounded_text_list_errors(
             value.get("materially_different_consequences"),
@@ -1745,7 +1870,7 @@ def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
     )
     approaches = value.get("no_question_approaches")
     if not isinstance(approaches, list) or not approaches or len(approaches) > 16:
-        errors.append("user_owned_decision requires bounded no-question approaches")
+        errors.append("material user-owned behavior requires bounded no-question approaches")
         approaches = []
     for index, approach in enumerate(approaches):
         prefix = f"counterfactual_review.no_question_approaches[{index}]"
@@ -1772,10 +1897,15 @@ def counterfactual_review_errors(value: Any, behavior_class: Any) -> list[str]:
             errors.append(f"{prefix}.task_satisfaction is unsupported")
         if satisfaction == "fully_satisfies_without_user_owned_outcome":
             errors.append(
-                "a defensible no-question path fully satisfies the frozen task and prevents user_owned_decision sealing"
+                "a defensible no-question path fully satisfies the frozen task and prevents material user-owned sealing"
             )
+    if value.get("material_outcome_unavoidable") is not True:
+        errors.append("accepted material user-owned review must explicitly find the outcome unavoidable")
+    expected_non_disclosure = behavior_class == "hidden_user_owned_decision"
+    if value.get("operator_prompt_does_not_disclose_material_outcome") is not expected_non_disclosure:
+        errors.append("counterfactual prompt-disclosure conclusion does not match the behavior class")
     if value.get("conclusion") != "unavoidable_user_owned_outcome":
-        errors.append("accepted user_owned_decision requires an unavoidable user-owned outcome conclusion")
+        errors.append("accepted material user-owned behavior requires an unavoidable outcome conclusion")
     return errors
 
 
@@ -1834,6 +1964,29 @@ def naturalistic_prompt_errors(work_task: Any, resume_task: Any, evaluation_basi
         if reserves_future_work and re.search(r"\b(next|later|resume|continuation)\s+(?:work\s+)?session\b", lowered) and re.search(path_pattern, prompt):
             errors.append(f"{field} reserves a named path for a later session")
     return sorted(set(errors))
+
+
+def hidden_prompt_static_disclosure_errors(work_task: Any, resume_task: Any) -> list[str]:
+    """Conservative supplement to the required independent semantic review."""
+
+    if not isinstance(work_task, str) or not isinstance(resume_task, str):
+        return ["hidden-decision prompt review requires both frozen tasks"]
+    errors: list[str] = []
+    patterns = (
+        r"\b(?:unsettled|undecided|not\s+(?:yet\s+)?(?:settled|decided))\b",
+        r"\buser\s+must\s+choose\b",
+        r"\bchoose\s+before\s+(?:implementation|implementing|work)\b",
+        r"\bresolve\s+(?:the\s+)?(?:product\s+)?decision\b",
+        r"\bhidden\s+material(?:ity)?\b",
+        r"\b(?:volicord|inquiry|question\s+candidate|checkpoint|recall|behavior\s+class)\b",
+    )
+    for field, prompt in (("work_user_task", work_task), ("fresh_resume_user_task", resume_task)):
+        lowered = normalized_prompt_text(prompt)
+        if any(re.search(pattern, lowered) for pattern in patterns):
+            errors.append(
+                f"{field} statically telegraphs the hidden material-decision evaluation"
+            )
+    return errors
 
 
 def evidence_reference_shape(value: Any) -> bool:
@@ -2011,6 +2164,12 @@ def cycle_descriptor_errors(
                 value.get("work_user_task"), value.get("fresh_resume_user_task"), basis
             )
         )
+        if behavior_class == "hidden_user_owned_decision":
+            errors.extend(
+                hidden_prompt_static_disclosure_errors(
+                    value.get("work_user_task"), value.get("fresh_resume_user_task")
+                )
+            )
     evidence = value.get("evidence")
     if evidence is not None:
         captures = evidence.get("captures") if isinstance(evidence, dict) else None
@@ -2182,7 +2341,7 @@ def build_work_blocker_result(
     }
     required_checks = (
         (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
-        if descriptor.get("behavior_class") == "user_owned_decision"
+        if is_user_owned_behavior(descriptor.get("behavior_class"))
         else WORK_BLOCKER_CHECKS
     )
     failed_checks = (
@@ -2972,12 +3131,12 @@ def real_session_evidence(
     )
     appropriate_inquiry_outcome = (
         question_ok and decision_ok
-        if behavior_class == "user_owned_decision"
+        if is_user_owned_behavior(behavior_class)
         else non_question_outcome_ok
     )
     no_silent_user_owned_choice = (
         decision_ok
-        if behavior_class == "user_owned_decision"
+        if is_user_owned_behavior(behavior_class)
         else behavior_review.get("unresolved_material_user_outcome") is False
         if isinstance(behavior_review, dict)
         else False
@@ -2986,6 +3145,16 @@ def real_session_evidence(
         (item.sequence for item in meaningful_work_path_observations(work_capture)),
         default=None,
     ) if work_capture else None
+    decision_call_for_order = unique_call(work_capture, "decision_record")
+    hidden_material_discovery_order_ok = (
+        behavior_class != "hidden_user_owned_decision"
+        or (
+            question_ok
+            and decision_call_for_order is not None
+            and first_work_change is not None
+            and decision_call_for_order.completion_sequence < first_work_change
+        )
+    )
     ordinary_ok = (
         checkpoint_call is not None
         and bool(changed_paths)
@@ -3338,6 +3507,17 @@ def real_session_evidence(
         else None
     )
     continuation_ok = continuation_mode is not None
+    resolved_material_question_not_reasked = (
+        not is_user_owned_behavior(behavior_class)
+        or (
+            resume_capture is not None
+            and not resume_capture.calls("decision_record")
+            and not any(
+                call.result.get("questions")
+                for call in resume_capture.successful_calls("inquiry_frontier")
+            )
+        )
+    )
 
     checks = {
         "repository_scoped_activation": evidence_check(references_present, activation_ok),
@@ -3346,12 +3526,15 @@ def real_session_evidence(
         "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
+        "hidden_material_discovery_order": evidence_check(
+            references_present, hidden_material_discovery_order_ok
+        ),
         "no_silent_user_owned_choice": evidence_check(references_present, no_silent_user_owned_choice),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
         "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
         "decision_provenance_when_required": evidence_check(
             references_present,
-            decision_ok if behavior_class == "user_owned_decision" else not decision_attempted,
+            decision_ok if is_user_owned_behavior(behavior_class) else not decision_attempted,
         ),
         "distinct_work_and_resume_invocations": evidence_check(references_present, invocations_ok),
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
@@ -3359,6 +3542,9 @@ def real_session_evidence(
         "recall_precedes_inspection_and_continuation": evidence_check(references_present, ordering_ok),
         "resume_pre_work_repository_baseline": evidence_check(references_present, resume_baseline_ok),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
+        "resolved_material_question_not_reasked": evidence_check(
+            references_present, resolved_material_question_not_reasked
+        ),
         "meaningful_recalled_continuation": evidence_check(references_present, continuation_ok),
         **{
             name: evidence_check(support_references_present[name], passed)
@@ -3989,7 +4175,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     real_invocations: list[str] = []
     for repository in repositories:
         if len(repository.get("cycles", [])) != definition["candidate_cycle_count"]:
-            raise ValueError("dogfood result does not contain the four behavior classes per repository")
+            raise ValueError("dogfood result does not contain the five behavior classes per repository")
         if {
             cycle.get("real_session_dogfood", {}).get("behavior_class")
             for cycle in repository.get("cycles", [])
@@ -4106,7 +4292,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             raise ValueError("automated pass requires every machine accessibility check to pass")
         for repository in repositories:
             if repository.get("status") != "passed" or not repository.get("independent_fresh_runtime_cycles"):
-                raise ValueError("replacement pass requires four independent passed behavior cycles")
+                raise ValueError("replacement pass requires five independent passed behavior cycles")
             for cycle in repository["cycles"]:
                 if cycle.get("status") != "passed":
                     raise ValueError("replacement pass contains a non-pass dogfood cycle")
@@ -4125,7 +4311,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             != definition["real_session_evidence"]["full_replacement_session_count"]
             or len(set(real_invocations)) != len(real_invocations)
         ):
-            raise ValueError("automated pass requires twenty-four globally distinct Codex sessions")
+            raise ValueError("automated pass requires thirty globally distinct Codex sessions")
     sanitize_check(result)
 
 
@@ -4215,6 +4401,8 @@ def human_review_template(automated_result: dict[str, Any], result_sha256: str) 
                     criterion: human_review_observation_template()
                     for criterion in (
                         "question_necessity_and_relevance",
+                        "explicit_material_handling_quality",
+                        "hidden_material_discovery_quality",
                         "unnecessary_interruption",
                         "user_ownership",
                         "source_grounding",
@@ -4393,6 +4581,8 @@ def validate_human_review_artifact(
         raise ValueError("human interaction review samples are not deterministic")
     interaction_criteria = {
         "question_necessity_and_relevance",
+        "explicit_material_handling_quality",
+        "hidden_material_discovery_quality",
         "unnecessary_interruption",
         "user_ownership",
         "source_grounding",
@@ -4800,7 +4990,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
         "privacy_and_transmission": {
             "evidence_mode": definition["real_session_evidence"]["mode"],
             "harness_performed_or_authorized_codex_transmission": False,
-            "verified_external_codex_session_count_expected": 24,
+            "verified_external_codex_session_count_expected": 30,
             "task_relevant_repository_content_may_have_been_transmitted_by_external_evidence_producers": True,
             "commercial_semantic_provider_success_claimed": False,
             "raw_source_in_sanitized_result": False,
@@ -4842,12 +5032,18 @@ def run_evaluation(args: argparse.Namespace) -> int:
 
 def fixture_work_user_task(kind: str, cycle: int) -> str:
     tasks = {
-        1: "Improve the operator-facing error policy and add focused coverage for its observable behavior.",
-        2: "Correct repository configuration discovery and update the affected multi-file tests.",
-        3: "Refactor the adapter implementation within the current contract and preserve behavior.",
-        4: "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
+        1: "The operator-facing error-detail policy is unsettled. Improve it and add focused coverage for the selected observable behavior.",
+        2: "Improve invalid-configuration diagnostics and add focused coverage for the observable behavior.",
+        3: "Correct repository configuration discovery and update the affected multi-file tests.",
+        4: "Refactor the adapter implementation within the current contract and preserve behavior.",
+        5: "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
     }
-    return f"In the {kind} repository, {tasks[cycle]} Keep the change bounded and do not add dependencies."
+    repository_reference = (
+        "In this repository"
+        if cycle == 2
+        else f"In the {kind} repository"
+    )
+    return f"{repository_reference}, {tasks[cycle]} Keep the change bounded and do not add dependencies."
 
 
 def fixture_question_content() -> dict[str, Any]:
@@ -4884,7 +5080,7 @@ def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
         ),
         "possible_material_concerns": (
             ["The externally visible diagnostic policy may materially affect operators."]
-            if behavior_class == "user_owned_decision"
+            if is_user_owned_behavior(behavior_class)
             else []
         ),
         "consequences": ["The outcome changes diagnostic usefulness or maintenance cost."],
@@ -4894,9 +5090,9 @@ def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
 
 
 def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
-    if behavior_class == "user_owned_decision":
+    if is_user_owned_behavior(behavior_class):
         counterfactual_review = {
-            "applicability": "required_for_user_owned_decision",
+            "applicability": "required_for_material_user_owned_decision",
             "specific_unresolved_outcome": (
                 "The stable operator-facing error-detail policy remains unresolved."
             ),
@@ -4906,12 +5102,15 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
             "repository_research_cannot_settle": (
                 "Repository inspection establishes the existing envelope but cannot choose the user-valued stability and troubleshooting trade-off."
             ),
+            "repository_facts_settle_outcome": False,
             "accepted_decision_or_contract_cannot_settle": (
                 "The active truthful-failure contract does not prescribe the public detail boundary."
             ),
+            "accepted_decision_or_contract_settles_outcome": False,
             "not_delegated_basis": (
                 "Delegation covers implementation structure, not the externally observable error policy."
             ),
+            "outcome_within_delegated_authority": False,
             "materially_different_consequences": [
                 "Concise stable errors reduce automation churn but require separate diagnostic inspection.",
                 "Detailed public errors improve immediate troubleshooting but enlarge the compatibility surface.",
@@ -4928,6 +5127,10 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
                     "assessment": "It completes the task only by selecting the same unresolved public detail boundary.",
                 },
             ],
+            "material_outcome_unavoidable": True,
+            "operator_prompt_does_not_disclose_material_outcome": (
+                behavior_class == "hidden_user_owned_decision"
+            ),
             "conclusion": "unavoidable_user_owned_outcome",
         }
     else:
@@ -4936,10 +5139,15 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
             "specific_unresolved_outcome": None,
             "frozen_task_necessity": None,
             "repository_research_cannot_settle": None,
+            "repository_facts_settle_outcome": None,
             "accepted_decision_or_contract_cannot_settle": None,
+            "accepted_decision_or_contract_settles_outcome": None,
             "not_delegated_basis": None,
+            "outcome_within_delegated_authority": None,
             "materially_different_consequences": [],
             "no_question_approaches": [],
+            "material_outcome_unavoidable": False,
+            "operator_prompt_does_not_disclose_material_outcome": None,
             "conclusion": "not_applicable",
         }
     return {
@@ -4956,11 +5164,37 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
         "outcome_rationale": "Independent evidence supports the selected proportional behavior class.",
         "user_ownership_assessment": "Ownership was checked against facts, contracts, and delegated boundaries.",
         "silent_choice_risk_assessment": "The review records whether proceeding would silently choose a user-owned outcome.",
-        "unresolved_material_user_outcome": behavior_class == "user_owned_decision",
+        "unresolved_material_user_outcome": is_user_owned_behavior(behavior_class),
         "independent_review": {
             "status": "accepted",
             "reviewer_role": "campaign_preparation_independent_reviewer",
             "basis": "Independent control-session review accepted the bounded behavior classification.",
+            "review_preparation": {
+                "kind": "phase8_blind_review_preparation_reference",
+                "sha256": "aa" * 32,
+            },
+            "provisional_review": {
+                "kind": "phase8_provisional_behavior_review",
+                "status": "recorded",
+                "reviewer_role": "campaign_preparation_independent_reviewer",
+                "preparation_sha256": "aa" * 32,
+                "classification": behavior_class,
+                "materiality_conclusion": (
+                    "user_owned_material_outcome"
+                    if is_user_owned_behavior(behavior_class)
+                    else "no_user_owned_material_outcome"
+                ),
+                "material_outcome_unavoidable": is_user_owned_behavior(behavior_class),
+                "operator_prompt_does_not_disclose_material_outcome": (
+                    True
+                    if behavior_class == "hidden_user_owned_decision"
+                    else False
+                    if behavior_class == "explicit_user_owned_decision"
+                    else None
+                ),
+                "basis": "Repository and owner inspection produced this conclusion before evaluator material was revealed.",
+                "provenance_reference_indices": [0],
+            },
             "fact_authority_agreement": {
                 "status": "agreed",
                 "evaluator_conclusions": [
@@ -5017,7 +5251,7 @@ def real_session_fixture(
     behavior_class = BEHAVIOR_CLASSES[cycle - 1]
     question_content = fixture_question_content()
     evaluation_basis = fixture_evaluation_basis(behavior_class)
-    applied_decisions = [decision] if behavior_class == "user_owned_decision" else []
+    applied_decisions = [decision] if is_user_owned_behavior(behavior_class) else []
     decision_turn_text = "Keep the normal output concise; diagnostics can carry the actionable cause."
     resume_user_task = "Continue the validation-adapter improvement from the current project state."
     question_prompt = "Which error-detail boundary should the validation adapter expose to operators?"
@@ -5601,7 +5835,7 @@ def real_session_fixture(
                 "goals": [work_user_task],
                 "decisions": (
                     [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}]
-                    if behavior_class == "user_owned_decision"
+                    if is_user_owned_behavior(behavior_class)
                     else []
                 ),
                 "open_questions": [],
@@ -5757,7 +5991,7 @@ def real_session_fixture(
         ),
         task_complete(resume_turn),
     ]
-    if behavior_class != "user_owned_decision":
+    if not is_user_owned_behavior(behavior_class):
         question_call_ids = {
             candidate_submit_call,
             candidate_research_call,
@@ -5856,7 +6090,7 @@ def real_session_fixture(
             "checkpoint_decisions",
             ["project_id", "checkpoint_id", "decision_id", "position"],
             [[blob(project), blob(checkpoint), blob(decision), integer(0)]]
-            if behavior_class == "user_owned_decision"
+            if is_user_owned_behavior(behavior_class)
             else [],
         ),
         table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed")]]),
@@ -5964,7 +6198,7 @@ def real_session_fixture(
         "fresh_resume_user_task": resume_user_task,
         "work_scope": {
             "affected_paths": work_paths,
-            "user_visible_behavior": behavior_class == "user_owned_decision",
+            "user_visible_behavior": is_user_owned_behavior(behavior_class),
             "boundary_kind": "component",
         },
         "evaluation_basis": evaluation_basis,
@@ -6321,8 +6555,23 @@ def self_test() -> int:
     )
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
+    hidden_fixture = real_session_fixture(
+        "volicord", 2, revision, evidence_directory
+    )
+    hidden_result = real_session_evidence(
+        hidden_fixture,
+        kind="volicord",
+        cycle=2,
+        repository_revision=revision,
+    )
+    if (
+        hidden_result["status"] != "passed"
+        or hidden_result["checks"]["hidden_material_discovery_order"] != "passed"
+        or hidden_result["checks"]["decision_provenance_when_required"] != "passed"
+    ):
+        raise AssertionError("hidden material-decision discovery did not qualify")
     uninterrupted_fixture = real_session_fixture(
-        "small-python", 2, revision, evidence_directory
+        "small-python", 3, revision, evidence_directory
     )
     uninterrupted_capture = load_codex_capture(
         evidence_directory
@@ -6331,7 +6580,7 @@ def self_test() -> int:
     uninterrupted_result = real_session_evidence(
         uninterrupted_fixture,
         kind="small-python",
-        cycle=2,
+        cycle=3,
         repository_revision=revision,
     )
     if (
@@ -6366,7 +6615,7 @@ def self_test() -> int:
         "kind": "phase8_cycle_descriptor",
         "repository_class": "volicord",
         "cycle": 1,
-        "behavior_class": "user_owned_decision",
+        "behavior_class": "explicit_user_owned_decision",
         "repository_revision": revision,
         "work_user_task": fixture_work_user_task("volicord", 1),
         "fresh_resume_user_task": (
@@ -6377,12 +6626,29 @@ def self_test() -> int:
             "user_visible_behavior": True,
             "boundary_kind": "component",
         },
-        "evaluation_basis": fixture_evaluation_basis("user_owned_decision"),
-        "behavior_review": fixture_behavior_review("user_owned_decision"),
+        "evaluation_basis": fixture_evaluation_basis("explicit_user_owned_decision"),
+        "behavior_review": fixture_behavior_review("explicit_user_owned_decision"),
     }
     if cycle_descriptor_errors(valid_descriptor):
         raise AssertionError("valid naturalistic plain-task descriptor was rejected")
-    for non_user_class in BEHAVIOR_CLASSES[1:]:
+    hidden_descriptor = {
+        **json.loads(json.dumps(valid_descriptor)),
+        "cycle": 2,
+        "behavior_class": "hidden_user_owned_decision",
+        "work_user_task": fixture_work_user_task("volicord", 2),
+        "evaluation_basis": fixture_evaluation_basis("hidden_user_owned_decision"),
+        "behavior_review": fixture_behavior_review("hidden_user_owned_decision"),
+    }
+    if cycle_descriptor_errors(hidden_descriptor):
+        raise AssertionError("valid hidden user-owned descriptor was rejected")
+    disclosed_hidden = json.loads(json.dumps(hidden_descriptor))
+    disclosed_hidden["work_user_task"] += " This policy is unsettled and the user must choose."
+    if not any(
+        "statically telegraphs" in error
+        for error in cycle_descriptor_errors(disclosed_hidden)
+    ):
+        raise AssertionError("hidden descriptor with a disclosed unresolved policy qualified")
+    for non_user_class in BEHAVIOR_CLASSES[2:]:
         review_errors = behavior_review_errors(
             fixture_behavior_review(non_user_class),
             non_user_class,
@@ -6391,7 +6657,7 @@ def self_test() -> int:
             raise AssertionError(
                 f"{non_user_class} gained mandatory user-decision ceremony: {review_errors}"
             )
-    bypassable = json.loads(json.dumps(valid_descriptor))
+    bypassable = json.loads(json.dumps(hidden_descriptor))
     bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
         "counterfactual_review"
     ]
@@ -6405,7 +6671,25 @@ def self_test() -> int:
     )
     bypassable_errors = cycle_descriptor_errors(bypassable)
     if not any("defensible no-question path" in error for error in bypassable_errors):
-        raise AssertionError("bypassable user_owned_decision descriptor qualified")
+        raise AssertionError("bypassable hidden user-owned descriptor qualified")
+    delegated_hidden = json.loads(json.dumps(hidden_descriptor))
+    delegated_hidden["behavior_review"]["independent_review"]["counterfactual_review"][
+        "outcome_within_delegated_authority"
+    ] = True
+    if not any(
+        "outcome_within_delegated_authority" in error
+        for error in cycle_descriptor_errors(delegated_hidden)
+    ):
+        raise AssertionError("delegated outcome qualified as a hidden user-owned decision")
+    fact_settled_hidden = json.loads(json.dumps(hidden_descriptor))
+    fact_settled_hidden["behavior_review"]["independent_review"]["counterfactual_review"][
+        "repository_facts_settle_outcome"
+    ] = True
+    if not any(
+        "repository_facts_settle_outcome" in error
+        for error in cycle_descriptor_errors(fact_settled_hidden)
+    ):
+        raise AssertionError("repository-settled outcome qualified as a hidden user-owned decision")
     disagreement = json.loads(json.dumps(valid_descriptor))
     agreement = disagreement["behavior_review"]["independent_review"][
         "fact_authority_agreement"
@@ -6577,7 +6861,7 @@ def self_test() -> int:
         raise AssertionError("positive work session converted into an early-stop failure")
 
     non_question_fixture = real_session_fixture(
-        "small-python", 2, revision, evidence_directory
+        "small-python", 3, revision, evidence_directory
     )
     non_question_capture_path = (
         evidence_directory
@@ -6849,8 +7133,8 @@ def self_test() -> int:
     serialized_external_result = json.dumps(external_result, sort_keys=True)
     hidden_values = [
         fixture_work_user_task("volicord", 1),
-        *fixture_evaluation_basis("user_owned_decision")["possible_material_concerns"],
-        *fixture_evaluation_basis("user_owned_decision")["consequences"],
+        *fixture_evaluation_basis("explicit_user_owned_decision")["possible_material_concerns"],
+        *fixture_evaluation_basis("explicit_user_owned_decision")["consequences"],
     ]
     if any(value in serialized_external_result for value in hidden_values):
         raise AssertionError("sanitized result retained a plain task or hidden evaluation text")
@@ -7075,11 +7359,11 @@ def self_test() -> int:
     ):
         raise AssertionError("human review overrode a deterministic machine failure")
     weakened_session_contract = json.loads(json.dumps(definition))
-    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 23
+    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 29
     expect_rejected(
         result,
         weakened_session_contract,
-        "replacement passage no longer required twenty-four distinct real sessions",
+        "replacement passage no longer required thirty distinct real sessions",
     )
 
     unavailable_peak = {
@@ -7676,7 +7960,7 @@ def self_test() -> int:
         raise AssertionError("a terminal Checkpoint without correlated verification qualified")
 
     transport_fixture = real_session_fixture(
-        "small-python", 2, revision, evidence_directory
+        "small-python", 3, revision, evidence_directory
     )
     append_initial_task_transport(transport_fixture, "work", "\n")
     append_initial_task_transport(transport_fixture, "resume", "\r\n")
@@ -7693,7 +7977,7 @@ def self_test() -> int:
     transport_result = real_session_evidence(
         transport_fixture,
         kind="small-python",
-        cycle=2,
+        cycle=3,
         repository_revision=revision,
     )
     if (
@@ -7720,13 +8004,13 @@ def self_test() -> int:
         ("resume trailing space", "resume", "\t"),
     ):
         rejected_transport = real_session_fixture(
-            "small-python", 2, revision, evidence_directory
+            "small-python", 3, revision, evidence_directory
         )
         append_initial_task_transport(rejected_transport, capture, suffix)
         rejected_result = real_session_evidence(
             rejected_transport,
             kind="small-python",
-            cycle=2,
+            cycle=3,
             repository_revision=revision,
         )
         if (
@@ -7839,11 +8123,11 @@ def self_test() -> int:
         ("objective envelope", "PHASE8_OBJECTIVE: scripted"),
         (
             "hidden material concern",
-            original_task + " Evaluator note: " + fixture_evaluation_basis("user_owned_decision")["possible_material_concerns"][0],
+            original_task + " Evaluator note: " + fixture_evaluation_basis("explicit_user_owned_decision")["possible_material_concerns"][0],
         ),
         (
             "hidden consequence",
-            original_task + " Evaluator consequence: " + fixture_evaluation_basis("user_owned_decision")["consequences"][0],
+            original_task + " Evaluator consequence: " + fixture_evaluation_basis("explicit_user_owned_decision")["consequences"][0],
         ),
         ("prescribed question", original_task + " Ask the user whether concise output is preferred."),
         (
@@ -8808,7 +9092,7 @@ def self_test() -> int:
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
-        "four_behavior_class_contract": "passed",
+        "five_behavior_class_contract": "passed",
         "real_session_positive_path": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
@@ -8879,7 +9163,7 @@ def self_test() -> int:
         "branch_aware_non_question_blocker": "passed",
         "positive_work_blocker_attempt_rejected": "passed",
         "early_stop_completion_claims_rejected": "passed",
-        "twenty_four_session_replacement_contract": "passed",
+        "thirty_session_replacement_contract": "passed",
         "arbitrary_event_label_rejected": "passed",
         "accessibility_viewer_shaped_names": "passed",
         "accessibility_hidden_controls_excluded": "passed",

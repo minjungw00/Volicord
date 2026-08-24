@@ -268,8 +268,10 @@ campaign-level human review must also pass, while an absent review leaves
 replacement explicitly pending and a human pass cannot override machine
 failure.
 Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고
-no-question, research, delegated choice, prototype/research/defer와 genuine user-owned
-Decision behavior class를 적절한 task에서 평가한다. 모든 qualifying cycle의
+explicit user-owned positive control, ordinary task의 hidden user-owned material discovery,
+no-question, research, delegated choice와 prototype/research/defer behavior class를 각
+repository에서 평가한다. 세 repository class × 다섯 cycle의 15-cycle/30-fresh-session
+campaign과 모든 qualifying cycle의
 human review와 current production background semantic-provider의 별도로 authorized real
 success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
@@ -339,7 +341,8 @@ success path가 필요하다. Final exact validation은 `rebuild/scripts/validat
 - [ ] unrelated dirty change 분리
 - [ ] verification, user review와 acceptance의 독립 상태
 - [ ] Decision reuse와 revisit trigger
-- [ ] no-question/research/delegation/prototype/defer/user-Decision behavior-class qualification
+- [ ] explicit/hidden user-owned Decision discovery와 no-question/research/delegation/prototype/defer qualification
+- [ ] hidden task semantic non-disclosure와 unavoidable-outcome counterfactual independent review
 
 ### Recall, UI와 documents
 

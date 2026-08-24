@@ -20,7 +20,7 @@
 
 ## Maintained conclusion
 
-The redesigned four-behavior-class campaign has no sealed candidate and is not
+The redesigned five-behavior-class campaign has no sealed candidate and is not
 yet eligible to begin naturalistic Dogfood. The prior candidate passed admission with a clean,
 unchanged worktree; the exact final succeeded with all four commands and zero
 failures; and the same-session official V11 passed all 54 required steps. All
@@ -50,19 +50,21 @@ with the four generated documents or their adoption lifecycle.
 After a later technical-entry gate seals a candidate, the fresh campaign must
 begin from zero in a separate clean worktree whose actual Git `HEAD` is exactly
 that candidate. It must retain the maintained
-three-class, four-behavior-class-cycle, distinct work/resume-session, automated,
+three-class, five-behavior-class-cycle, distinct work/resume-session, automated,
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the later sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
 
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
-independently reviews bounded evaluation-basis and behavior-class data, and seals each descriptor
-without exposing that material to the operator. Repository and SessionStart
-hook trust remain explicit user actions. The operator then runs all twenty-four
+creates each bounded blind-first reviewer preparation, records a provisional
+classification and materiality conclusion before exposing the evaluator basis,
+and seals each descriptor without exposing evaluator material to the operator.
+Repository and SessionStart
+hook trust remain explicit user actions. The operator then runs all thirty
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers
 only genuine material Questions, preserves every raw rollout without
-per-session evidence-processing interruptions, and provides the twenty-four files
+per-session evidence-processing interruptions, and provides the thirty files
 once for batch ingestion. The helper maps the cycles and automatically derives
 canonical bundles, bounded Runtime/activation summaries, all four document
 kinds in Markdown and self-contained HTML, and read-only static Viewer

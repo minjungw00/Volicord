@@ -182,15 +182,18 @@ does not define one valid Question wording, alternative set, recommendation,
 or user selection.
 
 Every descriptor also carries a hidden `behavior_review` prepared by the
-campaign control session. Its single typed provenance representation can bind
-content hashes either to one of the nine current active architecture owners at
-the candidate revision or to a safe path in the cycle's exact pinned target
-revision. Qualification re-reads those Git objects and rejects inactive owner
-documents, traversal, missing files, wrong revisions, and stale hashes. The
-review records the evidence-backed classification, user ownership and silent
-choice risk, and an independent-review outcome. All four maintained behavior
-classes require accepted independent review; typed provenance does not
-mechanically prove the classification.
+campaign control session. Before seeing the evaluator basis, an independent
+reviewer receives only a hash-bound preparation artifact containing candidate
+and repository identity, revision, exact frozen tasks, work scope, and owner
+document locations. The reviewer records a provisional classification and
+materiality conclusion; only then may the evaluator basis and counterfactual
+analysis be compared. Typed provenance can bind content hashes either to one of
+the nine current active architecture owners at the candidate revision or to a
+safe path in the cycle's exact pinned target revision. Qualification re-reads
+those Git objects and rejects inactive owner documents, traversal, missing
+files, wrong revisions, and stale hashes. All five maintained behavior classes
+require accepted independent review; typed provenance does not mechanically
+prove the classification.
 
 Work-session research, Inquiry, current-host Decision provenance, ordinary
 work, numeric-exit verification, and Checkpoint creation are observed from the
@@ -223,11 +226,15 @@ Deterministic journey success remains independent from the optional
 campaign-level review of Question relevance, Decision comprehension,
 interruption cost, document fidelity/readability, and Viewer usability.
 
-For `user_owned_decision`, the work capture must show Candidate submission,
-source-grounded repository research, reviewed material promotion through
-`candidate_manage`, and a Question in `inquiry_frontier`. Only an explicit
+For `explicit_user_owned_decision` and `hidden_user_owned_decision`, the work
+capture must show Candidate submission, source-grounded repository research,
+reviewed material promotion through `candidate_manage`, and a Question in
+`inquiry_frontier` before the first affected ordinary write. Only an explicit
 current-host user response can qualify `decision_record`; the agent's own
-recommendation or implementation preference cannot. For
+recommendation or implementation preference cannot. The hidden-class prompt
+must not disclose that a material choice exists or identify its outcome; its
+review must establish that complete work necessarily encounters that choice.
+For
 `research_or_no_question`, `delegated_implementation_choice`, and
 `exploratory_uncertainty`, the absence of Candidate, Question, and Decision can
 be the correct passing outcome.
@@ -240,8 +247,9 @@ remain explicit operator actions.
 
 The current result schema reports `automated_qualification`, `human_review`,
 and `replacement_qualification` separately. The automated `run` path covers
-three repository classes, four behavior-class cycles per class, and two globally distinct
-fresh VS Code Codex sessions per cycle, plus every maintained machine check.
+three repository classes, five behavior-class cycles per class, and two
+globally distinct fresh VS Code Codex sessions per cycle: fifteen cycles and
+thirty sessions, plus every maintained machine check.
 It exits successfully when those checks pass even if human review is
 `not_provided`; in that state replacement is `pending_human_review` and neither
 `replacement_pass_candidate` nor Phase 9 readiness is true.
@@ -262,8 +270,9 @@ The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
 required high-level Project, Goal Context, repository baseline, behavior-class
 evidence, or grounded Checkpoint operations are terminal when absent from a
 completed work capture. Material Question Candidate/promotion and explicit
-current-host Decision are additionally required only for `user_owned_decision`;
-a later resume cannot retroactively put them in that session. If the capture
+current-host Decision are additionally required only for the two user-owned
+decision classes; a later resume cannot retroactively put them in that session.
+If the capture
 cannot prove a required semantic fact, the harness requires normal full
 qualification instead of inventing a blocker. A positive work session cannot
 be converted into an early failure. The result always records
@@ -284,11 +293,14 @@ rebuild/scripts/dogfood-campaign prepare \
 ```
 
 `prepare` verifies the clean candidate and source identities, performs a
-candidate-local install, and creates twelve revision-pinned disposable repository
+candidate-local install, and creates fifteen revision-pinned disposable repository
 workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
 under the private evaluator plane; the run sheet and separate campaign-level
-human-review artifact live under the operator plane. A preparation/control agent completes an
-evaluator input and invokes `seal-cycle`. Sealing verifies the class, pinned
+human-review artifact live under the operator plane. A preparation/control
+agent completes an evaluator input and invokes `prepare-review`. The
+independent reviewer records the provisional review from that bounded artifact
+before receiving the evaluator basis. The control agent then invokes
+`seal-cycle --provisional-review <path>`. Sealing verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes,
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
@@ -310,7 +322,7 @@ The roles remain separate throughout a campaign:
   explicitly approves the SessionStart hook, opens every required fresh VS
   Code Codex session, and sends only the frozen work/resume tasks from the run
   sheet. The operator supplies answers only to genuine material Questions,
-  preserves all twenty-four raw rollouts, and provides them once after the sessions finish.
+  preserves all thirty raw rollouts, and provides them once after the sessions finish.
 - The helper owns campaign setup, sealed-descriptor validation, operator
   run-sheet generation, byte-exact rollout intake and hashing,
   activation/setup classification, early blocker gating, Project-ID
@@ -319,10 +331,10 @@ The roles remain separate throughout a campaign:
   evidence completion, repository-manifest assembly, deterministic
   campaign-level review sampling, and bounded review packaging.
 
-After all twelve descriptors are sealed, `activate-all` may enable the twelve
+After all fifteen descriptors are sealed, `activate-all` may enable the fifteen
 repository-scoped integrations before the chats begin. It never grants
-repository or hook trust. `collect-batch` accepts either twenty-four explicit paths
-or one directory containing exactly twenty-four files. Before changing campaign
+repository or hook trust. `collect-batch` accepts either thirty explicit paths
+or one directory containing exactly thirty files. Before changing campaign
 state it maps the unordered captures to the sealed work/resume slots using the
 frozen first task, exact workspace and revision, VS Code source/originator,
 fresh session identity, and SessionStart activation. Ambiguous, missing,
@@ -362,7 +374,7 @@ it is not interchangeable with a generated document and does not share the
 document-adoption lifecycle.
 
 `finalize-manifest` deterministically assembles `repositories.json` after all
-twelve resume captures. Run the automated Dogfood evaluation without subjective
+fifteen resume captures. Run the automated Dogfood evaluation without subjective
 inputs. If replacement qualification is needed, create one campaign-level
 review artifact from the immutable automated result:
 
@@ -373,8 +385,9 @@ rebuild/scripts/dogfood-campaign prepare-human-review \
 ```
 
 The artifact requires review of every automated-passed interaction cycle.
-Each cycle covers Question necessity, unnecessary interruption, user
-ownership, Decision comprehension when applicable, repository-analysis and
+Each cycle covers Question necessity, unnecessary interruption, explicit
+material-decision handling quality, hidden material-decision discovery quality,
+user ownership, Decision comprehension when applicable, repository-analysis and
 structural-navigation usefulness, semantic value and honesty, CLI usability,
 Viewer understanding, and all four documents' fidelity, usefulness, remaining
 work accuracy, grounding distinction, and requested-language body. Polyglot
@@ -389,7 +402,8 @@ override any automated failure.
 
 `package-review`
 then creates a deterministic bounded archive containing campaign metadata,
-the manifest, twelve descriptors and derived review views, hash inventory,
+the manifest, fifteen descriptors, blind-first reviewer preparations,
+provisional reviews, derived review views, hash inventory,
 canonical bundles, the campaign-level human review when present,
 runtime/activation summaries, blocker records
 when present, and all generated-document summaries, review indexes, Markdown,
@@ -419,7 +433,7 @@ no sealed candidate; its technical entry and Dogfood state are `not_run`.
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden
 evaluator material is independently reviewed and sealed, the user approves
-repository/hook trust, completes all twenty-four fresh naturalistic chats without
+repository/hook trust, completes all thirty fresh naturalistic chats without
 per-session evidence processing, and supplies the raw rollouts once to
 `collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
 activation summaries, four document kinds, and static Viewer snapshots.

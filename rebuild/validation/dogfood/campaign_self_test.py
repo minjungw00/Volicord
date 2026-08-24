@@ -133,7 +133,14 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
     value.pop("evidence", None)
     source = campaign.evaluator_input_path(root, kind, cycle)
     campaign.write_json(source, value)
-    campaign.seal_cycle(root, kind, cycle, source)
+    preparation = campaign.prepare_review(root, kind, cycle, source)
+    provisional = copy.deepcopy(
+        value["behavior_review"]["independent_review"]["provisional_review"]
+    )
+    provisional["preparation_sha256"] = preparation["preparation_sha256"]
+    provisional_path = root.parent / f"{campaign.cycle_key(kind, cycle)}-provisional.json"
+    campaign.write_json(provisional_path, provisional)
+    campaign.seal_cycle(root, kind, cycle, source, provisional_path)
 
 
 def exporter_from(source: Path):
@@ -315,6 +322,20 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     descriptor.pop("_evidence_directory", None)
     descriptor.pop("_evidence_file_sha256", None)
     descriptor.pop("evidence", None)
+    draft_path = parent / "review-preparation-draft.json"
+    campaign.write_json(draft_path, descriptor)
+    preparation = campaign.prepare_review(root, "volicord", 1, draft_path)
+    preparation_body = campaign.read_json(root / preparation["preparation"])
+    serialized_preparation = json.dumps(preparation_body, sort_keys=True)
+    assert "evaluation_basis" not in serialized_preparation
+    assert "counterfactual" not in serialized_preparation
+    assert "possible_material_concerns" not in serialized_preparation
+    provisional = copy.deepcopy(
+        descriptor["behavior_review"]["independent_review"]["provisional_review"]
+    )
+    provisional["preparation_sha256"] = preparation["preparation_sha256"]
+    provisional_path = parent / "fixed-provisional-review.json"
+    campaign.write_json(provisional_path, provisional)
     bypassable = copy.deepcopy(descriptor)
     bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
         "counterfactual_review"
@@ -328,11 +349,11 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     bypassable_path = parent / "bypassable-user-owned-input.json"
     campaign.write_json(bypassable_path, bypassable)
     try:
-        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+        campaign.seal_cycle(root, "volicord", 1, bypassable_path, provisional_path)
     except campaign.CampaignError as error:
         assert "defensible no-question path" in str(error)
     else:
-        raise AssertionError("bypassable user_owned_decision descriptor sealed")
+        raise AssertionError("bypassable material user-owned descriptor sealed")
 
     disagreement = copy.deepcopy(descriptor)
     disagreement_agreement = disagreement["behavior_review"]["independent_review"][
@@ -348,7 +369,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     disagreement_path = parent / "unresolved-review-disagreement-input.json"
     campaign.write_json(disagreement_path, disagreement)
     try:
-        campaign.seal_cycle(root, "volicord", 1, disagreement_path)
+        campaign.seal_cycle(root, "volicord", 1, disagreement_path, provisional_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -359,7 +380,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     leaked_path = parent / "leaked-evaluator-input.json"
     campaign.write_json(leaked_path, leaked)
     try:
-        campaign.seal_cycle(root, "volicord", 1, leaked_path)
+        campaign.seal_cycle(root, "volicord", 1, leaked_path, provisional_path)
     except campaign.CampaignError as error:
         assert "evaluator-only material" in str(error)
     else:
@@ -367,8 +388,10 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     accepted_path = parent / "unavoidable-user-owned-input.json"
     campaign.write_json(accepted_path, descriptor)
-    sealed = campaign.seal_cycle(root, "volicord", 1, accepted_path)
-    assert sealed["behavior_class"] == "user_owned_decision"
+    sealed = campaign.seal_cycle(
+        root, "volicord", 1, accepted_path, provisional_path
+    )
+    assert sealed["behavior_class"] == "explicit_user_owned_decision"
     sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
     assert descriptor["work_user_task"] in sealed_run_sheet
     assert (
@@ -454,14 +477,14 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
-    assert len({capture.session_id for _path, capture in mapped.values()}) == 24
+    assert len({capture.session_id for _path, capture in mapped.values()}) == 30
 
     directory = parent / "unordered-rollouts"
     directory.mkdir()
     for index, source in enumerate(reversed(captures)):
         shutil.copyfile(source, directory / f"capture-{index:02}.jsonl")
     directory_paths = campaign.batch_rollout_paths(None, directory)
-    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 24
+    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 30
     try:
         campaign.map_batch_rollouts(root, captures[:-1])
     except campaign.CampaignError as error:
@@ -514,7 +537,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         activation = campaign.activate_all(root)
     finally:
         campaign.run_checked = original_run_checked
-    assert activation["cycle_count"] == 12
+    assert activation["cycle_count"] == 15
     assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
 
     for kind in campaign.CLASSES:
@@ -534,10 +557,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert summary["outcome"] == "evidence_collected"
     assert summary["session_distinctness"] == {
         "status": "passed",
-        "expected_count": 24,
-        "observed_count": 24,
+        "expected_count": 30,
+        "observed_count": 30,
     }
-    assert len(summary["cycles"]) == 12
+    assert len(summary["cycles"]) == 15
     for item in summary["cycles"]:
         assert item["supported_evidence_complete"] is True
         assert item["terminal_work_failure_preserved"] is False
@@ -570,7 +593,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
         assert "batch-intake-summary.json" in names
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 12
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 15
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(
             any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts)
@@ -729,13 +752,15 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     archive = campaign.build_review_package(root, parent / "review.tar.gz")
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
-        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 12
-        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 13
-        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 96
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 12
-        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 12
-        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 12
-        assert len([name for name in names if name.startswith("operator/document-review/")]) == 12
+        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 15
+        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 16
+        assert len([name for name in names if name.startswith("reviewer/preparations/")]) == 15
+        assert len([name for name in names if name.startswith("reviewer/provisional/")]) == 15
+        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 120
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 15
+        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 15
+        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 15
+        assert len([name for name in names if name.startswith("operator/document-review/")]) == 15
         assert "operator/human-review.json" in names
         assert "qualified-result.json" in names
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
@@ -753,7 +778,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         root, parent / "review-with-raw.tar.gz", include_raw=True
     )
     with tarfile.open(raw_archive, "r:gz") as opened:
-        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 24
+        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 30
 
 
 def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
@@ -927,7 +952,7 @@ def main() -> int:
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
-            "unordered_twenty_four_rollout_batch_mapping",
+            "unordered_thirty_rollout_batch_mapping",
             "missing_duplicate_and_wrong_identity_batch_rejection",
             "batch_terminal_work_failure_preserved_with_later_resume",
             "batch_activation_all_preserves_user_controlled_trust",

@@ -8,9 +8,10 @@
     "skipped",
     "environment_blocked"
   ],
-  "candidate_cycle_count": 4,
+  "candidate_cycle_count": 5,
   "behavior_classes": [
-    "user_owned_decision",
+    "explicit_user_owned_decision",
+    "hidden_user_owned_decision",
     "research_or_no_question",
     "delegated_implementation_choice",
     "exploratory_uncertainty"
@@ -212,6 +213,11 @@
       "viewer_snapshot",
       "repository_intelligence",
       "cli_usability"
+    ],
+    "interaction_behavior_criteria": [
+      "explicit_material_handling_quality",
+      "hidden_material_discovery_quality",
+      "unnecessary_interruption"
     ]
   },
   "fixture_regression_command": [
@@ -222,7 +228,7 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
-    "full_replacement_session_count": 24,
+    "full_replacement_session_count": 30,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
@@ -265,7 +271,8 @@
       "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-      "for user_owned_decision only, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+      "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+      "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
       "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
       "perform real repository work after the baseline",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
@@ -331,7 +338,8 @@
     "behavior_review": {
       "kind": "phase8_behavior_review",
       "accepted_classifications": [
-        "user_owned_decision",
+        "explicit_user_owned_decision",
+        "hidden_user_owned_decision",
         "research_or_no_question",
         "delegated_implementation_choice",
         "exploratory_uncertainty"
@@ -341,9 +349,39 @@
         "status",
         "reviewer_role",
         "basis",
+        "review_preparation",
+        "provisional_review",
         "fact_authority_agreement",
         "counterfactual_review"
       ],
+      "blind_first_review": {
+        "preparation_artifact_kind": "phase8_blind_review_preparation",
+        "provisional_artifact_kind": "phase8_provisional_behavior_review",
+        "preparation_visibility": "reviewer_input_without_evaluator_material",
+        "preparation_fields": [
+          "candidate_head",
+          "repository_class",
+          "cycle",
+          "repository_revision",
+          "repository_path",
+          "work_user_task",
+          "fresh_resume_user_task",
+          "work_scope",
+          "owner_document_locations"
+        ],
+        "provisional_fields": [
+          "status",
+          "reviewer_role",
+          "preparation_sha256",
+          "classification",
+          "materiality_conclusion",
+          "material_outcome_unavoidable",
+          "operator_prompt_does_not_disclose_material_outcome",
+          "basis",
+          "provenance_reference_indices"
+        ],
+        "evaluator_material_visible_before_provisional_fix": false
+      },
       "fact_authority_agreement": {
         "accepted_statuses": [
           "agreed",
@@ -360,16 +398,21 @@
         ],
         "resolution_evidence": "inspectable source or active-owner provenance references"
       },
-      "user_owned_counterfactual_review": {
-        "applicability": "required_for_user_owned_decision",
+      "material_user_owned_counterfactual_review": {
+        "applicability": "required_for_material_user_owned_decision",
         "required_fields": [
           "specific_unresolved_outcome",
           "frozen_task_necessity",
           "repository_research_cannot_settle",
+          "repository_facts_settle_outcome",
           "accepted_decision_or_contract_cannot_settle",
+          "accepted_decision_or_contract_settles_outcome",
           "not_delegated_basis",
+          "outcome_within_delegated_authority",
           "materially_different_consequences",
           "no_question_approaches",
+          "material_outcome_unavoidable",
+          "operator_prompt_does_not_disclose_material_outcome",
           "conclusion"
         ],
         "no_question_sources": [
@@ -390,10 +433,10 @@
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
-      "required_raw_rollout_count": 24,
+      "required_raw_rollout_count": 30,
       "input_modes": [
-        "twenty_four_explicit_paths",
-        "one_directory_with_exactly_twenty_four_files"
+        "thirty_explicit_paths",
+        "one_directory_with_exactly_thirty_files"
       ],
       "mapping_evidence": [
         "exact_repository_workspace",

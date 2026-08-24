@@ -153,6 +153,18 @@ def evaluator_descriptor_path(root: Path, kind: str, cycle: int) -> Path:
     return root / "evaluator/descriptors" / f"{cycle_key(kind, cycle)}.json"
 
 
+def reviewer_preparation_path(root: Path, kind: str, cycle: int) -> Path:
+    return root / "reviewer/preparations" / f"{cycle_key(kind, cycle)}.json"
+
+
+def reviewer_provisional_template_path(root: Path, kind: str, cycle: int) -> Path:
+    return root / "reviewer/templates" / f"{cycle_key(kind, cycle)}.json"
+
+
+def reviewer_provisional_path(root: Path, kind: str, cycle: int) -> Path:
+    return root / "reviewer/provisional" / f"{cycle_key(kind, cycle)}.json"
+
+
 def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
     semantic = {key: item for key, item in value.items() if key != "evidence"}
     return hashlib.sha256(
@@ -168,14 +180,17 @@ def descriptor_skeleton(
 ) -> dict[str, Any]:
     owner_path = "rebuild/docs/design/inquiry-and-decision.md"
     behavior_class = BEHAVIOR_CLASSES[cycle - 1]
-    if behavior_class == "user_owned_decision":
+    if harness.is_user_owned_behavior(behavior_class):
         counterfactual_review = {
-            "applicability": "required_for_user_owned_decision",
+            "applicability": "required_for_material_user_owned_decision",
             "specific_unresolved_outcome": "REPLACE with the exact externally meaningful unresolved outcome",
             "frozen_task_necessity": "REPLACE with why the exact frozen task necessarily encounters the outcome",
             "repository_research_cannot_settle": "REPLACE with why repository/environment research cannot settle it",
+            "repository_facts_settle_outcome": False,
             "accepted_decision_or_contract_cannot_settle": "REPLACE with why no accepted Decision or contract settles it",
+            "accepted_decision_or_contract_settles_outcome": False,
             "not_delegated_basis": "REPLACE with why the outcome is not delegated",
+            "outcome_within_delegated_authority": False,
             "materially_different_consequences": [
                 "REPLACE with one material consequence",
                 "REPLACE with a materially different consequence",
@@ -185,6 +200,10 @@ def descriptor_skeleton(
                 "task_satisfaction": "fails_frozen_task",
                 "assessment": "REPLACE with why it fails the frozen task or still chooses the same user-owned outcome",
             }],
+            "material_outcome_unavoidable": True,
+            "operator_prompt_does_not_disclose_material_outcome": (
+                behavior_class == "hidden_user_owned_decision"
+            ),
             "conclusion": "unavoidable_user_owned_outcome",
         }
     else:
@@ -193,10 +212,15 @@ def descriptor_skeleton(
             "specific_unresolved_outcome": None,
             "frozen_task_necessity": None,
             "repository_research_cannot_settle": None,
+            "repository_facts_settle_outcome": None,
             "accepted_decision_or_contract_cannot_settle": None,
+            "accepted_decision_or_contract_settles_outcome": None,
             "not_delegated_basis": None,
+            "outcome_within_delegated_authority": None,
             "materially_different_consequences": [],
             "no_question_approaches": [],
+            "material_outcome_unavoidable": False,
+            "operator_prompt_does_not_disclose_material_outcome": None,
             "conclusion": "not_applicable",
         }
     return {
@@ -235,11 +259,13 @@ def descriptor_skeleton(
             "outcome_rationale": "REPLACE after independent review",
             "user_ownership_assessment": "REPLACE after independent review",
             "silent_choice_risk_assessment": "REPLACE after independent review",
-            "unresolved_material_user_outcome": behavior_class == "user_owned_decision",
+            "unresolved_material_user_outcome": harness.is_user_owned_behavior(behavior_class),
             "independent_review": {
                 "status": "pending",
                 "reviewer_role": "campaign_preparation_independent_reviewer",
                 "basis": "REPLACE after independent review",
+                "review_preparation": None,
+                "provisional_review": None,
                 "fact_authority_agreement": {
                     "status": "unresolved_conflict",
                     "evaluator_conclusions": ["REPLACE with the evaluator fact and authority conclusion"],
@@ -328,7 +354,11 @@ def assert_operator_artifacts_do_not_leak(root: Path) -> None:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        if "EVALUATOR_ONLY" in text or any(value in text for value in hidden):
+        if (
+            "EVALUATOR_ONLY" in text
+            or any(value in text for value in hidden)
+            or any(behavior_class in text for behavior_class in BEHAVIOR_CLASSES)
+        ):
             raise CampaignError(f"operator-facing artifact exposes evaluator-only material: {relative(root, path)}")
 
 
@@ -338,7 +368,7 @@ def render_operator_run_sheet(root: Path) -> Path:
     for kind in CLASSES:
         for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
             state = campaign["cycles"][cycle_key(kind, cycle)]
-            if state["state"] == "prepared":
+            if state["state"] in {"prepared", "review_prepared"}:
                 continue
             descriptor = read_json(evaluator_descriptor_path(root, kind, cycle))
             entries.append(
@@ -360,11 +390,11 @@ def render_operator_run_sheet(root: Path) -> Path:
     path.write_text(
         "# Naturalistic Dogfood Operator Run Sheet\n\n"
         "This helper does not grant repository or hook trust and does not start Codex sessions. "
-        "Use this operator material only after all twelve sealed cycle entries are present. Evaluator "
+        "Use this operator material only after all fifteen sealed cycle entries are present. Evaluator "
         "research is maintained separately; this workflow isolation is not an operating-system "
-        "security boundary against deliberately opening evaluator files. After all twelve entries are "
+        "security boundary against deliberately opening evaluator files. After all fifteen entries are "
         "sealed, the campaign steward may run `activate-all`; activation never grants trust. Run all "
-        "twenty-four fresh work/resume chats, preserve their raw rollouts, and provide the twenty-four files once "
+        "thirty fresh work/resume chats, preserve their raw rollouts, and provide the thirty files once "
         "through `collect-batch`. No per-chat control-session collection is required.\n\n"
         + ("\n\n".join(entries) if entries else "No cycles are sealed for operator use yet.\n"),
         encoding="utf-8",
@@ -475,11 +505,157 @@ def load_sealed_descriptor(
     return path, descriptor
 
 
-def seal_cycle(root: Path, kind: str, cycle: int, prepared_descriptor: Path) -> dict[str, Any]:
+def review_preparation_draft_errors(
+    descriptor: Any,
+    kind: str,
+    cycle: int,
+    state: dict[str, Any],
+    candidate_head: str,
+) -> list[str]:
+    if not isinstance(descriptor, dict) or descriptor.get("kind") != "phase8_cycle_descriptor":
+        return ["review preparation requires a Phase 8 cycle descriptor draft"]
+    errors: list[str] = []
+    behavior_class = BEHAVIOR_CLASSES[cycle - 1]
+    if descriptor.get("repository_class") != kind or descriptor.get("cycle") != cycle:
+        errors.append("review draft is bound to a different cycle")
+    if descriptor.get("behavior_class") != behavior_class:
+        errors.append("review draft is bound to the wrong behavior class")
+    if descriptor.get("repository_revision") != state.get("repository_revision"):
+        errors.append("review draft is bound to the wrong pinned revision")
+    for field in ("work_user_task", "fresh_resume_user_task"):
+        error = harness.plain_user_task_error(descriptor.get(field), field)
+        if error:
+            errors.append(error)
+    errors.extend(
+        harness.work_scope_errors(
+            descriptor.get("work_scope"),
+            kind,
+            state.get("repository_revision"),
+            Path(state["repository_path"]),
+            True,
+        )
+    )
+    basis = descriptor.get("evaluation_basis")
+    errors.extend(harness.evaluation_basis_errors(basis, behavior_class))
+    if not harness.evaluation_basis_errors(basis, behavior_class):
+        errors.extend(
+            harness.naturalistic_prompt_errors(
+                descriptor.get("work_user_task"),
+                descriptor.get("fresh_resume_user_task"),
+                basis,
+            )
+        )
+        if behavior_class == "hidden_user_owned_decision":
+            errors.extend(
+                harness.hidden_prompt_static_disclosure_errors(
+                    descriptor.get("work_user_task"),
+                    descriptor.get("fresh_resume_user_task"),
+                )
+            )
+    review = descriptor.get("behavior_review")
+    references = review.get("provenance_references") if isinstance(review, dict) else None
+    if not isinstance(references, list) or not references:
+        errors.append("review draft requires reviewer-visible owner locations")
+    else:
+        for reference in references:
+            if not isinstance(reference, dict):
+                errors.append("review draft contains a malformed owner location")
+                continue
+            expected_revision = (
+                candidate_head
+                if reference.get("scope") == "volicord_active_owner"
+                else state.get("repository_revision")
+            )
+            if (
+                reference.get("scope") not in harness.BEHAVIOR_REVIEW_PROVENANCE_SCOPES
+                or harness.safe_relative_evidence_path(reference.get("path")) is None
+                or not harness.valid_capture_sha256(reference.get("sha256"))
+                or reference.get("repository_revision") != expected_revision
+            ):
+                errors.append("review draft contains a malformed owner location")
+    return sorted(set(errors))
+
+
+def prepare_review(
+    root: Path,
+    kind: str,
+    cycle: int,
+    draft_descriptor: Path,
+) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
     state = campaign["cycles"][cycle_key(kind, cycle)]
     if state.get("state") != "prepared":
+        raise CampaignError("review preparation requires one unprepared cycle")
+    descriptor = read_json(draft_descriptor.resolve())
+    errors = review_preparation_draft_errors(
+        descriptor, kind, cycle, state, campaign["candidate_head"]
+    )
+    if errors:
+        raise CampaignError("review draft does not qualify: " + "; ".join(errors))
+    references = descriptor["behavior_review"]["provenance_references"]
+    preparation = {
+        "kind": "phase8_blind_review_preparation",
+        "candidate_head": campaign["candidate_head"],
+        "repository_class": kind,
+        "cycle": cycle,
+        "repository_revision": state["repository_revision"],
+        "repository_path": state["repository_path"],
+        "work_user_task": descriptor["work_user_task"],
+        "fresh_resume_user_task": descriptor["fresh_resume_user_task"],
+        "work_scope": descriptor["work_scope"],
+        "owner_document_locations": [
+            {
+                "scope": reference["scope"],
+                "path": reference["path"],
+                "repository_revision": reference["repository_revision"],
+            }
+            for reference in references
+        ],
+    }
+    preparation_path = reviewer_preparation_path(root, kind, cycle)
+    write_json(preparation_path, preparation)
+    preparation_sha256 = harness.sha256(preparation_path)
+    provisional_template = {
+        "kind": "phase8_provisional_behavior_review",
+        "status": "pending",
+        "reviewer_role": "campaign_preparation_independent_reviewer",
+        "preparation_sha256": preparation_sha256,
+        "classification": "REPLACE after repository and owner inspection",
+        "materiality_conclusion": "REPLACE before evaluator material is revealed",
+        "material_outcome_unavoidable": None,
+        "operator_prompt_does_not_disclose_material_outcome": None,
+        "basis": "REPLACE with the provisional source-grounded conclusion",
+        "provenance_reference_indices": [0],
+    }
+    template_path = reviewer_provisional_template_path(root, kind, cycle)
+    write_json(template_path, provisional_template)
+    state["state"] = "review_prepared"
+    state["review_preparation_sha256"] = preparation_sha256
+    save_campaign(root, campaign)
+    register_artifact(root, preparation_path)
+    return {
+        "kind": "phase8_blind_review_preparation_result",
+        "repository_class": kind,
+        "cycle": cycle,
+        "preparation": relative(root, preparation_path),
+        "preparation_sha256": preparation_sha256,
+        "provisional_review_template": relative(root, template_path),
+        "evaluator_material_exposed": False,
+    }
+
+
+def seal_cycle(
+    root: Path,
+    kind: str,
+    cycle: int,
+    prepared_descriptor: Path,
+    provisional_review_path: Path,
+) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    state = campaign["cycles"][cycle_key(kind, cycle)]
+    if state.get("state") != "review_prepared":
         raise CampaignError("cycle descriptor is already sealed and cannot be replaced")
     descriptor = read_json(prepared_descriptor.resolve())
     if "evidence" in descriptor:
@@ -490,6 +666,38 @@ def seal_cycle(root: Path, kind: str, cycle: int, prepared_descriptor: Path) -> 
         raise CampaignError("evaluator descriptor is bound to the wrong behavior class")
     if descriptor.get("repository_revision") != state["repository_revision"]:
         raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
+    preparation_path = reviewer_preparation_path(root, kind, cycle)
+    preparation = read_json(preparation_path)
+    if (
+        preparation.get("kind") != "phase8_blind_review_preparation"
+        or harness.sha256(preparation_path) != state.get("review_preparation_sha256")
+        or preparation.get("work_user_task") != descriptor.get("work_user_task")
+        or preparation.get("fresh_resume_user_task")
+        != descriptor.get("fresh_resume_user_task")
+        or preparation.get("work_scope") != descriptor.get("work_scope")
+    ):
+        raise CampaignError("sealed descriptor changed the blind reviewer preparation basis")
+    provisional = read_json(provisional_review_path.resolve())
+    references = descriptor.get("behavior_review", {}).get("provenance_references", [])
+    provisional_errors = harness.blind_first_review_errors(
+        {
+            "kind": "phase8_blind_review_preparation_reference",
+            "sha256": state["review_preparation_sha256"],
+        },
+        provisional,
+        descriptor["behavior_class"],
+        len(references) if isinstance(references, list) else 0,
+    )
+    if provisional_errors:
+        raise CampaignError("provisional review does not qualify: " + "; ".join(provisional_errors))
+    independent = descriptor.get("behavior_review", {}).get("independent_review")
+    if not isinstance(independent, dict):
+        raise CampaignError("evaluator descriptor has no independent review comparison")
+    independent["review_preparation"] = {
+        "kind": "phase8_blind_review_preparation_reference",
+        "sha256": state["review_preparation_sha256"],
+    }
+    independent["provisional_review"] = provisional
     errors = harness.cycle_descriptor_errors(
         descriptor,
         candidate_revision=campaign["candidate_head"],
@@ -507,11 +715,16 @@ def seal_cycle(root: Path, kind: str, cycle: int, prepared_descriptor: Path) -> 
     if destination.exists():
         raise CampaignError("authoritative evaluator descriptor already exists")
     write_json(destination, descriptor)
+    provisional_destination = reviewer_provisional_path(root, kind, cycle)
+    if provisional_review_path.resolve() == provisional_destination.resolve():
+        raise CampaignError("provisional review input must remain separate until sealing")
+    copy_exact(provisional_review_path.resolve(), provisional_destination)
     state["state"] = "sealed"
     state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
     save_campaign(root, campaign)
     run_sheet = render_operator_run_sheet(root)
     register_artifact(root, destination)
+    register_artifact(root, provisional_destination)
     register_artifact(root, run_sheet, replace=True)
     return {
         "kind": "phase8_dogfood_sealed_cycle",
@@ -640,6 +853,7 @@ def prepare_campaign(
                 "runtime_home": str((destination / "runtime").resolve()),
                 "state": "prepared",
                 "sealed_semantic_sha256": None,
+                "review_preparation_sha256": None,
                 "project_id": None,
                 "codex_enabled": False,
             }
@@ -1266,22 +1480,22 @@ def batch_rollout_paths(
     rollout_directory: Path | None,
 ) -> list[Path]:
     if (explicit_paths is None) == (rollout_directory is None):
-        raise CampaignError("collect-batch requires either twenty-four raw rollouts or one directory")
+        raise CampaignError("collect-batch requires either thirty raw rollouts or one directory")
     if rollout_directory is not None:
         directory = rollout_directory.resolve()
         if not directory.is_dir():
             raise CampaignError("batch rollout directory is unavailable")
         entries = sorted(directory.iterdir())
         if len(entries) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in entries):
-            raise CampaignError("batch rollout directory must contain exactly twenty-four files")
+            raise CampaignError("batch rollout directory must contain exactly thirty files")
         paths = entries
     else:
         paths = [path.resolve() for path in explicit_paths or []]
         if len(paths) != BATCH_CAPTURE_COUNT:
-            raise CampaignError("collect-batch requires exactly twenty-four explicit raw rollouts")
+            raise CampaignError("collect-batch requires exactly thirty explicit raw rollouts")
     resolved = [path.resolve() for path in paths]
     if len(set(resolved)) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in resolved):
-        raise CampaignError("batch rollout inputs must be twenty-four distinct files")
+        raise CampaignError("batch rollout inputs must be thirty distinct files")
     return resolved
 
 
@@ -1367,7 +1581,7 @@ def collect_batch(
         raise CampaignError("campaign already stopped; create a new campaign identity")
     for state in campaign["cycles"].values():
         if state.get("state") != "sealed":
-            raise CampaignError("batch collection requires all twelve sealed cycles")
+            raise CampaignError("batch collection requires all fifteen sealed cycles")
 
     mapped = map_batch_rollouts(root, raw_paths)
     for (kind, cycle, role), (source, _capture) in sorted(mapped.items()):
@@ -1586,7 +1800,7 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
         for number in range(1, len(BEHAVIOR_CLASSES) + 1):
             state = campaign["cycles"][cycle_key(kind, number)]
             if state["state"] != "resume_collected":
-                raise CampaignError("all twelve cycles must have resume evidence before finalization")
+                raise CampaignError("all fifteen cycles must have resume evidence before finalization")
             descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
             real[str(number)] = relative(root, descriptor)
         repositories.append({
@@ -1689,9 +1903,15 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
                 "derived_archive_entry": review_name,
                 "authoritative_descriptor": name,
                 "sha256": hashlib.sha256(review_bytes).hexdigest(),
+                "blind_review_preparation": (
+                    f"reviewer/preparations/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
+                ),
+                "provisional_review": (
+                    f"reviewer/provisional/{cycle_key(descriptor['repository_class'], descriptor['cycle'])}.json"
+                ),
             })
     if len(review_index) != len(CLASSES) * len(BEHAVIOR_CLASSES):
-        raise CampaignError("review package requires twelve completed descriptors and behavior reviews")
+        raise CampaignError("review package requires fifteen completed descriptors and behavior reviews")
     files["behavior-reviews/index.json"] = (
         json.dumps({"kind": "phase8_behavior_review_index", "reviews": review_index}, indent=2, sort_keys=True) + "\n"
     ).encode()
@@ -1780,6 +2000,7 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--campaign-id", required=True)
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
+    prepare_reviewer = sub.add_parser("prepare-review")
     seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
     activate_every = sub.add_parser("activate-all")
@@ -1790,7 +2011,7 @@ def parser() -> argparse.ArgumentParser:
     package = sub.add_parser("package-review")
     prepare_review = sub.add_parser("prepare-human-review")
     qualify_review = sub.add_parser("qualify-review")
-    for command in (seal, activate, collect_w, collect_r):
+    for command in (prepare_reviewer, seal, activate, collect_w, collect_r):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument(
@@ -1799,7 +2020,9 @@ def parser() -> argparse.ArgumentParser:
             type=int,
             required=True,
         )
+    prepare_reviewer.add_argument("--descriptor", required=True)
     seal.add_argument("--descriptor", required=True)
+    seal.add_argument("--provisional-review", required=True)
     collect_w.add_argument("--raw-rollout", required=True)
     collect_r.add_argument("--raw-rollout", required=True)
     activate_every.add_argument("--campaign-root", required=True)
@@ -1825,8 +2048,21 @@ def main() -> int:
     root = Path(args.campaign_root).resolve()
     if args.command == "prepare":
         value = prepare_campaign(root, args.campaign_id, args.candidate_head, Path(args.repositories).resolve())
+    elif args.command == "prepare-review":
+        value = prepare_review(
+            root,
+            args.repository_class,
+            args.cycle,
+            Path(args.descriptor),
+        )
     elif args.command == "seal-cycle":
-        value = seal_cycle(root, args.repository_class, args.cycle, Path(args.descriptor))
+        value = seal_cycle(
+            root,
+            args.repository_class,
+            args.cycle,
+            Path(args.descriptor),
+            Path(args.provisional_review),
+        )
     elif args.command == "activate-cycle":
         value = activate_cycle(root, args.repository_class, args.cycle)
     elif args.command == "activate-all":

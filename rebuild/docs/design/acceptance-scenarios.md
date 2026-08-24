@@ -418,17 +418,28 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - restart 후 open frontier 복구
 - answered Question 반복 방지
 - terminal branch 상태
-- behavior class별 expected outcome: no-question, resolved-by-research, delegated-choice reuse,
-  prototype/research/defer와 genuine user-owned Decision
-- `user_owned_decision` descriptor는 independent reviewer가 exact frozen task의 repository fact,
+- behavior class별 expected outcome: explicit user-owned Decision, hidden user-owned Decision
+  discovery, no-question, resolved-by-research, delegated-choice reuse와
+  prototype/research/defer
+- `explicit_user_owned_decision` descriptor는 ordinary task가 unresolved externally meaningful
+  outcome을 진실하게 알리는 positive control이다.
+- `hidden_user_owned_decision` descriptor의 ordinary task는 unresolved outcome이나 Decision
+  필요성을 드러내지 않는다. Independent reviewer는 evaluator material을 보기 전에 frozen
+  task, work scope, repository revision과 owner-document location만으로 provisional
+  classification을 고정하고, 이후 full evaluator basis와 비교한다.
+- 두 user-owned descriptor는 independent reviewer가 exact frozen task의 repository fact,
   accepted authority, delegation과 narrower full-task path를 검토한 뒤에도 unresolved
-  externally meaningful outcome이 unavoidable임을 보일 때만 봉인된다.
+  externally meaningful outcome이 unavoidable임을 보일 때만 봉인된다. Hidden class는
+  `material_outcome_unavoidable`와
+  `operator_prompt_does_not_disclose_material_outcome`를 모두 명시적으로 true로 검토한다.
 - claimed outcome을 고르지 않는 defensible complete no-question path 또는 unresolved
   evaluator/reviewer fact·authority disagreement가 있으면 봉인을 거부한다.
 
 ### 수동 평가
 
 - 질문이 제품·설계·구현 결과에 실제로 중요한가
+- explicit class가 disclosed material outcome을 적절히 처리하고 hidden class가 task에
+  드러나지 않은 material outcome을 repository investigation으로 실제 발견하는가
 - 사용자가 선택의 의미와 영향을 설명할 수 있는가
 - 질문 횟수가 아니라 relevance와 shared understanding으로 종료되는가
 - 사용자가 질문이 필요한 이유 또는 질문하지 않은 이유를 evidence에서
@@ -1107,9 +1118,10 @@ clean install
   explicit unavailable/degraded result를 내며 metadata-only match를 성공으로 표시하지 않는다.
 - Production background semantic-provider의 실제 success path가 별도 source-transmission
   authorization으로 실행되고 truthful failure/degradation도 보존된다.
-- Dogfood는 Question 없음, research resolution, delegated choice, prototype/research/defer와
-  genuine user-owned Decision을 task에 맞게 평가하고 unique Question이나 expected choice를
-  모든 cycle의 성공 조건으로 삼지 않는다.
+- Dogfood는 disclosed material outcome을 다루는 explicit user-owned control, ordinary task에서
+  material outcome을 발견하는 hidden user-owned behavior, Question 없음, research resolution,
+  delegated choice와 prototype/research/defer를 task에 맞게 평가한다. Unique Question wording,
+  evaluator alternative 또는 expected user choice를 성공 조건으로 삼지 않는다.
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
 - Human review가 없으면 replacement는 명시적으로 `pending_human_review`이며 pass로

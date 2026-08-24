@@ -3,11 +3,11 @@
 ## Status
 
 Failed diagnostic. The technically gated production/test candidate entered a
-naturalistic four-behavior-class campaign, but the campaign was stopped after
-the first six completed cycles exposed a production materiality-screening gap
-and a `user_owned_decision` evaluator false-positive risk. The incomplete
-campaign, its sealed descriptors, and its private evidence are diagnostic only;
-they must not be repaired, resumed, or reused for replacement qualification.
+predecessor campaign, but that campaign was stopped after the first six
+completed cycles exposed a production materiality-screening gap and a false
+positive risk in its former combined user-owned class. The incomplete campaign,
+its sealed descriptors, and its private evidence are diagnostic only; they must
+not be repaired, resumed, or reused for replacement qualification.
 The prior technical-entry capsule remains historical evidence and cannot by
 itself qualify a later campaign contract.
 
@@ -26,7 +26,8 @@ readiness.
 Run and review a completely fresh naturalistic campaign for the sealed
 candidate across the three maintained repository classes. The campaign must
 show whether real VS Code Codex sessions choose the appropriate inquiry outcome
-across user-owned, research/no-question, delegated, and exploratory work;
+across explicit user-owned, hidden user-owned, research/no-question, delegated,
+and exploratory work;
 record an explicit Decision only when genuinely required; create a grounded
 terminal Checkpoint; and resume from repository resolution and Recall without
 prompt choreography.
@@ -50,7 +51,7 @@ non-qualifying diagnostic evidence and cannot be reused.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
-The campaign then creates four fresh behavior-class cycles per class. No prior campaign input
+The campaign then creates five fresh behavior-class cycles per class. No prior campaign input
 may be reused.
 
 ## Environment and tool versions
@@ -71,7 +72,9 @@ passed.
 Evaluator/control owns the hidden preparation work:
 
 - research each actual repository and pin its qualifying revision;
-- prepare and independently review the bounded evaluation basis and behavior classification;
+- create a bounded blind-first reviewer preparation, record its provisional
+  classification and materiality conclusion, and only then compare the
+  evaluator basis and counterfactual review;
 - seal each descriptor through the maintained helper before any operator run;
 - keep evaluator facts, contract constraints, delegated boundaries, possible
   concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
@@ -80,11 +83,11 @@ The naturalistic operator owns the actions that cannot be truthfully automated:
 
 - inspect and trust the intended repository and explicitly approve its
   SessionStart hook where required;
-- open twenty-four globally distinct fresh VS Code Codex chats: work and fresh
-  resume sessions for four behavior-class cycles in each of three repository classes;
+- open thirty globally distinct fresh VS Code Codex chats: work and fresh
+  resume sessions for five behavior-class cycles in each of three repository classes;
 - send only the frozen work or resume task from the generated run sheet;
 - provide actual answers only to genuine material Questions shown in those sessions;
-- preserve all twenty-four raw rollouts for one batch intake.
+- preserve all thirty raw rollouts for one batch intake.
 
 The operator does not inspect or edit evaluator descriptors. The helper owns
 campaign setup, sealed-descriptor validation, operator run-sheet generation,
@@ -108,13 +111,15 @@ rebuild/scripts/dogfood-campaign prepare \
   --repositories <three-repository-input.json>
 ```
 
-Complete each evaluator input under the private control plane and use
-`seal-cycle` before exposing the generated operator run sheet. After all twelve
-descriptors are sealed, use `activate-all`; it enables the repository-scoped
-integration but does not grant repository or hook trust. Run all twenty-four chats
+Complete each evaluator input under the private control plane, use
+`prepare-review`, obtain the independent provisional review without disclosing
+the evaluator basis, and then use `seal-cycle --provisional-review <path>`
+before exposing the generated operator run sheet. After all fifteen descriptors
+are sealed, use `activate-all`; it enables the repository-scoped integration
+but does not grant repository or hook trust. Run all thirty chats
 without per-chat collection, preserve their raw rollouts, and then use
-`collect-batch` with twenty-four explicit paths or one directory containing exactly
-twenty-four files. Then use `finalize-manifest` and `package-review`. The automated
+`collect-batch` with thirty explicit paths or one directory containing exactly
+thirty files. Then use `finalize-manifest` and `package-review`. The automated
 Dogfood result may pass with `human_review = not_provided`, while replacement
 remains `pending_human_review` and `replacement_pass_candidate = false`. If a
 replacement-usability conclusion is needed, use `prepare-human-review` on the
@@ -166,17 +171,17 @@ historical technical entry state for the predecessor campaign contract:
 
 The first six completed naturalistic cycles established diagnostic failure:
 
-- both completed `user_owned_decision` cycles implemented without obtaining a
-  user Decision;
+- both completed former combined user-owned cycles implemented without
+  obtaining a user Decision;
 - the Small Python expired-token diagnostic task selected a new stable public
   API shape directly;
 - the Polyglot generated-package/default-policy task also implemented without a
   Question or Decision;
 - research/no-question, delegated implementation, and exploratory uncertainty
   behavior was substantially proportional;
-- one Polyglot `user_owned_decision` descriptor admitted a plausible complete
-  no-question implementation, exposing the need for independent counterfactual
-  review.
+- one Polyglot descriptor in that former class admitted a plausible complete
+  no-question implementation, exposing the need for independent
+  counterfactual review.
 
 The campaign stopped at that point. These observations do not qualify the
 candidate, and V11 remains scripted conformance rather than naturalistic
@@ -186,8 +191,8 @@ Dogfood passage.
 
 Historical technical Phase 8 entry evidence remains passed/eligible only for
 the technically gated candidate. The partial naturalistic campaign failed on
-material Question discovery and descriptor validity before complete
-twenty-four-session coverage. Unrun cycles and campaign-wide interaction,
+material Question discovery and descriptor validity before complete coverage.
+Unrun cycles and campaign-wide interaction,
 document, Viewer, Repository Intelligence, CLI, and resource conclusions remain
 unqualified. Campaign-level human review is `not_provided`.
 
@@ -228,7 +233,7 @@ separate private archive for the independent review handoff.
 | Sealed production/test candidate | `technical_entry_only` |
 | Technical Phase 8 entry | `passed_historical_candidate_evidence` |
 | Naturalistic Dogfood | `failed_diagnostic_after_six_completed_cycles` |
-| Complete twenty-four-session campaign | `stopped_not_complete` |
+| Complete replacement campaign | `not_run` |
 | Automated Dogfood qualification | `failed` |
 | Campaign-level human review | `not_provided` |
 | Replacement gate | `failed` |
@@ -249,7 +254,7 @@ separate private archive for the independent review handoff.
 ## Recommended implementation choice
 
 Use the maintained campaign helper to prepare a new candidate-bound campaign,
-run all twenty-four genuine sessions, and obtain the automated result first. Add the
+run all thirty genuine sessions, and obtain the automated result first. Add the
 campaign-level human review when evaluating replacement.
 
 ## Rejected alternatives and reasons
@@ -281,8 +286,8 @@ changing the accepted Candidate/Inquiry/Decision model.
 ## Follow-up work
 
 After remediation passes a new technical entry, prepare one completely fresh helper-owned campaign,
-have the control agent research and seal the twelve evaluator descriptors, grant
-trust manually, activate all twelve repository integrations, run the twenty-four
+have the control agent research and seal the fifteen evaluator descriptors, grant
+trust manually, activate all fifteen repository integrations, run the thirty
 required work/resume chats with only the frozen tasks, answer the actual
 material Questions, provide all raw rollouts once to batch collection, assemble
 the manifest, and provide the raw rollout archive with the bounded default

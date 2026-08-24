@@ -73,6 +73,9 @@ def main() -> int:
         "evaluation_basis",
         "behavior_class",
         "behavior_review",
+        "blind_first_review_errors",
+        "phase8_blind_review_preparation",
+        "phase8_provisional_behavior_review",
         "fact_authority_agreement",
         "counterfactual_review",
         "fully_satisfies_without_user_owned_outcome",
@@ -137,10 +140,11 @@ def main() -> int:
     real_session = definition_value["real_session_evidence"]
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
-        or real_session.get("full_replacement_session_count") != 24
-        or definition_value.get("candidate_cycle_count") != 4
+        or real_session.get("full_replacement_session_count") != 30
+        or definition_value.get("candidate_cycle_count") != 5
         or tuple(definition_value.get("behavior_classes", [])) != (
-            "user_owned_decision",
+            "explicit_user_owned_decision",
+            "hidden_user_owned_decision",
             "research_or_no_question",
             "delegated_implementation_choice",
             "exploratory_uncertainty",
@@ -149,9 +153,9 @@ def main() -> int:
         or len(definition_value["repository_classes"])
         * definition_value["candidate_cycle_count"]
         * real_session["required_codex_sessions_per_cycle"]
-        != 24
+        != 30
     ):
-        raise AssertionError("Phase 8 no longer requires twenty-four distinct real Codex sessions")
+        raise AssertionError("Phase 8 no longer requires thirty distinct real Codex sessions")
     small_rules = definition_value["repository_classes"]["small-python"]
     polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
     if (
@@ -262,20 +266,25 @@ def main() -> int:
             raise AssertionError(f"Phase 8 definition is missing evaluation-basis field {basis_field}")
     behavior_review = real_session.get("behavior_review", {})
     agreement = behavior_review.get("fact_authority_agreement", {})
-    counterfactual = behavior_review.get("user_owned_counterfactual_review", {})
+    blind_first = behavior_review.get("blind_first_review", {})
+    counterfactual = behavior_review.get("material_user_owned_counterfactual_review", {})
     if (
         behavior_review.get("required_independent_review_fields")
         != [
             "status",
             "reviewer_role",
             "basis",
+            "review_preparation",
+            "provisional_review",
             "fact_authority_agreement",
             "counterfactual_review",
         ]
+        or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or agreement.get("sealing_blocked_status") != "unresolved_conflict"
         or set(agreement.get("accepted_statuses", []))
         != {"agreed", "resolved_from_evidence"}
-        or counterfactual.get("applicability") != "required_for_user_owned_decision"
+        or counterfactual.get("applicability")
+        != "required_for_material_user_owned_decision"
         or counterfactual.get("accepted_conclusion") != "unavoidable_user_owned_outcome"
         or counterfactual.get("rejecting_task_satisfaction")
         != "fully_satisfies_without_user_owned_outcome"
@@ -301,7 +310,7 @@ def main() -> int:
     batch_contract = real_session.get("batch_campaign_contract", {})
     if (
         batch_contract.get("operation") != "collect-batch"
-        or batch_contract.get("required_raw_rollout_count") != 24
+        or batch_contract.get("required_raw_rollout_count") != 30
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
         or "read_only_static_viewer_snapshot"
@@ -323,6 +332,12 @@ def main() -> int:
             "cli_usability",
         ]
         or set(human_review.get("live_viewer_locales", [])) != {"en", "ko"}
+        or set(human_review.get("interaction_behavior_criteria", []))
+        != {
+            "explicit_material_handling_quality",
+            "hidden_material_discovery_quality",
+            "unnecessary_interruption",
+        }
     ):
         raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
