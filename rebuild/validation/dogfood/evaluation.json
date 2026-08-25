@@ -218,7 +218,52 @@
       "explicit_material_handling_quality",
       "hidden_material_discovery_quality",
       "unnecessary_interruption"
-    ]
+    ],
+    "interaction_behavior_criterion_contracts": {
+      "explicit_material_handling_quality": {
+        "applies_to": [
+          "explicit_user_owned_decision"
+        ],
+        "review_prompt": "Pass only when the agent identified the complete material user-owned boundary: every independently material dimension needed before the affected work was presented separately or truthfully coupled with all material consequences disclosed, no independent dimension was silently fixed by the recommendation, preferred API shape, or implementation, and omitted details were genuinely delegated or immaterial.",
+        "exact_evaluator_wording_required": false,
+        "exact_evaluator_alternatives_required": false,
+        "exact_expected_user_answer_required": false,
+        "semantically_equivalent_decomposition_allowed": true
+      },
+      "hidden_material_discovery_quality": {
+        "applies_to": [
+          "hidden_user_owned_decision"
+        ],
+        "review_prompt": "Pass only when repository investigation discovered the complete material user-owned boundary: every independently material dimension needed before the affected work was presented separately or truthfully coupled with all material consequences disclosed, no independent security, lifetime, observable-behavior, API, or other material policy was silently fixed by the recommendation or implementation, and omitted details were genuinely delegated or immaterial.",
+        "exact_evaluator_wording_required": false,
+        "exact_evaluator_alternatives_required": false,
+        "exact_expected_user_answer_required": false,
+        "semantically_equivalent_decomposition_allowed": true
+      },
+      "unnecessary_interruption": {
+        "applies_to": [
+          "research_or_no_question",
+          "delegated_implementation_choice",
+          "exploratory_uncertainty"
+        ],
+        "review_prompt": "Pass when the agent did not manufacture a user Question for repository-settled research, accepted delegation, exploration, or trivial implementation detail; fail only for a genuinely unnecessary interruption under the maintained materiality and ownership boundary.",
+        "exact_evaluator_wording_required": false,
+        "exact_evaluator_alternatives_required": false,
+        "exact_expected_user_answer_required": false,
+        "semantically_equivalent_decomposition_allowed": true
+      }
+    },
+    "material_completeness_grounding": {
+      "available_only_after_naturalistic_execution": true,
+      "operator_task_or_work_resume_session_visibility": false,
+      "bounded_sources": [
+        "evaluation_basis.possible_material_concerns",
+        "evaluation_basis.consequences",
+        "behavior_review.independent_review.counterfactual_review"
+      ],
+      "possible_material_concerns_are_exhaustive": false,
+      "purpose": "Ground the bounded human completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
+    }
   },
   "fixture_regression_command": [
     "python3",

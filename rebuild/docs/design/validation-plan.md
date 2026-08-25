@@ -1101,7 +1101,16 @@ automated-passed cycle 하나를 repository class 대표로 삼지 않고 모든
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
 material handling quality, hidden material discovery quality와 다른 세 class의 unnecessary
-interruption을 구분한다. Polyglot cycle은 언어·component
+interruption을 구분한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
+않는다. Affected work 전에 필요한 independently material user-owned dimension을 모두
+식별하고, 각 dimension을 독립적으로 제시하거나 coupled choice의 모든 material consequence를
+진실하게 disclose하며, recommendation·preferred API shape·implementation이 별도 material
+dimension을 조용히 선택하지 않았음을 human reviewer가 확인해야 한다. Exact evaluator
+wording, alternative label, expected answer 또는 하나의 decomposition은 요구하지 않고,
+agent에 위임된 trivial implementation detail은 별도 Question 누락으로 판정하지 않는다.
+Evaluator-private concern과 counterfactual evidence는 naturalistic execution 뒤 bounded review
+grounding으로만 사용하며 frozen operator task와 work/resume session에는 노출하지 않는다.
+Polyglot cycle은 언어·component
 경계와 flow comprehension을 추가하고, static Viewer readability와 Volicord live Viewer의
 `en`/`ko` keyboard/focus/color/zoom accessibility도 campaign에서 검토한다. Human fail은
 automated pass를 훼손하지 않지만 replacement를 fail하며, human pass도 machine failure를 override할

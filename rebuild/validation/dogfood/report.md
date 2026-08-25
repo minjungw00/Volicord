@@ -101,6 +101,18 @@ self-contained HTML, descriptor evidence completion, deterministic
 campaign-level review sampling, repository-manifest assembly, and bounded
 review packaging.
 
+After naturalistic execution, the maintained human review treats the existing
+explicit-material-handling and hidden-material-discovery criteria as complete
+boundary judgments, not Question-presence checks. Every independently material
+user-owned dimension must have been presented or truthfully coupled with its
+material consequences disclosed; a recommendation, preferred API shape, or
+implementation that silently fixes another material policy fails the relevant
+criterion. Semantically equivalent wording and decomposition may pass, while
+delegated or immaterial implementation detail does not require another
+Question. Bounded evaluator concerns and counterfactual evidence ground this
+post-execution review only and remain absent from frozen operator tasks and
+work/resume sessions.
+
 ## Commands and configuration
 
 After a later technical-entry gate seals a candidate, start the new campaign

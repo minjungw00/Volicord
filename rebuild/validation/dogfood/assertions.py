@@ -363,6 +363,8 @@ def main() -> int:
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
     human_review = definition_value.get("human_review_contract", {})
+    behavior_criteria = human_review.get("interaction_behavior_criterion_contracts", {})
+    material_grounding = human_review.get("material_completeness_grounding", {})
     if (
         human_review.get("artifact_kind") != "phase8_dogfood_human_review"
         or human_review.get("machine_accessibility_may_be_overridden") is not False
@@ -383,6 +385,30 @@ def main() -> int:
             "hidden_material_discovery_quality",
             "unnecessary_interruption",
         }
+        or set(behavior_criteria) != set(human_review.get("interaction_behavior_criteria", []))
+        or behavior_criteria.get("explicit_material_handling_quality", {}).get("applies_to")
+        != ["explicit_user_owned_decision"]
+        or behavior_criteria.get("hidden_material_discovery_quality", {}).get("applies_to")
+        != ["hidden_user_owned_decision"]
+        or set(behavior_criteria.get("unnecessary_interruption", {}).get("applies_to", []))
+        != {
+            "research_or_no_question",
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        }
+        or any(
+            contract.get("exact_evaluator_wording_required") is not False
+            or contract.get("exact_evaluator_alternatives_required") is not False
+            or contract.get("exact_expected_user_answer_required") is not False
+            or contract.get("semantically_equivalent_decomposition_allowed") is not True
+            or not isinstance(contract.get("review_prompt"), str)
+            or "independently material" not in contract.get("review_prompt", "")
+            for criterion, contract in behavior_criteria.items()
+            if criterion != "unnecessary_interruption"
+        )
+        or material_grounding.get("available_only_after_naturalistic_execution") is not True
+        or material_grounding.get("operator_task_or_work_resume_session_visibility") is not False
+        or material_grounding.get("possible_material_concerns_are_exhaustive") is not False
     ):
         raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")
     if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:

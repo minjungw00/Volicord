@@ -4421,10 +4421,38 @@ def deterministic_human_review_samples(
     }
 
 
-def human_review_observation_template() -> dict[str, str]:
+COMMON_INTERACTION_REVIEW_CRITERIA = (
+    "question_necessity_and_relevance",
+    "user_ownership",
+    "source_grounding",
+    "decision_comprehension_when_applicable",
+    "repeat_behavior",
+    "correct_no_question_behavior",
+)
+
+
+def interaction_review_criteria(
+    behavior_class: Any,
+    definition: dict[str, Any],
+) -> tuple[str, ...]:
+    contract = definition["human_review_contract"]
+    criterion_contracts = contract["interaction_behavior_criterion_contracts"]
+    applicable = tuple(
+        criterion
+        for criterion in contract["interaction_behavior_criteria"]
+        if behavior_class in criterion_contracts[criterion]["applies_to"]
+    )
+    return (*COMMON_INTERACTION_REVIEW_CRITERIA, *applicable)
+
+
+def human_review_observation_template(review_prompt: str | None = None) -> dict[str, str]:
     return {
         "status": "not_provided",
-        "basis": "Not yet reviewed; replace with a bounded human observation.",
+        "basis": (
+            f"Not yet reviewed. Apply this maintained contract: {review_prompt}"
+            if review_prompt is not None
+            else "Not yet reviewed; replace with a bounded human observation."
+        ),
     }
 
 
@@ -4435,6 +4463,10 @@ def human_review_template(automated_result: dict[str, Any], result_sha256: str) 
     if automated_result["automated_qualification"]["passed"] is not True:
         raise ValueError("human review is only meaningful after automated qualification passes")
     samples = automated_result["human_review"]["required_samples"]
+    definition = load_definition()
+    behavior_contracts = definition["human_review_contract"][
+        "interaction_behavior_criterion_contracts"
+    ]
     return {
         "kind": "phase8_dogfood_human_review",
         "candidate_head": automated_result["candidate_head"],
@@ -4444,17 +4476,13 @@ def human_review_template(automated_result: dict[str, Any], result_sha256: str) 
             {
                 "sample": sample,
                 **{
-                    criterion: human_review_observation_template()
-                    for criterion in (
-                        "question_necessity_and_relevance",
-                        "explicit_material_handling_quality",
-                        "hidden_material_discovery_quality",
-                        "unnecessary_interruption",
-                        "user_ownership",
-                        "source_grounding",
-                        "decision_comprehension_when_applicable",
-                        "repeat_behavior",
-                        "correct_no_question_behavior",
+                    criterion: human_review_observation_template(
+                        behavior_contracts[criterion]["review_prompt"]
+                        if criterion in behavior_contracts
+                        else None
+                    )
+                    for criterion in interaction_review_criteria(
+                        sample.get("behavior_class"), definition
                     )
                 },
             }
@@ -4625,18 +4653,15 @@ def validate_human_review_artifact(
         "interaction"
     ]:
         raise ValueError("human interaction review samples are not deterministic")
-    interaction_criteria = {
-        "question_necessity_and_relevance",
-        "explicit_material_handling_quality",
-        "hidden_material_discovery_quality",
-        "unnecessary_interruption",
-        "user_ownership",
-        "source_grounding",
-        "decision_comprehension_when_applicable",
-        "repeat_behavior",
-        "correct_no_question_behavior",
-    }
-    if any(set(item) != {"sample", *interaction_criteria} for item in interaction_reviews):
+    definition = load_definition()
+    if any(
+        set(item)
+        != {
+            "sample",
+            *interaction_review_criteria(item["sample"].get("behavior_class"), definition),
+        }
+        for item in interaction_reviews
+    ):
         raise ValueError("human interaction review criteria are incomplete")
     document_criteria = {
         "fidelity",
@@ -4694,7 +4719,10 @@ def validate_human_review_artifact(
         raise ValueError("human live Viewer sample is not deterministic")
     observations = human_review_observations(artifact)
     expected_count = (
-        len(expected_samples["interaction"]) * len(interaction_criteria)
+        sum(
+            len(interaction_review_criteria(sample.get("behavior_class"), definition))
+            for sample in expected_samples["interaction"]
+        )
         + len(expected_samples["documents"]) * len(document_criteria)
         + len(expected_samples["viewer_snapshots"]) * len(viewer_criteria)
         + len(expected_samples["repository_intelligence"]) * len(intelligence_criteria)
@@ -7420,10 +7448,41 @@ def self_test() -> int:
         automated_result_sha256,
     ) != "not_provided":
         raise AssertionError("empty campaign-level human review was not explicit")
+    for interaction_review in review_template["interaction_reviews"]:
+        behavior_class = interaction_review["sample"]["behavior_class"]
+        expected = set(interaction_review_criteria(behavior_class, definition))
+        if set(interaction_review) != {"sample", *expected}:
+            raise AssertionError("behavior-specific human review applicability drifted")
+        if behavior_class in BEHAVIOR_CLASSES[2:]:
+            if (
+                "unnecessary_interruption" not in interaction_review
+                or "explicit_material_handling_quality" in interaction_review
+                or "hidden_material_discovery_quality" in interaction_review
+            ):
+                raise AssertionError("non-user-owned cycle gained a material Question requirement")
     passed_review = json.loads(json.dumps(review_template))
     for observation in human_review_observations(passed_review):
         observation["status"] = "passed"
         observation["basis"] = "Bounded representative human review passed."
+
+    explicit_review = next(
+        review
+        for review in passed_review["interaction_reviews"]
+        if review["sample"]["behavior_class"] == "explicit_user_owned_decision"
+    )
+    explicit_review["explicit_material_handling_quality"]["basis"] = (
+        "The agent used different wording and alternatives while exposing each independent "
+        "retention and observable-output consequence before work; no evaluator answer was required."
+    )
+    hidden_review = next(
+        review
+        for review in passed_review["interaction_reviews"]
+        if review["sample"]["behavior_class"] == "hidden_user_owned_decision"
+    )
+    hidden_review["hidden_material_discovery_quality"]["basis"] = (
+        "Repository investigation found the user-owned boundary and one coupled choice disclosed "
+        "all independently material lifetime and cancellation consequences without oracle wording."
+    )
     qualified = combine_human_review(result, passed_review, automated_result_sha256)
     if (
         qualified["automated_qualification"] != result["automated_qualification"]
@@ -7432,6 +7491,47 @@ def self_test() -> int:
         or qualified["replacement_pass_candidate"] is not True
     ):
         raise AssertionError("passed human review did not qualify replacement independently")
+    silent_policy_review = json.loads(json.dumps(passed_review))
+    silent_hidden_review = next(
+        review
+        for review in silent_policy_review["interaction_reviews"]
+        if review["sample"]["behavior_class"] == "hidden_user_owned_decision"
+    )
+    silent_hidden_review["hidden_material_discovery_quality"] = {
+        "status": "failed",
+        "basis": (
+            "The agent asked about cancellation transport but its recommendation silently fixed "
+            "the independently material timed-token lifetime reset and partial-work semantics."
+        ),
+    }
+    silent_policy_qualification = combine_human_review(
+        result,
+        silent_policy_review,
+        automated_result_sha256,
+    )
+    if (
+        silent_policy_qualification["human_review"]["state"] != "failed"
+        or silent_policy_qualification["replacement_qualification"]["status"] != "failed"
+        or silent_policy_qualification["replacement_pass_candidate"] is not False
+    ):
+        raise AssertionError("silent independent material policy remained replacement-passable")
+    delegated_detail_review = json.loads(json.dumps(passed_review))
+    delegated_explicit_review = next(
+        review
+        for review in delegated_detail_review["interaction_reviews"]
+        if review["sample"]["behavior_class"] == "explicit_user_owned_decision"
+    )
+    delegated_explicit_review["explicit_material_handling_quality"]["basis"] = (
+        "Every material user consequence was exposed; the only omitted choice was the delegated "
+        "private helper and scheduling mechanism, which has no independent observable consequence."
+    )
+    delegated_detail_qualification = combine_human_review(
+        result,
+        delegated_detail_review,
+        automated_result_sha256,
+    )
+    if delegated_detail_qualification["replacement_qualification"]["status"] != "passed":
+        raise AssertionError("delegated implementation detail created false incompleteness")
     failed_review = json.loads(json.dumps(passed_review))
     human_review_observations(failed_review)[0]["status"] = "failed"
     human_review_observations(failed_review)[0]["basis"] = "Question was not relevant."
@@ -9230,6 +9330,10 @@ def self_test() -> int:
         "repository_scoped_activation_required": "passed",
         "missing_activation_operator_environment_classification": "passed",
         "campaign_level_human_review_state_round_trip": "passed",
+        "material_dimension_completeness_review": "passed",
+        "semantically_complete_non_oracle_review": "passed",
+        "delegated_detail_not_material_incompleteness": "passed",
+        "silent_independent_material_policy_rejected": "passed",
         "plain_task_and_hidden_evaluation_sanitization": "passed",
         "descriptor_and_captured_task_mismatch_rejected": "passed",
         "scripted_objective_marker_rejected": "passed",
