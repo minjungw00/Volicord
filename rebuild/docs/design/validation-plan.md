@@ -1050,8 +1050,13 @@ rollout을 session 사이의 control 접촉 없이 보존한다.
 owner-document location과 opaque reviewer workspace만 reviewer plane에 동결하고 evaluator
 repository class/logical cycle mapping, concerns, alternatives, recommendation,
 user-owned outcome과 counterfactual conclusion은 제외한다. Independent control agent가 이
-artifact에 대한 provisional review를 고정한 뒤 `seal-cycle`로 full evaluator basis와 비교해
-descriptor를 검증·봉인하기 전에는 activation과 rollout collection이
+artifact에 대한 provisional review를 작성하면 `record-provisional-review`가 exact candidate,
+opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
+private artifact와 hash/inventory binding을 고정하면서 `review_prepared`에서
+`provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
+repository class, logical cycle 또는 behavior class를 결과에 노출하지 않는다. 그 뒤
+`seal-cycle`은 이미 고정된 provisional artifact만 읽어 full evaluator basis와 비교하고
+descriptor를 검증·봉인한다. 이 두 단계가 완료되기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 opaque authoritative workspace/Runtime path만으로 operator
 run sheet를 다시 만든다. Run sheet는 repository grouping 안에서도 opaque-ID 순서를 쓰며

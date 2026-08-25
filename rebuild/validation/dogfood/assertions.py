@@ -282,6 +282,16 @@ def main() -> int:
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or blind_first.get("logical_identity_visible_before_provisional_fix") is not False
         or blind_first.get("reviewer_order") != "opaque_review_slot_id"
+        or blind_first.get("recording_operation") != "record-provisional-review"
+        or blind_first.get("recording_identity")
+        != "candidate_and_opaque_review_slot"
+        or blind_first.get("recording_transition")
+        != "review_prepared_to_provisional_recorded"
+        or blind_first.get("recording_success_exit_code") != 0
+        or blind_first.get("recording_reads_evaluator_descriptor") is not False
+        or blind_first.get("recording_failure_atomic") is not True
+        or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
+        or blind_first.get("sealing_accepts_provisional_payload") is not False
         or blind_first.get("preparation_fields")
         != [
             "review_slot_id",
@@ -327,6 +337,8 @@ def main() -> int:
         "phase8_dogfood_opaque_slot_mapping",
         "opaque_review_slot_id",
         "reviewer/workspaces",
+        "record-provisional-review",
+        "provisional_recorded",
     ):
         if marker not in campaign_source:
             raise AssertionError(f"Dogfood campaign helper is missing opaque-slot boundary {marker}")

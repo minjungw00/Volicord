@@ -148,7 +148,13 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
     provisional["review_slot_id"] = preparation["review_slot_id"]
     provisional_path = root.parent / f"{preparation['review_slot_id']}-provisional.json"
     campaign.write_json(provisional_path, provisional)
-    campaign.seal_cycle(root, kind, cycle, source, provisional_path)
+    campaign.record_provisional_review(
+        root,
+        campaign.load_campaign(root)["candidate_head"],
+        preparation["review_slot_id"],
+        provisional_path,
+    )
+    campaign.seal_cycle(root, kind, cycle, source)
 
 
 def exporter_from(source: Path):
@@ -435,6 +441,23 @@ def assert_blockers(parent: Path, binary: Path) -> None:
 def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     root = parent / "sealing-campaign"
     prepare(root, parent / "sealing-sources", binary)
+    helper = campaign.ROOT / "rebuild/scripts/dogfood-campaign"
+    record_help = subprocess.run(
+        [str(helper), "record-provisional-review", "--help"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    seal_help = subprocess.run(
+        [str(helper), "seal-cycle", "--help"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert record_help.returncode == seal_help.returncode == 0
+    assert "--review-slot-id" in record_help.stdout
+    assert "--provisional-review" in record_help.stdout
+    assert "--provisional-review" not in seal_help.stdout
     run_sheet = root / "operator/RUN-SHEET.md"
     initial = run_sheet.read_text(encoding="utf-8")
     assert "descriptor" not in initial.casefold()
@@ -492,6 +515,108 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     campaign.write_json(provisional_path, provisional)
     assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
+    try:
+        campaign.seal_cycle(root, "volicord", 1, draft_path)
+    except campaign.CampaignError as error:
+        assert "recorded provisional review" in str(error)
+    else:
+        raise AssertionError("cycle sealed without a recorded provisional review")
+
+    def recording_snapshot() -> tuple[tuple[str, int, str], ...]:
+        return tuple(
+            (
+                path.relative_to(root).as_posix(),
+                path.stat().st_size,
+                harness.sha256(path),
+            )
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        )
+
+    malformed = parent / f"{review_slot_id}-malformed-provisional.json"
+    campaign.write_json(malformed, {"kind": "phase8_provisional_behavior_review"})
+    wrong_preparation = copy.deepcopy(provisional)
+    wrong_preparation["preparation_sha256"] = "00" * 32
+    wrong_preparation_path = parent / f"{review_slot_id}-wrong-preparation.json"
+    campaign.write_json(wrong_preparation_path, wrong_preparation)
+    evaluator_leak = copy.deepcopy(provisional)
+    evaluator_leak["evaluation_basis"] = {"behavior_class": "hidden"}
+    evaluator_leak_path = parent / f"{review_slot_id}-evaluator-leak.json"
+    campaign.write_json(evaluator_leak_path, evaluator_leak)
+    candidate_head = campaign.load_campaign(root)["candidate_head"]
+    invalid_recordings = (
+        ("different campaign candidate", "00" * 20, review_slot_id, provisional_path),
+        ("does not identify", candidate_head, "00" * 16, provisional_path),
+        ("does not qualify", candidate_head, review_slot_id, malformed),
+        ("does not qualify", candidate_head, review_slot_id, wrong_preparation_path),
+        ("does not qualify", candidate_head, review_slot_id, evaluator_leak_path),
+    )
+    for expected, attempted_candidate, attempted_slot, attempted_review in invalid_recordings:
+        before = recording_snapshot()
+        try:
+            campaign.record_provisional_review(
+                root,
+                attempted_candidate,
+                attempted_slot,
+                attempted_review,
+            )
+        except campaign.CampaignError as error:
+            assert expected in str(error)
+        else:
+            raise AssertionError("invalid provisional review recording succeeded")
+        assert recording_snapshot() == before
+
+    original_atomic_write = campaign.atomic_write_bytes
+    injected_failure = {"raised": False}
+
+    def fail_inventory_publish_once(path: Path, content: bytes) -> None:
+        if path == campaign.inventory_path(root) and not injected_failure["raised"]:
+            injected_failure["raised"] = True
+            raise OSError("injected inventory publication failure")
+        original_atomic_write(path, content)
+
+    before_publish_failure = recording_snapshot()
+    campaign.atomic_write_bytes = fail_inventory_publish_once
+    try:
+        campaign.record_provisional_review(
+            root,
+            candidate_head,
+            review_slot_id,
+            provisional_path,
+        )
+    except OSError as error:
+        assert "injected inventory publication failure" in str(error)
+    else:
+        raise AssertionError("injected provisional publication failure succeeded")
+    finally:
+        campaign.atomic_write_bytes = original_atomic_write
+    assert recording_snapshot() == before_publish_failure
+
+    read_paths: list[Path] = []
+    original_read_json = campaign.read_json
+
+    def tracking_read_json(path: Path):
+        read_paths.append(Path(path).resolve())
+        return original_read_json(path)
+
+    campaign.read_json = tracking_read_json
+    try:
+        recorded = campaign.record_provisional_review(
+            root,
+            candidate_head,
+            review_slot_id,
+            provisional_path,
+        )
+    finally:
+        campaign.read_json = original_read_json
+    serialized_recorded = json.dumps(recorded, sort_keys=True)
+    assert recorded["state"] == "provisional_recorded"
+    assert recorded["evaluator_material_exposed"] is False
+    assert not any(value in serialized_recorded for value in campaign.BEHAVIOR_CLASSES)
+    assert "repository_class" not in serialized_recorded
+    assert "logical_cycle" not in serialized_recorded
+    assert not any("evaluator/descriptors" in path.as_posix() for path in read_paths)
+
     bypassable = copy.deepcopy(descriptor)
     bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
         "counterfactual_review"
@@ -505,7 +630,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     bypassable_path = parent / "bypassable-user-owned-input.json"
     campaign.write_json(bypassable_path, bypassable)
     try:
-        campaign.seal_cycle(root, "volicord", 1, bypassable_path, provisional_path)
+        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "defensible no-question path" in str(error)
     else:
@@ -518,18 +643,57 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     altered_provisional["basis"] += " altered"
     altered_provisional_path = parent / f"{review_slot_id}-altered-provisional.json"
     campaign.write_json(altered_provisional_path, altered_provisional)
+    fixed_bytes = fixed_provisional.read_bytes()
     try:
-        campaign.seal_cycle(
+        campaign.record_provisional_review(
             root,
-            "volicord",
-            1,
-            bypassable_path,
+            candidate_head,
+            review_slot_id,
             altered_provisional_path,
         )
     except campaign.CampaignError as error:
-        assert "cannot be replaced or altered" in str(error)
+        assert "review-prepared opaque slot" in str(error)
     else:
         raise AssertionError("fixed provisional review was retroactively altered")
+    assert fixed_provisional.read_bytes() == fixed_bytes
+
+    tampered_bytes = fixed_bytes.replace(b'"status": "recorded"', b'"status": "recordex"')
+    assert tampered_bytes != fixed_bytes
+    fixed_provisional.write_bytes(tampered_bytes)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+    except campaign.CampaignError as error:
+        assert "evidence hash mismatch" in str(error)
+    else:
+        raise AssertionError("changed fixed provisional bytes passed sealing")
+    fixed_provisional.write_bytes(fixed_bytes)
+    campaign.verify_inventory(root)
+    inventory_bytes = campaign.inventory_path(root).read_bytes()
+    inventory = json.loads(inventory_bytes)
+    inventory["artifacts"][campaign.relative(root, fixed_provisional)]["sha256"] = "00" * 32
+    campaign.write_json(campaign.inventory_path(root), inventory)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+    except campaign.CampaignError as error:
+        assert "evidence hash mismatch" in str(error)
+    else:
+        raise AssertionError("changed provisional inventory passed sealing")
+    campaign.inventory_path(root).write_bytes(inventory_bytes)
+    campaign.verify_inventory(root)
+
+    rewritten = copy.deepcopy(descriptor)
+    rewritten["behavior_review"]["independent_review"]["provisional_review"][
+        "materiality_conclusion"
+    ] = "no_user_owned_material_outcome"
+    rewritten_path = parent / "rewritten-provisional-conclusion-input.json"
+    campaign.write_json(rewritten_path, rewritten)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, rewritten_path)
+    except campaign.CampaignError as error:
+        assert "cannot rewrite" in str(error)
+    else:
+        raise AssertionError("final comparison rewrote a provisional conclusion")
+    assert fixed_provisional.read_bytes() == fixed_bytes
 
     disagreement = copy.deepcopy(descriptor)
     disagreement_agreement = disagreement["behavior_review"]["independent_review"][
@@ -545,7 +709,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     disagreement_path = parent / "unresolved-review-disagreement-input.json"
     campaign.write_json(disagreement_path, disagreement)
     try:
-        campaign.seal_cycle(root, "volicord", 1, disagreement_path, provisional_path)
+        campaign.seal_cycle(root, "volicord", 1, disagreement_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -556,7 +720,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     leaked_path = parent / "leaked-evaluator-input.json"
     campaign.write_json(leaked_path, leaked)
     try:
-        campaign.seal_cycle(root, "volicord", 1, leaked_path, provisional_path)
+        campaign.seal_cycle(root, "volicord", 1, leaked_path)
     except campaign.CampaignError as error:
         assert "evaluator-only material" in str(error)
     else:
@@ -564,21 +728,57 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     accepted_path = parent / "unavoidable-user-owned-input.json"
     campaign.write_json(accepted_path, descriptor)
-    sealed = campaign.seal_cycle(
-        root, "volicord", 1, accepted_path, provisional_path
-    )
+    sealed = campaign.seal_cycle(root, "volicord", 1, accepted_path)
     assert sealed["review_slot_id"] == review_slot_id
     sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
     assert f"Slot `{review_slot_id}`" in sealed_run_sheet
     assert "cycle 1" not in sealed_run_sheet.casefold()
     assert "-cycle-" not in sealed_run_sheet
     assert descriptor["work_user_task"] in sealed_run_sheet
+    assert provisional["basis"] not in sealed_run_sheet
+    assert provisional["materiality_conclusion"] not in sealed_run_sheet
     assert (
         descriptor["behavior_review"]["independent_review"]["counterfactual_review"][
             "specific_unresolved_outcome"
         ]
         not in sealed_run_sheet
     )
+
+    cli_descriptor, _work, _resume, _bundle = fixture_for(parent, "volicord", 2)
+    cli_descriptor.pop("_evidence_directory", None)
+    cli_descriptor.pop("_evidence_file_sha256", None)
+    cli_descriptor.pop("evidence", None)
+    cli_draft = parent / "cli-recording-draft.json"
+    campaign.write_json(cli_draft, cli_descriptor)
+    cli_preparation = campaign.prepare_review(root, "volicord", 2, cli_draft)
+    cli_provisional = copy.deepcopy(
+        cli_descriptor["behavior_review"]["independent_review"]["provisional_review"]
+    )
+    cli_provisional["preparation_sha256"] = cli_preparation["preparation_sha256"]
+    cli_provisional["review_slot_id"] = cli_preparation["review_slot_id"]
+    cli_provisional_path = parent / "cli-provisional-review.json"
+    campaign.write_json(cli_provisional_path, cli_provisional)
+    cli_recorded = subprocess.run(
+        [
+            str(helper),
+            "record-provisional-review",
+            "--campaign-root",
+            str(root),
+            "--candidate-head",
+            candidate_head,
+            "--review-slot-id",
+            cli_preparation["review_slot_id"],
+            "--provisional-review",
+            str(cli_provisional_path),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert cli_recorded.returncode == 0, cli_recorded.stdout + cli_recorded.stderr
+    cli_recorded_result = json.loads(cli_recorded.stdout)
+    assert cli_recorded_result["state"] == "provisional_recorded"
+    assert cli_recorded_result["evaluator_material_exposed"] is False
 
     target = parent / "pinned-target"
     target.mkdir()
@@ -1206,6 +1406,11 @@ def main() -> int:
             "opaque_slot_generation_and_private_mapping",
             "duplicate_slot_rejected_before_campaign_mutation",
             "reviewer_filename_workspace_and_order_opacity",
+            "standalone_provisional_recording_exits_successfully",
+            "recording_does_not_read_or_expose_evaluator_material",
+            "invalid_provisional_recording_is_mutation_free",
+            "provisional_publication_failure_rolls_back",
+            "seal_cycle_has_no_provisional_payload_path",
             "provisional_review_fixed_before_evaluator_comparison",
             "fixed_provisional_review_cannot_be_retroactively_altered",
             "operator_slot_and_workspace_opacity",

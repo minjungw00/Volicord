@@ -128,8 +128,21 @@ rebuild/scripts/dogfood-campaign prepare \
 
 Complete each evaluator input under the private control plane, use
 `prepare-review`, obtain the independent provisional review without disclosing
-the evaluator basis, and then use `seal-cycle --provisional-review <path>`
-before exposing the generated operator run sheet. After all fifteen descriptors
+the evaluator basis, and record it successfully with the opaque reviewer identity:
+
+```text
+rebuild/scripts/dogfood-campaign record-provisional-review \
+  --campaign-root /absolute/private/campaign \
+  --candidate-head <new-sealed-candidate-head> \
+  --review-slot-id <opaque-review-slot-id> \
+  --provisional-review <blind-provisional-review.json>
+```
+
+The command fixes the private review and its campaign inventory/hash binding
+without reading an evaluator descriptor or exposing cycle/class identity. Then
+use `seal-cycle --descriptor <evaluator-descriptor.json>` to compare the fixed
+review with the evaluator basis before exposing the generated operator run
+sheet. After all fifteen descriptors
 are sealed, use `activate-all`; it enables the repository-scoped integration
 but does not grant repository or hook trust. Run all thirty chats
 without per-chat collection, preserve their raw rollouts, and then use

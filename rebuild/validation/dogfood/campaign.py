@@ -9,16 +9,19 @@ operator-owned campaign and reuses the maintained dogfood normalizer.
 from __future__ import annotations
 
 import argparse
+import copy
 import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import secrets
 import shutil
 import subprocess
 import tarfile
+import tempfile
 from typing import Any, Callable
 
 import harness
@@ -65,6 +68,25 @@ def read_json(path: Path) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     harness.write_json(path, value)
+
+
+def json_bytes(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def atomic_write_bytes(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def relative(root: Path, path: Path) -> str:
@@ -273,6 +295,21 @@ def reviewer_provisional_path(root: Path, kind: str, cycle: int) -> Path:
 
 def reviewer_index_path(root: Path) -> Path:
     return root / "reviewer/index.json"
+
+
+def private_cycle_for_review_slot(
+    campaign: dict[str, Any], review_slot_id: str
+) -> dict[str, Any]:
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+        raise CampaignError("review slot identity is malformed")
+    matches = [
+        state
+        for state in campaign.get("cycles", {}).values()
+        if state.get("review_slot_id") == review_slot_id
+    ]
+    if len(matches) != 1:
+        raise CampaignError("review slot does not identify one current campaign preparation")
+    return matches[0]
 
 
 def render_reviewer_index(root: Path) -> Path:
@@ -861,18 +898,128 @@ def prepare_review(
     }
 
 
+def record_provisional_review(
+    root: Path,
+    candidate_head: str,
+    review_slot_id: str,
+    provisional_review_path: Path,
+) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    if campaign.get("candidate_head") != candidate_head:
+        raise CampaignError("provisional review is bound to a different campaign candidate")
+    state = private_cycle_for_review_slot(campaign, review_slot_id)
+    if state.get("state") != "review_prepared":
+        raise CampaignError("provisional review requires one review-prepared opaque slot")
+    preparation_path = slot_artifact_path(
+        root, "reviewer", "preparations", review_slot_id
+    )
+    preparation = read_json(preparation_path)
+    preparation_sha256 = harness.sha256(preparation_path)
+    expected_preparation_fields = {
+        "kind",
+        "review_slot_id",
+        "candidate_head",
+        "repository_revision",
+        "reviewer_repository_path",
+        "work_user_task",
+        "fresh_resume_user_task",
+        "work_scope",
+        "owner_document_locations",
+    }
+    if (
+        not isinstance(preparation, dict)
+        or set(preparation) != expected_preparation_fields
+        or preparation.get("kind") != "phase8_blind_review_preparation"
+        or preparation.get("review_slot_id") != review_slot_id
+        or preparation.get("candidate_head") != candidate_head
+        or preparation.get("repository_revision") != state.get("repository_revision")
+        or preparation.get("reviewer_repository_path")
+        != state.get("reviewer_repository_path")
+        or preparation_sha256 != state.get("review_preparation_sha256")
+    ):
+        raise CampaignError("blind reviewer preparation identity, candidate, or hash changed")
+    provisional_destination = slot_artifact_path(
+        root, "reviewer", "provisional", review_slot_id
+    )
+    source = provisional_review_path.resolve()
+    if source == provisional_destination.resolve():
+        raise CampaignError("provisional review input must remain separate until recording")
+    if provisional_destination.exists():
+        raise CampaignError("fixed provisional review already exists")
+    try:
+        source_bytes = source.read_bytes()
+        provisional = json.loads(source_bytes)
+    except (OSError, json.JSONDecodeError) as error:
+        raise CampaignError(f"cannot read JSON: {source}") from error
+    provisional_errors = harness.blind_first_review_errors(
+        {
+            "kind": "phase8_blind_review_preparation_reference",
+            "review_slot_id": review_slot_id,
+            "sha256": preparation_sha256,
+        },
+        provisional,
+        state["behavior_class"],
+        len(preparation.get("owner_document_locations", [])),
+    )
+    if provisional_errors:
+        raise CampaignError(
+            "provisional review does not qualify: " + "; ".join(provisional_errors)
+        )
+
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    inventory = load_inventory(root)
+    artifact_name = relative(root, provisional_destination)
+    artifacts = inventory.setdefault("artifacts", {})
+    if artifact_name in artifacts:
+        raise CampaignError("fixed provisional review is already inventory-bound")
+    updated_inventory = copy.deepcopy(inventory)
+    updated_inventory["artifacts"][artifact_name] = {
+        "bytes": len(source_bytes),
+        "sha256": source_sha256,
+    }
+    updated_campaign = copy.deepcopy(campaign)
+    updated_state = private_cycle_for_review_slot(updated_campaign, review_slot_id)
+    updated_state["state"] = "provisional_recorded"
+    updated_state["provisional_review_sha256"] = source_sha256
+
+    campaign_path = campaign_file(root)
+    evidence_path = inventory_path(root)
+    original_campaign = campaign_path.read_bytes()
+    original_inventory = evidence_path.read_bytes()
+    assert_reviewer_artifacts_are_behavior_opaque(root)
+    try:
+        atomic_write_bytes(provisional_destination, source_bytes)
+        atomic_write_bytes(evidence_path, json_bytes(updated_inventory))
+        atomic_write_bytes(campaign_path, json_bytes(updated_campaign))
+    except BaseException:
+        provisional_destination.unlink(missing_ok=True)
+        atomic_write_bytes(evidence_path, original_inventory)
+        atomic_write_bytes(campaign_path, original_campaign)
+        raise
+    return {
+        "kind": "phase8_dogfood_provisional_review_recorded",
+        "review_slot_id": review_slot_id,
+        "candidate_head": candidate_head,
+        "state": "provisional_recorded",
+        "provisional_review": artifact_name,
+        "provisional_review_bytes": len(source_bytes),
+        "provisional_review_sha256": source_sha256,
+        "evaluator_material_exposed": False,
+    }
+
+
 def seal_cycle(
     root: Path,
     kind: str,
     cycle: int,
     prepared_descriptor: Path,
-    provisional_review_path: Path,
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
     state = campaign["cycles"][cycle_key(kind, cycle)]
-    if state.get("state") not in {"review_prepared", "provisional_recorded"}:
-        raise CampaignError("cycle descriptor is already sealed and cannot be replaced")
+    if state.get("state") != "provisional_recorded":
+        raise CampaignError("cycle sealing requires one recorded provisional review")
     preparation_path = reviewer_preparation_path(root, kind, cycle)
     preparation = read_json(preparation_path)
     if (
@@ -882,9 +1029,7 @@ def seal_cycle(
     ):
         raise CampaignError("blind reviewer preparation identity or hash changed")
     provisional_destination = reviewer_provisional_path(root, kind, cycle)
-    if provisional_review_path.resolve() == provisional_destination.resolve():
-        raise CampaignError("provisional review input must remain separate until sealing")
-    provisional = read_json(provisional_review_path.resolve())
+    provisional = read_json(provisional_destination)
     provisional_errors = harness.blind_first_review_errors(
         {
             "kind": "phase8_blind_review_preparation_reference",
@@ -897,20 +1042,18 @@ def seal_cycle(
     )
     if provisional_errors:
         raise CampaignError("provisional review does not qualify: " + "; ".join(provisional_errors))
-    if state["state"] == "review_prepared":
-        copy_exact(provisional_review_path.resolve(), provisional_destination)
-        state["state"] = "provisional_recorded"
-        state["provisional_review_sha256"] = harness.sha256(provisional_destination)
-        save_campaign(root, campaign)
-        register_artifact(root, provisional_destination)
-    elif (
+    inventory_entry = load_inventory(root).get("artifacts", {}).get(
+        relative(root, provisional_destination)
+    )
+    if (
         not provisional_destination.is_file()
         or harness.sha256(provisional_destination)
         != state.get("provisional_review_sha256")
-        or harness.sha256(provisional_review_path.resolve())
-        != state.get("provisional_review_sha256")
+        or not isinstance(inventory_entry, dict)
+        or inventory_entry.get("sha256") != state.get("provisional_review_sha256")
+        or inventory_entry.get("bytes") != provisional_destination.stat().st_size
     ):
-        raise CampaignError("fixed provisional review cannot be replaced or altered")
+        raise CampaignError("fixed provisional review hash or inventory binding changed")
     assert_reviewer_artifacts_are_behavior_opaque(root)
 
     descriptor = read_json(prepared_descriptor.resolve())
@@ -933,6 +1076,23 @@ def seal_cycle(
     independent = descriptor.get("behavior_review", {}).get("independent_review")
     if not isinstance(independent, dict):
         raise CampaignError("evaluator descriptor has no independent review comparison")
+    supplied_provisional = independent.get("provisional_review")
+    conclusion_fields = {
+        "kind",
+        "status",
+        "reviewer_role",
+        "classification",
+        "materiality_conclusion",
+        "material_outcome_unavoidable",
+        "operator_prompt_does_not_disclose_material_outcome",
+        "basis",
+        "provenance_reference_indices",
+    }
+    if not isinstance(supplied_provisional, dict) or any(
+        supplied_provisional.get(field) != provisional.get(field)
+        for field in conclusion_fields
+    ):
+        raise CampaignError("final comparison cannot rewrite the fixed provisional review")
     independent["review_preparation"] = {
         "kind": "phase8_blind_review_preparation_reference",
         "review_slot_id": state["review_slot_id"],
@@ -2303,6 +2463,7 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
     prepare_reviewer = sub.add_parser("prepare-review")
+    record_provisional = sub.add_parser("record-provisional-review")
     seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
     activate_every = sub.add_parser("activate-all")
@@ -2323,8 +2484,11 @@ def parser() -> argparse.ArgumentParser:
             required=True,
         )
     prepare_reviewer.add_argument("--descriptor", required=True)
+    record_provisional.add_argument("--campaign-root", required=True)
+    record_provisional.add_argument("--candidate-head", required=True)
+    record_provisional.add_argument("--review-slot-id", required=True)
+    record_provisional.add_argument("--provisional-review", required=True)
     seal.add_argument("--descriptor", required=True)
-    seal.add_argument("--provisional-review", required=True)
     collect_w.add_argument("--raw-rollout", required=True)
     collect_r.add_argument("--raw-rollout", required=True)
     activate_every.add_argument("--campaign-root", required=True)
@@ -2357,13 +2521,19 @@ def main() -> int:
             args.cycle,
             Path(args.descriptor),
         )
+    elif args.command == "record-provisional-review":
+        value = record_provisional_review(
+            root,
+            args.candidate_head,
+            args.review_slot_id,
+            Path(args.provisional_review),
+        )
     elif args.command == "seal-cycle":
         value = seal_cycle(
             root,
             args.repository_class,
             args.cycle,
             Path(args.descriptor),
-            Path(args.provisional_review),
         )
     elif args.command == "activate-cycle":
         value = activate_cycle(root, args.repository_class, args.cycle)

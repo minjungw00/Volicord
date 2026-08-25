@@ -299,9 +299,23 @@ under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control
 agent completes an evaluator input and invokes `prepare-review`. The
 independent reviewer records the provisional review from that bounded artifact
-before receiving the evaluator basis. The control agent then invokes
-`seal-cycle --provisional-review <path>`. Sealing verifies the class, pinned
-revision, active-owner or target-repository provenance and content hashes,
+before receiving the evaluator basis. The control agent then invokes:
+
+```text
+rebuild/scripts/dogfood-campaign record-provisional-review \
+  --campaign-root /absolute/private/campaign \
+  --candidate-head <candidate> \
+  --review-slot-id <opaque-id> \
+  --provisional-review <path>
+```
+
+This successful reviewer-plane operation verifies
+the exact campaign candidate, opaque preparation identity and strict provisional
+schema without reading an evaluator descriptor, then atomically fixes the private
+artifact, hash inventory and `provisional_recorded` state. The control agent next
+invokes `seal-cycle --descriptor <path>`. Sealing reads only that immutable recorded
+review and verifies the class, pinned revision, active-owner or target-repository
+provenance and content hashes,
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
 paths. `activate-cycle`, `activate-all`, and rollout collection reject unsealed cycles. The run-sheet

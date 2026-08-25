@@ -59,7 +59,9 @@ Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
 creates each bounded blind-first reviewer preparation, records a provisional
 classification and materiality conclusion before exposing the evaluator basis,
-and seals each descriptor without exposing evaluator material to the operator.
+fixes it through the opaque-slot `record-provisional-review` operation, and then
+seals each descriptor against that immutable review without exposing evaluator
+material to the operator.
 Repository and SessionStart
 hook trust remain explicit user actions. The operator then runs all thirty
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers

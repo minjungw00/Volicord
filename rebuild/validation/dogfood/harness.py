@@ -1024,6 +1024,16 @@ def load_definition() -> dict[str, Any]:
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or blind_first.get("reviewer_order") != "opaque_review_slot_id"
         or blind_first.get("logical_identity_visible_before_provisional_fix") is not False
+        or blind_first.get("recording_operation") != "record-provisional-review"
+        or blind_first.get("recording_identity")
+        != "candidate_and_opaque_review_slot"
+        or blind_first.get("recording_transition")
+        != "review_prepared_to_provisional_recorded"
+        or blind_first.get("recording_success_exit_code") != 0
+        or blind_first.get("recording_reads_evaluator_descriptor") is not False
+        or blind_first.get("recording_failure_atomic") is not True
+        or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
+        or blind_first.get("sealing_accepts_provisional_payload") is not False
         or agreement_contract.get("accepted_statuses")
         != ["agreed", "resolved_from_evidence"]
         or agreement_contract.get("sealing_blocked_status") != "unresolved_conflict"

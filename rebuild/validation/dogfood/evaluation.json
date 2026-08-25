@@ -427,7 +427,15 @@
         ],
         "evaluator_material_visible_before_provisional_fix": false,
         "reviewer_order": "opaque_review_slot_id",
-        "logical_identity_visible_before_provisional_fix": false
+        "logical_identity_visible_before_provisional_fix": false,
+        "recording_operation": "record-provisional-review",
+        "recording_identity": "candidate_and_opaque_review_slot",
+        "recording_transition": "review_prepared_to_provisional_recorded",
+        "recording_success_exit_code": 0,
+        "recording_reads_evaluator_descriptor": false,
+        "recording_failure_atomic": true,
+        "sealed_provisional_immutable_and_inventory_bound": true,
+        "sealing_accepts_provisional_payload": false
       },
       "fact_authority_agreement": {
         "accepted_statuses": [
