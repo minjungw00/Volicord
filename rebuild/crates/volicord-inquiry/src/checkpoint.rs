@@ -24,18 +24,15 @@ pub enum ChangeAttribution {
         pre_existing_paths: Vec<String>,
         changed_paths: Vec<String>,
     },
-    Ambiguous {
-        pre_existing_paths: Vec<String>,
-        attributable_paths: Vec<String>,
-        ambiguous_paths: Vec<String>,
-        reason: String,
-    },
     Unavailable {
         pre_existing_paths: Vec<String>,
         reason: String,
     },
 }
 
+/// Reports the observed `Included` file fingerprint delta from the exact
+/// retained baseline while keeping baseline dirty paths as separate evidence.
+/// This bounded delta does not establish exclusive actor or process ownership.
 pub fn attribute_repository_changes(
     project_id: ProjectId,
     basis: &RepositoryWorkBasis<'_>,
@@ -69,34 +66,15 @@ pub fn attribute_repository_changes(
     }
     let baseline = inventory_fingerprints(basis.baseline);
     let current = inventory_fingerprints(basis.current);
-    let mut changed = baseline
+    let changed = baseline
         .keys()
         .chain(current.keys())
         .filter(|path| baseline.get(*path) != current.get(*path))
         .cloned()
         .collect::<BTreeSet<_>>();
-    let pre_existing_set = pre_existing.iter().cloned().collect::<BTreeSet<_>>();
-    let ambiguous = changed
-        .intersection(&pre_existing_set)
-        .cloned()
-        .collect::<Vec<_>>();
-    for path in &ambiguous {
-        changed.remove(path);
-    }
-    let attributable = changed.into_iter().collect::<Vec<_>>();
-    if ambiguous.is_empty() {
-        ChangeAttribution::Attributed {
-            pre_existing_paths: pre_existing,
-            changed_paths: attributable,
-        }
-    } else {
-        ChangeAttribution::Ambiguous {
-            pre_existing_paths: pre_existing,
-            attributable_paths: attributable,
-            ambiguous_paths: ambiguous,
-            reason: "a path dirty at the baseline changed again; current evidence cannot separate prior and bounded-work ownership"
-                .to_owned(),
-        }
+    ChangeAttribution::Attributed {
+        pre_existing_paths: pre_existing,
+        changed_paths: changed.into_iter().collect(),
     }
 }
 
@@ -145,7 +123,6 @@ pub enum CheckpointRejection {
     SourceStale,
     SourceFreshnessUnknown,
     InvalidSourceKind,
-    AmbiguousChangeAttribution,
     InvalidBoundary,
 }
 
@@ -163,7 +140,8 @@ pub enum CheckpointEvaluation {
 }
 
 /// Converts a source-grounded Candidate into a Kernel draft, or reports why
-/// ownership cannot be established. It does not persist the Checkpoint.
+/// its repository/source basis is not grounded. It does not persist the
+/// Checkpoint or infer exclusive actor ownership from the repository delta.
 pub fn evaluate_checkpoint_candidate(
     canonical: &CanonicalReadBasis,
     candidate: CheckpointCandidate<'_>,
@@ -229,13 +207,6 @@ pub fn evaluate_checkpoint_candidate(
     if let Some(ChangeAttribution::Unavailable { reason, .. }) = &attribution {
         return reject(
             CheckpointRejection::SourceUnavailable,
-            reason.clone(),
-            attribution,
-        );
-    }
-    if let Some(ChangeAttribution::Ambiguous { reason, .. }) = &attribution {
-        return reject(
-            CheckpointRejection::AmbiguousChangeAttribution,
             reason.clone(),
             attribution,
         );

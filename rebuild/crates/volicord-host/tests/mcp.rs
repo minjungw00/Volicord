@@ -1739,6 +1739,11 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         "{checkpoint}"
     );
     assert_eq!(
+        checkpoint["pre_existing_dirty_paths"],
+        json!(["pre-existing.txt"]),
+        "{checkpoint}"
+    );
+    assert_eq!(
         checkpoint["applied_decision_ids"],
         json!([decision_id]),
         "{checkpoint}"

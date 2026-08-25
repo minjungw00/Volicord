@@ -515,6 +515,13 @@ fn resumed_pre_write_baseline_attributes_source_document_and_configuration_witho
     fs::write(repository.join(".pytest_cache/v/cache/nodeids"), "[]\n")?;
     fs::create_dir_all(repository.join(".mypy_cache/3.12"))?;
     fs::write(repository.join(".mypy_cache/3.12/module.json"), "{}\n")?;
+    fs::create_dir_all(repository.join(".venv/lib/python3.12/site-packages/demo"))?;
+    fs::write(
+        repository.join(".venv/lib/python3.12/site-packages/demo/__init__.py"),
+        "def generated_environment_code(): pass\n",
+    )?;
+    fs::create_dir_all(repository.join(".ruff_cache/0.9.1"))?;
+    fs::write(repository.join(".ruff_cache/0.9.1/cache-key"), "cache\n")?;
 
     let checkpoint = operations.record_grounded_checkpoint(grounded_draft(
         resolved.id,
@@ -543,6 +550,13 @@ fn generated_python_cache_only_activity_has_no_meaningful_checkpoint_changed_pat
     fs::write(repository.join(".pytest_cache/v/cache/nodeids"), "[]\n")?;
     fs::create_dir_all(repository.join(".mypy_cache/3.12"))?;
     fs::write(repository.join(".mypy_cache/3.12/module.json"), "{}\n")?;
+    fs::create_dir_all(repository.join(".venv/lib/python3.12/site-packages/demo"))?;
+    fs::write(
+        repository.join(".venv/lib/python3.12/site-packages/demo/__init__.py"),
+        "def generated_environment_code(): pass\n",
+    )?;
+    fs::create_dir_all(repository.join(".ruff_cache/0.9.1"))?;
+    fs::write(repository.join(".ruff_cache/0.9.1/cache-key"), "cache\n")?;
 
     let checkpoint =
         operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
@@ -565,55 +579,47 @@ fn unchanged_pre_existing_dirty_path_is_not_current_work() -> Result<(), Box<dyn
     let checkpoint =
         operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
     assert!(checkpoint.changed_paths.is_empty());
+    assert_eq!(checkpoint.pre_existing_dirty_paths, ["src/lib.rs"]);
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn pre_existing_tracked_path_changed_again_is_ambiguous() -> Result<(), Box<dyn std::error::Error>>
-{
+fn pre_existing_tracked_path_changed_again_is_bounded_repository_delta(
+) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, repository) = fixture()?;
     initialize_git(&repository)?;
     let project = operations
-        .initialize_project("Tracked Ambiguity Fixture", Some(&repository))?
+        .initialize_project("Tracked Baseline Delta Fixture", Some(&repository))?
         .project;
     fs::write(repository.join("src/lib.rs"), "pub fn dirty_before() {}\n")?;
     let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
     fs::write(repository.join("src/lib.rs"), "pub fn changed_again() {}\n")?;
 
-    let before = operations.canonical_basis(project.id)?.latest_checkpoint;
-    let error = operations
-        .record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))
-        .expect_err("a baseline-dirty tracked path changed again must be ambiguous");
-    assert!(error
-        .message()
-        .contains("dirty at the baseline changed again"));
-    assert_eq!(
-        operations.canonical_basis(project.id)?.latest_checkpoint,
-        before
-    );
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert_eq!(checkpoint.pre_existing_dirty_paths, ["src/lib.rs"]);
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn pre_existing_untracked_path_changed_again_is_ambiguous() -> Result<(), Box<dyn std::error::Error>>
-{
+fn pre_existing_untracked_path_changed_again_is_bounded_repository_delta(
+) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, repository) = fixture()?;
     initialize_git(&repository)?;
     let project = operations
-        .initialize_project("Untracked Ambiguity Fixture", Some(&repository))?
+        .initialize_project("Untracked Baseline Delta Fixture", Some(&repository))?
         .project;
     fs::write(repository.join("draft.rs"), "fn first_untracked() {}\n")?;
     let (goal, baseline) = goal_and_baseline(&operations, project.id)?;
     fs::write(repository.join("draft.rs"), "fn changed_untracked() {}\n")?;
 
-    let error = operations
-        .record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))
-        .expect_err("a baseline-untracked path changed again must be ambiguous");
-    assert!(error
-        .message()
-        .contains("dirty at the baseline changed again"));
+    let checkpoint =
+        operations.record_grounded_checkpoint(grounded_draft(project.id, goal, baseline))?;
+    assert_eq!(checkpoint.pre_existing_dirty_paths, ["draft.rs"]);
+    assert_eq!(checkpoint.changed_paths, ["draft.rs"]);
     Ok(())
 }
 

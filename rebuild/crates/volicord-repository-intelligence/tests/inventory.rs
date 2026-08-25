@@ -142,6 +142,12 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
     fs::create_dir_all(repository.path().join("target/debug"))?;
     fs::create_dir_all(repository.path().join("python/.pytest_cache/v/cache"))?;
     fs::create_dir_all(repository.path().join("python/.mypy_cache/3.12"))?;
+    fs::create_dir_all(
+        repository
+            .path()
+            .join("python/.venv/lib/python3.12/site-packages/demo"),
+    )?;
+    fs::create_dir_all(repository.path().join("python/.ruff_cache/0.9.1"))?;
     fs::create_dir_all(repository.path().join("private"))?;
     fs::write(repository.path().join("main.py"), "print('ok')\n")?;
     fs::write(repository.path().join("image.bin"), [0_u8, 1, 2, 3])?;
@@ -163,6 +169,16 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
             .path()
             .join("python/.mypy_cache/3.12/module.json"),
         "{}\n",
+    )?;
+    fs::write(
+        repository
+            .path()
+            .join("python/.venv/lib/python3.12/site-packages/demo/__init__.py"),
+        "def generated_environment_code(): pass\n",
+    )?;
+    fs::write(
+        repository.path().join("python/.ruff_cache/0.9.1/cache-key"),
+        "generated cache\n",
     )?;
     fs::write(
         repository.path().join("python/pyproject.toml"),
@@ -194,6 +210,16 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
         "python/.mypy_cache",
         InventoryClassification::Generated,
     )?;
+    assert_classification(
+        &analysis,
+        "python/.venv",
+        InventoryClassification::Generated,
+    )?;
+    assert_classification(
+        &analysis,
+        "python/.ruff_cache",
+        InventoryClassification::Generated,
+    )?;
     assert_classification(&analysis, "private", InventoryClassification::Excluded)?;
     assert_classification(&analysis, "image.bin", InventoryClassification::Binary)?;
     assert!(snapshot
@@ -210,10 +236,14 @@ fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
         .any(
             |entry| entry.area.path == "python/.pytest_cache/v/cache/nodeids"
                 || entry.area.path == "python/.mypy_cache/3.12/module.json"
+                || entry.area.path == "python/.venv/lib/python3.12/site-packages/demo/__init__.py"
+                || entry.area.path == "python/.ruff_cache/0.9.1/cache-key"
         ));
     assert!(!analysis.structural_facts.iter().any(|fact| {
         fact.entity.area.path.starts_with("python/.pytest_cache/")
             || fact.entity.area.path.starts_with("python/.mypy_cache/")
+            || fact.entity.area.path.starts_with("python/.venv/")
+            || fact.entity.area.path.starts_with("python/.ruff_cache/")
     }));
     let overall = analysis
         .capabilities

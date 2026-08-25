@@ -515,8 +515,14 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - Fresh initialized/resumed session은 initialization 또는 Recall 뒤, 첫 ordinary repository
   write 전에 local repository analysis baseline을 만들고 그 exact Analysis Snapshot identity를
   bounded work의 Checkpoint까지 유지한다.
-- 변경된 path와 적용 Decision을 구분한다.
-- existing dirty change를 현재 작업 결과로 잘못 귀속하지 않는다.
+- exact baseline부터 current snapshot까지 fingerprint가 바뀐 meaningful path와 적용
+  Decision을 구분하고, 이 bounded repository delta가 exclusive actor ownership을 증명한다고
+  주장하지 않는다.
+- baseline의 pre-existing dirty path를 별도 evidence로 보고한다. Baseline 뒤 바뀌지 않은
+  dirty path는 current changed work가 아니며, tracked/untracked 여부와 무관하게 다시 바뀐
+  path는 current `changed_paths`에 포함할 수 있다.
+- `.venv`와 `.ruff_cache` descendant를 generated area로 유지해 meaningful changed path로
+  포함하지 않는다.
 - 의미 있는 작업 완료, pause 또는 handoff에서 하나의 Checkpoint를 만든다.
 - Checkpoint는 변경, 이유, 검증, 한계, non-goals와 다음 단계를 설명한다.
 - 사용자 review가 없어도 work와 verification 상태를 정직하게 표현한다.
@@ -538,7 +544,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - 일반 파일 쓰기를 Write Ticket이나 동등한 ceremony로 차단
 - 실행하지 않은 테스트를 성공으로 기록
-- 기존 dirty file을 현재 Checkpoint 변경으로 자동 포함
+- baseline 뒤 fingerprint가 바뀌지 않은 기존 dirty file을 current changed path로 포함
+- exact baseline 뒤 바뀐 기존 dirty file을 actor ownership ambiguity로 거부
 - bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
 - user review가 없다는 이유만으로 실제 완료 상태 왜곡
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint 생성
@@ -547,6 +554,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - Checkpoint serialization과 restart
 - changed path basis
+- tracked/untracked baseline-dirty path의 unchanged/changed-again 구분과 별도 pre-existing evidence
+- `.venv`/`.ruff_cache` generated descendant exclusion
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - work, verification, review와 acceptance 상태 독립성
 - known limits와 non-goals 보존

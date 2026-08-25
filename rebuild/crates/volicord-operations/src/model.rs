@@ -258,6 +258,7 @@ pub struct GroundedCheckpointOutcome {
     pub current_analysis_snapshot_id: AnalysisSnapshotId,
     pub baseline_repository_snapshot_id: RepositorySnapshotId,
     pub current_repository_snapshot_id: RepositorySnapshotId,
+    pub pre_existing_dirty_paths: Vec<String>,
     pub changed_paths: Vec<String>,
     pub applied_decisions: Vec<DecisionId>,
     pub verification_source_ids: Vec<SourceId>,

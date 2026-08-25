@@ -489,6 +489,8 @@ fn classify_path(
             | "__pycache__"
             | ".pytest_cache"
             | ".mypy_cache"
+            | ".venv"
+            | ".ruff_cache"
     ) {
         values.remove(&InventoryClassification::Included);
         values.insert(InventoryClassification::Generated);

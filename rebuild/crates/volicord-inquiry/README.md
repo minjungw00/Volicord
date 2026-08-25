@@ -89,11 +89,15 @@ Question Candidate.
 ## Checkpoint evaluation boundary
 
 Checkpoint evaluation compares caller-supplied baseline and current Repository
-Intelligence inventories. Paths already dirty at the baseline are reported
-separately; if such a path changes again, attribution is ambiguous and no
-canonical Checkpoint is created. The evaluator accepts only meaningful
+Intelligence inventories from an exact retained pre-write basis. Paths already
+dirty at the baseline are reported separately. An unchanged baseline-dirty path
+is not current work; a tracked or untracked baseline-dirty path whose `Included`
+file fingerprint changes after that baseline is part of the bounded repository
+delta. The delta does not prove exclusive actor or process ownership. Missing,
+stale, freshness-unknown, wrong-Project, incompatible-source, and other
+ungrounded bases remain rejected. The evaluator accepts only meaningful
 completion, explicit pause, or handoff with existing canonical Source basis.
-Status-only reads, source gaps, and unattributable changes remain rejected
-Candidates. A ready draft is persisted only through
+Status-only reads and source gaps remain rejected Candidates. A ready draft is
+persisted only through
 `Store::record_checkpoint`, preserving independent work, verification, user
 review, and user acceptance facts. No Git or command subprocess is introduced.

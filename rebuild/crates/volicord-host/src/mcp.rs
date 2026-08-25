@@ -475,6 +475,7 @@ impl HostAdapter {
             "current_analysis_snapshot_id":result.current_analysis_snapshot_id.to_string(),
             "baseline_repository_snapshot_id":result.baseline_repository_snapshot_id.to_string(),
             "current_repository_snapshot_id":result.current_repository_snapshot_id.to_string(),
+            "pre_existing_dirty_paths":result.pre_existing_dirty_paths,
             "changed_paths":result.changed_paths,
             "applied_decision_ids":result.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
             "verification_source_ids":result.verification_source_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),

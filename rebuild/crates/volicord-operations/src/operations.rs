@@ -1907,11 +1907,14 @@ impl LocalOperations {
             current: &current_outcome.analysis,
             pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
         };
-        let changed_paths = match attribute_repository_changes(draft.project_id, &repository_work) {
-            ChangeAttribution::Attributed { changed_paths, .. } => changed_paths,
-            ChangeAttribution::Ambiguous { reason, .. }
-            | ChangeAttribution::Unavailable { reason, .. } => return Err(Error::new(reason)),
-        };
+        let (pre_existing_dirty_paths, changed_paths) =
+            match attribute_repository_changes(draft.project_id, &repository_work) {
+                ChangeAttribution::Attributed {
+                    pre_existing_paths,
+                    changed_paths,
+                } => (pre_existing_paths, changed_paths),
+                ChangeAttribution::Unavailable { reason, .. } => return Err(Error::new(reason)),
+            };
 
         let current_assumptions = initial_canonical
             .context_items
@@ -2016,6 +2019,7 @@ impl LocalOperations {
             current_analysis_snapshot_id: current_outcome.analysis.identity,
             baseline_repository_snapshot_id: baseline.repository_snapshot,
             current_repository_snapshot_id: current_outcome.analysis.repository_snapshot,
+            pre_existing_dirty_paths,
             changed_paths: checkpoint.changed_paths,
             applied_decisions: checkpoint.applied_decisions,
             verification_source_ids,

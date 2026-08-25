@@ -378,6 +378,14 @@ Checkpoint를 rewrite하지 않고 snapshot/freshness 차이를 설명한다.
 Inquiry round persistence는 Checkpoint 생성 여부에 의존하지 않는다. 단순 질문
 표시나 response rejection만으로 meaningful work Checkpoint를 만들지 않는다.
 
+Grounded Checkpoint가 repository change를 기록할 때 exact retained pre-write Analysis
+Snapshot의 `Included` file fingerprint와 current compatible Analysis Snapshot을 비교한
+bounded repository delta를 사용한다. Baseline dirty path는 별도 pre-existing evidence이며,
+그 path가 baseline 뒤 다시 바뀌면 delta에 포함될 수 있고 바뀌지 않으면 포함되지 않는다.
+이 관찰은 actor/process의 exclusive ownership을 주장하지 않는다. Exact baseline이
+missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이면 attribution을
+거부하며 current state나 post-work snapshot으로 추정하지 않는다.
+
 ## 14. Later-validation hooks
 
 ### V09 — Recall과 Checkpoint 정확성

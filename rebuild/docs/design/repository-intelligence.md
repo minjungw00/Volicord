@@ -98,6 +98,12 @@ Inventory failure는 해당 observation scope에 표시한다. Structural adapte
 빈 결과로 바꾸지 않는다. 반대로 inventory만으로 parser-confirmed entity나 semantic
 relation을 주장하지 않는다.
 
+Current Production inventory는 실제 작업에서 관찰된 Python environment/cache root인
+`.venv`와 `.ruff_cache`를 existing generated classification으로 분류한다. 이 directory의
+descendant는 `Included` inventory, Structural Fact 또는 meaningful changed-path basis가
+되지 않는다. 이 bounded 목록은 기존 generated, ignored, excluded, vendor와 binary
+classification을 대체하거나 모든 tool artifact를 추측해 제외하는 일반 규칙이 아니다.
+
 ## 4. Accepted capability와 상태
 
 ### 4.1 Capability vocabulary
@@ -332,6 +338,13 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
   Derived repository observation으로 보존한다. Non-Git repository에는 Git metadata를
   요구하지 않으며 Checkpoint는 이후 current state에서 baseline dirty set을 재계산하지
   않는다.
+- Grounded Checkpoint의 repository change basis는 같은 Project와 compatible repository
+  source를 가리키는 exact current pre-write Analysis Snapshot과 current Analysis Snapshot의
+  `Included` file content fingerprint delta다. Baseline에서 dirty였지만 fingerprint가
+  그대로인 path는 current `changed_paths`가 아니며, baseline 이후 fingerprint가 바뀐
+  tracked/untracked path는 baseline dirty 여부와 무관하게 bounded delta에 포함될 수 있다.
+  Baseline dirty set은 별도 evidence로 유지한다. 이 delta는 어느 process 또는 actor가
+  변경을 독점적으로 수행했다는 ownership 증명이 아니다.
 - local search result에 Source/range, capability, coverage, diagnostic, provenance와
   freshness를 포함하고 historical range를 current navigation으로 표시하지 않는다.
 - parser execution과 search를 process 내부 local operation으로 유지하며 repository

@@ -524,6 +524,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         1_000,
     )?)?;
     fs::write(repository_root.join("src/lib.rs"), "pub fn current() {}\n")?;
+    fs::write(repository_root.join("pre.txt"), "changed after baseline\n")?;
     let (_, current) = inventory_repository(InventoryRequest::new(
         &repository_root,
         &grounding,
@@ -539,7 +540,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         attribute_repository_changes(project.id, &work),
         ChangeAttribution::Attributed {
             pre_existing_paths: vec!["pre.txt".to_owned()],
-            changed_paths: vec!["src/lib.rs".to_owned()],
+            changed_paths: vec!["pre.txt".to_owned(), "src/lib.rs".to_owned()],
         }
     );
     let compatible_reference = |identity: SourceId, scope: &str, observed_at: i64| {
@@ -568,7 +569,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         ),
         ChangeAttribution::Attributed {
             pre_existing_paths: vec!["pre.txt".into()],
-            changed_paths: vec!["src/lib.rs".into()],
+            changed_paths: vec!["pre.txt".into(), "src/lib.rs".into()],
         }
     );
     distinct_current.repository_source =
@@ -616,7 +617,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         },
     );
     let recorded = record_checkpoint(&mut store, operation(95), project.id, evaluation)?.value;
-    assert_eq!(recorded.changed_paths, vec!["src/lib.rs"]);
+    assert_eq!(recorded.changed_paths, vec!["pre.txt", "src/lib.rs"]);
     assert_eq!(recorded.verification[0].state, VerificationState::NotRun);
     assert_eq!(recorded.user_review.state, UserReviewState::NotRequested);
     assert_eq!(

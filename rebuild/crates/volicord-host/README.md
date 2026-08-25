@@ -40,8 +40,14 @@ must preserve this pre-write order rather than infer it later. For Git worktrees
 Analysis Snapshot owns the machine-observed baseline dirty paths; callers do
 not submit them. `checkpoint_record` takes the canonical Goal Context identity
 and baseline Analysis identity, observes the repository again, and derives
-changed paths only from compatible same-Project snapshot evidence. A baseline-
-dirty path changed again is ambiguous and rejects canonical Checkpoint creation.
+changed paths only from exact current, compatible same-Project snapshot evidence.
+It reports the baseline dirty paths separately and uses the `Included` file
+fingerprint delta from that retained pre-write baseline: a baseline-dirty path
+that did not change afterward is not current work, while a tracked or untracked
+baseline-dirty path whose fingerprint changed again is included in the bounded
+delta. This observation does not claim exclusive actor or process ownership.
+Missing, stale, freshness-unknown, wrong-Project, or incompatible-source
+grounding still rejects canonical Checkpoint creation.
 It validates explicit applied Decision identities through
 the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative
