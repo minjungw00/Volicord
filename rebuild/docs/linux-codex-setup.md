@@ -97,12 +97,22 @@ compatibility behavior, downstream generated/package/output defaults,
 privacy/security policy, and support/maintenance policy are strong user-owned
 signals when viable outcomes have materially different consequences and the
 choice was not already decided or delegated. A narrow, conventional, simple,
-backwards-looking, agent-recommended, or locally isolated option is not
-authority to choose such an outcome. Trivial public details do not become
-Questions, repository facts are never asked as user Questions, and exploratory
-uncertainty may still lead to research, a bounded prototype, deferment, or a
-revisit basis. Once the branch is resolved, ordinary repository edits require
-no approval ceremony.
+compatible-looking, backwards-looking, agent-recommended, or locally isolated
+option is not authority to choose such an outcome. Trivial public details do
+not become Questions, repository facts are never asked as user Questions, and
+exploratory uncertainty may still lead to research, a bounded prototype,
+deferment, or a revisit basis. Once the branch is resolved, ordinary repository
+edits require no approval ceremony.
+
+Before asking, the agent identifies every independently material unresolved
+user-owned dimension. A recommendation, preferred implementation, or one API
+shape/mechanism choice cannot silently supply authority for a separate default,
+guarantee, result, partial-work, lifetime, privacy, compatibility, or maintenance
+policy. Independently user-owned dimensions need independently explicit
+authority. Genuinely coupled dimensions may use one Question only when every
+material consequence of that joint choice is disclosed in its alternatives and
+trade-offs. This screening does not split trivial implementation details into
+Questions; material consequence and ownership remain the threshold.
 
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or

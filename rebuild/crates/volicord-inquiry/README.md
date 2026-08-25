@@ -53,6 +53,15 @@ Research that establishes a sufficient canonical Source basis may use
 `resolve_question_by_research`; that function invokes Canonical Context's
 non-user disposition authority and creates no user response or Decision.
 
+Before promotion, host guidance screens every independently material unresolved
+user-owned dimension after owner, Decision/contract, and repository research.
+A recommendation, preferred implementation, or one API dimension is not
+authority for a separate unstated material policy. Independently user-owned
+dimensions require independently explicit authority; genuinely coupled
+dimensions may share one Question only when its alternatives disclose every
+coupled material consequence. Trivial implementation multiplicity remains
+agent-owned when it has no material consequence.
+
 ## Frontier boundary
 
 `compute_frontier` is pure over an immutable canonical read basis and explicit

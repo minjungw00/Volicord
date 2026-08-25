@@ -381,6 +381,11 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 ### 기대 사용자 경험
 
 - 에이전트가 먼저 repository와 환경에서 사실을 조사한다.
+- 조사 뒤 independently material한 unresolved user-owned dimension을 식별하고, 한 API
+  또는 implementation 선택의 recommendation이 다른 material policy authority를 대신하지
+  않게 한다.
+- 실제 coupled dimension을 하나의 선택으로 물을 때는 모든 coupled material consequence를
+  함께 제시하고, 독립 dimension은 다른 선택 안에 숨기지 않는다.
 - 현재 frontier의 질문만 배경, 선택지, 권장안, trade-off와 uncertainty와 함께 제시한다.
 - 질문에는 제품, architecture와 implementation 관점이 필요한 만큼 포함된다.
 - 사용자는 선택, 수정안, 위임, 조사, prototype 또는 보류로 답할 수 있다.
@@ -405,6 +410,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 코드에서 확인할 수 있는 사실을 사용자에게 질문
 - 모호한 과거의 “좋아요”를 Decision으로 적용
 - agent recommendation을 사용자 choice로 저장
+- agent recommendation, preferred implementation 또는 한 API dimension 선택으로 별도의
+  independently material user-owned policy를 조용히 결정
+- coupled choice의 다른 material consequence를 Question alternatives에서 숨김
 - 답을 모른다는 사용자에게 추측을 강요
 - 고정 질문 수에 맞추기 위해 material branch를 생략
 - 간단한 task 또는 research/accepted delegation으로 충분한 task에 Dogfood를
@@ -418,6 +426,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - restart 후 open frontier 복구
 - answered Question 반복 방지
 - terminal branch 상태
+- independent material-dimension screening, coupled-consequence disclosure와 trivial-detail
+  non-fragmentation
 - behavior class별 expected outcome: explicit user-owned Decision, hidden user-owned Decision
   discovery, no-question, resolved-by-research, delegated-choice reuse와
   prototype/research/defer

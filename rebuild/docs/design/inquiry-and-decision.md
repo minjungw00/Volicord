@@ -162,6 +162,20 @@ fact를 먼저 확인한 뒤 다음을 구분한다.
   user-owned이면 선택하거나 구현하기 전에 기존 Candidate, Inquiry와 Decision path를
   사용한다.
 
+이 research 뒤에는 ask 전 unresolved user-owned outcome을 independently material한
+dimension으로 분해해 확인한다. 한 API shape, mechanism 또는 recommendation을 선택하는
+것이 다른 independently user-owned default, guarantee, result, partial-work, lifetime,
+privacy, compatibility 또는 maintenance policy의 authority가 되지 않는다. Recommendation,
+preferred implementation, conventional/narrow/simple/compatible-looking choice와 local
+convenience는 명시되지 않은 material dimension을 조용히 결정할 권한이 아니다.
+
+Dimension이 실제로 coupled되어 한 user choice가 함께 해결한다면 하나의 Question으로
+제시할 수 있지만, alternatives와 trade-off가 coupled dimension 각각의 material
+consequence를 드러내야 한다. 반대로 consequence와 authority가 독립적이면 한 dimension을
+다른 dimension의 recommendation이나 implementation 안에 숨기지 않고 각각 explicit
+authority를 얻는다. 이 screening은 trivial implementation detail을 별도 Question으로
+쪼개라는 뜻이 아니며 기존 material consequence와 ownership 기준을 그대로 적용한다.
+
 Repository research 뒤에도 externally observable behavior를 material하게 다르게 만드는
 여러 viable outcome이 남으면 한 option이 더 narrow, conventional, simple,
 backwards-looking, agent-recommended이거나 다른 subsystem을 건드리지 않고 구현 가능하다는

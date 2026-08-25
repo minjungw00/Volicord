@@ -407,8 +407,17 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("privacy or security policy"));
     assert!(instructions.contains("support or maintenance policy"));
     assert!(instructions.contains("Choosing a new public field, stable error attribute"));
-    assert!(instructions.contains("narrower, conventional, simpler, backwards-looking"));
-    assert!(instructions.contains("Do not turn trivial public details into user Questions"));
+    assert!(instructions.contains("identify every independently material user-owned dimension"));
+    assert!(instructions.contains("selection of one API dimension supplies no authority"));
+    assert!(
+        instructions.contains("cannot silently settle another independently material dimension")
+    );
+    assert!(instructions
+        .contains("Independently user-owned dimensions require independently explicit authority"));
+    assert!(instructions.contains("dimensions are genuinely coupled"));
+    assert!(instructions.contains("material consequences across every coupled dimension"));
+    assert!(instructions.contains("narrower, conventional, simpler, compatible-looking"));
+    assert!(instructions.contains("Do not fragment trivial implementation details"));
     assert!(instructions.contains("attach source-grounded repository research"));
     assert!(instructions.contains("review materiality, mark it ready, explicitly promote it"));
     assert!(
