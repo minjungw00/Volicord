@@ -221,6 +221,24 @@ def replaced_capture(source: Path, destination: Path, old: str, new: str) -> Pat
     return destination
 
 
+def compacted_capture(source: Path, destination: Path, after_phrase: str) -> Path:
+    lines = source.read_text(encoding="utf-8").splitlines()
+    insertion = next(index for index, line in enumerate(lines) if after_phrase in line) + 1
+    lines.insert(
+        insertion,
+        json.dumps(
+            {
+                "timestamp": "2026-08-15T00:00:00Z",
+                "type": "event_msg",
+                "payload": {"type": "context_compacted"},
+            },
+            separators=(",", ":"),
+        ),
+    )
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
+
+
 def prepared_batch(
     parent: Path,
     name: str,
@@ -658,9 +676,21 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             assert state["repository_path"] in run_sheet
             assert state["runtime_home"] in run_sheet
 
+    compacted_work_source = next(
+        path for path in captures if path.name == "volicord-1-work-events.jsonl"
+    )
+    compacted_work = compacted_capture(
+        compacted_work_source,
+        parent / "volicord-1-work-events.jsonl",
+        '"call_id":"volicord-status-call-1"',
+    )
+    captures = [compacted_work if path == compacted_work_source else path for path in captures]
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
     assert len({capture.session_id for _path, capture in mapped.values()}) == 30
+    compacted_mapped_capture = mapped[("volicord", 1, "work")][1]
+    assert compacted_mapped_capture.fresh_user_thread is True
+    assert len(compacted_mapped_capture.compacted_sequences) == 1
 
     directory = parent / "unordered-rollouts"
     directory.mkdir()
@@ -668,14 +698,23 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         shutil.copyfile(source, directory / f"capture-{index:02}.jsonl")
     directory_paths = campaign.batch_rollout_paths(None, directory)
     assert len(campaign.map_batch_rollouts(root, directory_paths)) == 30
+    campaign_before_failed_batch = (root / "campaign.json").read_bytes()
+    inventory_before_failed_batch = (root / "evidence-inventory.json").read_bytes()
     try:
-        campaign.map_batch_rollouts(root, captures[:-1])
+        campaign.collect_batch(root, captures[:-1])
     except campaign.CampaignError as error:
         assert "missing" in str(error)
     else:
-        raise AssertionError("batch mapping accepted a missing rollout")
+        raise AssertionError("batch collection accepted a missing rollout")
+    assert (root / "campaign.json").read_bytes() == campaign_before_failed_batch
+    assert (root / "evidence-inventory.json").read_bytes() == inventory_before_failed_batch
+    assert not any(
+        (campaign.cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl").exists()
+        for kind in campaign.CLASSES
+        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1)
+    )
 
-    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    work = compacted_work
     resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
     duplicate_session = replaced_capture(
         resume,
@@ -711,6 +750,22 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             assert "unambiguously" in str(error)
         else:
             raise AssertionError(f"batch mapping accepted wrong {label}")
+
+    provenance_cases = (
+        ("source", '"source":"vscode"', '"source":"exec"'),
+        ("originator", '"originator":"codex_vscode"', '"originator":"codex_cli_rs"'),
+        ("fork", '"thread_source":"user"', '"thread_source":"user","forked_from_id":"parent"'),
+        ("thread-source", '"thread_source":"user"', '"thread_source":"subagent"'),
+    )
+    for label, old, new in provenance_cases:
+        invalid = replaced_capture(work, parent / f"wrong-{label}.jsonl", old, new)
+        inputs = [invalid if path == work else path for path in captures]
+        try:
+            campaign.map_batch_rollouts(root, inputs)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError(f"batch mapping accepted wrong {label} provenance")
 
     original_run_checked = campaign.run_checked
     campaign.run_checked = lambda _argv, cwd=campaign.ROOT: {
@@ -1163,6 +1218,8 @@ def main() -> int:
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
             "unordered_thirty_rollout_batch_mapping",
+            "compacted_fresh_thread_batch_mapping",
+            "global_mapping_failure_precedes_campaign_mutation",
             "missing_duplicate_and_wrong_identity_batch_rejection",
             "batch_terminal_work_failure_preserved_with_later_resume",
             "batch_activation_all_preserves_user_controlled_trust",

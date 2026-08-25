@@ -6659,6 +6659,66 @@ def self_test() -> int:
         or b"text(JSON.stringify(x))" not in CURRENT_MCP_FIXTURE.read_bytes()
     ):
         raise AssertionError("current JSON.stringify wrapper fixture did not normalize from MCP completion")
+    compacted_fixture_root = evidence_directory / "compacted-fresh-thread"
+    compacted_fixture_root.mkdir()
+    compacted_fixture = real_session_fixture(
+        "volicord", 1, revision, compacted_fixture_root
+    )
+    compacted_path = (
+        evidence_directory
+        / "compacted-fresh-thread"
+        / compacted_fixture["evidence"]["captures"]["work"]["file"]
+    )
+    compacted_events = [
+        json.loads(line) for line in compacted_path.read_text(encoding="utf-8").splitlines()
+    ]
+    insertion = next(
+        index
+        for index, value in enumerate(compacted_events)
+        if value.get("payload", {}).get("call_id") == "volicord-status-call-1"
+        and value.get("payload", {}).get("type") == "custom_tool_call_output"
+    ) + 1
+    compacted_events.insert(
+        insertion,
+        {
+            "timestamp": "2026-08-15T00:00:00Z",
+            "type": "event_msg",
+            "payload": {"type": "context_compacted"},
+        },
+    )
+    compacted_path.write_text(
+        "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in compacted_events),
+        encoding="utf-8",
+    )
+    compacted_capture = load_codex_capture(compacted_path)
+    if (
+        not compacted_capture.fresh_user_thread
+        or len(compacted_capture.compacted_sequences) != 1
+        or not compacted_capture.task_sequences
+        or not compacted_capture.completed_task_sequences
+        or not compacted_capture.commands
+        or not compacted_capture.path_observations
+        or not (
+            compacted_capture.task_sequences[0]
+            < compacted_capture.compacted_sequences[0]
+            < compacted_capture.completed_task_sequences[-1]
+        )
+    ):
+        raise AssertionError("automatic mid-session compaction invalidated or disappeared from a fresh thread")
+    for label, meta_update in (
+        ("forked", {"forked_from_id": "parent-session"}),
+        ("non-user", {"thread_source": "subagent"}),
+    ):
+        negative_events = json.loads(json.dumps(compacted_events))
+        negative_events[0]["payload"].update(meta_update)
+        negative_path = evidence_directory / f"{label}-compacted-thread.jsonl"
+        negative_path.write_text(
+            "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in negative_events),
+            encoding="utf-8",
+        )
+        negative_capture = load_codex_capture(negative_path)
+        if negative_capture.fresh_user_thread or len(negative_capture.compacted_sequences) != 1:
+            raise AssertionError(f"{label} compacted thread qualified as fresh")
     valid_descriptor = {
         "kind": "phase8_cycle_descriptor",
         "repository_class": "volicord",

@@ -841,7 +841,6 @@ def load_codex_capture(path: Path) -> CodexCapture:
     fresh_user_thread = (
         thread_source == "user"
         and meta.get("forked_from_id") in {None, ""}
-        and not compacted_sequences
     )
     return CodexCapture(
         source_sha256=sha256_bytes(raw_bytes),
