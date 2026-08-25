@@ -975,6 +975,7 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
     behavior_review = evidence.get("behavior_review", {})
     agreement_contract = behavior_review.get("fact_authority_agreement", {})
+    comparison_contract = behavior_review.get("classification_comparison", {})
     blind_first = behavior_review.get("blind_first_review", {})
     counterfactual_contract = behavior_review.get(
         "material_user_owned_counterfactual_review", {}
@@ -990,6 +991,7 @@ def load_definition() -> dict[str, Any]:
             "basis",
             "review_preparation",
             "provisional_review",
+            "classification_comparison",
             "fact_authority_agreement",
             "counterfactual_review",
         ]
@@ -1031,12 +1033,34 @@ def load_definition() -> dict[str, Any]:
         != "review_prepared_to_provisional_recorded"
         or blind_first.get("recording_success_exit_code") != 0
         or blind_first.get("recording_reads_evaluator_descriptor") is not False
+        or blind_first.get("recording_compares_evaluator_classification_or_materiality")
+        is not False
         or blind_first.get("recording_failure_atomic") is not True
         or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
         or blind_first.get("sealing_accepts_provisional_payload") is not False
         or agreement_contract.get("accepted_statuses")
         != ["agreed", "resolved_from_evidence"]
         or agreement_contract.get("sealing_blocked_status") != "unresolved_conflict"
+        or comparison_contract.get("accepted_statuses")
+        != ["agreed", "resolved_from_evidence"]
+        or comparison_contract.get("sealing_blocked_status") != "unresolved_conflict"
+        or comparison_contract.get("required_fields")
+        != [
+            "status",
+            "provisional_classification",
+            "evaluator_classification",
+            "disagreements",
+            "resolution_basis",
+            "provenance_reference_indices",
+        ]
+        or comparison_contract.get("mechanical_disagreement_fields")
+        != [
+            "classification",
+            "materiality_conclusion",
+            "material_outcome_unavoidable",
+            "operator_prompt_disclosure",
+        ]
+        or comparison_contract.get("provisional_artifact_rewritten") is not False
         or counterfactual_contract.get("applicability")
         != "required_for_material_user_owned_decision"
         or counterfactual_contract.get("accepted_conclusion")
@@ -1689,6 +1713,7 @@ def behavior_review_errors(
         "basis",
         "review_preparation",
         "provisional_review",
+        "classification_comparison",
         "fact_authority_agreement",
         "counterfactual_review",
     }
@@ -1705,6 +1730,13 @@ def behavior_review_errors(
     errors.extend(
         blind_first_review_errors(
             independent.get("review_preparation"),
+            independent.get("provisional_review"),
+            len(references),
+        )
+    )
+    errors.extend(
+        classification_comparison_errors(
+            independent.get("classification_comparison"),
             independent.get("provisional_review"),
             behavior_class,
             len(references),
@@ -1728,7 +1760,6 @@ def behavior_review_errors(
 def blind_first_review_errors(
     preparation: Any,
     provisional: Any,
-    behavior_class: Any,
     reference_count: int,
 ) -> list[str]:
     errors: list[str] = []
@@ -1765,9 +1796,11 @@ def blind_first_review_errors(
         != "campaign_preparation_independent_reviewer"
         or provisional.get("review_slot_id") != preparation.get("review_slot_id")
         or provisional.get("preparation_sha256") != preparation.get("sha256")
-        or provisional.get("classification") != behavior_class
     ):
-        errors.append("provisional review is not fixed to the preparation and final classification")
+        errors.append("provisional review is not fixed to the blind preparation")
+    classification = provisional.get("classification")
+    if classification not in BEHAVIOR_CLASSES:
+        errors.append("provisional review classification is unsupported")
     basis = provisional.get("basis")
     if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
         errors.append("provisional review requires bounded source-grounded reasoning")
@@ -1780,22 +1813,104 @@ def blind_first_review_errors(
         or any(index < 0 or index >= reference_count for index in indices)
     ):
         errors.append("provisional review must cite reviewer-visible provenance locations")
-    if is_user_owned_behavior(behavior_class):
+    if is_user_owned_behavior(classification):
         if provisional.get("materiality_conclusion") != "user_owned_material_outcome":
             errors.append("user-owned provisional review must identify a material user-owned outcome")
         if provisional.get("material_outcome_unavoidable") is not True:
             errors.append("user-owned provisional review must find the material outcome unavoidable")
-        expected_non_disclosure = behavior_class == "hidden_user_owned_decision"
+        expected_non_disclosure = classification == "hidden_user_owned_decision"
         if (
             provisional.get("operator_prompt_does_not_disclose_material_outcome")
             is not expected_non_disclosure
         ):
-            errors.append("provisional prompt-disclosure conclusion does not match the behavior class")
-    else:
+            errors.append("provisional prompt-disclosure conclusion is inconsistent with its classification")
+    elif classification in BEHAVIOR_CLASSES:
+        if provisional.get("materiality_conclusion") != "no_user_owned_material_outcome":
+            errors.append("non-user-owned provisional review must reject a material user-owned outcome")
         if provisional.get("material_outcome_unavoidable") is not False:
             errors.append("non-user-owned provisional review must reject an unavoidable user-owned outcome")
         if provisional.get("operator_prompt_does_not_disclose_material_outcome") is not None:
             errors.append("non-user-owned provisional review does not classify hidden prompt disclosure")
+    return errors
+
+
+def classification_comparison_errors(
+    value: Any,
+    provisional: Any,
+    behavior_class: Any,
+    reference_count: int,
+) -> list[str]:
+    required = {
+        "status",
+        "provisional_classification",
+        "evaluator_classification",
+        "disagreements",
+        "resolution_basis",
+        "provenance_reference_indices",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        return ["independent review requires the current classification comparison fields"]
+    errors: list[str] = []
+    status = value.get("status")
+    if status not in {"agreed", "resolved_from_evidence", "unresolved_conflict"}:
+        errors.append("classification comparison status is unsupported")
+    provisional_classification = (
+        provisional.get("classification") if isinstance(provisional, dict) else None
+    )
+    if value.get("provisional_classification") != provisional_classification:
+        errors.append("classification comparison must retain the immutable provisional classification")
+    if value.get("evaluator_classification") != behavior_class:
+        errors.append("classification comparison must identify the evaluator classification")
+
+    expected_materiality = (
+        "user_owned_material_outcome"
+        if is_user_owned_behavior(behavior_class)
+        else "no_user_owned_material_outcome"
+    )
+    expected_unavoidable = is_user_owned_behavior(behavior_class)
+    expected_disclosure = (
+        True
+        if behavior_class == "hidden_user_owned_decision"
+        else False
+        if behavior_class == "explicit_user_owned_decision"
+        else None
+    )
+    expected_disagreements: list[str] = []
+    if provisional_classification != behavior_class:
+        expected_disagreements.append("classification")
+    if not isinstance(provisional, dict) or provisional.get("materiality_conclusion") != expected_materiality:
+        expected_disagreements.append("materiality_conclusion")
+    if not isinstance(provisional, dict) or provisional.get("material_outcome_unavoidable") is not expected_unavoidable:
+        expected_disagreements.append("material_outcome_unavoidable")
+    if (
+        not isinstance(provisional, dict)
+        or provisional.get("operator_prompt_does_not_disclose_material_outcome")
+        is not expected_disclosure
+    ):
+        expected_disagreements.append("operator_prompt_disclosure")
+    disagreements = value.get("disagreements")
+    if disagreements != expected_disagreements:
+        errors.append("classification comparison must enumerate the exact evaluator-relative disagreements")
+
+    basis = value.get("resolution_basis")
+    if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+        errors.append("classification comparison requires a bounded resolution basis")
+    indices = value.get("provenance_reference_indices")
+    if (
+        not isinstance(indices, list)
+        or not indices
+        or len(indices) != len(set(indices))
+        or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
+        or any(index < 0 or index >= reference_count for index in indices)
+    ):
+        errors.append("classification comparison must cite inspectable provenance references")
+    if expected_disagreements:
+        if status == "agreed":
+            errors.append("classification or materiality disagreement cannot be marked agreed")
+        elif status == "unresolved_conflict":
+            errors.append("unresolved classification or materiality disagreement blocks sealing")
+    elif status != "agreed":
+        errors.append("matching classification and materiality conclusions must be marked agreed")
     return errors
 
 
@@ -5281,6 +5396,16 @@ def fixture_behavior_review(behavior_class: str) -> dict[str, Any]:
                 "basis": "Repository and owner inspection produced this conclusion before evaluator material was revealed.",
                 "provenance_reference_indices": [0],
             },
+            "classification_comparison": {
+                "status": "agreed",
+                "provisional_classification": behavior_class,
+                "evaluator_classification": behavior_class,
+                "disagreements": [],
+                "resolution_basis": (
+                    "The cited evidence supports the matching provisional and evaluator conclusions."
+                ),
+                "provenance_reference_indices": [0],
+            },
             "fact_authority_agreement": {
                 "status": "agreed",
                 "evaluator_conclusions": [
@@ -6852,6 +6977,57 @@ def self_test() -> int:
     disagreement_errors = cycle_descriptor_errors(disagreement)
     if not any("disagreement blocks sealing" in error for error in disagreement_errors):
         raise AssertionError("unresolved evaluator/reviewer disagreement qualified")
+    classification_mismatch = json.loads(json.dumps(hidden_descriptor))
+    mismatch_independent = classification_mismatch["behavior_review"][
+        "independent_review"
+    ]
+    mismatch_provisional = mismatch_independent["provisional_review"]
+    mismatch_provisional.update(
+        {
+            "classification": "research_or_no_question",
+            "materiality_conclusion": "no_user_owned_material_outcome",
+            "material_outcome_unavoidable": False,
+            "operator_prompt_does_not_disclose_material_outcome": None,
+        }
+    )
+    if blind_first_review_errors(
+        mismatch_independent["review_preparation"], mismatch_provisional, 1
+    ):
+        raise AssertionError("well-formed evaluator-wrong provisional review failed blind validation")
+    mismatch_comparison = mismatch_independent["classification_comparison"]
+    mismatch_comparison.update(
+        {
+            "provisional_classification": "research_or_no_question",
+            "evaluator_classification": "hidden_user_owned_decision",
+            "disagreements": [
+                "classification",
+                "materiality_conclusion",
+                "material_outcome_unavoidable",
+                "operator_prompt_disclosure",
+            ],
+            "resolution_basis": (
+                "The cited active-owner evidence establishes the hidden material outcome after reveal."
+            ),
+        }
+    )
+    mismatch_comparison["status"] = "agreed"
+    false_agreement_errors = cycle_descriptor_errors(classification_mismatch)
+    if not any("cannot be marked agreed" in error for error in false_agreement_errors):
+        raise AssertionError("classification mismatch masqueraded as agreement")
+    mismatch_comparison["status"] = "unresolved_conflict"
+    unresolved_classification_errors = cycle_descriptor_errors(classification_mismatch)
+    if not any(
+        "disagreement blocks sealing" in error
+        for error in unresolved_classification_errors
+    ):
+        raise AssertionError("unresolved classification/materiality mismatch qualified")
+    mismatch_comparison["status"] = "resolved_from_evidence"
+    resolved_classification_errors = cycle_descriptor_errors(classification_mismatch)
+    if resolved_classification_errors:
+        raise AssertionError(
+            "evidence-resolved classification/materiality mismatch was rejected: "
+            f"{resolved_classification_errors}"
+        )
     for label, mutation in (
         ("missing work task", lambda value: value.pop("work_user_task")),
         ("missing evaluation basis", lambda value: value.pop("evaluation_basis")),
@@ -9328,6 +9504,10 @@ def self_test() -> int:
         "user_owned_no_question_counterfactual_required": "passed",
         "bypassable_user_owned_descriptor_rejected": "passed",
         "fact_authority_disagreement_blocks_sealing": "passed",
+        "evaluator_wrong_provisional_passes_blind_validation": "passed",
+        "classification_materiality_false_agreement_rejected": "passed",
+        "classification_materiality_unresolved_conflict_rejected": "passed",
+        "classification_materiality_evidence_resolution_accepted": "passed",
         "non_user_decision_classes_remain_non_ceremonial": "passed",
         "repository_fact_contract_and_delegated_choice_rejected": "passed",
         "terminal_checkpoint_single_and_pause_completion_selection": "passed",

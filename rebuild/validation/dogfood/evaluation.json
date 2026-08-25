@@ -396,6 +396,7 @@
         "basis",
         "review_preparation",
         "provisional_review",
+        "classification_comparison",
         "fact_authority_agreement",
         "counterfactual_review"
       ],
@@ -433,6 +434,7 @@
         "recording_transition": "review_prepared_to_provisional_recorded",
         "recording_success_exit_code": 0,
         "recording_reads_evaluator_descriptor": false,
+        "recording_compares_evaluator_classification_or_materiality": false,
         "recording_failure_atomic": true,
         "sealed_provisional_immutable_and_inventory_bound": true,
         "sealing_accepts_provisional_payload": false
@@ -452,6 +454,29 @@
           "provenance_reference_indices"
         ],
         "resolution_evidence": "inspectable source or active-owner provenance references"
+      },
+      "classification_comparison": {
+        "accepted_statuses": [
+          "agreed",
+          "resolved_from_evidence"
+        ],
+        "sealing_blocked_status": "unresolved_conflict",
+        "required_fields": [
+          "status",
+          "provisional_classification",
+          "evaluator_classification",
+          "disagreements",
+          "resolution_basis",
+          "provenance_reference_indices"
+        ],
+        "mechanical_disagreement_fields": [
+          "classification",
+          "materiality_conclusion",
+          "material_outcome_unavoidable",
+          "operator_prompt_disclosure"
+        ],
+        "resolution_evidence": "inspectable source or active-owner provenance references",
+        "provisional_artifact_rewritten": false
       },
       "material_user_owned_counterfactual_review": {
         "applicability": "required_for_material_user_owned_decision",

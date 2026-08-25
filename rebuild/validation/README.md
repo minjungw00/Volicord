@@ -311,11 +311,17 @@ rebuild/scripts/dogfood-campaign record-provisional-review \
 
 This successful reviewer-plane operation verifies
 the exact campaign candidate, opaque preparation identity and strict provisional
-schema without reading an evaluator descriptor, then atomically fixes the private
-artifact, hash inventory and `provisional_recorded` state. The control agent next
-invokes `seal-cycle --descriptor <path>`. Sealing reads only that immutable recorded
-review and verifies the class, pinned revision, active-owner or target-repository
-provenance and content hashes,
+schema/self-consistency from the reviewer's own classification without reading an
+evaluator descriptor or comparing evaluator truth, then atomically fixes the private
+artifact, hash inventory and `provisional_recorded` state. Correct and evaluator-wrong
+well-formed classifications have the same successful non-oracle result shape. The
+control agent next invokes `seal-cycle --descriptor <path>`. Sealing reads only that
+immutable recorded review and, after evaluator reveal, verifies the class, pinned
+revision, active-owner or target-repository provenance and content hashes. Its
+structured classification comparison must report exact classification/materiality/
+disclosure differences as `agreed`, evidence-backed `resolved_from_evidence`, or
+blocking `unresolved_conflict`; disagreement cannot masquerade as agreement or rewrite
+the provisional review. Sealing then
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
 paths. `activate-cycle`, `activate-all`, and rollout collection reject unsealed cycles. The run-sheet

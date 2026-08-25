@@ -76,6 +76,7 @@ def main() -> int:
         "blind_first_review_errors",
         "phase8_blind_review_preparation",
         "phase8_provisional_behavior_review",
+        "classification_comparison",
         "fact_authority_agreement",
         "counterfactual_review",
         "fully_satisfies_without_user_owned_outcome",
@@ -266,6 +267,7 @@ def main() -> int:
             raise AssertionError(f"Phase 8 definition is missing evaluation-basis field {basis_field}")
     behavior_review = real_session.get("behavior_review", {})
     agreement = behavior_review.get("fact_authority_agreement", {})
+    comparison = behavior_review.get("classification_comparison", {})
     blind_first = behavior_review.get("blind_first_review", {})
     counterfactual = behavior_review.get("material_user_owned_counterfactual_review", {})
     if (
@@ -276,6 +278,7 @@ def main() -> int:
             "basis",
             "review_preparation",
             "provisional_review",
+            "classification_comparison",
             "fact_authority_agreement",
             "counterfactual_review",
         ]
@@ -289,6 +292,8 @@ def main() -> int:
         != "review_prepared_to_provisional_recorded"
         or blind_first.get("recording_success_exit_code") != 0
         or blind_first.get("recording_reads_evaluator_descriptor") is not False
+        or blind_first.get("recording_compares_evaluator_classification_or_materiality")
+        is not False
         or blind_first.get("recording_failure_atomic") is not True
         or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
         or blind_first.get("sealing_accepts_provisional_payload") is not False
@@ -306,6 +311,17 @@ def main() -> int:
         or agreement.get("sealing_blocked_status") != "unresolved_conflict"
         or set(agreement.get("accepted_statuses", []))
         != {"agreed", "resolved_from_evidence"}
+        or comparison.get("sealing_blocked_status") != "unresolved_conflict"
+        or set(comparison.get("accepted_statuses", []))
+        != {"agreed", "resolved_from_evidence"}
+        or comparison.get("mechanical_disagreement_fields")
+        != [
+            "classification",
+            "materiality_conclusion",
+            "material_outcome_unavoidable",
+            "operator_prompt_disclosure",
+        ]
+        or comparison.get("provisional_artifact_rewritten") is not False
         or counterfactual.get("applicability")
         != "required_for_material_user_owned_decision"
         or counterfactual.get("accepted_conclusion") != "unavoidable_user_owned_outcome"

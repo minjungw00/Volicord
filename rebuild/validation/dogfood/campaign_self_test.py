@@ -157,6 +157,26 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
     campaign.seal_cycle(root, kind, cycle, source)
 
 
+def set_provisional_classification(
+    provisional: dict[str, object], classification: str
+) -> None:
+    provisional["classification"] = classification
+    user_owned = harness.is_user_owned_behavior(classification)
+    provisional["materiality_conclusion"] = (
+        "user_owned_material_outcome"
+        if user_owned
+        else "no_user_owned_material_outcome"
+    )
+    provisional["material_outcome_unavoidable"] = user_owned
+    provisional["operator_prompt_does_not_disclose_material_outcome"] = (
+        True
+        if classification == "hidden_user_owned_decision"
+        else False
+        if classification == "explicit_user_owned_decision"
+        else None
+    )
+
+
 def exporter_from(source: Path):
     def export(_binary: Path, _runtime: Path, repository: Path, destination: Path) -> None:
         assert repository.name == "repository"
@@ -438,6 +458,78 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     assert invalid["classification"] == "operator_environment_setup_failure"
 
 
+def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
+    results: list[dict[str, object]] = []
+    recorded_paths: list[Path] = []
+    all_read_paths: list[Path] = []
+    original_comparison = harness.classification_comparison_errors
+    original_read_json = campaign.read_json
+
+    def forbidden_comparison(*_args: object, **_kwargs: object) -> list[str]:
+        raise AssertionError("recording invoked evaluator-relative comparison")
+
+    def tracking_read_json(path: Path):
+        all_read_paths.append(Path(path).resolve())
+        return original_read_json(path)
+
+    try:
+        harness.classification_comparison_errors = forbidden_comparison
+        campaign.read_json = tracking_read_json
+        for label, classification in (
+            ("correct", "explicit_user_owned_decision"),
+            ("wrong", "research_or_no_question"),
+        ):
+            root = parent / f"blind-recording-{label}-campaign"
+            prepare(root, parent / f"blind-recording-{label}-sources", binary)
+            descriptor, _work, _resume, _bundle = fixture_for(
+                parent / f"blind-recording-{label}-fixture", "volicord", 1
+            )
+            descriptor.pop("_evidence_directory", None)
+            descriptor.pop("_evidence_file_sha256", None)
+            descriptor.pop("evidence", None)
+            draft_path = parent / f"blind-recording-{label}-draft.json"
+            campaign.write_json(draft_path, descriptor)
+            preparation = campaign.prepare_review(root, "volicord", 1, draft_path)
+            provisional = copy.deepcopy(
+                descriptor["behavior_review"]["independent_review"]["provisional_review"]
+            )
+            set_provisional_classification(provisional, classification)
+            provisional["preparation_sha256"] = preparation["preparation_sha256"]
+            provisional["review_slot_id"] = preparation["review_slot_id"]
+            source = parent / f"blind-recording-{label}-provisional.json"
+            campaign.write_json(source, provisional)
+            result = campaign.record_provisional_review(
+                root,
+                campaign.load_campaign(root)["candidate_head"],
+                preparation["review_slot_id"],
+                source,
+            )
+            fixed = campaign.reviewer_provisional_path(root, "volicord", 1)
+            assert fixed.read_bytes() == source.read_bytes()
+            assert harness.sha256(fixed) == result["provisional_review_sha256"]
+            assert campaign.cycle_state(root, "volicord", 1)["state"] == "provisional_recorded"
+            results.append(result)
+            recorded_paths.append(fixed)
+    finally:
+        harness.classification_comparison_errors = original_comparison
+        campaign.read_json = original_read_json
+
+    assert len(results) == len(recorded_paths) == 2
+    assert set(results[0]) == set(results[1])
+    for result in results:
+        serialized = json.dumps(result, sort_keys=True)
+        assert result["state"] == "provisional_recorded"
+        assert result["evaluator_material_exposed"] is False
+        assert "match" not in serialized.casefold()
+        assert "expected" not in serialized.casefold()
+        assert not any(value in serialized for value in campaign.BEHAVIOR_CLASSES)
+        assert "repository_class" not in serialized
+        assert "logical_cycle" not in serialized
+    for field in ("kind", "candidate_head", "state", "evaluator_material_exposed"):
+        assert results[0][field] == results[1][field]
+    assert not any("evaluator/descriptors" in path.as_posix() for path in all_read_paths)
+
+
 def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     root = parent / "sealing-campaign"
     prepare(root, parent / "sealing-sources", binary)
@@ -543,6 +635,10 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     evaluator_leak["evaluation_basis"] = {"behavior_class": "hidden"}
     evaluator_leak_path = parent / f"{review_slot_id}-evaluator-leak.json"
     campaign.write_json(evaluator_leak_path, evaluator_leak)
+    self_contradictory = copy.deepcopy(provisional)
+    self_contradictory["classification"] = "research_or_no_question"
+    self_contradictory_path = parent / f"{review_slot_id}-self-contradictory.json"
+    campaign.write_json(self_contradictory_path, self_contradictory)
     candidate_head = campaign.load_campaign(root)["candidate_head"]
     invalid_recordings = (
         ("different campaign candidate", "00" * 20, review_slot_id, provisional_path),
@@ -550,6 +646,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         ("does not qualify", candidate_head, review_slot_id, malformed),
         ("does not qualify", candidate_head, review_slot_id, wrong_preparation_path),
         ("does not qualify", candidate_head, review_slot_id, evaluator_leak_path),
+        ("does not qualify", candidate_head, review_slot_id, self_contradictory_path),
     )
     for expected, attempted_candidate, attempted_slot, attempted_review in invalid_recordings:
         before = recording_snapshot()
@@ -754,6 +851,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     cli_provisional = copy.deepcopy(
         cli_descriptor["behavior_review"]["independent_review"]["provisional_review"]
     )
+    set_provisional_classification(cli_provisional, "research_or_no_question")
     cli_provisional["preparation_sha256"] = cli_preparation["preparation_sha256"]
     cli_provisional["review_slot_id"] = cli_preparation["review_slot_id"]
     cli_provisional_path = parent / "cli-provisional-review.json"
@@ -779,6 +877,67 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     cli_recorded_result = json.loads(cli_recorded.stdout)
     assert cli_recorded_result["state"] == "provisional_recorded"
     assert cli_recorded_result["evaluator_material_exposed"] is False
+
+    fixed_cli_provisional = campaign.reviewer_provisional_path(root, "volicord", 2)
+    fixed_cli_bytes = fixed_cli_provisional.read_bytes()
+    fixed_cli_sha256 = harness.sha256(fixed_cli_provisional)
+    comparison_descriptor = copy.deepcopy(cli_descriptor)
+    comparison_descriptor["behavior_review"]["independent_review"][
+        "provisional_review"
+    ] = copy.deepcopy(cli_provisional)
+    comparison = comparison_descriptor["behavior_review"]["independent_review"][
+        "classification_comparison"
+    ]
+    comparison.update({
+        "provisional_classification": "research_or_no_question",
+        "evaluator_classification": "hidden_user_owned_decision",
+        "disagreements": [
+            "classification",
+            "materiality_conclusion",
+            "material_outcome_unavoidable",
+            "operator_prompt_disclosure",
+        ],
+        "resolution_basis": (
+            "The cited active-owner evidence establishes the hidden user-owned outcome after reveal."
+        ),
+        "provenance_reference_indices": [0],
+    })
+    falsely_agreed = copy.deepcopy(comparison_descriptor)
+    falsely_agreed["behavior_review"]["independent_review"][
+        "classification_comparison"
+    ]["status"] = "agreed"
+    falsely_agreed_path = parent / "mismatched-falsely-agreed-input.json"
+    campaign.write_json(falsely_agreed_path, falsely_agreed)
+    try:
+        campaign.seal_cycle(root, "volicord", 2, falsely_agreed_path)
+    except campaign.CampaignError as error:
+        assert "cannot be marked agreed" in str(error)
+    else:
+        raise AssertionError("mismatched provisional review masqueraded as agreement")
+
+    unresolved = copy.deepcopy(comparison_descriptor)
+    unresolved["behavior_review"]["independent_review"][
+        "classification_comparison"
+    ]["status"] = "unresolved_conflict"
+    unresolved_path = parent / "mismatched-unresolved-input.json"
+    campaign.write_json(unresolved_path, unresolved)
+    try:
+        campaign.seal_cycle(root, "volicord", 2, unresolved_path)
+    except campaign.CampaignError as error:
+        assert "disagreement blocks sealing" in str(error)
+    else:
+        raise AssertionError("unresolved classification disagreement sealed")
+
+    resolved = copy.deepcopy(comparison_descriptor)
+    resolved["behavior_review"]["independent_review"][
+        "classification_comparison"
+    ]["status"] = "resolved_from_evidence"
+    resolved_path = parent / "mismatched-evidence-resolved-input.json"
+    campaign.write_json(resolved_path, resolved)
+    resolved_result = campaign.seal_cycle(root, "volicord", 2, resolved_path)
+    assert resolved_result["review_slot_id"] == cli_preparation["review_slot_id"]
+    assert fixed_cli_provisional.read_bytes() == fixed_cli_bytes
+    assert harness.sha256(fixed_cli_provisional) == fixed_cli_sha256
 
     target = parent / "pinned-target"
     target.mkdir()
@@ -1391,6 +1550,7 @@ def main() -> int:
         write_fake_binary(binary)
         assert_strict_cli_contract(parent, binary)
         assert_opaque_slot_preparation(parent, binary)
+        assert_blind_recording_non_oracle(parent, binary)
         assert_sealing_and_provenance(parent, binary)
         assert_blockers(parent, binary)
         assert_batch_workflow(parent, binary)
@@ -1407,8 +1567,12 @@ def main() -> int:
             "duplicate_slot_rejected_before_campaign_mutation",
             "reviewer_filename_workspace_and_order_opacity",
             "standalone_provisional_recording_exits_successfully",
+            "correct_and_wrong_same-class_provisionals_record_without_oracle",
+            "recording_does_not_invoke_evaluator_relative_comparison",
             "recording_does_not_read_or_expose_evaluator_material",
+            "recording_success_shapes_expose_no_match_or_evaluator_class",
             "invalid_provisional_recording_is_mutation_free",
+            "self_contradictory_provisional_recording_is_mutation_free",
             "provisional_publication_failure_rolls_back",
             "seal_cycle_has_no_provisional_payload_path",
             "provisional_review_fixed_before_evaluator_comparison",
@@ -1418,6 +1582,10 @@ def main() -> int:
             "sealed_evaluator_operator_isolation",
             "bypassable_user_owned_descriptor_rejected_before_sealing",
             "unavoidable_user_owned_descriptor_sealed",
+            "mismatched_provisional_cannot_masquerade_as_agreement",
+            "unresolved_classification_materiality_disagreement_blocks_sealing",
+            "evidence_resolved_classification_materiality_disagreement_seals",
+            "resolved_comparison_preserves_provisional_bytes_and_hash",
             "unresolved_fact_authority_disagreement_blocks_sealing",
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",

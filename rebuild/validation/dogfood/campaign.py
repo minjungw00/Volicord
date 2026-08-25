@@ -496,6 +496,14 @@ def descriptor_skeleton(
                 "basis": "REPLACE after independent review",
                 "review_preparation": None,
                 "provisional_review": None,
+                "classification_comparison": {
+                    "status": "unresolved_conflict",
+                    "provisional_classification": "REPLACE with the immutable provisional classification",
+                    "evaluator_classification": behavior_class,
+                    "disagreements": ["REPLACE with exact disagreement field names"],
+                    "resolution_basis": "REPLACE with inspectable source/owner evidence resolving the comparison",
+                    "provenance_reference_indices": [0],
+                },
                 "fact_authority_agreement": {
                     "status": "unresolved_conflict",
                     "evaluator_conclusions": ["REPLACE with the evaluator fact and authority conclusion"],
@@ -531,6 +539,16 @@ def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
     basis = independent.get("basis") if isinstance(independent, dict) else None
     if isinstance(basis, str) and len(basis) >= 8:
         hidden.add(basis)
+    comparison = (
+        independent.get("classification_comparison", {})
+        if isinstance(independent, dict)
+        else {}
+    )
+    comparison_basis = (
+        comparison.get("resolution_basis") if isinstance(comparison, dict) else None
+    )
+    if isinstance(comparison_basis, str) and len(comparison_basis) >= 8:
+        hidden.add(comparison_basis)
     agreement = (
         independent.get("fact_authority_agreement", {})
         if isinstance(independent, dict)
@@ -959,7 +977,6 @@ def record_provisional_review(
             "sha256": preparation_sha256,
         },
         provisional,
-        state["behavior_class"],
         len(preparation.get("owner_document_locations", [])),
     )
     if provisional_errors:
@@ -1037,7 +1054,6 @@ def seal_cycle(
             "sha256": state["review_preparation_sha256"],
         },
         provisional,
-        state["behavior_class"],
         len(preparation.get("owner_document_locations", [])),
     )
     if provisional_errors:

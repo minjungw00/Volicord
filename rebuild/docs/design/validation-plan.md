@@ -1054,9 +1054,16 @@ artifact에 대한 provisional review를 작성하면 `record-provisional-review
 opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
 private artifact와 hash/inventory binding을 고정하면서 `review_prepared`에서
 `provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
-repository class, logical cycle 또는 behavior class를 결과에 노출하지 않는다. 그 뒤
-`seal-cycle`은 이미 고정된 provisional artifact만 읽어 full evaluator basis와 비교하고
-descriptor를 검증·봉인한다. 이 두 단계가 완료되기 전에는 activation과 rollout collection이
+reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
+Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
+class와 일치하지 않아도 성공하며, 결과는 repository class, logical cycle, evaluator behavior
+class 또는 match/mismatch를 노출하지 않는다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
+artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
+`classification_comparison`은 provisional/evaluator classification과 classification, materiality,
+unavoidability, prompt-disclosure 차이를 기계적으로 열거한다. 일치한 비교는 `agreed`, 불일치는
+inspectable provenance와 bounded basis를 가진 `resolved_from_evidence`일 때만 descriptor를
+봉인할 수 있고 `unresolved_conflict` 또는 불일치를 `agreed`로 표시한 입력은 거부된다. 이 두
+단계가 완료되기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 opaque authoritative workspace/Runtime path만으로 operator
 run sheet를 다시 만든다. Run sheet는 repository grouping 안에서도 opaque-ID 순서를 쓰며

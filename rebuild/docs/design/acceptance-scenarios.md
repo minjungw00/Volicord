@@ -436,14 +436,18 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - `hidden_user_owned_decision` descriptor의 ordinary task는 unresolved outcome이나 Decision
   필요성을 드러내지 않는다. Independent reviewer는 evaluator material을 보기 전에 frozen
   task, work scope, repository revision과 owner-document location만으로 provisional
-  classification을 고정하고, 이후 full evaluator basis와 비교한다.
+  classification과 그 classification에 internally consistent한 materiality/disclosure conclusion을
+  고정한다. 이 pre-reveal 고정은 evaluator class와의 일치 여부를 검사하지 않으며, 이후에만
+  full evaluator basis와 structured comparison으로 agreement, evidence-backed resolution 또는
+  unresolved conflict를 판정한다. Original provisional bytes/hash는 이 비교로 수정되지 않는다.
 - 두 user-owned descriptor는 independent reviewer가 exact frozen task의 repository fact,
   accepted authority, delegation과 narrower full-task path를 검토한 뒤에도 unresolved
   externally meaningful outcome이 unavoidable임을 보일 때만 봉인된다. Hidden class는
   `material_outcome_unavoidable`와
   `operator_prompt_does_not_disclose_material_outcome`를 모두 명시적으로 true로 검토한다.
-- claimed outcome을 고르지 않는 defensible complete no-question path 또는 unresolved
-  evaluator/reviewer fact·authority disagreement가 있으면 봉인을 거부한다.
+- claimed outcome을 고르지 않는 defensible complete no-question path, classification/materiality
+  불일치를 `agreed`로 표시한 비교 또는 unresolved evaluator/reviewer disagreement가 있으면
+  봉인을 거부한다.
 
 ### 수동 평가
 

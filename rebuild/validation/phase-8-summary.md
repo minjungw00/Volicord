@@ -61,7 +61,13 @@ creates each bounded blind-first reviewer preparation, records a provisional
 classification and materiality conclusion before exposing the evaluator basis,
 fixes it through the opaque-slot `record-provisional-review` operation, and then
 seals each descriptor against that immutable review without exposing evaluator
-material to the operator.
+material to the operator. Recording validates only reviewer-visible identity,
+schema, provenance bounds, and self-consistency derived from the reviewer's own
+classification; a well-formed evaluator disagreement receives the same successful
+`provisional_recorded` transition. After reveal, a structured comparison must mark
+matching conclusions `agreed`, resolve every classification/materiality/disclosure
+difference from inspectable evidence, or block sealing as `unresolved_conflict`.
+The original provisional bytes and hash are never rewritten by that comparison.
 Repository and SessionStart
 hook trust remain explicit user actions. The operator then runs all thirty
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers

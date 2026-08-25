@@ -138,11 +138,18 @@ rebuild/scripts/dogfood-campaign record-provisional-review \
   --provisional-review <blind-provisional-review.json>
 ```
 
-The command fixes the private review and its campaign inventory/hash binding
-without reading an evaluator descriptor or exposing cycle/class identity. Then
-use `seal-cycle --descriptor <evaluator-descriptor.json>` to compare the fixed
-review with the evaluator basis before exposing the generated operator run
-sheet. After all fifteen descriptors
+The command validates reviewer-visible shape and self-consistency from the
+reviewer's own classification, then fixes the private review and its campaign
+inventory/hash binding without reading an evaluator descriptor, checking
+evaluator correctness, or exposing cycle/class identity. Any maintained,
+well-formed classification therefore reaches the same `provisional_recorded`
+state even when it disagrees with the evaluator. Then use `seal-cycle
+--descriptor <evaluator-descriptor.json>` to compare the fixed review with the
+revealed evaluator basis. The structured comparison must mechanically enumerate
+classification, materiality, unavoidability, and disclosure differences;
+matching conclusions use `agreed`, evidence-backed disagreement uses
+`resolved_from_evidence`, and false agreement or `unresolved_conflict` blocks
+sealing. This comparison cannot rewrite the provisional bytes or hash. After all fifteen descriptors
 are sealed, use `activate-all`; it enables the repository-scoped integration
 but does not grant repository or hook trust. Run all thirty chats
 without per-chat collection, preserve their raw rollouts, and then use
