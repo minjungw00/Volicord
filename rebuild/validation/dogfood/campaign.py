@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 from typing import Any, Callable
 
 import harness
@@ -57,6 +58,10 @@ REVIEW_SLOT_ID = re.compile(r"[0-9a-f]{32}")
 
 class CampaignError(ValueError):
     """A bounded campaign input or state is invalid."""
+
+    def __init__(self, message: str, *, diagnostic: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.diagnostic = diagnostic
 
 
 def read_json(path: Path) -> Any:
@@ -640,7 +645,8 @@ def render_operator_run_sheet(root: Path) -> Path:
                 "#### Frozen resume task\n\n"
                 f"{descriptor['fresh_resume_user_task']}\n\n"
                 "Explicitly inspect and approve repository and hook trust in VS Code. Start each task "
-                "in its own fresh thread, send only the frozen task, and preserve the raw rollout file. "
+                "in its own fresh thread. If trust or activation setup is uncertain, inspect it before "
+                "sending the frozen task. Then send only the frozen task and preserve the raw rollout file. "
                 "Do not run campaign collection between chats.\n"
             )
     entries = [
@@ -656,7 +662,10 @@ def render_operator_run_sheet(root: Path) -> Path:
         "Use this operator material only after all fifteen sealed cycle entries are present. Evaluator "
         "research is maintained separately; this workflow isolation is not an operating-system "
         "security boundary against deliberately opening evaluator files. After all fifteen entries are "
-        "sealed, the campaign steward may run `activate-all`; activation never grants trust. Run all "
+        "sealed, the campaign steward may run `activate-all`; activation never grants trust. The helper "
+        "verifies the production-owned static MCP and SessionStart files, but that does not prove that "
+        "VS Code executed SessionStart; every raw session still requires runtime activation evidence. "
+        "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
         "thirty fresh work/resume chats, preserve their raw rollouts, and provide the thirty files once "
         "through `collect-batch`. No per-chat control-session collection is required.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are sealed for operator use yet.\n"),
@@ -674,6 +683,95 @@ def run_checked(argv: list[str], *, cwd: Path = ROOT) -> dict[str, Any]:
         return json.loads(completed.stdout) if completed.stdout.strip().startswith("{") else {}
     except json.JSONDecodeError as error:
         raise CampaignError(f"campaign command returned malformed JSON: {argv[0]}") from error
+
+
+def shell_quote_path(path: Path) -> str:
+    return "'" + str(path).replace("'", "'\\''") + "'"
+
+
+def verify_static_codex_integration(
+    repository: Path,
+    runtime: Path,
+    binary: Path,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Verify the production-owned repository integration after enable."""
+    repository = repository.resolve()
+    runtime = runtime.resolve()
+    binary = binary.resolve()
+    mcp = binary.with_name("volicord-mcp").resolve()
+    config_path = repository / ".codex/config.toml"
+    manifest_path = repository / ".codex/volicord-integration.json"
+    expected_result = {
+        "operation": "codex_enable",
+        "repository": str(repository),
+        "config": str(config_path),
+        "mcp_server": "volicord",
+        "mcp_executable": str(mcp),
+        "runtime": str(runtime),
+        "session_start_matcher": "^(startup|resume|clear|compact)$",
+        "project_trust": "user_controlled",
+    }
+    if not binary.is_file() or not os.access(binary, os.X_OK) or not mcp.is_file() or not os.access(mcp, os.X_OK):
+        raise CampaignError("Codex owned static integration is not bound to candidate-local executables")
+    if result != expected_result:
+        raise CampaignError("Codex enable result does not match the owned static integration contract")
+    try:
+        manifest = read_json(manifest_path)
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (CampaignError, OSError, tomllib.TOMLDecodeError) as error:
+        raise CampaignError("Codex owned static integration artifacts are unavailable or malformed") from error
+    expected_manifest = {
+        "kind": "volicord_codex_repository_integration",
+        "schema_version": 1,
+        "repository": str(repository),
+        "runtime": str(runtime),
+        "volicord": str(binary),
+        "volicord_mcp": str(mcp),
+    }
+    if any(manifest.get(field) != value for field, value in expected_manifest.items()):
+        raise CampaignError("Codex ownership manifest is not bound to the exact candidate repository/runtime")
+    if not isinstance(manifest.get("config_created"), bool) or not isinstance(
+        manifest.get("excluded_paths"), list
+    ):
+        raise CampaignError("Codex ownership manifest has an unexpected owned-state shape")
+    server = config.get("mcp_servers", {}).get("volicord")
+    if server != {
+        "command": str(mcp),
+        "enabled": True,
+        "required": True,
+        "env": {"VOLICORD_RUNTIME_DIR": str(runtime)},
+    }:
+        raise CampaignError("Codex Volicord MCP entry is not bound to the exact candidate/runtime")
+    expected_command = (
+        f"{shell_quote_path(binary)} --runtime {shell_quote_path(runtime)} "
+        f"--repository {shell_quote_path(repository)} codex hook"
+    )
+    expected_hook = {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [{
+            "type": "command",
+            "command": expected_command,
+            "timeout": 5,
+            "statusMessage": "Activating Volicord repository context",
+            "additionalContextLimit": 2000,
+        }],
+    }
+    session_start = config.get("hooks", {}).get("SessionStart")
+    if not isinstance(session_start, list) or session_start.count(expected_hook) != 1:
+        raise CampaignError("Codex SessionStart hook is not bound to the exact candidate/runtime")
+    return {
+        "status": "passed",
+        "ownership_manifest": str(manifest_path),
+        "repository_config": str(config_path),
+        "mcp_entry": "volicord",
+        "session_start_matcher": expected_hook["matcher"],
+        "candidate_binary": str(binary),
+        "candidate_mcp_binary": str(mcp),
+        "runtime_home": str(runtime),
+        "repository_and_hook_trust": "user_controlled_not_automated",
+        "runtime_session_start_execution": "not_proven_by_static_verification",
+    }
 
 
 def install_candidate(root: Path) -> Path:
@@ -1168,12 +1266,16 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
             "--repository", str(repository), "codex", "enable",
         ]
     )
-    if result.get("project_trust") != "user_controlled":
-        raise CampaignError("Codex enable did not preserve user-controlled trust")
+    verification = verify_static_codex_integration(
+        repository,
+        Path(state["runtime_home"]),
+        binary,
+        result,
+    )
     state["codex_enabled"] = True
     campaign["active_cycle_by_repository"][kind] = cycle
     save_campaign(root, campaign)
-    return result
+    return {"enable_result": result, "static_verification": verification}
 
 
 def activate_all(root: Path) -> dict[str, Any]:
@@ -1991,35 +2093,97 @@ def map_batch_rollouts(
         try:
             capture = load_codex_capture(path)
         except (OSError, EvidenceError) as error:
-            raise CampaignError("batch rollout is not a supported normalized Codex capture") from error
-        if (
-            capture.source != "vscode"
-            or capture.originator != "codex_vscode"
-            or not capture.fresh_user_thread
-            or not capture.user_turns
-        ):
-            raise CampaignError("batch rollout is not a fresh VS Code Codex session")
+            diagnostic = {
+                "kind": "phase8_dogfood_batch_mapping_error",
+                "source_file": str(path.resolve()),
+                "source_sha256": harness.sha256(path) if path.is_file() else None,
+                "candidate_count": 0,
+                "reason": "capture_provenance_or_format_is_unsupported",
+                "mismatch_reasons": ["provenance_or_capture_format_mismatch"],
+            }
+            raise CampaignError(
+                "batch rollout maps to zero sealed cycle roles",
+                diagnostic=diagnostic,
+            ) from error
+        provenance_matches = (
+            capture.source == "vscode"
+            and capture.originator == "codex_vscode"
+            and capture.fresh_user_thread
+            and bool(capture.user_turns)
+        )
         if not nonempty_session_id(capture.session_id):
             raise CampaignError("batch rollout has no bounded session identity")
         if capture.session_id in sessions:
             raise CampaignError("batch rollout reuses a Codex session identity")
         sessions[capture.session_id] = path
         candidates = []
+        task_candidates = []
+        revision_candidates = []
+        workspace_candidates = []
         for slot, (state, descriptor) in slots.items():
             role = slot[2]
             task_field = "work_user_task" if role == "work" else "fresh_resume_user_task"
-            if (
-                harness.codex_user_turn_transport_identity_matches(
-                    capture.user_turns[0].text,
-                    descriptor[task_field],
-                )
-                and capture.git_revision == state["repository_revision"]
-                and capture.cwd.resolve(strict=False)
-                == Path(state["repository_path"]).resolve(strict=False)
-            ):
+            task_matches = bool(capture.user_turns) and harness.codex_user_turn_transport_identity_matches(
+                capture.user_turns[0].text,
+                descriptor[task_field],
+            )
+            revision_matches = capture.git_revision == state["repository_revision"]
+            workspace_matches = capture.cwd.resolve(strict=False) == Path(
+                state["repository_path"]
+            ).resolve(strict=False)
+            if task_matches:
+                task_candidates.append(slot)
+            if revision_matches:
+                revision_candidates.append(slot)
+            if workspace_matches:
+                workspace_candidates.append(slot)
+            if provenance_matches and task_matches and revision_matches and workspace_matches:
                 candidates.append(slot)
         if len(candidates) != 1:
-            raise CampaignError("batch rollout does not map unambiguously to one sealed cycle role")
+            if not candidates:
+                mismatch_reasons = []
+                if not provenance_matches:
+                    mismatch_reasons.append("provenance_mismatch")
+                if not task_candidates:
+                    mismatch_reasons.append("frozen_task_mismatch")
+                if not revision_candidates:
+                    mismatch_reasons.append("repository_revision_mismatch")
+                if not workspace_candidates:
+                    mismatch_reasons.append("workspace_mismatch")
+                if not mismatch_reasons:
+                    mismatch_reasons.append("task_revision_workspace_combination_mismatch")
+                diagnostic = {
+                    "kind": "phase8_dogfood_batch_mapping_error",
+                    "source_file": str(path.resolve()),
+                    "source_sha256": capture.source_sha256,
+                    "candidate_count": 0,
+                    "reason": "no_sealed_role_matches_capture_identity",
+                    "mismatch_reasons": mismatch_reasons,
+                }
+                raise CampaignError(
+                    "batch rollout maps to zero sealed cycle roles",
+                    diagnostic=diagnostic,
+                )
+            matching_roles = [
+                {
+                    "review_slot_id": slots[slot][0]["review_slot_id"],
+                    "role": slot[2],
+                }
+                for slot in candidates[:8]
+            ]
+            diagnostic = {
+                "kind": "phase8_dogfood_batch_mapping_error",
+                "source_file": str(path.resolve()),
+                "source_sha256": capture.source_sha256,
+                "candidate_count": len(candidates),
+                "matching_opaque_roles": matching_roles,
+                "matching_opaque_roles_truncated": len(candidates) > len(matching_roles),
+                "reason": "multiple_sealed_roles_match_capture_identity",
+            }
+            raise CampaignError(
+                "batch rollout maps to multiple sealed cycle roles",
+                diagnostic=diagnostic,
+            )
         slot = candidates[0]
         if slot in mapped:
             raise CampaignError("batch rollouts contain duplicate evidence for one sealed cycle role")
@@ -2037,6 +2201,25 @@ def nonempty_session_id(value: Any) -> bool:
         and value == value.strip()
         and len(value.encode("utf-8")) <= 512
     )
+
+
+def missing_activation_diagnostic(
+    source: Path,
+    capture: Any,
+    review_slot_id: str,
+    role: str,
+) -> dict[str, Any]:
+    return {
+        "kind": "phase8_dogfood_missing_session_start_activation",
+        "classification": "operator_environment_setup_failure",
+        "source_file": str(source.resolve()),
+        "source_sha256": capture.source_sha256,
+        "session_id": capture.session_id,
+        "review_slot_id": review_slot_id,
+        "role": role,
+        "volicord_mcp_calls_observed": bool(capture.tool_calls),
+        "runtime_session_start_activation_observed": False,
+    }
 
 
 def collect_batch(
@@ -2067,6 +2250,7 @@ def collect_batch(
     has_product_blocker = False
     has_environment_invalid = False
     has_evidence_failure = False
+    environment_invalid_diagnostics: list[dict[str, Any]] = []
     for kind in CLASSES:
         for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
             key = cycle_key(kind, cycle)
@@ -2081,6 +2265,20 @@ def collect_batch(
                 or not resume_capture.repository_scoped_activation_observed
             ):
                 has_environment_invalid = True
+            if not work_capture.repository_scoped_activation_observed:
+                environment_invalid_diagnostics.append(missing_activation_diagnostic(
+                    mapped[(kind, cycle, "work")][0],
+                    work_capture,
+                    state["review_slot_id"],
+                    "work",
+                ))
+            if not resume_capture.repository_scoped_activation_observed:
+                environment_invalid_diagnostics.append(missing_activation_diagnostic(
+                    mapped[(kind, cycle, "resume")][0],
+                    resume_capture,
+                    state["review_slot_id"],
+                    "resume",
+                ))
             project_ids = observed_project_ids(work_capture)
             blocker: dict[str, Any] | None = None
             try:
@@ -2235,6 +2433,7 @@ def collect_batch(
         "kind": "phase8_dogfood_batch_intake_summary",
         "schema_version": 1,
         "candidate_head": campaign["candidate_head"],
+        "environment_invalid_diagnostics": environment_invalid_diagnostics,
         "status": "passed" if all(item["status"] == "passed" for item in cycle_results) else "failed",
         "outcome": (
             "evidence_collected"
@@ -2594,5 +2793,8 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (CampaignError, EvidenceError, OSError, ValueError) as error:
-        print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
+        output = {"status": "failed", "error": str(error)}
+        if isinstance(error, CampaignError) and error.diagnostic is not None:
+            output["diagnostic"] = error.diagnostic
+        print(json.dumps(output, sort_keys=True))
         raise SystemExit(1)

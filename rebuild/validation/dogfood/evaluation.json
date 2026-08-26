@@ -304,7 +304,7 @@
       "continuation_boundary": "the Checkpoint identifies the next meaningful state and actual post-Recall work is evaluated against that state"
     },
     "codex_user_turn_transport_identity": {
-      "captured_text_allowance": "exact text or removal of at most one terminal LF or one terminal CRLF",
+      "captured_text_allowance": "CRLF-to-LF normalization and removal of only terminal CR/LF characters",
       "descriptor_task_mutated": false,
       "raw_capture_mutated": false,
       "evidence_sha256_mutated": false,
@@ -312,7 +312,7 @@
     },
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
-      "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
+      "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
       "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
@@ -328,7 +328,7 @@
     ],
     "resume_session_contract": [
       "repository-scoped SessionStart activation is observed before continuation behavior is judged",
-      "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
+      "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
       "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",

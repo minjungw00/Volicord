@@ -353,7 +353,12 @@ The roles remain separate throughout a campaign:
 
 After all fifteen descriptors are sealed, `activate-all` may enable the fifteen
 repository-scoped integrations before the chats begin. It never grants
-repository or hook trust. `collect-batch` accepts either thirty explicit paths
+repository or hook trust. It re-reads the owned manifest, MCP entry, SessionStart
+hook, and exact candidate-local executable/Runtime binding after each enable;
+any static inconsistency blocks activation completion. This does not prove VS
+Code executed SessionStart. If trust or activation setup is uncertain, inspect
+it before sending a frozen task. Every raw work/resume capture must still contain
+real SessionStart evidence. `collect-batch` accepts either thirty explicit paths
 or one directory containing exactly thirty files. Before changing campaign
 state it maps the unordered captures to the sealed work/resume slots using the
 frozen first task, exact workspace and revision, VS Code source/originator,

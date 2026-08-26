@@ -872,7 +872,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(evidence.get("work_session_contract", []))
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
-            "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
+            "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
@@ -889,7 +889,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(evidence.get("resume_session_contract", []))
         != (
             "repository-scoped SessionStart activation is observed before continuation behavior is judged",
-            "the first captured user turn matches the descriptor plain fresh_resume_user_task exactly or after removing at most one Codex transport terminal LF or CRLF, and does not disclose Recall",
+            "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
@@ -901,7 +901,7 @@ def load_definition() -> dict[str, Any]:
         or evidence.get("codex_user_turn_transport_identity")
         != {
             "captured_text_allowance": (
-                "exact text or removal of at most one terminal LF or one terminal CRLF"
+                "CRLF-to-LF normalization and removal of only terminal CR/LF characters"
             ),
             "descriptor_task_mutated": False,
             "raw_capture_mutated": False,
@@ -1547,13 +1547,14 @@ def codex_user_turn_transport_identity_matches(
 ) -> bool:
     if not isinstance(captured_user_turn, str) or not isinstance(descriptor_task, str):
         return False
-    if captured_user_turn == descriptor_task:
-        return True
-    if captured_user_turn.endswith("\r\n"):
-        return captured_user_turn[:-2] == descriptor_task
-    if captured_user_turn.endswith("\n"):
-        return captured_user_turn[:-1] == descriptor_task
-    return False
+    return canonical_frozen_task_transport_text(
+        captured_user_turn
+    ) == canonical_frozen_task_transport_text(descriptor_task)
+
+
+def canonical_frozen_task_transport_text(value: str) -> str:
+    """Canonicalize only transport-equivalent line endings for task identity."""
+    return value.replace("\r\n", "\n").rstrip("\r\n")
 
 
 def plain_user_task_error(value: Any, field: str) -> str | None:
@@ -6444,17 +6445,21 @@ def self_test() -> int:
         ("exact text", descriptor_task, True),
         ("one terminal LF", descriptor_task + "\n", True),
         ("one terminal CRLF", descriptor_task + "\r\n", True),
-        ("two terminal newlines", descriptor_task + "\n\n", False),
+        ("two terminal newlines", descriptor_task + "\n\n", True),
+        ("mixed terminal CR/LF", descriptor_task + "\r\n\r\n\r", True),
         ("trailing space", descriptor_task + " ", False),
         ("space before terminal LF", descriptor_task + " \n", False),
         ("leading whitespace", " " + descriptor_task, False),
         ("interior difference", descriptor_task.replace("exact", "altered"), False),
+        ("extra instruction", descriptor_task + "\nextra instruction", False),
         ("terminal tab", descriptor_task + "\t", False),
         ("terminal Unicode whitespace", descriptor_task + "\u00a0", False),
     )
     for label, captured, expected in transport_identity_cases:
         if codex_user_turn_transport_identity_matches(captured, descriptor_task) is not expected:
             raise AssertionError(f"Codex user-turn transport identity mishandled {label}")
+    if not codex_user_turn_transport_identity_matches("line one\r\nline two\r\n", "line one\nline two"):
+        raise AssertionError("Codex user-turn transport identity did not normalize internal CRLF")
     if codex_user_turn_transport_identity_matches(descriptor_task, None):
         raise AssertionError("non-text descriptor qualified as Codex user-turn identity")
     revision = "0" * 40
@@ -8392,10 +8397,29 @@ def self_test() -> int:
         raise AssertionError("Codex transport identity qualification mutated source evidence")
 
     for label, capture, suffix in (
-        ("two terminal work newlines", "work", "\n\n"),
+        ("multiple terminal work newlines", "work", "\n\n"),
+        ("mixed terminal resume newlines", "resume", "\r\n\r\n\r"),
+    ):
+        accepted_transport = real_session_fixture(
+            "small-python", 3, revision, evidence_directory
+        )
+        append_initial_task_transport(accepted_transport, capture, suffix)
+        accepted_result = real_session_evidence(
+            accepted_transport,
+            kind="small-python",
+            cycle=3,
+            repository_revision=revision,
+        )
+        if (
+            accepted_result["checks"]["naturalistic_prompt_integrity"] != "passed"
+            or accepted_result["checks"]["plain_task_goal_linkage"] != "passed"
+        ):
+            raise AssertionError(f"{label} did not qualify full prompt identity")
+
+    for label, capture, suffix in (
         ("work trailing space", "work", " "),
-        ("two terminal resume newlines", "resume", "\r\n\r\n"),
         ("resume trailing space", "resume", "\t"),
+        ("work extra instruction", "work", "\nextra instruction"),
     ):
         rejected_transport = real_session_fixture(
             "small-python", 3, revision, evidence_directory

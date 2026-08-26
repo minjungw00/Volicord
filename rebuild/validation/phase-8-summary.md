@@ -69,7 +69,10 @@ matching conclusions `agreed`, resolve every classification/materiality/disclosu
 difference from inspectable evidence, or block sealing as `unresolved_conflict`.
 The original provisional bytes and hash are never rewritten by that comparison.
 Repository and SessionStart
-hook trust remain explicit user actions. The operator then runs all thirty
+hook trust remain explicit user actions. `activate-all` verifies the owned static manifest, MCP entry,
+SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove VS Code
+executed SessionStart. If setup is uncertain, the operator inspects it before sending a frozen task;
+runtime SessionStart evidence remains required for every capture. The operator then runs all thirty
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers
 only genuine material Questions, preserves every raw rollout without
 per-session evidence-processing interruptions, and provides the thirty files

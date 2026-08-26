@@ -191,7 +191,7 @@ def main() -> int:
     )
     if transport_identity != {
         "captured_text_allowance": (
-            "exact text or removal of at most one terminal LF or one terminal CRLF"
+            "CRLF-to-LF normalization and removal of only terminal CR/LF characters"
         ),
         "descriptor_task_mutated": False,
         "raw_capture_mutated": False,
@@ -223,7 +223,7 @@ def main() -> int:
         '"correlated_split_evidence"',
         '"output_only_outcome": "unknown"',
         '"uncorrelated_or_synthesized_status_outcome": "unknown"',
-        "the first captured user turn matches the descriptor plain work_user_task exactly or after removing at most one Codex transport terminal LF or CRLF",
+        "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",

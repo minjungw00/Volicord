@@ -1031,6 +1031,14 @@ rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
 summary, descriptor evidence completion, manifest assembly와 review packaging을 담당한다.
 Ordinary review에 full Runtime Home을 추출하거나 package하지 않는다.
+`activate-all`은 각 repository-scoped enable 뒤 production-owned ownership manifest, MCP entry,
+SessionStart hook과 exact candidate-local executable/Runtime binding을 다시 읽어 검증하며
+불일치하면 naturalistic execution 전에 실패한다. 이 static postcondition은 repository/hook
+trust를 자동 승인하지 않고 VS Code가 SessionStart를 실제 실행했다는 증거도 아니다. Trust
+또는 activation setup이 불확실하면 operator는 frozen task를 보내기 전에 이를 직접 검사해야
+하며 각 raw work/resume capture의 real SessionStart evidence는 계속 필수다. Missing runtime
+activation diagnostic은 capture/hash/session, opaque slot, work/resume role과 관찰 가능한
+Volicord MCP call 존재 여부를 보존하고 product inquiry failure와 분리한다.
 `prepare`는 모든 campaign mutation 전에 15개의 unique cryptographic-random opaque slot을
 만들고 qualifying repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
 Evaluator/steward-private mapping만 opaque slot을 repository class, logical cycle, expected

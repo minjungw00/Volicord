@@ -151,7 +151,10 @@ matching conclusions use `agreed`, evidence-backed disagreement uses
 `resolved_from_evidence`, and false agreement or `unresolved_conflict` blocks
 sealing. This comparison cannot rewrite the provisional bytes or hash. After all fifteen descriptors
 are sealed, use `activate-all`; it enables the repository-scoped integration
-but does not grant repository or hook trust. Run all thirty chats
+but does not grant repository or hook trust. The helper re-reads the production-owned manifest,
+MCP entry, SessionStart hook and exact candidate-local executable/Runtime binding, while making no
+claim that VS Code actually executed SessionStart. If trust or activation is uncertain, inspect it
+before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all thirty chats
 without per-chat collection, preserve their raw rollouts, and then use
 `collect-batch` with thirty explicit paths or one directory containing exactly
 thirty files. Then use `finalize-manifest` and `package-review`. The automated

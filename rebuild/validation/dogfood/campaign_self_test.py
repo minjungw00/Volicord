@@ -24,6 +24,9 @@ def write_fake_binary(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(STRICT_FAKE, path)
     path.chmod(0o755)
+    mcp = path.with_name("volicord-mcp")
+    shutil.copyfile(STRICT_FAKE, mcp)
+    mcp.chmod(0o755)
     viewer = path.with_name("volicord-viewer")
     viewer.write_text(
         "#!/bin/sh\n"
@@ -33,6 +36,64 @@ def write_fake_binary(path: Path) -> None:
         encoding="utf-8",
     )
     viewer.chmod(0o755)
+
+
+def write_static_integration(repository: Path, runtime: Path, binary: Path) -> dict[str, object]:
+    repository = repository.resolve()
+    runtime = runtime.resolve()
+    binary = binary.resolve()
+    mcp = binary.with_name("volicord-mcp").resolve()
+    codex = repository / ".codex"
+    codex.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "kind": "volicord_codex_repository_integration",
+        "schema_version": 1,
+        "repository": str(repository),
+        "runtime": str(runtime),
+        "volicord": str(binary),
+        "volicord_mcp": str(mcp),
+        "config_created": True,
+        "excluded_paths": ["/.codex/config.toml", "/.codex/volicord-integration.json"],
+    }
+    campaign.write_json(codex / "volicord-integration.json", manifest)
+    command = (
+        f"{campaign.shell_quote_path(binary)} --runtime {campaign.shell_quote_path(runtime)} "
+        f"--repository {campaign.shell_quote_path(repository)} codex hook"
+    )
+    (codex / "config.toml").write_text(
+        "[mcp_servers.volicord]\n"
+        f'command = "{mcp}"\n'
+        "enabled = true\n"
+        "required = true\n"
+        f'env = {{ VOLICORD_RUNTIME_DIR = "{runtime}" }}\n\n'
+        "[[hooks.SessionStart]]\n"
+        'matcher = "^(startup|resume|clear|compact)$"\n\n'
+        "[[hooks.SessionStart.hooks]]\n"
+        'type = "command"\n'
+        f'command = "{command}"\n'
+        "timeout = 5\n"
+        'statusMessage = "Activating Volicord repository context"\n'
+        "additionalContextLimit = 2000\n",
+        encoding="utf-8",
+    )
+    return {
+        "operation": "codex_enable",
+        "repository": str(repository),
+        "config": str(codex / "config.toml"),
+        "mcp_server": "volicord",
+        "mcp_executable": str(mcp),
+        "runtime": str(runtime),
+        "session_start_matcher": "^(startup|resume|clear|compact)$",
+        "project_trust": "user_controlled",
+    }
+
+
+def fake_enable_command(argv: list[str]) -> dict[str, object]:
+    if argv[-2:] and argv[-2:] == ["codex", "disable"]:
+        return {}
+    runtime = Path(argv[argv.index("--runtime") + 1])
+    repository = Path(argv[argv.index("--repository") + 1])
+    return write_static_integration(repository, runtime, Path(argv[0]))
 
 
 def repository_input(path: Path, sources: Path) -> Path:
@@ -1091,6 +1152,22 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 
     state = campaign.load_campaign(root)["cycles"][campaign.cycle_key("volicord", 1)]
     descriptor = campaign.read_json(campaign.evaluator_descriptor_path(root, "volicord", 1))
+    multiple_newline_work = replaced_capture(
+        work,
+        parent / "multiple-terminal-newlines.jsonl",
+        descriptor["work_user_task"],
+        descriptor["work_user_task"] + "\\n\\n",
+    )
+    multiple_newline_inputs = [
+        multiple_newline_work if path == work else path for path in captures
+    ]
+    multiple_newline_bytes = multiple_newline_work.read_bytes()
+    multiple_newline_mapping = campaign.map_batch_rollouts(root, multiple_newline_inputs)
+    mapped_source, mapped_capture = multiple_newline_mapping[("volicord", 1, "work")]
+    assert mapped_source == multiple_newline_work
+    assert mapped_source.read_bytes() == multiple_newline_bytes
+    assert mapped_capture.source_sha256 == hashlib.sha256(multiple_newline_bytes).hexdigest()
+
     wrong_cases = (
         (
             "task",
@@ -1106,7 +1183,15 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         try:
             campaign.map_batch_rollouts(root, inputs)
         except campaign.CampaignError as error:
-            assert "unambiguously" in str(error)
+            assert "zero sealed cycle roles" in str(error)
+            assert error.diagnostic is not None
+            assert error.diagnostic["candidate_count"] == 0
+            expected_reason = {
+                "task": "frozen_task_mismatch",
+                "revision": "repository_revision_mismatch",
+                "workspace": "workspace_mismatch",
+            }[label]
+            assert expected_reason in error.diagnostic["mismatch_reasons"]
         else:
             raise AssertionError(f"batch mapping accepted wrong {label}")
 
@@ -1121,21 +1206,112 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         inputs = [invalid if path == work else path for path in captures]
         try:
             campaign.map_batch_rollouts(root, inputs)
-        except campaign.CampaignError:
-            pass
+        except campaign.CampaignError as error:
+            assert error.diagnostic is not None
+            assert error.diagnostic["candidate_count"] == 0
+            assert any(
+                reason in error.diagnostic["mismatch_reasons"]
+                for reason in (
+                    "provenance_mismatch",
+                    "provenance_or_capture_format_mismatch",
+                )
+            )
         else:
             raise AssertionError(f"batch mapping accepted wrong {label} provenance")
 
+    original_load_descriptor = campaign.load_sealed_descriptor
+    def ambiguous_descriptor(root_value, kind, cycle, campaign_value=None):
+        path, value = original_load_descriptor(root_value, kind, cycle, campaign_value)
+        if kind == "volicord" and cycle == 1:
+            value = copy.deepcopy(value)
+            value["fresh_resume_user_task"] = value["work_user_task"]
+        return path, value
+    campaign.load_sealed_descriptor = ambiguous_descriptor
+    try:
+        campaign.map_batch_rollouts(root, captures)
+    except campaign.CampaignError as error:
+        assert "multiple sealed cycle roles" in str(error)
+        assert error.diagnostic is not None
+        assert error.diagnostic["candidate_count"] == 2
+        assert {item["role"] for item in error.diagnostic["matching_opaque_roles"]} == {
+            "work", "resume"
+        }
+        assert all(
+            set(item) == {"review_slot_id", "role"}
+            for item in error.diagnostic["matching_opaque_roles"]
+        )
+        assert "repository_class" not in json.dumps(error.diagnostic)
+        assert "behavior_class" not in json.dumps(error.diagnostic)
+    else:
+        raise AssertionError("batch mapping accepted a multi-role capture")
+    finally:
+        campaign.load_sealed_descriptor = original_load_descriptor
+
     original_run_checked = campaign.run_checked
-    campaign.run_checked = lambda _argv, cwd=campaign.ROOT: {
-        "project_trust": "user_controlled"
-    }
+    campaign.run_checked = lambda argv, cwd=campaign.ROOT: fake_enable_command(argv)
     try:
         activation = campaign.activate_all(root)
     finally:
         campaign.run_checked = original_run_checked
     assert activation["cycle_count"] == 15
     assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
+    assert all(
+        item["result"]["static_verification"]["status"] == "passed"
+        and item["result"]["static_verification"]["repository_and_hook_trust"]
+        == "user_controlled_not_automated"
+        and item["result"]["static_verification"]["runtime_session_start_execution"]
+        == "not_proven_by_static_verification"
+        for item in activation["cycles"]
+    )
+
+    first_state = campaign.cycle_state(root, "volicord", 1)
+    first_repository = Path(first_state["repository_path"])
+    first_runtime = Path(first_state["runtime_home"])
+    first_result = write_static_integration(first_repository, first_runtime, binary)
+    config_path = first_repository / ".codex/config.toml"
+    original_config = config_path.read_bytes()
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            str(first_runtime), str(parent / "wrong-runtime")
+        ),
+        encoding="utf-8",
+    )
+    try:
+        campaign.verify_static_codex_integration(
+            first_repository, first_runtime, binary, first_result
+        )
+    except campaign.CampaignError as error:
+        assert "MCP entry" in str(error)
+    else:
+        raise AssertionError("static integration inconsistency passed activation verification")
+    config_path.write_bytes(original_config)
+
+    campaign_state = campaign.load_campaign(root)
+    campaign_state["cycles"][campaign.cycle_key("volicord", 1)]["codex_enabled"] = False
+    campaign.save_campaign(root, campaign_state)
+    def inconsistent_enable(argv: list[str], cwd=campaign.ROOT):
+        result = fake_enable_command(argv)
+        if argv[-2:] == ["codex", "enable"]:
+            repository = Path(argv[argv.index("--repository") + 1])
+            config = repository / ".codex/config.toml"
+            config.write_text(
+                config.read_text(encoding="utf-8").replace(
+                    str(first_runtime), str(parent / "wrong-runtime")
+                ),
+                encoding="utf-8",
+            )
+        return result
+    campaign.run_checked = inconsistent_enable
+    try:
+        campaign.activate_cycle(root, "volicord", 1)
+    except campaign.CampaignError as error:
+        assert "MCP entry" in str(error)
+    else:
+        raise AssertionError("activate-cycle completed with inconsistent static state")
+    finally:
+        campaign.run_checked = original_run_checked
+    assert campaign.cycle_state(root, "volicord", 1)["codex_enabled"] is False
+    write_static_integration(first_repository, first_runtime, binary)
 
     for kind in campaign.CLASSES:
         for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
@@ -1266,6 +1442,19 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         documenter=documenter,
     )
     assert activation_summary["outcome"] == "operator_environment_invalid"
+    assert activation_summary["environment_invalid_diagnostics"] == [{
+        "kind": "phase8_dogfood_missing_session_start_activation",
+        "classification": "operator_environment_setup_failure",
+        "source_file": str(missing_activation.resolve()),
+        "source_sha256": hashlib.sha256(missing_activation.read_bytes()).hexdigest(),
+        "session_id": "volicord-work-session-1",
+        "review_slot_id": campaign.cycle_state(
+            activation_root, "volicord", 1
+        )["review_slot_id"],
+        "role": "work",
+        "volicord_mcp_calls_observed": True,
+        "runtime_session_start_activation_observed": False,
+    }]
     activation_blocker = campaign.read_json(
         campaign.cycle_root(activation_root, "volicord", 1) / "blocker-result.json"
     )
