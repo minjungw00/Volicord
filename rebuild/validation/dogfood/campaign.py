@@ -582,6 +582,73 @@ def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def operator_task_artifact_path(root: Path, review_slot_id: str, role: str) -> Path:
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None or role not in {"work", "resume"}:
+        raise CampaignError("sealed operator task identity is malformed")
+    return root / "operator/tasks" / f"{review_slot_id}.{role}.txt"
+
+
+def write_operator_task_artifacts(
+    root: Path,
+    state: dict[str, Any],
+    descriptor: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    semantic_sha256 = descriptor_semantic_sha256(descriptor)
+    artifacts: dict[str, dict[str, Any]] = {}
+    for role, field in (
+        ("work", "work_user_task"),
+        ("resume", "fresh_resume_user_task"),
+    ):
+        content = descriptor[field].encode("utf-8")
+        path = operator_task_artifact_path(root, state["review_slot_id"], role)
+        if path.exists():
+            raise CampaignError(
+                f"sealed operator task artifact already exists: {relative(root, path)}"
+            )
+        atomic_write_bytes(path, content)
+        artifacts[role] = {
+            "path": relative(root, path),
+            "bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "sealed_semantic_sha256": semantic_sha256,
+        }
+    return artifacts
+
+
+def verify_operator_task_artifacts(
+    root: Path,
+    state: dict[str, Any],
+    descriptor: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    artifacts = state.get("operator_task_artifacts")
+    if not isinstance(artifacts, dict) or set(artifacts) != {"work", "resume"}:
+        raise CampaignError("sealed cycle has no complete raw operator task artifacts")
+    inventory = load_inventory(root).get("artifacts", {})
+    semantic_sha256 = descriptor_semantic_sha256(descriptor)
+    for role, field in (
+        ("work", "work_user_task"),
+        ("resume", "fresh_resume_user_task"),
+    ):
+        expected_path = operator_task_artifact_path(root, state["review_slot_id"], role)
+        record = artifacts.get(role)
+        expected_content = descriptor[field].encode("utf-8")
+        expected_sha256 = hashlib.sha256(expected_content).hexdigest()
+        expected_name = relative(root, expected_path)
+        if (
+            not isinstance(record, dict)
+            or record.get("path") != expected_name
+            or record.get("bytes") != len(expected_content)
+            or record.get("sha256") != expected_sha256
+            or record.get("sealed_semantic_sha256") != semantic_sha256
+            or not expected_path.is_file()
+            or expected_path.read_bytes() != expected_content
+            or inventory.get(expected_name)
+            != {"bytes": len(expected_content), "sha256": expected_sha256}
+        ):
+            raise CampaignError(f"sealed {role} operator task artifact binding changed")
+    return artifacts
+
+
 def descriptor_skeleton(
     kind: str,
     cycle: int,
@@ -809,16 +876,23 @@ def render_operator_run_sheet(root: Path) -> Path:
             cycle = state["cycle"]
             descriptor = read_json(evaluator_descriptor_path(root, kind, cycle))
             review_slot_id = state["review_slot_id"]
+            task_artifacts = verify_operator_task_artifacts(root, state, descriptor)
+            work_task = task_artifacts["work"]
+            resume_task = task_artifacts["resume"]
             entries_by_repository[kind].append(
                 f"### Slot `{review_slot_id}`\n\n"
                 f"- Repository: `{state['repository_path']}`\n"
                 f"- Runtime Home: `{state['runtime_home']}`\n"
                 f"- Work capture destination: `{slot_root(root, review_slot_id) / 'evidence/work.rollout.jsonl'}`\n"
                 f"- Resume capture destination: `{slot_root(root, review_slot_id) / 'evidence/resume.rollout.jsonl'}`\n\n"
-                "#### Frozen work task\n\n"
-                f"{descriptor['work_user_task']}\n\n"
-                "#### Frozen resume task\n\n"
-                f"{descriptor['fresh_resume_user_task']}\n\n"
+                "#### Frozen task transport\n\n"
+                f"- Work task artifact: `{root / work_task['path']}`\n"
+                f"- Work task SHA-256: `{work_task['sha256']}`\n"
+                f"- Resume task artifact: `{root / resume_task['path']}`\n"
+                f"- Resume task SHA-256: `{resume_task['sha256']}`\n\n"
+                "Copy the exact UTF-8 bytes from the applicable raw `.txt` artifact. Do not "
+                "copy or retype the task from Markdown, and do not add, remove, escape, or "
+                "normalize any character.\n\n"
                 "Explicitly inspect and approve repository and hook trust in VS Code. Start each task "
                 "in its own fresh thread. If trust or activation setup is uncertain, inspect it before "
                 "sending the frozen task. Then send only the frozen task and preserve the raw rollout file. "
@@ -1038,6 +1112,7 @@ def load_sealed_descriptor(
     )
     if errors:
         raise CampaignError("sealed descriptor no longer qualifies: " + "; ".join(errors))
+    verify_operator_task_artifacts(root, state, descriptor)
     return path, descriptor
 
 
@@ -1478,9 +1553,14 @@ def seal_cycle(
     write_json(destination, descriptor)
     state["state"] = "sealed"
     state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
+    state["operator_task_artifacts"] = write_operator_task_artifacts(
+        root, state, descriptor
+    )
     save_campaign(root, campaign)
-    run_sheet = render_operator_run_sheet(root)
     register_artifact(root, destination)
+    for task in state["operator_task_artifacts"].values():
+        register_artifact(root, root / task["path"])
+    run_sheet = render_operator_run_sheet(root)
     register_artifact(root, run_sheet, replace=True)
     assert_reviewer_artifacts_are_behavior_opaque(root)
     return {
@@ -1488,6 +1568,7 @@ def seal_cycle(
         "review_slot_id": state["review_slot_id"],
         "repository_revision": state["repository_revision"],
         "sealed_semantic_sha256": state["sealed_semantic_sha256"],
+        "operator_task_artifacts": state["operator_task_artifacts"],
         "operator_run_sheet": relative(root, run_sheet),
     }
 
@@ -1635,6 +1716,7 @@ def prepare_campaign(
             "runtime_home": str((destination / "runtime").resolve()),
             "state": "prepared",
             "sealed_semantic_sha256": None,
+            "operator_task_artifacts": None,
             "review_preparation_sha256": None,
             "provisional_review_sha256": None,
             "project_id": None,

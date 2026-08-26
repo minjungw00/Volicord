@@ -1144,7 +1144,39 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert f"Slot `{review_slot_id}`" in sealed_run_sheet
     assert "cycle 1" not in sealed_run_sheet.casefold()
     assert "-cycle-" not in sealed_run_sheet
-    assert descriptor["work_user_task"] in sealed_run_sheet
+    assert descriptor["work_user_task"] not in sealed_run_sheet
+    assert descriptor["fresh_resume_user_task"] not in sealed_run_sheet
+    assert "Copy the exact UTF-8 bytes" in sealed_run_sheet
+    task_artifacts = sealed["operator_task_artifacts"]
+    assert set(task_artifacts) == {"work", "resume"}
+    for role, field in (
+        ("work", "work_user_task"),
+        ("resume", "fresh_resume_user_task"),
+    ):
+        record = task_artifacts[role]
+        task_path = root / record["path"]
+        expected = descriptor[field].encode("utf-8")
+        assert task_path.read_bytes() == expected
+        assert record["bytes"] == len(expected)
+        assert record["sha256"] == hashlib.sha256(expected).hexdigest()
+        assert record["sealed_semantic_sha256"] == sealed["sealed_semantic_sha256"]
+        assert str(task_path) in sealed_run_sheet
+        assert record["sha256"] in sealed_run_sheet
+        assert campaign.load_inventory(root)["artifacts"][record["path"]] == {
+            "bytes": len(expected),
+            "sha256": record["sha256"],
+        }
+    work_task_path = root / task_artifacts["work"]["path"]
+    work_task_bytes = work_task_path.read_bytes()
+    work_task_path.write_bytes(work_task_bytes + b" changed")
+    try:
+        campaign.load_sealed_descriptor(root, "volicord", 1)
+    except campaign.CampaignError as error:
+        assert "operator task artifact binding changed" in str(error)
+    else:
+        raise AssertionError("changed raw operator task artifact retained its sealed binding")
+    work_task_path.write_bytes(work_task_bytes)
+    campaign.load_sealed_descriptor(root, "volicord", 1)
     assert provisional["basis"] not in sealed_run_sheet
     assert provisional["materiality_conclusion"] not in sealed_run_sheet
     assert (
@@ -1314,8 +1346,21 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             ]
             end = min(later_slots, default=len(run_sheet))
             slot_entry = run_sheet[start:end]
-            assert descriptor["work_user_task"] in slot_entry
-            assert descriptor["fresh_resume_user_task"] in slot_entry
+            assert descriptor["work_user_task"] not in slot_entry
+            assert descriptor["fresh_resume_user_task"] not in slot_entry
+            artifacts = state["operator_task_artifacts"]
+            assert set(artifacts) == {"work", "resume"}
+            for role, field in (
+                ("work", "work_user_task"),
+                ("resume", "fresh_resume_user_task"),
+            ):
+                artifact = artifacts[role]
+                task_path = root / artifact["path"]
+                expected = descriptor[field].encode("utf-8")
+                assert task_path.read_bytes() == expected
+                assert str(task_path) in slot_entry
+                assert artifact["sha256"] == hashlib.sha256(expected).hexdigest()
+                assert artifact["sha256"] in slot_entry
             assert state["repository_path"] in run_sheet
             assert state["runtime_home"] in run_sheet
 
@@ -1334,6 +1379,14 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     compacted_mapped_capture = mapped[("volicord", 1, "work")][1]
     assert compacted_mapped_capture.fresh_user_thread is True
     assert len(compacted_mapped_capture.compacted_sequences) == 1
+    mapped_state = campaign.cycle_state(root, "volicord", 1)
+    raw_work_task = (
+        root / mapped_state["operator_task_artifacts"]["work"]["path"]
+    ).read_text(encoding="utf-8")
+    assert harness.codex_user_turn_transport_identity_matches(
+        compacted_mapped_capture.user_turns[0].text,
+        raw_work_task,
+    )
 
     directory = parent / "unordered-rollouts"
     directory.mkdir()
@@ -1417,6 +1470,43 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             assert expected_reason in error.diagnostic["mismatch_reasons"]
         else:
             raise AssertionError(f"batch mapping accepted wrong {label}")
+
+    assert harness.canonical_frozen_task_transport_text(
+        "transport_marker"
+    ) != harness.canonical_frozen_task_transport_text("transport\\_marker")
+    escaped_task = replaced_capture(
+        work,
+        parent / "wrong-literal-escape.jsonl",
+        descriptor["work_user_task"],
+        descriptor["work_user_task"] + " transport\\\\_marker",
+    )
+    original_load_descriptor = campaign.load_sealed_descriptor
+
+    def descriptor_with_literal_underscore(
+        loaded_root: Path,
+        kind: str,
+        cycle: int,
+        loaded_campaign=None,
+    ):
+        path, loaded = original_load_descriptor(
+            loaded_root, kind, cycle, loaded_campaign
+        )
+        if (kind, cycle) == ("volicord", 1):
+            loaded = copy.deepcopy(loaded)
+            loaded["work_user_task"] += " transport_marker"
+        return path, loaded
+
+    campaign.load_sealed_descriptor = descriptor_with_literal_underscore
+    try:
+        escaped_inputs = [escaped_task if path == work else path for path in captures]
+        campaign.map_batch_rollouts(root, escaped_inputs)
+    except campaign.CampaignError as error:
+        assert error.diagnostic is not None
+        assert "frozen_task_mismatch" in error.diagnostic["mismatch_reasons"]
+    else:
+        raise AssertionError("batch mapping normalized a literal Markdown escape")
+    finally:
+        campaign.load_sealed_descriptor = original_load_descriptor
 
     provenance_cases = (
         ("source", '"source":"vscode"', '"source":"exec"'),
@@ -2016,6 +2106,7 @@ def main() -> int:
             "sealed_evaluator_operator_isolation",
             "bypassable_user_owned_descriptor_rejected_before_sealing",
             "unavoidable_user_owned_descriptor_sealed",
+            "sealed_raw_operator_task_artifact_binding",
             "mismatched_provisional_cannot_masquerade_as_agreement",
             "unresolved_classification_materiality_disagreement_blocks_sealing",
             "evidence_resolved_classification_materiality_disagreement_seals",
@@ -2028,6 +2119,7 @@ def main() -> int:
             "compacted_fresh_thread_batch_mapping",
             "global_mapping_failure_precedes_campaign_mutation",
             "missing_duplicate_and_wrong_identity_batch_rejection",
+            "literal_markdown_escape_batch_rejection",
             "batch_terminal_work_failure_preserved_with_later_resume",
             "batch_activation_all_preserves_user_controlled_trust",
             "automatic_project_identity_and_bundle_export",
