@@ -8,7 +8,15 @@
     "skipped",
     "environment_blocked"
   ],
-  "candidate_cycle_count": 5,
+  "cycles_per_repository": 2,
+  "qualification_cycle_count": 6,
+  "qualification_behavior_multiset": {
+    "explicit_user_owned_decision": 1,
+    "hidden_user_owned_decision": 2,
+    "research_or_no_question": 1,
+    "delegated_implementation_choice": 1,
+    "exploratory_uncertainty": 1
+  },
   "behavior_classes": [
     "explicit_user_owned_decision",
     "hidden_user_owned_decision",
@@ -273,7 +281,7 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "required_codex_sessions_per_cycle": 2,
-    "full_replacement_session_count": 30,
+    "full_replacement_session_count": 12,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
@@ -526,10 +534,10 @@
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
-      "required_raw_rollout_count": 30,
+      "required_raw_rollout_count": 12,
       "input_modes": [
-        "thirty_explicit_paths",
-        "one_directory_with_exactly_thirty_files"
+        "twelve_explicit_paths",
+        "one_directory_with_exactly_twelve_files"
       ],
       "mapping_evidence": [
         "exact_repository_workspace",

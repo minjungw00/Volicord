@@ -51,7 +51,7 @@ non-qualifying diagnostic evidence and cannot be reused.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
-The campaign then creates five fresh behavior-class cycles per class. No prior campaign input
+The campaign then creates two fresh privately assigned cycles per class. No prior campaign input
 may be reused.
 
 ## Environment and tool versions
@@ -79,18 +79,26 @@ Evaluator/control owns the hidden preparation work:
 - keep evaluator facts, contract constraints, delegated boundaries, possible
   concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
 - use the campaign-generated opaque slot and isolated pinned reviewer workspace;
-  do not expose repository class, logical cycle, behavior class, or matrix order
+  do not expose repository class, logical cycle, behavior class, or assignment order
   before the provisional review is fixed.
+
+Campaign preparation privately assigns exactly one explicit user-owned, two hidden
+user-owned, one research/no-question, one delegated implementation, and one exploratory
+cycle across two cycles per repository. The hidden cycles span two repository classes.
+No slot ID, workspace, filename, label, or presentation order encodes the assignment.
+An independently reviewed hidden case seals only when source/owner inspection establishes
+a clear externally meaningful user-owned outcome with materially different consequences;
+a plausibly ordinary delegated or conventional implementation detail is rejected.
 
 The naturalistic operator owns the actions that cannot be truthfully automated:
 
 - inspect and trust the intended repository and explicitly approve its
   SessionStart hook where required;
-- open thirty globally distinct fresh VS Code Codex chats: work and fresh
-  resume sessions for five behavior-class cycles in each of three repository classes;
+- open twelve globally distinct fresh VS Code Codex chats: work and fresh
+  resume sessions for two privately assigned cycles in each of three repository classes;
 - send only the frozen work or resume task from the generated run sheet;
 - provide actual answers only to genuine material Questions shown in those sessions;
-- preserve all thirty raw rollouts for one batch intake.
+- preserve all twelve raw rollouts for one batch intake.
 
 The operator does not inspect or edit evaluator descriptors. The helper owns
 campaign setup, sealed-descriptor validation, operator run-sheet generation,
@@ -149,15 +157,15 @@ revealed evaluator basis. The structured comparison must mechanically enumerate
 classification, materiality, unavoidability, and disclosure differences;
 matching conclusions use `agreed`, evidence-backed disagreement uses
 `resolved_from_evidence`, and false agreement or `unresolved_conflict` blocks
-sealing. This comparison cannot rewrite the provisional bytes or hash. After all fifteen descriptors
+sealing. This comparison cannot rewrite the provisional bytes or hash. After all six descriptors
 are sealed, use `activate-all`; it enables the repository-scoped integration
 but does not grant repository or hook trust. The helper re-reads the production-owned manifest,
 MCP entry, SessionStart hook and exact candidate-local executable/Runtime binding, while making no
 claim that VS Code actually executed SessionStart. If trust or activation is uncertain, inspect it
-before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all thirty chats
+before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all twelve chats
 without per-chat collection, preserve their raw rollouts, and then use
-`collect-batch` with thirty explicit paths or one directory containing exactly
-thirty files. Then use `finalize-manifest` and `package-review`. The automated
+`collect-batch` with twelve explicit paths or one directory containing exactly
+twelve files. Then use `finalize-manifest` and `package-review`. The automated
 Dogfood result may pass with `human_review = not_provided`, while replacement
 remains `pending_human_review` and `replacement_pass_candidate = false`. If a
 replacement-usability conclusion is needed, use `prepare-human-review` on the
@@ -299,7 +307,7 @@ separate private archive for the independent review handoff.
 ## Recommended implementation choice
 
 Use the maintained campaign helper to prepare a new candidate-bound opaque-slot
-campaign, run all thirty genuine sessions, and obtain the automated result
+campaign, run all twelve genuine sessions, and obtain the automated result
 first. Add the campaign-level human review when evaluating replacement.
 
 ## Rejected alternatives and reasons
@@ -311,6 +319,8 @@ first. Add the campaign-level human review when evaluating replacement.
   bundle, observation, blocker result, or session identity.
 - Treat every completed or incomplete cycle from the failed campaign only as
   non-qualifying diagnostic evidence; do not repair or reuse it.
+- The predecessor full Cartesian campaign is retired and is not
+  an alternate qualification or stress mode.
 - Do not treat V11 as naturalistic passage or infer replacement readiness from
   technical entry eligibility.
 - Do not require a manual full Runtime Home extraction for routine evidence
@@ -331,8 +341,8 @@ changing the accepted Candidate/Inquiry/Decision model.
 ## Follow-up work
 
 After remediation passes a new technical entry, prepare one completely fresh opaque-slot helper-owned campaign,
-have the control agent research and seal the fifteen evaluator descriptors, grant
-trust manually, activate all fifteen repository integrations, run the thirty
+have the control agent research and seal the six evaluator descriptors, grant
+trust manually, activate all six repository integrations, run the twelve
 required work/resume chats with only the frozen tasks, answer the actual
 material Questions, provide all raw rollouts once to batch collection, assemble
 the manifest, and provide the raw rollout archive with the bounded default

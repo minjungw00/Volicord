@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -18,6 +19,14 @@ import harness
 
 REVISION = "ab" * 20
 STRICT_FAKE = campaign.ROOT / "rebuild/validation/shared/strict_fake_volicord.py"
+TEST_ASSIGNMENTS = [
+    ("volicord", 1, "explicit_user_owned_decision"),
+    ("volicord", 2, "hidden_user_owned_decision"),
+    ("small-python", 1, "research_or_no_question"),
+    ("small-python", 2, "hidden_user_owned_decision"),
+    ("polyglot-medium", 1, "delegated_implementation_choice"),
+    ("polyglot-medium", 2, "exploratory_uncertainty"),
+]
 
 
 def write_fake_binary(path: Path) -> None:
@@ -160,6 +169,7 @@ def prepare(
             enable=False,
             cloner=fake_clone,
             slot_id_factory=slot_id_factory,
+            behavior_assignment_factory=lambda: list(TEST_ASSIGNMENTS),
         )
     finally:
         harness.git_clean = original_clean
@@ -187,6 +197,11 @@ def fixture_for(
         revision,
         fixture_root,
         repository_path=repository,
+        behavior_class=(
+            campaign.cycle_state(campaign_root, kind, cycle)["behavior_class"]
+            if campaign_root is not None
+            else "explicit_user_owned_decision"
+        ),
     )
     work = fixture_root / f"{kind}-{cycle}-work-events.jsonl"
     resume = fixture_root / f"{kind}-{cycle}-resume-events.jsonl"
@@ -336,7 +351,7 @@ def prepared_batch(
     captures: list[Path] = []
     bundles: dict[str, Path] = {}
     for kind in campaign.CLASSES:
-        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
             descriptor, work, resume, bundle = fixture_for(
                 parent / f"{name}-fixtures",
                 kind,
@@ -389,6 +404,19 @@ def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
 
 
 def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
+    generated_assignments = campaign.new_private_behavior_assignments()
+    campaign.validate_private_behavior_assignments(generated_assignments)
+    assert Counter(
+        behavior for _kind, _cycle, behavior in generated_assignments
+    ) == campaign.QUALIFICATION_BEHAVIOR_COUNTS
+    assert len({
+        kind
+        for kind, _cycle, behavior in generated_assignments
+        if behavior == "hidden_user_owned_decision"
+    }) == 2
+    campaign_source = Path(campaign.__file__).read_text(encoding="utf-8")
+    assert "index(behavior_class)" not in campaign_source
+    assert "BEHAVIOR_CLASSES[" not in campaign_source
     duplicate_root = parent / "duplicate-slot-campaign"
     try:
         prepare(
@@ -406,9 +434,9 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     root = parent / "opaque-slot-campaign"
     prepare(root, parent / "opaque-slot-sources", binary)
     state = campaign.load_campaign(root)
-    assert len(state["cycles"]) == 15
+    assert len(state["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
     slots = [item["review_slot_id"] for item in state["cycles"].values()]
-    assert len(slots) == len(set(slots)) == 15
+    assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_CYCLE_COUNT
     assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)
     for kind in campaign.CLASSES:
         ordered_cycles = [
@@ -422,12 +450,18 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
                 key=lambda value: value["review_slot_id"],
             )
         ]
-        assert ordered_cycles != [1, 2, 3, 4, 5]
-        assert {
-            item["behavior_class"]
-            for item in state["cycles"].values()
-            if item["repository_class"] == kind
-        } == set(campaign.BEHAVIOR_CLASSES)
+        assert ordered_cycles != list(range(1, campaign.CYCLES_PER_REPOSITORY + 1))
+        assert sum(
+            item["repository_class"] == kind for item in state["cycles"].values()
+        ) == campaign.CYCLES_PER_REPOSITORY
+    assert Counter(
+        item["behavior_class"] for item in state["cycles"].values()
+    ) == campaign.QUALIFICATION_BEHAVIOR_COUNTS
+    assert len({
+        item["repository_class"]
+        for item in state["cycles"].values()
+        if item["behavior_class"] == "hidden_user_owned_decision"
+    }) == 2
     for value in state["cycles"].values():
         slot = value["review_slot_id"]
         obvious = hashlib.sha256(
@@ -498,7 +532,9 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
 def assert_blockers(parent: Path, binary: Path) -> None:
     blocker_root = parent / "blocker-campaign"
     prepare(blocker_root, parent / "blocker-sources", binary)
-    descriptor, work, resume, _bundle = fixture_for(parent, "volicord", 1)
+    descriptor, work, resume, _bundle = fixture_for(
+        parent, "volicord", 1, campaign_root=blocker_root
+    )
     install_descriptor(blocker_root, "volicord", 1, descriptor)
     broken = filtered_capture(work, parent / "missing-completions.jsonl", '"type":"mcp_tool_call_end"')
     result = campaign.collect_work(blocker_root, "volicord", 1, broken)
@@ -512,8 +548,16 @@ def assert_blockers(parent: Path, binary: Path) -> None:
 
     activation_root = parent / "activation-campaign"
     prepare(activation_root, parent / "activation-sources", binary)
-    install_descriptor(activation_root, "volicord", 1, descriptor)
-    missing = filtered_capture(work, parent / "missing-activation.jsonl", "Volicord is active because")
+    activation_descriptor, activation_work, _activation_resume, _activation_bundle = fixture_for(
+        parent / "activation-fixture",
+        "volicord",
+        1,
+        campaign_root=activation_root,
+    )
+    install_descriptor(activation_root, "volicord", 1, activation_descriptor)
+    missing = filtered_capture(
+        activation_work, parent / "missing-activation.jsonl", "Volicord is active because"
+    )
     invalid = campaign.collect_work(activation_root, "volicord", 1, missing)
     assert invalid["outcome"] == "operator_environment_invalid"
     assert invalid["classification"] == "operator_environment_setup_failure"
@@ -543,7 +587,10 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             root = parent / f"blind-recording-{label}-campaign"
             prepare(root, parent / f"blind-recording-{label}-sources", binary)
             descriptor, _work, _resume, _bundle = fixture_for(
-                parent / f"blind-recording-{label}-fixture", "volicord", 1
+                parent / f"blind-recording-{label}-fixture",
+                "volicord",
+                1,
+                campaign_root=root,
             )
             descriptor.pop("_evidence_directory", None)
             descriptor.pop("_evidence_file_sha256", None)
@@ -627,7 +674,9 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("unsealed cycle accepted work collection")
 
-    descriptor, _work, _resume, _bundle = fixture_for(parent, "volicord", 1)
+    descriptor, _work, _resume, _bundle = fixture_for(
+        parent, "volicord", 1, campaign_root=root
+    )
     descriptor.pop("_evidence_directory", None)
     descriptor.pop("_evidence_file_sha256", None)
     descriptor.pop("evidence", None)
@@ -902,7 +951,9 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         not in sealed_run_sheet
     )
 
-    cli_descriptor, _work, _resume, _bundle = fixture_for(parent, "volicord", 2)
+    cli_descriptor, _work, _resume, _bundle = fixture_for(
+        parent, "volicord", 2, campaign_root=root
+    )
     cli_descriptor.pop("_evidence_directory", None)
     cli_descriptor.pop("_evidence_file_sha256", None)
     cli_descriptor.pop("evidence", None)
@@ -1074,10 +1125,13 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert "collect-work" not in run_sheet
     assert "collect-resume" not in run_sheet
     assert not any(value in run_sheet for value in campaign.BEHAVIOR_CLASSES)
-    assert not any(f"cycle {number}" in run_sheet.casefold() for number in range(1, 6))
+    assert not any(
+        f"cycle {number}" in run_sheet.casefold()
+        for number in range(1, campaign.CYCLES_PER_REPOSITORY + 1)
+    )
     assert "-cycle-" not in run_sheet
     for kind in campaign.CLASSES:
-        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
             descriptor = campaign.read_json(
                 campaign.evaluator_descriptor_path(root, kind, cycle)
             )
@@ -1107,7 +1161,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     captures = [compacted_work if path == compacted_work_source else path for path in captures]
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
-    assert len({capture.session_id for _path, capture in mapped.values()}) == 30
+    assert len({capture.session_id for _path, capture in mapped.values()}) == 12
     compacted_mapped_capture = mapped[("volicord", 1, "work")][1]
     assert compacted_mapped_capture.fresh_user_thread is True
     assert len(compacted_mapped_capture.compacted_sequences) == 1
@@ -1117,7 +1171,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     for index, source in enumerate(reversed(captures)):
         shutil.copyfile(source, directory / f"capture-{index:02}.jsonl")
     directory_paths = campaign.batch_rollout_paths(None, directory)
-    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 30
+    assert len(campaign.map_batch_rollouts(root, directory_paths)) == 12
     campaign_before_failed_batch = (root / "campaign.json").read_bytes()
     inventory_before_failed_batch = (root / "evidence-inventory.json").read_bytes()
     try:
@@ -1131,7 +1185,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert not any(
         (campaign.cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl").exists()
         for kind in campaign.CLASSES
-        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1)
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1)
     )
 
     work = compacted_work
@@ -1253,7 +1307,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         activation = campaign.activate_all(root)
     finally:
         campaign.run_checked = original_run_checked
-    assert activation["cycle_count"] == 15
+    assert activation["cycle_count"] == campaign.QUALIFICATION_CYCLE_COUNT
     assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
     assert all(
         item["result"]["static_verification"]["status"] == "passed"
@@ -1314,7 +1368,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     write_static_integration(first_repository, first_runtime, binary)
 
     for kind in campaign.CLASSES:
-        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
             runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
             (runtime / "canonical.sqlite3").write_bytes(b"BATCH-PRIVATE-STORE")
             derived = runtime / "derived/analysis/private"
@@ -1330,10 +1384,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert summary["outcome"] == "evidence_collected"
     assert summary["session_distinctness"] == {
         "status": "passed",
-        "expected_count": 30,
-        "observed_count": 30,
+        "expected_count": 12,
+        "observed_count": 12,
     }
-    assert len(summary["cycles"]) == 15
+    assert len(summary["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
     for item in summary["cycles"]:
         assert item["supported_evidence_complete"] is True
         assert item["terminal_work_failure_preserved"] is False
@@ -1367,7 +1421,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         names = opened.getnames()
         assert "evaluator/slot-mapping.json" in names
         assert "batch-intake-summary.json" in names
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 15
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(
             any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts)
@@ -1466,8 +1520,10 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     prepare(root, parent / "successful-sources", binary)
     fixtures: dict[tuple[str, int], tuple[dict[str, object], Path, Path, Path]] = {}
     for kind in campaign.CLASSES:
-        for cycle in range(1, len(campaign.BEHAVIOR_CLASSES) + 1):
-            descriptor, work, resume, bundle = fixture_for(parent, kind, cycle)
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
+            descriptor, work, resume, bundle = fixture_for(
+                parent, kind, cycle, campaign_root=root
+            )
             fixtures[(kind, cycle)] = (descriptor, work, resume, bundle)
             install_descriptor(root, kind, cycle, descriptor)
             runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
@@ -1540,15 +1596,15 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     with tarfile.open(archive, "r:gz") as opened:
         names = opened.getnames()
         assert "evaluator/slot-mapping.json" in names
-        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 15
-        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 16
-        assert len([name for name in names if name.startswith("reviewer/preparations/")]) == 15
-        assert len([name for name in names if name.startswith("reviewer/provisional/")]) == 15
-        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 120
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 15
-        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 15
-        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 15
-        assert len([name for name in names if name.startswith("operator/document-review/")]) == 15
+        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == 6
+        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == 7
+        assert len([name for name in names if name.startswith("reviewer/preparations/")]) == 6
+        assert len([name for name in names if name.startswith("reviewer/provisional/")]) == 6
+        assert len([name for name in names if "/evidence/generated-documents/" in name]) == 48
+        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == 6
+        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == 6
+        assert len([name for name in names if name.endswith("/documents-summary.json")]) == 6
+        assert len([name for name in names if name.startswith("operator/document-review/")]) == 6
         for prefix in (
             "reviewer/preparations/",
             "reviewer/provisional/",
@@ -1559,10 +1615,10 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         review_index_file = opened.extractfile("behavior-reviews/index.json")
         assert review_index_file is not None
         review_index = json.loads(review_index_file.read())
-        assert len(review_index["reviews"]) == 15
+        assert len(review_index["reviews"]) == 6
         assert all(
             campaign.REVIEW_SLOT_ID.fullmatch(item["review_slot_id"])
-            and item["logical_cycle"] in range(1, 6)
+            and item["logical_cycle"] in range(1, campaign.CYCLES_PER_REPOSITORY + 1)
             and item["expected_behavior_class"] in campaign.BEHAVIOR_CLASSES
             for item in review_index["reviews"]
         )
@@ -1583,7 +1639,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         root, parent / "review-with-raw.tar.gz", include_raw=True
     )
     with tarfile.open(raw_archive, "r:gz") as opened:
-        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 30
+        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == 12
 
 
 def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
@@ -1661,7 +1717,9 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
 def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
     root = parent / "failed-document-campaign"
     prepare(root, parent / "failed-document-sources", binary)
-    descriptor, work, resume, bundle = fixture_for(parent, "volicord", 1)
+    descriptor, work, resume, bundle = fixture_for(
+        parent, "volicord", 1, campaign_root=root
+    )
     install_descriptor(root, "volicord", 1, descriptor)
     assert campaign.collect_work(root, "volicord", 1, work)["outcome"] == "resume_allowed"
     result = campaign.collect_resume(
@@ -1779,7 +1837,7 @@ def main() -> int:
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
             "missing_activation_operator_environment_invalid",
-            "unordered_thirty_rollout_batch_mapping",
+            "unordered_twelve_rollout_batch_mapping",
             "compacted_fresh_thread_batch_mapping",
             "global_mapping_failure_precedes_campaign_mutation",
             "missing_duplicate_and_wrong_identity_batch_rejection",

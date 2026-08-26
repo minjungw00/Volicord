@@ -141,8 +141,17 @@ def main() -> int:
     real_session = definition_value["real_session_evidence"]
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
-        or real_session.get("full_replacement_session_count") != 30
-        or definition_value.get("candidate_cycle_count") != 5
+        or real_session.get("full_replacement_session_count") != 12
+        or definition_value.get("cycles_per_repository") != 2
+        or definition_value.get("qualification_cycle_count") != 6
+        or definition_value.get("qualification_behavior_multiset")
+        != {
+            "explicit_user_owned_decision": 1,
+            "hidden_user_owned_decision": 2,
+            "research_or_no_question": 1,
+            "delegated_implementation_choice": 1,
+            "exploratory_uncertainty": 1,
+        }
         or tuple(definition_value.get("behavior_classes", [])) != (
             "explicit_user_owned_decision",
             "hidden_user_owned_decision",
@@ -152,11 +161,11 @@ def main() -> int:
         )
         or len(definition_value.get("repository_classes", {})) != 3
         or len(definition_value["repository_classes"])
-        * definition_value["candidate_cycle_count"]
+        * definition_value["cycles_per_repository"]
         * real_session["required_codex_sessions_per_cycle"]
-        != 30
+        != 12
     ):
-        raise AssertionError("Phase 8 no longer requires thirty distinct real Codex sessions")
+        raise AssertionError("Phase 8 no longer requires twelve distinct real Codex sessions")
     small_rules = definition_value["repository_classes"]["small-python"]
     polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
     if (
@@ -383,7 +392,7 @@ def main() -> int:
     batch_contract = real_session.get("batch_campaign_contract", {})
     if (
         batch_contract.get("operation") != "collect-batch"
-        or batch_contract.get("required_raw_rollout_count") != 30
+        or batch_contract.get("required_raw_rollout_count") != 12
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
         or "read_only_static_viewer_snapshot"

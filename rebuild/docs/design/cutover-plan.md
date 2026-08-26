@@ -269,9 +269,9 @@ replacement explicitly pending and a human pass cannot override machine
 failure.
 Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고
 explicit user-owned positive control, ordinary task의 hidden user-owned material discovery,
-no-question, research, delegated choice와 prototype/research/defer behavior class를 각
-repository에서 평가한다. 세 repository class × 다섯 cycle의 15-cycle/30-fresh-session
-campaign과 모든 qualifying cycle의
+no-question, research, delegated choice와 prototype/research/defer behavior class를 six-cycle
+private multiset으로 평가한다. 세 repository class마다 두 cycle, hidden 두 sample은 서로 다른
+repository class, 모든 cycle의 work/resume을 포함하는 6-cycle/12-fresh-session campaign과 모든 qualifying cycle의
 human review와 current production background semantic-provider의 별도로 authorized real
 success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.

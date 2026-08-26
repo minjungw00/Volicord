@@ -64,6 +64,16 @@ BEHAVIOR_CLASSES = (
     "delegated_implementation_choice",
     "exploratory_uncertainty",
 )
+CYCLES_PER_REPOSITORY = 2
+QUALIFICATION_CYCLE_COUNT = 6
+QUALIFICATION_SESSION_COUNT = 12
+QUALIFICATION_BEHAVIOR_COUNTS = Counter({
+    "explicit_user_owned_decision": 1,
+    "hidden_user_owned_decision": 2,
+    "research_or_no_question": 1,
+    "delegated_implementation_choice": 1,
+    "exploratory_uncertainty": 1,
+})
 USER_OWNED_BEHAVIOR_CLASSES = {
     "explicit_user_owned_decision",
     "hidden_user_owned_decision",
@@ -753,8 +763,12 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("unexpected Phase 8 evaluation definition kind")
     if set(value.get("status_values", [])) != ALLOWED_STATUS:
         raise ValueError("the Phase 8 status vocabulary is incomplete")
-    if value.get("candidate_cycle_count") != len(BEHAVIOR_CLASSES):
-        raise ValueError("Phase 8 requires one cycle per maintained behavior class")
+    if value.get("cycles_per_repository") != CYCLES_PER_REPOSITORY:
+        raise ValueError("Phase 8 requires two cycles per maintained repository class")
+    if value.get("qualification_cycle_count") != QUALIFICATION_CYCLE_COUNT:
+        raise ValueError("Phase 8 requires exactly six qualification cycles")
+    if Counter(value.get("qualification_behavior_multiset", {})) != QUALIFICATION_BEHAVIOR_COUNTS:
+        raise ValueError("the Phase 8 qualification behavior multiset changed")
     if tuple(value.get("behavior_classes", [])) != BEHAVIOR_CLASSES:
         raise ValueError("the Phase 8 behavior-class matrix changed")
     if tuple(value.get("repository_classes", {})) != CLASSES:
@@ -958,7 +972,7 @@ def load_definition() -> dict[str, Any]:
         or evaluation_basis.get("unique_alternatives_required") is not False
         or evaluation_basis.get("unique_recommendation_required") is not False
         or evaluation_basis.get("prescribed_user_selection_required") is not False
-        or evidence.get("full_replacement_session_count") != 30
+        or evidence.get("full_replacement_session_count") != QUALIFICATION_SESSION_COUNT
         or evidence.get("required_codex_sessions_per_cycle") != 2
         or evidence.get("work_blocker_qualification")
         != {
@@ -1094,7 +1108,7 @@ def load_definition() -> dict[str, Any]:
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
-        or batch.get("required_raw_rollout_count") != 30
+        or batch.get("required_raw_rollout_count") != 12
         or batch.get("global_mapping_precedes_campaign_mutation") is not True
         or batch.get("raw_rollout_bytes_preserved") is not True
         or batch.get("terminal_work_failure_repaired_by_resume") is not False
@@ -2296,13 +2310,8 @@ def cycle_descriptor_errors(
     behavior_class = value.get("behavior_class")
     if behavior_class not in BEHAVIOR_CLASSES:
         errors.append("behavior_class must identify one maintained behavior class")
-    expected_cycle = (
-        BEHAVIOR_CLASSES.index(behavior_class) + 1
-        if behavior_class in BEHAVIOR_CLASSES
-        else None
-    )
-    if value.get("cycle") != expected_cycle:
-        errors.append("cycle must match the maintained behavior-class matrix position")
+    if value.get("cycle") not in range(1, CYCLES_PER_REPOSITORY + 1):
+        errors.append("cycle must identify one of the two private repository assignments")
     revision = value.get("repository_revision")
     if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision) is None:
         errors.append("repository_revision must be a full Git object identity")
@@ -2607,8 +2616,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         not re.fullmatch(r"[0-9a-f]{40}", result.get("candidate_head", ""))
         or result.get("repository_class") not in CLASSES
         or result.get("behavior_class") not in BEHAVIOR_CLASSES
-        or result.get("cycle")
-        != BEHAVIOR_CLASSES.index(result.get("behavior_class")) + 1
+        or result.get("cycle") not in range(1, CYCLES_PER_REPOSITORY + 1)
         or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", result.get("repository_revision", ""))
         or not valid_capture_sha256(result.get("descriptor_sha256"))
         or not valid_capture_sha256(result.get("work_capture_sha256"))
@@ -4345,15 +4353,18 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     if [item.get("class") for item in repositories] != list(CLASSES):
         raise ValueError("dogfood result does not contain the three ordered repository classes")
     real_invocations: list[str] = []
+    observed_behaviors: Counter[str] = Counter()
+    hidden_repositories: set[str] = set()
     for repository in repositories:
-        if len(repository.get("cycles", [])) != definition["candidate_cycle_count"]:
-            raise ValueError("dogfood result does not contain the five behavior classes per repository")
-        if {
-            cycle.get("real_session_dogfood", {}).get("behavior_class")
-            for cycle in repository.get("cycles", [])
-        } != set(BEHAVIOR_CLASSES):
-            raise ValueError("dogfood repository does not cover each maintained behavior class exactly once")
+        if len(repository.get("cycles", [])) != CYCLES_PER_REPOSITORY:
+            raise ValueError("dogfood result does not contain two cycles per repository")
         for cycle in repository["cycles"]:
+            behavior_class = cycle.get("real_session_dogfood", {}).get("behavior_class")
+            if behavior_class not in BEHAVIOR_CLASSES:
+                raise ValueError("dogfood cycle contains an unknown behavior class")
+            observed_behaviors[behavior_class] += 1
+            if behavior_class == "hidden_user_owned_decision":
+                hidden_repositories.add(repository["class"])
             if set(cycle.get("step_statuses", {})) != set(definition["required_product_steps"]):
                 raise ValueError("dogfood cycle silently dropped a maintained product step")
             statuses = set(cycle["step_statuses"].values())
@@ -4437,7 +4448,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     if (
         aggregate_resources != aggregate_resource_qualification(repositories)
         or aggregate_resources.get("status") not in ALLOWED_STATUS
-        or aggregate_resources.get("observation_count") != len(CLASSES) * definition["candidate_cycle_count"]
+        or aggregate_resources.get("observation_count") != QUALIFICATION_CYCLE_COUNT
         or aggregate_resources.get("universal_product_ceiling_applied") is not False
         or (
             aggregate_resources.get("status") == "passed"
@@ -4464,7 +4475,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             raise ValueError("automated pass requires every machine accessibility check to pass")
         for repository in repositories:
             if repository.get("status") != "passed" or not repository.get("independent_fresh_runtime_cycles"):
-                raise ValueError("replacement pass requires five independent passed behavior cycles")
+                raise ValueError("replacement pass requires two independent passed behavior cycles")
             for cycle in repository["cycles"]:
                 if cycle.get("status") != "passed":
                     raise ValueError("replacement pass contains a non-pass dogfood cycle")
@@ -4483,7 +4494,11 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             != definition["real_session_evidence"]["full_replacement_session_count"]
             or len(set(real_invocations)) != len(real_invocations)
         ):
-            raise ValueError("automated pass requires thirty globally distinct Codex sessions")
+            raise ValueError("automated pass requires twelve globally distinct Codex sessions")
+    if observed_behaviors != QUALIFICATION_BEHAVIOR_COUNTS:
+        raise ValueError("dogfood result does not contain the required six-cycle behavior multiset")
+    if len(hidden_repositories) != 2:
+        raise ValueError("hidden qualification cycles must span two repository classes")
     sanitize_check(result)
 
 
@@ -4981,7 +4996,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
             kind = identity["class"]
             cycles: list[dict[str, Any]] = []
             if identity["status"] == "passed":
-                for cycle_number in range(1, definition["candidate_cycle_count"] + 1):
+                for cycle_number in range(1, CYCLES_PER_REPOSITORY + 1):
                     cycle_root = raw_root / f"{kind}-cycle-{cycle_number}"
                     cycle_root.mkdir()
                     recorder = v11.Recorder(cycle_root)
@@ -5040,7 +5055,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         repeated_resources,
                     ))
             else:
-                for cycle_number in range(1, definition["candidate_cycle_count"] + 1):
+                for cycle_number in range(1, CYCLES_PER_REPOSITORY + 1):
                     skipped = {name: "environment_blocked" for name in definition["required_product_steps"]}
                     actual = real_session_evidence(
                         load_real_session_cycle(
@@ -5190,7 +5205,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
         "privacy_and_transmission": {
             "evidence_mode": definition["real_session_evidence"]["mode"],
             "harness_performed_or_authorized_codex_transmission": False,
-            "verified_external_codex_session_count_expected": 30,
+            "verified_external_codex_session_count_expected": QUALIFICATION_SESSION_COUNT,
             "task_relevant_repository_content_may_have_been_transmitted_by_external_evidence_producers": True,
             "commercial_semantic_provider_success_claimed": False,
             "raw_source_in_sanitized_result": False,
@@ -5230,20 +5245,20 @@ def run_evaluation(args: argparse.Namespace) -> int:
     return 0 if automated_passed else 1
 
 
-def fixture_work_user_task(kind: str, cycle: int) -> str:
+def fixture_work_user_task(kind: str, behavior_class: str) -> str:
     tasks = {
-        1: "The operator-facing error-detail policy is unsettled. Improve it and add focused coverage for the selected observable behavior.",
-        2: "Improve invalid-configuration diagnostics and add focused coverage for the observable behavior.",
-        3: "Correct repository configuration discovery and update the affected multi-file tests.",
-        4: "Refactor the adapter implementation within the current contract and preserve behavior.",
-        5: "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
+        "explicit_user_owned_decision": "The operator-facing error-detail policy is unsettled. Improve it and add focused coverage for the selected observable behavior.",
+        "hidden_user_owned_decision": "Improve invalid-configuration diagnostics and add focused coverage for the observable behavior.",
+        "research_or_no_question": "Correct repository configuration discovery and update the affected multi-file tests.",
+        "delegated_implementation_choice": "Refactor the adapter implementation within the current contract and preserve behavior.",
+        "exploratory_uncertainty": "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
     }
     repository_reference = (
         "In this repository"
-        if cycle == 2
+        if behavior_class == "hidden_user_owned_decision"
         else f"In the {kind} repository"
     )
-    return f"{repository_reference}, {tasks[cycle]} Keep the change bounded and do not add dependencies."
+    return f"{repository_reference}, {tasks[behavior_class]} Keep the change bounded and do not add dependencies."
 
 
 def fixture_question_content() -> dict[str, Any]:
@@ -5432,6 +5447,8 @@ def real_session_fixture(
     revision: str,
     evidence_directory: Path,
     repository_path: Path | None = None,
+    *,
+    behavior_class: str = "explicit_user_owned_decision",
 ) -> dict[str, Any]:
     project = "01" * 16
     user_source = "02" * 16
@@ -5459,8 +5476,7 @@ def real_session_fixture(
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
-    work_user_task = fixture_work_user_task(kind, cycle)
-    behavior_class = BEHAVIOR_CLASSES[cycle - 1]
+    work_user_task = fixture_work_user_task(kind, behavior_class)
     question_content = fixture_question_content()
     evaluation_basis = fixture_evaluation_basis(behavior_class)
     applied_decisions = [decision] if is_user_owned_behavior(behavior_class) else []
@@ -6772,7 +6788,11 @@ def self_test() -> int:
     if external_result["status"] != "passed":
         raise AssertionError("external sanitized process evidence did not qualify")
     hidden_fixture = real_session_fixture(
-        "volicord", 2, revision, evidence_directory
+        "volicord",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="hidden_user_owned_decision",
     )
     hidden_result = real_session_evidence(
         hidden_fixture,
@@ -6787,7 +6807,11 @@ def self_test() -> int:
     ):
         raise AssertionError("hidden material-decision discovery did not qualify")
     uninterrupted_fixture = real_session_fixture(
-        "small-python", 3, revision, evidence_directory
+        "small-python",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
     )
     uninterrupted_capture = load_codex_capture(
         evidence_directory
@@ -6796,7 +6820,7 @@ def self_test() -> int:
     uninterrupted_result = real_session_evidence(
         uninterrupted_fixture,
         kind="small-python",
-        cycle=3,
+        cycle=1,
         repository_revision=revision,
     )
     if (
@@ -6893,7 +6917,7 @@ def self_test() -> int:
         "cycle": 1,
         "behavior_class": "explicit_user_owned_decision",
         "repository_revision": revision,
-        "work_user_task": fixture_work_user_task("volicord", 1),
+        "work_user_task": fixture_work_user_task("volicord", "explicit_user_owned_decision"),
         "fresh_resume_user_task": (
             "Continue the validation-adapter improvement from the current project state."
         ),
@@ -6907,11 +6931,15 @@ def self_test() -> int:
     }
     if cycle_descriptor_errors(valid_descriptor):
         raise AssertionError("valid naturalistic plain-task descriptor was rejected")
+    cycle_two_same_behavior = json.loads(json.dumps(valid_descriptor))
+    cycle_two_same_behavior["cycle"] = 2
+    if cycle_descriptor_errors(cycle_two_same_behavior):
+        raise AssertionError("logical cycle numbering still determines behavior class")
     hidden_descriptor = {
         **json.loads(json.dumps(valid_descriptor)),
         "cycle": 2,
         "behavior_class": "hidden_user_owned_decision",
-        "work_user_task": fixture_work_user_task("volicord", 2),
+        "work_user_task": fixture_work_user_task("volicord", "hidden_user_owned_decision"),
         "evaluation_basis": fixture_evaluation_basis("hidden_user_owned_decision"),
         "behavior_review": fixture_behavior_review("hidden_user_owned_decision"),
     }
@@ -7049,8 +7077,8 @@ def self_test() -> int:
             ),
         ),
         (
-            "class position mismatch",
-            lambda value: value.update({"cycle": 2}),
+            "cycle outside private assignment range",
+            lambda value: value.update({"cycle": 3}),
         ),
         (
             "unaccepted independent review",
@@ -7081,7 +7109,7 @@ def self_test() -> int:
             "scripted resume": "Recall",
             "obsolete reserved scope": "obsolete field",
             "repository fact class mismatch": "classification",
-            "class position mismatch": "matrix position",
+            "cycle outside private assignment range": "two private repository assignments",
             "unaccepted independent review": "accepted independent review",
             "obsolete independent review form": "current independent review fields",
         }[label]
@@ -7188,7 +7216,11 @@ def self_test() -> int:
         raise AssertionError("positive work session converted into an early-stop failure")
 
     non_question_fixture = real_session_fixture(
-        "small-python", 3, revision, evidence_directory
+        "small-python",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
     )
     non_question_capture_path = (
         evidence_directory
@@ -7459,7 +7491,7 @@ def self_test() -> int:
         raise AssertionError("complete-result command forwarding did not expose exit code zero")
     serialized_external_result = json.dumps(external_result, sort_keys=True)
     hidden_values = [
-        fixture_work_user_task("volicord", 1),
+        fixture_work_user_task("volicord", "explicit_user_owned_decision"),
         *fixture_evaluation_basis("explicit_user_owned_decision")["possible_material_concerns"],
         *fixture_evaluation_basis("explicit_user_owned_decision")["consequences"],
     ]
@@ -7546,12 +7578,32 @@ def self_test() -> int:
         "peak_memory_status": "passed",
     }
 
+    synthetic_assignments = {
+        "volicord": (
+            "explicit_user_owned_decision",
+            "hidden_user_owned_decision",
+        ),
+        "small-python": (
+            "research_or_no_question",
+            "hidden_user_owned_decision",
+        ),
+        "polyglot-medium": (
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        ),
+    }
     repositories = []
     for index, kind in enumerate(CLASSES):
         cycles = []
-        for cycle in range(1, len(BEHAVIOR_CLASSES) + 1):
+        for cycle, behavior_class in enumerate(synthetic_assignments[kind], start=1):
             actual = real_session_evidence(
-                real_session_fixture(kind, cycle, revision, evidence_directory),
+                real_session_fixture(
+                    kind,
+                    cycle,
+                    revision,
+                    evidence_directory,
+                    behavior_class=behavior_class,
+                ),
                 kind=kind,
                 cycle=cycle,
                 repository_revision=revision,
@@ -7758,11 +7810,11 @@ def self_test() -> int:
     ):
         raise AssertionError("human review overrode a deterministic machine failure")
     weakened_session_contract = json.loads(json.dumps(definition))
-    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 29
+    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 11
     expect_rejected(
         result,
         weakened_session_contract,
-        "replacement passage no longer required thirty distinct real sessions",
+        "replacement passage no longer required twelve distinct real sessions",
     )
 
     unavailable_peak = {
@@ -8359,7 +8411,11 @@ def self_test() -> int:
         raise AssertionError("a terminal Checkpoint without correlated verification qualified")
 
     transport_fixture = real_session_fixture(
-        "small-python", 3, revision, evidence_directory
+        "small-python",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
     )
     append_initial_task_transport(transport_fixture, "work", "\n")
     append_initial_task_transport(transport_fixture, "resume", "\r\n")
@@ -8376,7 +8432,7 @@ def self_test() -> int:
     transport_result = real_session_evidence(
         transport_fixture,
         kind="small-python",
-        cycle=3,
+        cycle=1,
         repository_revision=revision,
     )
     if (
@@ -8401,13 +8457,17 @@ def self_test() -> int:
         ("mixed terminal resume newlines", "resume", "\r\n\r\n\r"),
     ):
         accepted_transport = real_session_fixture(
-            "small-python", 3, revision, evidence_directory
+            "small-python",
+            1,
+            revision,
+            evidence_directory,
+            behavior_class="research_or_no_question",
         )
         append_initial_task_transport(accepted_transport, capture, suffix)
         accepted_result = real_session_evidence(
             accepted_transport,
             kind="small-python",
-            cycle=3,
+            cycle=1,
             repository_revision=revision,
         )
         if (
@@ -8422,13 +8482,17 @@ def self_test() -> int:
         ("work extra instruction", "work", "\nextra instruction"),
     ):
         rejected_transport = real_session_fixture(
-            "small-python", 3, revision, evidence_directory
+            "small-python",
+            1,
+            revision,
+            evidence_directory,
+            behavior_class="research_or_no_question",
         )
         append_initial_task_transport(rejected_transport, capture, suffix)
         rejected_result = real_session_evidence(
             rejected_transport,
             kind="small-python",
-            cycle=3,
+            cycle=1,
             repository_revision=revision,
         )
         if (
@@ -8437,7 +8501,7 @@ def self_test() -> int:
         ):
             raise AssertionError(f"{label} qualified full prompt identity")
 
-    original_task = fixture_work_user_task("volicord", 1)
+    original_task = fixture_work_user_task("volicord", "explicit_user_owned_decision")
 
     missing_completion = real_session_fixture("volicord", 1, revision, evidence_directory)
     remove_mcp_completion(missing_completion, "work", "decision-call")
@@ -9510,7 +9574,7 @@ def self_test() -> int:
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
-        "five_behavior_class_contract": "passed",
+        "qualification_behavior_multiset_contract": "passed",
         "real_session_positive_path": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
@@ -9589,7 +9653,7 @@ def self_test() -> int:
         "branch_aware_non_question_blocker": "passed",
         "positive_work_blocker_attempt_rejected": "passed",
         "early_stop_completion_claims_rejected": "passed",
-        "thirty_session_replacement_contract": "passed",
+        "twelve_session_replacement_contract": "passed",
         "arbitrary_event_label_rejected": "passed",
         "accessibility_viewer_shaped_names": "passed",
         "accessibility_hidden_controls_excluded": "passed",
