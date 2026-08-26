@@ -676,14 +676,18 @@
       "id": "v12-current-codex-mcp-completion",
       "validation_id": "V12",
       "path": "rebuild/validation/dogfood/fixtures",
-      "purpose": "Exercise the current Codex Extension mcp_tool_call_end envelope as authoritative Phase 8 Volicord operation evidence while retaining a harmless JSON.stringify output wrapper only for correlation.",
+      "purpose": "Exercise bounded current Codex Extension command, patch, and mcp_tool_call_end envelopes as authoritative Phase 8 execution evidence without evaluating JavaScript.",
       "expected_entities": [
         "codex-session",
+        "command-observation",
+        "patch-completion",
         "custom-tool-call-wrapper",
         "volicord-mcp-completion",
         "structured-operation-result"
       ],
       "expected_relations": [
+        "static-forwarder|correlates_with|command-outcome",
+        "patch-completion|authoritatively_reports|changed-path",
         "wrapper|correlates_with|mcp-completion",
         "mcp-completion|authoritatively_reports|context-record",
         "structured-result|proves|successful-operation"
@@ -693,8 +697,8 @@
         "Codex-version dispatch or legacy completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "23e894a67950aebd149ecb305d592275312497a902449e2969d5b09e9018413d",
-      "origin": "Sanitized self-authored representative derived from the observed current Phase 8 Codex Extension completion envelope.",
+      "content_sha256": "3a1a7b175cffdeb9943f46595fb8c151024b68bb548d86d6bb29e32d129729c0",
+      "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },
     {
