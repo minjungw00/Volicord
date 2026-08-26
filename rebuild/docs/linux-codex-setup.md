@@ -81,38 +81,23 @@ layers, so no plugin or AGENTS.md change is needed.
 
 The SessionStart context resolves the repository and performs bounded Recall
 before project work, or establishes a Goal and repository baseline for a new
-Project. It does not require every task to create a Question. Repository facts
-are researched, accepted contracts are reused, and delegated implementation
-choices are handled by the agent. Research or no-question work,
-prototype/research, and explicit deferment are valid outcomes. Only a genuinely
-material, currently relevant, unresolved user-owned outcome stops before that
-outcome is chosen and uses the source-grounded Question and current-host
-Decision path.
+Project. It does not require every task to create a Question. After inspecting
+the repository and applicable accepted contracts and Decisions, the agent
+classifies an outcome in this order: already settled by inspectable authority,
+a delegated implementation choice, exploratory uncertainty, or an unresolved
+material user-owned outcome. Facts are researched, delegated details remain
+agent-owned, and exploratory uncertainty may use research, a bounded prototype,
+deferment, or a revisit basis. Only the final class stops before the outcome is
+chosen or implemented and uses the existing Inquiry and Decision path.
 
-Materiality follows consequence and ownership, not the number of possible code
-implementations or whether a detail is public. After current owners, applicable
-Decisions/contracts, and repository facts are inspected, stable public API
-shape, user-visible defaults, external diagnostics or error contracts,
-compatibility behavior, downstream generated/package/output defaults,
-privacy/security policy, and support/maintenance policy are strong user-owned
-signals when viable outcomes have materially different consequences and the
-choice was not already decided or delegated. A narrow, conventional, simple,
-compatible-looking, backwards-looking, agent-recommended, or locally isolated
-option is not authority to choose such an outcome. Trivial public details do
-not become Questions, repository facts are never asked as user Questions, and
-exploratory uncertainty may still lead to research, a bounded prototype,
-deferment, or a revisit basis. Once the branch is resolved, ordinary repository
-edits require no approval ceremony.
-
-Before asking, the agent identifies every independently material unresolved
-user-owned dimension. A recommendation, preferred implementation, or one API
-shape/mechanism choice cannot silently supply authority for a separate default,
-guarantee, result, partial-work, lifetime, privacy, compatibility, or maintenance
-policy. Independently user-owned dimensions need independently explicit
-authority. Genuinely coupled dimensions may use one Question only when every
-material consequence of that joint choice is disclosed in its alternatives and
-trade-offs. This screening does not split trivial implementation details into
-Questions; material consequence and ownership remain the threshold.
+Materiality follows consequence and ownership. Before asking, the agent
+identifies every independently material user-owned dimension. A recommendation
+or preferred implementation is not user authority and cannot silently resolve
+another material dimension. Independently material dimensions require explicit
+authority; genuinely coupled dimensions may share one Question only when its
+alternatives disclose the material consequences across every coupled dimension.
+Trivial implementation details do not become Questions. Once the branch is
+resolved, ordinary repository edits require no approval ceremony.
 
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or

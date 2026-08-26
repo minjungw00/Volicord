@@ -493,6 +493,12 @@ impl CandidateStore {
                     "Question Candidate content is missing",
                 )
             })?;
+        if question.research_state != QuestionResearchState::ReadyToAsk {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Question Candidate research is not ready for promotion",
+            ));
+        }
         if question.materiality.status != MaterialityStatus::Material {
             return Err(Error::new(
                 ErrorKind::DomainConflict,

@@ -17,7 +17,7 @@ const CONFIG_NAME: &str = "config.toml";
 const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
-pub const MATERIAL_DECISION_SCREENING: &str = "Classify the unresolved outcome after inspecting the relevant current owner, applicable Decisions or contracts, and repository or environment facts: a repository/environment fact is researched and never asked as a user Question; an accepted contract or applicable Decision is applied without reopening it; a delegated implementation choice is chosen by the agent within the delegated boundary; exploratory uncertainty may lead to research, a bounded prototype, deferment, or a recorded revisit basis without a forced user Decision; and a genuinely material user-owned unresolved outcome stops before the outcome is chosen, then uses the existing Candidate, Inquiry, and Decision path. Materiality depends on consequence and ownership, not merely on multiple code implementations or the presence of a public detail. When research leaves multiple viable outcomes that materially change externally observable behavior, do not reclassify the outcome as an implementation detail merely because one option is narrower, conventional, simpler, compatible-looking, backwards-looking, recommended by the agent, or implementable without touching another subsystem. Strong user-owned signals, when not already decided or delegated, include the introduction or shape of a stable public API, user-visible default behavior, an externally visible diagnostic or error contract, compatibility behavior, generated/package/output defaults exposed to downstream users or automation, privacy or security policy, support or maintenance policy, and other externally observable policy whose viable alternatives have materially different consequences. Before asking, identify every independently material user-owned dimension that remains unresolved after the research. A recommendation, preferred implementation, or selection of one API dimension supplies no authority for an unstated material policy and cannot silently settle another independently material dimension. Independently user-owned dimensions require independently explicit authority; do not bundle one inside the recommendation or implementation of another. When dimensions are genuinely coupled so one user choice resolves them jointly, one Question may represent that choice only if its alternatives disclose the material consequences across every coupled dimension. Choosing a new public field, stable error attribute, generated artifact policy, default, result guarantee, or partial-work policy because it appears locally convenient still chooses that dimension. Do not fragment trivial implementation details into user Questions: the test remains material consequence and ownership. If authority is still materially uncertain after inspecting the current owner, Decisions, contracts, and repository facts, use the existing Candidate and research path; never use a user Question to resolve a repository fact. For a material user-owned unresolved outcome, submit a Question Candidate, attach source-grounded repository research, review materiality, mark it ready, explicitly promote it, read the resulting inquiry frontier, present its actual alternatives, recommendation, and trade-offs, obtain an explicit current-host user response, record the Decision, and only then implement that outcome. An agent recommendation or a conventional, simple, narrow, compatible-looking, backwards-looking, or locally isolated option is not authority. Once research, an applicable Decision or contract, delegation, prototype evidence, deferment, or a user Decision resolves the branch, ordinary code edits require no additional approval ceremony.";
+pub const MATERIAL_DECISION_SCREENING: &str = "Classify each unresolved outcome, in this order, after inspecting current repository or environment facts and applicable accepted contracts and Decisions: (1) already settled by inspectable authority—apply it without reopening it, and research facts instead of asking them as user Questions; (2) a delegated implementation choice—choose it within the delegated boundary without asking the user; (3) exploratory uncertainty—research, run a bounded prototype, defer, or record a revisit basis without forcing a user Question or Decision; or (4) an unresolved material user-owned outcome—stop before choosing or implementing it and use the existing Inquiry and Decision path for explicit user authority. Materiality depends on consequence and ownership, not implementation multiplicity or mere public visibility. Before asking, identify every independently material user-owned dimension. A recommendation or preferred implementation is not user authority and cannot silently resolve another material dimension. Independently material dimensions require independently explicit authority. Genuinely coupled dimensions may share one Question only when its alternatives disclose the material consequences across every coupled dimension. Do not promote trivial implementation details into user Questions. Once the branch is resolved by inspectable authority, delegation, research, prototype evidence, deferment, or user Decision, ordinary code edits require no additional approval ceremony.";
 
 fn activation_context() -> String {
     format!(
@@ -910,32 +910,34 @@ mod tests {
                 .contains("Never use an Analysis Snapshot first captured after the bounded work"));
             assert!(context.contains("proceed with ordinary work without manufacturing"));
             assert!(context.contains(MATERIAL_DECISION_SCREENING));
-            assert!(context.contains("a repository/environment fact is researched"));
-            assert!(context.contains("exploratory uncertainty may lead to research"));
-            assert!(context.contains("genuinely material user-owned unresolved outcome"));
-            assert!(context.contains("introduction or shape of a stable public API"));
-            assert!(context.contains("generated/package/output defaults"));
-            assert!(context.contains("Choosing a new public field, stable error attribute"));
+            assert!(context.contains("already settled by inspectable authority"));
+            assert!(context.contains("research facts instead of asking them as user Questions"));
+            assert!(context.contains("a delegated implementation choice"));
+            assert!(context.contains("within the delegated boundary without asking the user"));
+            assert!(context.contains("exploratory uncertainty"));
+            assert!(context.contains("without forcing a user Question or Decision"));
+            assert!(context.contains("an unresolved material user-owned outcome"));
+            assert!(context.contains("stop before choosing or implementing it"));
             assert!(context.contains("identify every independently material user-owned dimension"));
-            assert!(context.contains("selection of one API dimension supplies no authority"));
-            assert!(
-                context.contains("cannot silently settle another independently material dimension")
-            );
+            assert!(context
+                .contains("A recommendation or preferred implementation is not user authority"));
+            assert!(context.contains("cannot silently resolve another material dimension"));
             assert!(context.contains(
-                "Independently user-owned dimensions require independently explicit authority"
+                "Independently material dimensions require independently explicit authority"
             ));
-            assert!(context.contains("dimensions are genuinely coupled"));
+            assert!(context.contains("Genuinely coupled dimensions may share one Question"));
             assert!(context.contains("material consequences across every coupled dimension"));
-            assert!(context.contains("narrower, conventional, simpler, compatible-looking"));
-            assert!(context.contains("Do not fragment trivial implementation details"));
-            assert!(context.contains("never use a user Question to resolve a repository fact"));
-            assert!(context.contains("attach source-grounded repository research"));
-            assert!(context.contains("explicitly promote it"));
-            assert!(
-                context.contains("present its actual alternatives, recommendation, and trade-offs")
-            );
-            assert!(context.contains("explicit current-host user response"));
-            assert!(context.contains("record the Decision, and only then implement that outcome"));
+            assert!(context.contains("Do not promote trivial implementation details"));
+            for choreography in [
+                "submit a Question Candidate",
+                "attach source-grounded repository research",
+                "mark it ready",
+                "explicitly promote it",
+                "read the resulting inquiry frontier",
+                "record the Decision, and only then implement",
+            ] {
+                assert!(!context.contains(choreography), "{choreography}: {context}");
+            }
             assert!(context.contains("ordinary code edits require no additional approval ceremony"));
             assert!(context
                 .contains("same actually observed command execution with a numeric exit status"));

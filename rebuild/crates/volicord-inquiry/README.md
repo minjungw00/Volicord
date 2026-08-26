@@ -39,13 +39,13 @@ basis, freshness, duplicate/supersession assessment, explicit presentation
 order, and the four-state materiality assessment. Research evidence may be
 attached and its sufficiency recorded without promotion or canonical mutation.
 
-Promotion requires a pending, material, non-duplicate Candidate in the same
-Project, an explicit presentation order, and valid canonical Source bases. It
-submits one `QuestionDraft` to `volicord-context`. The Candidate identity is
-also the canonical `OperationId`, so a retry after the canonical commit but
-before local reconciliation replays the same Question rather than creating a
-duplicate. Promotion is not complete locally until the Candidate records the
-canonical target.
+Promotion requires a pending, research-ready, material, non-duplicate Candidate
+in the same Project, an explicit presentation order, and valid canonical Source
+bases. It submits one `QuestionDraft` to `volicord-context`. The Candidate
+identity is also the canonical `OperationId`, so a retry after the canonical
+commit but before local reconciliation replays the same Question rather than
+creating a duplicate. Promotion is not complete locally until the Candidate
+records the canonical target.
 
 Repository Intelligence remains Derived State. Its snapshots can support a
 bounded research assessment but cannot become canonical facts by mutation.

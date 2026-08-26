@@ -394,39 +394,41 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions
         .contains("Never use an Analysis Snapshot first captured after the bounded work"));
     assert!(instructions.contains(volicord_operations::MATERIAL_DECISION_SCREENING));
-    assert!(instructions.contains("a repository/environment fact is researched"));
-    assert!(instructions.contains("accepted contract or applicable Decision is applied"));
-    assert!(instructions.contains("delegated implementation choice is chosen by the agent"));
-    assert!(instructions.contains("exploratory uncertainty may lead to research"));
-    assert!(instructions.contains("genuinely material user-owned unresolved outcome"));
-    assert!(instructions.contains("introduction or shape of a stable public API"));
-    assert!(instructions.contains("user-visible default behavior"));
-    assert!(instructions.contains("externally visible diagnostic or error contract"));
-    assert!(instructions.contains("compatibility behavior"));
-    assert!(instructions.contains("generated/package/output defaults"));
-    assert!(instructions.contains("privacy or security policy"));
-    assert!(instructions.contains("support or maintenance policy"));
-    assert!(instructions.contains("Choosing a new public field, stable error attribute"));
+    assert!(instructions.contains("already settled by inspectable authority"));
+    assert!(instructions.contains("research facts instead of asking them as user Questions"));
+    assert!(instructions.contains("a delegated implementation choice"));
+    assert!(instructions.contains("within the delegated boundary without asking the user"));
+    assert!(instructions.contains("exploratory uncertainty"));
+    assert!(instructions.contains("without forcing a user Question or Decision"));
+    assert!(instructions.contains("an unresolved material user-owned outcome"));
+    assert!(instructions.contains("stop before choosing or implementing it"));
     assert!(instructions.contains("identify every independently material user-owned dimension"));
-    assert!(instructions.contains("selection of one API dimension supplies no authority"));
     assert!(
-        instructions.contains("cannot silently settle another independently material dimension")
+        instructions.contains("A recommendation or preferred implementation is not user authority")
     );
+    assert!(instructions.contains("cannot silently resolve another material dimension"));
     assert!(instructions
-        .contains("Independently user-owned dimensions require independently explicit authority"));
-    assert!(instructions.contains("dimensions are genuinely coupled"));
+        .contains("Independently material dimensions require independently explicit authority"));
+    assert!(instructions.contains("Genuinely coupled dimensions may share one Question"));
     assert!(instructions.contains("material consequences across every coupled dimension"));
-    assert!(instructions.contains("narrower, conventional, simpler, compatible-looking"));
-    assert!(instructions.contains("Do not fragment trivial implementation details"));
-    assert!(instructions.contains("attach source-grounded repository research"));
-    assert!(instructions.contains("review materiality, mark it ready, explicitly promote it"));
-    assert!(
-        instructions.contains("present its actual alternatives, recommendation, and trade-offs")
-    );
-    assert!(instructions.contains("explicit current-host user response"));
-    assert!(instructions.contains("candidate_manage"));
-    assert!(instructions.contains("only then implement that outcome"));
-    assert!(instructions.contains("never use a user Question to resolve a repository fact"));
+    assert!(instructions.contains("Do not promote trivial implementation details"));
+    assert!(instructions.contains(
+        "route that path through candidate_manage, inquiry_frontier, and decision_record"
+    ));
+    assert!(instructions.contains("their tool contracts own the lifecycle procedure"));
+    for choreography in [
+        "submit a Question Candidate",
+        "attach source-grounded repository research",
+        "mark it ready",
+        "explicitly promote it",
+        "read the resulting inquiry frontier",
+        "record the Decision, and only then implement",
+    ] {
+        assert!(
+            !instructions.contains(choreography),
+            "server instructions still contain {choreography}: {instructions}"
+        );
+    }
     assert!(instructions.contains("ordinary code edits require no additional approval ceremony"));
     assert!(instructions.contains("repository_analyze is authorized local analysis"));
     assert!(instructions
@@ -466,6 +468,14 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["inquiry_frontier"].contains("candidate_manage"));
     assert!(descriptions["inquiry_frontier"].contains("present each actual alternative"));
     assert!(descriptions["decision_record"].contains("not a user Decision"));
+    assert!(descriptions["candidate_manage"].contains("submit a Candidate"));
+    assert!(descriptions["candidate_manage"].contains("attach source-grounded repository research"));
+    assert!(descriptions["candidate_manage"].contains("mark sufficient research ready"));
+    assert!(
+        descriptions["candidate_manage"].contains("explicitly promote a reviewed ready Candidate")
+    );
+    assert!(descriptions["decision_record"].contains("explicit current-host user response"));
+    assert!(descriptions["decision_record"].contains("current Question revision"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
     assert!(
         descriptions["repository_analyze"].contains("before the first ordinary repository write")
@@ -1968,6 +1978,20 @@ fn supported_candidate_research_is_source_grounded_and_separate_from_promotion_a
         .questions
         .is_empty());
 
+    let premature_promotion = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"promote_question",
+            "project_id":project,
+            "candidate_id":candidate_id
+        }),
+    );
+    assert_eq!(
+        premature_promotion["result"]["isError"], true,
+        "{premature_promotion}"
+    );
+
     let premature = call(
         &mut adapter,
         "candidate_manage",
@@ -2253,6 +2277,33 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
         .expect("canonical after promotion");
     assert_eq!(after_promotion.active_questions.len(), 1);
     assert!(after_promotion.active_decisions.is_empty());
+
+    let stale_decision = call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project,
+            "question_id":question_id,
+            "question_revision":frontier["questions"][0]["revision"]
+                .as_u64()
+                .expect("Question revision") + 1,
+            "alternative_key":"local",
+            "user_turn":"Choose the local Candidate alternative"
+        }),
+    );
+    assert_eq!(
+        stale_decision["result"]["isError"], true,
+        "{stale_decision}"
+    );
+    assert!(structured(&stale_decision)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("exact current Question revision")));
+    assert!(adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical after stale Decision rejection")
+        .active_decisions
+        .is_empty());
 
     let decided = structured(&call(
         &mut adapter,

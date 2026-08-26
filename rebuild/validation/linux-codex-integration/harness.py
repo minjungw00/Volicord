@@ -334,7 +334,46 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
         in instructions,
         "fresh-session Recall boundary missing",
     )
-    require("explicit current-host user response" in instructions, "user Decision boundary missing")
+    for semantic_boundary in (
+        "already settled by inspectable authority",
+        "a delegated implementation choice",
+        "exploratory uncertainty",
+        "an unresolved material user-owned outcome",
+        "identify every independently material user-owned dimension",
+        "recommendation or preferred implementation is not user authority",
+        "Do not promote trivial implementation details",
+    ):
+        require(
+            semantic_boundary in instructions,
+            f"semantic authority boundary missing: {semantic_boundary}",
+        )
+    for choreography in (
+        "submit a Question Candidate",
+        "attach source-grounded repository research",
+        "mark it ready",
+        "explicitly promote it",
+        "read the resulting inquiry frontier",
+    ):
+        require(
+            choreography not in instructions,
+            f"server instructions duplicate tool choreography: {choreography}",
+        )
+    descriptions = {entry["name"]: entry.get("description", "") for entry in catalog}
+    require(
+        "attach source-grounded repository research" in descriptions["candidate_manage"]
+        and "mark sufficient research ready" in descriptions["candidate_manage"]
+        and "explicitly promote a reviewed ready Candidate" in descriptions["candidate_manage"],
+        "candidate_manage no longer owns Candidate lifecycle guidance",
+    )
+    require(
+        "present each actual alternative" in descriptions["inquiry_frontier"],
+        "inquiry_frontier no longer owns Question presentation guidance",
+    )
+    require(
+        "explicit current-host user response" in descriptions["decision_record"]
+        and "current Question revision" in descriptions["decision_record"],
+        "decision_record no longer owns response linkage guidance",
+    )
     return catalog
 
 

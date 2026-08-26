@@ -67,16 +67,16 @@ canonical Question transition, and `dismiss`/`delete` remain Candidate-local.
 basis; an explicit current-host answer continues separately through
 `decision_record` and its Question-revision/User-Source linkage.
 
-The SessionStart and MCP initialization guidance require the agent to identify
-every independently material unresolved user-owned dimension after owner,
-Decision/contract, and repository research. A recommendation, preferred
-implementation, or one API dimension cannot authorize a separate unstated
-material policy. Independently user-owned dimensions require independently
-explicit authority; genuinely coupled dimensions may share one Question only
-when the alternatives disclose every coupled material consequence. Narrow,
-conventional, simple, compatible-looking, or locally convenient choices do not
-change that authority boundary, while trivial implementation details still do
-not become Questions.
+SessionStart and MCP initialization share a concise authority screen. After
+repository facts and applicable accepted contracts and Decisions are inspected,
+outcomes are classified in order as already settled, delegated implementation,
+exploratory uncertainty, or unresolved material user-owned outcomes. Only the
+last class stops for explicit user authority. Every independently material
+dimension must be identified; a recommendation is not authority for another
+dimension, while genuinely coupled dimensions may share one Question only when
+all coupled material consequences are disclosed. Trivial implementation details
+do not become Questions. The MCP tool descriptions and operations above own the
+Candidate, frontier, and Decision procedure and validation.
 
 Authorize an installed server for one repository:
 

@@ -382,6 +382,20 @@ fn research_attachment_is_source_grounded_and_does_not_promote(
         candidate.id,
         QuestionResearchState::ResearchRequired,
     )?;
+    let premature = candidates
+        .promote_question(&mut canonical, &basis, project.id, candidate.id)
+        .expect_err("research-required Candidate must not be promoted");
+    assert_eq!(
+        premature.kind(),
+        volicord_inquiry::ErrorKind::DomainConflict
+    );
+    assert!(premature
+        .to_string()
+        .contains("research is not ready for promotion"));
+    assert!(canonical
+        .read_canonical_basis(project.id, CanonicalReadOptions::default())?
+        .active_questions
+        .is_empty());
     candidates.attach_research_basis(
         project.id,
         candidate.id,

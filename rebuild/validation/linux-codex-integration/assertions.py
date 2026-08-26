@@ -149,6 +149,8 @@ def main() -> int:
         "rebuild/crates/volicord-operations/src/main.rs",
         "rebuild/crates/volicord-host/README.md",
         "rebuild/crates/volicord-host/src/mcp.rs",
+        "rebuild/crates/volicord-inquiry/README.md",
+        "rebuild/crates/volicord-inquiry/src/store.rs",
     }
     require(
         not set(production_drift) - permitted_activation_drift,
