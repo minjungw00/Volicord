@@ -104,7 +104,7 @@ REAL_SESSION_CHECKS = (
     "repository_scoped_activation",
     "naturalistic_prompt_integrity",
     "plain_task_goal_linkage",
-    "clean_bounded_baseline",
+    "grounded_pre_work_repository_baseline",
     "behavior_classification",
     "appropriate_inquiry_outcome",
     "hidden_material_discovery_order",
@@ -2224,6 +2224,8 @@ def generated_repository_path(path: str) -> bool:
             "dist",
             "target",
             ".cache",
+            ".venv",
+            ".ruff_cache",
             "__pycache__",
             ".pytest_cache",
             ".mypy_cache",
@@ -3016,6 +3018,7 @@ def checkpoint_verification_facts(
     if len(rows) != len(declared):
         return False
     executed_ids: list[str] = []
+    used_command_occurrences: set[tuple[int, int]] = set()
     for position, (claim, row) in enumerate(zip(declared, rows, strict=True)):
         if not isinstance(claim, dict) or row.get("position") != position:
             return False
@@ -3054,14 +3057,16 @@ def checkpoint_verification_facts(
         commands = [
             command
             for command in work.commands
-            if command.sequence < call.sequence
-            and isinstance(command.parsed_command, dict)
-            and command.parsed_command.get("cmd") == invocation
+            if command.completion_sequence < call.sequence
+            and (command.sequence, command.group_index) not in used_command_occurrences
+            and command_invocation_fingerprint(command) == invocation_fingerprint
             and command.exit_code == exit_code
             and command.termination == termination
         ]
-        if len(commands) != 1:
+        if not commands:
             return False
+        command = min(commands, key=lambda value: (value.sequence, value.group_index))
+        used_command_occurrences.add((command.sequence, command.group_index))
         if state == "passed" and not (termination == "exited" and exit_code == 0):
             return False
         if state == "failed" and termination == "exited" and exit_code == 0:
@@ -3083,6 +3088,40 @@ def checkpoint_verification_facts(
             return False
         executed_ids.append(str(source_id))
     return returned_ids == executed_ids
+
+
+def command_invocation_fingerprint(command: Any) -> str | None:
+    parsed = command.parsed_command
+    invocation = parsed.get("cmd") if isinstance(parsed, dict) else None
+    if not isinstance(invocation, str) or not invocation:
+        return None
+    encoded = invocation.encode("utf-8")
+    if len(encoded) > 16_384:
+        return None
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def checkpoint_pre_existing_dirty_paths(call: ToolCall | None) -> list[str] | None:
+    if call is None or call.outcome != "succeeded":
+        return None
+    paths = call.result.get("pre_existing_dirty_paths")
+    if not isinstance(paths, list) or len(paths) > 256:
+        return None
+    if not all(isinstance(path, str) for path in paths):
+        return None
+    if paths != sorted(set(paths)):
+        return None
+    for path in paths:
+        candidate = Path(path)
+        if (
+            not path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or path != candidate.as_posix()
+            or any(part in {".git", ".local"} for part in candidate.parts)
+        ):
+            return None
+    return paths
 
 
 def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
@@ -3411,13 +3450,7 @@ def real_session_evidence(
     )
     initialize_call = unique_call(work_capture, "project_initialize")
     goal_call = unique_call(work_capture, "context_record")
-    clean_statuses = [
-        command
-        for command in work_capture.commands
-        if command_is_clean_git_status(command.parsed_command)
-        and command.exit_code == 0
-        and command.output_was_empty
-    ] if work_capture is not None else []
+    pre_existing_dirty_paths = checkpoint_pre_existing_dirty_paths(checkpoint_call)
     baseline_ok = (
         bundle is not None
         and work_capture is not None
@@ -3438,7 +3471,7 @@ def real_session_evidence(
             boundary_completion_sequence=goal_call.completion_sequence,
             first_write_sequence=first_work_change,
         )
-        and any(command.sequence < baseline_call.sequence for command in clean_statuses)
+        and pre_existing_dirty_paths is not None
     )
 
     invocations_ok = (
@@ -3569,6 +3602,10 @@ def real_session_evidence(
                 boundary_completion_sequence=recall_call.completion_sequence,
                 first_write_sequence=first_resume_write,
             )
+            for call in resume_checkpoint_calls
+        )
+        and all(
+            checkpoint_pre_existing_dirty_paths(call) is not None
             for call in resume_checkpoint_calls
         )
     )
@@ -3735,7 +3772,9 @@ def real_session_evidence(
         "repository_scoped_activation": evidence_check(references_present, activation_ok),
         "naturalistic_prompt_integrity": evidence_check(references_present, prompt_integrity_ok),
         "plain_task_goal_linkage": evidence_check(references_present, task_goal_ok),
-        "clean_bounded_baseline": evidence_check(references_present, baseline_ok),
+        "grounded_pre_work_repository_baseline": evidence_check(
+            references_present, baseline_ok
+        ),
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
         "hidden_material_discovery_order": evidence_check(
@@ -3768,6 +3807,7 @@ def real_session_evidence(
         "status": status_from_steps(checks),
         "checks": checks,
         "changed_paths": changed_paths or [],
+        "pre_existing_dirty_paths": pre_existing_dirty_paths or [],
         "continuation_paths": continuation_paths,
         "relevant_resume_paths": relevant_resume_paths,
         "continuation_basis": {
@@ -6027,6 +6067,7 @@ def real_session_fixture(
                 "current_analysis_snapshot_id": current_analysis,
                 "baseline_repository_snapshot_id": baseline_repository,
                 "current_repository_snapshot_id": current_repository,
+                "pre_existing_dirty_paths": [],
                 "changed_paths": work_paths,
                 "applied_decision_ids": applied_decisions,
                 "verification_source_ids": [verification_source],
@@ -6246,6 +6287,7 @@ def real_session_fixture(
                 "current_analysis_snapshot_id": resume_current_analysis,
                 "baseline_repository_snapshot_id": resume_baseline_repository,
                 "current_repository_snapshot_id": resume_current_repository,
+                "pre_existing_dirty_paths": [],
                 "changed_paths": ["src/resume.rs"],
                 "applied_decision_ids": applied_decisions,
                 "verification_source_ids": [verification_source],
@@ -9064,6 +9106,62 @@ def self_test() -> int:
     ):
         raise AssertionError("same-result split command could not establish post-Recall inspection")
 
+    product_grounded_baseline = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    baseline_path, baseline_events = capture_events(product_grounded_baseline, "work")
+    baseline_events = [
+        value
+        for value in baseline_events
+        if "status-call" not in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    store_capture(
+        product_grounded_baseline,
+        "work",
+        baseline_path,
+        baseline_events,
+    )
+    mutate_custom_output(
+        product_grounded_baseline,
+        "work",
+        "checkpoint-call",
+        lambda output: output.update(
+            {"pre_existing_dirty_paths": ["pre-existing/local-note.md"]}
+        ),
+    )
+    grounded_baseline_result = real_session_evidence(
+        product_grounded_baseline,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        grounded_baseline_result["checks"][
+            "grounded_pre_work_repository_baseline"
+        ]
+        != "passed"
+    ):
+        raise AssertionError(
+            "grounded Checkpoint baseline required a duplicate git-status spelling"
+        )
+
+    malformed_baseline_dirty_path = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_custom_output(
+        malformed_baseline_dirty_path,
+        "work",
+        "checkpoint-call",
+        lambda output: output.update({"pre_existing_dirty_paths": ["../escape.rs"]}),
+    )
+    if real_session_evidence(
+        malformed_baseline_dirty_path,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["grounded_pre_work_repository_baseline"] != "failed":
+        raise AssertionError("unbounded Checkpoint baseline dirty path qualified")
+
     failed_verification = real_session_fixture("volicord", 1, revision, evidence_directory)
     mutate_custom_output(
         failed_verification,
@@ -9083,6 +9181,43 @@ def self_test() -> int:
         absent_verification, kind="volicord", cycle=1, repository_revision=revision
     )["checks"]["source_grounded_checkpoint"] != "failed":
         raise AssertionError("shell claim without a completed rollout execution qualified")
+
+    post_checkpoint_completion = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    completion_path, completion_events = capture_events(post_checkpoint_completion, "work")
+    verification_outputs = [
+        value
+        for value in completion_events
+        if value.get("payload", {}).get("type") == "custom_tool_call_output"
+        and "verification-call" in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    completion_events = [
+        value for value in completion_events if value not in verification_outputs
+    ]
+    checkpoint_completion_index = max(
+        index
+        for index, value in enumerate(completion_events)
+        if value.get("payload", {}).get("type") == "mcp_tool_call_end"
+        and value.get("payload", {}).get("invocation", {}).get("tool")
+        == "checkpoint_record"
+    )
+    completion_events[
+        checkpoint_completion_index + 1 : checkpoint_completion_index + 1
+    ] = verification_outputs
+    store_capture(
+        post_checkpoint_completion,
+        "work",
+        completion_path,
+        completion_events,
+    )
+    if real_session_evidence(
+        post_checkpoint_completion,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("command completed after the Checkpoint qualified verification")
 
     stdout_only_verification = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -9137,6 +9272,72 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["source_grounded_checkpoint"] != "failed":
         raise AssertionError("printed stdout without command outcome qualified failed verification")
+
+    reused_command_occurrence = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_mcp_call(
+        reused_command_occurrence,
+        "work",
+        "checkpoint_record",
+        lambda arguments: arguments["verification"].append(
+            json.loads(json.dumps(arguments["verification"][0]))
+        ),
+    )
+    mutate_custom_output(
+        reused_command_occurrence,
+        "work",
+        "checkpoint-call",
+        lambda output: output["verification_source_ids"].append(
+            output["verification_source_ids"][0]
+        ),
+    )
+
+    def duplicate_verification_row(bundle: dict[str, Any]) -> None:
+        for table_value in bundle["payload"]["tables"]:
+            if table_value["name"] != "checkpoint_verifications":
+                continue
+            duplicate = json.loads(json.dumps(table_value["rows"][0]))
+            position_index = table_value["columns"].index("position")
+            duplicate[position_index] = {"type": "integer", "value": 1}
+            table_value["rows"].append(duplicate)
+
+    mutate_bundle(reused_command_occurrence, duplicate_verification_row)
+    if real_session_evidence(
+        reused_command_occurrence,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("one command occurrence qualified two verification facts")
+
+    mistyped_command_fingerprint = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+
+    def mistype_verification_fingerprint(bundle: dict[str, Any]) -> None:
+        for table_value in bundle["payload"]["tables"]:
+            if table_value["name"] != "sources":
+                continue
+            columns = table_value["columns"]
+            kind_index = columns.index("source_kind")
+            fingerprint_index = columns.index("detail_one")
+            for row in table_value["rows"]:
+                if row[kind_index].get("value") == "command_execution":
+                    row[fingerprint_index] = {
+                        "type": "text",
+                        "value": "sha256:" + "f" * 64,
+                    }
+                    return
+
+    mutate_bundle(mistyped_command_fingerprint, mistype_verification_fingerprint)
+    if real_session_evidence(
+        mistyped_command_fingerprint,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "failed":
+        raise AssertionError("mistyped persisted command fingerprint qualified")
 
     fabricated_decision = real_session_fixture("volicord", 1, revision, evidence_directory)
     fabricated_decision["user_decision"] = {"status": "passed", "actor": "user"}
