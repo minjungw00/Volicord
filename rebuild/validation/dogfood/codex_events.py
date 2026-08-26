@@ -90,6 +90,25 @@ def bounded_path(value: Any, cwd: Path) -> str | None:
     return normalized
 
 
+def generated_repository_path(path: str) -> bool:
+    return any(
+        part
+        in {
+            "build",
+            "dist",
+            "target",
+            "node_modules",
+            ".cache",
+            ".venv",
+            ".ruff_cache",
+            "__pycache__",
+            ".pytest_cache",
+            ".mypy_cache",
+        }
+        for part in Path(path).parts
+    )
+
+
 @dataclass(frozen=True)
 class UserTurn:
     sequence: int
@@ -123,6 +142,7 @@ class CommandObservation:
     sequence: int
     completion_sequence: int
     turn_id: str
+    group_index: int
     parsed_command: Any
     exit_code: int | None
     termination: str | None
@@ -268,6 +288,11 @@ ASSIGNED_CALL = re.compile(
     r"(?P<forward>.*)\s*\Z",
     re.DOTALL,
 )
+PROMISE_ASSIGNED_CALL = re.compile(
+    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+"
+    r"Promise\.all\s*\(\s*\[(?P<calls>.*)\]\s*\)\s*;\s*(?P<forward>.*)\s*\Z",
+    re.DOTALL,
+)
 MCP_WRAPPER = re.compile(
     r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+"
     r"tools\.mcp__volicord__(?P<operation>[A-Za-z_$][A-Za-z0-9_$]*)\s*"
@@ -283,6 +308,90 @@ BOUND_PATCH = re.compile(
     r"text\s*\(\s*await\s+tools\.apply_patch\s*\(\s*(?P=variable)\s*\)\s*\)\s*;\s*\Z",
     re.DOTALL,
 )
+
+
+def parse_static_exec_command_list(value: str) -> tuple[dict[str, Any], ...] | None:
+    """Parse a bounded comma-separated list of literal exec_command calls."""
+    offset = 0
+    result: list[dict[str, Any]] = []
+    call_prefix = re.compile(r"tools\.exec_command\s*\(")
+    while True:
+        while offset < len(value) and value[offset] in " \t\r\n,":
+            offset += 1
+        if offset == len(value):
+            return tuple(result) if 2 <= len(result) <= 16 else None
+        match = call_prefix.match(value, offset)
+        if match is None:
+            return None
+        argument_start = match.end()
+        cursor = argument_start
+        quote = False
+        escaped = False
+        while cursor < len(value):
+            character = value[cursor]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    quote = False
+            elif character == '"':
+                quote = True
+            elif character == ")":
+                break
+            cursor += 1
+        if cursor >= len(value) or quote:
+            return None
+        try:
+            arguments = JsLiteralParser(value[argument_start:cursor]).parse()
+        except EvidenceError:
+            return None
+        if not isinstance(arguments, dict):
+            return None
+        result.append(arguments)
+        offset = cursor + 1
+        while offset < len(value) and value[offset] in " \t\r\n":
+            offset += 1
+        if offset < len(value) and value[offset] != ",":
+            return None
+
+
+def indexed_promise_output_mode(forward: str, variable: str) -> str | None:
+    identifier = r"[A-Za-z_$][A-Za-z0-9_$]*"
+    escaped_variable = re.escape(variable)
+    suffix_zero = re.fullmatch(
+        rf"{escaped_variable}\.forEach\s*\(\s*\(\s*(?P<result>{identifier})\s*,\s*"
+        rf"(?P<index>{identifier})\s*\)\s*=>\s*text\s*\(\s*`"
+        rf"[A-Za-z][A-Za-z0-9 _-]{{0,31}}\$\{{(?P=index)\}}\\n"
+        rf"\$\{{(?P=result)\.output\}}\\nexit=\$\{{(?P=result)\.exit_code\}}`"
+        rf"\s*\)\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    if suffix_zero is not None:
+        return "indexed_suffix_zero"
+    prefix_one = re.fullmatch(
+        rf"{escaped_variable}\.forEach\s*\(\s*\(\s*(?P<result>{identifier})\s*,\s*"
+        rf"(?P<index>{identifier})\s*\)\s*=>\s*text\s*\(\s*`"
+        rf"[A-Za-z][A-Za-z0-9 _-]{{0,31}}\$\{{(?P=index)\+1\}}\s+exit="
+        rf"\$\{{(?P=result)\.exit_code\}}\\n\$\{{(?P=result)\.output\}}`"
+        rf"\s*\)\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    if prefix_one is not None:
+        return "indexed_prefix_one"
+    suffix_one = re.fullmatch(
+        rf"for\s*\(\s*let\s+(?P<index>{identifier})\s*=\s*0\s*;\s*"
+        rf"(?P=index)\s*<\s*{escaped_variable}\.length\s*;\s*(?P=index)\+\+\s*\)\s*\{{\s*"
+        rf"text\s*\(\s*`[A-Za-z][A-Za-z0-9 _-]{{0,31}}\$\{{(?P=index)\+1\}}\\n"
+        rf"\$\{{{escaped_variable}\[(?P=index)\]\.output\}}\\nEXIT\s+"
+        rf"\$\{{{escaped_variable}\[(?P=index)\]\.exit_code\}}`\s*\)\s*;?\s*\}}\s*;?",
+        forward,
+        re.DOTALL,
+    )
+    return "indexed_suffix_one" if suffix_one is not None else None
 
 
 def parse_custom_call(value: Any) -> ParsedCustomCall | None:
@@ -304,6 +413,16 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
             return None
         return ParsedCustomCall("apply_patch", patch, "patch") if isinstance(patch, str) else None
 
+    promise_match = PROMISE_ASSIGNED_CALL.fullmatch(value)
+    if promise_match is not None:
+        arguments = parse_static_exec_command_list(promise_match.group("calls"))
+        mode = indexed_promise_output_mode(
+            promise_match.group("forward").strip(), promise_match.group("variable")
+        )
+        if arguments is None or mode is None:
+            return None
+        return ParsedCustomCall("exec_command", arguments, mode)
+
     match = ASSIGNED_CALL.fullmatch(value)
     if match is None:
         return None
@@ -312,7 +431,11 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     if tool_name != "exec_command":
         return None
     forward = match.group("forward").strip()
-    result_forward = re.fullmatch(rf"text\s*\(\s*{variable}\s*\)\s*;", forward, re.DOTALL)
+    result_forward = re.fullmatch(
+        rf"text\s*\(\s*(?:{variable}|JSON\.stringify\s*\(\s*{variable}\s*\))\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
     correlated_split_forward = re.fullmatch(
         rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
@@ -321,7 +444,30 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         forward,
         re.DOTALL,
     )
-    if result_forward is None and output_forward is None and correlated_split_forward is None:
+    correlated_session_forward = re.fullmatch(
+        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
+        rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{\s*exit_code\s*:\s*"
+        rf"{variable}\.exit_code\s*,\s*session_id\s*:\s*{variable}\.session_id\s*"
+        rf"\}}\s*\)\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    template_exit_forward = re.fullmatch(
+        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
+        rf"text\s*\(\s*`exit=\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
+        forward,
+        re.DOTALL,
+    )
+    if all(
+        item is None
+        for item in (
+            result_forward,
+            output_forward,
+            correlated_split_forward,
+            correlated_session_forward,
+            template_exit_forward,
+        )
+    ):
         return None
     try:
         arguments = JsLiteralParser(match.group("argument")).parse()
@@ -334,6 +480,10 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         if result_forward is not None
         else "correlated_split"
         if correlated_split_forward is not None
+        else "correlated_session"
+        if correlated_session_forward is not None
+        else "template_exit"
+        if template_exit_forward is not None
         else "output"
     )
     return ParsedCustomCall(tool_name, arguments, mode)
@@ -402,7 +552,7 @@ def custom_output_body(value: Any) -> str | None:
 
 
 def custom_output_parts(value: Any) -> list[str] | None:
-    if not isinstance(value, list) or not value or len(value) > 8:
+    if not isinstance(value, list) or not value or len(value) > 17:
         return None
     parts: list[str] = []
     for item in value:
@@ -412,7 +562,9 @@ def custom_output_parts(value: Any) -> list[str] | None:
     return parts
 
 
-def custom_correlated_command_result(value: Any) -> tuple[str, int] | None:
+def custom_correlated_command_result(
+    value: Any, *, includes_session_id: bool = False
+) -> tuple[str, int] | None:
     parts = custom_output_parts(value)
     if parts is None or len(parts) != 3:
         return None
@@ -423,12 +575,72 @@ def custom_correlated_command_result(value: Any) -> tuple[str, int] | None:
         status = json.loads(parts[2])
     except json.JSONDecodeError:
         return None
-    if not isinstance(status, dict) or set(status) != {"exit_code"}:
+    expected_keys = {"exit_code", "session_id"} if includes_session_id else {"exit_code"}
+    if not isinstance(status, dict) or set(status) != expected_keys:
+        return None
+    if "session_id" in status and status["session_id"] is not None and (
+        isinstance(status["session_id"], bool)
+        or not isinstance(status["session_id"], int)
+    ):
         return None
     exit_code = status["exit_code"]
     if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not 0 <= exit_code <= 2_147_483_647:
         return None
     return parts[1], exit_code
+
+
+def custom_template_command_result(value: Any) -> tuple[str, int] | None:
+    parts = custom_output_parts(value)
+    if parts is None or len(parts) != 3:
+        return None
+    header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
+    status = re.fullmatch(r"exit=([0-9]+)", parts[2])
+    if header is None or header.group("body") or status is None:
+        return None
+    exit_code = int(status.group(1))
+    return (parts[1], exit_code) if exit_code <= 2_147_483_647 else None
+
+
+def custom_indexed_command_results(
+    value: Any, mode: str, count: int
+) -> list[tuple[str, int]] | None:
+    parts = custom_output_parts(value)
+    if parts is None or len(parts) != count + 1:
+        return None
+    header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
+    if header is None or header.group("body"):
+        return None
+    patterns = {
+        "indexed_suffix_zero": re.compile(
+            r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\n"
+            r"(?P<output>.*)\nexit=(?P<exit>[0-9]+)\Z",
+            re.DOTALL,
+        ),
+        "indexed_prefix_one": re.compile(
+            r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\s+exit="
+            r"(?P<exit>[0-9]+)\n(?P<output>.*)\Z",
+            re.DOTALL,
+        ),
+        "indexed_suffix_one": re.compile(
+            r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\n"
+            r"(?P<output>.*)\nEXIT\s+(?P<exit>[0-9]+)\Z",
+            re.DOTALL,
+        ),
+    }
+    pattern = patterns.get(mode)
+    if pattern is None:
+        return None
+    expected_base = 0 if mode == "indexed_suffix_zero" else 1
+    results: list[tuple[str, int]] = []
+    for position, part in enumerate(parts[1:]):
+        match = pattern.fullmatch(part)
+        if match is None or int(match.group("index")) != position + expected_base:
+            return None
+        exit_code = int(match.group("exit"))
+        if exit_code > 2_147_483_647:
+            return None
+        results.append((match.group("output"), exit_code))
+    return results
 
 
 def custom_output_object(value: Any) -> dict[str, Any] | None:
@@ -510,10 +722,38 @@ def split_command(value: str) -> tuple[str, ...] | None:
     return parsed or None
 
 
+def split_static_compound_command(value: str) -> list[tuple[str, ...]]:
+    """Split only bounded static shell control forms for read-only classification."""
+    try:
+        lexer = shlex.shlex(value, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return []
+    if not tokens or len(tokens) > 128 or any(
+        "$" in token or "`" in token or token in {"<", ">", ">>", "<<", "&"}
+        for token in tokens
+    ):
+        return []
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in {"&&", "||", ";", "|"}:
+            if not current:
+                return []
+            segments.append(tuple(current))
+            current = []
+        else:
+            current.append(token)
+    if not current:
+        return []
+    segments.append(tuple(current))
+    return segments if len(segments) <= 16 else []
+
+
 def command_argvs(value: Any) -> list[tuple[str, ...]]:
     if isinstance(value, str):
-        parsed = split_command(value)
-        return [parsed] if parsed else []
+        return split_static_compound_command(value)
     if isinstance(value, list):
         if value and all(isinstance(item, str) for item in value):
             return [tuple(value)]
@@ -525,9 +765,7 @@ def command_argvs(value: Any) -> list[tuple[str, ...]]:
     for key in ("cmd", "command"):
         command = value.get(key)
         if isinstance(command, str):
-            parsed = split_command(command)
-            if parsed:
-                result.append(parsed)
+            result.extend(split_static_compound_command(command))
     argv = value.get("argv")
     if isinstance(argv, list) and argv and all(isinstance(item, str) for item in argv):
         result.append(tuple(argv))
@@ -563,19 +801,31 @@ def command_is_repository_inspection(value: Any) -> bool:
         "stat",
         "tail",
         "tree",
+        "pwd",
+        "wc",
     }
-    git_inspections = {"diff", "grep", "log", "ls-files", "show", "status"}
-    return any(
+    git_inspections = {
+        "diff",
+        "grep",
+        "log",
+        "ls-files",
+        "rev-parse",
+        "show",
+        "status",
+    }
+    argvs = command_argvs(value)
+    return bool(argvs) and all(
         bool(argv)
         and (
             Path(argv[0]).name.lower() in inspection_programs
+            or (Path(argv[0]).name.lower() == "cd" and len(argv) == 2)
             or (
                 Path(argv[0]).name.lower() == "git"
                 and len(argv) >= 2
                 and argv[1].lower() in git_inspections
             )
         )
-        for argv in command_argvs(value)
+        for argv in argvs
     )
 
 
@@ -631,6 +881,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     task_sequences: list[int] = []
     completed_task_sequences: list[int] = []
     compacted_sequences: list[int] = []
+    known_turn_ids: set[str] = set()
     user_turns: list[UserTurn] = []
     calls: dict[str, tuple[int, str, ParsedCustomCall]] = {}
     completions: dict[str, tuple[int, str, Any]] = {}
@@ -665,6 +916,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
             turn_id = payload.get("turn_id")
             if nonempty(turn_id):
                 current_turn = str(turn_id)
+                known_turn_ids.add(str(turn_id))
                 task_sequences.append(sequence)
         elif envelope == "event_msg" and payload_type in {"task_complete", "task_completed"}:
             completed_task_sequences.append(sequence)
@@ -715,69 +967,103 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 payload.get("success") is not True
                 or payload.get("status") != "completed"
                 or not nonempty(turn_id)
+                or str(turn_id) not in known_turn_ids
                 or not isinstance(raw_paths, dict)
             ):
                 continue
             paths = [bounded_path(value, cwd) for value in raw_paths]
             if not paths or len(paths) > MAX_PATHS or any(value is None for value in paths):
                 continue
+            paths = [str(value) for value in paths if not generated_repository_path(str(value))]
+            if not paths:
+                continue
             raw_path_observations.append(
-                (sequence, str(turn_id), tuple(sorted(set(str(value) for value in paths))))
+                (sequence, str(turn_id), tuple(sorted(set(paths))))
             )
 
     tool_calls: list[ToolCall] = []
     commands: list[CommandObservation] = []
-    completed_patches: list[tuple[int, int, str]] = []
     for call_id, (sequence, turn_id, parsed) in calls.items():
         completion = completions.get(call_id)
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
             continue
         completion_sequence, _, raw_output = completion
         if parsed.tool_name == "exec_command":
-            body = custom_output_body(raw_output)
-            if body is None:
-                continue
-            correlated = (
-                custom_correlated_command_result(raw_output)
-                if parsed.output_mode == "correlated_split"
-                else None
+            arguments = (
+                list(parsed.arguments)
+                if isinstance(parsed.arguments, tuple)
+                else [parsed.arguments]
             )
-            if parsed.output_mode == "correlated_split" and correlated is None:
-                continue
-            result = custom_output_object(raw_output) if parsed.output_mode == "result" else None
-            output = (
-                correlated[0]
-                if correlated is not None
-                else result.get("output")
-                if isinstance(result, dict)
-                else body
-            )
-            exit_code = (
-                correlated[1]
-                if correlated is not None
-                else result.get("exit_code")
-                if isinstance(result, dict)
-                else None
-            )
-            if not isinstance(output, str) or (
-                exit_code is not None
-                and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
-            ):
-                continue
-            commands.append(
-                CommandObservation(
-                    sequence,
-                    completion_sequence,
-                    turn_id,
-                    parsed.arguments,
-                    exit_code,
-                    "exited" if isinstance(exit_code, int) else None,
-                    output,
-                    not output.strip(),
+            normalized_results: list[tuple[str, int | None]] | None = None
+            if parsed.output_mode.startswith("indexed_"):
+                indexed = custom_indexed_command_results(
+                    raw_output, parsed.output_mode, len(arguments)
                 )
-            )
-        elif parsed.tool_name == "apply_patch" and custom_output_body(raw_output) is not None:
-            completed_patches.append((sequence, completion_sequence, turn_id))
+                normalized_results = indexed
+            else:
+                body = custom_output_body(raw_output)
+                if body is None:
+                    continue
+                correlated = (
+                    custom_correlated_command_result(
+                        raw_output,
+                        includes_session_id=parsed.output_mode == "correlated_session",
+                    )
+                    if parsed.output_mode in {"correlated_split", "correlated_session"}
+                    else custom_template_command_result(raw_output)
+                    if parsed.output_mode == "template_exit"
+                    else None
+                )
+                result = (
+                    custom_output_object(raw_output)
+                    if parsed.output_mode == "result"
+                    else None
+                )
+                output = (
+                    correlated[0]
+                    if correlated is not None
+                    else result.get("output")
+                    if isinstance(result, dict)
+                    else body
+                )
+                exit_code = (
+                    correlated[1]
+                    if correlated is not None
+                    else result.get("exit_code")
+                    if isinstance(result, dict)
+                    else None
+                )
+                if parsed.output_mode in {
+                    "correlated_split",
+                    "correlated_session",
+                    "template_exit",
+                } and correlated is None:
+                    continue
+                if not isinstance(output, str) or (
+                    exit_code is not None
+                    and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
+                ):
+                    continue
+                normalized_results = [(output, exit_code)]
+            if normalized_results is None or len(normalized_results) != len(arguments):
+                continue
+            for group_index, (arguments_value, normalized) in enumerate(
+                zip(arguments, normalized_results, strict=True)
+            ):
+                output, exit_code = normalized
+                commands.append(
+                    CommandObservation(
+                        sequence,
+                        completion_sequence,
+                        turn_id,
+                        group_index,
+                        arguments_value,
+                        exit_code,
+                        "exited" if isinstance(exit_code, int) else None,
+                        output,
+                        not output.strip(),
+                    )
+                )
 
     seen_mcp_call_ids: set[str] = set()
     correlated_wrapper_ids: set[str] = set()
@@ -828,14 +1114,10 @@ def load_codex_capture(path: Path) -> CodexCapture:
         )
 
     tool_calls.sort(key=lambda value: value.sequence)
-    commands.sort(key=lambda value: value.sequence)
+    commands.sort(key=lambda value: (value.sequence, value.group_index))
     path_observations = [
         PathObservation(sequence, turn_id, paths)
         for sequence, turn_id, paths in raw_path_observations
-        if any(
-            start < sequence < completion and patch_turn == turn_id
-            for start, completion, patch_turn in completed_patches
-        )
     ]
 
     fresh_user_thread = (

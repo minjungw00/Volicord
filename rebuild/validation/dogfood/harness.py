@@ -50,6 +50,7 @@ from architecture_owners import ACTIVE_ARCHITECTURE_OWNER_PATHS  # noqa: E402
 
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
+CURRENT_EXECUTION_FIXTURE = HERE / "fixtures/current-codex-execution-evidence.jsonl"
 V11_HARNESS = ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"
 STRICT_FAKE_CLI = ROOT / "rebuild/validation/shared/strict_fake_volicord.py"
 DECISION_REGISTER = ROOT / "rebuild/docs/design/open-decisions.md"
@@ -6884,6 +6885,43 @@ def self_test() -> int:
         or b"text(JSON.stringify(x))" not in CURRENT_MCP_FIXTURE.read_bytes()
     ):
         raise AssertionError("current JSON.stringify wrapper fixture did not normalize from MCP completion")
+    execution_capture = load_codex_capture(CURRENT_EXECUTION_FIXTURE)
+    if len(execution_capture.commands) != 5:
+        raise AssertionError("current execution fixture did not produce one observation per command")
+    expected_execution = [
+        ("python3 -m unittest tests.test_template", 0, "template output\n", False, 0),
+        ("python3 -m unittest tests.test_json_status", 2, "json status output\n", False, 0),
+        ("python3 -m unittest tests.test_json_result", 0, "json result output\n", False, 0),
+        ("rg --files src && git status --short", 0, "src/lib.rs\n", False, 0),
+        ("python3 -m unittest tests.test_empty", 3, "", True, 1),
+    ]
+    observed_execution = [
+        (
+            command.parsed_command.get("cmd"),
+            command.exit_code,
+            command.output,
+            command.output_was_empty,
+            command.group_index,
+        )
+        for command in execution_capture.commands
+        if isinstance(command.parsed_command, dict)
+    ]
+    if observed_execution != expected_execution or any(
+        command.termination != "exited" for command in execution_capture.commands
+    ):
+        raise AssertionError("current execution fixture lost command order, outcome, or output state")
+    if [item.paths for item in execution_capture.path_observations] != [
+        ("src/lib.rs", "tests/lib.rs")
+    ]:
+        raise AssertionError("authoritative bounded patch completion paths were not normalized")
+    if not command_is_repository_inspection(
+        {"cmd": "rg --files src && git status --short"}
+    ):
+        raise AssertionError("bounded compound repository inspection was not classified")
+    if command_is_repository_inspection(
+        {"cmd": "rg --files src && python3 scripts/rewrite.py"}
+    ):
+        raise AssertionError("compound command with a non-inspection action was misclassified")
     compacted_fixture_root = evidence_directory / "compacted-fresh-thread"
     compacted_fixture_root.mkdir()
     compacted_fixture = real_session_fixture(
@@ -7178,6 +7216,45 @@ def self_test() -> int:
         raise AssertionError("complete command result forwarding is no longer supported")
     if correlated_parsed is None or correlated_parsed.output_mode != "correlated_split":
         raise AssertionError("same-result correlated command forwarding was not recognized")
+    json_result_parsed = parse_custom_call(
+        f"const r=await tools.exec_command({command_arguments});\n"
+        "text(JSON.stringify(r));\n"
+    )
+    template_exit_parsed = parse_custom_call(
+        f"const r=await tools.exec_command({command_arguments});\n"
+        "text(r.output); text(`exit=${r.exit_code}`);\n"
+    )
+    promise_prefix_parsed = parse_custom_call(
+        "const rs=await Promise.all(["
+        f"tools.exec_command({command_arguments}),"
+        f"tools.exec_command({command_arguments})]);"
+        "rs.forEach((r,i)=>text(`OUT${i+1} exit=${r.exit_code}\\n${r.output}`));"
+    )
+    promise_loop_parsed = parse_custom_call(
+        "const results=await Promise.all(["
+        f"tools.exec_command({command_arguments}),"
+        f"tools.exec_command({command_arguments})]);"
+        "for(let i=0;i<results.length;i++){"
+        "text(`CMD${i+1}\\n${results[i].output}\\nEXIT ${results[i].exit_code}`);}"
+    )
+    if (
+        json_result_parsed is None
+        or json_result_parsed.output_mode != "result"
+        or template_exit_parsed is None
+        or template_exit_parsed.output_mode != "template_exit"
+        or promise_prefix_parsed is None
+        or promise_prefix_parsed.output_mode != "indexed_prefix_one"
+        or promise_loop_parsed is None
+        or promise_loop_parsed.output_mode != "indexed_suffix_one"
+    ):
+        raise AssertionError("bounded current command forwarding variants were not recognized")
+    dynamic_promise = (
+        "const calls=[" + command_arguments + "];"
+        "const rs=await Promise.all(calls.map(x=>tools.exec_command(x)));"
+        "rs.forEach((r,i)=>text(`R${i}\\n${r.output}\\nexit=${r.exit_code}`));"
+    )
+    if parse_custom_call(dynamic_promise) is not None:
+        raise AssertionError("dynamically generated Promise.all commands were accepted")
     unsupported_split_wrappers = {
         "literal exit status": (
             f"const r=await tools.exec_command({command_arguments});\n"
@@ -7192,10 +7269,6 @@ def self_test() -> int:
             f"const r=await tools.exec_command({command_arguments});\n"
             f"const other=await tools.exec_command({command_arguments});\n"
             "text(r.output); text(JSON.stringify({exit_code:r.exit_code}));\n"
-        ),
-        "unsupported template forwarding": (
-            f"const r=await tools.exec_command({command_arguments});\n"
-            "text(r.output); text(`exit=${r.exit_code}`);\n"
         ),
     }
     for label, wrapper in unsupported_split_wrappers.items():
