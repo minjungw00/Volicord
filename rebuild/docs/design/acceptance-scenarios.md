@@ -539,6 +539,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   포함하지 않는다.
 - 의미 있는 작업 완료, pause 또는 handoff에서 하나의 Checkpoint를 만든다.
 - Checkpoint는 변경, 이유, 검증, 한계, non-goals와 다음 단계를 설명한다.
+- Executed verification은 presentation-oriented command label과 분리된 exact transient host
+  invocation에서 Volicord가 derive한 fingerprint를 existing Command Source에 보존하고,
+  Checkpoint fact는 그 Source ID를 계속 canonical identity로 사용한다.
 - 사용자 review가 없어도 work와 verification 상태를 정직하게 표현한다.
 
 ### Canonical Context 변화
@@ -558,6 +561,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - 일반 파일 쓰기를 Write Ticket이나 동등한 ceremony로 차단
 - 실행하지 않은 테스트를 성공으로 기록
+- command label을 execution correlation key로 사용하거나 caller-supplied digest를 observed
+  execution으로 인정
+- exact command invocation/raw argv를 canonical, portable, Viewer 또는 document content로 보존
 - baseline 뒤 fingerprint가 바뀌지 않은 기존 dirty file을 current changed path로 포함
 - exact baseline 뒤 바뀐 기존 dirty file을 actor ownership ambiguity로 거부
 - bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
@@ -572,6 +578,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - `.venv`/`.ruff_cache` generated descendant exclusion
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - work, verification, review와 acceptance 상태 독립성
+- label과 invocation이 다른 fixture의 exact invocation fingerprint, Source-ID linkage,
+  restart/portable round trip과 raw invocation non-retention
 - known limits와 non-goals 보존
 - session-end Candidate와 canonical promotion 차이
 

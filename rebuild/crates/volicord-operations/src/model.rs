@@ -225,6 +225,7 @@ pub struct UserContextRecordingOutcome {
 pub struct CommandVerificationDraft {
     pub state: VerificationState,
     pub command_label: Option<String>,
+    pub command_invocation: Option<String>,
     pub exit_code: Option<i32>,
     pub termination: Option<CommandTermination>,
     pub outcome: Option<String>,

@@ -1150,6 +1150,7 @@ fn source_summary(payload: &SourcePayload) -> String {
         SourcePayload::CommandExecution {
             command_label,
             outcome,
+            ..
         } => match outcome.exit_code {
             Some(exit_code) => format!("Command {command_label} (exit {exit_code})"),
             None => format!("Command {command_label} (no exit code)"),

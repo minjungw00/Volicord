@@ -435,6 +435,9 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .contains("background_semantic_operation is the separate explicit provider boundary"));
     assert!(instructions
         .contains("same actually observed command execution with a numeric exit status"));
+    assert!(instructions.contains("exact transient command_invocation"));
+    assert!(instructions.contains("presentation-only command_label"));
+    assert!(instructions.contains("does not retain the invocation"));
     assert!(instructions.contains("output-only text is insufficient"));
     assert!(instructions
         .contains("Incidental inspection commands need not become Checkpoint verification facts"));
@@ -488,6 +491,9 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["repository_analyze"].contains("local Runtime Home"));
     assert!(descriptions["repository_analyze"].contains("background_semantic_operation"));
     assert!(descriptions["checkpoint_record"].contains("numeric exit status"));
+    assert!(descriptions["checkpoint_record"].contains("exact transient command_invocation"));
+    assert!(descriptions["checkpoint_record"].contains("presentation-only command_label"));
+    assert!(descriptions["checkpoint_record"].contains("without retaining raw arguments"));
     assert!(descriptions["checkpoint_record"].contains("output-only text is insufficient"));
     assert!(descriptions["checkpoint_record"]
         .contains("first captured after the bounded work is conceptually invalid"));
@@ -1698,6 +1704,58 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         unexecuted_pass["result"]["isError"], true,
         "{unexecuted_pass}"
     );
+    let asserted_digest = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline_id,
+            "kind":"handoff",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "verification":[{
+                "state":"passed",
+                "command_label":"caller asserted digest",
+                "invocation_fingerprint":format!("sha256:{}", "0".repeat(64)),
+                "exit_code":0,
+                "termination":"exited",
+                "outcome":"caller claimed success"
+            }],
+            "next_step":"Continue",
+            "handoff_to":"next Codex session"
+        }),
+    );
+    assert_eq!(
+        asserted_digest["result"]["isError"], true,
+        "{asserted_digest}"
+    );
+    assert!(asserted_digest["result"]["content"][0]["text"]
+        .as_str()
+        .expect("asserted digest error text")
+        .contains("does not match any allowed shape"));
+    let not_run_with_invocation = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline_id,
+            "kind":"handoff",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "verification":[{
+                "state":"not_run",
+                "command_invocation":"cargo test -p never-ran"
+            }],
+            "next_step":"Continue",
+            "handoff_to":"next Codex session"
+        }),
+    );
+    assert_eq!(
+        not_run_with_invocation["result"]["isError"], true,
+        "{not_run_with_invocation}"
+    );
     let output_only_failure = call(
         &mut adapter,
         "checkpoint_record",
@@ -1710,7 +1768,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "applied_decision_ids":[],
             "verification":[{
                 "state":"failed",
-                "command_label":"cargo test -p focused",
+                "command_label":"focused test suite",
+                "command_invocation":"cargo test -p focused -- --exact privacy_secret_7f9d",
                 "termination":"exited",
                 "outcome":"test output reported a failure but no exit status was observed"
             }],
@@ -1742,8 +1801,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "state_change":"Implemented the grounded handoff path",
             "applied_decision_ids":[decision_id],
             "verification":[
-                {"state":"passed","command_label":"cargo test -p focused","exit_code":0,"termination":"exited","outcome":"focused test passed"},
-                {"state":"failed","command_label":"cargo test -p known-failure","exit_code":1,"termination":"exited","outcome":"known failure reproduced"},
+                {"state":"passed","command_label":"focused test suite","command_invocation":"cargo test -p focused -- --exact privacy_secret_7f9d","exit_code":0,"termination":"exited","outcome":"focused test passed"},
+                {"state":"failed","command_label":"known failure reproduction","command_invocation":"cargo test -p known-failure -- --exact fixture","exit_code":1,"termination":"exited","outcome":"known failure reproduced"},
                 {"state":"not_run"}
             ],
             "next_step": "Run maintained V08 assertions",
@@ -1814,27 +1873,79 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         volicord_context::VerificationState::NotRun
     );
     assert_eq!(saved.verification[2].source_id, None);
-    for (fact, exit_code) in saved.verification.iter().zip([0, 1]) {
+    let expected_fingerprints = [
+        "sha256:bdbbfdc61bceaf88be737630d86472d17fc0b3d9dbf29ed79c5149b08bf45ac5",
+        "sha256:fec2f891e196435819bb2ff7a83f6f1be031fe46099a0abe35d4e872d7cea653",
+    ];
+    for ((fact, exit_code), expected_fingerprint) in saved
+        .verification
+        .iter()
+        .zip([0, 1])
+        .zip(expected_fingerprints)
+    {
         let source = canonical
             .sources
             .iter()
             .find(|basis| Some(basis.source.id) == fact.source_id)
             .expect("verification command Source");
         assert!(matches!(
-            source.source.payload,
+            &source.source.payload,
             SourcePayload::CommandExecution {
+                invocation_fingerprint,
                 outcome: volicord_context::CommandOutcome {
                     exit_code: Some(code),
                     termination: volicord_context::CommandTermination::Exited,
                 },
                 ..
-            } if code == exit_code
+            } if *code == exit_code && invocation_fingerprint == expected_fingerprint
         ));
         assert_eq!(source.source.actor.kind, PrincipalKind::Command);
         assert_eq!(
             source.source.observer.as_ref().map(|value| value.kind),
             Some(PrincipalKind::Agent)
         );
+    }
+    let raw_invocations = [
+        "cargo test -p focused -- --exact privacy_secret_7f9d",
+        "cargo test -p known-failure -- --exact fixture",
+    ];
+    let canonical_bytes =
+        fs::read(adapter.operations().layout().canonical_store()).expect("canonical store bytes");
+    for invocation in raw_invocations {
+        assert!(!canonical_bytes
+            .windows(invocation.len())
+            .any(|window| window == invocation.as_bytes()));
+    }
+    let portable_bundle = temporary.path().join("verification-context.json");
+    adapter
+        .operations()
+        .export_bundle(project_id, &portable_bundle)
+        .expect("portable verification export");
+    let portable_bytes = fs::read(&portable_bundle).expect("portable verification bytes");
+    for invocation in raw_invocations {
+        assert!(!portable_bytes
+            .windows(invocation.len())
+            .any(|window| window == invocation.as_bytes()));
+    }
+
+    let imported_runtime = temporary.path().join("imported-runtime");
+    let imported = LocalOperations::new(
+        RuntimeLayout::new(&imported_runtime).expect("portable import runtime"),
+    );
+    imported
+        .import_bundle(&portable_bundle)
+        .expect("portable verification import");
+    let imported_basis = imported
+        .canonical_basis(project_id)
+        .expect("imported canonical basis");
+    for expected_fingerprint in expected_fingerprints {
+        assert!(imported_basis.sources.iter().any(|basis| matches!(
+            &basis.source.payload,
+            SourcePayload::CommandExecution {
+                invocation_fingerprint,
+                ..
+            } if invocation_fingerprint == expected_fingerprint
+        )));
     }
     assert_eq!(
         saved.user_review.state,

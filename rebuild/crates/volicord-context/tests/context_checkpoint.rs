@@ -91,6 +91,7 @@ fn record_sources(
             draft(
                 SourcePayload::CommandExecution {
                     command_label: "cargo test".to_owned(),
+                    invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: volicord_context::CommandOutcome {
                         exit_code: Some(0),
                         termination: volicord_context::CommandTermination::Exited,

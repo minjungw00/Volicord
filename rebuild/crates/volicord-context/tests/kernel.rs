@@ -204,6 +204,7 @@ fn records_all_required_source_kinds_and_provenance() -> Result<(), Box<dyn std:
         },
         SourcePayload::CommandExecution {
             command_label: "cargo test (bounded observation)".to_owned(),
+            invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
             outcome: CommandOutcome {
                 exit_code: Some(0),
                 termination: CommandTermination::Exited,

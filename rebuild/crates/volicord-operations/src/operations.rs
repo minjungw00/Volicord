@@ -2045,6 +2045,13 @@ impl LocalOperations {
                         command_label: draft.command_label.clone().ok_or_else(|| {
                             Error::new("executed verification needs a command label")
                         })?,
+                        invocation_fingerprint: command_invocation_fingerprint(
+                            draft.command_invocation.as_deref().ok_or_else(|| {
+                                Error::new(
+                                    "executed verification needs the exact command invocation",
+                                )
+                            })?,
+                        ),
                         outcome: CommandOutcome {
                             exit_code: draft.exit_code,
                             termination: draft.termination.ok_or_else(|| {
@@ -2333,6 +2340,7 @@ fn validate_verification_drafts(values: &[CommandVerificationDraft]) -> Result<(
     for value in values {
         if value.state == VerificationState::NotRun {
             if value.command_label.is_some()
+                || value.command_invocation.is_some()
                 || value.exit_code.is_some()
                 || value.termination.is_some()
                 || value.outcome.is_some()
@@ -2350,6 +2358,14 @@ fn validate_verification_drafts(values: &[CommandVerificationDraft]) -> Result<(
         if label.is_empty() || label.chars().count() > 1_024 {
             return Err(Error::new(
                 "verification command label must contain 1 to 1024 characters",
+            ));
+        }
+        let invocation = value.command_invocation.as_deref().ok_or_else(|| {
+            Error::new("executed verification needs the exact command invocation")
+        })?;
+        if invocation.is_empty() || invocation.len() > 16_384 {
+            return Err(Error::new(
+                "verification command invocation must contain 1 to 16384 UTF-8 bytes",
             ));
         }
         let outcome = value
@@ -2399,6 +2415,10 @@ fn validate_verification_drafts(values: &[CommandVerificationDraft]) -> Result<(
         }
     }
     Ok(())
+}
+
+fn command_invocation_fingerprint(invocation: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(invocation.as_bytes()))
 }
 
 fn background_source(

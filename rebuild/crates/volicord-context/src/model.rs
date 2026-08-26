@@ -131,6 +131,7 @@ pub enum SourcePayload {
     },
     CommandExecution {
         command_label: String,
+        invocation_fingerprint: String,
         outcome: CommandOutcome,
     },
     CurrentHostUserTurn {

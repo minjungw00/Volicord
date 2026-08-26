@@ -909,7 +909,7 @@ def load_canonical_bundle(path: Path) -> CanonicalBundle:
         raise EvidenceError("canonical bundle is not JSON") from error
     if not isinstance(envelope, dict) or envelope.get("kind") != "volicord-context-bundle":
         raise EvidenceError("canonical evidence is not a Volicord context bundle")
-    if envelope.get("format_version") != 6:
+    if envelope.get("format_version") != 7:
         raise EvidenceError("canonical bundle format is not the supported current version")
     payload = envelope.get("payload")
     if not isinstance(payload, dict) or sha256_bytes(canonical_json(payload)) != envelope.get("checksum"):

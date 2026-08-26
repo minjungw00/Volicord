@@ -569,6 +569,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                 expected_project_revision: revision,
                 payload: SourcePayload::CommandExecution {
                     command_label: "cargo test -p volicord-viewer".into(),
+                    invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: volicord_context::CommandOutcome {
                         exit_code: Some(0),
                         termination: volicord_context::CommandTermination::Exited,

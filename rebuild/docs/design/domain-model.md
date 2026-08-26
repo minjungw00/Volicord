@@ -275,9 +275,16 @@ path가 바뀌어도 historical snapshot provenance를 rewrite하지 않는다. 
 
 Command Source는 어떤 Project/work context와 environment에서 실제 execution을
 관찰했는지, outcome, exit/termination과 채택된 bounded output basis를 확인할 수
-있어야 한다. 실행하지 않은 command를 verification Source로 만들 수 없다. Raw
-argument, stdout와 stderr 전체는 기본 canonical content가 아니며, 필요한 결과를
-명시적으로 채택해도 execution provenance는 유지한다.
+있어야 한다. Checkpoint verification은 existing Command Source identity를 canonical
+execution identity로 사용하며 별도 execution entity를 만들지 않는다. 실제 실행을
+보고하는 current host는 bounded human-readable `command label`과 exact transient command
+invocation을 분리해 제출하고, trusted Volicord operation은 exact invocation UTF-8 bytes의
+SHA-256 fingerprint를 derive한다. Command Source는 이 fingerprint, label과 observed
+exit/termination을 보존하므로 machine correlation은 label text에 의존하지 않는다.
+실행하지 않은 command를 verification Source로 만들거나 caller가 asserted digest만 제출해
+execution provenance를 충족할 수 없다. Exact invocation/raw argument, stdout와 stderr 전체는
+기본 canonical content가 아니며, fingerprint derivation 뒤 durable state로 전달하지 않는다.
+필요한 결과를 명시적으로 채택해도 execution provenance는 유지한다.
 
 ### Provider provenance
 
@@ -477,6 +484,11 @@ Checkpoint와 Recall은 다음 fact dimension을 하나의 lifecycle로 합치�
 acceptance를 뜻하지 않는다. User acceptance가 없다고 work를 자동 incomplete로
 바꾸지 않으며, user가 accepted했다고 실패한 verification을 passed로 바꾸지
 않는다. Known limit와 unverified area도 별도로 보존한다.
+
+Executed verification의 `source_id`는 정확히 하나의 canonical Command Source를 가리키며,
+그 Source의 invocation fingerprint와 exit/termination이 실행 correlation과 outcome
+truth를 제공한다. `not_run` verification은 Source, invocation material, fingerprint 또는
+execution outcome을 가질 수 없다.
 
 ## 13. User authority
 

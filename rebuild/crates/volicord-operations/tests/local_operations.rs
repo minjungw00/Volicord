@@ -291,6 +291,7 @@ fn grounded_draft(
         verification: vec![CommandVerificationDraft {
             state: VerificationState::NotRun,
             command_label: None,
+            command_invocation: None,
             exit_code: None,
             termination: None,
             outcome: None,
@@ -724,7 +725,7 @@ fn exact_current_host_goal_context_round_trips_through_recall(
 }
 
 #[test]
-fn grounded_checkpoint_rejects_passed_verification_without_execution_before_mutation(
+fn grounded_checkpoint_rejects_passed_verification_without_exact_invocation_before_mutation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_temporary, operations, repository) = fixture()?;
     let project = operations
@@ -745,7 +746,8 @@ fn grounded_checkpoint_rejects_passed_verification_without_execution_before_muta
             met_revisit_triggers: Vec::new(),
             verification: vec![CommandVerificationDraft {
                 state: VerificationState::Passed,
-                command_label: None,
+                command_label: Some("focused verification".into()),
+                command_invocation: None,
                 exit_code: None,
                 termination: None,
                 outcome: None,
@@ -755,8 +757,8 @@ fn grounded_checkpoint_rejects_passed_verification_without_execution_before_muta
             next_step: "Run an actual verification command".into(),
             handoff_to: Some("next Codex session".into()),
         })
-        .expect_err("passed verification without execution must be rejected");
-    assert!(error.message().contains("command label"));
+        .expect_err("passed verification without exact invocation must be rejected");
+    assert!(error.message().contains("exact command invocation"));
     assert_eq!(operations.canonical_basis(project.id)?, before);
     Ok(())
 }

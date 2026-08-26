@@ -40,7 +40,7 @@ Portable bundle은 선택한 Project의 다음 canonical meaning을 포함한다
 | Included content | Portable obligation |
 |---|---|
 | `Project identity` | path/remote와 독립적인 stable identity, portable Project 설정과 origin basis |
-| `Source manifest` | Source identity, kind, portable locator/snapshot basis, availability를 재평가할 정보; raw body 전체는 아님 |
+| `Source manifest` | Source identity, kind, portable locator/snapshot basis, availability를 재평가할 정보; Command Source는 presentation label, Volicord-derived invocation fingerprint와 exit/termination을 포함하지만 raw invocation/body 전체는 아님 |
 | `Question` | identity, displayed revision, dependency, materiality basis와 terminal outcome |
 | `Decision` | exact Question linkage, choice/delegation, provenance, applicability, rationale basis와 revisit state |
 | `Context Item` | statement role, provenance, applicability와 lifecycle state |
@@ -66,6 +66,7 @@ omission reason을 bundle basis에 기록한다. Partial export를 complete Proj
 - parser caches
 - generated graph layouts
 - raw tool traffic
+- exact command invocation, argv와 environment material
 - full chat transcripts
 - raw source copies
 - temporary Session Candidates
@@ -251,4 +252,3 @@ V11은 Volicord, single-language와 polyglot repository의 another-clone journey
 container, filesystem publication, conflict UI, network synchronization과 team
 collaboration protocol을 선택하지 않는다. Legacy data decoder, migration/importer,
 historical export, compatibility alias 또는 parallel runtime path를 제공하지 않는다.
-

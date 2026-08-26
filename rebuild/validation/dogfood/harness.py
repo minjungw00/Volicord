@@ -3027,18 +3027,35 @@ def checkpoint_verification_facts(
             continue
         if state not in {"partial", "passed", "failed"}:
             return False
+        if set(claim) - {
+            "state",
+            "command_label",
+            "command_invocation",
+            "exit_code",
+            "termination",
+            "outcome",
+        }:
+            return False
         label = claim.get("command_label")
+        invocation = claim.get("command_invocation")
         exit_code = claim.get("exit_code")
         termination = claim.get("termination")
         outcome = claim.get("outcome")
-        if not nonempty_string(label) or not nonempty_string(outcome):
+        if (
+            not nonempty_string(label)
+            or not nonempty_string(invocation)
+            or not nonempty_string(outcome)
+        ):
             return False
+        invocation_fingerprint = "sha256:" + hashlib.sha256(
+            invocation.encode("utf-8")
+        ).hexdigest()
         commands = [
             command
             for command in work.commands
             if command.sequence < call.sequence
             and isinstance(command.parsed_command, dict)
-            and command.parsed_command.get("cmd") == label
+            and command.parsed_command.get("cmd") == invocation
             and command.exit_code == exit_code
             and command.termination == termination
         ]
@@ -3055,6 +3072,8 @@ def checkpoint_verification_facts(
             or source is None
             or source.get("source_kind") != "command_execution"
             or source.get("locator") != label
+            or source.get("detail_one") != invocation_fingerprint
+            or source.get("detail_two") is not None
             or source.get("exit_code") != exit_code
             or source.get("termination") != termination
             or source.get("actor_kind") != "command"
@@ -5984,7 +6003,8 @@ def real_session_fixture(
                 "verification": [
                     {
                         "state": "passed",
-                        "command_label": verification_command,
+                        "command_label": "focused verification",
+                        "command_invocation": verification_command,
                         "exit_code": 0,
                         "termination": "exited",
                         "outcome": "focused tests passed",
@@ -6201,7 +6221,8 @@ def real_session_fixture(
                 "verification": [
                     {
                         "state": "passed",
-                        "command_label": resume_verification_command,
+                        "command_label": "resume verification",
+                        "command_invocation": resume_verification_command,
                         "exit_code": 0,
                         "termination": "exited",
                         "outcome": "resumed tests passed",
@@ -6312,7 +6333,7 @@ def real_session_fixture(
         [blob(goal_source), blob(project), integer(1), text("current_host_user_turn"), text(work_user_task), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(2)],
         [blob(changed_source_one), blob(project), integer(1), text("file"), text(work_paths[0]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(3)],
         [blob(changed_source_two), blob(project), integer(1), text("file"), text(work_paths[1]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(4)],
-        [blob(verification_source), blob(project), integer(1), text("command_execution"), text(verification_command), null(), null(), null(), integer(0), text("exited"), text("command"), text("current-host-reported-command"), text("agent"), text("codex"), text("available"), integer(5)],
+        [blob(verification_source), blob(project), integer(1), text("command_execution"), text("focused verification"), null(), text("sha256:" + hashlib.sha256(verification_command.encode("utf-8")).hexdigest()), null(), integer(0), text("exited"), text("command"), text("current-host-reported-command"), text("agent"), text("codex"), text("available"), integer(5)],
         [blob(repository_source), blob(project), integer(1), text("repository_snapshot"), text(revision), text(revision), null(), null(), null(), null(), text("repository"), text("local-repository-observer"), text("agent"), text("codex"), text("available"), integer(6)],
     ]
     tables = [
@@ -6344,7 +6365,7 @@ def real_session_fixture(
     }
     bundle = {
         "checksum": hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
-        "format_version": 6,
+        "format_version": 7,
         "kind": "volicord-context-bundle",
         "payload": payload,
     }

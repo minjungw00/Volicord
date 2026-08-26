@@ -34,6 +34,9 @@ identity, affected scope, Source/operation basis와 함께 표현하며 system-w
    않는다.
 9. Guarded effect는 valid exact-match confirmation의 pre-dispatch validation보다 먼저
    dispatch되지 않는다.
+10. Checkpoint verification execution은 presentation label이 아니라 trusted operation이
+    transient exact invocation에서 derive한 fingerprint와 observed exit/termination으로
+    correlate하며 raw invocation을 durable process evidence로 보존하지 않는다.
 
 ## 2. State matrix
 
@@ -221,6 +224,13 @@ Complete stdout/stderr는 maintained document나 canonical record에 무제한 �
 뜻이 아니다. Full streams는 ignored managed operational artifact에 보존하고 UI/host에는
 bounded preview, truncation count와 artifact reference를 제공할 수 있다. Secret/source
 retention boundary는 그대로 적용한다.
+
+Ordinary Checkpoint verification을 host가 이미 실행한 경우 durable Command Source에는
+Source identity, bounded human-readable label, exact invocation의 SHA-256 fingerprint와
+numeric exit/termination outcome만 남긴다. Exact invocation/raw argv는 fingerprint derivation
+동안만 transient하며 long-operation artifact, canonical storage, portable bundle 또는
+projection으로 복사하지 않는다. `not_run`은 execution fingerprint나 process outcome을
+만들지 않고, caller가 digest를 asserted한 것만으로 observed execution을 만들 수 없다.
 
 ### Cancellation, timeout과 termination
 

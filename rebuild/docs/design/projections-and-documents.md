@@ -187,6 +187,11 @@ continuation에 필요한 structured depth를 우선할 수 있다. 차이는 �
 - freshness, uncertainty, contradiction와 known limit
 - inclusion/omission state, reason와 bounded count
 
+Command Source는 human-readable label과 exit/termination을 ordinary presentation에 사용하고,
+machine correlation이 필요한 audit detail에서는 Volicord-derived invocation fingerprint를
+Source identity와 함께 표시할 수 있다. Projection, Viewer와 generated document는 raw exact
+command invocation/argv를 읽거나 표시하지 않으며 label을 fingerprint 대신 비교하지 않는다.
+
 Agent-only hidden summary를 user-visible record보다 높은 authority로 사용하지 않는다.
 User view의 단순화가 uncertainty나 failed scope를 complete success로 바꾸지 않는다.
 

@@ -59,7 +59,7 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
 
 fn server_instructions() -> String {
     format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize; omit display_name unless the user supplied one so local repository-native identity can name the Project, with canonical repository-root basename only as fallback. Preserve and send display_name when the user did supply it. Then record a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, route that path through candidate_manage, inquiry_frontier, and decision_record; their tool contracts own the lifecycle procedure. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
+        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize; omit display_name unless the user supplied one so local repository-native identity can name the Project, with canonical repository-root basename only as fallback. Preserve and send display_name when the user did supply it. Then record a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, route that path through candidate_manage, inquiry_frontier, and decision_record; their tool contracts own the lifecycle procedure. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status. Supply the exact transient command_invocation separately from the presentation-only command_label; Volicord derives the durable fingerprint and does not retain the invocation. output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
     )
 }
 
@@ -1322,7 +1322,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "checkpoint_record" => (
-            "Record a grounded Checkpoint from a canonical Goal, the exact pre-work Analysis Snapshot retained for this bounded session, current analysis, applicable Decisions, and truthful verification evidence. The baseline_analysis_snapshot_id must identify an analysis captured after initialization or successful Recall and before the first ordinary repository write; a snapshot first captured after the bounded work is conceptually invalid even when snapshot provenance cannot prove edit ordering. A passed or failed verification requires the numeric exit status from the same actually observed command execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
+            "Record a grounded Checkpoint from a canonical Goal, the exact pre-work Analysis Snapshot retained for this bounded session, current analysis, applicable Decisions, and truthful verification evidence. The baseline_analysis_snapshot_id must identify an analysis captured after initialization or successful Recall and before the first ordinary repository write; a snapshot first captured after the bounded work is conceptually invalid even when snapshot provenance cannot prove edit ordering. Every executed verification requires the exact transient command_invocation separately from the presentation-only command_label so Volicord can derive a durable fingerprint without retaining raw arguments. A passed or failed verification also requires the numeric exit status from that same actually observed execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -2014,22 +2014,24 @@ fn checkpoint_verification_schema() -> Value {
                 object_schema(
                     vec![
                         ("state", enum_schema("Incomplete observed verification state", &["partial"])),
-                        ("command_label", text_schema("Bounded cooperative command label", 1, 1024)),
+                        ("command_label", text_schema("Bounded human-readable command description; presentation only, never the machine correlation key", 1, 1024)),
+                        ("command_invocation", text_schema("Exact transient host command invocation used only by Volicord to derive the persisted SHA-256 correlation fingerprint; raw invocation is not retained", 1, 16_384)),
                         ("exit_code", unsigned_schema("Actual process exit code when termination is exited", 0)),
                         ("termination", enum_schema("Actual command termination", &["exited", "signaled", "spawn_failed", "indeterminate"])),
                         ("outcome", text_schema("Observed verification outcome", 1, 16_384)),
                     ],
-                    &["state", "command_label", "termination", "outcome"],
+                    &["state", "command_label", "command_invocation", "termination", "outcome"],
                 ),
                 object_schema(
                     vec![
                         ("state", enum_schema("Executed verification state with a numeric observed exit status", &["passed", "failed"])),
-                        ("command_label", text_schema("Bounded cooperative command label", 1, 1024)),
+                        ("command_label", text_schema("Bounded human-readable command description; presentation only, never the machine correlation key", 1, 1024)),
+                        ("command_invocation", text_schema("Exact transient host command invocation used only by Volicord to derive the persisted SHA-256 correlation fingerprint; raw invocation is not retained", 1, 16_384)),
                         ("exit_code", unsigned_schema("Numeric exit status from this same observed command execution", 0)),
                         ("termination", enum_schema("Observed command termination", &["exited"])),
                         ("outcome", text_schema("Observed verification outcome; output text alone is insufficient", 1, 16_384)),
                     ],
-                    &["state", "command_label", "exit_code", "termination", "outcome"],
+                    &["state", "command_label", "command_invocation", "exit_code", "termination", "outcome"],
                 ),
             ]
         }
@@ -2596,6 +2598,10 @@ fn command_verification(value: &Value) -> Result<CommandVerificationDraft, HostE
         state,
         command_label: value
             .get("command_label")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        command_invocation: value
+            .get("command_invocation")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
         exit_code,

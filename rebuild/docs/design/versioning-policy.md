@@ -58,6 +58,13 @@ Context Item, Checkpoint, revision, supersession와 forgetting meaning을 durabl
 Canonical data는 Derived State에서 rebuild할 수 없으므로 best-effort field dropping,
 silent downgrade 또는 fresh empty initialization으로 대체하지 않는다.
 
+Command Source처럼 기존 durable Source payload의 correlation meaning이 바뀌면 Canonical
+schema current version을 올린다. 같은 Source manifest를 운반하는 portable bundle도 그
+새 meaning을 해석해야 하므로 applicable bundle current version을 함께 올린다. 이전
+label-only Command Source를 fingerprint-bearing current Source로 추정·decode하거나 label을
+hash input으로 재해석하지 않으며, exact-current positive fixture와 직전/이후 non-current
+negative fixture만 유지한다.
+
 ## 4. Portable bundle format version
 
 Portable bundle format version은 `portable-context.md`가 소유하는 content boundary,

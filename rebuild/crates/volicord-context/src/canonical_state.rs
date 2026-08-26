@@ -70,8 +70,16 @@ pub(crate) fn validate_source_draft(draft: &SourceDraft) -> Result<(), Error> {
             validate_portable_locator(locator)?;
             validate_nonempty("Source snapshot basis", snapshot)?;
         }
-        SourcePayload::CommandExecution { command_label, .. } => {
+        SourcePayload::CommandExecution {
+            command_label,
+            invocation_fingerprint,
+            ..
+        } => {
             validate_nonempty("Source locator", command_label)?;
+            validate_sha256_fingerprint(
+                "Command Source invocation fingerprint",
+                invocation_fingerprint,
+            )?;
         }
         SourcePayload::CurrentHostUserTurn {
             host,
@@ -129,14 +137,17 @@ pub(crate) fn decode_source_payload(
             locator: locator.ok_or_else(missing)?,
             snapshot: snapshot_basis.ok_or_else(missing)?,
         }),
-        "command_execution" if no_snapshot && no_details => Ok(SourcePayload::CommandExecution {
-            command_label: locator.ok_or_else(missing)?,
-            outcome: CommandOutcome {
-                exit_code,
-                termination: CommandTermination::parse(&termination.ok_or_else(missing)?)
-                    .ok_or_else(missing)?,
-            },
-        }),
+        "command_execution" if no_snapshot && detail_two.is_none() => {
+            Ok(SourcePayload::CommandExecution {
+                command_label: locator.ok_or_else(missing)?,
+                invocation_fingerprint: detail_one.ok_or_else(missing)?,
+                outcome: CommandOutcome {
+                    exit_code,
+                    termination: CommandTermination::parse(&termination.ok_or_else(missing)?)
+                        .ok_or_else(missing)?,
+                },
+            })
+        }
         "current_host_user_turn" if no_snapshot && no_outcome => {
             Ok(SourcePayload::CurrentHostUserTurn {
                 host: detail_one.ok_or_else(missing)?,
@@ -1158,6 +1169,26 @@ fn validate_nonempty(label: &str, value: &str) -> Result<(), Error> {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             format!("{label} must not be empty"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_sha256_fingerprint(label: &str, value: &str) -> Result<(), Error> {
+    let digest = value.strip_prefix("sha256:").ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            format!("{label} must use the sha256:<lowercase-hex> representation"),
+        )
+    })?;
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("{label} must use the sha256:<lowercase-hex> representation"),
         ));
     }
     Ok(())

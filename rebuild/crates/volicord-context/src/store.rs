@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 13;
+pub const SCHEMA_VERSION: u32 = 14;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 
@@ -6159,9 +6159,11 @@ impl<'a> EncodedSource<'a> {
             }
             SourcePayload::CommandExecution {
                 command_label,
+                invocation_fingerprint,
                 outcome,
             } => {
                 value.locator = Some(command_label);
+                value.detail_one = Some(invocation_fingerprint);
                 value.exit_code = outcome.exit_code;
                 value.termination = Some(outcome.termination.as_str());
             }

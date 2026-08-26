@@ -204,6 +204,14 @@ full tool argument, full Source body와 unlimited stdout/stderr는 default long-
 retention 대상이 아니다. Candidate Inspection에 필요한 provenance, scope와 bounded
 observation metadata가 이 기본 제외를 우회하는 raw-content 보존 근거가 되지 않는다.
 
+Checkpoint verification의 exact command invocation도 같은 transient boundary를 따른다.
+Current host는 실제 실행과 일치하는 bounded invocation material을 trusted Volicord
+operation에 제공하고, operation은 exact UTF-8 bytes에서 SHA-256 fingerprint를 derive한 뒤
+raw invocation을 버린다. Canonical Command Source, portable bundle, Candidate, projection,
+generated document와 Viewer는 fingerprint와 별도의 human-readable label/exit/termination만
+사용하며 raw command/argv를 long-term content로 보존하지 않는다. Caller-supplied digest는
+이 derivation을 대신하지 않는다.
+
 ## 7. Raw source와 portable context 분리
 
 Raw source body는 repository binding을 통해 접근하는 Source content이며 portable

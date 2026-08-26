@@ -382,6 +382,13 @@ bounded repository delta를 사용한다. Baseline dirty path는 별도 pre-exis
 missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이면 attribution을
 거부하며 current state나 post-work snapshot으로 추정하지 않는다.
 
+Executed verification fact는 existing `source_id`로 정확히 하나의 Command Source에
+연결된다. Current host가 보낸 bounded label은 presentation이고 exact transient invocation은
+trusted operation 안에서 SHA-256 fingerprint를 derive하는 input이다. Checkpoint나 Inquiry는
+label을 execution correlation key로 사용하지 않으며 raw invocation을 canonical record,
+Candidate 또는 resume state로 보존하지 않는다. `not_run`은 이 execution input이나 Source를
+가질 수 없고, `passed`는 같은 Source의 `exited`/numeric `0` outcome을 요구한다.
+
 ## 14. Later-validation hooks
 
 ### V09 — Recall과 Checkpoint 정확성
