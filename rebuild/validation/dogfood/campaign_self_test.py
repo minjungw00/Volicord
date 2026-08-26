@@ -198,7 +198,10 @@ def fixture_for(
         fixture_root,
         repository_path=repository,
         behavior_class=(
-            campaign.cycle_state(campaign_root, kind, cycle)["behavior_class"]
+            campaign.private_behavior_class(
+                campaign_root,
+                campaign.cycle_state(campaign_root, kind, cycle),
+            )
             if campaign_root is not None
             else "explicit_user_owned_decision"
         ),
@@ -209,7 +212,9 @@ def fixture_for(
     return descriptor, work, resume, bundle
 
 
-def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, object]) -> None:
+def record_descriptor_review(
+    root: Path, kind: str, cycle: int, descriptor: dict[str, object]
+) -> Path:
     value = copy.deepcopy(descriptor)
     value.pop("_evidence_directory", None)
     value.pop("_evidence_file_sha256", None)
@@ -230,7 +235,18 @@ def install_descriptor(root: Path, kind: str, cycle: int, descriptor: dict[str, 
         preparation["review_slot_id"],
         provisional_path,
     )
-    campaign.seal_cycle(root, kind, cycle, source)
+    return source
+
+
+def reveal_and_seal_descriptors(
+    root: Path, descriptors: dict[tuple[str, int], Path]
+) -> None:
+    candidate_head = campaign.load_campaign(root)["candidate_head"]
+    revealed = campaign.reveal_qualification_profile(root, candidate_head)
+    assert revealed["provisional_count"] == campaign.QUALIFICATION_CYCLE_COUNT
+    assert revealed["profile_validation"] == "passed"
+    for (kind, cycle), source in descriptors.items():
+        campaign.seal_cycle(root, kind, cycle, source)
 
 
 def set_provisional_classification(
@@ -350,6 +366,7 @@ def prepared_batch(
     prepare(root, parent / f"{name}-sources", binary)
     captures: list[Path] = []
     bundles: dict[str, Path] = {}
+    descriptors: dict[tuple[str, int], Path] = {}
     for kind in campaign.CLASSES:
         for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
             descriptor, work, resume, bundle = fixture_for(
@@ -358,10 +375,13 @@ def prepared_batch(
                 cycle,
                 campaign_root=root,
             )
-            install_descriptor(root, kind, cycle, descriptor)
+            descriptors[(kind, cycle)] = record_descriptor_review(
+                root, kind, cycle, descriptor
+            )
             captures.extend((work, resume))
             state = campaign.cycle_state(root, kind, cycle)
             bundles[state["review_slot_id"]] = bundle
+    reveal_and_seal_descriptors(root, descriptors)
     return root, captures, bundles
 
 
@@ -408,7 +428,7 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     campaign.validate_private_behavior_assignments(generated_assignments)
     assert Counter(
         behavior for _kind, _cycle, behavior in generated_assignments
-    ) == campaign.QUALIFICATION_BEHAVIOR_COUNTS
+    ) == harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
     assert len({
         kind
         for kind, _cycle, behavior in generated_assignments
@@ -435,6 +455,11 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     prepare(root, parent / "opaque-slot-sources", binary)
     state = campaign.load_campaign(root)
     assert len(state["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
+    serialized_state = json.dumps(state, sort_keys=True)
+    assert not any(value in serialized_state for value in campaign.BEHAVIOR_CLASSES)
+    assert "commitment_nonce" not in serialized_state
+    assert state["provisional_count"] == 0
+    assert state["qualification_profile_state"] == "hidden"
     slots = [item["review_slot_id"] for item in state["cycles"].values()]
     assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_CYCLE_COUNT
     assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)
@@ -454,13 +479,15 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
         assert sum(
             item["repository_class"] == kind for item in state["cycles"].values()
         ) == campaign.CYCLES_PER_REPOSITORY
+    assert all("behavior_class" not in item for item in state["cycles"].values())
+    private_mapping = campaign.read_json(campaign.slot_mapping_path(root))
     assert Counter(
-        item["behavior_class"] for item in state["cycles"].values()
-    ) == campaign.QUALIFICATION_BEHAVIOR_COUNTS
+        item["expected_behavior_class"] for item in private_mapping["entries"]
+    ) == harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
     assert len({
         item["repository_class"]
-        for item in state["cycles"].values()
-        if item["behavior_class"] == "hidden_user_owned_decision"
+        for item in private_mapping["entries"]
+        if item["expected_behavior_class"] == "hidden_user_owned_decision"
     }) == 2
     for value in state["cycles"].values():
         slot = value["review_slot_id"]
@@ -485,6 +512,19 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     assert "repository_class" not in serialized_index
     assert "logical_cycle" not in serialized_index
     assert not any(value in serialized_index for value in campaign.BEHAVIOR_CLASSES)
+    reviewer_safe_paths = [
+        root / "campaign.json",
+        root / "preparation.json",
+        root / "reviewer/index.json",
+        root / "operator/RUN-SHEET.md",
+    ]
+    for reviewer_safe_path in reviewer_safe_paths:
+        reviewer_safe_text = reviewer_safe_path.read_text(encoding="utf-8")
+        assert "behavior_histogram" not in reviewer_safe_text
+        assert "hidden_repository_classes" not in reviewer_safe_text
+        assert not any(
+            behavior in reviewer_safe_text for behavior in campaign.BEHAVIOR_CLASSES
+        )
 
     mapping_path = campaign.slot_mapping_path(root)
     original_mapping = mapping_path.read_bytes()
@@ -528,14 +568,45 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     campaign_path.write_bytes(original_campaign)
     campaign.load_campaign(root)
 
+    invalid_mapping = json.loads(original_mapping)
+    for entry in invalid_mapping["entries"]:
+        entry["expected_behavior_class"] = "explicit_user_owned_decision"
+    campaign.write_json(mapping_path, invalid_mapping)
+    invalid_campaign = json.loads(original_campaign)
+    invalid_campaign["opaque_slot_mapping_sha256"] = harness.sha256(mapping_path)
+    invalid_profile = campaign.qualification_profile_value(
+        invalid_campaign["campaign_id"],
+        invalid_campaign["candidate_head"],
+        invalid_mapping,
+    )
+    campaign.write_json(campaign.qualification_profile_path(root), invalid_profile)
+    invalid_campaign["qualification_profile_sha256"] = harness.sha256(
+        campaign.qualification_profile_path(root)
+    )
+    campaign.write_json(campaign_path, invalid_campaign)
+    try:
+        campaign.load_campaign(root)
+    except campaign.CampaignError as error:
+        assert "behavior assignment violates qualification constraints" in str(error)
+    else:
+        raise AssertionError("malformed post-reveal private qualification profile passed")
+    mapping_path.write_bytes(original_mapping)
+    campaign_path.write_bytes(original_campaign)
+    campaign.write_json(
+        campaign.qualification_profile_path(root),
+        campaign.qualification_profile_value(
+            state["campaign_id"], state["candidate_head"], json.loads(original_mapping)
+        ),
+    )
+    campaign.load_campaign(root)
+
 
 def assert_blockers(parent: Path, binary: Path) -> None:
-    blocker_root = parent / "blocker-campaign"
-    prepare(blocker_root, parent / "blocker-sources", binary)
-    descriptor, work, resume, _bundle = fixture_for(
-        parent, "volicord", 1, campaign_root=blocker_root
+    blocker_root, blocker_captures, _blocker_bundles = prepared_batch(
+        parent, "blocker-campaign", binary
     )
-    install_descriptor(blocker_root, "volicord", 1, descriptor)
+    work = next(path for path in blocker_captures if path.name == "volicord-1-work-events.jsonl")
+    resume = next(path for path in blocker_captures if path.name == "volicord-1-resume-events.jsonl")
     broken = filtered_capture(work, parent / "missing-completions.jsonl", '"type":"mcp_tool_call_end"')
     result = campaign.collect_work(blocker_root, "volicord", 1, broken)
     assert result["outcome"] == "campaign_stop"
@@ -546,15 +617,12 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("terminal work blocker did not stop resume collection")
 
-    activation_root = parent / "activation-campaign"
-    prepare(activation_root, parent / "activation-sources", binary)
-    activation_descriptor, activation_work, _activation_resume, _activation_bundle = fixture_for(
-        parent / "activation-fixture",
-        "volicord",
-        1,
-        campaign_root=activation_root,
+    activation_root, activation_captures, _activation_bundles = prepared_batch(
+        parent, "activation-campaign", binary
     )
-    install_descriptor(activation_root, "volicord", 1, activation_descriptor)
+    activation_work = next(
+        path for path in activation_captures if path.name == "volicord-1-work-events.jsonl"
+    )
     missing = filtered_capture(
         activation_work, parent / "missing-activation.jsonl", "Volicord is active because"
     )
@@ -654,10 +722,17 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         capture_output=True,
         check=False,
     )
-    assert record_help.returncode == seal_help.returncode == 0
+    reveal_help = subprocess.run(
+        [str(helper), "reveal-qualification-profile", "--help"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert record_help.returncode == seal_help.returncode == reveal_help.returncode == 0
     assert "--review-slot-id" in record_help.stdout
     assert "--provisional-review" in record_help.stdout
     assert "--provisional-review" not in seal_help.stdout
+    assert "--candidate-head" in reveal_help.stdout
     run_sheet = root / "operator/RUN-SHEET.md"
     initial = run_sheet.read_text(encoding="utf-8")
     assert "descriptor" not in initial.casefold()
@@ -685,6 +760,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     preparation = campaign.prepare_review(root, "volicord", 1, draft_path)
     preparation_body = campaign.read_json(root / preparation["preparation"])
     serialized_preparation = json.dumps(preparation_body, sort_keys=True)
+    serialized_preparation_result = json.dumps(preparation, sort_keys=True)
     review_slot_id = preparation["review_slot_id"]
     assert set(preparation_body) == {
         "kind",
@@ -708,6 +784,11 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert '"cycle"' not in serialized_preparation
     assert '"repository_class"' not in serialized_preparation
     assert not any(value in serialized_preparation for value in campaign.BEHAVIOR_CLASSES)
+    assert "behavior_histogram" not in serialized_preparation_result
+    assert "hidden_repository_classes" not in serialized_preparation_result
+    assert not any(
+        value in serialized_preparation_result for value in campaign.BEHAVIOR_CLASSES
+    )
     provisional = copy.deepcopy(
         descriptor["behavior_review"]["independent_review"]["provisional_review"]
     )
@@ -720,7 +801,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     try:
         campaign.seal_cycle(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
-        assert "recorded provisional review" in str(error)
+        assert "all six provisional reviews" in str(error)
     else:
         raise AssertionError("cycle sealed without a recorded provisional review")
 
@@ -819,10 +900,132 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     serialized_recorded = json.dumps(recorded, sort_keys=True)
     assert recorded["state"] == "provisional_recorded"
     assert recorded["evaluator_material_exposed"] is False
+    assert recorded["qualification_profile_exposed"] is False
     assert not any(value in serialized_recorded for value in campaign.BEHAVIOR_CLASSES)
     assert "repository_class" not in serialized_recorded
     assert "logical_cycle" not in serialized_recorded
     assert not any("evaluator/descriptors" in path.as_posix() for path in read_paths)
+    assert not any("evaluator/slot-mapping" in path.as_posix() for path in read_paths)
+    assert not any("evaluator/qualification-profile" in path.as_posix() for path in read_paths)
+
+    try:
+        campaign.reveal_qualification_profile(root, candidate_head)
+    except campaign.CampaignError as error:
+        assert "all six provisional reviews" in str(error)
+    else:
+        raise AssertionError("partial provisional completion revealed the private profile")
+    try:
+        campaign.seal_cycle(root, "volicord", 1, draft_path)
+    except campaign.CampaignError as error:
+        assert "all six provisional reviews" in str(error)
+    else:
+        raise AssertionError("partial provisional completion revealed evaluator material")
+
+    remaining_descriptors: dict[tuple[str, int], dict[str, object]] = {}
+    remaining_paths: dict[tuple[str, int], Path] = {}
+    cli_preparation: dict[str, object] | None = None
+    cli_provisional: dict[str, object] | None = None
+    for remaining_kind in campaign.CLASSES:
+        for remaining_cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
+            if (remaining_kind, remaining_cycle) == ("volicord", 1):
+                continue
+            remaining_descriptor, _work, _resume, _bundle = fixture_for(
+                parent / "all-provisionals",
+                remaining_kind,
+                remaining_cycle,
+                campaign_root=root,
+            )
+            for private_field in ("_evidence_directory", "_evidence_file_sha256", "evidence"):
+                remaining_descriptor.pop(private_field, None)
+            remaining_path = parent / f"{remaining_kind}-{remaining_cycle}-all-provisional.json"
+            campaign.write_json(remaining_path, remaining_descriptor)
+            remaining_preparation = campaign.prepare_review(
+                root, remaining_kind, remaining_cycle, remaining_path
+            )
+            remaining_provisional = copy.deepcopy(
+                remaining_descriptor["behavior_review"]["independent_review"]["provisional_review"]
+            )
+            if (remaining_kind, remaining_cycle) == ("volicord", 2):
+                set_provisional_classification(
+                    remaining_provisional, "research_or_no_question"
+                )
+                cli_preparation = remaining_preparation
+                cli_provisional = remaining_provisional
+            remaining_provisional["preparation_sha256"] = remaining_preparation[
+                "preparation_sha256"
+            ]
+            remaining_provisional["review_slot_id"] = remaining_preparation[
+                "review_slot_id"
+            ]
+            remaining_provisional_path = parent / (
+                f"{remaining_preparation['review_slot_id']}-all-provisional.json"
+            )
+            campaign.write_json(remaining_provisional_path, remaining_provisional)
+            campaign.record_provisional_review(
+                root,
+                candidate_head,
+                remaining_preparation["review_slot_id"],
+                remaining_provisional_path,
+            )
+            remaining_descriptors[(remaining_kind, remaining_cycle)] = remaining_descriptor
+            remaining_paths[(remaining_kind, remaining_cycle)] = remaining_path
+    assert cli_preparation is not None and cli_provisional is not None
+    assert campaign.load_campaign(root, validate_private=False)["provisional_count"] == 6
+    fixed_provisional_snapshots = {
+        path: (path.read_bytes(), harness.sha256(path))
+        for path in sorted((root / "reviewer/provisional").glob("*.json"))
+    }
+    assert len(fixed_provisional_snapshots) == 6
+    private_profile_path = campaign.qualification_profile_path(root)
+    original_profile_bytes = private_profile_path.read_bytes()
+    original_campaign_bytes = campaign.campaign_file(root).read_bytes()
+    original_inventory_bytes = campaign.inventory_path(root).read_bytes()
+    malformed_profile = json.loads(original_profile_bytes)
+    malformed_profile["behavior_histogram"] = {"explicit_user_owned_decision": 6}
+    campaign.write_json(private_profile_path, malformed_profile)
+    malformed_campaign = json.loads(original_campaign_bytes)
+    malformed_campaign["qualification_profile_sha256"] = harness.sha256(
+        private_profile_path
+    )
+    campaign.write_json(campaign.campaign_file(root), malformed_campaign)
+    malformed_inventory = json.loads(original_inventory_bytes)
+    malformed_inventory["artifacts"][campaign.relative(root, private_profile_path)] = {
+        "bytes": private_profile_path.stat().st_size,
+        "sha256": harness.sha256(private_profile_path),
+    }
+    campaign.write_json(campaign.inventory_path(root), malformed_inventory)
+    try:
+        campaign.reveal_qualification_profile(root, candidate_head)
+    except campaign.CampaignError as error:
+        assert "profile is malformed or incomplete" in str(error)
+    else:
+        raise AssertionError("malformed private profile passed post-provisional reveal")
+    private_profile_path.write_bytes(original_profile_bytes)
+    campaign.campaign_file(root).write_bytes(original_campaign_bytes)
+    campaign.inventory_path(root).write_bytes(original_inventory_bytes)
+    try:
+        campaign.seal_cycle(root, "volicord", 1, draft_path)
+    except campaign.CampaignError as error:
+        assert "qualification-profile reveal" in str(error)
+    else:
+        raise AssertionError("all provisionals bypassed private profile validation")
+    reveal = subprocess.run(
+        [
+            str(helper),
+            "reveal-qualification-profile",
+            "--campaign-root",
+            str(root),
+            "--candidate-head",
+            candidate_head,
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert reveal.returncode == 0, reveal.stdout + reveal.stderr
+    reveal_result = json.loads(reveal.stdout)
+    assert reveal_result["provisional_count"] == 6
+    assert reveal_result["profile_validation"] == "passed"
 
     bypassable = copy.deepcopy(descriptor)
     bypassable_counterfactual = bypassable["behavior_review"]["independent_review"][
@@ -951,44 +1154,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         not in sealed_run_sheet
     )
 
-    cli_descriptor, _work, _resume, _bundle = fixture_for(
-        parent, "volicord", 2, campaign_root=root
-    )
-    cli_descriptor.pop("_evidence_directory", None)
-    cli_descriptor.pop("_evidence_file_sha256", None)
-    cli_descriptor.pop("evidence", None)
-    cli_draft = parent / "cli-recording-draft.json"
-    campaign.write_json(cli_draft, cli_descriptor)
-    cli_preparation = campaign.prepare_review(root, "volicord", 2, cli_draft)
-    cli_provisional = copy.deepcopy(
-        cli_descriptor["behavior_review"]["independent_review"]["provisional_review"]
-    )
-    set_provisional_classification(cli_provisional, "research_or_no_question")
-    cli_provisional["preparation_sha256"] = cli_preparation["preparation_sha256"]
-    cli_provisional["review_slot_id"] = cli_preparation["review_slot_id"]
-    cli_provisional_path = parent / "cli-provisional-review.json"
-    campaign.write_json(cli_provisional_path, cli_provisional)
-    cli_recorded = subprocess.run(
-        [
-            str(helper),
-            "record-provisional-review",
-            "--campaign-root",
-            str(root),
-            "--candidate-head",
-            candidate_head,
-            "--review-slot-id",
-            cli_preparation["review_slot_id"],
-            "--provisional-review",
-            str(cli_provisional_path),
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert cli_recorded.returncode == 0, cli_recorded.stdout + cli_recorded.stderr
-    cli_recorded_result = json.loads(cli_recorded.stdout)
-    assert cli_recorded_result["state"] == "provisional_recorded"
-    assert cli_recorded_result["evaluator_material_exposed"] is False
+    cli_descriptor = remaining_descriptors[("volicord", 2)]
 
     fixed_cli_provisional = campaign.reviewer_provisional_path(root, "volicord", 2)
     fixed_cli_bytes = fixed_cli_provisional.read_bytes()
@@ -1050,6 +1216,9 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert resolved_result["review_slot_id"] == cli_preparation["review_slot_id"]
     assert fixed_cli_provisional.read_bytes() == fixed_cli_bytes
     assert harness.sha256(fixed_cli_provisional) == fixed_cli_sha256
+    for path, (original_bytes, original_sha256) in fixed_provisional_snapshots.items():
+        assert path.read_bytes() == original_bytes
+        assert harness.sha256(path) == original_sha256
 
     target = parent / "pinned-target"
     target.mkdir()
@@ -1519,13 +1688,20 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     root = parent / "successful-campaign"
     prepare(root, parent / "successful-sources", binary)
     fixtures: dict[tuple[str, int], tuple[dict[str, object], Path, Path, Path]] = {}
+    descriptor_paths: dict[tuple[str, int], Path] = {}
     for kind in campaign.CLASSES:
         for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
             descriptor, work, resume, bundle = fixture_for(
                 parent, kind, cycle, campaign_root=root
             )
             fixtures[(kind, cycle)] = (descriptor, work, resume, bundle)
-            install_descriptor(root, kind, cycle, descriptor)
+            descriptor_paths[(kind, cycle)] = record_descriptor_review(
+                root, kind, cycle, descriptor
+            )
+    reveal_and_seal_descriptors(root, descriptor_paths)
+    for kind in campaign.CLASSES:
+        for cycle in range(1, campaign.CYCLES_PER_REPOSITORY + 1):
+            descriptor, work, resume, bundle = fixtures[(kind, cycle)]
             runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
             (runtime / "canonical.sqlite3").write_bytes(b"PRIVATE-STORE-CONTENT")
             derived = runtime / "derived/analysis/project"
@@ -1715,12 +1891,13 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
 
 
 def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
-    root = parent / "failed-document-campaign"
-    prepare(root, parent / "failed-document-sources", binary)
-    descriptor, work, resume, bundle = fixture_for(
-        parent, "volicord", 1, campaign_root=root
+    root, captures, bundles = prepared_batch(
+        parent, "failed-document-campaign", binary
     )
-    install_descriptor(root, "volicord", 1, descriptor)
+    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
+    slot = campaign.cycle_state(root, "volicord", 1)["review_slot_id"]
+    bundle = bundles[slot]
     assert campaign.collect_work(root, "volicord", 1, work)["outcome"] == "resume_allowed"
     result = campaign.collect_resume(
         root,
@@ -1811,6 +1988,9 @@ def main() -> int:
             "campaign_level_human_review_operations",
             "strict_current_cli_positive_and_obsolete_negative_cases",
             "opaque_slot_generation_and_private_mapping",
+            "reviewer_safe_campaign_state_exposes_no_profile",
+            "private_profile_commitment_is_nonce_bound",
+            "malformed_private_profile_rejected_by_private_validator",
             "duplicate_slot_rejected_before_campaign_mutation",
             "reviewer_filename_workspace_and_order_opacity",
             "standalone_provisional_recording_exits_successfully",
@@ -1818,11 +1998,18 @@ def main() -> int:
             "recording_does_not_invoke_evaluator_relative_comparison",
             "recording_does_not_read_or_expose_evaluator_material",
             "recording_success_shapes_expose_no_match_or_evaluator_class",
+            "recording_reads_neither_profile_mapping_nor_evaluator_descriptor",
             "invalid_provisional_recording_is_mutation_free",
             "self_contradictory_provisional_recording_is_mutation_free",
             "provisional_publication_failure_rolls_back",
             "seal_cycle_has_no_provisional_payload_path",
             "provisional_review_fixed_before_evaluator_comparison",
+            "partial_provisional_profile_reveal_rejected",
+            "partial_provisional_evaluator_reveal_rejected",
+            "all_six_provisionals_required_before_reveal",
+            "post_provisional_reveal_rejects_malformed_private_profile",
+            "sealing_requires_post_reveal_profile_validation",
+            "all_six_provisional_bytes_and_hashes_immutable_after_reveal",
             "fixed_provisional_review_cannot_be_retroactively_altered",
             "operator_slot_and_workspace_opacity",
             "opaque_mapping_swap_tamper_detection",

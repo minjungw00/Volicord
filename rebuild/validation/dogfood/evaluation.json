@@ -10,12 +10,11 @@
   ],
   "cycles_per_repository": 2,
   "qualification_cycle_count": 6,
-  "qualification_behavior_multiset": {
-    "explicit_user_owned_decision": 1,
-    "hidden_user_owned_decision": 2,
-    "research_or_no_question": 1,
-    "delegated_implementation_choice": 1,
-    "exploratory_uncertainty": 1
+  "qualification_profile_contract": {
+    "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
+    "reveal_requires_provisional_count": 6,
+    "validation_phase": "post_reveal_before_sealing",
+    "reviewer_safe_profile_disclosure": false
   },
   "behavior_classes": [
     "explicit_user_owned_decision",
@@ -445,6 +444,10 @@
         "recording_compares_evaluator_classification_or_materiality": false,
         "recording_failure_atomic": true,
         "sealed_provisional_immutable_and_inventory_bound": true,
+        "all_provisionals_required_before_any_reveal": true,
+        "qualification_profile_reveal_operation": "reveal-qualification-profile",
+        "evaluator_reveal_operation": "seal-cycle",
+        "required_provisional_count_before_reveal": 6,
         "sealing_accepts_provisional_payload": false
       },
       "fact_authority_agreement": {
@@ -528,7 +531,7 @@
       "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
       "reviewer_artifact_naming": "review_slot_id_only",
       "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
-      "private_mapping_visibility": "evaluator_steward_private_until_provisional_review_is_fixed",
+      "private_mapping_visibility": "evaluator_steward_private_until_all_provisional_reviews_are_fixed",
       "private_mapping_integrity": "campaign_bound_sha256_and_evidence_inventory",
       "numeric_compatibility_branch": false
     },

@@ -191,9 +191,14 @@ analysis be compared. Typed provenance can bind content hashes either to one of
 the nine current active architecture owners at the candidate revision or to a
 safe path in the cycle's exact pinned target revision. Qualification re-reads
 those Git objects and rejects inactive owner documents, traversal, missing
-files, wrong revisions, and stale hashes. All five maintained behavior classes
-require accepted independent review; typed provenance does not mechanically
-prove the classification.
+files, wrong revisions, and stale hashes. Any assigned class in the maintained
+behavior vocabulary requires accepted independent review; typed provenance does
+not mechanically prove the classification.
+
+During Phase A, the reviewer may inspect the prepared source workspace and listed
+owner documents needed for the task, but uses only the prepared reviewer plane as
+campaign evidence. Qualification-control implementation and evaluator/steward state
+are outside that blind evidence plane. This is workflow isolation, not OS secrecy.
 
 Work-session research, Inquiry, current-host Decision provenance, ordinary
 work, numeric-exit verification, and Checkpoint creation are observed from the
@@ -249,9 +254,10 @@ The current result schema reports `automated_qualification`, `human_review`,
 and `replacement_qualification` separately. The automated `run` path covers
 three repository classes, two privately assigned cycles per class, and two
 globally distinct fresh VS Code Codex sessions per cycle: six cycles and
-twelve sessions, plus every maintained machine check. The private behavior
-multiset contains one explicit, two hidden, and one of each other maintained
-behavior; the hidden assignments span two repository classes.
+twelve sessions, plus every maintained machine check. Exact behavior
+multiplicity, duplication, coverage and repository distribution remain in the
+evaluator/steward-private qualification profile until all six provisional reviews
+are fixed.
 It exits successfully when those checks pass even if human review is
 `not_provided`; in that state replacement is `pending_human_review` and neither
 `replacement_pass_candidate` nor Phase 9 readiness is true.
@@ -295,8 +301,8 @@ rebuild/scripts/dogfood-campaign prepare \
 ```
 
 `prepare` verifies the clean candidate and source identities, performs a
-candidate-local install, privately assigns the constrained behavior multiset,
-and creates six revision-pinned disposable repository
+candidate-local install, privately commits the realized qualification profile
+and assignments, and creates six revision-pinned disposable repository
 workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
 under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control
@@ -318,7 +324,10 @@ schema/self-consistency from the reviewer's own classification without reading a
 evaluator descriptor or comparing evaluator truth, then atomically fixes the private
 artifact, hash inventory and `provisional_recorded` state. Correct and evaluator-wrong
 well-formed classifications have the same successful non-oracle result shape. The
-control agent next invokes `seal-cycle --descriptor <path>`. Sealing reads only that
+After all six successful recordings, the control agent invokes
+`reveal-qualification-profile`; partial completion is rejected. The reveal verifies
+`provisional_count = 6`, all provisional hashes, and the private campaign profile.
+Only then may the control agent invoke `seal-cycle --descriptor <path>`. Sealing reads only that
 immutable recorded review and, after evaluator reveal, verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes. Its
 structured classification comparison must report exact classification/materiality/

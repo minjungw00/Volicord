@@ -80,11 +80,15 @@ Evaluator/control owns the hidden preparation work:
   concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
 - use the campaign-generated opaque slot and isolated pinned reviewer workspace;
   do not expose repository class, logical cycle, behavior class, or assignment order
-  before the provisional review is fixed.
+  before all six provisional reviews are fixed.
+- during Phase A, inspect the prepared source workspace and listed owner documents,
+  but use only the prepared reviewer plane as campaign evidence; unrelated
+  qualification-control implementation and evaluator/steward state remain outside
+  that workflow-isolated plane.
 
-Campaign preparation privately assigns exactly one explicit user-owned, two hidden
-user-owned, one research/no-question, one delegated implementation, and one exploratory
-cycle across two cycles per repository. The hidden cycles span two repository classes.
+Campaign preparation commits the exact behavior assignment and release-qualification
+profile only in evaluator/steward-private integrity-bound state. Reviewer/operator
+surfaces do not disclose its multiplicities, duplicate, coverage, or repository distribution.
 No slot ID, workspace, filename, label, or presentation order encodes the assignment.
 An independently reviewed hidden case seals only when source/owner inspection establishes
 a clear externally meaningful user-owned outcome with materially different consequences;
@@ -157,8 +161,10 @@ revealed evaluator basis. The structured comparison must mechanically enumerate
 classification, materiality, unavoidability, and disclosure differences;
 matching conclusions use `agreed`, evidence-backed disagreement uses
 `resolved_from_evidence`, and false agreement or `unresolved_conflict` blocks
-sealing. This comparison cannot rewrite the provisional bytes or hash. After all six descriptors
-are sealed, use `activate-all`; it enables the repository-scoped integration
+sealing. This comparison cannot rewrite the provisional bytes or hash. Every one of the six
+provisional reviews must be recorded before `reveal-qualification-profile` can validate
+and reveal the private profile or before any `seal-cycle` comparison can run. After all
+six descriptors are sealed, use `activate-all`; it enables the repository-scoped integration
 but does not grant repository or hook trust. The helper re-reads the production-owned manifest,
 MCP entry, SessionStart hook and exact candidate-local executable/Runtime binding, while making no
 claim that VS Code actually executed SessionStart. If trust or activation is uncertain, inspect it

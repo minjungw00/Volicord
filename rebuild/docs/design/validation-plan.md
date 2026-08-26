@@ -927,7 +927,9 @@ Decision ceremony를 추가하지 않는다. Evaluator와 independent reviewer�
 typed source/active-owner provenance를 인용해 `resolved_from_evidence`가 되거나 conclusions가
 `agreed`가 된 뒤에만 accepted review가 될 수 있다.
 
-Campaign의 여섯 private assignment 전체는 다음 behavior multiset을 정확히 검증한다.
+Reviewer-safe contract는 다음 behavior-class vocabulary와 각 class의 의미를 제공한다.
+이 목록은 현재 campaign의 multiplicity, duplicated class, coverage requirement 또는
+repository placement를 공개하지 않는다.
 
 - `explicit_user_owned_decision`: ordinary task가 unresolved material outcome을 disclosure하는
   positive control이며 Question과 explicit current-host Decision이 필요함
@@ -941,12 +943,12 @@ Campaign의 여섯 private assignment 전체는 다음 behavior multiset을 정�
 - `exploratory_uncertainty`: prototype, 추가 research 또는 evidence-backed defer가 immediate user
   choice보다 적절함
 
-`hidden_user_owned_decision`은 정확히 두 번이며 서로 다른 repository class에 배정된다. 나머지
-behavior는 각각 한 번이다. Campaign preparation은 이 multiset을 세 repository의 두 private
-logical cycle에 무작위로 배정하고 evaluator/steward-private integrity-bound mapping에만
-보존한다. Logical cycle number, opaque slot ID, workspace path, reviewer filename, operator label과
-presentation order는 behavior class를 encode하지 않으며 repository class만으로 expected behavior를
-추론할 수 있는 고정 pair도 없다. Question wording이나 하나의 answer를 고정하지 않는다.
+Campaign preparation은 exact realized assignment와 release-qualification profile을
+evaluator/steward-private integrity-bound state에만 보존한다. Profile의 histogram, duplicate,
+coverage와 repository distribution은 모든 six provisional review가 immutable하게 고정된 뒤에만
+reveal하고 검증한다. Logical cycle number, opaque slot ID, workspace path, reviewer filename,
+operator label과 presentation order는 behavior class를 encode하지 않는다. Question wording이나
+하나의 answer를 고정하지 않는다.
 Simple repository는 Decision count를 채우기 위해 user Decision을 제조하지 않는다. 한
 small-Python cycle은 work와 resume 사이에 user interruption이 전혀 없어도 통과할 수 있다.
 Work/resume prompt는 Volicord operation order, 물어야 할 Question, outcome, Checkpoint content,
@@ -1050,9 +1052,9 @@ trust를 자동 승인하지 않고 VS Code가 SessionStart를 실제 실행했�
 하며 각 raw work/resume capture의 real SessionStart evidence는 계속 필수다. Missing runtime
 activation diagnostic은 capture/hash/session, opaque slot, work/resume role과 관찰 가능한
 Volicord MCP call 존재 여부를 보존하고 product inquiry failure와 분리한다.
-`prepare`는 모든 campaign mutation 전에 exact constrained behavior multiset을 private하게
-배정하고 6개의 unique cryptographic-random opaque slot을
-만들고 qualifying repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
+`prepare`는 모든 campaign mutation 전에 evaluator/steward-private qualification profile과
+assignment를 만들고, 6개의 unique cryptographic-random opaque slot과 qualifying
+repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
 Evaluator/steward-private mapping만 opaque slot을 repository class, logical cycle, expected
 behavior class와 authoritative descriptor에 연결하며 mapping은 campaign SHA-256와 evidence
 inventory에 묶인다. Numeric old/new layout branch나 prior campaign migration은 없다.
@@ -1069,15 +1071,21 @@ rollout을 session 사이의 control 접촉 없이 보존한다.
 `review_slot_id`, exact candidate/pinned revision, frozen work/resume tasks, work scope,
 owner-document location과 opaque reviewer workspace만 reviewer plane에 동결하고 evaluator
 repository class/logical cycle mapping, concerns, alternatives, recommendation,
-user-owned outcome과 counterfactual conclusion은 제외한다. Independent control agent가 이
-artifact에 대한 provisional review를 작성하면 `record-provisional-review`가 exact candidate,
+user-owned outcome과 counterfactual conclusion은 제외한다. Phase A reviewer는 repository
+source와 listed owner document를 조사하되 qualification-control implementation이나
+evaluator/steward state가 아닌 prepared reviewer plane만 campaign evidence로 사용한다. 이는
+workflow isolation이며 OS secrecy 주장이 아니다. Independent control agent가 provisional
+review를 작성하면 `record-provisional-review`가 exact candidate,
 opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
 private artifact와 hash/inventory binding을 고정하면서 `review_prepared`에서
 `provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
 reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
 Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
 class와 일치하지 않아도 성공하며, 결과는 repository class, logical cycle, evaluator behavior
-class 또는 match/mismatch를 노출하지 않는다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
+class 또는 match/mismatch를 노출하지 않는다. 모든 six provisional artifact와 hash가 고정되기
+전에는 qualification-profile reveal과 `seal-cycle` evaluator reveal을 모두 거부한다.
+`reveal-qualification-profile`은 `provisional_count = 6`과 모든 immutable hash를 확인한 뒤 private
+profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
 `classification_comparison`은 provisional/evaluator classification과 classification, materiality,
 unavoidability, prompt-disclosure 차이를 기계적으로 열거한다. 일치한 비교는 `agreed`, 불일치는
@@ -1123,8 +1131,9 @@ Ordinary independent review의 handoff는 byte-exact raw rollout archive와 boun
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
-Automated run은 repository/candidate identity, 12-session semantics, exact behavior multiset,
-bundle/provenance, document와 static snapshot 생성, requested-language realization, production
+Automated run은 repository/candidate identity, 12-session semantics, post-reveal private
+qualification profile, bundle/provenance, document와 static snapshot 생성,
+requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
 candidate cleanliness를 독립 판정한다. Human review는 immutable automated result 뒤에
 한 번만 생성하며 replacement qualification에 필수다. Lowest-numbered 또는 lowest

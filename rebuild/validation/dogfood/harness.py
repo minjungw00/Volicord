@@ -67,7 +67,7 @@ BEHAVIOR_CLASSES = (
 CYCLES_PER_REPOSITORY = 2
 QUALIFICATION_CYCLE_COUNT = 6
 QUALIFICATION_SESSION_COUNT = 12
-QUALIFICATION_BEHAVIOR_COUNTS = Counter({
+_PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS = Counter({
     "explicit_user_owned_decision": 1,
     "hidden_user_owned_decision": 2,
     "research_or_no_question": 1,
@@ -767,8 +767,14 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("Phase 8 requires two cycles per maintained repository class")
     if value.get("qualification_cycle_count") != QUALIFICATION_CYCLE_COUNT:
         raise ValueError("Phase 8 requires exactly six qualification cycles")
-    if Counter(value.get("qualification_behavior_multiset", {})) != QUALIFICATION_BEHAVIOR_COUNTS:
-        raise ValueError("the Phase 8 qualification behavior multiset changed")
+    profile_contract = value.get("qualification_profile_contract", {})
+    if profile_contract != {
+        "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
+        "reveal_requires_provisional_count": QUALIFICATION_CYCLE_COUNT,
+        "validation_phase": "post_reveal_before_sealing",
+        "reviewer_safe_profile_disclosure": False,
+    }:
+        raise ValueError("the Phase 8 private qualification-profile boundary changed")
     if tuple(value.get("behavior_classes", [])) != BEHAVIOR_CLASSES:
         raise ValueError("the Phase 8 behavior-class matrix changed")
     if tuple(value.get("repository_classes", {})) != CLASSES:
@@ -1051,6 +1057,12 @@ def load_definition() -> dict[str, Any]:
         is not False
         or blind_first.get("recording_failure_atomic") is not True
         or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
+        or blind_first.get("all_provisionals_required_before_any_reveal") is not True
+        or blind_first.get("qualification_profile_reveal_operation")
+        != "reveal-qualification-profile"
+        or blind_first.get("evaluator_reveal_operation") != "seal-cycle"
+        or blind_first.get("required_provisional_count_before_reveal")
+        != QUALIFICATION_CYCLE_COUNT
         or blind_first.get("sealing_accepts_provisional_payload") is not False
         or agreement_contract.get("accepted_statuses")
         != ["agreed", "resolved_from_evidence"]
@@ -1100,7 +1112,7 @@ def load_definition() -> dict[str, Any]:
         "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
         "reviewer_artifact_naming": "review_slot_id_only",
         "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
-        "private_mapping_visibility": "evaluator_steward_private_until_provisional_review_is_fixed",
+        "private_mapping_visibility": "evaluator_steward_private_until_all_provisional_reviews_are_fixed",
         "private_mapping_integrity": "campaign_bound_sha256_and_evidence_inventory",
         "numeric_compatibility_branch": False,
     }:
@@ -4495,7 +4507,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             or len(set(real_invocations)) != len(real_invocations)
         ):
             raise ValueError("automated pass requires twelve globally distinct Codex sessions")
-    if observed_behaviors != QUALIFICATION_BEHAVIOR_COUNTS:
+    if observed_behaviors != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS:
         raise ValueError("dogfood result does not contain the required six-cycle behavior multiset")
     if len(hidden_repositories) != 2:
         raise ValueError("hidden qualification cycles must span two repository classes")
@@ -9574,7 +9586,7 @@ def self_test() -> int:
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
-        "qualification_behavior_multiset_contract": "passed",
+        "private_qualification_profile_contract": "passed",
         "real_session_positive_path": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",

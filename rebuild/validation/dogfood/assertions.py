@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -17,6 +18,13 @@ CAMPAIGN = HERE / "campaign.py"
 CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
+REVIEWER_SAFE_CONTRACTS = (
+    ROOT / "rebuild/docs/design/validation-plan.md",
+    ROOT / "rebuild/docs/design/cutover-plan.md",
+    ROOT / "rebuild/validation/README.md",
+    ROOT / "rebuild/validation/phase-8-summary.md",
+    ROOT / "rebuild/validation/dogfood/report.md",
+)
 
 
 def main() -> int:
@@ -25,6 +33,32 @@ def main() -> int:
     event_source = CODEX_EVENTS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
+    if "qualification_behavior_multiset" in definition_value:
+        raise AssertionError("reviewer-safe evaluation definition exposes the behavior histogram")
+    profile_contract = definition_value.get("qualification_profile_contract")
+    if not isinstance(profile_contract, dict) or any(
+        "behavior" in key or "hidden" in key or "repository" in key
+        for key in profile_contract
+    ):
+        raise AssertionError("reviewer-safe evaluation definition exposes profile composition")
+    old_profile_patterns = (
+        r"one\s+explicit.{0,80}two\s+hidden",
+        r"exactly\s+one\s+explicit",
+        r"exactly\s+two\s+hidden",
+        r"hidden\s+(?:assignments|cycles).{0,80}(?:span|across)\s+two\s+repository",
+        r"hidden_user_owned_decision.{0,80}정확히\s*두\s*번",
+        r"hidden\s*두\s*sample",
+        r"나머지\s*behavior는\s*각각\s*한\s*번",
+    )
+    for path in REVIEWER_SAFE_CONTRACTS:
+        text = path.read_text(encoding="utf-8")
+        if "qualification_behavior_multiset" in text or any(
+            re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            for pattern in old_profile_patterns
+        ):
+            raise AssertionError(
+                f"reviewer-safe maintained contract exposes the realized behavior profile: {path}"
+            )
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if (
@@ -144,13 +178,12 @@ def main() -> int:
         or real_session.get("full_replacement_session_count") != 12
         or definition_value.get("cycles_per_repository") != 2
         or definition_value.get("qualification_cycle_count") != 6
-        or definition_value.get("qualification_behavior_multiset")
+        or definition_value.get("qualification_profile_contract")
         != {
-            "explicit_user_owned_decision": 1,
-            "hidden_user_owned_decision": 2,
-            "research_or_no_question": 1,
-            "delegated_implementation_choice": 1,
-            "exploratory_uncertainty": 1,
+            "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
+            "reveal_requires_provisional_count": 6,
+            "validation_phase": "post_reveal_before_sealing",
+            "reviewer_safe_profile_disclosure": False,
         }
         or tuple(definition_value.get("behavior_classes", [])) != (
             "explicit_user_owned_decision",
@@ -305,6 +338,11 @@ def main() -> int:
         is not False
         or blind_first.get("recording_failure_atomic") is not True
         or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
+        or blind_first.get("all_provisionals_required_before_any_reveal") is not True
+        or blind_first.get("qualification_profile_reveal_operation")
+        != "reveal-qualification-profile"
+        or blind_first.get("evaluator_reveal_operation") != "seal-cycle"
+        or blind_first.get("required_provisional_count_before_reveal") != 6
         or blind_first.get("sealing_accepts_provisional_payload") is not False
         or blind_first.get("preparation_fields")
         != [
@@ -364,6 +402,9 @@ def main() -> int:
         "reviewer/workspaces",
         "record-provisional-review",
         "provisional_recorded",
+        "reveal-qualification-profile",
+        "all six provisional reviews",
+        "qualification_profile_state",
     ):
         if marker not in campaign_source:
             raise AssertionError(f"Dogfood campaign helper is missing opaque-slot boundary {marker}")

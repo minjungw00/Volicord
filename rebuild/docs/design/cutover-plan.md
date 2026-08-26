@@ -267,13 +267,13 @@ Automated Dogfood passage alone is not replacement passage: the current
 campaign-level human review must also pass, while an absent review leaves
 replacement explicitly pending and a human pass cannot override machine
 failure.
-Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고
-explicit user-owned positive control, ordinary task의 hidden user-owned material discovery,
-no-question, research, delegated choice와 prototype/research/defer behavior class를 six-cycle
-private multiset으로 평가한다. 세 repository class마다 두 cycle, hidden 두 sample은 서로 다른
-repository class, 모든 cycle의 work/resume을 포함하는 6-cycle/12-fresh-session campaign과 모든 qualifying cycle의
-human review와 current production background semantic-provider의 별도로 authorized real
-success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
+Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고 maintained
+behavior vocabulary로 independent classification을 수행한다. Exact campaign behavior profile과
+repository distribution은 evaluator/steward-private state에 integrity-bound되고, 모든 six blind
+provisional review가 고정된 뒤에만 reveal·validation·comparison에 사용한다. 세 repository
+class마다 두 cycle, 모든 cycle의 work/resume을 포함하는 6-cycle/12-fresh-session campaign과
+모든 qualifying cycle의 human review와 current production background semantic-provider의
+별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
 
 ### Phase 9 — Cutover

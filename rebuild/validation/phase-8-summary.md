@@ -20,7 +20,7 @@
 
 ## Maintained conclusion
 
-The redesigned private-multiset campaign has no sealed candidate and is not
+The redesigned reviewer-blind campaign has no sealed candidate and is not
 yet eligible to begin naturalistic Dogfood. The prior candidate passed admission with a clean,
 unchanged worktree; the exact final succeeded with all four commands and zero
 failures; and the same-session official V11 passed all 54 required steps. All
@@ -50,17 +50,18 @@ with the four generated documents or their adoption lifecycle.
 After a later technical-entry gate seals a candidate, the fresh campaign must
 begin from zero in a separate clean worktree whose actual Git `HEAD` is exactly
 that candidate. It must retain the maintained
-three-class, six-cycle/twelve-session private behavior-multiset, distinct work/resume-session, automated,
+three-class, six-cycle/twelve-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the later sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
 
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
-creates each bounded blind-first reviewer preparation, records a provisional
-classification and materiality conclusion before exposing the evaluator basis,
-fixes it through the opaque-slot `record-provisional-review` operation, and then
-seals each descriptor against that immutable review without exposing evaluator
+creates all six bounded blind-first reviewer preparations, records every provisional
+classification and materiality conclusion before exposing any evaluator basis,
+fixes them through the opaque-slot `record-provisional-review` operation, verifies
+`provisional_count = 6`, reveals and validates the private qualification profile, and then
+seals each descriptor against its immutable review without exposing evaluator
 material to the operator. Recording validates only reviewer-visible identity,
 schema, provenance bounds, and self-consistency derived from the reviewer's own
 classification; a well-formed evaluator disagreement receives the same successful

@@ -35,7 +35,7 @@ CLASSES = harness.CLASSES
 BEHAVIOR_CLASSES = harness.BEHAVIOR_CLASSES
 CYCLES_PER_REPOSITORY = harness.CYCLES_PER_REPOSITORY
 QUALIFICATION_CYCLE_COUNT = harness.QUALIFICATION_CYCLE_COUNT
-QUALIFICATION_BEHAVIOR_COUNTS = harness.QUALIFICATION_BEHAVIOR_COUNTS
+_PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS = harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
 DOCUMENT_KINDS = (
     "project-architecture-guide",
     "decision-report",
@@ -109,13 +109,14 @@ def campaign_file(root: Path) -> Path:
     return root / "campaign.json"
 
 
-def load_campaign(root: Path) -> dict[str, Any]:
+def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any]:
     value = read_json(campaign_file(root))
     if value.get("kind") != "phase8_dogfood_campaign" or value.get("schema_version") != 1:
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
-    validate_slot_mapping(root, value)
+    if validate_private:
+        validate_private_qualification_profile(root, value)
     return value
 
 
@@ -156,7 +157,7 @@ def new_private_behavior_assignments() -> list[tuple[str, int, str]]:
     ]
     multiset = [
         behavior
-        for behavior, count in QUALIFICATION_BEHAVIOR_COUNTS.items()
+        for behavior, count in _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS.items()
         for _ in range(count)
     ]
     generator = secrets.SystemRandom()
@@ -193,7 +194,7 @@ def validate_private_behavior_assignments(
     }
     if (
         positions != expected_positions
-        or behavior_counts != QUALIFICATION_BEHAVIOR_COUNTS
+        or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
         or len(hidden_repositories) != 2
     ):
         raise CampaignError("private behavior assignment violates qualification constraints")
@@ -234,14 +235,18 @@ def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: s
     return root / plane / directory / f"{review_slot_id}.json"
 
 
-def slot_mapping_value(cycles: dict[str, Any]) -> dict[str, Any]:
+def slot_mapping_value(
+    cycles: dict[str, Any],
+    behavior_by_slot: dict[str, str],
+    commitment_nonce: str,
+) -> dict[str, Any]:
     entries = []
     for key, state in cycles.items():
         entries.append({
             "review_slot_id": state["review_slot_id"],
             "repository_class": state["repository_class"],
             "logical_cycle": state["cycle"],
-            "expected_behavior_class": state["behavior_class"],
+            "expected_behavior_class": behavior_by_slot[state["review_slot_id"]],
             "repository_revision": state["repository_revision"],
             "authoritative_workspace": state["repository_path"],
             "reviewer_workspace": state["reviewer_repository_path"],
@@ -252,11 +257,44 @@ def slot_mapping_value(cycles: dict[str, Any]) -> dict[str, Any]:
     return {
         "kind": "phase8_dogfood_opaque_slot_mapping",
         "visibility": "evaluator_steward_private",
+        "commitment_nonce": commitment_nonce,
         "entries": sorted(entries, key=lambda item: item["review_slot_id"]),
     }
 
 
-def validate_slot_mapping(root: Path, campaign: dict[str, Any]) -> None:
+def qualification_profile_path(root: Path) -> Path:
+    return root / "evaluator/qualification-profile.json"
+
+
+def qualification_profile_value(
+    campaign_id: str,
+    candidate_head: str,
+    mapping: dict[str, Any],
+) -> dict[str, Any]:
+    behavior_counts = Counter(
+        entry["expected_behavior_class"] for entry in mapping["entries"]
+    )
+    hidden_repositories = sorted({
+        entry["repository_class"]
+        for entry in mapping["entries"]
+        if entry["expected_behavior_class"] == "hidden_user_owned_decision"
+    })
+    return {
+        "kind": "phase8_dogfood_private_qualification_profile",
+        "visibility": "evaluator_steward_private",
+        "campaign_id": campaign_id,
+        "candidate_head": candidate_head,
+        "commitment_nonce": mapping["commitment_nonce"],
+        "assignment_count": len(mapping["entries"]),
+        "behavior_histogram": dict(sorted(behavior_counts.items())),
+        "hidden_repository_classes": hidden_repositories,
+        "slot_mapping_sha256": hashlib.sha256(json_bytes(mapping)).hexdigest(),
+    }
+
+
+def validate_private_qualification_profile(
+    root: Path, campaign: dict[str, Any]
+) -> dict[str, Any]:
     path = slot_mapping_path(root)
     if not path.is_file():
         raise CampaignError("campaign-private opaque slot mapping is unavailable")
@@ -267,12 +305,41 @@ def validate_slot_mapping(root: Path, campaign: dict[str, Any]) -> None:
     cycles = campaign.get("cycles")
     if not isinstance(mapping, dict) or not isinstance(cycles, dict):
         raise CampaignError("campaign-private opaque slot mapping is malformed")
-    try:
-        expected_mapping = slot_mapping_value(cycles)
-    except (KeyError, TypeError) as error:
-        raise CampaignError("campaign-private opaque slot mapping is malformed") from error
-    if mapping != expected_mapping:
-        raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
+    entries = mapping.get("entries")
+    if (
+        set(mapping) != {"kind", "visibility", "commitment_nonce", "entries"}
+        or mapping.get("kind") != "phase8_dogfood_opaque_slot_mapping"
+        or mapping.get("visibility") != "evaluator_steward_private"
+        or not isinstance(mapping.get("commitment_nonce"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", mapping["commitment_nonce"]) is None
+        or not isinstance(entries, list)
+    ):
+        raise CampaignError("campaign-private opaque slot mapping is malformed")
+    public_cycles_by_slot = {
+        state.get("review_slot_id"): (key, state)
+        for key, state in cycles.items()
+        if isinstance(state, dict)
+    }
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise CampaignError("campaign-private opaque slot mapping is malformed")
+        matched = public_cycles_by_slot.get(entry.get("review_slot_id"))
+        if matched is None:
+            raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
+        key, state = matched
+        if entry != {
+            "review_slot_id": state.get("review_slot_id"),
+            "repository_class": state.get("repository_class"),
+            "logical_cycle": state.get("cycle"),
+            "expected_behavior_class": entry.get("expected_behavior_class"),
+            "repository_revision": state.get("repository_revision"),
+            "authoritative_workspace": state.get("repository_path"),
+            "reviewer_workspace": state.get("reviewer_repository_path"),
+            "evaluator_input": f"evaluator/inputs/{state.get('review_slot_id')}.json",
+            "authoritative_descriptor": f"evaluator/descriptors/{state.get('review_slot_id')}.json",
+            "private_cycle_key": key,
+        }:
+            raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
     ids = [entry.get("review_slot_id") for entry in mapping.get("entries", [])]
     if (
         len(ids) != QUALIFICATION_CYCLE_COUNT
@@ -294,10 +361,42 @@ def validate_slot_mapping(root: Path, campaign: dict[str, Any]) -> None:
     }
     if (
         set(repository_counts.values()) != {CYCLES_PER_REPOSITORY}
-        or behavior_counts != QUALIFICATION_BEHAVIOR_COUNTS
+        or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
         or len(hidden_repositories) != 2
     ):
         raise CampaignError("campaign-private behavior assignment violates qualification constraints")
+    profile_path = qualification_profile_path(root)
+    expected_profile_hash = campaign.get("qualification_profile_sha256")
+    if (
+        not profile_path.is_file()
+        or not isinstance(expected_profile_hash, str)
+        or harness.sha256(profile_path) != expected_profile_hash
+    ):
+        raise CampaignError("campaign-private qualification profile hash mismatch")
+    profile = read_json(profile_path)
+    expected_profile = qualification_profile_value(
+        campaign["campaign_id"], campaign["candidate_head"], mapping
+    )
+    if profile != expected_profile:
+        raise CampaignError("campaign-private qualification profile is malformed or incomplete")
+    return profile
+
+
+def private_behavior_class(
+    root: Path,
+    state: dict[str, Any],
+    campaign: dict[str, Any] | None = None,
+) -> str:
+    campaign = campaign or load_campaign(root)
+    mapping = read_json(slot_mapping_path(root))
+    matches = [
+        entry.get("expected_behavior_class")
+        for entry in mapping.get("entries", [])
+        if entry.get("review_slot_id") == state.get("review_slot_id")
+    ]
+    if len(matches) != 1 or matches[0] not in BEHAVIOR_CLASSES:
+        raise CampaignError("private behavior assignment is unavailable")
+    return str(matches[0])
 
 
 def inventory_path(root: Path) -> Path:
@@ -441,6 +540,9 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         "possible_material_concerns",
         "counterfactual_review",
         "evaluator_recommendation",
+        "behavior_histogram",
+        "hidden_repository_classes",
+        "qualification_profile",
     }
     for directory in ("preparations", "templates", "provisional"):
         for path in sorted((root / "reviewer" / directory).glob("*.json")):
@@ -1022,8 +1124,15 @@ def prepare_review(
     if state.get("state") != "prepared":
         raise CampaignError("review preparation requires one unprepared cycle")
     descriptor = read_json(draft_descriptor.resolve())
+    behavior_class = private_behavior_class(root, state, campaign)
+    if descriptor.get("behavior_class") != behavior_class:
+        raise CampaignError("review draft is bound to the wrong behavior class")
     errors = review_preparation_draft_errors(
-        descriptor, kind, cycle, state, campaign["candidate_head"]
+        descriptor,
+        kind,
+        cycle,
+        {**state, "behavior_class": behavior_class},
+        campaign["candidate_head"],
     )
     if errors:
         raise CampaignError("review draft does not qualify: " + "; ".join(errors))
@@ -1093,7 +1202,7 @@ def record_provisional_review(
     review_slot_id: str,
     provisional_review_path: Path,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign(root, validate_private=False)
     verify_inventory(root)
     if campaign.get("candidate_head") != candidate_head:
         raise CampaignError("provisional review is bound to a different campaign candidate")
@@ -1170,6 +1279,10 @@ def record_provisional_review(
     updated_state = private_cycle_for_review_slot(updated_campaign, review_slot_id)
     updated_state["state"] = "provisional_recorded"
     updated_state["provisional_review_sha256"] = source_sha256
+    updated_campaign["provisional_count"] = sum(
+        item.get("state") in {"provisional_recorded", "sealed"}
+        for item in updated_campaign["cycles"].values()
+    )
 
     campaign_path = campaign_file(root)
     evidence_path = inventory_path(root)
@@ -1193,7 +1306,62 @@ def record_provisional_review(
         "provisional_review": artifact_name,
         "provisional_review_bytes": len(source_bytes),
         "provisional_review_sha256": source_sha256,
+        "provisional_count": updated_campaign["provisional_count"],
         "evaluator_material_exposed": False,
+        "qualification_profile_exposed": False,
+    }
+
+
+def verify_all_provisional_reviews_fixed(
+    root: Path, campaign: dict[str, Any]
+) -> None:
+    states = list(campaign.get("cycles", {}).values())
+    if (
+        len(states) != QUALIFICATION_CYCLE_COUNT
+        or campaign.get("provisional_count") != QUALIFICATION_CYCLE_COUNT
+        or any(state.get("state") not in {"provisional_recorded", "sealed"} for state in states)
+    ):
+        raise CampaignError(
+            "qualification profile and evaluator reveal require all six provisional reviews"
+        )
+    inventory = load_inventory(root)
+    for state in states:
+        review_slot_id = state.get("review_slot_id")
+        path = slot_artifact_path(root, "reviewer", "provisional", review_slot_id)
+        entry = inventory.get("artifacts", {}).get(relative(root, path))
+        if (
+            not path.is_file()
+            or harness.sha256(path) != state.get("provisional_review_sha256")
+            or not isinstance(entry, dict)
+            or entry.get("sha256") != state.get("provisional_review_sha256")
+            or entry.get("bytes") != path.stat().st_size
+        ):
+            raise CampaignError("fixed provisional review hash or inventory binding changed")
+
+
+def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, Any]:
+    campaign = load_campaign(root, validate_private=False)
+    verify_inventory(root)
+    if campaign.get("candidate_head") != candidate_head:
+        raise CampaignError("qualification profile reveal is bound to a different candidate")
+    if campaign.get("qualification_profile_state") != "hidden":
+        raise CampaignError("qualification profile has already been revealed")
+    verify_all_provisional_reviews_fixed(root, campaign)
+    profile = validate_private_qualification_profile(root, campaign)
+    campaign["qualification_profile_state"] = "revealed"
+    campaign["qualification_profile_revealed_sha256"] = harness.sha256(
+        qualification_profile_path(root)
+    )
+    save_campaign(root, campaign)
+    return {
+        "kind": "phase8_dogfood_qualification_profile_revealed",
+        "candidate_head": candidate_head,
+        "provisional_count": QUALIFICATION_CYCLE_COUNT,
+        "qualification_profile_state": "revealed",
+        "qualification_profile_sha256": harness.sha256(qualification_profile_path(root)),
+        "assignment_count": profile["assignment_count"],
+        "profile_validation": "passed",
+        "evaluator_material_available": True,
     }
 
 
@@ -1205,6 +1373,11 @@ def seal_cycle(
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
+    verify_all_provisional_reviews_fixed(root, campaign)
+    if campaign.get("qualification_profile_state") != "revealed":
+        raise CampaignError(
+            "evaluator reveal requires the all-provisionals qualification-profile reveal"
+        )
     state = campaign["cycles"][cycle_key(kind, cycle)]
     if state.get("state") != "provisional_recorded":
         raise CampaignError("cycle sealing requires one recorded provisional review")
@@ -1248,7 +1421,7 @@ def seal_cycle(
         raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
     if descriptor.get("repository_class") != kind or descriptor.get("cycle") != cycle:
         raise CampaignError("evaluator descriptor is bound to a different cycle")
-    if descriptor.get("behavior_class") != state["behavior_class"]:
+    if descriptor.get("behavior_class") != private_behavior_class(root, state, campaign):
         raise CampaignError("evaluator descriptor is bound to the wrong behavior class")
     if descriptor.get("repository_revision") != state["repository_revision"]:
         raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
@@ -1446,6 +1619,7 @@ def prepare_campaign(
     if not binary.is_file():
         raise CampaignError("candidate binary is unavailable")
     cycles: dict[str, Any] = {}
+    behavior_by_slot: dict[str, str] = {}
     for kind, number, behavior_class, review_slot_id in assignments:
         spec = specs[kind]
         revision = candidate_head if kind == "volicord" else spec["revision"]
@@ -1455,7 +1629,6 @@ def prepare_campaign(
             "review_slot_id": review_slot_id,
             "repository_class": kind,
             "cycle": number,
-            "behavior_class": behavior_class,
             "repository_path": str((destination / "repository").resolve()),
             "reviewer_repository_path": str(reviewer_repository.resolve()),
             "repository_revision": revision,
@@ -1467,6 +1640,7 @@ def prepare_campaign(
             "project_id": None,
             "codex_enabled": False,
         }
+        behavior_by_slot[review_slot_id] = behavior_class
     for state in sorted(cycles.values(), key=lambda item: item["review_slot_id"]):
         review_slot_id = state["review_slot_id"]
         destination = slot_root(root, review_slot_id)
@@ -1490,13 +1664,15 @@ def prepare_campaign(
             descriptor_skeleton(
                 state["repository_class"],
                 state["cycle"],
-                state["behavior_class"],
+                behavior_by_slot[review_slot_id],
                 state["repository_revision"],
                 candidate_head,
             ),
         )
-    mapping = slot_mapping_value(cycles)
+    mapping = slot_mapping_value(cycles, behavior_by_slot, secrets.token_hex(32))
     write_json(slot_mapping_path(root), mapping)
+    profile = qualification_profile_value(campaign_id, candidate_head, mapping)
+    write_json(qualification_profile_path(root), profile)
     campaign = {
         "kind": "phase8_dogfood_campaign",
         "schema_version": 1,
@@ -1511,6 +1687,10 @@ def prepare_campaign(
         "active_cycle_by_repository": {},
         "cycles": cycles,
         "opaque_slot_mapping_sha256": harness.sha256(slot_mapping_path(root)),
+        "qualification_profile_sha256": harness.sha256(qualification_profile_path(root)),
+        "qualification_profile_state": "hidden",
+        "qualification_profile_revealed_sha256": None,
+        "provisional_count": 0,
     }
     write_json(root / "repository-input.json", raw_input)
     save_campaign(root, campaign)
@@ -1534,6 +1714,7 @@ def prepare_campaign(
     for path in (
         root / "repository-input.json",
         slot_mapping_path(root),
+        qualification_profile_path(root),
         reviewer_index,
         run_sheet,
         root / "preparation.json",
@@ -2756,6 +2937,7 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--repositories", required=True)
     prepare_reviewer = sub.add_parser("prepare-review")
     record_provisional = sub.add_parser("record-provisional-review")
+    reveal_profile = sub.add_parser("reveal-qualification-profile")
     seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
     activate_every = sub.add_parser("activate-all")
@@ -2780,6 +2962,8 @@ def parser() -> argparse.ArgumentParser:
     record_provisional.add_argument("--candidate-head", required=True)
     record_provisional.add_argument("--review-slot-id", required=True)
     record_provisional.add_argument("--provisional-review", required=True)
+    reveal_profile.add_argument("--campaign-root", required=True)
+    reveal_profile.add_argument("--candidate-head", required=True)
     seal.add_argument("--descriptor", required=True)
     collect_w.add_argument("--raw-rollout", required=True)
     collect_r.add_argument("--raw-rollout", required=True)
@@ -2820,6 +3004,8 @@ def main() -> int:
             args.review_slot_id,
             Path(args.provisional_review),
         )
+    elif args.command == "reveal-qualification-profile":
+        value = reveal_qualification_profile(root, args.candidate_head)
     elif args.command == "seal-cycle":
         value = seal_cycle(
             root,
