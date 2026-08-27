@@ -295,6 +295,19 @@
       "failure": "result.Err, result.Ok.isError true, malformed completion, or correlated wrapper mismatch cannot qualify",
       "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source"
     },
+    "materiality_review_contract": {
+      "minimum_dimension_count": 1,
+      "dimension_identity_field": "dimension_id",
+      "array_order_is_authoritative": false,
+      "mixed_dispositions_allowed": true,
+      "delegated_expected_disposition": "delegated_implementation_choice",
+      "delegated_current_goal_requires_explicit_delegation_basis": true,
+      "all_unresolved_user_owned_dimensions_block_work": true,
+      "resolved_user_owned_decision_correlation": "per_dimension_id",
+      "coupled_decision_requires_each_dimension_scope": true,
+      "dimension_disappearance_across_revision_allowed": false,
+      "review_revision_must_advance": true
+    },
     "cycle_descriptor_contract": {
       "work_user_task_field": "work_user_task",
       "fresh_resume_user_task_field": "fresh_resume_user_task",

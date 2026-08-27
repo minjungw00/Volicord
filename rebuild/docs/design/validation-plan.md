@@ -972,6 +972,19 @@ Question revision에 대한 explicit current-host user response에서만 기록�
 recommendation이나 implementation preference를 response로 사용하지 않는다. Meaningful
 completion/pause는 Goal, baseline, applicable Decision 또는 no-Decision behavior basis, actual
 changed basis와 numeric-exit verification을 연결한 source-grounded Checkpoint를 요구한다.
+
+Machine evaluator는 Materiality Review에 하나 이상의 bounded unique `dimension_id`를 요구하고
+array position이 아니라 그 identity로 initial/revision authority를 correlate한다. Fact, settled,
+delegated, exploratory와 user-owned disposition은 같은 review에서 공존할 수 있다. Maintained
+delegated positive control은 `settled_authority`가 아니라 실제
+`delegated_implementation_choice` disposition과 exact frozen Goal current-host Source의 bounded
+delegation을 요구하며, 이미 위임된 choice를 Question/Decision으로 다시 만들면 실패한다.
+기록된 모든 unresolved user-owned dimension은 affected work 전에 blocking이고, resolved revision은
+각 dimension의 `resolution_decision_id`, actual Decision current-host provenance와 materiality scope를
+검사한다. Independent dimension은 각자의 Decision을 사용할 수 있고 하나의 Decision은 recorded
+scope가 모든 coupled dimension identity를 실제 포함할 때만 함께 적용된다. Revision array 순서가
+바뀌어도 결과는 같지만 duplicate/missing identity, stale Goal/baseline, late first review와 authority
+chain에서 사라진 dimension은 실패한다.
 Work session은 pause/handoff history를 포함해 하나 이상의 successful Checkpoint를 가질 수
 있다. Qualification은 마지막 meaningful repository change 뒤의 latest Checkpoint candidate를
 terminal state로 결정하며 malformed final candidate에서 earlier valid Checkpoint로 fallback하지

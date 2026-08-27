@@ -2721,71 +2721,126 @@ def qualify_work_blocker(args: argparse.Namespace) -> int:
 def decision_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
-) -> tuple[bool, str | None, str | None, int | None, str | None]:
-    call = unique_call(work, "decision_record")
-    if call is None or work is None or bundle is None:
-        return False, None, None, None, None
-    turn = work.turn_for_call(call)
-    question_id = call.arguments.get("question_id")
-    revision = call.arguments.get("question_revision")
-    user_text = call.arguments.get("user_turn")
-    source_id = call.result.get("user_response_source_id")
-    all_succeeded = call.result.get("all_succeeded") is True
-    if (
-        turn is None
-        or not nonempty_string(question_id)
-        or not isinstance(revision, int)
-        or revision < 1
-        or not nonempty_string(user_text)
-        or turn.text != user_text
-        or not nonempty_string(source_id)
-        or not all_succeeded
-        or call.arguments.get("project_id") != bundle.project_id
-    ):
-        return False, None, None, None, None
-
-    source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
-    response = bundle.one(
-        "question_response_sources",
-        project_id=bundle.project_id,
-        question_id=question_id,
-        question_revision=revision,
-        source_id=source_id,
+) -> tuple[
+    bool,
+    str | None,
+    str | None,
+    int | None,
+    str | None,
+    dict[str, dict[str, Any]],
+]:
+    if work is None or bundle is None:
+        return False, None, None, None, None, {}
+    calls = work.successful_calls("decision_record")
+    if not calls:
+        return False, None, None, None, None, {}
+    evidence: dict[str, dict[str, Any]] = {}
+    valid = True
+    for call in calls:
+        turn = work.turn_for_call(call)
+        question_id = call.arguments.get("question_id")
+        revision = call.arguments.get("question_revision")
+        user_text = call.arguments.get("user_turn")
+        source_id = call.result.get("user_response_source_id")
+        source = (
+            bundle.one("sources", id=source_id, project_id=bundle.project_id)
+            if nonempty_string(source_id)
+            else None
+        )
+        response = (
+            bundle.one(
+                "question_response_sources",
+                project_id=bundle.project_id,
+                question_id=question_id,
+                question_revision=revision,
+                source_id=source_id,
+            )
+            if nonempty_string(question_id) and isinstance(revision, int)
+            else None
+        )
+        decisions = [
+            row
+            for row in bundle.rows("decisions")
+            if row.get("project_id") == bundle.project_id
+            and row.get("question_id") == question_id
+            and row.get("question_revision") == revision
+            and row.get("user_turn_source_id") == source_id
+            and row.get("user_authority") == "current_host_user_turn"
+        ]
+        decision_id = decisions[0].get("id") if len(decisions) == 1 else None
+        witness = (
+            bundle.one(
+                "question_decision_history_witnesses",
+                project_id=bundle.project_id,
+                question_id=question_id,
+                question_revision=revision,
+                root_decision_id=decision_id,
+                response_source_id=source_id,
+                response_authority="current_host_user_turn",
+            )
+            if nonempty_string(decision_id)
+            else None
+        )
+        question_revision_row = (
+            bundle.one(
+                "question_revisions",
+                project_id=bundle.project_id,
+                question_id=question_id,
+                revision=revision,
+            )
+            if nonempty_string(question_id) and isinstance(revision, int)
+            else None
+        )
+        material_scope = (
+            decode_string_blob(question_revision_row.get("material_scope"))
+            if question_revision_row is not None
+            else None
+        )
+        call_valid = (
+            turn is not None
+            and nonempty_string(question_id)
+            and isinstance(revision, int)
+            and revision >= 1
+            and nonempty_string(user_text)
+            and turn.text == user_text
+            and nonempty_string(source_id)
+            and call.result.get("all_succeeded") is True
+            and call.arguments.get("project_id") == bundle.project_id
+            and source is not None
+            and response is not None
+            and witness is not None
+            and nonempty_string(decision_id)
+            and source.get("source_kind") == "current_host_user_turn"
+            and source.get("locator") == turn.text
+            and source.get("detail_one") == "codex"
+            and source.get("detail_two") == work.session_id
+            and source.get("actor_kind") == "user"
+            and isinstance(material_scope, list)
+        )
+        valid &= bool(call_valid)
+        if call_valid and nonempty_string(decision_id):
+            if decision_id in evidence:
+                valid = False
+            evidence[str(decision_id)] = {
+                "question_id": str(question_id),
+                "question_revision": revision,
+                "source_id": str(source_id),
+                "material_scope": material_scope,
+                "completion_sequence": call.completion_sequence,
+            }
+    ordered = sorted(
+        evidence.items(), key=lambda item: item[1]["completion_sequence"]
     )
-    decisions = [
-        row
-        for row in bundle.rows("decisions")
-        if row.get("project_id") == bundle.project_id
-        and row.get("question_id") == question_id
-        and row.get("question_revision") == revision
-        and row.get("user_turn_source_id") == source_id
-        and row.get("user_authority") == "current_host_user_turn"
-    ]
-    if source is None or response is None or len(decisions) != 1:
-        return False, None, None, None, None
-    decision_id = decisions[0].get("id")
-    witness = bundle.one(
-        "question_decision_history_witnesses",
-        project_id=bundle.project_id,
-        question_id=question_id,
-        question_revision=revision,
-        root_decision_id=decision_id,
-        response_source_id=source_id,
-        response_authority="current_host_user_turn",
-    )
-    valid_source = (
-        source.get("source_kind") == "current_host_user_turn"
-        and source.get("locator") == turn.text
-        and source.get("detail_one") == "codex"
-        and source.get("detail_two") == work.session_id
-        and source.get("actor_kind") == "user"
-    )
+    if not valid or not ordered:
+        return False, None, None, None, None, evidence
+    primary_id, primary = ordered[0]
     return (
-        valid_source and witness is not None and nonempty_string(decision_id),
-        str(decision_id) if nonempty_string(decision_id) else None,
-        str(question_id),
-        revision,
-        str(source_id),
+        True,
+        primary_id,
+        primary["question_id"],
+        primary["question_revision"],
+        primary["source_id"],
+        evidence,
     )
 
 
@@ -2848,9 +2903,147 @@ def expected_materiality_disposition(behavior_class: Any) -> str | None:
         return "unresolved_user_owned_outcome"
     return {
         "research_or_no_question": "repository_or_environment_fact",
-        "delegated_implementation_choice": "settled_authority",
+        "delegated_implementation_choice": "delegated_implementation_choice",
         "exploratory_uncertainty": "exploratory_uncertainty",
     }.get(behavior_class)
+
+
+MATERIALITY_DISPOSITIONS = {
+    "repository_or_environment_fact",
+    "settled_authority",
+    "delegated_implementation_choice",
+    "exploratory_uncertainty",
+    "unresolved_user_owned_outcome",
+}
+
+
+def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    indexed: dict[str, dict[str, Any]] = {}
+    for dimension in value:
+        dimension_id = dimension.get("dimension_id") if isinstance(dimension, dict) else None
+        basis = dimension.get("basis") if isinstance(dimension, dict) else None
+        source_ids = basis.get("source_ids") if isinstance(basis, dict) else None
+        if (
+            not isinstance(dimension, dict)
+            or not nonempty_string(dimension_id)
+            or dimension_id in indexed
+            or not nonempty_string(dimension.get("summary"))
+            or not isinstance(dimension.get("affected_scope"), list)
+            or not dimension["affected_scope"]
+            or not all(nonempty_string(item) for item in dimension["affected_scope"])
+            or not isinstance(dimension.get("material_consequences"), list)
+            or not dimension["material_consequences"]
+            or not all(nonempty_string(item) for item in dimension["material_consequences"])
+            or not isinstance(dimension.get("observable_signals"), list)
+            or not dimension["observable_signals"]
+            or dimension.get("disposition") not in MATERIALITY_DISPOSITIONS
+            or not isinstance(basis, dict)
+            or not isinstance(basis.get("kinds"), list)
+            or not basis["kinds"]
+            or len(set(basis["kinds"])) != len(basis["kinds"])
+            or not nonempty_string(basis.get("summary"))
+            or not isinstance(source_ids, list)
+            or not source_ids
+            or not all(nonempty_string(source_id) for source_id in source_ids)
+            or len(set(source_ids)) != len(source_ids)
+            or not isinstance(basis.get("contract_basis"), list)
+            or not isinstance(basis.get("decision_ids"), list)
+            or not isinstance(basis.get("research_basis"), list)
+        ):
+            return None
+        indexed[str(dimension_id)] = dimension
+    return indexed
+
+
+def materiality_dimension_authority_valid(
+    dimension: dict[str, Any],
+    *,
+    goal_source_id: str | None,
+    repository_source_id: str | None,
+    decision_evidence: dict[str, dict[str, Any]],
+    require_current_goal_delegation: bool,
+) -> bool:
+    disposition = dimension.get("disposition")
+    basis = dimension["basis"]
+    kinds = set(basis["kinds"])
+    source_ids = set(basis["source_ids"])
+    decision_ids = basis["decision_ids"]
+    if disposition == "repository_or_environment_fact":
+        return (
+            "repository_or_environment_fact" in kinds
+            and nonempty_string(repository_source_id)
+            and repository_source_id in source_ids
+        )
+    if disposition == "settled_authority":
+        accepted = "accepted_contract" in kinds and bool(basis["contract_basis"])
+        decided = "applicable_decision" in kinds and bool(decision_ids)
+        return accepted or decided
+    if disposition == "delegated_implementation_choice":
+        if "explicit_delegation" not in kinds:
+            return False
+        current_goal = (
+            nonempty_string(goal_source_id)
+            and source_ids == {goal_source_id}
+            and not decision_ids
+            and bool(basis["research_basis"])
+        )
+        decision_path = bool(decision_ids) and all(
+            decision_id in decision_evidence
+            and f"work-authority:{dimension['dimension_id']}"
+            in decision_evidence[decision_id]["material_scope"]
+            for decision_id in decision_ids
+        )
+        return current_goal if require_current_goal_delegation else current_goal or decision_path
+    if disposition == "exploratory_uncertainty":
+        exploratory = dimension.get("exploratory_disposition")
+        return (
+            exploratory
+            in {"resolved_by_research", "deferred_with_revisit"}
+            and bool(basis["research_basis"])
+            and (
+                "research_evidence" in kinds
+                if exploratory == "resolved_by_research"
+                else "defer_or_revisit_basis" in kinds
+            )
+        )
+    return (
+        disposition == "unresolved_user_owned_outcome"
+        and nonempty_string(repository_source_id)
+        and repository_source_id in source_ids
+    )
+
+
+def resolved_user_owned_dimensions_valid(
+    dimensions: dict[str, dict[str, Any]],
+    dimension_ids: set[str],
+    decision_evidence: dict[str, dict[str, Any]],
+    *,
+    revision_sequence: int | None = None,
+) -> bool:
+    return (
+        bool(dimension_ids)
+        and dimension_ids <= set(dimensions)
+        and all(
+            nonempty_string(dimensions[dimension_id].get("resolution_decision_id"))
+            and dimensions[dimension_id]["resolution_decision_id"]
+            in dimensions[dimension_id]["basis"]["decision_ids"]
+            and dimensions[dimension_id]["resolution_decision_id"] in decision_evidence
+            and f"work-authority:{dimension_id}"
+            in decision_evidence[dimensions[dimension_id]["resolution_decision_id"]][
+                "material_scope"
+            ]
+            and (
+                revision_sequence is None
+                or decision_evidence[dimensions[dimension_id]["resolution_decision_id"]][
+                    "completion_sequence"
+                ]
+                < revision_sequence
+            )
+            for dimension_id in dimension_ids
+        )
+    )
 
 
 def materiality_review_facts(
@@ -2860,7 +3053,8 @@ def materiality_review_facts(
     goal_context_id: str | None,
     baseline_call: ToolCall | None,
     first_write_sequence: int | None,
-    decision_id: str | None,
+    goal_source_id: str | None,
+    decision_evidence: dict[str, dict[str, Any]],
     *,
     resumed: bool = False,
 ) -> tuple[bool, str | None, str | None, dict[str, Any]]:
@@ -2887,52 +3081,74 @@ def materiality_review_facts(
         return False, None, None, {"matching_record_count": len(records)}
     record = records[0]
     review_id = record.result.get("review_candidate_id")
-    dimensions = record.arguments.get("dimensions")
-    dimension = dimensions[0] if isinstance(dimensions, list) and len(dimensions) == 1 else None
-    dimension_id = dimension.get("dimension_id") if isinstance(dimension, dict) else None
-    basis = dimension.get("basis") if isinstance(dimension, dict) else None
-    source_ids = basis.get("source_ids") if isinstance(basis, dict) else None
+    dimensions = indexed_materiality_dimensions(record.arguments.get("dimensions"))
     repository_source_id = baseline_call.result.get("repository_source_id")
     workflow = record.result.get("workflow")
+    dimension_ids = set(dimensions) if dimensions is not None else set()
+    relevant_ids = (
+        [
+            dimension_id
+            for dimension_id, dimension in dimensions.items()
+            if dimension.get("disposition") == expected
+        ]
+        if dimensions is not None
+        else []
+    )
+    user_owned_ids = (
+        {
+            dimension_id
+            for dimension_id, dimension in dimensions.items()
+            if dimension.get("disposition") == "unresolved_user_owned_outcome"
+        }
+        if dimensions is not None
+        else set()
+    )
+    primary_dimension_id = relevant_ids[0] if relevant_ids else None
+    dimension_authority = bool(dimensions) and all(
+        materiality_dimension_authority_valid(
+            dimension,
+            goal_source_id=goal_source_id,
+            repository_source_id=(
+                str(repository_source_id)
+                if nonempty_string(repository_source_id)
+                else None
+            ),
+            decision_evidence=decision_evidence,
+            require_current_goal_delegation=(
+                behavior_class == "delegated_implementation_choice"
+                and dimension.get("disposition")
+                == "delegated_implementation_choice"
+            ),
+        )
+        for dimension in dimensions.values()
+    )
     common = (
         baseline_call.completion_sequence < record.sequence
         and record.completion_sequence < first_write_sequence
         and nonempty_string(review_id)
         and record.result.get("goal_context_id") == goal_context_id
         and record.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and record.result.get("review_revision") == 1
         and nonempty_string(record.result.get("review_analysis_snapshot_id"))
-        and isinstance(dimension, dict)
-        and nonempty_string(dimension_id)
-        and dimension.get("disposition") == expected
-        and isinstance(dimension.get("affected_scope"), list)
-        and bool(dimension["affected_scope"])
-        and isinstance(dimension.get("material_consequences"), list)
-        and bool(dimension["material_consequences"])
-        and isinstance(dimension.get("observable_signals"), list)
-        and bool(dimension["observable_signals"])
-        and isinstance(basis, dict)
-        and isinstance(basis.get("kinds"), list)
-        and bool(basis["kinds"])
-        and nonempty_string(basis.get("summary"))
-        and isinstance(source_ids, list)
-        and repository_source_id in source_ids
+        and dimensions is not None
+        and bool(relevant_ids)
+        and dimension_authority
         and isinstance(workflow, dict)
         and workflow.get("satisfied_basis_identities") is not None
         and workflow.get("unresolved_requirements") is not None
     )
     if resumed:
         resolved = (
-            not is_user_owned_behavior(behavior_class)
-            or (
-                nonempty_string(decision_id)
-                and dimension.get("resolution_decision_id") == decision_id
-                and isinstance(basis, dict)
-                and decision_id in basis.get("decision_ids", [])
+            resolved_user_owned_dimensions_valid(
+                dimensions or {}, user_owned_ids, decision_evidence
             )
+            if user_owned_ids
+            else True
         )
         valid = (
             common
             and resolved
+            and (is_user_owned_behavior(behavior_class) or not user_owned_ids)
             and workflow.get("stage") == "ready_for_work"
             and workflow.get("disposition") == "ready_for_work"
             and workflow.get("blocks_ordinary_work") is False
@@ -2945,32 +3161,62 @@ def materiality_review_facts(
             and call.arguments.get("project_id") == bundle.project_id
             and call.arguments.get("review_candidate_id") == review_id
         ]
-        revision = revisions[0] if len(revisions) == 1 else None
-        revised_dimensions = revision.arguments.get("dimensions") if revision is not None else None
-        revised = (
-            revised_dimensions[0]
-            if isinstance(revised_dimensions, list) and len(revised_dimensions) == 1
-            else None
+        revisions.sort(key=lambda call: call.sequence)
+        revision_chain = [
+            (revision, indexed_materiality_dimensions(revision.arguments.get("dimensions")))
+            for revision in revisions
+        ]
+        final_revision = revision_chain[-1][0] if revision_chain else None
+        final_dimensions = revision_chain[-1][1] if revision_chain else None
+        revised_workflow = (
+            final_revision.result.get("workflow") if final_revision is not None else None
         )
-        revised_basis = revised.get("basis") if isinstance(revised, dict) else None
-        revised_workflow = revision.result.get("workflow") if revision is not None else None
-        decision_call = unique_call(work, "decision_record")
+        chain_preserves_dimensions = bool(revision_chain) and all(
+            revised is not None and set(revised) == dimension_ids
+            for _, revised in revision_chain
+        )
+        chain_preserves_review_identity = bool(revision_chain) and all(
+            revision.result.get("review_candidate_id") == review_id
+            and revision.result.get("goal_context_id") == goal_context_id
+            and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
+            and revision.result.get("review_revision") == expected_revision
+            and nonempty_string(
+                revision.result.get("review_analysis_snapshot_id")
+            )
+            for expected_revision, (revision, _) in enumerate(
+                revision_chain, start=2
+            )
+        )
+        resolved = bool(final_dimensions) and final_revision is not None and (
+            resolved_user_owned_dimensions_valid(
+                final_dimensions,
+                user_owned_ids,
+                decision_evidence,
+                revision_sequence=final_revision.sequence,
+            )
+        )
+        unresolved_workflow_ids = {
+            requirement.get("dimension_id")
+            for requirement in workflow.get("unresolved_requirements", [])
+            if isinstance(requirement, dict)
+        }
         valid = (
             common
+            and bool(user_owned_ids)
+            and all(
+                dimensions[dimension_id].get("resolution_decision_id") is None
+                for dimension_id in user_owned_ids
+            )
             and workflow.get("stage") == "question_candidate"
             and workflow.get("blocks_ordinary_work") is True
             and workflow.get("required_next_action")
             == {"tool": "candidate_manage", "action": "submit_question_from_materiality"}
-            and decision_call is not None
-            and revision is not None
-            and decision_call.completion_sequence < revision.sequence
-            and revision.completion_sequence < first_write_sequence
-            and isinstance(revised, dict)
-            and revised.get("dimension_id") == dimension_id
-            and revised.get("disposition") == expected
-            and revised.get("resolution_decision_id") == decision_id
-            and isinstance(revised_basis, dict)
-            and decision_id in revised_basis.get("decision_ids", [])
+            and unresolved_workflow_ids == user_owned_ids
+            and chain_preserves_dimensions
+            and chain_preserves_review_identity
+            and resolved
+            and final_revision is not None
+            and final_revision.completion_sequence < first_write_sequence
             and isinstance(revised_workflow, dict)
             and revised_workflow.get("stage") == "ready_for_work"
             and revised_workflow.get("blocks_ordinary_work") is False
@@ -2978,6 +3224,7 @@ def materiality_review_facts(
     else:
         valid = (
             common
+            and not user_owned_ids
             and workflow.get("stage") == "ready_for_work"
             and workflow.get("disposition") == "ready_for_work"
             and workflow.get("blocks_ordinary_work") is False
@@ -2985,10 +3232,13 @@ def materiality_review_facts(
             and not work.calls("inquiry_frontier")
             and not work.calls("decision_record")
         )
-    return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(dimension_id) if nonempty_string(dimension_id) else None, {
+    return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(primary_dimension_id) if nonempty_string(primary_dimension_id) else None, {
         "record_sequence": record.sequence,
         "review_candidate_id": review_id,
-        "dimension_id": dimension_id,
+        "dimension_ids": sorted(dimension_ids),
+        "relevant_dimension_ids": relevant_ids,
+        "user_owned_dimension_ids": sorted(user_owned_ids),
+        "dimension_correlation": "dimension_id",
         "disposition": expected,
         "pre_write": record.completion_sequence < first_write_sequence,
         "resumed": resumed,
@@ -3014,7 +3264,13 @@ def question_review_facts(
         or baseline_call is None
     ):
         return False, {}
-    decision_call = unique_call(work, "decision_record")
+    decision_calls = [
+        call
+        for call in work.successful_calls("decision_record")
+        if call.arguments.get("question_id") == question_id
+        and call.arguments.get("question_revision") == question_revision
+    ]
+    decision_call = decision_calls[0] if len(decision_calls) == 1 else None
     revision = bundle.one(
         "question_revisions",
         project_id=bundle.project_id,
@@ -3043,28 +3299,33 @@ def question_review_facts(
     ]
     frontier_call = frontier_calls[0] if len(frontier_calls) == 1 else None
     candidate_calls = work.successful_calls("candidate_manage")
-    candidate_actions = {
-        action: [
+    submit_calls = [
+        call
+        for call in candidate_calls
+        if call.arguments.get("action") == "submit_question_from_materiality"
+        and call.result.get("action") == "submit_question_from_materiality"
+        and call.arguments.get("review_candidate_id") == review_candidate_id
+        and call.arguments.get("dimension_id") == dimension_id
+    ]
+    submit_call = submit_calls[0] if len(submit_calls) == 1 else None
+    candidate_id = (
+        submit_call.result.get("candidate_id") if submit_call is not None else None
+    )
+    candidate_lifecycle_calls: list[ToolCall | None] = [submit_call]
+    for action in (
+        "attach_repository_research",
+        "mark_research_ready",
+        "promote_question",
+    ):
+        calls = [
             call
             for call in candidate_calls
             if call.arguments.get("action") == action
             and call.result.get("action") == action
+            and call.arguments.get("candidate_id") == candidate_id
         ]
-        for action in (
-            "submit_question_from_materiality",
-            "attach_repository_research",
-            "mark_research_ready",
-            "promote_question",
-        )
-    }
-    candidate_lifecycle_calls = [
-        calls[0] if len(calls) == 1 else None
-        for calls in candidate_actions.values()
-    ]
+        candidate_lifecycle_calls.append(calls[0] if len(calls) == 1 else None)
     submit_call, research_call, ready_call, promote_call = candidate_lifecycle_calls
-    candidate_id = (
-        submit_call.result.get("candidate_id") if submit_call is not None else None
-    )
     research_source_ids = (
         research_call.arguments.get("source_ids") if research_call is not None else None
     )
@@ -3323,7 +3584,7 @@ def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
 def checkpoint_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
-    decision_id: str | None,
+    decision_ids: list[str],
     goal_context_id: str | None,
     goal_source_id: str | None,
     baseline_analysis_id: str | None,
@@ -3368,15 +3629,15 @@ def checkpoint_facts(
         relation_kind="supported_by",
         source_id=goal_source_id,
     )
-    decision_link = (
+    decision_links = all(
         bundle.one(
             "checkpoint_decisions",
             project_id=bundle.project_id,
             checkpoint_id=checkpoint_id,
             decision_id=decision_id,
         )
-        if decision_id is not None
-        else True
+        is not None
+        for decision_id in decision_ids
     )
     next_step = checkpoint.get("next_step")
     goal_linked = (
@@ -3402,13 +3663,13 @@ def checkpoint_facts(
         and set(bounded_paths) == source_paths
         and call.result.get("changed_paths") == bounded_paths
         and supported is not None
-        and decision_link is not None
+        and decision_links
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("baseline_analysis_snapshot_id") == baseline_analysis_id
         and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
         and goal_linked
         and isinstance(applied, list)
-        and (decision_id is None or decision_id in applied)
+        and set(decision_ids) <= set(applied)
         and call.result.get("applied_decision_ids") == applied
         and verification_ok
         and call.arguments.get("next_step") == next_step
@@ -3500,9 +3761,14 @@ def real_session_evidence(
         evidence.get("activation_summary"), dict
     )
 
-    decision_ok, decision_id, question_id, question_revision, user_source_id = decision_facts(
-        work_capture, bundle
-    )
+    (
+        decision_ok,
+        decision_id,
+        question_id,
+        question_revision,
+        user_source_id,
+        decision_evidence,
+    ) = decision_facts(work_capture, bundle)
     goal_ok, goal_context_id, goal_source_id, goal_statement = goal_facts(
         work_capture, bundle, work_user_task
     )
@@ -3527,7 +3793,8 @@ def real_session_evidence(
         goal_context_id,
         baseline_call,
         first_work_change,
-        decision_id,
+        goal_source_id,
+        decision_evidence,
     )
     (
         checkpoint_ok,
@@ -3539,7 +3806,7 @@ def real_session_evidence(
     ) = checkpoint_facts(
         work_capture,
         bundle,
-        decision_id,
+        list(decision_evidence),
         goal_context_id,
         goal_source_id,
         str(baseline_analysis_id) if nonempty_string(baseline_analysis_id) else None,
@@ -3590,14 +3857,19 @@ def real_session_evidence(
         if isinstance(behavior_review, dict)
         else False
     )
-    decision_call_for_order = unique_call(work_capture, "decision_record")
+    decision_calls_for_order = (
+        work_capture.successful_calls("decision_record") if work_capture is not None else []
+    )
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
         or (
             question_ok
-            and decision_call_for_order is not None
+            and decision_calls_for_order
             and first_work_change is not None
-            and decision_call_for_order.completion_sequence < first_work_change
+            and all(
+                call.completion_sequence < first_work_change
+                for call in decision_calls_for_order
+            )
         )
     )
     ordinary_ok = (
@@ -3815,7 +4087,8 @@ def real_session_evidence(
         goal_context_id,
         resume_baseline_call,
         first_resume_write,
-        decision_id,
+        goal_source_id,
+        decision_evidence,
         resumed=True,
     )
     turns_before_recall = (
@@ -4056,6 +4329,7 @@ def real_session_evidence(
         "checkpoint_id": checkpoint_id,
         "goal_context_id": goal_context_id,
         "decision_id": decision_id,
+        "decision_ids": list(decision_evidence),
         "behavior_class": behavior_class,
         "question_id": question_id,
         "question_revision": question_revision,
@@ -5539,7 +5813,7 @@ def fixture_work_user_task(kind: str, behavior_class: str) -> str:
         "explicit_user_owned_decision": "The operator-facing error-detail policy is unsettled. Improve it and add focused coverage for the selected observable behavior.",
         "hidden_user_owned_decision": "Improve invalid-configuration diagnostics and add focused coverage for the observable behavior.",
         "research_or_no_question": "Correct repository configuration discovery and update the affected multi-file tests.",
-        "delegated_implementation_choice": "Refactor the adapter implementation within the current contract and preserve behavior.",
+        "delegated_implementation_choice": "Refactor the adapter while preserving behavior; choose the internal helper naming and module structure.",
         "exploratory_uncertainty": "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
     }
     repository_reference = (
@@ -5578,7 +5852,7 @@ def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
             "The active contract requires truthful failure reporting without prescribing wording."
         ],
         "delegated_boundaries": (
-            ["Implementation structure and local helper selection are delegated to the agent."]
+            ["The current task explicitly delegates internal helper naming and module structure to the agent."]
             if behavior_class == "delegated_implementation_choice"
             else []
         ),
@@ -5767,6 +6041,7 @@ def real_session_fixture(
     review_analysis = "1a" * 32
     resume_review_analysis = "1b" * 32
     materiality_dimension_id = "operator-error-boundary"
+    secondary_materiality_dimension_id = "repository-shape-boundary"
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
@@ -5999,13 +6274,18 @@ def real_session_fixture(
         "explicit_user_owned_decision": "agent_recommendation",
         "hidden_user_owned_decision": "agent_recommendation",
         "research_or_no_question": "repository_or_environment_fact",
-        "delegated_implementation_choice": "accepted_contract",
+        "delegated_implementation_choice": "explicit_delegation",
         "exploratory_uncertainty": "research_evidence",
     }[behavior_class]
 
     def materiality_dimension(
-        *, resolved: bool = False, source_id: str = repository_source
+        *, resolved: bool = False, source_id: str | None = None
     ) -> dict[str, Any]:
+        authority_source = (
+            goal_source
+            if behavior_class == "delegated_implementation_choice"
+            else source_id or repository_source
+        )
         dimension = {
             "dimension_id": materiality_dimension_id,
             "summary": "Classify the operator-facing error-detail outcome",
@@ -6016,7 +6296,7 @@ def real_session_fixture(
             "basis": {
                 "kinds": ["applicable_decision" if resolved else materiality_basis_kind],
                 "summary": "Bounded repository and owner-authority evidence",
-                "source_ids": [source_id],
+                "source_ids": [authority_source],
                 "contract_basis": (
                     evaluation_basis.get("accepted_contract_constraints", [])
                     if behavior_class == "research_or_no_question"
@@ -6039,6 +6319,57 @@ def real_session_fixture(
         if resolved:
             dimension["resolution_decision_id"] = decision
         return dimension
+
+    def secondary_materiality_dimension(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> dict[str, Any]:
+        if is_user_owned_behavior(behavior_class):
+            return {
+                "dimension_id": secondary_materiality_dimension_id,
+                "summary": "Classify the coupled diagnostic stability outcome",
+                "affected_scope": ["operator diagnostic stability"],
+                "material_consequences": [
+                    "The same public choice controls stable diagnostic disclosure."
+                ],
+                "observable_signals": ["observable_failure_policy"],
+                "disposition": "unresolved_user_owned_outcome",
+                "resolution_decision_id": decision if resolved else None,
+                "basis": {
+                    "kinds": [
+                        "applicable_decision" if resolved else "agent_recommendation"
+                    ],
+                    "summary": "A coupled independently material diagnostic consequence",
+                    "source_ids": [source_id],
+                    "contract_basis": [],
+                    "decision_ids": [decision] if resolved else [],
+                    "research_basis": [],
+                },
+            }
+        return {
+            "dimension_id": secondary_materiality_dimension_id,
+            "summary": "Record the repository-established bounded file shape",
+            "affected_scope": ["repository file shape"],
+            "material_consequences": ["The implementation stays within inspected files."],
+            "observable_signals": ["other_material_outcome"],
+            "disposition": "repository_or_environment_fact",
+            "basis": {
+                "kinds": ["repository_or_environment_fact"],
+                "summary": "The retained Analysis Snapshot establishes this fact.",
+                "source_ids": [source_id],
+                "contract_basis": [],
+                "decision_ids": [],
+                "research_basis": [],
+            },
+        }
+
+    def materiality_dimensions(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> list[dict[str, Any]]:
+        primary = materiality_dimension(resolved=resolved, source_id=source_id)
+        secondary = secondary_materiality_dimension(
+            resolved=resolved, source_id=source_id
+        )
+        return [secondary, primary] if resolved else [primary, secondary]
 
     def ready_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
         return {
@@ -6122,7 +6453,7 @@ def real_session_fixture(
                 "baseline_analysis_snapshot_id": baseline_analysis,
                 "source_operation": "naturalistic pre-work Materiality Review",
                 "rationale": "Classify independently material outcomes before affected work.",
-                "dimensions": [materiality_dimension()],
+                "dimensions": materiality_dimensions(),
             },
         ),
         custom_output(
@@ -6157,7 +6488,12 @@ def real_session_fixture(
                                 "dimension_id": materiality_dimension_id,
                                 "reason": "explicit user authority is required",
                                 "basis_identities": [],
-                            }
+                            },
+                            {
+                                "dimension_id": secondary_materiality_dimension_id,
+                                "reason": "explicit user authority is required",
+                                "basis_identities": [],
+                            },
                         ],
                     }
                     if is_user_owned_behavior(behavior_class)
@@ -6329,7 +6665,7 @@ def real_session_fixture(
                 "project_id": project,
                 "review_candidate_id": review_candidate,
                 "rationale": "The explicit current-host Decision resolves the user-owned outcome.",
-                "dimensions": [materiality_dimension(resolved=True)],
+                "dimensions": materiality_dimensions(resolved=True),
             },
         ),
         custom_output(
@@ -6576,12 +6912,10 @@ def real_session_fixture(
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
                 "source_operation": "fresh-session Materiality Review recomputation",
                 "rationale": "Recompute current work authority after Recall and a fresh baseline.",
-                "dimensions": [
-                    materiality_dimension(
-                        resolved=is_user_owned_behavior(behavior_class),
-                        source_id=resume_repository_source,
-                    )
-                ],
+                "dimensions": materiality_dimensions(
+                    resolved=is_user_owned_behavior(behavior_class),
+                    source_id=resume_repository_source,
+                ),
             },
             fallback="??",
         ),
@@ -6784,7 +7118,7 @@ def real_session_fixture(
     tables = [
         table("sources", source_columns, sources),
         table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]]),
-        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"], f"work-authority:{materiality_dimension_id}"])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
+        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"], f"work-authority:{materiality_dimension_id}", *([f"work-authority:{secondary_materiality_dimension_id}"] if is_user_owned_behavior(behavior_class) else [])])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
         table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
         table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
@@ -8621,6 +8955,52 @@ def self_test() -> int:
             return
         raise AssertionError(f"fixture {operation} call was not found")
 
+    def mutate_mcp_call_action(
+        fixture: dict[str, Any],
+        capture: str,
+        operation: str,
+        action: str,
+        mutation: Callable[[dict[str, Any]], None],
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        marker = f"tools.mcp__volicord__{operation}("
+        for value in events:
+            payload = value.get("payload", {})
+            input_value = payload.get("input")
+            if (
+                payload.get("type") != "custom_tool_call"
+                or not isinstance(input_value, str)
+                or marker not in input_value
+            ):
+                continue
+            wrapper = parse_mcp_wrapper(input_value)
+            if (
+                wrapper is None
+                or wrapper.operation != operation
+                or wrapper.arguments.get("action") != action
+            ):
+                continue
+            arguments = json.loads(json.dumps(wrapper.arguments))
+            mutation(arguments)
+            old_encoded = json.dumps(wrapper.arguments, separators=(",", ":"))
+            encoded = json.dumps(arguments, separators=(",", ":"))
+            payload["input"] = input_value.replace(
+                f"tools.mcp__volicord__{operation}({old_encoded})",
+                f"tools.mcp__volicord__{operation}({encoded})",
+                1,
+            )
+            call_id = str(payload.get("call_id"))
+            for completion in events:
+                completion_payload = completion.get("payload", {})
+                if (
+                    completion_payload.get("type") == "mcp_tool_call_end"
+                    and completion_payload.get("call_id") == f"exec-{call_id}"
+                ):
+                    completion_payload["invocation"]["arguments"] = arguments
+            store_capture(fixture, capture, path, events)
+            return
+        raise AssertionError(f"fixture {operation}/{action} call was not found")
+
     def mutate_custom_output(
         fixture: dict[str, Any],
         capture: str,
@@ -9107,6 +9487,275 @@ def self_test() -> int:
             stale_basis, kind="volicord", cycle=1, repository_revision=revision
         )["checks"]["pre_write_materiality_work_authority"] != "failed":
             raise AssertionError(f"Materiality Review with {label} basis qualified")
+
+    if (
+        external_result["inquiry_behavior_basis"]["materiality_review_basis"].get(
+            "dimension_correlation"
+        )
+        != "dimension_id"
+        or len(
+            external_result["inquiry_behavior_basis"]["materiality_review_basis"].get(
+                "dimension_ids", []
+            )
+        )
+        != 2
+    ):
+        raise AssertionError("multi-dimension user-owned review was not keyed by identity")
+
+    delegated_positive = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+    delegated_positive_result = real_session_evidence(
+        delegated_positive,
+        kind="polyglot-medium",
+        cycle=2,
+        repository_revision=revision,
+    )
+    if (
+        delegated_positive_result["status"] != "passed"
+        or delegated_positive_result["decision_id"] is not None
+        or delegated_positive_result["inquiry_behavior_basis"][
+            "materiality_review_basis"
+        ].get("disposition")
+        != "delegated_implementation_choice"
+    ):
+        raise AssertionError("bounded current-task delegated disposition did not qualify")
+    mutate_mcp_call_action(
+        delegated_positive,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["dimensions"][0]["basis"]["source_ids"].append(
+            "f4" * 16
+        ),
+    )
+    if real_session_evidence(
+        delegated_positive,
+        kind="polyglot-medium",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("delegation mixed with a stale Source qualified")
+
+    coexistence = real_session_fixture(
+        "small-python",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
+    )
+
+    def add_settled_and_exploratory(arguments: dict[str, Any]) -> None:
+        repository_source_id = "0f" * 16
+        arguments["dimensions"].extend(
+            [
+                {
+                    "dimension_id": "accepted-output-contract",
+                    "summary": "Apply the accepted output contract",
+                    "affected_scope": ["public output"],
+                    "material_consequences": ["The accepted contract fixes the output."],
+                    "observable_signals": ["public_api_semantics"],
+                    "disposition": "settled_authority",
+                    "basis": {
+                        "kinds": ["accepted_contract"],
+                        "summary": "The active owner contract settles this dimension.",
+                        "source_ids": [repository_source_id],
+                        "contract_basis": [
+                            "rebuild/docs/design/inquiry-and-decision.md"
+                        ],
+                        "decision_ids": [],
+                        "research_basis": [],
+                    },
+                },
+                {
+                    "dimension_id": "bounded-exploration",
+                    "summary": "Retain the completed exploration basis",
+                    "affected_scope": ["internal exploration"],
+                    "material_consequences": ["Research resolves the implementation uncertainty."],
+                    "observable_signals": ["other_material_outcome"],
+                    "disposition": "exploratory_uncertainty",
+                    "exploratory_disposition": "resolved_by_research",
+                    "basis": {
+                        "kinds": ["research_evidence"],
+                        "summary": "Bounded research resolved the uncertainty.",
+                        "source_ids": [repository_source_id],
+                        "contract_basis": [],
+                        "decision_ids": [],
+                        "research_basis": ["inspected implementation evidence"],
+                    },
+                },
+            ]
+        )
+
+    mutate_mcp_call_action(
+        coexistence,
+        "work",
+        "materiality_review",
+        "record",
+        add_settled_and_exploratory,
+    )
+    if real_session_evidence(
+        coexistence,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "passed":
+        raise AssertionError("valid mixed-disposition Materiality Review was rejected")
+
+    for label, mutation in (
+        (
+            "duplicate dimension identity",
+            lambda arguments: arguments["dimensions"].append(
+                json.loads(json.dumps(arguments["dimensions"][0]))
+            ),
+        ),
+        (
+            "missing dimension identity",
+            lambda arguments: arguments["dimensions"][0].pop("dimension_id"),
+        ),
+    ):
+        malformed = real_session_fixture(
+            "small-python",
+            2,
+            revision,
+            evidence_directory,
+            behavior_class="research_or_no_question",
+        )
+        mutate_mcp_call_action(
+            malformed, "work", "materiality_review", "record", mutation
+        )
+        if real_session_evidence(
+            malformed,
+            kind="small-python",
+            cycle=2,
+            repository_revision=revision,
+        )["checks"]["pre_write_materiality_work_authority"] != "failed":
+            raise AssertionError(f"{label} qualified")
+
+    unresolved_extra = real_session_fixture(
+        "small-python",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
+    )
+
+    def make_extra_dimension_unresolved(arguments: dict[str, Any]) -> None:
+        dimension = arguments["dimensions"][1]
+        dimension["disposition"] = "unresolved_user_owned_outcome"
+        dimension["resolution_decision_id"] = None
+        dimension["basis"]["kinds"] = ["agent_recommendation"]
+
+    mutate_mcp_call_action(
+        unresolved_extra,
+        "work",
+        "materiality_review",
+        "record",
+        make_extra_dimension_unresolved,
+    )
+    if real_session_evidence(
+        unresolved_extra,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("an unresolved extra user-owned dimension was hidden")
+
+    disappearing = real_session_fixture(
+        "volicord", 2, revision, evidence_directory
+    )
+    mutate_mcp_call_action(
+        disappearing,
+        "work",
+        "materiality_review",
+        "revise",
+        lambda arguments: arguments["dimensions"].pop(),
+    )
+    if real_session_evidence(
+        disappearing, kind="volicord", cycle=2, repository_revision=revision
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("a dimension disappeared from the revision authority chain")
+
+    stale_review_revision = real_session_fixture(
+        "volicord", 2, revision, evidence_directory
+    )
+    mutate_custom_output(
+        stale_review_revision,
+        "work",
+        "materiality-revision-call",
+        lambda result: result.__setitem__("review_revision", 1),
+    )
+    if real_session_evidence(
+        stale_review_revision,
+        kind="volicord",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("a stale Materiality Review revision qualified")
+
+    def resolved_dimension(dimension_id: str, resolved_by: str) -> dict[str, Any]:
+        return {
+            "dimension_id": dimension_id,
+            "disposition": "unresolved_user_owned_outcome",
+            "resolution_decision_id": resolved_by,
+            "basis": {"decision_ids": [resolved_by]},
+        }
+
+    independent_dimensions = {
+        "public-policy": resolved_dimension("public-policy", "decision-a"),
+        "retention-policy": resolved_dimension("retention-policy", "decision-b"),
+    }
+    independent_decisions = {
+        "decision-a": {
+            "material_scope": ["work-authority:public-policy"],
+            "completion_sequence": 10,
+        },
+        "decision-b": {
+            "material_scope": ["work-authority:retention-policy"],
+            "completion_sequence": 11,
+        },
+    }
+    if not resolved_user_owned_dimensions_valid(
+        independent_dimensions,
+        set(independent_dimensions),
+        independent_decisions,
+        revision_sequence=12,
+    ):
+        raise AssertionError("independent dimensions with separate Decisions were rejected")
+    coupled_dimensions = {
+        "public-policy": resolved_dimension("public-policy", "decision-coupled"),
+        "retention-policy": resolved_dimension(
+            "retention-policy", "decision-coupled"
+        ),
+    }
+    coupled_decision = {
+        "decision-coupled": {
+            "material_scope": [
+                "work-authority:public-policy",
+                "work-authority:retention-policy",
+            ],
+            "completion_sequence": 10,
+        }
+    }
+    if not resolved_user_owned_dimensions_valid(
+        coupled_dimensions,
+        set(coupled_dimensions),
+        coupled_decision,
+        revision_sequence=12,
+    ):
+        raise AssertionError("genuinely coupled dimensions were not covered by one Decision")
+    coupled_decision["decision-coupled"]["material_scope"].pop()
+    if resolved_user_owned_dimensions_valid(
+        coupled_dimensions,
+        set(coupled_dimensions),
+        coupled_decision,
+        revision_sequence=12,
+    ):
+        raise AssertionError("one Decision silently resolved an uncovered dimension")
 
     two_checkpoint_fixture = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -10516,6 +11165,17 @@ def self_test() -> int:
         "trivial_implementation_choice_question_rejected": "passed",
         "accepted_contract_requestion_rejected": "passed",
         "stale_other_goal_and_snapshot_review_basis_rejected": "passed",
+        "delegated_disposition_and_current_goal_basis": "passed",
+        "delegated_stale_source_rejected": "passed",
+        "multi_dimension_no_question_and_user_owned_positive_paths": "passed",
+        "mixed_materiality_dispositions_coexist": "passed",
+        "dimension_identity_not_array_position": "passed",
+        "duplicate_and_missing_dimension_identity_rejected": "passed",
+        "unresolved_extra_user_owned_dimension_rejected": "passed",
+        "dimension_disappearance_from_revision_rejected": "passed",
+        "stale_materiality_review_revision_rejected": "passed",
+        "independent_user_owned_dimensions_use_separate_decisions": "passed",
+        "coupled_dimensions_require_complete_decision_scope": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
         "actual_style_recall_completion_before_inspection": "passed",

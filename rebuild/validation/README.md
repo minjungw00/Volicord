@@ -242,7 +242,20 @@ review must establish that complete work necessarily encounters that choice.
 For
 `research_or_no_question`, `delegated_implementation_choice`, and
 `exploratory_uncertainty`, the absence of Candidate, Question, and Decision can
-be the correct passing outcome.
+be the correct passing outcome. The delegated positive control uses the actual
+`delegated_implementation_choice` Materiality disposition and must cite the
+exact frozen Goal's current-host user-turn Source plus its bounded delegated
+scope; `settled_authority` is a different product meaning.
+
+Machine qualification accepts one or more uniquely identified Materiality
+dimensions and correlates revisions by `dimension_id`, independent of array
+order. Fact, settled, delegated, exploratory, and user-owned dimensions may
+coexist. Every recorded unresolved user-owned dimension remains blocking, and
+every resolved one must name a Decision whose current-host provenance and
+materiality scope cover that exact dimension. Separate Decisions may resolve
+independent dimensions; one Decision may cover coupled dimensions only when
+its recorded scope includes each identity. A dimension may not disappear from
+a later authority revision.
 
 Before those product behaviors are judged, work-capture intake verifies that
 the repository-scoped SessionStart activation context is present. Its absence

@@ -126,6 +126,10 @@ def main() -> int:
         "unavoidable_user_owned_outcome",
         "research_or_no_question",
         "delegated_implementation_choice",
+        "indexed_materiality_dimensions",
+        "resolved_user_owned_dimensions_valid",
+        "dimension_correlation",
+        "explicit_delegation",
         "exploratory_uncertainty",
         "campaign_preparation_independent_reviewer",
         "terminal_checkpoint_call",
@@ -205,6 +209,20 @@ def main() -> int:
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
     real_session = definition_value["real_session_evidence"]
+    if real_session.get("materiality_review_contract") != {
+        "minimum_dimension_count": 1,
+        "dimension_identity_field": "dimension_id",
+        "array_order_is_authoritative": False,
+        "mixed_dispositions_allowed": True,
+        "delegated_expected_disposition": "delegated_implementation_choice",
+        "delegated_current_goal_requires_explicit_delegation_basis": True,
+        "all_unresolved_user_owned_dimensions_block_work": True,
+        "resolved_user_owned_decision_correlation": "per_dimension_id",
+        "coupled_decision_requires_each_dimension_scope": True,
+        "dimension_disappearance_across_revision_allowed": False,
+        "review_revision_must_advance": True,
+    }:
+        raise AssertionError("Phase 8 Materiality Review authority contract changed")
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
         or real_session.get("full_replacement_session_count") != 12
