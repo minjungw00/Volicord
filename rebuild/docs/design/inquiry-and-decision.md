@@ -157,7 +157,12 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   fact는 조사하며 user Question으로 바꾸지 않고, accepted contract 또는 applicable
   Decision은 재질문 없이 적용한다.
 - 명시적으로 위임된 implementation choice는 위임 범위 안에서 agent가 질문 없이
-  선택한다.
+  선택한다. 이 authority에는 두 경로만 있다. 현재 user-stated Goal 자체의 위임은
+  그 Goal을 만든 exact current-host user-turn Source가 dimension의 `ExplicitDelegation`
+  basis에도 포함되고 affected scope가 current Goal/work scope 안에 있을 때 그대로
+  재사용한다. 이 경우 위임을 되풀이하는 Question이나 Decision을 만들지 않는다.
+  Inquiry 중 새로 받은 위임은 기존 Question/current revision/current-host response에서
+  생성된 applicable delegation Decision이 exact dimension scope를 포함할 때만 사용한다.
 - exploratory uncertainty는 필요에 따라 research, bounded prototype, deferment 또는
   inspectable revisit basis로 전환할 수 있으며 user Question이나 Decision을 강제하지
   않는다.
@@ -215,6 +220,13 @@ stable dimension scope token을 추가할 수 있다. 그 helper는 Candidate만
 duplicate/materiality readiness, promotion, frontier, explicit current-host response와 Decision
 invariant를 우회하지 않는다. Resolution Decision은 same dimension token과 current applicability,
 exact current-host response provenance를 모두 만족해야 한다.
+
+`DelegatedImplementationChoice` label만으로는 authority가 생기지 않는다. Current-task
+경로는 unrelated 또는 stale user turn, Goal basis에 없는 Source, agent-authored Context,
+recommendation, convention과 implementation preference를 거부한다. Inquiry-time 경로는
+delegation Decision과 exact response provenance를 계속 요구한다. Accepted contract나
+일반 Decision으로 이미 정해진 outcome은 `SettledAuthority`로 남으며 delegated
+disposition으로 재분류하지 않는다.
 
 ## 5. Question presentation
 
@@ -426,10 +438,12 @@ missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이�
 current changed path/Decision applicability로 work authority를 다시 평가한다. Missing review,
 wrong Goal/baseline, late first review, unresolved user-owned dimension 또는 unfinished
 research/prototype는 Checkpoint publication 전에 거부한다. Resolved user-owned outcome과
-explicit delegation에 사용된 applicable Decision은 Checkpoint의 applied Decision 목록에도
-명시되어야 한다. Settled contract/repository fact/research basis는 Decision으로 가장하지 않고
-각자의 satisfied requirement로 남는다. Restart 뒤에도 Candidate revision과 canonical state에서
-같은 evaluation을 재구성하므로 pause나 prior attempt가 unresolved authority를 완료로 바꾸지 않는다.
+Inquiry-time explicit delegation에 사용된 applicable Decision은 Checkpoint의 applied Decision
+목록에도 명시되어야 한다. Current Goal의 exact user-turn Source에서 이미 주어진 bounded
+implementation delegation은 새 Decision을 제조하지 않고 Source-grounded satisfied requirement로
+남는다. Settled contract/repository fact/research basis는 Decision으로 가장하지 않고 각자의
+satisfied requirement로 남는다. Restart 뒤에도 Candidate revision과 canonical state에서 같은
+evaluation을 재구성하므로 pause나 prior attempt가 unresolved authority를 완료로 바꾸지 않는다.
 
 Executed verification fact는 existing `source_id`로 정확히 하나의 Command Source에
 연결된다. Current host가 보낸 bounded label은 presentation이고 exact transient invocation은

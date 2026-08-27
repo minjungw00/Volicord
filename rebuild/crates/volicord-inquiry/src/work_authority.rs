@@ -4,8 +4,9 @@ use crate::{
     MaterialityDisposition, WorkAuthorityBasisKind,
 };
 use volicord_context::{
-    CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionChoice, DecisionId, PrincipalKind,
-    ProjectId, SourceFreshness, SourcePayload, StatementProvenanceRole,
+    ApplicabilityScope, CanonicalReadBasis, ContextItem, ContextItemId, ContextItemRole,
+    DecisionChoice, DecisionId, PrincipalKind, ProjectId, SourceFreshness, SourcePayload,
+    StatementProvenanceRole,
 };
 use volicord_repository_intelligence::AnalysisSnapshotId;
 
@@ -248,7 +249,7 @@ pub fn evaluate_work_authority(
     let mut research_required = false;
     let mut question_required = false;
     for dimension in &review.dimensions {
-        match evaluate_dimension(canonical, dimension, applicability) {
+        match evaluate_dimension(canonical, goal, dimension, applicability) {
             Ok(decisions) => result.satisfied_requirements.push(requirement(
                 Some(dimension.dimension_id.clone()),
                 "material outcome has inspectable authority or an explicit non-Question disposition",
@@ -306,6 +307,7 @@ enum DimensionIssue {
 
 fn evaluate_dimension(
     canonical: &CanonicalReadBasis,
+    goal: &ContextItem,
     dimension: &MaterialityDimension,
     applicability: &ApplicabilityQuery,
 ) -> Result<Vec<DecisionId>, DimensionIssue> {
@@ -356,13 +358,16 @@ fn evaluate_dimension(
         }
         MaterialityDisposition::DelegatedImplementationChoice => {
             require_kind(dimension, WorkAuthorityBasisKind::ExplicitDelegation)?;
-            let decisions = applicable_decisions(canonical, dimension, applicability, true)?;
-            if decisions.is_empty() {
+            if dimension.basis.decision_basis.is_empty() {
+                if current_goal_delegates_dimension(canonical, goal, dimension, applicability) {
+                    return Ok(Vec::new());
+                }
                 return Err(DimensionIssue::Invalid(
-                    "delegation requires an applicable explicit delegation Decision".to_owned(),
+                    "delegation requires the exact current Goal user-turn Source within the current work scope or an applicable explicit delegation Decision"
+                        .to_owned(),
                 ));
             }
-            Ok(decisions)
+            applicable_delegation_decisions(canonical, dimension, applicability)
         }
         MaterialityDisposition::ExploratoryUncertainty { disposition } => {
             if dimension.basis.research_basis.is_empty() {
@@ -444,6 +449,104 @@ fn evaluate_dimension(
             Ok(vec![*decision_id])
         }
     }
+}
+
+fn current_goal_delegates_dimension(
+    canonical: &CanonicalReadBasis,
+    goal: &ContextItem,
+    dimension: &MaterialityDimension,
+    applicability: &ApplicabilityQuery,
+) -> bool {
+    let exact_goal_user_turn = goal.source_basis.iter().copied().any(|source_id| {
+        dimension.basis.source_basis.contains(&source_id)
+            && canonical.sources.iter().any(|basis| {
+                basis.source.id == source_id
+                    && basis.source.project_id == canonical.project.id
+                    && basis.freshness == SourceFreshness::Current
+                    && basis.source.actor.kind == PrincipalKind::User
+                    && matches!(
+                        basis.source.payload,
+                        SourcePayload::CurrentHostUserTurn { .. }
+                    )
+            })
+    });
+    exact_goal_user_turn
+        && scope_contains_dimension(
+            &goal.applicability,
+            applicability,
+            &dimension.affected_scope,
+        )
+}
+
+fn scope_contains_dimension(
+    goal_scope: &ApplicabilityScope,
+    work_scope: &ApplicabilityQuery,
+    affected_scope: &[String],
+) -> bool {
+    affected_scope.iter().all(|affected| {
+        scope_item_matches(&goal_scope.paths, affected, true)
+            || scope_item_matches(&goal_scope.components, affected, false)
+            || scope_item_matches(&goal_scope.work_contexts, affected, false)
+            || scope_item_matches(&work_scope.paths, affected, true)
+            || scope_item_matches(&work_scope.components, affected, false)
+            || scope_item_matches(&work_scope.work_contexts, affected, false)
+    })
+}
+
+fn scope_item_matches(scope: &[String], affected: &str, path_like: bool) -> bool {
+    scope.iter().any(|declared| {
+        declared == affected
+            || (path_like
+                && affected
+                    .strip_prefix(declared)
+                    .is_some_and(|suffix| suffix.starts_with('/')))
+    })
+}
+
+fn applicable_delegation_decisions(
+    canonical: &CanonicalReadBasis,
+    dimension: &MaterialityDimension,
+    applicability: &ApplicabilityQuery,
+) -> Result<Vec<DecisionId>, DimensionIssue> {
+    let decisions = applicable_decisions(canonical, dimension, applicability, true)?;
+    if decisions.is_empty() {
+        return Err(DimensionIssue::Invalid(
+            "delegation requires an applicable explicit delegation Decision".to_owned(),
+        ));
+    }
+    let scope_token = materiality_scope_token(&dimension.dimension_id);
+    for decision_id in &decisions {
+        let lifecycle = canonical
+            .active_decisions
+            .iter()
+            .find(|item| item.decision.id == *decision_id)
+            .ok_or_else(|| DimensionIssue::Invalid("delegation Decision is missing".to_owned()))?;
+        let question = canonical
+            .active_questions
+            .iter()
+            .chain(canonical.terminal_question_history.iter())
+            .find(|question| question.id == lifecycle.decision.question_id)
+            .ok_or_else(|| {
+                DimensionIssue::Invalid("delegation Decision Question basis is missing".to_owned())
+            })?;
+        if !question.material_scope.contains(&scope_token)
+            || !source_is_current(canonical, lifecycle.decision.user_turn_source_id)
+            || !canonical.sources.iter().any(|basis| {
+                basis.source.id == lifecycle.decision.user_turn_source_id
+                    && basis.source.actor.kind == PrincipalKind::User
+                    && matches!(
+                        basis.source.payload,
+                        SourcePayload::CurrentHostUserTurn { .. }
+                    )
+            })
+        {
+            return Err(DimensionIssue::Invalid(
+                "delegation Decision lacks the exact materiality dimension or current-host response provenance"
+                    .to_owned(),
+            ));
+        }
+    }
+    Ok(decisions)
 }
 
 fn applicable_decisions(

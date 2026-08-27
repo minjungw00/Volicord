@@ -49,10 +49,15 @@ struct Fixture {
     repository: std::path::PathBuf,
     project_id: volicord_context::ProjectId,
     goal_id: volicord_context::ContextItemId,
+    goal_source_id: volicord_context::SourceId,
     baseline: volicord_repository_intelligence::AnalysisSnapshot,
 }
 
 fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_goal("Implement the bounded work-authority fixture.")
+}
+
+fn fixture_with_goal(goal_statement: &str) -> Result<Fixture, Box<dyn std::error::Error>> {
     let temporary = tempdir()?;
     let repository = temporary.path().join("repository");
     fs::create_dir_all(repository.join("src"))?;
@@ -68,9 +73,9 @@ fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
         project.id,
         "codex".to_owned(),
         "work-authority-session".to_owned(),
-        "Implement the bounded work-authority fixture.".to_owned(),
+        goal_statement.to_owned(),
         ContextItemRole::Goal,
-        "Implement the bounded work-authority fixture".to_owned(),
+        goal_statement.to_owned(),
     )?;
     let baseline = operations
         .analyze(project.id, Vec::new())?
@@ -83,6 +88,7 @@ fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
         repository,
         project_id: project.id,
         goal_id: goal.context_item_id,
+        goal_source_id: goal.source_id,
         baseline,
     })
 }
@@ -180,6 +186,19 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
         .canonical_basis(fixture.project_id)?
         .active_questions
         .is_empty());
+    let stored_review = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id == recorded.review_candidate_id)
+        .and_then(|candidate| candidate.content)
+        .and_then(|content| content.materiality_review)
+        .ok_or("stored Materiality Review missing")?;
+    assert!(matches!(
+        stored_review.dimensions[0].disposition,
+        MaterialityDisposition::SettledAuthority
+    ));
 
     let reopened = LocalOperations::new(fixture.operations.layout().clone());
     let resumed = reopened.work_readiness(
@@ -200,6 +219,93 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
     )?;
     let checkpoint = reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[test]
+fn current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the bounded change; choose the internal module naming and structure.",
+    )?;
+    let delegated = dimension(
+        "internal-implementation-structure",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    let recorded = review(&fixture, vec![delegated])?;
+    let ready = readiness(&fixture, &recorded)?;
+    assert_eq!(ready.stage, WorkAuthorityStage::ReadyForWork);
+    assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
+    assert!(!ready.blocking);
+    assert_eq!(ready.satisfied_requirements[0].decision_basis, []);
+    let canonical = fixture.operations.canonical_basis(fixture.project_id)?;
+    assert!(canonical.active_questions.is_empty());
+    assert!(canonical.active_decisions.is_empty());
+
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "mod internal_name { pub fn value() -> u32 { 2 } }\n",
+    )?;
+    let checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    assert!(checkpoint.applied_decisions.is_empty());
+    Ok(())
+}
+
+#[test]
+fn current_task_delegation_rejects_unrelated_goal_missing_and_out_of_scope_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the bounded change; choose the internal module naming and structure.",
+    )?;
+    let unrelated = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".to_owned(),
+        "work-authority-session".to_owned(),
+        "Use concise diagnostics in a different follow-up task.".to_owned(),
+        ContextItemRole::Preference,
+        "Use concise diagnostics in a different follow-up task.".to_owned(),
+    )?;
+    for (label, source, affected_scope) in [
+        (
+            "unrelated-turn",
+            unrelated.source_id,
+            vec!["src/lib.rs".to_owned()],
+        ),
+        (
+            "goal-source-missing",
+            fixture.baseline.repository_source.identity(),
+            vec!["src/lib.rs".to_owned()],
+        ),
+        (
+            "outside-work-scope",
+            fixture.goal_source_id,
+            vec!["public/observable-policy".to_owned()],
+        ),
+    ] {
+        let mut delegated = dimension(
+            label,
+            MaterialityDisposition::DelegatedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ExplicitDelegation],
+            source,
+        );
+        delegated.affected_scope = affected_scope;
+        let recorded = review(&fixture, vec![delegated])?;
+        assert_eq!(
+            readiness(&fixture, &recorded)?.disposition,
+            WorkAuthorityDisposition::ReviewInvalid,
+            "{label}"
+        );
+    }
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
     Ok(())
 }
 
