@@ -1060,6 +1060,15 @@ def rehearse_target(
             review_candidate_id = (
                 review.get("review_candidate_id") if review_ok and review else None
             )
+            candidate_research_analysis, candidate_research_analysis_ok = host.tool(
+                "repository_analyze", {"project_id": project_id, "excluded_paths": []}
+            )
+            research_source_ids = candidate_repository_source_basis(
+                candidate_research_analysis
+            )
+            research_source_id = (
+                research_source_ids[0] if research_source_ids else None
+            )
             submitted, submitted_ok = host.tool("candidate_manage", {
                 "action": "submit_question_from_materiality",
                 "project_id": project_id,
@@ -1096,7 +1105,7 @@ def rehearse_target(
                 "capability": "structural",
                 "coverage": "current repository declarations",
                 "freshness": "current",
-                "source_ids": [source_id] if source_id else [],
+                "source_ids": [research_source_id] if research_source_id else [],
                 "evidence_assessment": "insufficient",
                 "limits": ["cross-component consequences still require review"],
             }) if candidate_id else (None, False)
@@ -1110,7 +1119,7 @@ def rehearse_target(
                 "capability": "structural",
                 "coverage": "current repository structure and explicit Project boundary",
                 "freshness": "current",
-                "source_ids": [source_id] if source_id else [],
+                "source_ids": [research_source_id] if research_source_id else [],
                 "evidence_assessment": "sufficient",
                 "limits": ["runtime-only external behavior remains excluded"],
             }) if candidate_id else (None, False)
@@ -1170,7 +1179,11 @@ def rehearse_target(
                             "summary": "The explicit current-host Decision supplies current authority",
                             "source_ids": [
                                 value
-                                for value in (source_id, decision_source_id)
+                                for value in (
+                                    source_id,
+                                    research_source_id,
+                                    decision_source_id,
+                                )
                                 if value
                             ],
                             "decision_ids": [decision_id] if decision_id else [],
@@ -1248,17 +1261,21 @@ def rehearse_target(
                 canonical_before_ok,
                 goal_ok,
                 goal,
-                goal.get("workflow", {}).get("stage") == "repository_baseline",
+                (goal or {}).get("workflow", {}).get("stage")
+                == "repository_baseline",
                 candidate_analysis_ok,
                 source_id,
                 review_ok,
                 review,
-                review.get("workflow", {}).get("stage") == "question_candidate",
-                review.get("workflow", {}).get("required_next_action")
+                (review or {}).get("workflow", {}).get("stage")
+                == "question_candidate",
+                (review or {}).get("workflow", {}).get("required_next_action")
                 == {
                     "tool": "candidate_manage",
                     "action": "submit_question_from_materiality",
                 },
+                candidate_research_analysis_ok,
+                research_source_id,
                 submitted_ok,
                 submitted and submitted.get("research_state") == "research_required",
                 submitted and submitted.get("review_candidate_id") == review_candidate_id,
@@ -1281,13 +1298,16 @@ def rehearse_target(
                 canonical_after_ok, decision_id, decision_revision, decision_source_id,
                 resolved_review_ok,
                 resolved_review,
-                resolved_review.get("workflow", {}).get("stage") == "ready_for_work",
+                (resolved_review or {}).get("workflow", {}).get("stage")
+                == "ready_for_work",
             ])
             candidate_status = "passed" if candidate_ok else "failed"
             inquiry_status = "passed" if inquiry_ok else "failed"
             candidate_evidence = {
                 "repository_analysis": candidate_analysis,
                 "repository_source_id": source_id,
+                "candidate_research_analysis": candidate_research_analysis,
+                "candidate_research_source_id": research_source_id,
                 "goal": goal,
                 "materiality_review": review,
                 "submission": submitted,
@@ -2262,6 +2282,7 @@ def self_check() -> int:
         '"local_canonical": local_canonical',
         '"action": "submit_question_from_materiality"',
         'review, review_ok = host.tool("materiality_review"',
+        'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
         'resolved_review, resolved_review_ok = host.tool("materiality_review"',
         'checkpoint_value, checkpoint_ok = host.tool("checkpoint_record"',
     ):
