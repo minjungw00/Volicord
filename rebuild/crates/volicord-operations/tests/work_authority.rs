@@ -13,10 +13,10 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    CommandVerificationDraft, ExploratoryDisposition, GroundedCheckpointDraft, LocalOperations,
-    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
-    WorkAuthorityDisposition, WorkAuthorityStage,
+    CommandVerificationDraft, ExplicitDelegationEvidence, ExploratoryDisposition,
+    GroundedCheckpointDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
+    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
 };
 
 fn dimension(
@@ -39,7 +39,21 @@ fn dimension(
             contract_basis: Vec::new(),
             decision_basis: Vec::new(),
             research_basis: Vec::new(),
+            explicit_delegation: None,
         },
+    }
+}
+
+fn delegation_evidence(
+    fixture: &Fixture,
+    verbatim_statement: &str,
+    affected_scope: Vec<String>,
+) -> ExplicitDelegationEvidence {
+    ExplicitDelegationEvidence {
+        goal_context_id: fixture.goal_id,
+        user_turn_source_id: fixture.goal_source_id,
+        verbatim_statement: verbatim_statement.to_owned(),
+        affected_scope,
     }
 }
 
@@ -228,12 +242,17 @@ fn current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision(
     let fixture = fixture_with_goal(
         "Implement the bounded change; choose the internal module naming and structure.",
     )?;
-    let delegated = dimension(
+    let mut delegated = dimension(
         "internal-implementation-structure",
         MaterialityDisposition::DelegatedImplementationChoice,
         vec![WorkAuthorityBasisKind::ExplicitDelegation],
         fixture.goal_source_id,
     );
+    delegated.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "choose the internal module naming and structure",
+        vec!["src/lib.rs".to_owned()],
+    ));
     let recorded = review(&fixture, vec![delegated])?;
     let ready = readiness(&fixture, &recorded)?;
     assert_eq!(ready.stage, WorkAuthorityStage::ReadyForWork);
@@ -306,6 +325,123 @@ fn current_task_delegation_rejects_unrelated_goal_missing_and_out_of_scope_basis
         .canonical_basis(fixture.project_id)?
         .active_decisions
         .is_empty());
+    Ok(())
+}
+
+#[test]
+fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the bounded change; choose the internal module naming and structure.",
+    )?;
+    let unrelated = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".to_owned(),
+        "work-authority-session".to_owned(),
+        "You may choose the unrelated logging format.".to_owned(),
+        ContextItemRole::Preference,
+        "You may choose the unrelated logging format.".to_owned(),
+    )?;
+
+    let mut nonverbatim = dimension(
+        "nonverbatim",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    nonverbatim.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "the user delegates every implementation choice",
+        vec!["src/lib.rs".to_owned()],
+    ));
+    assert!(review(&fixture, vec![nonverbatim]).is_err());
+
+    let mut wrong_turn = dimension(
+        "wrong-turn",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        unrelated.source_id,
+    );
+    wrong_turn.basis.explicit_delegation = Some(ExplicitDelegationEvidence {
+        goal_context_id: fixture.goal_id,
+        user_turn_source_id: unrelated.source_id,
+        verbatim_statement: "You may choose the unrelated logging format.".to_owned(),
+        affected_scope: vec!["src/lib.rs".to_owned()],
+    });
+    assert!(review(&fixture, vec![wrong_turn]).is_err());
+
+    let mut excess_scope = dimension(
+        "excess-scope",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    excess_scope.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "choose the internal module naming and structure",
+        vec!["src".to_owned(), "public/observable-policy".to_owned()],
+    ));
+    let recorded = review(&fixture, vec![excess_scope])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReviewInvalid
+    );
+    Ok(())
+}
+
+#[test]
+fn current_task_delegation_is_per_dimension_and_independent_of_research(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Choose the internal module naming and error type; keep public behavior unchanged.",
+    )?;
+    let mut naming = dimension(
+        "module-naming",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    naming.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "Choose the internal module naming and error type",
+        vec!["src/lib.rs".to_owned()],
+    ));
+    let user_owned = dimension(
+        "public-failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        fixture.baseline.repository_source.identity(),
+    );
+    let mixed = review(&fixture, vec![naming.clone(), user_owned])?;
+    let blocked = readiness(&fixture, &mixed)?;
+    assert_eq!(
+        blocked.disposition,
+        WorkAuthorityDisposition::QuestionRequired
+    );
+    assert_eq!(blocked.satisfied_requirements.len(), 1);
+    assert_eq!(blocked.unresolved_requirements.len(), 1);
+
+    let mut error_type = naming.clone();
+    error_type.dimension_id = "internal-error-type".to_owned();
+    let delegated = review(&fixture, vec![naming.clone(), error_type])?;
+    assert_eq!(
+        readiness(&fixture, &delegated)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
+    assert!(naming.basis.research_basis.is_empty());
+
+    naming
+        .basis
+        .kinds
+        .push(WorkAuthorityBasisKind::ResearchEvidence);
+    naming.basis.research_basis = vec!["independent implementation research".to_owned()];
+    let researched = review(&fixture, vec![naming])?;
+    assert_eq!(
+        readiness(&fixture, &researched)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
     Ok(())
 }
 
@@ -421,6 +557,36 @@ fn recommendation_library_convention_and_fake_delegation_never_establish_authori
             readiness(&fixture, &recorded)?.disposition,
             WorkAuthorityDisposition::ReviewInvalid,
             "{label}"
+        );
+    }
+    for kind in [
+        WorkAuthorityBasisKind::AcceptedContract,
+        WorkAuthorityBasisKind::AgentRecommendation,
+        WorkAuthorityBasisKind::LibraryOrConvention,
+        WorkAuthorityBasisKind::ImplementationPreference,
+    ] {
+        let fixture = fixture_with_goal(
+            "Implement the bounded change; choose the internal module naming and structure.",
+        )?;
+        let mut delegated = dimension(
+            "masquerading-authority",
+            MaterialityDisposition::DelegatedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ExplicitDelegation, kind],
+            fixture.goal_source_id,
+        );
+        delegated.basis.explicit_delegation = Some(delegation_evidence(
+            &fixture,
+            "choose the internal module naming and structure",
+            vec!["src/lib.rs".to_owned()],
+        ));
+        if kind == WorkAuthorityBasisKind::AcceptedContract {
+            delegated.basis.contract_basis = vec!["accepted owner text".to_owned()];
+        }
+        let recorded = review(&fixture, vec![delegated])?;
+        assert_eq!(
+            readiness(&fixture, &recorded)?.disposition,
+            WorkAuthorityDisposition::ReviewInvalid,
+            "{kind:?}"
         );
     }
     Ok(())

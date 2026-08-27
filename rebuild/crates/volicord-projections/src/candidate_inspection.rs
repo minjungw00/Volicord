@@ -1,7 +1,7 @@
 use volicord_context::TimestampMicros;
 use volicord_inquiry::{
     CandidateCleanup, CandidateDisposition, CandidateId, CandidateReadBasis, CandidateRecord,
-    CollectionOptOut, CollectionOptOutScope,
+    CollectionOptOut, CollectionOptOutScope, ExplicitDelegationEvidence,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +39,12 @@ pub enum RetentionInspection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExplicitDelegationInspection {
+    pub dimension_id: String,
+    pub evidence: ExplicitDelegationEvidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CandidateInspection {
     pub candidate_id: CandidateId,
     pub exists: bool,
@@ -59,6 +65,7 @@ pub struct CandidateInspection {
     pub bounded_summary: Option<String>,
     pub question_research_state: Option<volicord_context::QuestionResearchState>,
     pub repository_research_basis: Vec<volicord_inquiry::RepositoryResearchBasis>,
+    pub explicit_delegation_evidence: Vec<ExplicitDelegationInspection>,
     pub content_omission: Option<CandidateContentOmission>,
 }
 
@@ -95,6 +102,7 @@ pub fn inspect_candidate(
             bounded_summary: None,
             question_research_state: None,
             repository_research_basis: Vec::new(),
+            explicit_delegation_evidence: Vec::new(),
             content_omission: None,
         };
     };
@@ -180,6 +188,34 @@ fn inspect_existing(
             CandidateContentAccess::PolicyWithheld => (None, Vec::new()),
         }
     };
+    let explicit_delegation_evidence = if forgetting_pending {
+        Vec::new()
+    } else {
+        match content_access {
+            CandidateContentAccess::AllowBoundedSummary => candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.materiality_review.as_ref())
+                .map(|review| {
+                    review
+                        .dimensions
+                        .iter()
+                        .filter_map(|dimension| {
+                            dimension
+                                .basis
+                                .explicit_delegation
+                                .as_ref()
+                                .map(|evidence| ExplicitDelegationInspection {
+                                    dimension_id: dimension.dimension_id.clone(),
+                                    evidence: evidence.clone(),
+                                })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            CandidateContentAccess::PolicyWithheld => Vec::new(),
+        }
+    };
     CandidateInspection {
         candidate_id: candidate.id,
         exists: true,
@@ -200,6 +236,7 @@ fn inspect_existing(
         bounded_summary,
         question_research_state,
         repository_research_basis,
+        explicit_delegation_evidence,
         content_omission,
     }
 }

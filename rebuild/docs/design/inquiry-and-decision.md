@@ -158,9 +158,12 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   Decision은 재질문 없이 적용한다.
 - 명시적으로 위임된 implementation choice는 위임 범위 안에서 agent가 질문 없이
   선택한다. 이 authority에는 두 경로만 있다. 현재 user-stated Goal 자체의 위임은
-  그 Goal을 만든 exact current-host user-turn Source가 dimension의 `ExplicitDelegation`
-  basis에도 포함되고 affected scope가 current Goal/work scope 안에 있을 때 그대로
-  재사용한다. 이 경우 위임을 되풀이하는 Question이나 Decision을 만들지 않는다.
+  typed explicit-delegation evidence가 exact Goal identity와 그 Goal을 만든 exact
+  current-host user-turn Source를 함께 가리키고, bounded verbatim statement가 Goal
+  statement와 exact user turn에 실제 포함되며, evidence scope가 dimension과 current
+  Goal/work scope를 포함할 때 그대로 재사용한다. Source identity만 있거나 delegation
+  statement/scope가 없는 basis는 authority가 아니다. 이 경우 위임을 되풀이하는
+  Question이나 Decision을 만들지 않는다.
   Inquiry 중 새로 받은 위임은 기존 Question/current revision/current-host response에서
   생성된 applicable delegation Decision이 exact dimension scope를 포함할 때만 사용한다.
 - exploratory uncertainty는 필요에 따라 research, bounded prototype, deferment 또는
@@ -227,6 +230,22 @@ recommendation, convention과 implementation preference를 거부한다. Inquiry
 delegation Decision과 exact response provenance를 계속 요구한다. Accepted contract나
 일반 Decision으로 이미 정해진 outcome은 `SettledAuthority`로 남으며 delegated
 disposition으로 재분류하지 않는다.
+
+Current-task explicit-delegation evidence는 Goal Context identity, exact current-host user-turn
+Source identity, non-empty bounded verbatim statement와 bounded affected scope를 하나의 typed
+meaning으로 보존한다. 같은 statement가 여러 dimension을 실제로 포괄하면 각 dimension이 그
+shared evidence와 포괄 scope를 inspectable하게 연결하고, 그렇지 않으면 dimension마다 별도
+evidence가 필요하다. Research/prototype evidence, accepted contract, applicable Decision,
+agent recommendation, library/convention과 implementation preference는 이 evidence를 대신하지
+않는다. Inquiry-time delegation Decision과 current-task evidence를 같은 dimension authority로
+혼합하지 않는다.
+
+Production은 exact current user provenance, verbatim inclusion, current Goal identity,
+freshness, dimension/work scope containment과 상충 authority representation 부재를 결정적으로
+검사한다. 이 검사는 arbitrary natural-language prose가 semantic하게 진짜 위임인지 판정하는
+classifier가 아니다. Provider call, keyword/regular-expression grammar, English-only heuristic 또는
+숨은 semantic inference를 authority로 사용하지 않는다. Frozen task의 해당 문구가 실제로 그
+choice를 위임하는지에 대한 semantic quality는 naturalistic Phase 8 evaluator가 관찰한다.
 
 ## 5. Question presentation
 
@@ -439,9 +458,10 @@ current changed path/Decision applicability로 work authority를 다시 평가�
 wrong Goal/baseline, late first review, unresolved user-owned dimension 또는 unfinished
 research/prototype는 Checkpoint publication 전에 거부한다. Resolved user-owned outcome과
 Inquiry-time explicit delegation에 사용된 applicable Decision은 Checkpoint의 applied Decision
-목록에도 명시되어야 한다. Current Goal의 exact user-turn Source에서 이미 주어진 bounded
-implementation delegation은 새 Decision을 제조하지 않고 Source-grounded satisfied requirement로
-남는다. Settled contract/repository fact/research basis는 Decision으로 가장하지 않고 각자의
+목록에도 명시되어야 한다. Current Goal의 exact user-turn Source와 typed verbatim/scope
+evidence로 이미 주어진 bounded implementation delegation은 새 Decision을 제조하지 않고
+explicit-delegation satisfied requirement로 남는다. Settled contract/repository fact/research
+basis는 Decision이나 delegation으로 가장하지 않고 각자의
 satisfied requirement로 남는다. Restart 뒤에도 Candidate revision과 canonical state에서 같은
 evaluation을 재구성하므로 pause나 prior attempt가 unresolved authority를 완료로 바꾸지 않는다.
 

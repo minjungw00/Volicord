@@ -135,9 +135,10 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
 ### Session Candidate store format
 
 Current Candidate store format은 Question Candidate와 typed Materiality Review payload를 함께
-해석하는 version `3` 하나다. Review kind/payload, Goal/baseline binding과 dimension evidence
-semantics가 추가되었으므로 이전 version을 decode하거나 default field로 current meaning을
-추정하지 않는다. Current positive store만 reopen하며 version `2`와 다른 non-current value는
+해석하는 version `4` 하나다. Current-task delegation에 exact Goal/user-turn identity, bounded
+verbatim statement와 affected scope를 가진 typed evidence가 추가되었으므로 이전 version을
+decode하거나 Source-only/default field로 current meaning을 추정하지 않는다. Current positive
+store만 reopen하며 version `3`과 다른 non-current value는
 domain decode/mutation 전에 reject한다. Candidate는 portable bundle에 포함되지 않으므로 이
 변경은 canonical schema나 portable bundle version을 바꾸지 않는다.
 

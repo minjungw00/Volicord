@@ -349,7 +349,7 @@ fn candidate_store_accepts_only_the_current_materiality_format(
     let non_current = root.path().join("non-current.sqlite3");
     drop(CandidateStore::open(&non_current)?);
     rusqlite::Connection::open(&non_current)?.execute(
-        "UPDATE metadata SET value = '2' WHERE key = 'schema_version'",
+        "UPDATE metadata SET value = '3' WHERE key = 'schema_version'",
         [],
     )?;
     let error = CandidateStore::open(&non_current)
@@ -359,6 +359,6 @@ fn candidate_store_accepts_only_the_current_materiality_format(
         error.kind(),
         volicord_inquiry::ErrorKind::UnsupportedVersion
     );
-    assert!(error.to_string().contains("current version is 3"));
+    assert!(error.to_string().contains("current version is 4"));
     Ok(())
 }

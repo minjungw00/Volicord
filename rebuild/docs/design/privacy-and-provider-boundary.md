@@ -207,7 +207,10 @@ observation metadata가 이 기본 제외를 우회하는 raw-content 보존 근
 Typed Materiality Review는 ambient automatic capture가 아니라 explicit current work operation의
 Session Candidate다. Candidate collection opt-out을 무시해 background content를 수집하는 경로가
 아니며, Project/Goal/baseline identity, bounded dimension summary와 evidence reference만 보존한다.
-Full prompt, Source body, raw command와 provider payload는 review content가 아니다. Retention,
+Current-task delegation을 주장할 때는 exact Goal/user-turn identity와 Goal에 실제 포함된 bounded
+verbatim delegation statement 및 적용 scope만 inspectable evidence로 추가 보존한다. 이는 full
+user turn이나 unrelated prompt content를 보존하는 허가가 아니다. Full prompt, 그 밖의 Source
+body, raw command와 provider payload는 review content가 아니다. Retention,
 explicit deletion, canonical forgetting read barrier와 Candidate Inspection 규칙은 다른 Candidate와
 동일하게 적용되고, deletion/expiry가 canonical Question이나 Decision을 바꾸지 않는다.
 

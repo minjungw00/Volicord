@@ -333,6 +333,33 @@ fn evaluate_dimension(
                 .to_owned(),
         ));
     }
+    if dimension.basis.explicit_delegation.is_some()
+        && !matches!(
+            dimension.disposition,
+            MaterialityDisposition::DelegatedImplementationChoice
+        )
+    {
+        return Err(DimensionIssue::Invalid(
+            "explicit delegation evidence cannot authorize a non-delegated disposition".to_owned(),
+        ));
+    }
+    if matches!(
+        dimension.disposition,
+        MaterialityDisposition::DelegatedImplementationChoice
+    ) && dimension.basis.kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            WorkAuthorityBasisKind::AcceptedContract
+                | WorkAuthorityBasisKind::AgentRecommendation
+                | WorkAuthorityBasisKind::LibraryOrConvention
+                | WorkAuthorityBasisKind::ImplementationPreference
+        )
+    }) {
+        return Err(DimensionIssue::Invalid(
+            "delegation authority cannot be supplied by an accepted contract, recommendation, convention, or implementation preference"
+                .to_owned(),
+        ));
+    }
     match &dimension.disposition {
         MaterialityDisposition::RepositoryOrEnvironmentFact => {
             require_kind(
@@ -359,11 +386,12 @@ fn evaluate_dimension(
         MaterialityDisposition::DelegatedImplementationChoice => {
             require_kind(dimension, WorkAuthorityBasisKind::ExplicitDelegation)?;
             if dimension.basis.decision_basis.is_empty() {
-                if current_goal_delegates_dimension(canonical, goal, dimension, applicability) {
-                    return Ok(Vec::new());
-                }
+                validate_current_goal_delegation(canonical, goal, dimension, applicability)?;
+                return Ok(Vec::new());
+            }
+            if dimension.basis.explicit_delegation.is_some() {
                 return Err(DimensionIssue::Invalid(
-                    "delegation requires the exact current Goal user-turn Source within the current work scope or an applicable explicit delegation Decision"
+                    "current-task delegation evidence and Inquiry-time delegation Decision authority cannot be combined"
                         .to_owned(),
                 ));
             }
@@ -451,31 +479,78 @@ fn evaluate_dimension(
     }
 }
 
-fn current_goal_delegates_dimension(
+fn validate_current_goal_delegation(
     canonical: &CanonicalReadBasis,
     goal: &ContextItem,
     dimension: &MaterialityDimension,
     applicability: &ApplicabilityQuery,
-) -> bool {
-    let exact_goal_user_turn = goal.source_basis.iter().copied().any(|source_id| {
-        dimension.basis.source_basis.contains(&source_id)
-            && canonical.sources.iter().any(|basis| {
-                basis.source.id == source_id
-                    && basis.source.project_id == canonical.project.id
-                    && basis.freshness == SourceFreshness::Current
-                    && basis.source.actor.kind == PrincipalKind::User
-                    && matches!(
-                        basis.source.payload,
-                        SourcePayload::CurrentHostUserTurn { .. }
-                    )
-            })
-    });
-    exact_goal_user_turn
-        && scope_contains_dimension(
-            &goal.applicability,
-            applicability,
-            &dimension.affected_scope,
+) -> Result<(), DimensionIssue> {
+    let evidence = dimension
+        .basis
+        .explicit_delegation
+        .as_ref()
+        .ok_or_else(|| {
+            DimensionIssue::Invalid(
+                "current-task delegation requires explicit verbatim delegation evidence; a Goal Source alone is insufficient"
+                    .to_owned(),
+            )
+        })?;
+    if dimension.basis.kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            WorkAuthorityBasisKind::AcceptedContract
+                | WorkAuthorityBasisKind::ApplicableDecision
+                | WorkAuthorityBasisKind::AgentRecommendation
+                | WorkAuthorityBasisKind::LibraryOrConvention
+                | WorkAuthorityBasisKind::ImplementationPreference
         )
+    }) {
+        return Err(DimensionIssue::Invalid(
+            "explicit delegation must remain distinct from accepted contract, Decision, recommendation, convention, and implementation-preference authority"
+                .to_owned(),
+        ));
+    }
+    if evidence.goal_context_id != goal.id
+        || evidence.verbatim_statement.trim().is_empty()
+        || evidence.affected_scope.is_empty()
+        || !dimension
+            .basis
+            .source_basis
+            .contains(&evidence.user_turn_source_id)
+        || !goal.source_basis.contains(&evidence.user_turn_source_id)
+        || !goal.statement.contains(&evidence.verbatim_statement)
+        || !scope_values_contain(&evidence.affected_scope, &dimension.affected_scope)
+        || !scope_contains_dimension(&goal.applicability, applicability, &evidence.affected_scope)
+    {
+        return Err(DimensionIssue::Invalid(
+            "explicit delegation evidence must bind the exact current Goal, verbatim statement, user-turn Source, and bounded dimension/work scope"
+                .to_owned(),
+        ));
+    }
+    let source = canonical
+        .sources
+        .iter()
+        .find(|basis| basis.source.id == evidence.user_turn_source_id)
+        .ok_or_else(|| {
+            DimensionIssue::Invalid("explicit delegation user-turn Source is missing".to_owned())
+        })?;
+    let SourcePayload::CurrentHostUserTurn { turn, .. } = &source.source.payload else {
+        return Err(DimensionIssue::Invalid(
+            "explicit delegation evidence is not grounded in a current-host user turn".to_owned(),
+        ));
+    };
+    if source.source.project_id != canonical.project.id
+        || source.freshness != SourceFreshness::Current
+        || source.source.actor.kind != PrincipalKind::User
+        || !turn.contains(&goal.statement)
+        || !turn.contains(&evidence.verbatim_statement)
+    {
+        return Err(DimensionIssue::Invalid(
+            "explicit delegation evidence has unrelated, stale, agent-authored, or non-verbatim user provenance"
+                .to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn scope_contains_dimension(
@@ -500,6 +575,17 @@ fn scope_item_matches(scope: &[String], affected: &str, path_like: bool) -> bool
                 && affected
                     .strip_prefix(declared)
                     .is_some_and(|suffix| suffix.starts_with('/')))
+    })
+}
+
+fn scope_values_contain(scope: &[String], affected_scope: &[String]) -> bool {
+    affected_scope.iter().all(|affected| {
+        scope.iter().any(|declared| {
+            declared == affected
+                || affected
+                    .strip_prefix(declared)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        })
     })
 }
 

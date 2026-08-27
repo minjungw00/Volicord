@@ -41,9 +41,10 @@ pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };
 pub use volicord_inquiry::{
-    ExploratoryDisposition, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
-    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition,
-    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    ExplicitDelegationEvidence, ExploratoryDisposition, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityRequirement,
+    WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

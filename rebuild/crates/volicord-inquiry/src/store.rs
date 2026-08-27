@@ -17,7 +17,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 3;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 4;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1023,6 +1023,19 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         validate_list(&dimension.basis.research_basis)?;
         validate_id_list(&dimension.basis.source_basis)?;
         validate_id_list(&dimension.basis.decision_basis)?;
+        if let Some(delegation) = &dimension.basis.explicit_delegation {
+            validate_text(
+                "explicit delegation verbatim statement",
+                &delegation.verbatim_statement,
+            )?;
+            validate_list(&delegation.affected_scope)?;
+            if delegation.affected_scope.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "explicit delegation evidence requires bounded affected scope",
+                ));
+            }
+        }
         if !identities.insert(dimension.dimension_id.as_str())
             || dimension.affected_scope.is_empty()
             || dimension.material_consequences.is_empty()
@@ -1095,7 +1108,76 @@ fn validate_review_against_canonical(
             "Materiality Review contains a missing or non-current Source basis",
         ));
     }
+    for dimension in &review.dimensions {
+        let Some(delegation) = &dimension.basis.explicit_delegation else {
+            continue;
+        };
+        if delegation.goal_context_id != review.goal_context_id
+            || !dimension
+                .basis
+                .source_basis
+                .contains(&delegation.user_turn_source_id)
+            || !goal.source_basis.contains(&delegation.user_turn_source_id)
+            || !goal.statement.contains(&delegation.verbatim_statement)
+            || !delegation_scope_contains_dimension(
+                &delegation.affected_scope,
+                &dimension.affected_scope,
+            )
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "explicit delegation evidence must bind the exact Goal, its user-turn Source, a verbatim Goal statement, and the dimension scope",
+            ));
+        }
+        let source = canonical
+            .sources
+            .iter()
+            .find(|basis| basis.source.id == delegation.user_turn_source_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "explicit delegation user-turn Source is missing",
+                )
+            })?;
+        if source.freshness != volicord_context::SourceFreshness::Current
+            || source.source.project_id != canonical.project.id
+            || source.source.actor.kind != volicord_context::PrincipalKind::User
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "explicit delegation evidence requires the current Project user Source",
+            ));
+        }
+        let volicord_context::SourcePayload::CurrentHostUserTurn { turn, .. } =
+            &source.source.payload
+        else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "explicit delegation evidence requires a current-host user-turn Source",
+            ));
+        };
+        if !turn.contains(&goal.statement) || !turn.contains(&delegation.verbatim_statement) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "explicit delegation statement must remain verbatim-grounded in the exact current-host user turn",
+            ));
+        }
+    }
     Ok(())
+}
+
+fn delegation_scope_contains_dimension(
+    delegation_scope: &[String],
+    affected_scope: &[String],
+) -> bool {
+    affected_scope.iter().all(|affected| {
+        delegation_scope.iter().any(|delegated| {
+            delegated == affected
+                || affected
+                    .strip_prefix(delegated)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        })
+    })
 }
 
 fn validate_question_candidate(question: &crate::QuestionCandidate) -> Result<(), Error> {

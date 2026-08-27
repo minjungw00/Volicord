@@ -78,6 +78,12 @@ all coupled material consequences are disclosed. Trivial implementation details
 do not become Questions. The MCP tool descriptions and operations above own the
 Candidate, frontier, and Decision procedure and validation.
 
+For a current-task delegated dimension, `materiality_review` accepts a dedicated
+evidence object containing the exact Goal and current-host user Source identities,
+a bounded verbatim Goal statement, and its affected scope. `research_basis` is
+independent and does not prove delegation. `candidate_inspect` returns only that
+bounded delegation evidence for audit, never the unrelated raw user turn.
+
 Authorize an installed server for one repository:
 
 ```text

@@ -352,6 +352,7 @@ fn record_ready_review(
                 contract_basis: Vec::new(),
                 decision_basis: Vec::new(),
                 research_basis: Vec::new(),
+                explicit_delegation: None,
             },
         }],
     })?;

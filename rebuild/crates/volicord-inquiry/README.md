@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 3. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 4. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The six Candidate kinds preserve bounded origin, collection scope,
@@ -61,6 +61,13 @@ dimensions require independently explicit authority; genuinely coupled
 dimensions may share one Question only when its alternatives disclose every
 coupled material consequence. Trivial implementation multiplicity remains
 agent-owned when it has no material consequence.
+
+Current-task delegation is a persisted typed basis, not a Source-membership
+shortcut. It binds the exact Goal Context and current-host user Source to a
+bounded verbatim Goal statement and affected scope. Inquiry-time delegation
+continues to use an applicable delegation Decision. Research, recommendation,
+convention, accepted contract, and implementation preference remain separate
+evidence kinds.
 
 ## Frontier boundary
 

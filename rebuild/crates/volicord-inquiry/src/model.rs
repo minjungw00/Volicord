@@ -221,6 +221,14 @@ pub enum WorkAuthorityBasisKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExplicitDelegationEvidence {
+    pub goal_context_id: ContextItemId,
+    pub user_turn_source_id: SourceId,
+    pub verbatim_statement: String,
+    pub affected_scope: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkAuthorityBasis {
     pub kinds: Vec<WorkAuthorityBasisKind>,
     pub summary: String,
@@ -228,6 +236,7 @@ pub struct WorkAuthorityBasis {
     pub contract_basis: Vec<String>,
     pub decision_basis: Vec<DecisionId>,
     pub research_basis: Vec<String>,
+    pub explicit_delegation: Option<ExplicitDelegationEvidence>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

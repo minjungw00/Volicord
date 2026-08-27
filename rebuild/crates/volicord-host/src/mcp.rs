@@ -1758,6 +1758,38 @@ fn materiality_review_schemas() -> Vec<Value> {
         ]),
     });
     kinds["maxItems"] = json!(16);
+    let explicit_delegation = object_schema(
+        vec![
+            (
+                "goal_context_id",
+                identity_schema("Exact current user-stated Goal Context identity"),
+            ),
+            (
+                "user_turn_source_id",
+                identity_schema("Exact current-host user-turn Source identity for that Goal"),
+            ),
+            (
+                "verbatim_statement",
+                text_schema(
+                    "Bounded verbatim Goal statement claimed as explicit delegation; no semantic inference is performed",
+                    1,
+                    4096,
+                ),
+            ),
+            (
+                "affected_scope",
+                nonempty_string_array_schema(
+                    "Bounded scope delegated by this exact user statement",
+                ),
+            ),
+        ],
+        &[
+            "goal_context_id",
+            "user_turn_source_id",
+            "verbatim_statement",
+            "affected_scope",
+        ],
+    );
     let mut basis = object_schema(
         vec![
             ("kinds", kinds),
@@ -1779,8 +1811,11 @@ fn materiality_review_schemas() -> Vec<Value> {
             ),
             (
                 "research_basis",
-                string_array_schema("Research, prototype, delegation, or revisit basis"),
+                string_array_schema(
+                    "Research, prototype, or revisit evidence; never delegation authority",
+                ),
             ),
+            ("explicit_delegation", explicit_delegation),
         ],
         &["kinds", "summary"],
     );
@@ -2898,6 +2933,20 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         .into_iter()
         .map(repository_research_json)
         .collect::<Vec<_>>();
+    let explicit_delegation_evidence = candidate
+        .explicit_delegation_evidence
+        .into_iter()
+        .map(|inspection| {
+            json!({
+                "dimension_id":inspection.dimension_id,
+                "goal_context_id":inspection.evidence.goal_context_id.to_string(),
+                "user_turn_source_id":inspection.evidence.user_turn_source_id.to_string(),
+                "verbatim_statement":inspection.evidence.verbatim_statement,
+                "affected_scope":inspection.evidence.affected_scope,
+                "authority_kind":"explicit_current_task_delegation",
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "identity":candidate.candidate_id.to_string(),
         "exists":candidate.exists,
@@ -2913,6 +2962,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         "summary":candidate.bounded_summary,
         "research_state":candidate.question_research_state.map(question_research_state_name),
         "repository_research":repository_research,
+        "explicit_delegation_evidence":explicit_delegation_evidence,
         "content_omission":candidate.content_omission.map(|value| format!("{:?}",value).to_lowercase()),
         "content_cleaned":candidate.content_cleaned,
         "cleanup":cleanup,
@@ -3402,6 +3452,24 @@ fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostErro
             contract_basis: string_array(basis, "contract_basis")?,
             decision_basis: decision_ids(basis, "decision_ids")?,
             research_basis: string_array(basis, "research_basis")?,
+            explicit_delegation: basis
+                .get("explicit_delegation")
+                .map(|delegation| {
+                    Ok(volicord_inquiry::ExplicitDelegationEvidence {
+                        goal_context_id: parse_context_item(required_str(
+                            delegation,
+                            "goal_context_id",
+                        )?)?,
+                        user_turn_source_id: SourceId::from_bytes(parse_identity(required_str(
+                            delegation,
+                            "user_turn_source_id",
+                        )?)?),
+                        verbatim_statement: required_str(delegation, "verbatim_statement")?
+                            .to_owned(),
+                        affected_scope: string_array(delegation, "affected_scope")?,
+                    })
+                })
+                .transpose()?,
         },
     })
 }

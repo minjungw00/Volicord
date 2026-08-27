@@ -70,7 +70,11 @@ Question, possible Checkpoint와 promotion proposal을 포함할 수 있다.
 `Materiality Review`도 Session Candidate다. 현재 user-stated Goal, exact retained
 pre-work Analysis Snapshot과 independently material한 outcome dimension을 묶어 각
 dimension의 fact/settled authority/delegation/exploration/user-owned disposition과 bounded
-evidence basis를 보존한다. 이 review는 일곱 번째 canonical entity, user Decision 또는
+evidence basis를 보존한다. Current-task delegation basis는 exact Goal identity, 그 Goal의
+exact current-host user-turn Source identity, Goal에 포함된 bounded verbatim statement와
+dimension에 적용되는 bounded scope를 별도 typed evidence로 보존한다. Source identity만으로
+delegation을 추론하지 않고 research, recommendation, convention, accepted contract 또는
+Decision authority와 합치지 않는다. 이 review는 일곱 번째 canonical entity, user Decision 또는
 ordinary-write permission이 아니다. 첫 authoritative review가 meaningful repository
 mutation 전이었는지와 이후 evidence revision을 구분하며, restart 뒤에도 unresolved
 dimension을 completed authority로 재분류하지 않는다.

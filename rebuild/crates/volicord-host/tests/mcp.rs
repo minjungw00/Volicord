@@ -409,6 +409,88 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
 }
 
 #[test]
+fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn = "Implement the change; choose the internal module name.";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":goal_turn,
+            "role":"goal",
+            "statement":goal_turn,
+        }),
+    ))
+    .clone();
+    let goal_context_id = goal["context_item_id"].as_str().expect("Goal identity");
+    let goal_source_id = goal["source_id"].as_str().expect("Goal Source identity");
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+            "source_operation":"bounded delegated implementation review",
+            "rationale":"The exact Goal delegates only the internal name.",
+            "dimensions":[{
+                "dimension_id":"internal-module-name",
+                "summary":"Select the internal module name",
+                "affected_scope":["src/lib.rs"],
+                "material_consequences":["Changes only the internal source layout"],
+                "observable_signals":["other_material_outcome"],
+                "disposition":"delegated_implementation_choice",
+                "basis":{
+                    "kinds":["explicit_delegation"],
+                    "summary":"Exact bounded current-task delegation",
+                    "source_ids":[goal_source_id],
+                    "research_basis":[],
+                    "explicit_delegation":{
+                        "goal_context_id":goal_context_id,
+                        "user_turn_source_id":goal_source_id,
+                        "verbatim_statement":"choose the internal module name",
+                        "affected_scope":["src/lib.rs"]
+                    }
+                }
+            }]
+        }),
+    ))
+    .clone();
+    assert!(review["review_candidate_id"].is_string(), "{review}");
+
+    let inspected = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let evidence = &inspected["candidates"][0]["explicit_delegation_evidence"][0];
+    assert_eq!(evidence["dimension_id"], "internal-module-name");
+    assert_eq!(evidence["goal_context_id"], goal_context_id);
+    assert_eq!(evidence["user_turn_source_id"], goal_source_id);
+    assert_eq!(
+        evidence["verbatim_statement"],
+        "choose the internal module name"
+    );
+    assert_eq!(
+        evidence["authority_kind"],
+        "explicit_current_task_delegation"
+    );
+    assert!(inspected
+        .to_string()
+        .contains("choose the internal module name"));
+    assert!(!inspected.to_string().contains(goal_turn));
+}
+
+#[test]
 fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
     let (_temporary, mut adapter, project) = setup();
     let goal = call(
@@ -1847,6 +1929,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     contract_basis: vec!["rebuild/docs/design/inquiry-and-decision.md".into()],
                     decision_basis: Vec::new(),
                     research_basis: Vec::new(),
+                    explicit_delegation: None,
                 },
             }],
         })

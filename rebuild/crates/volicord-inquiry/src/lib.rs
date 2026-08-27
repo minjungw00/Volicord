@@ -35,10 +35,10 @@ pub use model::{
     CandidateContent, CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateKind,
     CandidateObservationBasis, CandidateOrigin, CandidateReadBasis, CandidateRecord,
     CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment,
-    ExploratoryDisposition, InquiryScope, MaterialOutcomeSignal, MaterialityAssessment,
-    MaterialityDimension, MaterialityDisposition, MaterialityReview, MaterialityStatus,
-    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
-    SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, MaterialOutcomeSignal,
+    MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
+    MaterialityStatus, PromotionResult, QuestionCandidate, QuestionPresentation,
+    RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,
