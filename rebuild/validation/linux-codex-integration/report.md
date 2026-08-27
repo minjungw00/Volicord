@@ -4,7 +4,7 @@
 
 Passed against the eight Production commit identities fixed by
 `v08-matrix.json`, ending with `5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a`
-and `3b48545bd9e2a224d6feb75ae1c743d1af31f4cf`. The 77-requirement matrix
+and `3b48545bd9e2a224d6feb75ae1c743d1af31f4cf`. The 81-requirement matrix
 covers the real viewer listener and request-authenticity boundary,
 runtime-discovered MCP schemas, repository-Source-grounded analysis recovery,
 and an authenticated Codex product-tool turn. The deterministic evidence
@@ -95,15 +95,28 @@ not retrieve the page or request-authenticity value. The value was absent from
 request URLs and redirects, portable output, canonical inspection, and the
 ordinary generated document.
 
-The installed MCP process advertised 14 high-level tools. Every advertised
+The installed MCP process advertised 19 high-level tools. Every advertised
 shape was a closed object with typed, described properties and explicit
 required fields. The maintained client-side interpreter constructed Recall,
 Checkpoint, and Guarded calls from those returned schemas. All three executed;
 the Guarded response preserved exact identity and revision. Across the full
-catalog, 29 missing-field or additional-property calls were rejected by the
+catalog, 39 missing-field or additional-property calls were rejected by the
 advertised contract. Production Rust oracles independently match every schema
 shape to handler-consumed fields and verify invalid requests fail before
 mutation.
+
+The installed workflow began with read-only `project_resolve`, which required
+Recall for the found Project. Recall exposed the missing Goal, Goal exposed the
+pre-work analysis requirement, and analysis exposed the exact Materiality
+Review transition. A settled-contract review reached ready-for-work without a
+Question, ordinary fixture work followed only afterward, and the grounded
+Checkpoint consumed the same Goal, baseline, and review basis. After host
+restart, resolution required Recall again; Recall required a fresh baseline,
+and the fresh baseline required a recomputed Materiality Review instead of
+trusting the prior Checkpoint or Candidate state as current authority. Separate
+Rust product-path oracles exercise the user-owned Candidate, frontier,
+current-host Decision, review revision, ready-for-work, and actionable
+Checkpoint-refusal paths.
 
 The CLI recovery journey established two Projects and analyses, recorded stable
 user-owned Source, Checkpoint, and forgetting state, then changed repository
@@ -136,7 +149,7 @@ not registration, startup, or a manually constructed stdio RPC.
 Final focused results used for this report:
 
 - real viewer executable: passed in `246.121 ms`;
-- deterministic clean/MCP/recovery harness: passed in `414.967 ms` with warm
+- deterministic clean/MCP/recovery harness: passed in `1,204.236 ms` with warm
   release artifacts;
 - authenticated Codex product-tool probe: passed in `13,839.621 ms`.
 
@@ -179,6 +192,10 @@ legacy Runtime Home remained byte- and timestamp-identical.
   fail consistently before mutation.
 - Pass: authenticated Codex selects and completes a Volicord read-only product
   tool from the isolated registered server and returned schema.
+- Pass: installed MCP workflow directives guide resolution, Recall, Goal,
+  baseline, Materiality Review, no-question ready-for-work, Checkpoint, and
+  restart recomputation; the user-owned Rust journey still requires Candidate,
+  frontier, explicit current-host Decision, and review revision.
 - Pass: repair and reindex recover replacement-owned derived analysis from the
   current repository observation, add only required repository provenance to
   canonical state, preserve user meaning and another Project, retain historical

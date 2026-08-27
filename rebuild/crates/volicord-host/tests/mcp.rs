@@ -448,10 +448,13 @@ fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
     );
     assert_eq!(refused["result"]["isError"], true, "{refused}");
     let refused = structured(&refused);
-    assert!(refused["error"]
-        .as_str()
-        .expect("error text")
-        .contains("work authority is not resolved"), "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .expect("error text")
+            .contains("work authority is not resolved"),
+        "{refused}"
+    );
     assert_eq!(
         refused["details"]["workflow"]["stage"],
         "materiality_review"

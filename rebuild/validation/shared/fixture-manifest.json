@@ -631,7 +631,7 @@
       "id": "v08-linux-codex-integration",
       "validation_id": "V08",
       "path": "rebuild/validation/linux-codex-integration/fixtures",
-      "purpose": "Map the clean Linux installation, executable viewer request-authenticity, advertised MCP schemas, a completed authenticated Codex product-tool call, exact Guarded fallback, fresh repository provenance for project-scoped analysis repair and reindex, failure cleanup, user-owned canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
+      "purpose": "Map the clean Linux installation, executable viewer request-authenticity, advertised MCP schemas, installed self-guiding workflow directives, a completed authenticated Codex product-tool call, exact Guarded fallback, fresh repository provenance for project-scoped analysis repair and reindex, failure cleanup, user-owned canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
       "expected_entities": [
         "replacement-runtime-home",
         "installed-cli",
@@ -640,6 +640,8 @@
         "codex-mcp-registration",
         "high-level-host-tool-catalog",
         "advertised-input-schema",
+        "work-authority-directive",
+        "materiality-review-candidate",
         "completed-codex-tool-call",
         "live-viewer-listener",
         "viewer-request-authenticity",
@@ -658,6 +660,8 @@
         "viewer-and-host|delegate_mutation_to|local-operations",
         "viewer-mutation|requires|exact-authority-origin-and-request-authenticity",
         "connected-host|reports|degraded-repository-capability",
+        "project-resolution-and-lifecycle-operations|return|production-derived-workflow-directive",
+        "grounded-checkpoint|consumes|goal-baseline-and-materiality-review-basis",
         "repair-and-reindex|bind_snapshots_to|fresh-repository-observation-source",
         "repair-and-reindex|preserve|user-owned-canonical-meaning",
         "uninstall-reinstall|preserves|canonical-recall"
@@ -668,7 +672,7 @@
         "concurrent interactive clients or hostile concurrent path replacement",
         "legacy MCP runtime schema command alias migration import backup or dual path"
       ],
-      "content_sha256": "257fe748654c6d6011865eb588f3e683f3c41c9bf7e94e80aebc2b22e6838069",
+      "content_sha256": "bdabe46078258417c143c0365169b39984afea37c1c9e94b60c33e3f5b8fce68",
       "origin": "Self-authored V08 requirement map with isolated deterministic Linux journeys plus a separately recorded authenticated Codex CLI product-tool probe.",
       "license": "CC0-1.0"
     },

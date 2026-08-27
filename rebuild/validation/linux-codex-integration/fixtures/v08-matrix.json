@@ -38,7 +38,11 @@
       ["V08-H13-unauthorized-repository", "harness", "codex", "a second unauthorized repository receives no project-local Volicord state"],
       ["V08-H14-disable-owned-only", "harness", "codex", "disable removes the exact owned repository integration before binary uninstall"],
       ["V08-H15-owned-merge-conflicts", "assertion", "source", "repository integration tests preserve unrelated config and reject tracked or unowned conflicts"],
-      ["V08-H16-hook-isolation", "assertion", "source", "SessionStart tests cover startup resume clear compact and nonmatching cwd without Runtime Home access"]
+      ["V08-H16-hook-isolation", "assertion", "source", "SessionStart tests cover startup resume clear compact and nonmatching cwd without Runtime Home access"],
+      ["V08-H17-self-guiding-authority", "rust", "volicord-host/mcp", "mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work"],
+      ["V08-H18-installed-no-question", "harness", "workflow", "the installed MCP path exposes Goal baseline Materiality Review ready-for-work and grounded Checkpoint transitions without fabricating a Question"],
+      ["V08-H19-resume-recompute", "harness", "workflow", "a restarted host requires project resolution Recall a fresh baseline and a recomputed Materiality Review rather than trusting stale Checkpoint authority"],
+      ["V08-H20-checkpoint-guidance", "rust", "volicord-host/mcp", "checkpoint_refusal_returns_bounded_actionable_workflow_guidance"]
     ],
     "viewer_http": [
       ["V08-V01-real-listener", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],

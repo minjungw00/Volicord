@@ -1740,6 +1740,51 @@ fn background_semantic_operation_schemas() -> Vec<Value> {
 }
 
 fn materiality_review_schemas() -> Vec<Value> {
+    let mut kinds = json!({
+        "type":"array",
+        "description":"Inspectable work-authority basis kinds",
+        "minItems":1,
+        "items":enum_schema("Inspectable work-authority basis kind", &[
+            "repository_or_environment_fact",
+            "accepted_contract",
+            "applicable_decision",
+            "explicit_delegation",
+            "research_evidence",
+            "prototype_evidence",
+            "defer_or_revisit_basis",
+            "agent_recommendation",
+            "library_or_convention",
+            "implementation_preference",
+        ]),
+    });
+    kinds["maxItems"] = json!(16);
+    let mut basis = object_schema(
+        vec![
+            ("kinds", kinds),
+            (
+                "summary",
+                text_schema("Why this basis supports the classification", 1, 4096),
+            ),
+            (
+                "source_ids",
+                identity_array_schema("Canonical supporting Source identities", 0),
+            ),
+            (
+                "contract_basis",
+                string_array_schema("Accepted contract references"),
+            ),
+            (
+                "decision_ids",
+                identity_array_schema("Applicable Decision identities", 0),
+            ),
+            (
+                "research_basis",
+                string_array_schema("Research, prototype, delegation, or revisit basis"),
+            ),
+        ],
+        &["kinds", "summary"],
+    );
+    basis["description"] = json!("Inspectable evidence and authority basis for this dimension");
     let dimensions = json!({
         "type":"array",
         "description":"Independently material outcome dimensions and their inspected authority basis",
@@ -1753,6 +1798,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 ("material_consequences", nonempty_string_array_schema("Observable consequences that make the dimension material")),
                 ("observable_signals", json!({
                     "type":"array",
+                    "description":"Observable signals that make the outcome material",
                     "minItems":1,
                     "items":enum_schema("Observable material outcome signal", &[
                         "public_api_semantics",
@@ -1779,32 +1825,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                     "resolved_by_research",
                 ])),
                 ("resolution_decision_id", identity_schema("Applicable Decision resolving a user-owned outcome")),
-                ("basis", object_schema(
-                    vec![
-                        ("kinds", json!({
-                            "type":"array",
-                            "minItems":1,
-                            "items":enum_schema("Inspectable work-authority basis kind", &[
-                                "repository_or_environment_fact",
-                                "accepted_contract",
-                                "applicable_decision",
-                                "explicit_delegation",
-                                "research_evidence",
-                                "prototype_evidence",
-                                "defer_or_revisit_basis",
-                                "agent_recommendation",
-                                "library_or_convention",
-                                "implementation_preference",
-                            ]),
-                        })),
-                        ("summary", text_schema("Why this basis supports the classification", 1, 4096)),
-                        ("source_ids", identity_array_schema("Canonical supporting Source identities", 0)),
-                        ("contract_basis", string_array_schema("Accepted contract references")),
-                        ("decision_ids", identity_array_schema("Applicable Decision identities", 0)),
-                        ("research_basis", string_array_schema("Research, prototype, delegation, or revisit basis")),
-                    ],
-                    &["kinds", "summary"],
-                )),
+                ("basis", basis),
             ],
             &[
                 "dimension_id",

@@ -60,12 +60,16 @@ an untrusted Host cannot retrieve the page value, and the value is absent from
 URLs and durable outputs. Stale, mismatched, reused, malformed, and unsupported
 requests retain their existing rejection behavior.
 
-The actual installed MCP server advertises 18 closed concrete schemas. The
+The actual installed MCP server advertises 19 closed concrete schemas. The
 `project_resolve` surface canonicalizes an absolute repository path and reads
 the existing canonical binding without creating or revising a Project; it
 returns either the matching Project and current binding identity/revision or an
 explicit `not_found`. Host guidance requires this resolution before Recall in
 a fresh repository-scoped session and keeps explicit initialization separate.
+A bounded workflow directive now guides Goal, pre-work analysis, Materiality
+Review, no-question ready-for-work, user-owned Inquiry/Decision, grounded
+Checkpoint, and restart recomputation from production operations state rather
+than SessionStart prose or stale Checkpoint authority.
 A maintained client-side interpreter constructs representative Recall,
 Checkpoint, and Guarded calls from `tools/list`; missing and additional
 arguments are rejected consistently. A bounded authenticated `codex exec` turn

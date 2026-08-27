@@ -61,7 +61,7 @@ EXPECTED_COMMITS = {
         "fix: authenticate local viewer mutations",
     ),
 }
-CURRENT_ENTRY_BASELINE = "7077924cc042763f492a31318e6e8ce0d36597ed"
+CURRENT_ENTRY_BASELINE = "ae63fd955863a15b63cd22f50fdaa39e72c2ccc6"
 
 
 def require(condition: bool, message: str) -> None:
@@ -151,6 +151,9 @@ def main() -> int:
         "rebuild/crates/volicord-host/src/mcp.rs",
         "rebuild/crates/volicord-inquiry/README.md",
         "rebuild/crates/volicord-inquiry/src/store.rs",
+        "rebuild/crates/volicord-inquiry/src/work_authority.rs",
+        "rebuild/crates/volicord-operations/src/model.rs",
+        "rebuild/crates/volicord-operations/src/operations.rs",
     }
     require(
         not set(production_drift) - permitted_activation_drift,

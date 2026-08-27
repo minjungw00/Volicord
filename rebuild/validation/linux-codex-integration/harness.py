@@ -27,6 +27,7 @@ EXPECTED_TOOLS = [
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "materiality_review",
     "inquiry_frontier",
     "decision_record",
     "context_record",
@@ -328,24 +329,23 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
     names = [entry["name"] for entry in catalog]
     require(names == EXPECTED_TOOLS, "high-level MCP catalog changed")
     instructions = initialized["result"].get("instructions", "")
-    require("call project_resolve first" in instructions, "Project resolution guidance missing")
     require(
-        "recall must succeed before inspecting, editing, or continuing repository work"
-        in instructions,
-        "fresh-session Recall boundary missing",
+        "Project-scoped repository work starts with project_resolve" in instructions,
+        "Project resolution bootstrap missing",
     )
-    for semantic_boundary in (
-        "already settled by inspectable authority",
-        "a delegated implementation choice",
-        "exploratory uncertainty",
-        "an unresolved material user-owned outcome",
-        "identify every independently material user-owned dimension",
-        "recommendation or preferred implementation is not user authority",
-        "Do not promote trivial implementation details",
+    require(
+        "workflow.required_next_action" in instructions
+        and "do not bypass a blocking workflow transition" in instructions,
+        "tool-driven workflow boundary missing",
+    )
+    for concise_safety_boundary in (
+        "explicit response from the current host",
+        "separate exact authorization",
+        "actually observed command outcomes",
     ):
         require(
-            semantic_boundary in instructions,
-            f"semantic authority boundary missing: {semantic_boundary}",
+            concise_safety_boundary in instructions,
+            f"concise safety boundary missing: {concise_safety_boundary}",
         )
     for choreography in (
         "submit a Question Candidate",
@@ -359,6 +359,11 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
             f"server instructions duplicate tool choreography: {choreography}",
         )
     descriptions = {entry["name"]: entry.get("description", "") for entry in catalog}
+    require(
+        "typed pre-work Materiality Review" in descriptions["materiality_review"]
+        and "Inquiry owns the authority evaluation" in descriptions["materiality_review"],
+        "materiality_review no longer exposes the owned authority boundary",
+    )
     require(
         "attach source-grounded repository research" in descriptions["candidate_manage"]
         and "mark sufficient research ready" in descriptions["candidate_manage"]
@@ -588,17 +593,75 @@ def exercise_analysis_recovery(
         ],
         env,
     ).stdout)
-    run(
-        [
-            str(cli),
-            "--json", "--repository", str(first_repository),
-            "advanced", "checkpoint", "pause",
-            "--source", stable_source["identity"],
-            "--goal", "Preserve user-owned recovery meaning",
-            "--next-step", "Repair and reindex from fresh repository observations",
-        ],
-        env,
+    recovery_host = start_host(cli.parent / "volicord-mcp", env)
+    initialize_host(recovery_host, 300)
+    recovery_goal = tool(
+        recovery_host,
+        302,
+        "context_record",
+        {
+            "project_id": first,
+            "user_turn": "Preserve user-owned recovery meaning",
+            "role": "goal",
+            "statement": "Preserve user-owned recovery meaning",
+        },
     )
+    recovery_baseline = tool(
+        recovery_host,
+        303,
+        "repository_analyze",
+        {"project_id": first},
+    )
+    recovery_review = tool(
+        recovery_host,
+        304,
+        "materiality_review",
+        {
+            "action": "record",
+            "project_id": first,
+            "goal_context_id": recovery_goal["context_item_id"],
+            "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
+            "source_operation": "V08 recovery work-authority fixture",
+            "rationale": "The maintained recovery fixture settles its recovery treatment.",
+            "dimensions": [
+                {
+                    "dimension_id": "derived-analysis-recovery",
+                    "summary": "Apply the maintained derived-analysis recovery treatment",
+                    "affected_scope": ["derived-analysis"],
+                    "material_consequences": ["Preserves canonical meaning while rebuilding derived state"],
+                    "observable_signals": ["maintenance_or_support_policy"],
+                    "disposition": "settled_authority",
+                    "basis": {
+                        "kinds": ["accepted_contract"],
+                        "summary": "The V08 recovery fixture owns this exact treatment",
+                        "source_ids": [recovery_baseline["repository_source_id"]],
+                        "contract_basis": ["V08 derived-analysis recovery contract"],
+                    },
+                }
+            ],
+        },
+    )
+    require(
+        recovery_review["workflow"]["stage"] == "ready_for_work",
+        "recovery fixture did not resolve work authority",
+    )
+    recovery_checkpoint = tool(
+        recovery_host,
+        305,
+        "checkpoint_record",
+        {
+            "project_id": first,
+            "goal_context_id": recovery_goal["context_item_id"],
+            "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
+            "kind": "pause",
+            "work_state": "paused",
+            "applied_decision_ids": [],
+            "verification": [{"state": "not_run"}],
+            "next_step": "Repair and reindex from fresh repository observations",
+        },
+    )
+    require(recovery_checkpoint.get("checkpoint_id"), "recovery Checkpoint was not grounded")
+    stop_host(recovery_host)
     disposable_source = json.loads(run(
         [
             str(cli),
@@ -664,7 +727,10 @@ def exercise_analysis_recovery(
         str(cli), "--json", "--repository", str(first_repository), "doctor", "repair",
     ], env).stdout)
     require(repaired["kind"] == "derivedanalysisrepair", "repair used the wrong recovery kind")
-    require(repaired["discarded_entries"] == 1, "repair did not discard the corrupt owned entry")
+    require(
+        repaired["discarded_entries"] >= 1,
+        "repair did not discard the corrupt owned entry and prior Project snapshots",
+    )
     require(Path(repaired["stored_at"]).is_file(), "repair did not publish a fresh analysis")
     repaired_path = Path(repaired["stored_at"])
     repaired_value = json.loads(repaired_path.read_text(encoding="utf-8"))
@@ -924,11 +990,22 @@ def main() -> int:
             == str(repository.resolve()),
             "repository-bound Project resolution mismatch",
         )
+        require(
+            resolved["workflow"]["stage"] == "recall"
+            and resolved["workflow"]["required_next_action"]["tool"] == "recall"
+            and resolved["workflow"]["blocks_ordinary_work"] is True,
+            "found Project did not require Recall",
+        )
         health = tool(host, 3, "project_health", {"project_id": project_id})
         require(health["connection"] == "connected", "MCP connection not reported connected")
         require(health["capability_state"] == "healthy", "clean Project is not healthy")
         recall = tool(host, 4, "recall", {"project_id": project_id})
         require(recall["project_id"] == project_id and recall["read_only"] is True, "Recall mismatch")
+        require(
+            recall["workflow"]["stage"] == "goal"
+            and recall["workflow"]["required_next_action"]["tool"] == "context_record",
+            "Recall did not guide the missing current-host Goal",
+        )
         goal = tool(
             host,
             5,
@@ -940,14 +1017,61 @@ def main() -> int:
                 "statement": "Validate Linux and Codex integration",
             },
         )
+        require(
+            goal["workflow"]["stage"] == "repository_baseline"
+            and goal["workflow"]["required_next_action"]["tool"] == "repository_analyze",
+            "Goal did not guide pre-work repository grounding",
+        )
         baseline = tool(host, 6, "repository_analyze", {"project_id": project_id})
         require(baseline.get("analysis_snapshot_id"), "analysis did not expose its stable identity")
+        require(
+            baseline["workflow"]["stage"] == "materiality_review"
+            and baseline["workflow"]["disposition"] == "review_missing"
+            and baseline["workflow"]["required_next_action"]
+            == {"tool": "materiality_review", "action": "record"},
+            "pre-work analysis did not expose the Materiality Review requirement",
+        )
+        review = tool(
+            host,
+            7,
+            "materiality_review",
+            {
+                "action": "record",
+                "project_id": project_id,
+                "goal_context_id": goal["context_item_id"],
+                "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
+                "source_operation": "V08 installed MCP no-question workflow",
+                "rationale": "The maintained fixture already settles its bounded output.",
+                "dimensions": [
+                    {
+                        "dimension_id": "checkpoint-fixture-path",
+                        "summary": "Apply the maintained fixture filename and content",
+                        "affected_scope": ["grounded-checkpoint.txt"],
+                        "material_consequences": ["Changes only the delegated fixture implementation"],
+                        "observable_signals": ["other_material_outcome"],
+                        "disposition": "settled_authority",
+                        "basis": {
+                            "kinds": ["accepted_contract"],
+                            "summary": "The accepted V08 fixture settles this exact output",
+                            "source_ids": [baseline["repository_source_id"]],
+                            "contract_basis": ["V08 deterministic installed-MCP fixture"],
+                        },
+                    }
+                ],
+            },
+        )
+        require(
+            review["workflow"]["stage"] == "ready_for_work"
+            and review["workflow"]["blocks_ordinary_work"] is False
+            and review["workflow"]["required_next_action"]["tool"] == "checkpoint_record",
+            f"settled no-question review did not reach ready-for-work: {review}",
+        )
         (repository / "grounded-checkpoint.txt").write_text(
             "ordinary work after the baseline\n", encoding="utf-8"
         )
         checkpoint = tool(
             host,
-            7,
+            8,
             "checkpoint_record",
             {
                 "project_id": project_id,
@@ -963,6 +1087,11 @@ def main() -> int:
             },
         )
         require(checkpoint.get("checkpoint_id"), "Checkpoint call did not create identity")
+        require(
+            checkpoint["workflow"]["stage"] == "checkpoint"
+            and checkpoint["workflow"]["disposition"] == "checkpoint_recorded",
+            "Checkpoint did not consume the resolved work-authority basis",
+        )
         require(
             checkpoint.get("changed_paths") == ["grounded-checkpoint.txt"],
             "Checkpoint did not derive the ordinary-work path",
@@ -999,6 +1128,26 @@ def main() -> int:
         initialize_host(restarted, 10)
         restarted_health = tool(restarted, 12, "project_health", {"project_id": project_id})
         require(restarted_health["capability_state"] == "healthy", "restart did not reconnect")
+        resumed_resolve = tool(restarted, 13, "project_resolve", {"repository": str(repository)})
+        require(
+            resumed_resolve["workflow"]["stage"] == "recall"
+            and resumed_resolve["workflow"]["blocks_ordinary_work"] is True,
+            "fresh host restart did not require Recall",
+        )
+        resumed_recall = tool(restarted, 14, "recall", {"project_id": project_id})
+        require(
+            resumed_recall["workflow"]["stage"] == "repository_baseline"
+            and resumed_recall["workflow"]["required_next_action"]["tool"]
+            == "repository_analyze",
+            "resume Recall did not require a fresh pre-work baseline",
+        )
+        resumed_baseline = tool(restarted, 15, "repository_analyze", {"project_id": project_id})
+        require(
+            resumed_baseline["analysis_snapshot_id"] != baseline["analysis_snapshot_id"]
+            and resumed_baseline["workflow"]["stage"] == "materiality_review"
+            and resumed_baseline["workflow"]["disposition"] == "review_missing",
+            "resume trusted stale Checkpoint or Materiality Review authority",
+        )
         stop_host(restarted)
 
         unavailable_repository = temporary / "repository-unavailable"
