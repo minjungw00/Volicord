@@ -160,6 +160,70 @@ pub struct MaterialityReviewOutcome {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkflowStage {
+    ProjectResolution,
+    ProjectInitialization,
+    Recall,
+    Goal,
+    RepositoryBaseline,
+    MaterialityReview,
+    ResearchOrPrototype,
+    QuestionCandidate,
+    Inquiry,
+    Decision,
+    ReadyForWork,
+    Checkpoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkflowDisposition {
+    ProjectNotFound,
+    RecallRequired,
+    GoalRequired,
+    BaselineRequired,
+    ReviewMissing,
+    ReviewInvalid,
+    ResearchRequired,
+    QuestionRequired,
+    CandidateResearchRequired,
+    CandidatePromotionRequired,
+    UserResponseRequired,
+    ReviewRevisionRequired,
+    ReadyForWork,
+    CheckpointRecorded,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowAction {
+    pub tool: String,
+    pub action: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowBasisIdentity {
+    pub kind: String,
+    pub identity: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowRequirement {
+    pub dimension_id: Option<String>,
+    pub reason: String,
+    pub basis_identities: Vec<WorkflowBasisIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowDirective {
+    pub stage: WorkflowStage,
+    pub disposition: WorkflowDisposition,
+    pub required_next_action: Option<WorkflowAction>,
+    pub blocks_ordinary_work: bool,
+    pub reason: String,
+    pub satisfied_basis_identities: Vec<WorkflowBasisIdentity>,
+    pub unresolved_requirements: Vec<WorkflowRequirement>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HealthState {
     Healthy,
     Degraded,

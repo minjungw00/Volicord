@@ -15,7 +15,6 @@ mod operations;
 mod provider;
 
 pub use cli::{run_cli, run_cli_with_input, CliExit};
-pub use codex::MATERIAL_DECISION_SCREENING;
 pub use error::Error;
 pub use forgetting::ForgettingState;
 pub use guarded::{
@@ -34,7 +33,8 @@ pub use model::{
     LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
     MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
     ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
-    UserContextRecordingOutcome,
+    UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity, WorkflowDirective,
+    WorkflowDisposition, WorkflowRequirement, WorkflowStage,
 };
 pub use operations::LocalOperations;
 pub use provider::{

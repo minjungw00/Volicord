@@ -17,12 +17,9 @@ const CONFIG_NAME: &str = "config.toml";
 const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
-pub const MATERIAL_DECISION_SCREENING: &str = "Classify each unresolved outcome, in this order, after inspecting current repository or environment facts and applicable accepted contracts and Decisions: (1) already settled by inspectable authority—apply it without reopening it, and research facts instead of asking them as user Questions; (2) a delegated implementation choice—choose it within the delegated boundary without asking the user; (3) exploratory uncertainty—research, run a bounded prototype, defer, or record a revisit basis without forcing a user Question or Decision; or (4) an unresolved material user-owned outcome—stop before choosing or implementing it and use the existing Inquiry and Decision path for explicit user authority. Materiality depends on consequence and ownership, not implementation multiplicity or mere public visibility. Before asking, identify every independently material user-owned dimension. A recommendation or preferred implementation is not user authority and cannot silently resolve another material dimension. Independently material dimensions require independently explicit authority. Genuinely coupled dimensions may share one Question only when its alternatives disclose the material consequences across every coupled dimension. Do not promote trivial implementation details into user Questions. Once the branch is resolved by inspectable authority, delegation, research, prototype evidence, deferment, or user Decision, ordinary code edits require no additional approval ceremony.";
 
 fn activation_context() -> String {
-    format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: resolve the current repository first. If found, successfully Recall before inspecting, editing, or continuing work. If not found, explicitly initialize; omit display_name unless the user supplied one so local repository-native identity can name the Project, with canonical repository-root basename only as fallback, and preserve a user-supplied display_name exactly. Then record the current-host Goal. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain that returned pre-work Analysis Snapshot identity for the eventual grounded Checkpoint. Never use an Analysis Snapshot first captured after the bounded work as its baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status; output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
-    )
+    "Volicord is active for this explicitly authorized repository. Start project-scoped repository work with project_resolve, then follow every returned workflow.required_next_action until blocks_ordinary_work is false. Do not infer user authority from an agent recommendation, reuse an Analysis Snapshot first captured after ordinary work as the baseline, transmit repository sources without the separate exact provider authorization, or report Checkpoint verification that was not actually observed. Non-project requests require no Volicord ceremony.".into()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -895,57 +892,17 @@ mod tests {
             let context = output["hookSpecificOutput"]["additionalContext"]
                 .as_str()
                 .expect("activation context text");
-            assert!(context.contains("STOP before repository inspection, edits, or continuation"));
-            assert!(context
-                .contains("successfully Recall before inspecting, editing, or continuing work"));
-            assert!(context.contains("omit display_name unless the user supplied one"));
-            assert!(context.contains("local repository-native identity can name the Project"));
-            assert!(context.contains("canonical repository-root basename only as fallback"));
-            assert!(context.contains("preserve a user-supplied display_name exactly"));
-            assert!(context.contains("record the current-host Goal"));
-            assert!(context
-                .contains("call repository_analyze before the first ordinary repository write"));
-            assert!(context.contains("retain that returned pre-work Analysis Snapshot identity"));
-            assert!(context
-                .contains("Never use an Analysis Snapshot first captured after the bounded work"));
-            assert!(context.contains("proceed with ordinary work without manufacturing"));
-            assert!(context.contains(MATERIAL_DECISION_SCREENING));
-            assert!(context.contains("already settled by inspectable authority"));
-            assert!(context.contains("research facts instead of asking them as user Questions"));
-            assert!(context.contains("a delegated implementation choice"));
-            assert!(context.contains("within the delegated boundary without asking the user"));
-            assert!(context.contains("exploratory uncertainty"));
-            assert!(context.contains("without forcing a user Question or Decision"));
-            assert!(context.contains("an unresolved material user-owned outcome"));
-            assert!(context.contains("stop before choosing or implementing it"));
-            assert!(context.contains("identify every independently material user-owned dimension"));
-            assert!(context
-                .contains("A recommendation or preferred implementation is not user authority"));
-            assert!(context.contains("cannot silently resolve another material dimension"));
-            assert!(context.contains(
-                "Independently material dimensions require independently explicit authority"
-            ));
-            assert!(context.contains("Genuinely coupled dimensions may share one Question"));
-            assert!(context.contains("material consequences across every coupled dimension"));
-            assert!(context.contains("Do not promote trivial implementation details"));
-            for choreography in [
-                "submit a Question Candidate",
-                "attach source-grounded repository research",
-                "mark it ready",
-                "explicitly promote it",
-                "read the resulting inquiry frontier",
-                "record the Decision, and only then implement",
-            ] {
-                assert!(!context.contains(choreography), "{choreography}: {context}");
-            }
-            assert!(context.contains("ordinary code edits require no additional approval ceremony"));
-            assert!(context
-                .contains("same actually observed command execution with a numeric exit status"));
-            assert!(context.contains("output-only text is insufficient"));
+            assert!(context.contains("Start project-scoped repository work with project_resolve"));
+            assert!(context.contains("workflow.required_next_action"));
+            assert!(context.contains("blocks_ordinary_work is false"));
+            assert!(context.contains("Do not infer user authority from an agent recommendation"));
+            assert!(context.contains("separate exact provider authorization"));
+            assert!(context.contains("Checkpoint verification that was not actually observed"));
+            assert!(!context.contains("submit a Question Candidate"));
             assert!(
-                context.contains("Meaningful completed or paused work uses a grounded Checkpoint")
+                context.len() < 768,
+                "activation context should stay compact"
             );
-            assert!(!context.contains("trivial public behavior"));
         }
         let encoded = event(&unauthorized, "startup");
         let mut input = encoded.as_slice();

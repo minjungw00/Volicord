@@ -129,6 +129,16 @@ pub fn bind_question_candidate_to_materiality(
         .materiality
         .source_basis
         .extend(dimension.basis.source_basis.iter().copied());
+    question
+        .recommendation
+        .source_basis
+        .extend(dimension.basis.source_basis.iter().copied());
+    for fact in &mut question.known_facts {
+        if fact.source_basis.is_empty() {
+            fact.source_basis
+                .extend(dimension.basis.source_basis.iter().copied());
+        }
+    }
     draft
         .observation_basis
         .source_basis
@@ -139,6 +149,8 @@ pub fn bind_question_candidate_to_materiality(
     question.source_basis.dedup();
     question.materiality.source_basis.sort_unstable();
     question.materiality.source_basis.dedup();
+    question.recommendation.source_basis.sort_unstable();
+    question.recommendation.source_basis.dedup();
     draft.observation_basis.source_basis.sort_unstable();
     draft.observation_basis.source_basis.dedup();
     Ok(draft)

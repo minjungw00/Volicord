@@ -203,6 +203,271 @@ fn setup() -> (tempfile::TempDir, HostAdapter, String) {
 }
 
 #[test]
+fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal = call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"Decide the user-visible failure mode, then implement it",
+            "role":"goal",
+            "statement":"Decide the user-visible failure mode, then implement it",
+        }),
+    );
+    let goal = structured(&goal);
+    assert_eq!(goal["workflow"]["stage"], "repository_baseline");
+    assert_eq!(
+        goal["workflow"]["required_next_action"]["tool"],
+        "repository_analyze"
+    );
+    let goal_context_id = goal["context_item_id"].as_str().expect("Goal identity");
+
+    let analyzed = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    );
+    let analyzed = structured(&analyzed);
+    assert_eq!(analyzed["workflow"]["stage"], "materiality_review");
+    assert_eq!(analyzed["workflow"]["disposition"], "review_missing");
+    assert_eq!(
+        analyzed["workflow"]["required_next_action"]["action"],
+        "record"
+    );
+    let baseline = analyzed["analysis_snapshot_id"]
+        .as_str()
+        .expect("baseline identity");
+    let repository_source_id = analyzed["repository_source_id"]
+        .as_str()
+        .expect("repository Source identity");
+
+    let review = call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline,
+            "source_operation":"MCP pre-work outcome review",
+            "rationale":"The failure mode is independently user-visible and user-owned.",
+            "dimensions":[{
+                "dimension_id":"failure-mode",
+                "summary":"Choose the user-visible failure mode",
+                "affected_scope":["mcp-errors"],
+                "material_consequences":["Changes observable failure behavior"],
+                "observable_signals":["observable_failure_policy"],
+                "disposition":"unresolved_user_owned_outcome",
+                "basis":{
+                    "kinds":["agent_recommendation"],
+                    "summary":"No accepted authority selects the outcome",
+                    "source_ids":[repository_source_id]
+                }
+            }]
+        }),
+    );
+    let review = structured(&review);
+    assert_eq!(
+        review["workflow"]["stage"], "question_candidate",
+        "{review}"
+    );
+    assert_eq!(
+        review["workflow"]["required_next_action"]["action"],
+        "submit_question_from_materiality"
+    );
+    let review_id = review["review_candidate_id"]
+        .as_str()
+        .expect("review Candidate identity");
+
+    let candidate = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"submit_question_from_materiality",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "dimension_id":"failure-mode",
+            "research_state":"ready_to_ask",
+            "research_state_basis":"Repository facts cannot choose the user-owned outcome",
+            "retention_basis":"Retain through explicit resolution",
+            "bounded_summary":"User-visible failure-mode choice",
+            "prompt":"Which failure mode should users observe?",
+            "why_now":"Implementation would otherwise choose the outcome",
+            "alternatives":[
+                {"key":"structured","label":"Structured error","consequence":"Return bounded structured guidance"},
+                {"key":"plain","label":"Plain error","consequence":"Return only error text"}
+            ],
+            "recommendation_key":"structured",
+            "recommendation_rationale":"Structured guidance is actionable",
+            "duplicate_basis":"No current Question covers this dimension",
+            "presentation_order":1
+        }),
+    );
+    let candidate = structured(&candidate);
+    assert_eq!(
+        candidate["workflow"]["disposition"], "candidate_promotion_required",
+        "{candidate}"
+    );
+    let candidate_id = candidate["candidate_id"]
+        .as_str()
+        .expect("Question Candidate identity");
+
+    let promoted = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({"action":"promote_question","project_id":project,"candidate_id":candidate_id}),
+    );
+    let promoted = structured(&promoted);
+    assert_eq!(
+        promoted["workflow"]["required_next_action"]["tool"],
+        "inquiry_frontier"
+    );
+    let question_id = promoted["question_id"].as_str().expect("Question identity");
+
+    let frontier = call(
+        &mut adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    );
+    let frontier = structured(&frontier);
+    assert_eq!(frontier["workflow"]["stage"], "decision");
+    assert_eq!(
+        frontier["workflow"]["required_next_action"]["tool"],
+        "decision_record"
+    );
+    let revision = frontier["questions"][0]["revision"]
+        .as_u64()
+        .expect("Question revision");
+
+    let decision = call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project,
+            "question_id":question_id,
+            "question_revision":revision,
+            "alternative_key":"structured",
+            "user_turn":"Use the structured error",
+        }),
+    );
+    let decision = structured(&decision);
+    assert_eq!(
+        decision["workflow"]["disposition"],
+        "review_revision_required"
+    );
+    let canonical = adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .expect("canonical basis");
+    let decision_id = canonical
+        .active_decisions
+        .iter()
+        .find(|decision| decision.decision.question_id.to_string() == question_id)
+        .expect("active Decision")
+        .decision
+        .id
+        .to_string();
+
+    let revised = call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"revise",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "rationale":"The explicit current-host response now resolves the outcome.",
+            "dimensions":[{
+                "dimension_id":"failure-mode",
+                "summary":"Choose the user-visible failure mode",
+                "affected_scope":["mcp-errors"],
+                "material_consequences":["Changes observable failure behavior"],
+                "observable_signals":["observable_failure_policy"],
+                "disposition":"unresolved_user_owned_outcome",
+                "resolution_decision_id":decision_id,
+                "basis":{
+                    "kinds":["applicable_decision"],
+                    "summary":"The current explicit Decision resolves this dimension",
+                    "source_ids":[repository_source_id],
+                    "decision_ids":[decision_id]
+                }
+            }]
+        }),
+    );
+    let revised = structured(&revised);
+    assert_eq!(revised["workflow"]["stage"], "ready_for_work");
+    assert_eq!(revised["workflow"]["blocks_ordinary_work"], false);
+    assert_eq!(
+        revised["workflow"]["required_next_action"]["tool"],
+        "checkpoint_record"
+    );
+    assert!(revised["workflow"]["satisfied_basis_identities"]
+        .as_array()
+        .expect("basis identities")
+        .iter()
+        .any(|basis| basis["kind"] == "decision" && basis["identity"] == decision_id));
+}
+
+#[test]
+fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal = call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"Pause after checking work authority",
+            "role":"goal",
+            "statement":"Pause after checking work authority",
+        }),
+    );
+    let goal_id = structured(&goal)["context_item_id"]
+        .as_str()
+        .expect("Goal identity");
+    let baseline = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    );
+    let baseline_id = structured(&baseline)["analysis_snapshot_id"]
+        .as_str()
+        .expect("baseline identity");
+    let refused = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_id,
+            "baseline_analysis_snapshot_id":baseline_id,
+            "kind":"pause",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "verification":[{"state":"not_run"}],
+            "next_step":"Record the required Materiality Review",
+        }),
+    );
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let refused = structured(&refused);
+    assert!(refused["error"]
+        .as_str()
+        .expect("error text")
+        .contains("work authority is not resolved"), "{refused}");
+    assert_eq!(
+        refused["details"]["workflow"]["stage"],
+        "materiality_review"
+    );
+    assert_eq!(
+        refused["details"]["workflow"]["disposition"],
+        "review_missing"
+    );
+    assert_eq!(
+        refused["details"]["workflow"]["required_next_action"],
+        json!({"tool":"materiality_review","action":"record"})
+    );
+    assert_eq!(refused["details"]["workflow"]["blocks_ordinary_work"], true);
+}
+
+#[test]
 fn concurrent_mcp_writers_preserve_every_committed_context() {
     const WRITERS: usize = 8;
     let (_temporary, adapter, project) = setup();
@@ -378,76 +643,16 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     let instructions = initialized["result"]["instructions"]
         .as_str()
         .expect("server instructions");
-    assert!(instructions.contains("call project_resolve first"));
-    let first_512 = &instructions[..512];
-    assert!(first_512.contains("repository was explicitly authorized"));
-    assert!(first_512.contains("every fresh project-scoped session"));
-    assert!(first_512.contains("STOP before repository inspection, edits, or continuation"));
-    assert!(first_512.contains("call project_resolve first"));
-    assert!(first_512.contains("recall must succeed before inspecting, editing, or continuing"));
-    assert!(first_512.contains("not_found result requires explicit project_initialize"));
-    assert!(instructions.contains("omit display_name unless the user supplied one"));
-    assert!(instructions.contains("local repository-native identity can name the Project"));
-    assert!(instructions.contains("canonical repository-root basename only as fallback"));
-    assert!(instructions.contains("Preserve and send display_name when the user did supply it"));
-    assert!(instructions.contains("current-host Goal"));
+    assert!(instructions.contains("Project-scoped repository work starts with project_resolve"));
+    assert!(instructions.contains("workflow.required_next_action"));
+    assert!(instructions.contains("do not bypass a blocking workflow transition"));
+    assert!(instructions.contains("explicit response from the current host"));
+    assert!(instructions.contains("separate exact authorization"));
+    assert!(instructions.contains("actually observed command outcomes"));
     assert!(
-        instructions.contains("call repository_analyze before the first ordinary repository write")
+        instructions.len() < 768,
+        "server instructions should stay compact"
     );
-    assert!(instructions.contains("retain its returned pre-work Analysis Snapshot identity"));
-    assert!(instructions
-        .contains("Never use an Analysis Snapshot first captured after the bounded work"));
-    assert!(instructions.contains(volicord_operations::MATERIAL_DECISION_SCREENING));
-    assert!(instructions.contains("already settled by inspectable authority"));
-    assert!(instructions.contains("research facts instead of asking them as user Questions"));
-    assert!(instructions.contains("a delegated implementation choice"));
-    assert!(instructions.contains("within the delegated boundary without asking the user"));
-    assert!(instructions.contains("exploratory uncertainty"));
-    assert!(instructions.contains("without forcing a user Question or Decision"));
-    assert!(instructions.contains("an unresolved material user-owned outcome"));
-    assert!(instructions.contains("stop before choosing or implementing it"));
-    assert!(instructions.contains("identify every independently material user-owned dimension"));
-    assert!(
-        instructions.contains("A recommendation or preferred implementation is not user authority")
-    );
-    assert!(instructions.contains("cannot silently resolve another material dimension"));
-    assert!(instructions
-        .contains("Independently material dimensions require independently explicit authority"));
-    assert!(instructions.contains("Genuinely coupled dimensions may share one Question"));
-    assert!(instructions.contains("material consequences across every coupled dimension"));
-    assert!(instructions.contains("Do not promote trivial implementation details"));
-    assert!(instructions.contains(
-        "route that path through candidate_manage, inquiry_frontier, and decision_record"
-    ));
-    assert!(instructions.contains("their tool contracts own the lifecycle procedure"));
-    for choreography in [
-        "submit a Question Candidate",
-        "attach source-grounded repository research",
-        "mark it ready",
-        "explicitly promote it",
-        "read the resulting inquiry frontier",
-        "record the Decision, and only then implement",
-    ] {
-        assert!(
-            !instructions.contains(choreography),
-            "server instructions still contain {choreography}: {instructions}"
-        );
-    }
-    assert!(instructions.contains("ordinary code edits require no additional approval ceremony"));
-    assert!(instructions.contains("repository_analyze is authorized local analysis"));
-    assert!(instructions
-        .contains("background_semantic_operation is the separate explicit provider boundary"));
-    assert!(instructions
-        .contains("same actually observed command execution with a numeric exit status"));
-    assert!(instructions.contains("exact transient command_invocation"));
-    assert!(instructions.contains("presentation-only command_label"));
-    assert!(instructions.contains("does not retain the invocation"));
-    assert!(instructions.contains("output-only text is insufficient"));
-    assert!(instructions
-        .contains("Incidental inspection commands need not become Checkpoint verification facts"));
-    assert!(instructions
-        .contains("Meaningful completed or paused work uses a source-grounded Checkpoint"));
-    assert!(instructions.contains("Non-project requests and unrelated greetings"));
 
     let listed = adapter
         .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
@@ -695,6 +900,14 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     assert_eq!(not_found["result"]["isError"], false, "{not_found}");
     assert_eq!(structured(&not_found)["status"], "not_found");
     assert_eq!(
+        structured(&not_found)["workflow"]["stage"],
+        "project_initialization"
+    );
+    assert_eq!(
+        structured(&not_found)["workflow"]["required_next_action"]["tool"],
+        "project_initialize"
+    );
+    assert_eq!(
         structured(&not_found)["canonical_repository_path"],
         json!(fs::canonicalize(&repository).expect("canonical repository path"))
     );
@@ -737,6 +950,11 @@ fn project_resolve_reports_not_found_then_current_binding_without_mutation() {
     );
     assert_eq!(found["result"]["isError"], false, "{found}");
     assert_eq!(structured(&found)["status"], "found");
+    assert_eq!(structured(&found)["workflow"]["stage"], "recall");
+    assert_eq!(
+        structured(&found)["workflow"]["required_next_action"]["tool"],
+        "recall"
+    );
     assert_eq!(structured(&found)["project_id"], project);
     assert_eq!(structured(&found)["binding"]["revision"], 1);
     assert_eq!(
@@ -2720,6 +2938,62 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
+        "materiality_review" => vec![
+            shape(
+                &[
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                    "action",
+                    "source_operation",
+                    "rationale",
+                    "dimensions",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                    "source_operation",
+                    "rationale",
+                    "dimensions",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "rationale",
+                    "dimensions",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "rationale",
+                    "dimensions",
+                ],
+            ),
+            shape(
+                &[
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                    "action",
+                    "paths",
+                    "components",
+                    "work_contexts",
+                    "met_revisit_triggers",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                ],
+            ),
+        ],
         "background_semantic_operation" => vec![
             shape(
                 &[
@@ -2938,6 +3212,48 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "recommendation_key",
                     "recommendation_rationale",
                     "materiality_rationale",
+                    "duplicate_basis",
+                    "presentation_order",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "dimension_id",
+                    "research_state",
+                    "research_state_basis",
+                    "retention_basis",
+                    "bounded_summary",
+                    "prompt",
+                    "why_now",
+                    "established_facts",
+                    "assumptions",
+                    "uncertainty",
+                    "alternatives",
+                    "recommendation_key",
+                    "recommendation_rationale",
+                    "trade_offs",
+                    "known_limits",
+                    "what_unlocks",
+                    "duplicate_basis",
+                    "presentation_order",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "dimension_id",
+                    "research_state",
+                    "research_state_basis",
+                    "retention_basis",
+                    "bounded_summary",
+                    "prompt",
+                    "why_now",
+                    "alternatives",
+                    "recommendation_key",
+                    "recommendation_rationale",
                     "duplicate_basis",
                     "presentation_order",
                 ],

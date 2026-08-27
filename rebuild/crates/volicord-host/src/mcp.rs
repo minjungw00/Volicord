@@ -24,11 +24,14 @@ use volicord_inquiry::{
 use volicord_operations::{
     AnalysisSnapshotId, BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft,
     CommandVerificationDraft, ConfirmationDecision, ConfirmationRejection, ConfirmationRequestId,
-    FilterOutcome, GroundedCheckpointDraft, GuardedOperationId, GuardedOperationOutcome,
-    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
-    HealthState, LocalOperations, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
+    ExploratoryDisposition, FilterOutcome, GroundedCheckpointDraft, GuardedOperationId,
+    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
+    GuardedProviderPreparationOutcome, HealthState, LocalOperations, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialityReviewRevisionDraft, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
     ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
-    MATERIAL_DECISION_SCREENING,
+    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition,
+    WorkflowStage,
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
@@ -36,13 +39,14 @@ use volicord_projections::{
     RealizedNarrativeClaim, RealizedNarrativeSection,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 18] = [
+pub const HOST_TOOL_NAMES: [&str; 19] = [
     "project_resolve",
     "project_initialize",
     "project_health",
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "materiality_review",
     "inquiry_frontier",
     "decision_record",
     "context_record",
@@ -58,20 +62,27 @@ pub const HOST_TOOL_NAMES: [&str; 18] = [
 ];
 
 fn server_instructions() -> String {
-    format!(
-        "Volicord is active because this repository was explicitly authorized. For every fresh project-scoped session, STOP before repository inspection, edits, or continuation: call project_resolve first. When resolution finds a Project, recall must succeed before inspecting, editing, or continuing repository work. A not_found result requires explicit project_initialize; omit display_name unless the user supplied one so local repository-native identity can name the Project, with canonical repository-root basename only as fallback. Preserve and send display_name when the user did supply it. Then record a current-host Goal through context_record. After initialization or successful Recall, call repository_analyze before the first ordinary repository write and retain its returned pre-work Analysis Snapshot identity for the eventual checkpoint_record. Never use an Analysis Snapshot first captured after the bounded work as the Checkpoint baseline. After the pre-work baseline, proceed with ordinary work without manufacturing a Candidate, Question, or Decision. {MATERIAL_DECISION_SCREENING} On this MCP surface, route that path through candidate_manage, inquiry_frontier, and decision_record; their tool contracts own the lifecycle procedure. repository_analyze is authorized local analysis, not background-provider transmission; background_semantic_operation is the separate explicit provider boundary. Record passed or failed Checkpoint verification only from the same actually observed command execution with a numeric exit status. Supply the exact transient command_invocation separately from the presentation-only command_label; Volicord derives the durable fingerprint and does not retain the invocation. output-only text is insufficient. Incidental inspection commands need not become Checkpoint verification facts. Meaningful completed or paused work uses a source-grounded Checkpoint. Non-project requests and unrelated greetings require no Volicord ceremony."
-    )
+    "Volicord is active for this explicitly authorized repository. Project-scoped repository work starts with project_resolve. Follow each returned workflow.required_next_action and do not bypass a blocking workflow transition. User-owned Decisions require an explicit response from the current host, background source transmission requires its separate exact authorization, and Checkpoint verification must report only actually observed command outcomes. Non-project requests require no Volicord ceremony.".into()
 }
 
 #[derive(Debug)]
 pub struct HostError {
     message: String,
+    details: Option<Value>,
 }
 
 impl HostError {
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            details: None,
+        }
+    }
+
+    fn with_details(message: impl Into<String>, details: Value) -> Self {
+        Self {
+            message: message.into(),
+            details: Some(details),
         }
     }
 }
@@ -159,6 +170,7 @@ impl HostAdapter {
                 "recall" => self.recall(&arguments),
                 "repository_understanding" => self.repository_understanding(&arguments),
                 "repository_analyze" => self.repository_analyze(&arguments),
+                "materiality_review" => self.materiality_review(&arguments),
                 "inquiry_frontier" => self.inquiry_frontier(&arguments),
                 "decision_record" => self.decision_record(&arguments),
                 "context_record" => self.context_record(&arguments),
@@ -177,7 +189,13 @@ impl HostAdapter {
         };
         match result {
             Ok(value) => Ok(tool_result(value, false)),
-            Err(error) => Ok(tool_result(json!({"error":error.to_string()}), true)),
+            Err(error) => {
+                let mut payload = json!({"error":error.to_string()});
+                if let (Some(object), Some(details)) = (payload.as_object_mut(), error.details) {
+                    object.insert("details".into(), details);
+                }
+                Ok(tool_result(payload, true))
+            }
         }
     }
 
@@ -205,9 +223,11 @@ impl HostAdapter {
             (None, None) => return Err(HostError::new("display_name or repository is required")),
         }
         .map_err(operation_error)?;
-        Ok(
+        let workflow = LocalOperations::workflow_after_initialization(value.project.id);
+        Ok(with_workflow(
             json!({"project_id":value.project.id.to_string(),"display_name":value.project.display_name,"binding":value.binding.map(|binding| binding.binding.absolute_path)}),
-        )
+            workflow,
+        ))
     }
 
     fn project_resolve(&self, args: &Value) -> Result<Value, HostError> {
@@ -216,26 +236,32 @@ impl HostAdapter {
             .resolve_project(&PathBuf::from(required_str(args, "repository")?))
             .map_err(operation_error)?;
         Ok(match value {
-            ProjectResolution::Found { project, binding } => json!({
-                "status":"found",
-                "project_id":project.id.to_string(),
-                "display_name":project.display_name,
-                "project_revision":project.revision,
-                "binding":{
-                    "binding_id":binding.binding.id.to_string(),
-                    "revision":binding.binding.revision,
-                    "canonical_repository_path":binding.binding.absolute_path,
-                    "availability":format!("{:?}", binding.binding.availability).to_lowercase(),
-                    "clone_identity":binding.clone_identity,
-                    "worktree_identity":binding.worktree_identity,
-                }
-            }),
+            ProjectResolution::Found { project, binding } => with_workflow(
+                json!({
+                    "status":"found",
+                    "project_id":project.id.to_string(),
+                    "display_name":project.display_name,
+                    "project_revision":project.revision,
+                    "binding":{
+                        "binding_id":binding.binding.id.to_string(),
+                        "revision":binding.binding.revision,
+                        "canonical_repository_path":binding.binding.absolute_path,
+                        "availability":format!("{:?}", binding.binding.availability).to_lowercase(),
+                        "clone_identity":binding.clone_identity,
+                        "worktree_identity":binding.worktree_identity,
+                    }
+                }),
+                LocalOperations::workflow_project_found(project.id),
+            ),
             ProjectResolution::NotFound {
                 canonical_repository_path,
-            } => json!({
-                "status":"not_found",
-                "canonical_repository_path":canonical_repository_path,
-            }),
+            } => with_workflow(
+                json!({
+                    "status":"not_found",
+                    "canonical_repository_path":canonical_repository_path,
+                }),
+                LocalOperations::workflow_project_not_found(),
+            ),
         })
     }
 
@@ -278,14 +304,21 @@ impl HostAdapter {
             "handoff_to":value.handoff_to,
             "recorded_at_unix_micros":value.recorded_at.as_unix_micros(),
         }));
-        Ok(json!({
-            "project_id":brief.project_id.to_string(),"project_name":brief.project_name,
-            "goals":brief.goals_and_why.into_iter().map(|value| value.statement).collect::<Vec<_>>(),
-            "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
-            "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
-            "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
-            "read_only":true
-        }))
+        let workflow = self
+            .operations
+            .workflow_after_recall(brief.project_id)
+            .map_err(operation_error)?;
+        Ok(with_workflow(
+            json!({
+                "project_id":brief.project_id.to_string(),"project_name":brief.project_name,
+                "goals":brief.goals_and_why.into_iter().map(|value| value.statement).collect::<Vec<_>>(),
+                "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
+                "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
+                "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
+                "read_only":true
+            }),
+            workflow,
+        ))
     }
 
     fn repository_understanding(&self, args: &Value) -> Result<Value, HostError> {
@@ -333,12 +366,108 @@ impl HostAdapter {
             .value
             .as_ref()
             .map(|value| value.analysis.repository_source.identity().to_string());
-        Ok(
+        let workflow = match result.value.as_ref() {
+            Some(value) => self
+                .operations
+                .workflow_after_analysis(project_id, value.analysis.identity)
+                .map_err(operation_error)?,
+            None => self
+                .operations
+                .workflow_after_recall(project_id)
+                .map_err(operation_error)?,
+        };
+        Ok(with_workflow(
             json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
-        )
+            workflow,
+        ))
+    }
+
+    fn materiality_review(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        match required_str(args, "action")? {
+            "record" => {
+                let outcome = self
+                    .operations
+                    .record_materiality_review(MaterialityReviewDraft {
+                        project_id,
+                        goal_context_id: parse_context_item(required_str(
+                            args,
+                            "goal_context_id",
+                        )?)?,
+                        baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
+                            args,
+                            "baseline_analysis_snapshot_id",
+                        )?)?,
+                        session: self.host_session.clone(),
+                        source_operation: required_str(args, "source_operation")?.to_owned(),
+                        rationale: required_str(args, "rationale")?.to_owned(),
+                        dimensions: materiality_dimensions(args)?,
+                    })
+                    .map_err(operation_error)?;
+                let workflow = self
+                    .operations
+                    .workflow_for_review_candidate(project_id, outcome.review_candidate_id)
+                    .map_err(operation_error)?;
+                Ok(with_workflow(
+                    materiality_review_outcome_json("record", outcome),
+                    workflow,
+                ))
+            }
+            "revise" => {
+                let outcome = self
+                    .operations
+                    .revise_materiality_review(MaterialityReviewRevisionDraft {
+                        project_id,
+                        review_candidate_id: parse_candidate(required_str(
+                            args,
+                            "review_candidate_id",
+                        )?)?,
+                        rationale: required_str(args, "rationale")?.to_owned(),
+                        dimensions: materiality_dimensions(args)?,
+                    })
+                    .map_err(operation_error)?;
+                let workflow = self
+                    .operations
+                    .workflow_for_review_candidate(project_id, outcome.review_candidate_id)
+                    .map_err(operation_error)?;
+                Ok(with_workflow(
+                    materiality_review_outcome_json("revise", outcome),
+                    workflow,
+                ))
+            }
+            "inspect" => {
+                let goal_context_id = parse_context_item(required_str(args, "goal_context_id")?)?;
+                let baseline_analysis_snapshot_id =
+                    parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
+                let workflow = self
+                    .operations
+                    .workflow_for_work_basis(
+                        project_id,
+                        goal_context_id,
+                        baseline_analysis_snapshot_id,
+                        string_array(args, "paths")?,
+                        string_array(args, "components")?,
+                        string_array(args, "work_contexts")?,
+                        string_array(args, "met_revisit_triggers")?,
+                    )
+                    .map_err(operation_error)?;
+                Ok(with_workflow(
+                    json!({
+                        "action":"inspect",
+                        "project_id":project_id.to_string(),
+                        "goal_context_id":goal_context_id.to_string(),
+                        "baseline_analysis_snapshot_id":baseline_analysis_snapshot_id.to_string(),
+                        "read_only":true,
+                    }),
+                    workflow,
+                ))
+            }
+            _ => Err(HostError::new("unknown Materiality Review action")),
+        }
     }
 
     fn inquiry_frontier(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
         let scope = args
             .get("material_scope")
             .and_then(Value::as_array)
@@ -352,11 +481,22 @@ impl HostAdapter {
             .unwrap_or_default();
         let value = self
             .operations
-            .inquiry_frontier(project(args)?, scope)
+            .inquiry_frontier(project_id, scope)
             .map_err(operation_error)?;
-        Ok(
-            json!({"questions":value.questions.into_iter().map(|question| json!({"identity":question.question_id.to_string(),"revision":question.displayed_revision,"prompt":question.prompt_basis,"why_now":question.why_it_matters_now,"alternatives":question.alternatives.into_iter().map(|alternative| json!({"key":alternative.key,"label":alternative.label,"consequence":alternative.consequence})).collect::<Vec<_>>(),"recommendation":question.recommendation.alternative_key,"what_unlocks":question.what_the_answer_unlocks})).collect::<Vec<_>>(),"diagnostics":value.diagnostics.into_iter().map(|diagnostic| diagnostic.detail).collect::<Vec<_>>() }),
-        )
+        let first_question_id = value.questions.first().map(|question| question.question_id);
+        let response = json!({"questions":value.questions.into_iter().map(|question| json!({"identity":question.question_id.to_string(),"revision":question.displayed_revision,"prompt":question.prompt_basis,"why_now":question.why_it_matters_now,"alternatives":question.alternatives.into_iter().map(|alternative| json!({"key":alternative.key,"label":alternative.label,"consequence":alternative.consequence})).collect::<Vec<_>>(),"recommendation":question.recommendation.alternative_key,"what_unlocks":question.what_the_answer_unlocks})).collect::<Vec<_>>(),"diagnostics":value.diagnostics.into_iter().map(|diagnostic| diagnostic.detail).collect::<Vec<_>>() });
+        match first_question_id {
+            Some(question_id) => Ok(
+                match self
+                    .operations
+                    .workflow_for_question(project_id, question_id, true)
+                {
+                    Ok(workflow) => with_workflow(response, workflow),
+                    Err(_) => response,
+                },
+            ),
+            None => Ok(response),
+        }
     }
 
     fn decision_record(&self, args: &Value) -> Result<Value, HostError> {
@@ -426,13 +566,26 @@ impl HostAdapter {
                 }],
             )
             .map_err(operation_error)?;
+        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"all_succeeded":result.all_succeeded(),"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>() });
         Ok(
-            json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"all_succeeded":result.all_succeeded(),"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>() }),
+            match self
+                .operations
+                .workflow_for_question(project_id, question_id, false)
+            {
+                Ok(workflow) => with_workflow(response, workflow),
+                Err(_) => response,
+            },
         )
     }
 
     fn checkpoint_record(&self, args: &Value) -> Result<Value, HostError> {
         let project_id = project(args)?;
+        let goal_context_id = parse_context_item(required_str(args, "goal_context_id")?)?;
+        let baseline_analysis_snapshot_id =
+            parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
+        let decision_components = string_array(args, "decision_components")?;
+        let work_contexts = string_array(args, "work_contexts")?;
+        let met_revisit_triggers = string_array(args, "met_revisit_triggers")?;
         let verification = args
             .get("verification")
             .and_then(Value::as_array)
@@ -444,50 +597,79 @@ impl HostAdapter {
             .operations
             .record_grounded_checkpoint(GroundedCheckpointDraft {
                 project_id,
-                goal_context_id: ContextItemId::from_bytes(parse_identity(required_str(
-                    args,
-                    "goal_context_id",
-                )?)?),
-                baseline_analysis_snapshot_id: AnalysisSnapshotId::from_hex(required_str(
-                    args,
-                    "baseline_analysis_snapshot_id",
-                )?)
-                .map_err(HostError::new)?,
+                goal_context_id,
+                baseline_analysis_snapshot_id,
                 kind: checkpoint_kind(required_str(args, "kind")?)?,
                 work_state: work_state(required_str(args, "work_state")?)?,
                 state_change: optional_string(args, "state_change")?,
                 applied_decisions: decision_ids(args, "applied_decision_ids")?,
-                decision_components: string_array(args, "decision_components")?,
-                work_contexts: string_array(args, "work_contexts")?,
-                met_revisit_triggers: string_array(args, "met_revisit_triggers")?,
+                decision_components: decision_components.clone(),
+                work_contexts: work_contexts.clone(),
+                met_revisit_triggers: met_revisit_triggers.clone(),
                 verification,
                 known_limits: string_array(args, "known_limits")?,
                 non_goals: string_array(args, "non_goals")?,
                 next_step: required_str(args, "next_step")?.to_owned(),
                 handoff_to: optional_string(args, "handoff_to")?,
-            })
-            .map_err(operation_error)?;
-        Ok(json!({
-            "checkpoint_id":result.checkpoint_id.to_string(),
-            "revision":result.checkpoint_revision,
-            "goal_context_id":result.goal_context_id.to_string(),
-            "baseline_analysis_snapshot_id":result.baseline_analysis_snapshot_id.to_string(),
-            "current_analysis_snapshot_id":result.current_analysis_snapshot_id.to_string(),
-            "baseline_repository_snapshot_id":result.baseline_repository_snapshot_id.to_string(),
-            "current_repository_snapshot_id":result.current_repository_snapshot_id.to_string(),
-            "pre_existing_dirty_paths":result.pre_existing_dirty_paths,
-            "changed_paths":result.changed_paths,
-            "applied_decision_ids":result.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "verification_source_ids":result.verification_source_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-        }))
+            });
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                let workflow = self
+                    .operations
+                    .workflow_for_work_basis(
+                        project_id,
+                        goal_context_id,
+                        baseline_analysis_snapshot_id,
+                        Vec::new(),
+                        decision_components,
+                        work_contexts,
+                        met_revisit_triggers,
+                    )
+                    .map(workflow_json)
+                    .unwrap_or_else(|workflow_error| {
+                        json!({
+                            "reason":"work-authority guidance could not be evaluated",
+                            "diagnostic":workflow_error.to_string(),
+                        })
+                    });
+                return Err(HostError::with_details(
+                    error.to_string(),
+                    json!({"workflow":workflow}),
+                ));
+            }
+        };
+        let workflow = LocalOperations::workflow_after_checkpoint(
+            project_id,
+            result.checkpoint_id,
+            result.goal_context_id,
+            result.baseline_analysis_snapshot_id,
+        );
+        Ok(with_workflow(
+            json!({
+                "checkpoint_id":result.checkpoint_id.to_string(),
+                "revision":result.checkpoint_revision,
+                "goal_context_id":result.goal_context_id.to_string(),
+                "baseline_analysis_snapshot_id":result.baseline_analysis_snapshot_id.to_string(),
+                "current_analysis_snapshot_id":result.current_analysis_snapshot_id.to_string(),
+                "baseline_repository_snapshot_id":result.baseline_repository_snapshot_id.to_string(),
+                "current_repository_snapshot_id":result.current_repository_snapshot_id.to_string(),
+                "pre_existing_dirty_paths":result.pre_existing_dirty_paths,
+                "changed_paths":result.changed_paths,
+                "applied_decision_ids":result.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+                "verification_source_ids":result.verification_source_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            }),
+            workflow,
+        ))
     }
 
     fn context_record(&self, args: &Value) -> Result<Value, HostError> {
         let role = context_item_role(required_str(args, "role")?)?;
+        let project_id = project(args)?;
         let result = self
             .operations
             .record_current_host_user_context(
-                project(args)?,
+                project_id,
                 "codex".into(),
                 self.host_session.clone(),
                 required_str(args, "user_turn")?.to_owned(),
@@ -495,13 +677,21 @@ impl HostAdapter {
                 required_str(args, "statement")?.to_owned(),
             )
             .map_err(operation_error)?;
-        Ok(json!({
-            "project_id": project(args)?.to_string(),
+        let response = json!({
+            "project_id": project_id.to_string(),
             "source_id": result.source_id.to_string(),
             "context_item_id": result.context_item_id.to_string(),
             "revision": result.context_item_revision,
             "role": context_item_role_name(result.role),
-        }))
+        });
+        Ok(if result.role == ContextItemRole::Goal {
+            with_workflow(
+                response,
+                LocalOperations::workflow_after_goal(project_id, result.context_item_id),
+            )
+        } else {
+            response
+        })
     }
 
     fn canonical_inspect(&self, args: &Value) -> Result<Value, HostError> {
@@ -632,110 +822,17 @@ impl HostAdapter {
                 let research_state =
                     question_research_state(required_str(args, "research_state")?)?;
                 let research_state_basis = required_str(args, "research_state_basis")?.to_owned();
-                let now = SystemClock
-                    .now()
-                    .map_err(|error| HostError::new(error.to_string()))?;
-                let alternatives = candidate_alternatives(args)?;
-                let recommendation_key = required_str(args, "recommendation_key")?.to_owned();
-                if !alternatives
-                    .iter()
-                    .any(|alternative| alternative.key == recommendation_key)
-                {
-                    return Err(HostError::new(
-                        "recommendation_key must name one submitted alternative",
-                    ));
-                }
-                let established_facts = string_array(args, "established_facts")?
-                    .into_iter()
-                    .map(|statement| QuestionEstablishedFact {
-                        statement,
-                        source_basis: source_basis.clone(),
-                        capability: None,
-                        freshness: QuestionEvidenceFreshness::Current,
-                    })
-                    .collect();
-                let draft = CandidateDraft {
+                let draft = question_candidate_draft(
+                    args,
                     project_id,
-                    kind: CandidateKind::QuestionCandidate,
-                    collection_mode: CandidateCollectionMode::Automatic,
-                    origin: CandidateOrigin {
-                        actor: Principal {
-                            kind: PrincipalKind::Agent,
-                            identity: "codex".into(),
-                        },
-                        subsystem: "inquiry".into(),
-                        session: Some(self.host_session.clone()),
-                        provenance_summary: "explicit Codex Question Candidate submission".into(),
-                    },
-                    collection_scope: CandidateCollectionScope {
-                        project_id,
-                        session: Some(self.host_session.clone()),
-                        source_operation: Some(required_str(args, "source_operation")?.to_owned()),
-                        candidate_kind: CandidateKind::QuestionCandidate,
-                    },
-                    observation_basis: CandidateObservationBasis {
-                        source_basis: source_basis.clone(),
-                        repository_snapshot: args
-                            .get("repository_snapshot")
-                            .and_then(Value::as_str)
-                            .map(ToOwned::to_owned),
-                        analysis_snapshot: None,
-                        execution: None,
-                        host_turn: None,
-                        other: Some(format!(
-                            "explicit agent Candidate operation; research state basis: {research_state_basis}"
-                        )),
-                    },
-                    observed_at: now,
-                    retention: CandidateRetention {
-                        retained_until: None,
-                        basis: required_str(args, "retention_basis")?.to_owned(),
-                    },
-                    content: CandidateContent {
-                        bounded_summary: required_str(args, "bounded_summary")?.to_owned(),
-                        question: Some(QuestionCandidate {
-                            prompt_basis: required_str(args, "prompt")?.to_owned(),
-                            known_facts: established_facts,
-                            assumptions: string_array(args, "assumptions")?,
-                            uncertainty: string_array(args, "uncertainty")?,
-                            affected_scope: string_array(args, "affected_scope")?,
-                            possible_prerequisites: Vec::new(),
-                            source_basis: source_basis.clone(),
-                            repository_basis: Vec::new(),
-                            freshness: CandidateFreshness::Current,
-                            duplicate_assessment: DuplicateAssessment::NoDuplicate {
-                                basis: required_str(args, "duplicate_basis")?.to_owned(),
-                            },
-                            materiality: MaterialityAssessment {
-                                status: MaterialityStatus::Material,
-                                rationale: Some(
-                                    required_str(args, "materiality_rationale")?.to_owned(),
-                                ),
-                                source_basis: source_basis.clone(),
-                                assessed_by: Some(Principal {
-                                    kind: PrincipalKind::Agent,
-                                    identity: "codex".into(),
-                                }),
-                                assessed_at: Some(now),
-                            },
-                            presentation_order: Some(required_u64(args, "presentation_order")?),
-                            why_it_matters_now: required_str(args, "why_now")?.to_owned(),
-                            alternatives,
-                            recommendation: AgentRecommendation {
-                                alternative_key: Some(recommendation_key),
-                                rationale: required_str(args, "recommendation_rationale")?
-                                    .to_owned(),
-                                source_basis,
-                            },
-                            trade_offs: string_array(args, "trade_offs")?,
-                            known_limits: string_array(args, "known_limits")?,
-                            what_the_answer_unlocks: string_array(args, "what_unlocks")?,
-                            allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
-                            research_state,
-                        }),
-                        materiality_review: None,
-                    },
-                };
+                    &self.host_session,
+                    source_basis,
+                    required_str(args, "source_operation")?.to_owned(),
+                    string_array(args, "affected_scope")?,
+                    required_str(args, "materiality_rationale")?.to_owned(),
+                    research_state,
+                    &research_state_basis,
+                )?;
                 match self
                     .operations
                     .submit_candidate(draft)
@@ -760,6 +857,59 @@ impl HostAdapter {
                     })),
                 }
             }
+            "submit_question_from_materiality" => {
+                let review_candidate_id =
+                    parse_candidate(required_str(args, "review_candidate_id")?)?;
+                let dimension_id = required_str(args, "dimension_id")?;
+                let research_state =
+                    question_research_state(required_str(args, "research_state")?)?;
+                let research_state_basis = required_str(args, "research_state_basis")?.to_owned();
+                let draft = question_candidate_draft(
+                    args,
+                    project_id,
+                    &self.host_session,
+                    Vec::new(),
+                    format!("Materiality Review {review_candidate_id} dimension {dimension_id}"),
+                    Vec::new(),
+                    format!("reused Materiality Review dimension {dimension_id}"),
+                    research_state,
+                    &research_state_basis,
+                )?;
+                match self
+                    .operations
+                    .submit_materiality_question_candidate(review_candidate_id, dimension_id, draft)
+                    .map_err(operation_error)?
+                {
+                    SubmissionOutcome::Stored(candidate) => {
+                        let workflow = self
+                            .operations
+                            .workflow_for_question_candidate(project_id, candidate.id)
+                            .map_err(operation_error)?;
+                        Ok(with_workflow(
+                            json!({
+                                "action":"submit_question_from_materiality",
+                                "state":"stored",
+                                "review_candidate_id":review_candidate_id.to_string(),
+                                "dimension_id":dimension_id,
+                                "candidate_id":candidate.id.to_string(),
+                                "candidate_revision":candidate.revision,
+                                "research_state":question_research_state_name(research_state),
+                                "research_state_basis":research_state_basis,
+                                "collection_mode":"automatic",
+                                "disposition":candidate_disposition_json(&candidate.disposition),
+                                "canonical_mutation":false,
+                            }),
+                            workflow,
+                        ))
+                    }
+                    SubmissionOutcome::CollectionDisabled { matching_scopes } => Ok(json!({
+                        "action":"submit_question_from_materiality",
+                        "state":"collection_disabled",
+                        "matching_opt_out_scopes":matching_scopes.into_iter().map(collection_opt_out_json).collect::<Vec<_>>(),
+                        "canonical_mutation":false,
+                    })),
+                }
+            }
             "attach_repository_research" => {
                 let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
                 let candidate = self
@@ -777,7 +927,17 @@ impl HostAdapter {
                         },
                     )
                     .map_err(operation_error)?;
-                candidate_research_lifecycle_json("attach_repository_research", &candidate)
+                let response =
+                    candidate_research_lifecycle_json("attach_repository_research", &candidate)?;
+                Ok(
+                    match self
+                        .operations
+                        .workflow_for_question_candidate(project_id, candidate.id)
+                    {
+                        Ok(workflow) => with_workflow(response, workflow),
+                        Err(_) => response,
+                    },
+                )
             }
             "mark_research_ready" => {
                 let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
@@ -785,7 +945,17 @@ impl HostAdapter {
                     .operations
                     .mark_candidate_ready_to_ask(project_id, candidate_id)
                     .map_err(operation_error)?;
-                candidate_research_lifecycle_json("mark_research_ready", &candidate)
+                let response =
+                    candidate_research_lifecycle_json("mark_research_ready", &candidate)?;
+                Ok(
+                    match self
+                        .operations
+                        .workflow_for_question_candidate(project_id, candidate.id)
+                    {
+                        Ok(workflow) => with_workflow(response, workflow),
+                        Err(_) => response,
+                    },
+                )
             }
             "promote_question" => {
                 let candidate_id = parse_candidate(required_str(args, "candidate_id")?)?;
@@ -793,13 +963,23 @@ impl HostAdapter {
                     .operations
                     .promote_question_candidate(project_id, candidate_id)
                     .map_err(operation_error)?;
-                Ok(json!({
+                let response = json!({
                     "action": "promote_question",
                     "candidate_id": result.candidate_id.to_string(),
                     "question_id": result.question_id.to_string(),
                     "canonical_replayed": result.canonical_replayed,
                     "candidate_reconciled": result.candidate_reconciled
-                }))
+                });
+                Ok(
+                    match self.operations.workflow_for_question(
+                        project_id,
+                        result.question_id,
+                        false,
+                    ) {
+                        Ok(workflow) => with_workflow(response, workflow),
+                        Err(_) => response,
+                    },
+                )
             }
             "dismiss" => {
                 let candidate = self
@@ -1283,6 +1463,11 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ),
             ToolBehavior::AdditiveClosed,
         ),
+        "materiality_review" => (
+            "Record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Classify independently material outcomes by consequence and ownership; Inquiry owns the authority evaluation and returns the next required workflow action.",
+            json!({"oneOf": materiality_review_schemas()}),
+            ToolBehavior::AdditiveClosed,
+        ),
         "inquiry_frontier" => (
             "Read current promoted material Questions. Before choosing a genuinely material user-owned unresolved outcome, present each actual alternative, recommendation, and trade-off and obtain an explicit current-host response. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
@@ -1554,6 +1739,186 @@ fn background_semantic_operation_schemas() -> Vec<Value> {
     ]
 }
 
+fn materiality_review_schemas() -> Vec<Value> {
+    let dimensions = json!({
+        "type":"array",
+        "description":"Independently material outcome dimensions and their inspected authority basis",
+        "minItems":1,
+        "maxItems":64,
+        "items":object_schema(
+            vec![
+                ("dimension_id", text_schema("Stable dimension identity within this review", 1, 256)),
+                ("summary", text_schema("Bounded outcome summary", 1, 4096)),
+                ("affected_scope", nonempty_string_array_schema("Affected product, user, or operational scopes")),
+                ("material_consequences", nonempty_string_array_schema("Observable consequences that make the dimension material")),
+                ("observable_signals", json!({
+                    "type":"array",
+                    "minItems":1,
+                    "items":enum_schema("Observable material outcome signal", &[
+                        "public_api_semantics",
+                        "cli_compatibility_or_exit_behavior",
+                        "observable_failure_policy",
+                        "privacy_or_external_disclosure",
+                        "security_posture",
+                        "user_visible_default",
+                        "maintenance_or_support_policy",
+                        "other_material_outcome",
+                    ]),
+                })),
+                ("disposition", enum_schema("Authority classification", &[
+                    "repository_or_environment_fact",
+                    "settled_authority",
+                    "delegated_implementation_choice",
+                    "exploratory_uncertainty",
+                    "unresolved_user_owned_outcome",
+                ])),
+                ("exploratory_disposition", enum_schema("Required bounded treatment for exploratory uncertainty", &[
+                    "research_required",
+                    "prototype_required",
+                    "deferred_with_revisit",
+                    "resolved_by_research",
+                ])),
+                ("resolution_decision_id", identity_schema("Applicable Decision resolving a user-owned outcome")),
+                ("basis", object_schema(
+                    vec![
+                        ("kinds", json!({
+                            "type":"array",
+                            "minItems":1,
+                            "items":enum_schema("Inspectable work-authority basis kind", &[
+                                "repository_or_environment_fact",
+                                "accepted_contract",
+                                "applicable_decision",
+                                "explicit_delegation",
+                                "research_evidence",
+                                "prototype_evidence",
+                                "defer_or_revisit_basis",
+                                "agent_recommendation",
+                                "library_or_convention",
+                                "implementation_preference",
+                            ]),
+                        })),
+                        ("summary", text_schema("Why this basis supports the classification", 1, 4096)),
+                        ("source_ids", identity_array_schema("Canonical supporting Source identities", 0)),
+                        ("contract_basis", string_array_schema("Accepted contract references")),
+                        ("decision_ids", identity_array_schema("Applicable Decision identities", 0)),
+                        ("research_basis", string_array_schema("Research, prototype, delegation, or revisit basis")),
+                    ],
+                    &["kinds", "summary"],
+                )),
+            ],
+            &[
+                "dimension_id",
+                "summary",
+                "affected_scope",
+                "material_consequences",
+                "observable_signals",
+                "disposition",
+                "basis",
+            ],
+        ),
+    });
+    let common = || {
+        vec![
+            ("project_id", identity_schema("Project identity")),
+            (
+                "goal_context_id",
+                identity_schema("Canonical Goal Context identity"),
+            ),
+            (
+                "baseline_analysis_snapshot_id",
+                digest_identity_schema("Exact pre-work Analysis Snapshot identity"),
+            ),
+        ]
+    };
+    let mut record_fields = common();
+    record_fields.extend([
+        (
+            "action",
+            enum_schema("Materiality Review action", &["record"]),
+        ),
+        (
+            "source_operation",
+            text_schema("Inspectable review operation or scope", 1, 4096),
+        ),
+        (
+            "rationale",
+            text_schema("Bounded review rationale", 1, 4096),
+        ),
+        ("dimensions", dimensions.clone()),
+    ]);
+    let mut inspect_fields = common();
+    inspect_fields.extend([
+        (
+            "action",
+            enum_schema("Materiality Review action", &["inspect"]),
+        ),
+        (
+            "paths",
+            string_array_schema("Affected repository paths for Decision applicability"),
+        ),
+        (
+            "components",
+            string_array_schema("Affected components for Decision applicability"),
+        ),
+        (
+            "work_contexts",
+            string_array_schema("Current work contexts for Decision applicability"),
+        ),
+        (
+            "met_revisit_triggers",
+            string_array_schema("Known met Decision revisit triggers"),
+        ),
+    ]);
+    vec![
+        object_schema(
+            record_fields,
+            &[
+                "action",
+                "project_id",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+                "source_operation",
+                "rationale",
+                "dimensions",
+            ],
+        ),
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Materiality Review action", &["revise"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "review_candidate_id",
+                    identity_schema("Materiality Review Candidate identity"),
+                ),
+                (
+                    "rationale",
+                    text_schema("Bounded revision rationale", 1, 4096),
+                ),
+                ("dimensions", dimensions),
+            ],
+            &[
+                "action",
+                "project_id",
+                "review_candidate_id",
+                "rationale",
+                "dimensions",
+            ],
+        ),
+        object_schema(
+            inspect_fields,
+            &[
+                "action",
+                "project_id",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+            ],
+        ),
+    ]
+}
+
 fn candidate_management_schemas() -> Vec<Value> {
     let submit = object_schema(
         vec![
@@ -1702,6 +2067,113 @@ fn candidate_management_schemas() -> Vec<Value> {
     };
     vec![
         submit,
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema(
+                        "Candidate lifecycle action",
+                        &["submit_question_from_materiality"],
+                    ),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "review_candidate_id",
+                    identity_schema("Source Materiality Review Candidate identity"),
+                ),
+                (
+                    "dimension_id",
+                    text_schema("Unresolved user-owned Materiality Review dimension", 1, 256),
+                ),
+                (
+                    "research_state",
+                    enum_schema(
+                        "Explicit repository/environment research requirement",
+                        &["research_required", "ready_to_ask"],
+                    ),
+                ),
+                (
+                    "research_state_basis",
+                    text_schema(
+                        "Why repository/environment research is required or unnecessary",
+                        1,
+                        4096,
+                    ),
+                ),
+                (
+                    "retention_basis",
+                    text_schema("Candidate retention-policy basis", 1, 4096),
+                ),
+                (
+                    "bounded_summary",
+                    text_schema("Bounded Candidate summary", 1, 4096),
+                ),
+                (
+                    "prompt",
+                    text_schema("Proposed material Question wording", 1, 4096),
+                ),
+                (
+                    "why_now",
+                    text_schema("Why the reviewed user-owned outcome matters now", 1, 4096),
+                ),
+                (
+                    "established_facts",
+                    string_array_schema("Source-grounded established facts"),
+                ),
+                ("assumptions", string_array_schema("Known assumptions")),
+                ("uncertainty", string_array_schema("Known uncertainty")),
+                ("alternatives", candidate_alternatives_schema()),
+                (
+                    "recommendation_key",
+                    text_schema("Agent-recommended submitted alternative key", 1, 1024),
+                ),
+                (
+                    "recommendation_rationale",
+                    text_schema("Agent recommendation rationale", 1, 4096),
+                ),
+                (
+                    "trade_offs",
+                    string_array_schema("Trade-offs of the material choice"),
+                ),
+                (
+                    "known_limits",
+                    string_array_schema("Known limits of the Candidate basis"),
+                ),
+                (
+                    "what_unlocks",
+                    string_array_schema("Work unlocked by an explicit response"),
+                ),
+                (
+                    "duplicate_basis",
+                    text_schema(
+                        "Basis for concluding no canonical duplicate exists",
+                        1,
+                        4096,
+                    ),
+                ),
+                (
+                    "presentation_order",
+                    unsigned_schema("Explicit deterministic presentation order", 1),
+                ),
+            ],
+            &[
+                "action",
+                "project_id",
+                "review_candidate_id",
+                "dimension_id",
+                "research_state",
+                "research_state_basis",
+                "retention_basis",
+                "bounded_summary",
+                "prompt",
+                "why_now",
+                "alternatives",
+                "recommendation_key",
+                "recommendation_rationale",
+                "duplicate_basis",
+                "presentation_order",
+            ],
+        ),
         object_schema(
             vec![
                 (
@@ -2714,6 +3186,121 @@ fn source_ids(value: &Value, key: &str) -> Result<Vec<SourceId>, HostError> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
+fn question_candidate_draft(
+    args: &Value,
+    project_id: ProjectId,
+    host_session: &str,
+    source_basis: Vec<SourceId>,
+    source_operation: String,
+    affected_scope: Vec<String>,
+    materiality_rationale: String,
+    research_state: QuestionResearchState,
+    research_state_basis: &str,
+) -> Result<CandidateDraft, HostError> {
+    let now = SystemClock
+        .now()
+        .map_err(|error| HostError::new(error.to_string()))?;
+    let alternatives = candidate_alternatives(args)?;
+    let recommendation_key = required_str(args, "recommendation_key")?.to_owned();
+    if !alternatives
+        .iter()
+        .any(|alternative| alternative.key == recommendation_key)
+    {
+        return Err(HostError::new(
+            "recommendation_key must name one submitted alternative",
+        ));
+    }
+    let established_facts = string_array(args, "established_facts")?
+        .into_iter()
+        .map(|statement| QuestionEstablishedFact {
+            statement,
+            source_basis: source_basis.clone(),
+            capability: None,
+            freshness: QuestionEvidenceFreshness::Current,
+        })
+        .collect();
+    Ok(CandidateDraft {
+        project_id,
+        kind: CandidateKind::QuestionCandidate,
+        collection_mode: CandidateCollectionMode::Automatic,
+        origin: CandidateOrigin {
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "codex".into(),
+            },
+            subsystem: "inquiry".into(),
+            session: Some(host_session.to_owned()),
+            provenance_summary: "explicit Codex Question Candidate submission".into(),
+        },
+        collection_scope: CandidateCollectionScope {
+            project_id,
+            session: Some(host_session.to_owned()),
+            source_operation: Some(source_operation),
+            candidate_kind: CandidateKind::QuestionCandidate,
+        },
+        observation_basis: CandidateObservationBasis {
+            source_basis: source_basis.clone(),
+            repository_snapshot: args
+                .get("repository_snapshot")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            analysis_snapshot: None,
+            execution: None,
+            host_turn: None,
+            other: Some(format!(
+                "explicit agent Candidate operation; research state basis: {research_state_basis}"
+            )),
+        },
+        observed_at: now,
+        retention: CandidateRetention {
+            retained_until: None,
+            basis: required_str(args, "retention_basis")?.to_owned(),
+        },
+        content: CandidateContent {
+            bounded_summary: required_str(args, "bounded_summary")?.to_owned(),
+            question: Some(QuestionCandidate {
+                prompt_basis: required_str(args, "prompt")?.to_owned(),
+                known_facts: established_facts,
+                assumptions: string_array(args, "assumptions")?,
+                uncertainty: string_array(args, "uncertainty")?,
+                affected_scope,
+                possible_prerequisites: Vec::new(),
+                source_basis: source_basis.clone(),
+                repository_basis: Vec::new(),
+                freshness: CandidateFreshness::Current,
+                duplicate_assessment: DuplicateAssessment::NoDuplicate {
+                    basis: required_str(args, "duplicate_basis")?.to_owned(),
+                },
+                materiality: MaterialityAssessment {
+                    status: MaterialityStatus::Material,
+                    rationale: Some(materiality_rationale),
+                    source_basis: source_basis.clone(),
+                    assessed_by: Some(Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: "codex".into(),
+                    }),
+                    assessed_at: Some(now),
+                },
+                presentation_order: Some(required_u64(args, "presentation_order")?),
+                why_it_matters_now: required_str(args, "why_now")?.to_owned(),
+                alternatives,
+                recommendation: AgentRecommendation {
+                    alternative_key: Some(recommendation_key),
+                    rationale: required_str(args, "recommendation_rationale")?.to_owned(),
+                    source_basis,
+                },
+                trade_offs: string_array(args, "trade_offs")?,
+                known_limits: string_array(args, "known_limits")?,
+                what_the_answer_unlocks: string_array(args, "what_unlocks")?,
+                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                research_state,
+            }),
+            materiality_review: None,
+        },
+    })
+}
+
 fn candidate_alternatives(value: &Value) -> Result<Vec<QuestionAlternative>, HostError> {
     value
         .get("alternatives")
@@ -2729,6 +3316,190 @@ fn candidate_alternatives(value: &Value) -> Result<Vec<QuestionAlternative>, Hos
         })
         .collect()
 }
+
+fn parse_context_item(value: &str) -> Result<ContextItemId, HostError> {
+    Ok(ContextItemId::from_bytes(parse_identity(value)?))
+}
+
+fn parse_analysis_snapshot(value: &str) -> Result<AnalysisSnapshotId, HostError> {
+    AnalysisSnapshotId::from_hex(value).map_err(HostError::new)
+}
+
+fn materiality_dimensions(value: &Value) -> Result<Vec<MaterialityDimension>, HostError> {
+    value
+        .get("dimensions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("dimensions are required"))?
+        .iter()
+        .map(materiality_dimension)
+        .collect()
+}
+
+fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostError> {
+    let disposition = match required_str(value, "disposition")? {
+        "repository_or_environment_fact" => MaterialityDisposition::RepositoryOrEnvironmentFact,
+        "settled_authority" => MaterialityDisposition::SettledAuthority,
+        "delegated_implementation_choice" => MaterialityDisposition::DelegatedImplementationChoice,
+        "exploratory_uncertainty" => MaterialityDisposition::ExploratoryUncertainty {
+            disposition: match required_str(value, "exploratory_disposition")? {
+                "research_required" => ExploratoryDisposition::ResearchRequired,
+                "prototype_required" => ExploratoryDisposition::PrototypeRequired,
+                "deferred_with_revisit" => ExploratoryDisposition::DeferredWithRevisit,
+                "resolved_by_research" => ExploratoryDisposition::ResolvedByResearch,
+                _ => return Err(HostError::new("unknown exploratory disposition")),
+            },
+        },
+        "unresolved_user_owned_outcome" => MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: value
+                .get("resolution_decision_id")
+                .and_then(Value::as_str)
+                .map(|identity| parse_identity(identity).map(DecisionId::from_bytes))
+                .transpose()?,
+        },
+        _ => return Err(HostError::new("unknown Materiality Review disposition")),
+    };
+    let basis = value
+        .get("basis")
+        .ok_or_else(|| HostError::new("dimension basis is required"))?;
+    Ok(MaterialityDimension {
+        dimension_id: required_str(value, "dimension_id")?.to_owned(),
+        summary: required_str(value, "summary")?.to_owned(),
+        affected_scope: string_array(value, "affected_scope")?,
+        material_consequences: string_array(value, "material_consequences")?,
+        observable_signals: required_strings(value, "observable_signals")?
+            .into_iter()
+            .map(|signal| material_outcome_signal(&signal))
+            .collect::<Result<Vec<_>, _>>()?,
+        disposition,
+        basis: WorkAuthorityBasis {
+            kinds: required_strings(basis, "kinds")?
+                .into_iter()
+                .map(|kind| work_authority_basis_kind(&kind))
+                .collect::<Result<Vec<_>, _>>()?,
+            summary: required_str(basis, "summary")?.to_owned(),
+            source_basis: source_ids(basis, "source_ids")?,
+            contract_basis: string_array(basis, "contract_basis")?,
+            decision_basis: decision_ids(basis, "decision_ids")?,
+            research_basis: string_array(basis, "research_basis")?,
+        },
+    })
+}
+
+fn material_outcome_signal(value: &str) -> Result<MaterialOutcomeSignal, HostError> {
+    match value {
+        "public_api_semantics" => Ok(MaterialOutcomeSignal::PublicApiSemantics),
+        "cli_compatibility_or_exit_behavior" => {
+            Ok(MaterialOutcomeSignal::CliCompatibilityOrExitBehavior)
+        }
+        "observable_failure_policy" => Ok(MaterialOutcomeSignal::ObservableFailurePolicy),
+        "privacy_or_external_disclosure" => Ok(MaterialOutcomeSignal::PrivacyOrExternalDisclosure),
+        "security_posture" => Ok(MaterialOutcomeSignal::SecurityPosture),
+        "user_visible_default" => Ok(MaterialOutcomeSignal::UserVisibleDefault),
+        "maintenance_or_support_policy" => Ok(MaterialOutcomeSignal::MaintenanceOrSupportPolicy),
+        "other_material_outcome" => Ok(MaterialOutcomeSignal::OtherMaterialOutcome),
+        _ => Err(HostError::new("unknown material outcome signal")),
+    }
+}
+
+fn work_authority_basis_kind(value: &str) -> Result<WorkAuthorityBasisKind, HostError> {
+    match value {
+        "repository_or_environment_fact" => Ok(WorkAuthorityBasisKind::RepositoryOrEnvironmentFact),
+        "accepted_contract" => Ok(WorkAuthorityBasisKind::AcceptedContract),
+        "applicable_decision" => Ok(WorkAuthorityBasisKind::ApplicableDecision),
+        "explicit_delegation" => Ok(WorkAuthorityBasisKind::ExplicitDelegation),
+        "research_evidence" => Ok(WorkAuthorityBasisKind::ResearchEvidence),
+        "prototype_evidence" => Ok(WorkAuthorityBasisKind::PrototypeEvidence),
+        "defer_or_revisit_basis" => Ok(WorkAuthorityBasisKind::DeferOrRevisitBasis),
+        "agent_recommendation" => Ok(WorkAuthorityBasisKind::AgentRecommendation),
+        "library_or_convention" => Ok(WorkAuthorityBasisKind::LibraryOrConvention),
+        "implementation_preference" => Ok(WorkAuthorityBasisKind::ImplementationPreference),
+        _ => Err(HostError::new("unknown work-authority basis kind")),
+    }
+}
+
+fn materiality_review_outcome_json(
+    action: &str,
+    outcome: volicord_operations::MaterialityReviewOutcome,
+) -> Value {
+    json!({
+        "action":action,
+        "review_candidate_id":outcome.review_candidate_id.to_string(),
+        "review_revision":outcome.review_revision,
+        "goal_context_id":outcome.goal_context_id.to_string(),
+        "baseline_analysis_snapshot_id":outcome.baseline_analysis_snapshot_id.to_string(),
+        "review_analysis_snapshot_id":outcome.review_analysis_snapshot_id.to_string(),
+        "canonical_mutation":false,
+    })
+}
+
+fn with_workflow(mut value: Value, workflow: WorkflowDirective) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        object.insert("workflow".into(), workflow_json(workflow));
+    }
+    value
+}
+
+fn workflow_json(workflow: WorkflowDirective) -> Value {
+    json!({
+        "stage":workflow_stage_name(workflow.stage),
+        "disposition":workflow_disposition_name(workflow.disposition),
+        "required_next_action":workflow.required_next_action.map(|action| json!({
+            "tool":action.tool,
+            "action":action.action,
+        })),
+        "blocks_ordinary_work":workflow.blocks_ordinary_work,
+        "reason":workflow.reason,
+        "satisfied_basis_identities":workflow.satisfied_basis_identities.into_iter().map(|basis| json!({
+            "kind":basis.kind,
+            "identity":basis.identity,
+        })).collect::<Vec<_>>(),
+        "unresolved_requirements":workflow.unresolved_requirements.into_iter().map(|requirement| json!({
+            "dimension_id":requirement.dimension_id,
+            "reason":requirement.reason,
+            "basis_identities":requirement.basis_identities.into_iter().map(|basis| json!({
+                "kind":basis.kind,
+                "identity":basis.identity,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn workflow_stage_name(value: WorkflowStage) -> &'static str {
+    match value {
+        WorkflowStage::ProjectResolution => "project_resolution",
+        WorkflowStage::ProjectInitialization => "project_initialization",
+        WorkflowStage::Recall => "recall",
+        WorkflowStage::Goal => "goal",
+        WorkflowStage::RepositoryBaseline => "repository_baseline",
+        WorkflowStage::MaterialityReview => "materiality_review",
+        WorkflowStage::ResearchOrPrototype => "research_or_prototype",
+        WorkflowStage::QuestionCandidate => "question_candidate",
+        WorkflowStage::Inquiry => "inquiry",
+        WorkflowStage::Decision => "decision",
+        WorkflowStage::ReadyForWork => "ready_for_work",
+        WorkflowStage::Checkpoint => "checkpoint",
+    }
+}
+
+fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
+    match value {
+        WorkflowDisposition::ProjectNotFound => "project_not_found",
+        WorkflowDisposition::RecallRequired => "recall_required",
+        WorkflowDisposition::GoalRequired => "goal_required",
+        WorkflowDisposition::BaselineRequired => "baseline_required",
+        WorkflowDisposition::ReviewMissing => "review_missing",
+        WorkflowDisposition::ReviewInvalid => "review_invalid",
+        WorkflowDisposition::ResearchRequired => "research_required",
+        WorkflowDisposition::QuestionRequired => "question_required",
+        WorkflowDisposition::CandidateResearchRequired => "candidate_research_required",
+        WorkflowDisposition::CandidatePromotionRequired => "candidate_promotion_required",
+        WorkflowDisposition::UserResponseRequired => "user_response_required",
+        WorkflowDisposition::ReviewRevisionRequired => "review_revision_required",
+        WorkflowDisposition::ReadyForWork => "ready_for_work",
+        WorkflowDisposition::CheckpointRecorded => "checkpoint_recorded",
+    }
+}
+
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }

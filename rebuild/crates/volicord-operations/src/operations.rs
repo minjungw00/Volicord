@@ -7,7 +7,8 @@ use crate::{
     LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
     MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
     ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
-    RuntimeLayout, UserContextRecordingOutcome,
+    RuntimeLayout, UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity,
+    WorkflowDirective, WorkflowDisposition, WorkflowRequirement, WorkflowStage,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -30,7 +31,7 @@ use std::{
 };
 use volicord_context::{
     Availability, BundleComparison, BundleMerge, CanonicalInvalidation, CanonicalReadBasis,
-    CanonicalReadOptions, CanonicalRecordId, CheckpointDraft, Clock, CommandOutcome,
+    CanonicalReadOptions, CanonicalRecordId, CheckpointDraft, CheckpointId, Clock, CommandOutcome,
     ContextItemCorrectionDraft, ContextItemDraft, ContextItemId, ContextItemRole, DecisionChoice,
     DecisionCorrectionDraft, DecisionId, DecisionSupersessionDraft, MergeResolution, OperationId,
     OperationResult, Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload,
@@ -39,15 +40,15 @@ use volicord_context::{
     VerificationState,
 };
 use volicord_inquiry::{
-    attribute_repository_changes, compute_frontier, evaluate_checkpoint_candidate,
-    evaluate_decision_applicability, evaluate_work_authority,
-    record_checkpoint as persist_evaluated_checkpoint, record_response_batch, ApplicabilityQuery,
-    BatchResponseItem, BatchResponseResult, CandidateCollectionMode, CandidateCollectionScope,
-    CandidateContent, CandidateDisposition, CandidateDraft, CandidateId, CandidateKind,
-    CandidateObservationBasis, CandidateOrigin, CandidateReadBasis, CandidateRecord,
-    CandidateRetention, CandidateStore, ChangeAttribution, CheckpointCandidate,
-    CheckpointEvaluation, DecisionApplicabilityState, FrontierRead, InquiryScope,
-    MaterialityReview, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
+    attribute_repository_changes, bind_question_candidate_to_materiality, compute_frontier,
+    evaluate_checkpoint_candidate, evaluate_decision_applicability, evaluate_work_authority,
+    materiality_scope_token, record_checkpoint as persist_evaluated_checkpoint,
+    record_response_batch, ApplicabilityQuery, BatchResponseItem, BatchResponseResult,
+    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDisposition,
+    CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis, CandidateOrigin,
+    CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore, ChangeAttribution,
+    CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState, FrontierRead,
+    InquiryScope, MaterialityReview, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
     SubmissionOutcome, WorkAuthorityDisposition, WorkAuthorityResult,
 };
 use volicord_local_platform::{
@@ -831,6 +832,25 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("Candidate submission failed", error))
     }
 
+    pub fn submit_materiality_question_candidate(
+        &self,
+        review_candidate_id: CandidateId,
+        dimension_id: &str,
+        draft: CandidateDraft,
+    ) -> Result<SubmissionOutcome, Error> {
+        self.initialize_runtime()?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let _ = self.canonical_basis(draft.project_id)?;
+        let review = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(draft.project_id, review_candidate_id))
+            .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let bound = bind_question_candidate_to_materiality(&review, dimension_id, draft)
+            .map_err(|error| Error::with_source("Question Candidate binding failed", error))?;
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| store.submit(bound))
+            .map_err(|error| Error::with_source("Candidate submission failed", error))
+    }
+
     pub fn record_materiality_review(
         &self,
         draft: MaterialityReviewDraft,
@@ -1036,6 +1056,263 @@ impl LocalOperations {
                 met_revisit_triggers,
             },
         ))
+    }
+
+    pub fn workflow_project_not_found() -> WorkflowDirective {
+        WorkflowDirective {
+            stage: WorkflowStage::ProjectInitialization,
+            disposition: WorkflowDisposition::ProjectNotFound,
+            required_next_action: Some(workflow_action("project_initialize", None)),
+            blocks_ordinary_work: true,
+            reason: "no Project is bound to this repository; initialize it explicitly".into(),
+            satisfied_basis_identities: Vec::new(),
+            unresolved_requirements: vec![workflow_requirement(
+                None,
+                "an explicitly initialized and bound Project is required",
+                Vec::new(),
+            )],
+        }
+    }
+
+    pub fn workflow_project_found(project_id: ProjectId) -> WorkflowDirective {
+        WorkflowDirective {
+            stage: WorkflowStage::Recall,
+            disposition: WorkflowDisposition::RecallRequired,
+            required_next_action: Some(workflow_action("recall", None)),
+            blocks_ordinary_work: true,
+            reason: "the existing Project was resolved; recover its current context before repository work"
+                .into(),
+            satisfied_basis_identities: vec![workflow_basis("project", project_id.to_string())],
+            unresolved_requirements: vec![workflow_requirement(
+                None,
+                "bounded read-only Recall has not completed in this host session",
+                Vec::new(),
+            )],
+        }
+    }
+
+    pub fn workflow_after_initialization(project_id: ProjectId) -> WorkflowDirective {
+        WorkflowDirective {
+            stage: WorkflowStage::Goal,
+            disposition: WorkflowDisposition::GoalRequired,
+            required_next_action: Some(workflow_action("context_record", None)),
+            blocks_ordinary_work: true,
+            reason: "the new Project requires the exact current-host user Goal".into(),
+            satisfied_basis_identities: vec![workflow_basis("project", project_id.to_string())],
+            unresolved_requirements: vec![workflow_requirement(
+                None,
+                "record one verbatim Goal Context from the current user turn",
+                Vec::new(),
+            )],
+        }
+    }
+
+    pub fn workflow_after_goal(
+        project_id: ProjectId,
+        goal_context_id: ContextItemId,
+    ) -> WorkflowDirective {
+        baseline_required(project_id, goal_context_id)
+    }
+
+    pub fn workflow_after_checkpoint(
+        project_id: ProjectId,
+        checkpoint_id: CheckpointId,
+        goal_context_id: ContextItemId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    ) -> WorkflowDirective {
+        WorkflowDirective {
+            stage: WorkflowStage::Checkpoint,
+            disposition: WorkflowDisposition::CheckpointRecorded,
+            required_next_action: None,
+            blocks_ordinary_work: false,
+            reason: "the grounded Checkpoint was recorded from resolved work authority".into(),
+            satisfied_basis_identities: vec![
+                workflow_basis("project", project_id.to_string()),
+                workflow_basis("goal_context", goal_context_id.to_string()),
+                workflow_basis(
+                    "baseline_analysis_snapshot",
+                    baseline_analysis_snapshot_id.to_string(),
+                ),
+                workflow_basis("checkpoint", checkpoint_id.to_string()),
+            ],
+            unresolved_requirements: Vec::new(),
+        }
+    }
+
+    pub fn workflow_after_recall(&self, project_id: ProjectId) -> Result<WorkflowDirective, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let Some(goal_context_id) = current_goal_id(&canonical) else {
+            return Ok(Self::workflow_after_initialization(project_id));
+        };
+        Ok(baseline_required(project_id, goal_context_id))
+    }
+
+    pub fn workflow_after_analysis(
+        &self,
+        project_id: ProjectId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    ) -> Result<WorkflowDirective, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let Some(goal_context_id) = current_goal_id(&canonical) else {
+            return Ok(Self::workflow_after_initialization(project_id));
+        };
+        self.workflow_for_work_basis(
+            project_id,
+            goal_context_id,
+            baseline_analysis_snapshot_id,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
+    pub fn workflow_for_review_candidate(
+        &self,
+        project_id: ProjectId,
+        review_candidate_id: CandidateId,
+    ) -> Result<WorkflowDirective, Error> {
+        let review = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(project_id, review_candidate_id))
+            .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let review = review
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        self.workflow_for_work_basis(
+            project_id,
+            review.goal_context_id,
+            review.baseline_analysis_snapshot_id,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
+    pub fn workflow_for_question_candidate(
+        &self,
+        project_id: ProjectId,
+        question_candidate_id: CandidateId,
+    ) -> Result<WorkflowDirective, Error> {
+        let candidates = self.candidate_basis(project_id)?;
+        let question_candidate = candidates
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == question_candidate_id)
+            .ok_or_else(|| Error::new("Question Candidate was not found"))?;
+        let question = question_candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.question.as_ref())
+            .ok_or_else(|| Error::new("Question Candidate content is unavailable"))?;
+        let dimension_ids = question
+            .affected_scope
+            .iter()
+            .filter_map(|scope| scope.strip_prefix("work-authority:"))
+            .collect::<BTreeSet<_>>();
+        let review_candidate = candidates
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.kind == CandidateKind::MaterialityReview)
+            .filter(|candidate| {
+                candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.materiality_review.as_ref())
+                    .is_some_and(|review| {
+                        review.dimensions.iter().any(|dimension| {
+                            dimension_ids.contains(dimension.dimension_id.as_str())
+                        })
+                    })
+            })
+            .max_by_key(|candidate| (candidate.created_at, candidate.id))
+            .ok_or_else(|| Error::new("Question Candidate has no Materiality Review basis"))?;
+        self.workflow_for_review_candidate(project_id, review_candidate.id)
+    }
+
+    pub fn workflow_for_question(
+        &self,
+        project_id: ProjectId,
+        question_id: volicord_context::QuestionId,
+        frontier_presented: bool,
+    ) -> Result<WorkflowDirective, Error> {
+        let candidates = self.candidate_basis(project_id)?;
+        let candidate = candidates
+            .candidates
+            .iter()
+            .find(|candidate| candidate.promotion_target == Some(question_id))
+            .ok_or_else(|| Error::new("Question has no review-derived Candidate basis"))?;
+        let mut directive = self.workflow_for_question_candidate(project_id, candidate.id)?;
+        if frontier_presented
+            && directive.stage == WorkflowStage::Inquiry
+            && directive.disposition == WorkflowDisposition::UserResponseRequired
+        {
+            directive.stage = WorkflowStage::Decision;
+            directive.required_next_action = Some(workflow_action("decision_record", None));
+            directive.reason =
+                "the current Question revision is presented; obtain the explicit current-host user response"
+                    .into();
+        }
+        Ok(directive)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn workflow_for_work_basis(
+        &self,
+        project_id: ProjectId,
+        goal_context_id: ContextItemId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+        paths: Vec<String>,
+        components: Vec<String>,
+        work_contexts: Vec<String>,
+        met_revisit_triggers: Vec<String>,
+    ) -> Result<WorkflowDirective, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let candidates = self.candidate_basis(project_id)?;
+        let review_candidate = candidates
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.kind == CandidateKind::MaterialityReview
+                    && matches!(
+                        candidate.disposition,
+                        CandidateDisposition::PendingOrRetained
+                    )
+                    && candidate
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.materiality_review.as_ref())
+                        .is_some_and(|review| {
+                            review.goal_context_id == goal_context_id
+                                && review.baseline_analysis_snapshot_id
+                                    == baseline_analysis_snapshot_id
+                        })
+            })
+            .max_by_key(|candidate| (candidate.created_at, candidate.id));
+        let current_assumptions = canonical
+            .context_items
+            .iter()
+            .filter(|item| item.role == ContextItemRole::Assumption)
+            .map(|item| item.statement.clone())
+            .collect();
+        let authority = evaluate_work_authority(
+            &canonical,
+            review_candidate,
+            project_id,
+            goal_context_id,
+            baseline_analysis_snapshot_id,
+            &ApplicabilityQuery {
+                project_id,
+                paths,
+                components,
+                work_contexts,
+                current_assumptions,
+                met_revisit_triggers,
+            },
+        );
+        Ok(workflow_from_authority(&canonical, &candidates, authority))
     }
 
     pub fn attach_candidate_repository_research(
@@ -3037,5 +3314,243 @@ pub(crate) fn select_document(set: &DocumentSet, kind: DocumentKind) -> &Generat
         DocumentKind::DecisionReport => &set.decision_report,
         DocumentKind::ImplementationPlan => &set.implementation_plan,
         DocumentKind::HandoffResume => &set.handoff_resume,
+    }
+}
+
+fn current_goal_id(canonical: &CanonicalReadBasis) -> Option<ContextItemId> {
+    canonical
+        .context_items
+        .iter()
+        .filter(|item| item.role == ContextItemRole::Goal)
+        .max_by_key(|item| (item.recorded_at, item.id))
+        .map(|item| item.id)
+}
+
+fn baseline_required(project_id: ProjectId, goal_context_id: ContextItemId) -> WorkflowDirective {
+    WorkflowDirective {
+        stage: WorkflowStage::RepositoryBaseline,
+        disposition: WorkflowDisposition::BaselineRequired,
+        required_next_action: Some(workflow_action("repository_analyze", None)),
+        blocks_ordinary_work: true,
+        reason: "capture a fresh pre-work repository Analysis Snapshot for this bounded work"
+            .into(),
+        satisfied_basis_identities: vec![
+            workflow_basis("project", project_id.to_string()),
+            workflow_basis("goal_context", goal_context_id.to_string()),
+        ],
+        unresolved_requirements: vec![workflow_requirement(
+            None,
+            "an exact pre-work Analysis Snapshot must be retained before ordinary repository work",
+            Vec::new(),
+        )],
+    }
+}
+
+fn workflow_from_authority(
+    canonical: &CanonicalReadBasis,
+    candidates: &CandidateReadBasis,
+    authority: WorkAuthorityResult,
+) -> WorkflowDirective {
+    let mut satisfied_basis_identities = vec![
+        workflow_basis("project", authority.project_id.to_string()),
+        workflow_basis("goal_context", authority.goal_context_id.to_string()),
+        workflow_basis(
+            "baseline_analysis_snapshot",
+            authority.baseline_analysis_snapshot_id.to_string(),
+        ),
+    ];
+    if let Some(candidate_id) = authority.review_candidate_id {
+        satisfied_basis_identities.push(workflow_basis(
+            "materiality_review_candidate",
+            candidate_id.to_string(),
+        ));
+    }
+    for decision_id in authority
+        .satisfied_requirements
+        .iter()
+        .flat_map(|requirement| requirement.decision_basis.iter())
+    {
+        satisfied_basis_identities.push(workflow_basis("decision", decision_id.to_string()));
+    }
+    satisfied_basis_identities
+        .sort_by(|left, right| (&left.kind, &left.identity).cmp(&(&right.kind, &right.identity)));
+    satisfied_basis_identities.dedup();
+
+    let unresolved_requirements = authority
+        .unresolved_requirements
+        .iter()
+        .map(|requirement| {
+            workflow_requirement(
+                requirement.dimension_id.clone(),
+                requirement.reason.clone(),
+                requirement
+                    .decision_basis
+                    .iter()
+                    .map(|id| workflow_basis("decision", id.to_string()))
+                    .collect(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let (stage, disposition, required_next_action) = match authority.disposition {
+        WorkAuthorityDisposition::ReviewMissing => (
+            WorkflowStage::MaterialityReview,
+            WorkflowDisposition::ReviewMissing,
+            Some(workflow_action("materiality_review", Some("record"))),
+        ),
+        WorkAuthorityDisposition::ReviewInvalid => (
+            WorkflowStage::MaterialityReview,
+            WorkflowDisposition::ReviewInvalid,
+            Some(workflow_action("materiality_review", Some("revise"))),
+        ),
+        WorkAuthorityDisposition::ResearchRequired => (
+            WorkflowStage::ResearchOrPrototype,
+            WorkflowDisposition::ResearchRequired,
+            Some(workflow_action("materiality_review", Some("revise"))),
+        ),
+        WorkAuthorityDisposition::QuestionRequired => question_workflow(
+            canonical,
+            candidates,
+            authority.review_candidate_id,
+            &authority.unresolved_requirements,
+        ),
+        WorkAuthorityDisposition::ReadyForWork => (
+            WorkflowStage::ReadyForWork,
+            WorkflowDisposition::ReadyForWork,
+            Some(workflow_action("checkpoint_record", None)),
+        ),
+    };
+    WorkflowDirective {
+        stage,
+        disposition,
+        required_next_action,
+        blocks_ordinary_work: authority.blocking,
+        reason: authority.reason,
+        satisfied_basis_identities,
+        unresolved_requirements,
+    }
+}
+
+fn question_workflow(
+    canonical: &CanonicalReadBasis,
+    candidates: &CandidateReadBasis,
+    review_candidate_id: Option<CandidateId>,
+    unresolved: &[volicord_inquiry::WorkAuthorityRequirement],
+) -> (WorkflowStage, WorkflowDisposition, Option<WorkflowAction>) {
+    let dimension_ids = unresolved
+        .iter()
+        .filter_map(|requirement| requirement.dimension_id.as_deref())
+        .collect::<BTreeSet<_>>();
+    let question_candidate = candidates
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.kind == CandidateKind::QuestionCandidate)
+        .filter(|candidate| {
+            candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.question.as_ref())
+                .is_some_and(|question| {
+                    dimension_ids.iter().any(|dimension_id| {
+                        question
+                            .affected_scope
+                            .contains(&materiality_scope_token(dimension_id))
+                    })
+                })
+        })
+        .max_by_key(|candidate| (candidate.created_at, candidate.id));
+    let Some(candidate) = question_candidate else {
+        let action = review_candidate_id
+            .map(|_| workflow_action("candidate_manage", Some("submit_question_from_materiality")));
+        return (
+            WorkflowStage::QuestionCandidate,
+            WorkflowDisposition::QuestionRequired,
+            action,
+        );
+    };
+    match candidate.disposition {
+        CandidateDisposition::PendingOrRetained => {
+            let research_state = candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.question.as_ref())
+                .map(|question| question.research_state);
+            if research_state == Some(volicord_context::QuestionResearchState::ResearchRequired) {
+                (
+                    WorkflowStage::QuestionCandidate,
+                    WorkflowDisposition::CandidateResearchRequired,
+                    Some(workflow_action(
+                        "candidate_manage",
+                        Some("attach_repository_research"),
+                    )),
+                )
+            } else {
+                (
+                    WorkflowStage::QuestionCandidate,
+                    WorkflowDisposition::CandidatePromotionRequired,
+                    Some(workflow_action(
+                        "candidate_manage",
+                        Some("promote_question"),
+                    )),
+                )
+            }
+        }
+        CandidateDisposition::Promoted {
+            canonical_question_id,
+            ..
+        } => {
+            if canonical
+                .active_decisions
+                .iter()
+                .any(|decision| decision.decision.question_id == canonical_question_id)
+            {
+                (
+                    WorkflowStage::MaterialityReview,
+                    WorkflowDisposition::ReviewRevisionRequired,
+                    Some(workflow_action("materiality_review", Some("revise"))),
+                )
+            } else {
+                (
+                    WorkflowStage::Inquiry,
+                    WorkflowDisposition::UserResponseRequired,
+                    Some(workflow_action("inquiry_frontier", None)),
+                )
+            }
+        }
+        CandidateDisposition::Dismissed { .. }
+        | CandidateDisposition::ExpiredOrRetentionCleaned => (
+            WorkflowStage::QuestionCandidate,
+            WorkflowDisposition::QuestionRequired,
+            Some(workflow_action(
+                "candidate_manage",
+                Some("submit_question_from_materiality"),
+            )),
+        ),
+    }
+}
+
+fn workflow_action(tool: &str, action: Option<&str>) -> WorkflowAction {
+    WorkflowAction {
+        tool: tool.into(),
+        action: action.map(str::to_owned),
+    }
+}
+
+fn workflow_basis(kind: &str, identity: String) -> WorkflowBasisIdentity {
+    WorkflowBasisIdentity {
+        kind: kind.into(),
+        identity,
+    }
+}
+
+fn workflow_requirement(
+    dimension_id: Option<String>,
+    reason: impl Into<String>,
+    basis_identities: Vec<WorkflowBasisIdentity>,
+) -> WorkflowRequirement {
+    WorkflowRequirement {
+        dimension_id,
+        reason: reason.into(),
+        basis_identities,
     }
 }
