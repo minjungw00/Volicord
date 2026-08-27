@@ -988,7 +988,8 @@ def rehearse_target(
 
     candidate_tools = {
         "candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record",
-        "canonical_inspect", "repository_analyze",
+        "canonical_inspect", "context_record", "repository_analyze", "materiality_review",
+        "checkpoint_record",
     }
     candidate_evidence: dict[str, Any] = {}
     inquiry_evidence: dict[str, Any] = {}
@@ -997,6 +998,14 @@ def rehearse_target(
     decision_id = None
     decision_revision = None
     decision_source_id = None
+    ordinary = repository / "v11-ordinary-work.txt"
+    ordinary_evidence: dict[str, Any] = {}
+    ordinary_status = "failed"
+    checkpoint_value: dict[str, Any] | None = None
+    checkpoint_evidence: dict[str, Any] = {}
+    checkpoint_status = "failed"
+    checkpoint_next_step = f"Resume the {target_kind} V11 journey in a new session"
+    checkpoint_target = "next Codex session"
     try:
         host = Mcp(mcp_binary, env)
         catalog = host.initialize()
@@ -1008,24 +1017,60 @@ def rehearse_target(
             inquiry_evidence = {"missing_public_tools": missing_candidate_tools}
         else:
             canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
+            goal_text = f"Rehearse {target_kind} through the resolved self-guiding work-authority path"
+            goal, goal_ok = host.tool("context_record", {
+                "project_id": project_id,
+                "user_turn": goal_text,
+                "role": "goal",
+                "statement": goal_text,
+            })
             candidate_analysis, candidate_analysis_ok = host.tool(
                 "repository_analyze", {"project_id": project_id, "excluded_paths": []}
             )
             source_ids = candidate_repository_source_basis(candidate_analysis)
             source_id = source_ids[0] if source_ids else None
-            submitted, submitted_ok = host.tool("candidate_manage", {
-                "action": "submit_question",
+            materiality_dimension_id = "project-context-boundary"
+            review, review_ok = host.tool("materiality_review", {
+                "action": "record",
                 "project_id": project_id,
-                "source_ids": source_ids,
-                "source_operation": "repository_analyze",
-                "repository_snapshot": candidate_analysis.get("repository_snapshot_id", "unknown") if candidate_analysis else "unknown",
+                "goal_context_id": (goal or {}).get("context_item_id"),
+                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                    "analysis_snapshot_id"
+                ),
+                "source_operation": "V11 installed MCP user-owned workflow",
+                "rationale": "The durable Project context boundary requires explicit user authority.",
+                "dimensions": [
+                    {
+                        "dimension_id": materiality_dimension_id,
+                        "summary": "Choose how this Project preserves its durable context boundary",
+                        "affected_scope": ["project-context"],
+                        "material_consequences": [
+                            "The choice changes durable local versus provider-backed context behavior"
+                        ],
+                        "observable_signals": ["other_material_outcome"],
+                        "disposition": "unresolved_user_owned_outcome",
+                        "basis": {
+                            "kinds": ["agent_recommendation"],
+                            "summary": "Repository evidence establishes the boundary but cannot choose it",
+                            "source_ids": [source_id] if source_id else [],
+                        },
+                    }
+                ],
+            })
+            review_candidate_id = (
+                review.get("review_candidate_id") if review_ok and review else None
+            )
+            submitted, submitted_ok = host.tool("candidate_manage", {
+                "action": "submit_question_from_materiality",
+                "project_id": project_id,
+                "review_candidate_id": review_candidate_id,
+                "dimension_id": materiality_dimension_id,
                 "research_state": "research_required",
                 "research_state_basis": "repository structure must be inspected before asking for a user judgment",
                 "retention_basis": "retain through the explicit V11 inquiry disposition",
                 "bounded_summary": "Choose how this Project should preserve its local context boundary",
                 "prompt": "Which context boundary should this Project use?",
                 "why_now": "the integrated journey needs one material current-host Decision",
-                "affected_scope": ["project-context"],
                 "established_facts": ["The Project has a current local Analysis Snapshot"],
                 "assumptions": ["The Project remains local-first"],
                 "uncertainty": ["External augmentation may be evaluated separately"],
@@ -1038,10 +1083,9 @@ def rehearse_target(
                 "trade_offs": ["Remote augmentation remains a separately authorized capability"],
                 "known_limits": ["The configured external provider is intentionally unavailable"],
                 "what_unlocks": ["the integrated Checkpoint and portability journey"],
-                "materiality_rationale": "the choice changes durable context behavior",
                 "duplicate_basis": "canonical inspection found no matching Question",
                 "presentation_order": 1,
-            })
+            }) if review_candidate_id else (None, False)
             candidate_id = submitted.get("candidate_id") if submitted_ok and submitted else None
             after_submission, after_submission_ok = host.tool("candidate_inspect", {"project_id": project_id})
             frontier_before, frontier_before_ok = host.tool("inquiry_frontier", {"project_id": project_id})
@@ -1105,6 +1149,93 @@ def rehearse_target(
             decision_id = decision_record.get("identity") if decision_record else None
             decision_revision = decision_record.get("revision") if decision_record else None
             decision_source_id = decision.get("user_response_source_id") if decision_ok and decision else None
+            resolved_review, resolved_review_ok = host.tool("materiality_review", {
+                "action": "revise",
+                "project_id": project_id,
+                "review_candidate_id": review_candidate_id,
+                "rationale": "The explicit current-host Decision resolves the Project context boundary.",
+                "dimensions": [
+                    {
+                        "dimension_id": materiality_dimension_id,
+                        "summary": "Choose how this Project preserves its durable context boundary",
+                        "affected_scope": ["project-context"],
+                        "material_consequences": [
+                            "The choice changes durable local versus provider-backed context behavior"
+                        ],
+                        "observable_signals": ["other_material_outcome"],
+                        "disposition": "unresolved_user_owned_outcome",
+                        "resolution_decision_id": decision_id,
+                        "basis": {
+                            "kinds": ["applicable_decision"],
+                            "summary": "The explicit current-host Decision supplies current authority",
+                            "source_ids": [
+                                value
+                                for value in (source_id, decision_source_id)
+                                if value
+                            ],
+                            "decision_ids": [decision_id] if decision_id else [],
+                        },
+                    }
+                ],
+            }) if review_candidate_id and decision_id else (None, False)
+            guarded_before = sha256(runtime / "guarded.sqlite3")
+            if (
+                resolved_review_ok
+                and resolved_review
+                and resolved_review.get("workflow", {}).get("stage") == "ready_for_work"
+                and resolved_review.get("workflow", {}).get("blocks_ordinary_work") is False
+            ):
+                ordinary.write_text(
+                    "ordinary repository work requires no Guarded confirmation\n",
+                    encoding="utf-8",
+                )
+            guarded_after = sha256(runtime / "guarded.sqlite3")
+            ordinary_status = (
+                "passed"
+                if ordinary.is_file() and guarded_before == guarded_after
+                else "failed"
+            )
+            ordinary_evidence = {
+                "changed_path": str(ordinary.relative_to(repository)),
+                "guarded_store_unchanged": guarded_before == guarded_after,
+                "resolved_materiality_review": resolved_review,
+            }
+            checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {
+                "project_id": project_id,
+                "goal_context_id": (goal or {}).get("context_item_id"),
+                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                    "analysis_snapshot_id"
+                ),
+                "kind": "handoff",
+                "work_state": "paused",
+                "applied_decision_ids": [decision_id] if decision_id else [],
+                "verification": [{"state": "not_run"}],
+                "next_step": checkpoint_next_step,
+                "known_limits": [
+                    "The configured external provider is intentionally unavailable"
+                ],
+                "handoff_to": checkpoint_target,
+            }) if ordinary_status == "passed" else (None, False)
+            checkpoint_status = (
+                "passed"
+                if checkpoint_ok
+                and checkpoint_value
+                and checkpoint_value.get("workflow", {}).get("disposition")
+                == "checkpoint_recorded"
+                and checkpoint_value.get("changed_paths")
+                == [str(ordinary.relative_to(repository))]
+                else "failed"
+            )
+            checkpoint_evidence = {
+                "goal": goal,
+                "baseline": candidate_analysis,
+                "materiality_review": review,
+                "resolved_materiality_review": resolved_review,
+                "decision_source_id": decision_source_id,
+                "handoff_target": checkpoint_target,
+                "checkpoint": checkpoint_value,
+                "mcp_call_succeeded": checkpoint_ok,
+            }
             submitted_candidate = next(
                 (item for item in (after_submission or {}).get("candidates", []) if item.get("identity") == candidate_id),
                 None,
@@ -1114,8 +1245,24 @@ def rehearse_target(
                 None,
             )
             candidate_ok = all([
-                canonical_before_ok, candidate_analysis_ok, source_id, submitted_ok,
+                canonical_before_ok,
+                goal_ok,
+                goal,
+                goal.get("workflow", {}).get("stage") == "repository_baseline",
+                candidate_analysis_ok,
+                source_id,
+                review_ok,
+                review,
+                review.get("workflow", {}).get("stage") == "question_candidate",
+                review.get("workflow", {}).get("required_next_action")
+                == {
+                    "tool": "candidate_manage",
+                    "action": "submit_question_from_materiality",
+                },
+                submitted_ok,
                 submitted and submitted.get("research_state") == "research_required",
+                submitted and submitted.get("review_candidate_id") == review_candidate_id,
+                submitted and submitted.get("dimension_id") == materiality_dimension_id,
                 after_submission_ok, submitted_candidate and submitted_candidate.get("research_state") == "research_required",
                 frontier_before_ok, not (frontier_before or {}).get("questions"),
                 insufficient_ok,
@@ -1132,12 +1279,17 @@ def rehearse_target(
             inquiry_ok = all([
                 frontier_ok, displayed, decision_ok, decision and decision.get("all_succeeded") is True,
                 canonical_after_ok, decision_id, decision_revision, decision_source_id,
+                resolved_review_ok,
+                resolved_review,
+                resolved_review.get("workflow", {}).get("stage") == "ready_for_work",
             ])
             candidate_status = "passed" if candidate_ok else "failed"
             inquiry_status = "passed" if inquiry_ok else "failed"
             candidate_evidence = {
                 "repository_analysis": candidate_analysis,
                 "repository_source_id": source_id,
+                "goal": goal,
+                "materiality_review": review,
                 "submission": submitted,
                 "inspection_after_submission": submitted_candidate,
                 "frontier_after_submission": frontier_before,
@@ -1154,6 +1306,7 @@ def rehearse_target(
                 "displayed_question": displayed,
                 "decision": decision,
                 "canonical_decision": decision_record,
+                "resolved_materiality_review": resolved_review,
             }
         candidate_cleanup = host.close()
         candidate_evidence["cleanup"] = candidate_cleanup
@@ -1171,14 +1324,10 @@ def rehearse_target(
         **inquiry_evidence,
     )
 
-    guarded_before = sha256(runtime / "guarded.sqlite3")
-    ordinary = repository / "v11-ordinary-work.txt"
-    ordinary.write_text("ordinary repository work requires no Guarded confirmation\n", encoding="utf-8")
-    guarded_after = sha256(runtime / "guarded.sqlite3")
     steps["ordinary_work"] = step(
-        "passed" if ordinary.is_file() and guarded_before == guarded_after else "failed",
+        ordinary_status,
         "ordinary repository work completed without Guarded ceremony",
-        changed_path=str(ordinary.relative_to(repository)), guarded_store_unchanged=guarded_before == guarded_after,
+        **ordinary_evidence,
     )
 
     provider_source_path = PROVIDER_SOURCE_PATHS[target_kind]
@@ -1356,24 +1505,10 @@ def rehearse_target(
         **guarded_evidence,
     )
 
-    checkpoint_value, checkpoint_op = (None, {"exit_code": None})
-    checkpoint_next_step = f"Resume the {target_kind} V11 journey in a new session"
-    checkpoint_target = "next Codex session"
-    if decision_source_id:
-        checkpoint_value, checkpoint_op = cli_json(
-            recorder, "checkpoint", cli, env, "--project", project_id,
-            "advanced", "checkpoint", "handoff", "--source", decision_source_id,
-            "--goal", f"Rehearse {target_kind} after the explicit Decision",
-            "--next-step", checkpoint_next_step, "--handoff-to", checkpoint_target,
-        )
-    checkpoint_status = "passed" if checkpoint_value else (
-        "unsupported" if unsupported_cli(checkpoint_op) else "failed"
-    )
     steps["checkpoint"] = step(
         checkpoint_status,
-        "the Decision response Source grounded a Handoff Checkpoint with an explicit next-session target",
-        decision_source_id=decision_source_id, handoff_target=checkpoint_target,
-        checkpoint=checkpoint_value, operation=checkpoint_op,
+        "the exact Goal, pre-work Analysis Snapshot, resolved Materiality Review, and explicit Decision grounded a Handoff Checkpoint",
+        **checkpoint_evidence,
     )
     recall_before, recall_op = cli_json(
         recorder, "recall", cli, env, "recall", cwd=repository
@@ -2098,6 +2233,7 @@ def self_check() -> int:
         ("portable", "export"),
         ("documents", "export"),
         ("checkpoint", "record"),
+        ("advanced", "checkpoint"),
     }
     for node in ast.walk(ast.parse(source)):
         if not (
@@ -2124,6 +2260,10 @@ def self_check() -> int:
         'viewer_understanding["status"] == "passed"',
         'provider_request_after.get("outcome") == "provider_unavailable"',
         '"local_canonical": local_canonical',
+        '"action": "submit_question_from_materiality"',
+        'review, review_ok = host.tool("materiality_review"',
+        'resolved_review, resolved_review_ok = host.tool("materiality_review"',
+        'checkpoint_value, checkpoint_ok = host.tool("checkpoint_record"',
     ):
         if current not in source:
             raise AssertionError(f"V11 lost a current public-journey contract: {current}")
@@ -2228,6 +2368,7 @@ def self_check() -> int:
         "evidence_driven_steps": len(REQUIRED_STEPS),
         "required_step_policy_regressions": "passed",
         "candidate_structured_repository_source_regression": "passed",
+        "self_guiding_work_authority_checkpoint_path": "passed",
         "viewer_project_understanding_contract": "passed",
         "authentication_lifecycle": "passed",
         "credential_retention_audit": "passed",
