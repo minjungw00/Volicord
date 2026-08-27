@@ -1035,6 +1035,11 @@ current-host user Decision이 없으면 blocker이지만 다른 class에 이 ope
 증명할 수 없으면 blocker를 추측하지 않고 full qualification을 요구한다. 모든 required
 work-session condition을 충족한 positive capture는 early-stop failure로 변환할 수 없다.
 
+Maintained focused Checkpoint validation은 campaign과 별개로 missing/unresolved/late review가
+canonical Checkpoint를 만들지 못함을 확인한다. 또한 settled/repository-fact no-Question path와
+exact current-host response에서 나온 applicable Decision path가 same Goal/exact baseline으로
+restart 뒤에도 성공하고, authority Decision 누락이 거부됨을 검증한다.
+
 Early-stop output은 `kind = phase8_dogfood_blocker_result`이며 항상
 `campaign_complete = false`, `replacement_pass_candidate = false`,
 `phase_9_ready = false`다. Candidate, repository class, cycle, revision, failed check,

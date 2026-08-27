@@ -15,7 +15,10 @@ use volicord_inquiry::{
     CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
     SubmissionOutcome,
 };
-use volicord_operations::{LocalOperations, RuntimeLayout};
+use volicord_operations::{
+    LocalOperations, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+};
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
     PrivacyStore, ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy,
@@ -1585,6 +1588,48 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         .as_str()
         .expect("baseline Analysis Snapshot")
         .to_owned();
+    let goal_context = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("canonical Goal basis")
+        .context_items
+        .into_iter()
+        .find(|item| item.id.to_string() == goal_context_id)
+        .expect("typed Goal Context identity")
+        .id;
+    adapter
+        .operations()
+        .record_materiality_review(MaterialityReviewDraft {
+            project_id,
+            goal_context_id: goal_context,
+            baseline_analysis_snapshot_id:
+                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(&baseline_id)
+                    .expect("typed baseline identity"),
+            session: "mcp-checkpoint-fixture".into(),
+            source_operation: "pre-work-review".into(),
+            rationale: "the host fixture follows its accepted grounded-checkpoint contract".into(),
+            dimensions: vec![MaterialityDimension {
+                dimension_id: "grounded-checkpoint-contract".into(),
+                summary: "grounded Checkpoint behavior".into(),
+                affected_scope: vec!["host-checkpoint".into()],
+                material_consequences: vec!["records bounded work and truthful evidence".into()],
+                observable_signals: Vec::new(),
+                disposition: MaterialityDisposition::SettledAuthority,
+                basis: WorkAuthorityBasis {
+                    kinds: vec![WorkAuthorityBasisKind::AcceptedContract],
+                    summary: "accepted source-grounded Checkpoint contract".into(),
+                    source_basis: vec![parse_source_identity(
+                        baseline["repository_source_id"]
+                            .as_str()
+                            .expect("baseline repository Source"),
+                    )],
+                    contract_basis: vec!["rebuild/docs/design/inquiry-and-decision.md".into()],
+                    decision_basis: Vec::new(),
+                    research_basis: Vec::new(),
+                },
+            }],
+        })
+        .expect("pre-work Materiality Review");
 
     let other_repository = temporary.path().join("other-repository");
     fs::create_dir(&other_repository).expect("other repository");

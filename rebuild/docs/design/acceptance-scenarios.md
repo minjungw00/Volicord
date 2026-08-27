@@ -533,6 +533,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - Fresh initialized/resumed session은 initialization 또는 Recall 뒤, 첫 ordinary repository
   write 전에 local repository analysis baseline을 만들고 그 exact Analysis Snapshot identity를
   bounded work의 Checkpoint까지 유지한다.
+- 같은 pre-work boundary에서 independently material outcome을 typed Materiality Review로
+  분류하고 `ready_for_work`가 된 뒤 ordinary work를 수행한다. Settled/repository/research path는
+  Question을 제조하지 않고 user-owned path는 existing Question/Decision lifecycle을 사용한다.
 - exact baseline부터 current snapshot까지 fingerprint가 바뀐 meaningful path와 적용
   Decision을 구분하고, 이 bounded repository delta가 exclusive actor ownership을 증명한다고
   주장하지 않는다.
@@ -542,6 +545,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - `.venv`와 `.ruff_cache` descendant를 generated area로 유지해 meaningful changed path로
   포함하지 않는다.
 - 의미 있는 작업 완료, pause 또는 handoff에서 하나의 Checkpoint를 만든다.
+- Checkpoint는 same current Goal/exact baseline의 timely review와 resolved authority를 검증하고,
+  authority Decision이 있으면 applied Decision으로 명시된 경우에만 기록된다.
 - Checkpoint는 변경, 이유, 검증, 한계, non-goals와 다음 단계를 설명한다.
 - Executed verification은 presentation-oriented command label과 분리된 exact transient host
   invocation에서 Volicord가 derive한 fingerprint를 existing Command Source에 보존하고,
@@ -571,6 +576,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - baseline 뒤 fingerprint가 바뀌지 않은 기존 dirty file을 current changed path로 포함
 - exact baseline 뒤 바뀐 기존 dirty file을 actor ownership ambiguity로 거부
 - bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
+- missing, stale, late 또는 unresolved Materiality Review로 completed/paused Checkpoint 기록
+- post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
 - user review가 없다는 이유만으로 실제 완료 상태 왜곡
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint 생성
 
@@ -581,6 +588,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - tracked/untracked baseline-dirty path의 unchanged/changed-again 구분과 별도 pre-existing evidence
 - `.venv`/`.ruff_cache` generated descendant exclusion
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
+- missing/unresolved/late review의 Checkpoint refusal, valid no-Question와 applicable-Decision path
+- restart 뒤 unresolved Candidate가 ready/completed로 변하지 않고 resolved review는 재사용됨
 - work, verification, review와 acceptance 상태 독립성
 - label과 invocation이 다른 fixture의 exact invocation fingerprint, Source-ID linkage,
   restart/portable round trip과 raw invocation non-retention

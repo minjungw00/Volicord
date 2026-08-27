@@ -234,6 +234,11 @@ Inquiry frontier의 두 번째 authority도 아니다. 단순 조회, 변경 없
 source 없는 추측 summary와 unrelated dirty change는 canonical Checkpoint의 basis가
 되지 않는다.
 
+Meaningful Checkpoint publication은 새 canonical entity를 만들지 않는 precondition으로
+same Project/current Goal/exact pre-work Analysis Snapshot의 timely Materiality Review와
+resolved work-authority result를 요구한다. Authority에 사용된 applicable Decision은
+Checkpoint가 reference하지만 Session Candidate review 자체를 canonicalize하지 않는다.
+
 ## 5. Identity model
 
 모든 canonical entity는 다음 identity 원칙을 따른다.

@@ -422,6 +422,15 @@ bounded repository delta를 사용한다. Baseline dirty path는 별도 pre-exis
 missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이면 attribution을
 거부하며 current state나 post-work snapshot으로 추정하지 않는다.
 
+같은 operation은 current Goal과 exact baseline에 bind된 retained Materiality Review를 찾아
+current changed path/Decision applicability로 work authority를 다시 평가한다. Missing review,
+wrong Goal/baseline, late first review, unresolved user-owned dimension 또는 unfinished
+research/prototype는 Checkpoint publication 전에 거부한다. Resolved user-owned outcome과
+explicit delegation에 사용된 applicable Decision은 Checkpoint의 applied Decision 목록에도
+명시되어야 한다. Settled contract/repository fact/research basis는 Decision으로 가장하지 않고
+각자의 satisfied requirement로 남는다. Restart 뒤에도 Candidate revision과 canonical state에서
+같은 evaluation을 재구성하므로 pause나 prior attempt가 unresolved authority를 완료로 바꾸지 않는다.
+
 Executed verification fact는 existing `source_id`로 정확히 하나의 Command Source에
 연결된다. Current host가 보낸 bounded label은 presentation이고 exact transient invocation은
 trusted operation 안에서 SHA-256 fingerprint를 derive하는 input이다. Checkpoint나 Inquiry는

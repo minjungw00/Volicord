@@ -454,7 +454,11 @@ next Volicord action, blocking 여부, reason, satisfied와 unresolved requireme
 일반 repository 작업은 Volicord의 사전 admission 대상이 아니다. Adapter와 Local
 Operations는 work observation을 Candidate로 전달할 수 있다. 의미 있는 완료,
 pause 또는 handoff boundary에서 source, changed basis, verification, known limits와
-next step이 확인되면 Kernel이 Checkpoint를 canonical로 기록한다. Work,
+next step이 확인되면 Local Operations는 same Project, current Goal, exact pre-work
+Analysis Snapshot에 대한 timely Materiality Review를 다시 평가한다. `ready_for_work`가
+아니거나 authority Decision이 Checkpoint의 applied Decision에 빠지면 canonical publication을
+거부한다. 이 검사는 Checkpoint boundary의 truthfulness이며 ordinary write admission이 아니다.
+검사가 통과하면 Kernel이 Checkpoint를 canonical로 기록한다. Work,
 verification, user review와 user acceptance는 서로 독립적으로 남는다.
 
 ### 6. Portable export/import와 conflict resolution

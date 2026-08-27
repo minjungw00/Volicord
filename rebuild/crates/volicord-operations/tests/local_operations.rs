@@ -8,10 +8,11 @@ use volicord_context::{
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
     CommandVerificationDraft, GroundedCheckpointDraft, HealthState, LocalOperations,
-    OperationState, ProjectResolution, RuntimeLayout,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
+    ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
-use volicord_repository_intelligence::AnalysisSnapshotId;
+use volicord_repository_intelligence::{AnalysisSnapshot, AnalysisSnapshotId};
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -320,7 +321,41 @@ fn goal_and_baseline(
         .value
         .ok_or("baseline analysis has no value")?
         .analysis;
+    record_ready_review(operations, project_id, goal.context_item_id, &baseline)?;
     Ok((goal.context_item_id, baseline.identity))
+}
+
+fn record_ready_review(
+    operations: &LocalOperations,
+    project_id: ProjectId,
+    goal_context_id: ContextItemId,
+    baseline: &AnalysisSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    operations.record_materiality_review(MaterialityReviewDraft {
+        project_id,
+        goal_context_id,
+        baseline_analysis_snapshot_id: baseline.identity,
+        session: "grounded-checkpoint-fixture".into(),
+        source_operation: "pre-work-review".into(),
+        rationale: "repository-scoped fixture has no unresolved user-owned outcome".into(),
+        dimensions: vec![MaterialityDimension {
+            dimension_id: "bounded-repository-outcome".into(),
+            summary: "bounded repository behavior".into(),
+            affected_scope: vec!["repository".into()],
+            material_consequences: vec!["records the attributed repository delta".into()],
+            observable_signals: Vec::new(),
+            disposition: MaterialityDisposition::RepositoryOrEnvironmentFact,
+            basis: WorkAuthorityBasis {
+                kinds: vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+                summary: "retained pre-work repository observation".into(),
+                source_basis: vec![baseline.repository_source.identity()],
+                contract_basis: Vec::new(),
+                decision_basis: Vec::new(),
+                research_basis: Vec::new(),
+            },
+        }],
+    })?;
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -500,8 +535,8 @@ fn resumed_pre_write_baseline_attributes_source_document_and_configuration_witho
         .analyze(resolved.id, Vec::new())?
         .value
         .ok_or("resume baseline analysis has no value")?
-        .analysis
-        .identity;
+        .analysis;
+    record_ready_review(&operations, resolved.id, goal.context_item_id, &baseline)?;
 
     fs::write(
         repository.join("src/lib.rs"),
@@ -527,7 +562,7 @@ fn resumed_pre_write_baseline_attributes_source_document_and_configuration_witho
     let checkpoint = operations.record_grounded_checkpoint(grounded_draft(
         resolved.id,
         goal.context_item_id,
-        baseline,
+        baseline.identity,
     ))?;
     assert_eq!(
         checkpoint.changed_paths,

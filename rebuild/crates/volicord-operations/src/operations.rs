@@ -43,11 +43,12 @@ use volicord_inquiry::{
     evaluate_decision_applicability, evaluate_work_authority,
     record_checkpoint as persist_evaluated_checkpoint, record_response_batch, ApplicabilityQuery,
     BatchResponseItem, BatchResponseResult, CandidateCollectionMode, CandidateCollectionScope,
-    CandidateContent, CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis,
-    CandidateOrigin, CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore,
-    ChangeAttribution, CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
-    FrontierRead, InquiryScope, MaterialityReview, PromotionResult, RepositoryResearchBasis,
-    RepositoryWorkBasis, SubmissionOutcome, WorkAuthorityResult,
+    CandidateContent, CandidateDisposition, CandidateDraft, CandidateId, CandidateKind,
+    CandidateObservationBasis, CandidateOrigin, CandidateReadBasis, CandidateRecord,
+    CandidateRetention, CandidateStore, ChangeAttribution, CheckpointCandidate,
+    CheckpointEvaluation, DecisionApplicabilityState, FrontierRead, InquiryScope,
+    MaterialityReview, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
+    SubmissionOutcome, WorkAuthorityDisposition, WorkAuthorityResult,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, DirtyObservation,
@@ -998,6 +999,7 @@ impl LocalOperations {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn work_readiness(
         &self,
         project_id: ProjectId,
@@ -2005,20 +2007,12 @@ impl LocalOperations {
 
     pub fn record_checkpoint(
         &self,
-        project_id: ProjectId,
-        draft: CheckpointDraft,
+        _project_id: ProjectId,
+        _draft: CheckpointDraft,
     ) -> Result<CanonicalMutationOutcome, Error> {
-        let _mutation = self.layout.acquire_mutation_lock()?;
-        let mut canonical = self.open_canonical()?;
-        let result = canonical
-            .record_checkpoint(new_operation_id()?, project_id, draft)
-            .map_err(|error| Error::with_source("Checkpoint recording failed", error))?;
-        Ok(CanonicalMutationOutcome {
-            record_kind: "checkpoint".into(),
-            identity: result.value.id.to_string(),
-            revision: Some(1),
-            replayed: result.replayed,
-        })
+        Err(Error::new(
+            "ungrounded Checkpoint recording is unavailable; a meaningful Checkpoint requires the current Goal, exact pre-work Analysis Snapshot, and resolved work authority",
+        ))
     }
 
     pub fn record_grounded_checkpoint(
@@ -2158,6 +2152,64 @@ impl LocalOperations {
         // Repository observation and analysis may be long-running. Serialize
         // only the final durable Source and Checkpoint publication.
         let _mutation = self.layout.acquire_mutation_lock()?;
+        let authority_canonical = self.canonical_basis(draft.project_id)?;
+        let candidate_basis = self.candidate_basis(draft.project_id)?;
+        let latest_review = |exact: bool| {
+            candidate_basis
+                .candidates
+                .iter()
+                .filter(|candidate| {
+                    candidate.kind == CandidateKind::MaterialityReview
+                        && matches!(
+                            candidate.disposition,
+                            CandidateDisposition::PendingOrRetained
+                        )
+                        && candidate.content.is_some()
+                })
+                .filter(|candidate| {
+                    if !exact {
+                        return true;
+                    }
+                    candidate
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.materiality_review.as_ref())
+                        .is_some_and(|review| {
+                            review.goal_context_id == draft.goal_context_id
+                                && review.baseline_analysis_snapshot_id
+                                    == draft.baseline_analysis_snapshot_id
+                        })
+                })
+                .max_by_key(|candidate| (candidate.created_at, candidate.id))
+        };
+        let review_candidate = latest_review(true).or_else(|| latest_review(false));
+        let authority = evaluate_work_authority(
+            &authority_canonical,
+            review_candidate,
+            draft.project_id,
+            draft.goal_context_id,
+            draft.baseline_analysis_snapshot_id,
+            &applicability,
+        );
+        if authority.disposition != WorkAuthorityDisposition::ReadyForWork {
+            return Err(Error::new(format!(
+                "Checkpoint work authority is not resolved: {}",
+                authority.reason
+            )));
+        }
+        let required_decisions = authority
+            .satisfied_requirements
+            .iter()
+            .flat_map(|requirement| requirement.decision_basis.iter().copied())
+            .collect::<BTreeSet<_>>();
+        if !required_decisions.is_subset(&unique_decisions) {
+            return Err(Error::new(format!(
+                "Checkpoint must name every Decision in its resolved work-authority basis: {:?}",
+                required_decisions
+                    .difference(&unique_decisions)
+                    .collect::<Vec<_>>()
+            )));
+        }
         let mut verification = Vec::with_capacity(draft.verification.len());
         let mut verification_source_ids = Vec::new();
         for fact in &draft.verification {

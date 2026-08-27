@@ -1,8 +1,9 @@
 use std::fs;
 use tempfile::tempdir;
 use volicord_context::{
-    AgentRecommendation, ApplicabilityScope, ContextItemRole, NonUserQuestionOutcome, OperationId,
-    Principal, PrincipalKind, QuestionAlternative, QuestionResearchState,
+    AgentRecommendation, ApplicabilityScope, CheckpointKind, ContextItemRole,
+    NonUserQuestionOutcome, OperationId, Principal, PrincipalKind, QuestionAlternative,
+    QuestionResearchState, VerificationState, WorkState,
 };
 use volicord_inquiry::{
     bind_question_candidate_to_materiality, BatchResponseItem, CandidateCollectionMode,
@@ -12,9 +13,10 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    ExploratoryDisposition, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
-    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
+    CommandVerificationDraft, ExploratoryDisposition, GroundedCheckpointDraft, LocalOperations,
+    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    WorkAuthorityDisposition, WorkAuthorityStage,
 };
 
 fn dimension(
@@ -119,6 +121,36 @@ fn readiness(
     )
 }
 
+fn checkpoint_draft(
+    fixture: &Fixture,
+    applied_decisions: Vec<volicord_context::DecisionId>,
+) -> GroundedCheckpointDraft {
+    GroundedCheckpointDraft {
+        project_id: fixture.project_id,
+        goal_context_id: fixture.goal_id,
+        baseline_analysis_snapshot_id: fixture.baseline.identity,
+        kind: CheckpointKind::Handoff,
+        work_state: WorkState::Paused,
+        state_change: Some("completed the bounded authority-backed work".to_owned()),
+        applied_decisions,
+        decision_components: Vec::new(),
+        work_contexts: Vec::new(),
+        met_revisit_triggers: Vec::new(),
+        verification: vec![CommandVerificationDraft {
+            state: VerificationState::NotRun,
+            command_label: None,
+            command_invocation: None,
+            exit_code: None,
+            termination: None,
+            outcome: None,
+        }],
+        known_limits: Vec::new(),
+        non_goals: Vec::new(),
+        next_step: "resume from the grounded Checkpoint".to_owned(),
+        handoff_to: Some("next session".to_owned()),
+    }
+}
+
 #[test]
 fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_restart(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -162,6 +194,12 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
     )?;
     assert_eq!(resumed.disposition, WorkAuthorityDisposition::ReadyForWork);
     assert_eq!(resumed.review_revision, Some(1));
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+    let checkpoint = reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
     Ok(())
 }
 
@@ -302,6 +340,11 @@ fn first_review_after_meaningful_mutation_is_rejected_and_trivial_details_do_not
     )
     .expect_err("late review must not be accepted");
     assert!(late.message().contains("first Materiality Review is late"));
+    let refused = late_fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&late_fixture, Vec::new()))
+        .expect_err("a rejected late review cannot validate a Checkpoint");
+    assert!(refused.message().contains("work authority is not resolved"));
 
     let clean = fixture()?;
     let source = clean.baseline.repository_source.identity();
@@ -327,6 +370,51 @@ fn first_review_after_meaningful_mutation_is_rejected_and_trivial_details_do_not
 }
 
 #[test]
+fn checkpoint_rejects_missing_and_unresolved_materiality_without_recording_completion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let missing = fixture()?;
+    let before = missing.operations.canonical_basis(missing.project_id)?;
+    let error = missing
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&missing, Vec::new()))
+        .expect_err("missing review must block Checkpoint");
+    assert!(error.message().contains("Materiality Review is required"));
+    assert!(missing
+        .operations
+        .canonical_basis(missing.project_id)?
+        .checkpoint_history
+        .is_empty());
+    assert!(before.latest_checkpoint.is_none());
+
+    let unresolved = fixture()?;
+    let source = unresolved.baseline.repository_source.identity();
+    review(
+        &unresolved,
+        vec![dimension(
+            "public-default",
+            MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                resolution_decision_id: None,
+            },
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+            source,
+        )],
+    )?;
+    let error = unresolved
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&unresolved, Vec::new()))
+        .expect_err("unresolved owner outcome must block Checkpoint");
+    assert!(error
+        .message()
+        .contains("material user-owned outcomes still require explicit authority"));
+    assert!(unresolved
+        .operations
+        .canonical_basis(unresolved.project_id)?
+        .checkpoint_history
+        .is_empty());
+    Ok(())
+}
+
+#[test]
 fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestioning(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture()?;
@@ -339,11 +427,24 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
         vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
         source,
     );
-    let review_outcome = review(&fixture, vec![user_owned.clone()])?;
+    let coupled = dimension(
+        "cli-exit-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        source,
+    );
+    let review_outcome = review(&fixture, vec![user_owned.clone(), coupled.clone()])?;
     assert_eq!(
         readiness(&fixture, &review_outcome)?.stage,
         WorkAuthorityStage::QuestionRequired
     );
+    let refused = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("unresolved user-owned work cannot produce a Checkpoint");
+    assert!(refused.message().contains("work authority is not resolved"));
     let review_record = fixture
         .operations
         .candidate_basis(fixture.project_id)?
@@ -438,6 +539,16 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
     };
     let bound =
         bind_question_candidate_to_materiality(&review_record, "failure-policy", question_draft)?;
+    let bound = bind_question_candidate_to_materiality(&review_record, "cli-exit-policy", bound)?;
+    let coupled_scope = bound
+        .content
+        .question
+        .as_ref()
+        .ok_or("bound Question content missing")?
+        .affected_scope
+        .clone();
+    assert!(coupled_scope.contains(&"work-authority:failure-policy".to_owned()));
+    assert!(coupled_scope.contains(&"work-authority:cli-exit-policy".to_owned()));
     let question_candidate_id = match fixture.operations.submit_candidate(bound)? {
         SubmissionOutcome::Stored(candidate) => candidate.id,
         SubmissionOutcome::CollectionDisabled { .. } => {
@@ -501,24 +612,47 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
         .kinds
         .push(WorkAuthorityBasisKind::ExplicitDelegation);
     resolved.basis.decision_basis.push(decision_id);
+    let mut resolved_coupled = coupled;
+    resolved_coupled.disposition = MaterialityDisposition::DelegatedImplementationChoice;
+    resolved_coupled
+        .basis
+        .kinds
+        .push(WorkAuthorityBasisKind::ExplicitDelegation);
+    resolved_coupled.basis.decision_basis.push(decision_id);
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
             project_id: fixture.project_id,
             review_candidate_id: review_outcome.review_candidate_id,
             rationale: "the exact current-host response produced an applicable Decision".to_owned(),
-            dimensions: vec![resolved],
+            dimensions: vec![resolved, resolved_coupled],
         })?;
     let ready = readiness(&fixture, &revised)?;
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
-    assert_eq!(
-        ready.satisfied_requirements[0].decision_basis,
-        [decision_id]
-    );
+    assert_eq!(ready.satisfied_requirements.len(), 2);
+    assert!(ready
+        .satisfied_requirements
+        .iter()
+        .all(|requirement| requirement.decision_basis == [decision_id]));
     assert!(fixture
         .operations
         .canonical_basis(fixture.project_id)?
         .active_questions
         .is_empty());
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> Result<u32, &'static str> { Ok(2) }\n",
+    )?;
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let missing_decision = reopened
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("Checkpoint must name the authority Decision");
+    assert!(missing_decision
+        .message()
+        .contains("must name every Decision"));
+    let checkpoint =
+        reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![decision_id]))?;
+    assert_eq!(checkpoint.applied_decisions, [decision_id]);
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
     Ok(())
 }
