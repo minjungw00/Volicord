@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, error::Error as StdError, fmt, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error as StdError,
+    fmt,
+    path::Path,
+};
 use volicord_context::{
     CanonicalRecordId, CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
     DecisionChoice, DecisionCorrectionDraft, DecisionId, ProjectId, SourceId, SourcePayload,
@@ -14,10 +19,10 @@ use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
     build_project_understanding, BriefDecisionState, CandidateDependencyState,
     CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
-    GeneratorIdentity, InspectionHealth, MapRelation, MapRelationClass, NarrativeRealizationState,
-    OutputFormat, ProjectProjection, ProjectUnderstanding, ProjectionHealth, ProjectionIssueKind,
-    RequestedDestination, UnderstandingBound, UnderstandingEvidenceClass, UnderstandingExplanation,
-    UnderstandingExplanationKind,
+    GeneratorIdentity, InspectionHealth, MapEntity, MapRelation, MapRelationClass,
+    NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectUnderstanding,
+    ProjectionHealth, ProjectionIssueKind, RequestedDestination, UnderstandingBound,
+    UnderstandingEvidenceClass, UnderstandingExplanation, UnderstandingExplanationKind,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -951,12 +956,12 @@ fn render_grounded_diagram(
         ExplanationLevel::Working => 16,
         ExplanationLevel::Deep => 24,
     };
-    let nodes = understanding
-        .architecture
-        .components
-        .iter()
-        .take(limit)
-        .collect::<Vec<_>>();
+    let (nodes, relations) = select_diagram_topology(
+        &understanding.architecture.components,
+        &understanding.architecture.relationships,
+        limit,
+        include_relation,
+    );
     let positions = nodes
         .iter()
         .enumerate()
@@ -966,19 +971,6 @@ fn render_grounded_diagram(
             (node.identity.as_str(), (40 + column * 280, 45 + row * 110))
         })
         .collect::<BTreeMap<_, _>>();
-    let relations = understanding
-        .architecture
-        .relationships
-        .iter()
-        .filter(|relation| include_relation(relation))
-        .filter(|relation| {
-            positions.contains_key(relation.source_entity.as_str())
-                && relation
-                    .target_entity
-                    .as_deref()
-                    .is_some_and(|target| positions.contains_key(target))
-        })
-        .collect::<Vec<_>>();
     html.push_str(&format!(
         "<figure class=\"grounded-diagram\" data-diagram=\"{}\"><figcaption>{}</figcaption>",
         escape(diagram_id),
@@ -1074,6 +1066,97 @@ fn render_grounded_diagram(
         relations.len(),
         escape(text(request.locale, "grounded edges", "근거 있는 edge"))
     ));
+}
+
+fn select_diagram_topology<'a>(
+    components: &'a [MapEntity],
+    relationships: &'a [MapRelation],
+    limit: usize,
+    include_relation: fn(&MapRelation) -> bool,
+) -> (Vec<&'a MapEntity>, Vec<&'a MapRelation>) {
+    let limit = limit.max(1);
+    let components_by_id = components
+        .iter()
+        .map(|component| (component.identity.as_str(), component))
+        .collect::<BTreeMap<_, _>>();
+    let mut candidates = relationships
+        .iter()
+        .filter(|relationship| include_relation(relationship))
+        .filter(|relationship| {
+            components_by_id.contains_key(relationship.source_entity.as_str())
+                && relationship
+                    .target_entity
+                    .as_deref()
+                    .is_some_and(|target| components_by_id.contains_key(target))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| left.identity.cmp(&right.identity));
+
+    let mut selected_component_ids = BTreeSet::<&str>::new();
+    let mut selected_relationship_ids = BTreeSet::<&str>::new();
+    let mut selected_relationships = Vec::new();
+    loop {
+        let connected = !selected_component_ids.is_empty();
+        let fits = |relationship: &&MapRelation| {
+            let Some(target) = relationship.target_entity.as_deref() else {
+                return false;
+            };
+            let new_endpoint_count = [relationship.source_entity.as_str(), target]
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .filter(|identity| !selected_component_ids.contains(identity))
+                .count();
+            selected_component_ids.len() + new_endpoint_count <= limit
+        };
+        let next = candidates
+            .iter()
+            .find(|relationship| {
+                !selected_relationship_ids.contains(relationship.identity.as_str())
+                    && fits(relationship)
+                    && (!connected
+                        || relationship_endpoint_is_selected(relationship, &selected_component_ids))
+            })
+            .or_else(|| {
+                candidates.iter().find(|relationship| {
+                    !selected_relationship_ids.contains(relationship.identity.as_str())
+                        && fits(relationship)
+                })
+            });
+        let Some(relationship) = next else {
+            break;
+        };
+        let Some(target) = relationship.target_entity.as_deref() else {
+            continue;
+        };
+        selected_component_ids.insert(relationship.source_entity.as_str());
+        selected_component_ids.insert(target);
+        selected_relationship_ids.insert(relationship.identity.as_str());
+        selected_relationships.push(*relationship);
+    }
+
+    for component in components_by_id.values() {
+        if selected_component_ids.len() == limit {
+            break;
+        }
+        selected_component_ids.insert(component.identity.as_str());
+    }
+    let nodes = selected_component_ids
+        .into_iter()
+        .filter_map(|identity| components_by_id.get(identity).copied())
+        .collect();
+    (nodes, selected_relationships)
+}
+
+fn relationship_endpoint_is_selected(
+    relationship: &MapRelation,
+    selected_component_ids: &BTreeSet<&str>,
+) -> bool {
+    selected_component_ids.contains(relationship.source_entity.as_str())
+        || relationship
+            .target_entity
+            .as_deref()
+            .is_some_and(|target| selected_component_ids.contains(target))
 }
 
 fn render_understanding_evidence(
@@ -3391,3 +3474,7 @@ fn _projection_health_is_explicit(value: ProjectionHealth) -> &'static str {
         ProjectionHealth::Degraded => "degraded",
     }
 }
+
+#[cfg(test)]
+#[path = "render_tests.rs"]
+mod tests;
