@@ -589,6 +589,26 @@ fn recommendation_library_convention_and_fake_delegation_never_establish_authori
             "{kind:?}"
         );
     }
+    let fixture = fixture_with_goal(
+        "Implement the bounded change; choose the internal module naming and structure.",
+    )?;
+    let mut relabeled_contract = dimension(
+        "relabeled-contract",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    relabeled_contract.basis.contract_basis = vec!["accepted owner text".to_owned()];
+    relabeled_contract.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "choose the internal module naming and structure",
+        vec!["src/lib.rs".to_owned()],
+    ));
+    let recorded = review(&fixture, vec![relabeled_contract])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReviewInvalid
+    );
     Ok(())
 }
 

@@ -504,7 +504,8 @@ fn validate_current_goal_delegation(
                 | WorkAuthorityBasisKind::LibraryOrConvention
                 | WorkAuthorityBasisKind::ImplementationPreference
         )
-    }) {
+    }) || !dimension.basis.contract_basis.is_empty()
+    {
         return Err(DimensionIssue::Invalid(
             "explicit delegation must remain distinct from accepted contract, Decision, recommendation, convention, and implementation-preference authority"
                 .to_owned(),
