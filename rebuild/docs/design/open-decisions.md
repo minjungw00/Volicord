@@ -36,6 +36,7 @@
 | D10 | accepted | 사용자와 에이전트가 같은 canonical basis로 Recall | 역할별 표현은 달라도 source와 freshness는 같아야 함 |
 | D11 | accepted | repository-wide 코드 이해와 문서 출력을 일급 기능으로 제공 | Repository Intelligence를 Canonical Context Kernel과 분리 |
 | D12 | accepted | 첫 결과물부터 실제 설치·분석·판단·재개에 사용 가능해야 함 | 데모용 API slice가 아니라 교체 가능한 제품 gate를 사용 |
+| D13 | accepted | engineering choice의 authority와 learning value를 독립 평가 | explicit learning participation에서만 agent-owned learning-worthy choice를 pre-work deliberation으로 제시 |
 
 ## 3. 결정 기록 형식
 
@@ -464,7 +465,36 @@ clean install
   - applicability가 지나치게 넓어 다른 context에 결정을 잘못 적용함
 - 검증 참조: `acceptance-scenarios.md` I, L
 
-## 18. 구현 담당자에게 위임된 선택
+## 18. Q14 — Engineering Choice Discovery와 learning participation
+
+- 상태: `accepted`
+- 결정:
+  - Goal과 pre-work repository evidence에서 meaningful engineering fork를 authority 판정 전에
+    stable Session Candidate identity로 발견한다.
+  - Discovery는 credible alternatives, technical consequences, affected scope, Source/research
+    basis, bounded effect category, independent/coupled relation과 additional evidence need를
+    보존한다.
+  - Broad Goal은 subordinate externally observable 또는 durable outcome의 authority가 아니다.
+    다른 credible implementation이 API/failure/compatibility/persistence/privacy/security/
+    user-visible/operational/support outcome을 바꾸는 counterfactual에서 exact authority를 찾지
+    못하면 settled로 닫지 않는다.
+  - Effect category와 implementation multiplicity만으로 user ownership을 결정하지 않는다.
+  - Authority와 learning value는 독립 axis다. User-owned outcome은 learning participation과
+    무관하게 Question/Decision을 사용하고, agent-owned choice는 user-owned로 재분류하지 않는다.
+  - Learning participation은 current bounded work/session의 explicit on/inactive state만 먼저
+    제공한다. Proficiency, behavior, conversation style와 explanation depth에서 추론하지 않는다.
+  - Normal mode는 기존 autonomy를 유지한다. Explicit participation에서만 agent-owned,
+    deliberation-worthy choice가 affected work 전 Learning Deliberation을 요구한다.
+  - User는 선택, evidence/prototype 요청, agent delegation, skip 또는 reconsideration을 할 수
+    있고 learning-only response는 canonical Decision을 만들지 않는다.
+  - Structured agent feedback/recommendation은 user의 initial reasoning opportunity 뒤에만 온다.
+- 재검토 조건:
+  - routine detail interruption이 반복되거나 meaningful transferable choice가 계속 누락됨
+  - explicit participation state가 bounded work/session을 신뢰성 있게 복구하지 못함
+  - authority Question과 learning-only deliberation이 user-visible하게 혼동됨
+- 검증 참조: `acceptance-scenarios.md` F, H, I, N; `validation-plan.md` V05, V09
+
+## 19. 구현 담당자에게 위임된 선택
 
 다음은 accepted product contract를 만족하는 범위에서 구현 담당자가 연구와 prototype 결과로 선택한다.
 
@@ -489,7 +519,7 @@ clean install
 - 일반 작업의 비차단
 - source, coverage, freshness와 uncertainty의 가시성
 
-## 19. 기술 검증이 Decision을 다시 여는 조건
+## 20. 기술 검증이 Decision을 다시 여는 조건
 
 기술 검증 실패는 자동으로 제품 계약을 축소하지 않는다. 다음 절차를 따른다.
 
@@ -499,11 +529,11 @@ clean install
 4. 사용자가 새로운 선택을 하기 전에는 기존 Decision 상태를 `accepted`로 유지한다.
 5. 제품 범위를 바꾼 후속 Decision은 기존 Decision을 명시적으로 supersede한다.
 
-## 20. 단계 완료 판정
+## 21. 단계 완료 판정
 
 다음이 모두 참이므로 제품 결정 단계는 완료다.
 
-- Q1–Q13에 `open` 상태가 없다.
+- Q1–Q14에 `open` 상태가 없다.
 - 구현 언어, 사용자 자연어와 분석 대상 저장소 언어가 구분되어 있다.
 - 다중 언어 capability와 첫 structural gate가 확정되어 있다.
 - Linux와 Codex가 첫 공식 환경으로 확정되어 있다.

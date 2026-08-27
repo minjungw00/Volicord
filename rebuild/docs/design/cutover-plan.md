@@ -43,7 +43,7 @@
 
 산출물:
 
-- Q1–Q13 accepted decision
+- Q1–Q14 accepted decision
 - 다중 언어 Repository Intelligence capability contract
 - Linux/Codex 첫 공식 환경
 - Candidate, Checkpoint, Recall와 Decision reuse 정책

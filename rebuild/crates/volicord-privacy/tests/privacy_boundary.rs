@@ -698,6 +698,7 @@ fn candidate(
         content: CandidateContent {
             bounded_summary: summary.to_owned(),
             question: None,
+            engineering_choice_discovery: None,
             materiality_review: None,
         },
     }

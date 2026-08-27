@@ -3,7 +3,7 @@ use volicord_context::{
     CheckpointId, CheckpointKind, CommandTermination, ContextItemId, ContextItemRole, DecisionId,
     LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
 };
-use volicord_inquiry::{CandidateFreshness, CandidateId, MaterialityDimension};
+use volicord_inquiry::{CandidateFreshness, CandidateId, EngineeringChoice, MaterialityDimension};
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
     ProcessTreeCleanup,
@@ -139,7 +139,26 @@ pub struct MaterialityReviewDraft {
     pub session: String,
     pub source_operation: String,
     pub rationale: String,
+    pub engineering_choice_discovery_candidate_id: CandidateId,
     pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EngineeringChoiceDiscoveryDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub session: String,
+    pub source_operation: String,
+    pub summary: String,
+    pub choices: Vec<EngineeringChoice>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EngineeringChoiceDiscoveryOutcome {
+    pub discovery_candidate_id: CandidateId,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -166,6 +185,7 @@ pub enum WorkflowStage {
     Recall,
     Goal,
     RepositoryBaseline,
+    EngineeringChoiceDiscovery,
     MaterialityReview,
     ResearchOrPrototype,
     QuestionCandidate,
@@ -181,6 +201,7 @@ pub enum WorkflowDisposition {
     RecallRequired,
     GoalRequired,
     BaselineRequired,
+    EngineeringChoiceDiscoveryRequired,
     ReviewMissing,
     ReviewInvalid,
     ResearchRequired,

@@ -81,7 +81,8 @@ Volicord는 결과뿐 아니라 목표, 질문, 선택지, 판단 이유, 적용
 ```text
 첫 project-scoped 요청의 bounded Recall
 → 저장소와 현재 맥락 이해
-→ 필요한 경우 단계적 Inquiry
+→ Engineering Choice Discovery와 authority/learning-value assessment
+→ 필요한 경우 단계적 Inquiry 또는 Learning Deliberation
 → 사용자 Decision 또는 위임·조사·prototype·보류
 → 일반 도구로 작업
 → 의미 있는 경계에서 Checkpoint
@@ -156,6 +157,14 @@ Candidate는 로컬에 저장하고 사용자가 수집을 끌 수 있어야 한
 - 각 라운드 후 열린 질문과 결정 상태를 보존하여 중단 후 재개할 수 있게 한다.
 
 사용자의 답변은 표시된 Question ID와 revision, 현재 host user turn에 연결한다. 일반 대화의 모호한 동의 표현을 과거 질문에 임의로 적용하지 않는다.
+
+일반 작업 전에는 Goal과 repository evidence에서 의미 있는 engineering fork를 먼저
+발견한다. 발견은 ownership 판정과 별개이며, broad feature Goal은 subordinate public API,
+failure, persistence, privacy/security, compatibility 또는 다른 observable semantics를
+자동으로 결정하지 않는다. 각 discovered choice의 exact identity, credible alternatives,
+technical consequences, Source basis, effect category와 independent/coupled 관계를 보존한다.
+두 approach가 실제 consequence 차이 없이 mechanically equivalent하거나 syntax, local naming,
+private helper split에 그치면 discovery-worthy choice로 만들지 않는다.
 
 ## 10. Decision 적용과 재검토
 
@@ -278,6 +287,13 @@ Project Understanding은 Canonical Context와 Repository Intelligence를 읽어 
 CLI는 사용자 작업과 다음 안전한 행동을 중심으로 help·status·error를 제공하고, 일반적인 bound repository 사용에서 current directory를 기준으로 Project를 resolve한다. 안정적인 Project identity는 내부·portable 계약으로 유지하되 일상 명령에서 사용자가 opaque Project ID를 찾아 복사하거나 반복 입력하게 하지 않는다. Human-readable output이 기본이고 structured output은 automation을 위한 explicit mode다.
 
 설명 깊이는 최소 `overview`, `working`, `deep` 수준으로 사용자가 선택할 수 있다. Volicord는 사용자 숙련도를 조용히 추론해 영구 프로필로 저장하지 않으며, 사용자가 명시적으로 저장한 설명 선호만 Context Item으로 보존한다.
+
+사용자가 bounded work/session에 명시적으로 learning participation을 활성화하면 authority와
+독립적인 learning-value assessment를 적용한다. Agent-owned choice도 consequence,
+transferability, subtlety와 credible alternatives 때문에 학습 가치가 크면 affected work 전에
+사용자가 alternatives를 reasoning할 기회를 제공한다. 이 opt-in은 proficiency, behavior,
+conversation style 또는 `overview`/`working`/`deep` 설명 깊이에서 추론하지 않으며, 활성화되지
+않은 normal mode는 기존의 low-interruption agent autonomy를 유지한다.
 
 ## 15. 문서 출력
 

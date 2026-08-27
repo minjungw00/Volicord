@@ -15,6 +15,7 @@ pub enum CandidateKind {
     QuestionCandidate,
     CheckpointCandidate,
     PromotionProposal,
+    EngineeringChoiceDiscovery,
     MaterialityReview,
 }
 
@@ -191,7 +192,66 @@ pub struct QuestionCandidate {
 pub struct CandidateContent {
     pub bounded_summary: String,
     pub question: Option<QuestionCandidate>,
+    pub engineering_choice_discovery: Option<EngineeringChoiceDiscovery>,
     pub materiality_review: Option<MaterialityReview>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum EngineeringEffectCategory {
+    PublicApiShapeOrSemantics,
+    Compatibility,
+    FailureOrErrorSemantics,
+    PersistenceOrLifetime,
+    PrivacyOrDisclosure,
+    Security,
+    UserVisibleBehaviorOrDefault,
+    PerformanceOrResourceBehavior,
+    ConcurrencyOrOperability,
+    MaintenanceOrSupport,
+    ImplementationInternal,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum EngineeringChoiceEvidenceState {
+    Sufficient,
+    ResearchRequired,
+    PrototypeRequired,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum EngineeringChoiceRelationship {
+    Independent,
+    Coupled {
+        choice_ids: Vec<String>,
+        rationale: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EngineeringAlternative {
+    pub alternative_id: String,
+    pub summary: String,
+    pub technical_consequences: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EngineeringChoice {
+    pub choice_id: String,
+    pub summary: String,
+    pub affected_scope: Vec<String>,
+    pub alternatives: Vec<EngineeringAlternative>,
+    pub technical_consequences: Vec<String>,
+    pub source_basis: Vec<SourceId>,
+    pub effect_categories: Vec<EngineeringEffectCategory>,
+    pub relationship: EngineeringChoiceRelationship,
+    pub evidence_state: EngineeringChoiceEvidenceState,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EngineeringChoiceDiscovery {
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub choices: Vec<EngineeringChoice>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -263,6 +323,7 @@ pub enum MaterialityDisposition {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialityDimension {
     pub dimension_id: String,
+    pub discovered_choice_ids: Vec<String>,
     pub summary: String,
     pub affected_scope: Vec<String>,
     pub material_consequences: Vec<String>,
@@ -275,9 +336,16 @@ pub struct MaterialityDimension {
 pub struct MaterialityReview {
     pub goal_context_id: ContextItemId,
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub engineering_choice_discovery_candidate_id: CandidateId,
     pub first_review_analysis_snapshot_id: AnalysisSnapshotId,
     pub current_review_analysis_snapshot_id: AnalysisSnapshotId,
     pub first_review_preceded_meaningful_mutation: bool,
+    pub rationale: String,
+    pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaterialityReviewRevision {
     pub rationale: String,
     pub dimensions: Vec<MaterialityDimension>,
 }

@@ -3,6 +3,7 @@ use crate::{
     DecisionApplicabilityState, ExploratoryDisposition, MaterialityDimension,
     MaterialityDisposition, WorkAuthorityBasisKind,
 };
+use std::collections::BTreeSet;
 use volicord_context::{
     ApplicabilityScope, CanonicalReadBasis, ContextItem, ContextItemId, ContextItemRole,
     DecisionChoice, DecisionId, PrincipalKind, ProjectId, SourceFreshness, SourcePayload,
@@ -49,6 +50,7 @@ pub struct WorkAuthorityResult {
     pub goal_context_id: ContextItemId,
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
     pub review_candidate_id: Option<crate::CandidateId>,
+    pub engineering_choice_discovery_candidate_id: Option<crate::CandidateId>,
     pub review_revision: Option<u64>,
     pub stage: WorkAuthorityStage,
     pub disposition: WorkAuthorityDisposition,
@@ -160,6 +162,7 @@ pub fn bind_question_candidate_to_materiality(
 pub fn evaluate_work_authority(
     canonical: &CanonicalReadBasis,
     review_candidate: Option<&CandidateRecord>,
+    discovery_candidate: Option<&CandidateRecord>,
     project_id: ProjectId,
     goal_context_id: ContextItemId,
     baseline_analysis_snapshot_id: AnalysisSnapshotId,
@@ -170,6 +173,8 @@ pub fn evaluate_work_authority(
         goal_context_id,
         baseline_analysis_snapshot_id,
         review_candidate_id: review_candidate.map(|candidate| candidate.id),
+        engineering_choice_discovery_candidate_id: discovery_candidate
+            .map(|candidate| candidate.id),
         review_revision: review_candidate.map(|candidate| candidate.revision),
         stage: WorkAuthorityStage::MaterialityReview,
         disposition: WorkAuthorityDisposition::ReviewMissing,
@@ -245,6 +250,9 @@ pub fn evaluate_work_authority(
             "the review omitted owner classification for every outcome dimension",
         );
     }
+    if let Err(reason) = validate_discovery_boundary(review, discovery_candidate) {
+        return invalid(result, None, reason);
+    }
 
     let mut research_required = false;
     let mut question_required = false;
@@ -297,6 +305,49 @@ pub fn evaluate_work_authority(
             "every material outcome dimension has an inspectable disposition".to_owned();
     }
     result
+}
+
+fn validate_discovery_boundary(
+    review: &crate::MaterialityReview,
+    discovery_candidate: Option<&CandidateRecord>,
+) -> Result<(), String> {
+    let candidate = discovery_candidate.ok_or_else(|| {
+        "the referenced Engineering Choice Discovery Candidate is missing".to_owned()
+    })?;
+    if candidate.id != review.engineering_choice_discovery_candidate_id
+        || candidate.kind != CandidateKind::EngineeringChoiceDiscovery
+    {
+        return Err("Materiality Review references the wrong Engineering Choice Discovery".into());
+    }
+    let discovery = candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.engineering_choice_discovery.as_ref())
+        .ok_or_else(|| "Engineering Choice Discovery content is unavailable".to_owned())?;
+    if discovery.goal_context_id != review.goal_context_id
+        || discovery.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
+    {
+        return Err("Engineering Choice Discovery Goal or baseline is stale".into());
+    }
+    let discovered = discovery
+        .choices
+        .iter()
+        .map(|choice| choice.choice_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let reviewed = review
+        .dimensions
+        .iter()
+        .flat_map(|dimension| dimension.discovered_choice_ids.iter().map(String::as_str))
+        .collect::<Vec<_>>();
+    if reviewed.iter().copied().collect::<BTreeSet<_>>() != discovered
+        || reviewed.len() != discovered.len()
+    {
+        return Err(
+            "Materiality Review must classify each discovered engineering choice exactly once"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 enum DimensionIssue {

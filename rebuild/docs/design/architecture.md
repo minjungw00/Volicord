@@ -153,9 +153,10 @@ Agent recommendation, 조사 결과, prototype 필요와 user choice는 별개�
 Question discovery, frontier transition, response 처리, Recall/Checkpoint와의 상세
 sequence는 active [Inquiry와 Decision 계약](inquiry-and-decision.md)이 소유한다.
 
-Inquiry and Decision은 typed `Materiality Review` Session Candidate와 shared
-work-authority evaluation도 소유한다. Local Operations가 current Goal과 exact pre-work
-Analysis Snapshot을 제공하고 첫 review timing을 검증하며, Inquiry는 dimension별
+Inquiry and Decision은 typed `Engineering Choice Discovery`, `Materiality Review` Session
+Candidate와 shared work-authority evaluation도 소유한다. Local Operations가 current Goal과
+exact pre-work Analysis Snapshot을 제공하고 첫 review timing을 검증하며, Inquiry는 stable
+choice identity/alternative/consequence/effect/coupling completeness와 dimension별
 disposition/evidence와 `ready_for_work` 조건을 판정한다. 이 결과는 workflow guidance이며
 Kernel write authority나 ordinary repository write admission으로 확장되지 않는다.
 
@@ -440,7 +441,10 @@ User response는 exact Question identity/revision과 current user-turn Source에
 provider result는 이 경로를 대신할 수 없다.
 
 Ordinary work 전에는 Local Operations가 current Goal과 retained pre-work Analysis
-Snapshot에 bind된 typed Materiality Review를 기록한다. 첫 review 시 fresh repository
+Snapshot에 bind된 typed Engineering Choice Discovery를 먼저 기록하고 그 exact choice
+identities를 consume하는 Materiality Review를 기록한다. Independent choice는 coupling
+evidence 없이 collapse할 수 없고 every choice가 정확히 한 authority dimension에 속한다.
+첫 review 시 fresh repository
 observation과 baseline 사이 meaningful file delta가 있으면 late backfill로 거부한다.
 Dimension별 settled fact/authority와 bounded delegation은 Question 없이 만족할 수 있고,
 exploratory uncertainty는 research/prototype/defer/revisit 뒤 같은 Candidate를 revise한다.
@@ -612,6 +616,7 @@ renderer는 이 chain의 correctness dependency가 아니다.
 | D10 | `projections-and-documents.md` | user/agent가 공유하는 canonical/source/freshness Recall basis |
 | D11 | `architecture.md` | first-party Repository Intelligence와 document projection을 Kernel에서 분리한 subsystem map |
 | D12 | `architecture.md` | end-to-end journey와 Phase 4 responsibility handoff를 향한 implementation boundary |
+| D13 | `inquiry-and-decision.md` | Engineering Choice Discovery 뒤 authority와 learning-value independent assessment |
 | Q1 | `inquiry-and-decision.md` | Inquiry entry, frontier, round, terminal outcome와 pause/resume |
 | Q2 | `repository-intelligence.md` | polyglot capability, snapshot/envelope, coverage와 adapter extension boundary |
 | Q3 | `privacy-and-provider-boundary.md` | local/interactive/background authority, opt-in, transmission와 deletion |
@@ -626,6 +631,7 @@ renderer는 이 chain의 correctness dependency가 아니다.
 | Q11 | `domain-model.md` | source-grounded meaningful Checkpoint와 independent status dimensions |
 | Q12 | `architecture.md` | Guarded Candidate, Source-linked confirmation, Host/fallback transport와 exact pre-dispatch validation/consumption |
 | Q13 | `inquiry-and-decision.md` | Decision applicability, reuse와 evidence-driven re-questioning |
+| Q14 | `inquiry-and-decision.md` | discovered choice identity/coupling, authority separation와 explicit learning participation semantics |
 
 ## 9. Acceptance scenario traceability contract
 

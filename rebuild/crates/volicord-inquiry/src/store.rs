@@ -1,8 +1,8 @@
 use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
-    CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, Error, ErrorKind,
-    MaterialityAssessment, MaterialityReview, MaterialityStatus, PromotionResult,
+    CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, EngineeringChoiceDiscovery,
+    Error, ErrorKind, MaterialityAssessment, MaterialityReview, MaterialityStatus, PromotionResult,
     RepositoryResearchBasis, SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -17,7 +17,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 4;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 5;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -64,12 +64,50 @@ impl CandidateStore {
     }
 
     pub fn submit(&mut self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
-        if draft.kind == CandidateKind::MaterialityReview {
+        if matches!(
+            draft.kind,
+            CandidateKind::EngineeringChoiceDiscovery | CandidateKind::MaterialityReview
+        ) {
             return Err(Error::new(
                 ErrorKind::DomainConflict,
-                "Materiality Review requires the typed pre-work submission operation",
+                "pre-work discovery and review require their typed submission operations",
             ));
         }
+        self.submit_validated(draft)
+    }
+
+    pub fn submit_engineering_choice_discovery(
+        &mut self,
+        draft: CandidateDraft,
+        canonical: &CanonicalReadBasis,
+        baseline: &AnalysisSnapshot,
+    ) -> Result<SubmissionOutcome, Error> {
+        if draft.kind != CandidateKind::EngineeringChoiceDiscovery
+            || canonical.project.id != draft.project_id
+            || baseline.project.identity() != draft.project_id
+        {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "Engineering Choice Discovery Project basis does not match",
+            ));
+        }
+        let discovery = draft
+            .content
+            .engineering_choice_discovery
+            .as_ref()
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "Engineering Choice Discovery content is missing",
+                )
+            })?;
+        if discovery.baseline_analysis_snapshot_id != baseline.identity {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "Engineering Choice Discovery does not use the exact pre-work Analysis Snapshot",
+            ));
+        }
+        validate_discovery_against_canonical(canonical, discovery)?;
         self.submit_validated(draft)
     }
 
@@ -79,6 +117,7 @@ impl CandidateStore {
         canonical: &CanonicalReadBasis,
         baseline: &AnalysisSnapshot,
         current: &AnalysisSnapshot,
+        discovery_candidate: &CandidateRecord,
     ) -> Result<SubmissionOutcome, Error> {
         if draft.kind != CandidateKind::MaterialityReview
             || canonical.project.id != draft.project_id
@@ -127,6 +166,7 @@ impl CandidateStore {
         review.current_review_analysis_snapshot_id = current.identity;
         review.first_review_preceded_meaningful_mutation = true;
         validate_review_against_canonical(canonical, review)?;
+        validate_review_against_discovery(review, discovery_candidate)?;
         self.submit_validated(draft)
     }
 
@@ -136,10 +176,10 @@ impl CandidateStore {
         candidate_id: CandidateId,
         canonical: &CanonicalReadBasis,
         current: &AnalysisSnapshot,
-        rationale: String,
-        dimensions: Vec<crate::MaterialityDimension>,
+        discovery_candidate: &CandidateRecord,
+        revision: crate::MaterialityReviewRevision,
     ) -> Result<CandidateRecord, Error> {
-        validate_text("Materiality Review rationale", &rationale)?;
+        validate_text("Materiality Review rationale", &revision.rationale)?;
         if canonical.project.id != project_id || current.project.identity() != project_id {
             return Err(Error::new(
                 ErrorKind::WrongProject,
@@ -164,10 +204,11 @@ impl CandidateStore {
                     )
                 })?;
             review.current_review_analysis_snapshot_id = current.identity;
-            review.rationale = rationale;
-            review.dimensions = dimensions;
+            review.rationale = revision.rationale;
+            review.dimensions = revision.dimensions;
             validate_materiality_review(review)?;
-            validate_review_against_canonical(canonical, review)
+            validate_review_against_canonical(canonical, review)?;
+            validate_review_against_discovery(review, discovery_candidate)
         })
     }
 
@@ -848,7 +889,21 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                                 .repository_basis
                                 .iter()
                                 .any(|basis| basis.source_basis.contains(&source_id))
-                    })
+                    }) || content
+                        .engineering_choice_discovery
+                        .as_ref()
+                        .is_some_and(|discovery| {
+                            discovery
+                                .choices
+                                .iter()
+                                .any(|choice| choice.source_basis.contains(&source_id))
+                        })
+                        || content.materiality_review.as_ref().is_some_and(|review| {
+                            review
+                                .dimensions
+                                .iter()
+                                .any(|dimension| dimension.basis.source_basis.contains(&source_id))
+                        })
                 })
         }
         CanonicalRecordId::Question(question_id) => {
@@ -862,9 +917,29 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                     })
                 })
         }
-        CanonicalRecordId::Decision(_)
-        | CanonicalRecordId::ContextItem(_)
-        | CanonicalRecordId::Checkpoint(_) => false,
+        CanonicalRecordId::Decision(decision_id) => {
+            candidate.content.as_ref().is_some_and(|content| {
+                content.materiality_review.as_ref().is_some_and(|review| {
+                    review
+                        .dimensions
+                        .iter()
+                        .any(|dimension| dimension.basis.decision_basis.contains(&decision_id))
+                })
+            })
+        }
+        CanonicalRecordId::ContextItem(context_item_id) => {
+            candidate.content.as_ref().is_some_and(|content| {
+                content
+                    .engineering_choice_discovery
+                    .as_ref()
+                    .is_some_and(|discovery| discovery.goal_context_id == context_item_id)
+                    || content
+                        .materiality_review
+                        .as_ref()
+                        .is_some_and(|review| review.goal_context_id == context_item_id)
+            })
+        }
+        CanonicalRecordId::Checkpoint(_) => false,
     }
 }
 
@@ -983,6 +1058,17 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
     if let Some(question) = &draft.content.question {
         validate_question_candidate(question)?;
     }
+    if (draft.kind == CandidateKind::EngineeringChoiceDiscovery)
+        != draft.content.engineering_choice_discovery.is_some()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Engineering Choice Discovery kind and content must agree",
+        ));
+    }
+    if let Some(discovery) = &draft.content.engineering_choice_discovery {
+        validate_engineering_choice_discovery(discovery)?;
+    }
     if (draft.kind == CandidateKind::MaterialityReview)
         != draft.content.materiality_review.is_some()
     {
@@ -1023,6 +1109,7 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         validate_list(&dimension.basis.research_basis)?;
         validate_id_list(&dimension.basis.source_basis)?;
         validate_id_list(&dimension.basis.decision_basis)?;
+        validate_list(&dimension.discovered_choice_ids)?;
         if let Some(delegation) = &dimension.basis.explicit_delegation {
             validate_text(
                 "explicit delegation verbatim statement",
@@ -1037,6 +1124,7 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             }
         }
         if !identities.insert(dimension.dimension_id.as_str())
+            || dimension.discovered_choice_ids.is_empty()
             || dimension.affected_scope.is_empty()
             || dimension.material_consequences.is_empty()
             || dimension.basis.source_basis.is_empty()
@@ -1060,6 +1148,117 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 ErrorKind::InvalidInput,
                 "work-authority evidence kinds must be unique",
             ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_engineering_choice_discovery(
+    discovery: &EngineeringChoiceDiscovery,
+) -> Result<(), Error> {
+    if discovery.choices.is_empty() || discovery.choices.len() > MAX_LIST_ITEMS {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Engineering Choice Discovery requires a bounded non-empty choice set",
+        ));
+    }
+    let mut identities = BTreeSet::new();
+    for choice in &discovery.choices {
+        validate_text("engineering choice identity", &choice.choice_id)?;
+        validate_text("engineering choice summary", &choice.summary)?;
+        validate_list(&choice.affected_scope)?;
+        validate_list(&choice.technical_consequences)?;
+        validate_id_list(&choice.source_basis)?;
+        if !identities.insert(choice.choice_id.as_str())
+            || choice.affected_scope.is_empty()
+            || choice.technical_consequences.is_empty()
+            || choice.source_basis.is_empty()
+            || choice.effect_categories.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "each engineering choice requires unique identity, scope, consequence, Source, and effect-category basis",
+            ));
+        }
+        if choice.alternatives.len() < 2
+            && matches!(
+                choice.evidence_state,
+                crate::EngineeringChoiceEvidenceState::Sufficient
+            )
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "a discovery-worthy choice needs two credible alternatives or unresolved research/prototype evidence",
+            ));
+        }
+        if choice.alternatives.len() > MAX_LIST_ITEMS {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "engineering choice alternatives exceed the bounded item limit",
+            ));
+        }
+        let mut alternative_ids = BTreeSet::new();
+        for alternative in &choice.alternatives {
+            validate_text(
+                "engineering alternative identity",
+                &alternative.alternative_id,
+            )?;
+            validate_text("engineering alternative summary", &alternative.summary)?;
+            validate_list(&alternative.technical_consequences)?;
+            if !alternative_ids.insert(alternative.alternative_id.as_str())
+                || alternative.technical_consequences.is_empty()
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "engineering alternatives require unique identity and technical consequences",
+                ));
+            }
+        }
+        if let crate::EngineeringChoiceRelationship::Coupled {
+            choice_ids,
+            rationale,
+        } = &choice.relationship
+        {
+            validate_list(choice_ids)?;
+            validate_text("engineering choice coupling rationale", rationale)?;
+            if choice_ids.is_empty()
+                || choice_ids.iter().any(|id| id == &choice.choice_id)
+                || choice_ids.iter().collect::<BTreeSet<_>>().len() != choice_ids.len()
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "coupled choices require distinct peer identities and a necessary-joint-outcome rationale",
+                ));
+            }
+        }
+    }
+    for choice in &discovery.choices {
+        if let crate::EngineeringChoiceRelationship::Coupled { choice_ids, .. } =
+            &choice.relationship
+        {
+            for peer_id in choice_ids {
+                let peer = discovery
+                    .choices
+                    .iter()
+                    .find(|candidate| &candidate.choice_id == peer_id)
+                    .ok_or_else(|| {
+                        Error::new(
+                            ErrorKind::InvalidInput,
+                            "coupled engineering choice references an unknown peer",
+                        )
+                    })?;
+                let reciprocal = matches!(
+                    &peer.relationship,
+                    crate::EngineeringChoiceRelationship::Coupled { choice_ids, .. }
+                        if choice_ids.contains(&choice.choice_id)
+                );
+                if !reciprocal {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "coupled engineering choices must declare their relationship symmetrically",
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -1162,6 +1361,132 @@ fn validate_review_against_canonical(
                 "explicit delegation statement must remain verbatim-grounded in the exact current-host user turn",
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_discovery_against_canonical(
+    canonical: &CanonicalReadBasis,
+    discovery: &EngineeringChoiceDiscovery,
+) -> Result<(), Error> {
+    let current_goal = canonical
+        .context_items
+        .iter()
+        .filter(|item| item.role == volicord_context::ContextItemRole::Goal)
+        .max_by_key(|item| (item.recorded_at, item.id));
+    if current_goal.map(|goal| goal.id) != Some(discovery.goal_context_id) {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Engineering Choice Discovery must bind the current Goal Context",
+        ));
+    }
+    let current_sources = canonical
+        .sources
+        .iter()
+        .filter(|basis| basis.freshness == volicord_context::SourceFreshness::Current)
+        .map(|basis| basis.source.id)
+        .collect::<BTreeSet<_>>();
+    if discovery.choices.iter().any(|choice| {
+        choice
+            .source_basis
+            .iter()
+            .any(|source| !current_sources.contains(source))
+    }) {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Engineering Choice Discovery contains a missing or non-current Source basis",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_review_against_discovery(
+    review: &MaterialityReview,
+    discovery_candidate: &CandidateRecord,
+) -> Result<(), Error> {
+    if discovery_candidate.id != review.engineering_choice_discovery_candidate_id
+        || discovery_candidate.kind != CandidateKind::EngineeringChoiceDiscovery
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Materiality Review must reference the exact Engineering Choice Discovery Candidate",
+        ));
+    }
+    let discovery = discovery_candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.engineering_choice_discovery.as_ref())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Engineering Choice Discovery content is unavailable",
+            )
+        })?;
+    if discovery.goal_context_id != review.goal_context_id
+        || discovery.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
+    {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Materiality Review and Engineering Choice Discovery Goal/baseline differ",
+        ));
+    }
+    let discovered = discovery
+        .choices
+        .iter()
+        .map(|choice| choice.choice_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut reviewed = BTreeSet::new();
+    for dimension in &review.dimensions {
+        for choice_id in &dimension.discovered_choice_ids {
+            if !discovered.contains(choice_id.as_str()) || !reviewed.insert(choice_id.as_str()) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "each discovered choice must be referenced by exactly one Materiality dimension",
+                ));
+            }
+        }
+        if dimension.discovered_choice_ids.len() > 1 {
+            let grouped = dimension
+                .discovered_choice_ids
+                .iter()
+                .collect::<BTreeSet<_>>();
+            for choice_id in &dimension.discovered_choice_ids {
+                let Some(choice) = discovery
+                    .choices
+                    .iter()
+                    .find(|choice| &choice.choice_id == choice_id)
+                else {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "grouped authority dimension references an unknown discovered choice",
+                    ));
+                };
+                let crate::EngineeringChoiceRelationship::Coupled { choice_ids, .. } =
+                    &choice.relationship
+                else {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "independent discovered choices cannot be collapsed into one authority dimension",
+                    ));
+                };
+                let expected = choice_ids
+                    .iter()
+                    .chain(std::iter::once(choice_id))
+                    .collect();
+                if grouped != expected {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "a grouped authority dimension must contain the complete declared coupled-choice set",
+                    ));
+                }
+            }
+        }
+    }
+    if reviewed != discovered {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Materiality Review must classify every discovered engineering choice",
+        ));
     }
     Ok(())
 }

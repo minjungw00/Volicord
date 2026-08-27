@@ -212,7 +212,7 @@ stdout/stderr, provider-private payloads, expired/deleted content와 authorized 
 | Inspectable attribute | Projection obligation |
 |---|---|
 | `existence_and_identity` | Candidate가 현재 존재하는지와 local Project 안의 candidate identity |
-| `candidate_kind` | observation, hypothesis, semantic claim, Question/Checkpoint candidate 또는 promotion proposal kind |
+| `candidate_kind` | observation, hypothesis, semantic claim, Engineering Choice Discovery, Materiality Review, Question/Checkpoint candidate 또는 promotion proposal kind |
 | `origin_and_provenance` | actor/subsystem/session과 Source/snapshot/command/host/provider basis |
 | `collection_scope` | 이 Candidate를 수집한 Project/session/source/operation scope |
 | `creation_or_observation_basis` | created/observed time과 bounded evidence/request basis |

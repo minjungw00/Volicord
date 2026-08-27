@@ -7,7 +7,9 @@ use volicord_context::{
 };
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
-    CommandVerificationDraft, GroundedCheckpointDraft, HealthState, LocalOperations,
+    CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
+    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
+    EngineeringEffectCategory, GroundedCheckpointDraft, HealthState, LocalOperations,
     MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
     ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
@@ -331,6 +333,37 @@ fn record_ready_review(
     goal_context_id: ContextItemId,
     baseline: &AnalysisSnapshot,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let discovery =
+        operations.record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id,
+            goal_context_id,
+            baseline_analysis_snapshot_id: baseline.identity,
+            session: "grounded-checkpoint-fixture".into(),
+            source_operation: "engineering-choice-discovery".into(),
+            summary: "one bounded repository choice".into(),
+            choices: vec![EngineeringChoice {
+                choice_id: "bounded-repository-outcome".into(),
+                summary: "bounded repository behavior".into(),
+                affected_scope: vec!["repository".into()],
+                alternatives: vec![
+                    EngineeringAlternative {
+                        alternative_id: "record".into(),
+                        summary: "record the bounded delta".into(),
+                        technical_consequences: vec!["preserves changed-path basis".into()],
+                    },
+                    EngineeringAlternative {
+                        alternative_id: "omit".into(),
+                        summary: "omit the bounded delta".into(),
+                        technical_consequences: vec!["loses changed-path basis".into()],
+                    },
+                ],
+                technical_consequences: vec!["records the attributed repository delta".into()],
+                source_basis: vec![baseline.repository_source.identity()],
+                effect_categories: vec![EngineeringEffectCategory::ImplementationInternal],
+                relationship: EngineeringChoiceRelationship::Independent,
+                evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+            }],
+        })?;
     operations.record_materiality_review(MaterialityReviewDraft {
         project_id,
         goal_context_id,
@@ -338,8 +371,10 @@ fn record_ready_review(
         session: "grounded-checkpoint-fixture".into(),
         source_operation: "pre-work-review".into(),
         rationale: "repository-scoped fixture has no unresolved user-owned outcome".into(),
+        engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
         dimensions: vec![MaterialityDimension {
             dimension_id: "bounded-repository-outcome".into(),
+            discovered_choice_ids: vec!["bounded-repository-outcome".into()],
             summary: "bounded repository behavior".into(),
             affected_scope: vec!["repository".into()],
             material_consequences: vec!["records the attributed repository delta".into()],

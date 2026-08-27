@@ -141,6 +141,7 @@ fn candidate_draft(project: &Project, source: &Source) -> CandidateDraft {
         content: CandidateContent {
             bounded_summary: "storage boundary is material".to_owned(),
             question: Some(question_candidate(source)),
+            engineering_choice_discovery: None,
             materiality_review: None,
         },
     }

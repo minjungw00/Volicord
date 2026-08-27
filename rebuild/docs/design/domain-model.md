@@ -79,6 +79,18 @@ ordinary-write permission이 아니다. 첫 authoritative review가 meaningful r
 mutation 전이었는지와 이후 evidence revision을 구분하며, restart 뒤에도 unresolved
 dimension을 completed authority로 재분류하지 않는다.
 
+`Engineering Choice Discovery`도 Session Candidate이며 Materiality Review보다 먼저 존재한다.
+Project, current Goal과 exact pre-work Analysis Snapshot에 bind되고 stable choice identity,
+summary, affected scope, 실제 credible alternatives, technical consequences, Source/research
+basis, bounded effect category, independent/coupled relation과 additional evidence need를
+보존한다. Choice identity는 authority나 canonical Decision identity가 아니며 effect category는
+ownership classifier가 아니다. Independent choice는 별도 identity로 유지하고, coupled relation은
+actual outcome 하나가 반드시 함께 해결하는 peer identity와 rationale를 symmetric하게 보존한다.
+
+Materiality Review의 각 dimension은 discovered choice identity를 정확히 한 번 consume한다.
+Independent choice 여러 개를 broad Goal이나 feature label만으로 한 dimension에 넣지 않으며,
+하나의 dimension이 여러 choice를 참조하려면 complete symmetric coupled set이어야 한다.
+
 Agent, Repository Intelligence, Inquiry and Decision, Host and User Adapter, Local
 Operations와 Optional Semantic Provider Boundary는 각자의 provenance를 가진
 Candidate를 만들 수 있다. User input도 아직 exact Question linkage나 explicit
@@ -98,7 +110,7 @@ retention expiry, access frequency 또는 삭제는 Canonical Context를 수정�
 | Attribute | Required meaning |
 |---|---|
 | `candidate_identity` | local Project context 안에서 Candidate를 다른 Candidate와 구분하는 identity |
-| `candidate_kind` | observation, hypothesis, semantic claim, Question candidate, Checkpoint candidate, Materiality Review 또는 promotion proposal 같은 잠정 정보의 종류 |
+| `candidate_kind` | observation, hypothesis, semantic claim, Engineering Choice Discovery, Question candidate, Checkpoint candidate, Materiality Review 또는 promotion proposal 같은 잠정 정보의 종류 |
 | `origin_and_provenance` | 생성 actor/subsystem/session과 repository, command, host turn, provider 또는 generated basis |
 | `collection_scope` | 수집이 허용된 Project/session/source/operation 또는 더 좁은 scope |
 | `creation_or_observation_basis` | 생성/관찰 시각과 사용한 Source, snapshot, execution 또는 request basis |

@@ -518,6 +518,9 @@ material Question dependency를 단계적으로 제시하고 process/session 종
 - 사용자가 모른다고 답하는 Question
 - 상위 Decision으로 superseded되는 branch
 - 독립 질문 batch
+- broad feature Goal 아래 서로 독립적인 public API/failure choice
+- broad reload Goal 아래 서로 독립적인 persistence/reload semantics
+- actual outcome 하나가 반드시 함께 해결하는 legitimate coupled choices
 
 ### 측정 항목
 
@@ -529,6 +532,9 @@ material Question dependency를 단계적으로 제시하고 process/session 종
 - terminal branch handling
 - pause/resume
 - answered Question repetition
+- Engineering Choice identity completeness와 every-choice-to-one-dimension binding
+- independent-choice collapse rejection과 symmetric complete coupling acceptance
+- broad Goal이 subordinate observable/durable outcome authority를 대신하지 않는 counterfactual
 
 ### 통과 조건
 
@@ -725,6 +731,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - fresh/resumed work에서 Recall 뒤 첫 ordinary repository write 전 Analysis Snapshot baseline
 - current Goal/baseline에 bind된 typed Materiality Review, dimension별 disposition과 explicit
   `ready_for_work`
+- same Goal/baseline의 prior Engineering Choice Discovery, exact choice identity mapping,
+  independent/coupled completeness와 effect-category non-authority
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection
 - bounded work 뒤 처음 만든 Analysis Snapshot을 Checkpoint baseline으로 제출하는 rollout
 - completed, paused와 handoff boundary
@@ -743,6 +751,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - work/verification/review state separation
 - Candidate promotion authorization/disposition과 inspection attribute completeness
 - fact/settled/delegated/exploratory/user-owned work-authority behavior와 false-authority rejection
+- hidden API/failure와 persistence/reload choice non-collapse, legitimate coupling과 trivial internal
+  detail non-discovery
 - Candidate Inspection no-mutation과 failure isolation
 
 ### 통과 조건

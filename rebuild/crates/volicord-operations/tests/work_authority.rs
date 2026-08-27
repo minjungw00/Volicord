@@ -13,7 +13,9 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    CommandVerificationDraft, ExplicitDelegationEvidence, ExploratoryDisposition,
+    CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
+    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
+    EngineeringEffectCategory, ExplicitDelegationEvidence, ExploratoryDisposition,
     GroundedCheckpointDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
     MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
     WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
@@ -27,6 +29,7 @@ fn dimension(
 ) -> MaterialityDimension {
     MaterialityDimension {
         dimension_id: id.to_owned(),
+        discovered_choice_ids: vec![id.to_owned()],
         summary: format!("material outcome {id}"),
         affected_scope: vec!["src/lib.rs".to_owned()],
         material_consequences: vec!["changes externally observable behavior".to_owned()],
@@ -111,6 +114,50 @@ fn review(
     fixture: &Fixture,
     dimensions: Vec<MaterialityDimension>,
 ) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    let choices = dimensions
+        .iter()
+        .map(|dimension| EngineeringChoice {
+            choice_id: dimension.discovered_choice_ids[0].clone(),
+            summary: dimension.summary.clone(),
+            affected_scope: dimension.affected_scope.clone(),
+            alternatives: vec![
+                EngineeringAlternative {
+                    alternative_id: "approach-a".into(),
+                    summary: "first credible approach".into(),
+                    technical_consequences: vec!["first bounded consequence".into()],
+                },
+                EngineeringAlternative {
+                    alternative_id: "approach-b".into(),
+                    summary: "second credible approach".into(),
+                    technical_consequences: vec!["second bounded consequence".into()],
+                },
+            ],
+            technical_consequences: dimension.material_consequences.clone(),
+            source_basis: dimension.basis.source_basis.clone(),
+            effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
+            relationship: EngineeringChoiceRelationship::Independent,
+            evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+        })
+        .collect();
+    review_with_choices(fixture, choices, dimensions)
+}
+
+fn review_with_choices(
+    fixture: &Fixture,
+    choices: Vec<EngineeringChoice>,
+    dimensions: Vec<MaterialityDimension>,
+) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    let discovery = fixture.operations.record_engineering_choice_discovery(
+        EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "work-authority-session".to_owned(),
+            source_operation: "engineering-choice-discovery".to_owned(),
+            summary: "discover meaningful technical forks before authority assessment".to_owned(),
+            choices,
+        },
+    )?;
     fixture
         .operations
         .record_materiality_review(MaterialityReviewDraft {
@@ -121,8 +168,38 @@ fn review(
             source_operation: "pre-work-review".to_owned(),
             rationale: "review every independently material outcome before ordinary work"
                 .to_owned(),
+            engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions,
         })
+}
+
+fn engineering_choice(
+    id: &str,
+    effect: EngineeringEffectCategory,
+    source: volicord_context::SourceId,
+) -> EngineeringChoice {
+    EngineeringChoice {
+        choice_id: id.into(),
+        summary: format!("meaningful engineering fork {id}"),
+        affected_scope: vec!["src/lib.rs".into()],
+        alternatives: vec![
+            EngineeringAlternative {
+                alternative_id: "approach-a".into(),
+                summary: "first credible approach".into(),
+                technical_consequences: vec!["first observable consequence".into()],
+            },
+            EngineeringAlternative {
+                alternative_id: "approach-b".into(),
+                summary: "second credible approach".into(),
+                technical_consequences: vec!["second observable consequence".into()],
+            },
+        ],
+        technical_consequences: vec!["the alternatives produce different behavior".into()],
+        source_basis: vec![source],
+        effect_categories: vec![effect],
+        relationship: EngineeringChoiceRelationship::Independent,
+        evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+    }
 }
 
 fn readiness(
@@ -233,6 +310,114 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
     )?;
     let checkpoint = reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[test]
+fn hidden_public_api_and_failure_choices_cannot_be_swallowed_by_one_feature_dimension(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![
+        engineering_choice(
+            "public-api-shape",
+            EngineeringEffectCategory::PublicApiShapeOrSemantics,
+            source,
+        ),
+        engineering_choice(
+            "failure-semantics",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            source,
+        ),
+    ];
+    let mut coarse = dimension(
+        "requested-feature",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        source,
+    );
+    coarse.discovered_choice_ids = vec!["public-api-shape".into(), "failure-semantics".into()];
+    coarse.basis.contract_basis = vec!["the requested feature Goal".into()];
+    let error = review_with_choices(&fixture, choices, vec![coarse])
+        .expect_err("independent API and failure choices must remain separate");
+    assert!(error
+        .message()
+        .contains("independent discovered choices cannot be collapsed"));
+    Ok(())
+}
+
+#[test]
+fn hidden_persistence_and_reload_choices_cannot_be_swallowed_by_one_feature_dimension(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![
+        engineering_choice(
+            "persistence-lifetime",
+            EngineeringEffectCategory::PersistenceOrLifetime,
+            source,
+        ),
+        engineering_choice(
+            "reload-failure-semantics",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            source,
+        ),
+    ];
+    let mut coarse = dimension(
+        "custom-parser-reload",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        source,
+    );
+    coarse.discovered_choice_ids = vec![
+        "persistence-lifetime".into(),
+        "reload-failure-semantics".into(),
+    ];
+    coarse.basis.contract_basis = vec!["the custom parser reload Goal".into()];
+    let error = review_with_choices(&fixture, choices, vec![coarse])
+        .expect_err("independent persistence and reload semantics must remain separate");
+    assert!(error
+        .message()
+        .contains("independent discovered choices cannot be collapsed"));
+    Ok(())
+}
+
+#[test]
+fn necessarily_coupled_choices_may_share_one_authority_dimension(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut response = engineering_choice(
+        "response-shape",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    );
+    response.relationship = EngineeringChoiceRelationship::Coupled {
+        choice_ids: vec!["status-code".into()],
+        rationale: "the selected protocol response necessarily fixes both together".into(),
+    };
+    let mut status = engineering_choice(
+        "status-code",
+        EngineeringEffectCategory::Compatibility,
+        source,
+    );
+    status.relationship = EngineeringChoiceRelationship::Coupled {
+        choice_ids: vec!["response-shape".into()],
+        rationale: "the selected protocol response necessarily fixes both together".into(),
+    };
+    let mut coupled = dimension(
+        "protocol-response",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        source,
+    );
+    coupled.discovered_choice_ids = vec!["response-shape".into(), "status-code".into()];
+    coupled.basis.contract_basis = vec!["accepted protocol response contract".into()];
+    let recorded = review_with_choices(&fixture, vec![response, status], vec![coupled])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
     Ok(())
 }
 
@@ -425,6 +610,7 @@ fn current_task_delegation_is_per_dimension_and_independent_of_research(
 
     let mut error_type = naming.clone();
     error_type.dimension_id = "internal-error-type".to_owned();
+    error_type.discovered_choice_ids = vec!["internal-error-type".to_owned()];
     let delegated = review(&fixture, vec![naming.clone(), error_type])?;
     assert_eq!(
         readiness(&fixture, &delegated)?.disposition,
@@ -826,6 +1012,7 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
                 allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
                 research_state: QuestionResearchState::ReadyToAsk,
             }),
+            engineering_choice_discovery: None,
             materiality_review: None,
         },
     };

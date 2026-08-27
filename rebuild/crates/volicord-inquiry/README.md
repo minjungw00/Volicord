@@ -7,10 +7,10 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 4. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 5. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
-- The six Candidate kinds preserve bounded origin, collection scope,
+- The Candidate kinds preserve bounded origin, collection scope,
   observation basis, timestamps, retention, disposition, opt-out basis, and
   optional content. Text, lists, and the encoded record have fixed admission
   limits; full prompts, raw Source bodies, unbounded command streams, and
@@ -61,6 +61,14 @@ dimensions require independently explicit authority; genuinely coupled
 dimensions may share one Question only when its alternatives disclose every
 coupled material consequence. Trivial implementation multiplicity remains
 agent-owned when it has no material consequence.
+
+Engineering Choice Discovery precedes that authority screen. It preserves the
+current Goal and exact pre-work Analysis Snapshot, stable choice identities,
+credible alternatives, technical consequences, Source basis, bounded effect
+categories, evidence needs, and explicit independent/coupled relationships.
+Every Materiality Review dimension references those identities exactly once;
+independent choices cannot be collapsed into one dimension, while a grouped
+dimension must cover the complete symmetric coupled-choice set.
 
 Current-task delegation is a persisted typed basis, not a Source-membership
 shortcut. It binds the exact Goal Context and current-host user Source to a

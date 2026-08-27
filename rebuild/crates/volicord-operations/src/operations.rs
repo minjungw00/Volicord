@@ -2,13 +2,14 @@ use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingSt
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
     ChildProcessOutcome, CodexCliProviderConfig, CodexCliSemanticProvider,
-    CommandVerificationDraft, Error, ForgettingOutcome, GroundedCheckpointDraft,
-    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
-    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
-    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
-    RuntimeLayout, UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity,
-    WorkflowDirective, WorkflowDisposition, WorkflowRequirement, WorkflowStage,
+    CommandVerificationDraft, EngineeringChoiceDiscoveryDraft, EngineeringChoiceDiscoveryOutcome,
+    Error, ForgettingOutcome, GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue,
+    HealthIssueKind, HealthReport, HealthState, LongOperationResult, MaterialityReviewDraft,
+    MaterialityReviewOutcome, MaterialityReviewRevisionDraft, OperationState, PartialOutcome,
+    ProgressState, ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind,
+    RepairOutcome, RuntimeLayout, UserContextRecordingOutcome, WorkflowAction,
+    WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
+    WorkflowStage,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -47,9 +48,10 @@ use volicord_inquiry::{
     CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis, CandidateOrigin,
     CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore, ChangeAttribution,
-    CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState, FrontierRead,
-    InquiryScope, MaterialityReview, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
-    SubmissionOutcome, WorkAuthorityDisposition, WorkAuthorityResult,
+    CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
+    EngineeringChoiceDiscovery, FrontierRead, InquiryScope, MaterialityReview, PromotionResult,
+    RepositoryResearchBasis, RepositoryWorkBasis, SubmissionOutcome, WorkAuthorityDisposition,
+    WorkAuthorityResult,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, DirtyObservation,
@@ -851,6 +853,90 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("Candidate submission failed", error))
     }
 
+    pub fn record_engineering_choice_discovery(
+        &self,
+        draft: EngineeringChoiceDiscoveryDraft,
+    ) -> Result<EngineeringChoiceDiscoveryOutcome, Error> {
+        self.initialize_runtime()?;
+        let baseline =
+            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let goal = canonical
+            .context_items
+            .iter()
+            .find(|item| item.id == draft.goal_context_id)
+            .ok_or_else(|| Error::new("Engineering Choice Discovery Goal Context was not found"))?;
+        let mut source_basis = goal.source_basis.clone();
+        source_basis.push(baseline.repository_source.identity());
+        for choice in &draft.choices {
+            source_basis.extend(choice.source_basis.iter().copied());
+        }
+        source_basis.sort_unstable();
+        source_basis.dedup();
+        let observed_at = SystemClock.now().map_err(|error| {
+            Error::with_source("cannot timestamp Engineering Choice Discovery", error)
+        })?;
+        let candidate = CandidateDraft {
+            project_id: draft.project_id,
+            kind: CandidateKind::EngineeringChoiceDiscovery,
+            collection_mode: CandidateCollectionMode::ExplicitUserDirected,
+            origin: CandidateOrigin {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".to_owned(),
+                },
+                subsystem: "inquiry".to_owned(),
+                session: Some(draft.session.clone()),
+                provenance_summary: "typed pre-work Engineering Choice Discovery".to_owned(),
+            },
+            collection_scope: CandidateCollectionScope {
+                project_id: draft.project_id,
+                session: Some(draft.session),
+                source_operation: Some(draft.source_operation),
+                candidate_kind: CandidateKind::EngineeringChoiceDiscovery,
+            },
+            observation_basis: CandidateObservationBasis {
+                source_basis,
+                repository_snapshot: Some(baseline.repository_snapshot.to_string()),
+                analysis_snapshot: Some(baseline.identity.to_string()),
+                execution: None,
+                host_turn: None,
+                other: Some("meaningful pre-work engineering forks".to_owned()),
+            },
+            observed_at,
+            retention: CandidateRetention {
+                retained_until: None,
+                basis: "retain through bounded work and Checkpoint validation".to_owned(),
+            },
+            content: CandidateContent {
+                bounded_summary: draft.summary,
+                question: None,
+                engineering_choice_discovery: Some(EngineeringChoiceDiscovery {
+                    goal_context_id: draft.goal_context_id,
+                    baseline_analysis_snapshot_id: baseline.identity,
+                    choices: draft.choices,
+                }),
+                materiality_review: None,
+            },
+        };
+        let stored = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.submit_engineering_choice_discovery(candidate, &canonical, &baseline)
+            })
+            .map_err(|error| Error::new(format!("Engineering Choice Discovery failed: {error}")))?;
+        let SubmissionOutcome::Stored(record) = stored else {
+            return Err(Error::new(
+                "typed Engineering Choice Discovery was unexpectedly disabled",
+            ));
+        };
+        Ok(EngineeringChoiceDiscoveryOutcome {
+            discovery_candidate_id: record.id,
+            goal_context_id: draft.goal_context_id,
+            baseline_analysis_snapshot_id: baseline.identity,
+        })
+    }
+
     pub fn record_materiality_review(
         &self,
         draft: MaterialityReviewDraft,
@@ -878,6 +964,16 @@ impl LocalOperations {
             .analysis;
         let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(draft.project_id)?;
+        let discovery_candidate = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| {
+                store.get(
+                    draft.project_id,
+                    draft.engineering_choice_discovery_candidate_id,
+                )
+            })
+            .map_err(|error| {
+                Error::with_source("Engineering Choice Discovery lookup failed", error)
+            })?;
         let goal = canonical
             .context_items
             .iter()
@@ -929,9 +1025,11 @@ impl LocalOperations {
             content: CandidateContent {
                 bounded_summary: draft.rationale.clone(),
                 question: None,
+                engineering_choice_discovery: None,
                 materiality_review: Some(MaterialityReview {
                     goal_context_id: draft.goal_context_id,
                     baseline_analysis_snapshot_id: baseline.identity,
+                    engineering_choice_discovery_candidate_id: discovery_candidate.id,
                     first_review_analysis_snapshot_id: current.identity,
                     current_review_analysis_snapshot_id: current.identity,
                     first_review_preceded_meaningful_mutation: false,
@@ -942,7 +1040,13 @@ impl LocalOperations {
         };
         let stored = CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| {
-                store.submit_materiality_review(candidate, &canonical, &baseline, &current)
+                store.submit_materiality_review(
+                    candidate,
+                    &canonical,
+                    &baseline,
+                    &current,
+                    &discovery_candidate,
+                )
             })
             .map_err(|error| Error::new(format!("Materiality Review failed: {error}")))?;
         let SubmissionOutcome::Stored(record) = stored else {
@@ -971,6 +1075,16 @@ impl LocalOperations {
             .as_ref()
             .and_then(|content| content.materiality_review.as_ref())
             .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        let discovery_candidate = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| {
+                store.get(
+                    draft.project_id,
+                    review.engineering_choice_discovery_candidate_id,
+                )
+            })
+            .map_err(|error| {
+                Error::with_source("Engineering Choice Discovery lookup failed", error)
+            })?;
         let baseline =
             self.load_analysis_snapshot(draft.project_id, review.baseline_analysis_snapshot_id)?;
         let excluded_paths = baseline
@@ -1000,8 +1114,11 @@ impl LocalOperations {
                     draft.review_candidate_id,
                     &canonical,
                     &current,
-                    draft.rationale,
-                    draft.dimensions,
+                    &discovery_candidate,
+                    volicord_inquiry::MaterialityReviewRevision {
+                        rationale: draft.rationale,
+                        dimensions: draft.dimensions,
+                    },
                 )
             })
             .map_err(|error| Error::new(format!("Materiality Review revision failed: {error}")))?;
@@ -1035,6 +1152,17 @@ impl LocalOperations {
         let candidate = CandidateStore::open(self.layout.candidate_store())
             .and_then(|store| store.get(project_id, review_candidate_id))
             .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let discovery_candidate_id = candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .map(|review| review.engineering_choice_discovery_candidate_id)
+            .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        let discovery_candidate = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(project_id, discovery_candidate_id))
+            .map_err(|error| {
+                Error::with_source("Engineering Choice Discovery lookup failed", error)
+            })?;
         let current_assumptions = canonical
             .context_items
             .iter()
@@ -1044,6 +1172,7 @@ impl LocalOperations {
         Ok(evaluate_work_authority(
             &canonical,
             Some(&candidate),
+            Some(&discovery_candidate),
             project_id,
             goal_context_id,
             baseline_analysis_snapshot_id,
@@ -1271,6 +1400,52 @@ impl LocalOperations {
     ) -> Result<WorkflowDirective, Error> {
         let canonical = self.canonical_basis(project_id)?;
         let candidates = self.candidate_basis(project_id)?;
+        let latest_discovery = candidates
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.kind == CandidateKind::EngineeringChoiceDiscovery
+                    && matches!(
+                        candidate.disposition,
+                        CandidateDisposition::PendingOrRetained
+                    )
+                    && candidate
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.engineering_choice_discovery.as_ref())
+                        .is_some_and(|discovery| {
+                            discovery.goal_context_id == goal_context_id
+                                && discovery.baseline_analysis_snapshot_id
+                                    == baseline_analysis_snapshot_id
+                        })
+            })
+            .max_by_key(|candidate| (candidate.created_at, candidate.id));
+        let Some(latest_discovery) = latest_discovery else {
+            return Ok(WorkflowDirective {
+                stage: WorkflowStage::EngineeringChoiceDiscovery,
+                disposition: WorkflowDisposition::EngineeringChoiceDiscoveryRequired,
+                required_next_action: Some(workflow_action(
+                    "engineering_choice_discovery",
+                    Some("record"),
+                )),
+                blocks_ordinary_work: true,
+                reason: "discover meaningful engineering forks before classifying their authority"
+                    .into(),
+                satisfied_basis_identities: vec![
+                    workflow_basis("project", project_id.to_string()),
+                    workflow_basis("goal_context", goal_context_id.to_string()),
+                    workflow_basis(
+                        "baseline_analysis_snapshot",
+                        baseline_analysis_snapshot_id.to_string(),
+                    ),
+                ],
+                unresolved_requirements: vec![workflow_requirement(
+                    None,
+                    "a typed Engineering Choice Discovery Candidate is required",
+                    Vec::new(),
+                )],
+            });
+        };
         let review_candidate = candidates
             .candidates
             .iter()
@@ -1291,6 +1466,15 @@ impl LocalOperations {
                         })
             })
             .max_by_key(|candidate| (candidate.created_at, candidate.id));
+        let discovery_candidate = review_candidate
+            .and_then(|candidate| candidate.content.as_ref())
+            .and_then(|content| content.materiality_review.as_ref())
+            .and_then(|review| {
+                candidates.candidates.iter().find(|candidate| {
+                    candidate.id == review.engineering_choice_discovery_candidate_id
+                })
+            })
+            .or(Some(latest_discovery));
         let current_assumptions = canonical
             .context_items
             .iter()
@@ -1300,6 +1484,7 @@ impl LocalOperations {
         let authority = evaluate_work_authority(
             &canonical,
             review_candidate,
+            discovery_candidate,
             project_id,
             goal_context_id,
             baseline_analysis_snapshot_id,
@@ -2460,9 +2645,18 @@ impl LocalOperations {
                 .max_by_key(|candidate| (candidate.created_at, candidate.id))
         };
         let review_candidate = latest_review(true).or_else(|| latest_review(false));
+        let discovery_candidate = review_candidate
+            .and_then(|candidate| candidate.content.as_ref())
+            .and_then(|content| content.materiality_review.as_ref())
+            .and_then(|review| {
+                candidate_basis.candidates.iter().find(|candidate| {
+                    candidate.id == review.engineering_choice_discovery_candidate_id
+                })
+            });
         let authority = evaluate_work_authority(
             &authority_canonical,
             review_candidate,
+            discovery_candidate,
             draft.project_id,
             draft.goal_context_id,
             draft.baseline_analysis_snapshot_id,
@@ -3362,6 +3556,12 @@ fn workflow_from_authority(
     if let Some(candidate_id) = authority.review_candidate_id {
         satisfied_basis_identities.push(workflow_basis(
             "materiality_review_candidate",
+            candidate_id.to_string(),
+        ));
+    }
+    if let Some(candidate_id) = authority.engineering_choice_discovery_candidate_id {
+        satisfied_basis_identities.push(workflow_basis(
+            "engineering_choice_discovery_candidate",
             candidate_id.to_string(),
         ));
     }

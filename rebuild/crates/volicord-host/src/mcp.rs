@@ -386,24 +386,27 @@ impl HostAdapter {
         let project_id = project(args)?;
         match required_str(args, "action")? {
             "record" => {
-                let outcome = self
-                    .operations
-                    .record_materiality_review(MaterialityReviewDraft {
-                        project_id,
-                        goal_context_id: parse_context_item(required_str(
-                            args,
-                            "goal_context_id",
-                        )?)?,
-                        baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
-                            args,
-                            "baseline_analysis_snapshot_id",
-                        )?)?,
-                        session: self.host_session.clone(),
-                        source_operation: required_str(args, "source_operation")?.to_owned(),
-                        rationale: required_str(args, "rationale")?.to_owned(),
-                        dimensions: materiality_dimensions(args)?,
-                    })
-                    .map_err(operation_error)?;
+                let outcome =
+                    self.operations
+                        .record_materiality_review(MaterialityReviewDraft {
+                            project_id,
+                            goal_context_id: parse_context_item(required_str(
+                                args,
+                                "goal_context_id",
+                            )?)?,
+                            baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
+                                args,
+                                "baseline_analysis_snapshot_id",
+                            )?)?,
+                            session: self.host_session.clone(),
+                            source_operation: required_str(args, "source_operation")?.to_owned(),
+                            rationale: required_str(args, "rationale")?.to_owned(),
+                            engineering_choice_discovery_candidate_id: parse_candidate(
+                                required_str(args, "engineering_choice_discovery_candidate_id")?,
+                            )?,
+                            dimensions: materiality_dimensions(args)?,
+                        })
+                        .map_err(operation_error)?;
                 let workflow = self
                     .operations
                     .workflow_for_review_candidate(project_id, outcome.review_candidate_id)
@@ -1828,6 +1831,7 @@ fn materiality_review_schemas() -> Vec<Value> {
         "items":object_schema(
             vec![
                 ("dimension_id", text_schema("Stable dimension identity within this review", 1, 256)),
+                ("discovered_choice_ids", nonempty_string_array_schema("Exact Engineering Choice Discovery identities classified by this dimension")),
                 ("summary", text_schema("Bounded outcome summary", 1, 4096)),
                 ("affected_scope", nonempty_string_array_schema("Affected product, user, or operational scopes")),
                 ("material_consequences", nonempty_string_array_schema("Observable consequences that make the dimension material")),
@@ -1864,6 +1868,7 @@ fn materiality_review_schemas() -> Vec<Value> {
             ],
             &[
                 "dimension_id",
+                "discovered_choice_ids",
                 "summary",
                 "affected_scope",
                 "material_consequences",
@@ -1895,6 +1900,10 @@ fn materiality_review_schemas() -> Vec<Value> {
         (
             "source_operation",
             text_schema("Inspectable review operation or scope", 1, 4096),
+        ),
+        (
+            "engineering_choice_discovery_candidate_id",
+            identity_schema("Exact Engineering Choice Discovery Candidate identity"),
         ),
         (
             "rationale",
@@ -1934,6 +1943,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "goal_context_id",
                 "baseline_analysis_snapshot_id",
                 "source_operation",
+                "engineering_choice_discovery_candidate_id",
                 "rationale",
                 "dimensions",
             ],
@@ -3367,6 +3377,7 @@ fn question_candidate_draft(
                 allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
                 research_state,
             }),
+            engineering_choice_discovery: None,
             materiality_review: None,
         },
     })
@@ -3434,6 +3445,7 @@ fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostErro
         .ok_or_else(|| HostError::new("dimension basis is required"))?;
     Ok(MaterialityDimension {
         dimension_id: required_str(value, "dimension_id")?.to_owned(),
+        discovered_choice_ids: string_array(value, "discovered_choice_ids")?,
         summary: required_str(value, "summary")?.to_owned(),
         affected_scope: string_array(value, "affected_scope")?,
         material_consequences: string_array(value, "material_consequences")?,
@@ -3560,6 +3572,7 @@ fn workflow_stage_name(value: WorkflowStage) -> &'static str {
         WorkflowStage::Recall => "recall",
         WorkflowStage::Goal => "goal",
         WorkflowStage::RepositoryBaseline => "repository_baseline",
+        WorkflowStage::EngineeringChoiceDiscovery => "engineering_choice_discovery",
         WorkflowStage::MaterialityReview => "materiality_review",
         WorkflowStage::ResearchOrPrototype => "research_or_prototype",
         WorkflowStage::QuestionCandidate => "question_candidate",
@@ -3576,6 +3589,9 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
         WorkflowDisposition::RecallRequired => "recall_required",
         WorkflowDisposition::GoalRequired => "goal_required",
         WorkflowDisposition::BaselineRequired => "baseline_required",
+        WorkflowDisposition::EngineeringChoiceDiscoveryRequired => {
+            "engineering_choice_discovery_required"
+        }
         WorkflowDisposition::ReviewMissing => "review_missing",
         WorkflowDisposition::ReviewInvalid => "review_invalid",
         WorkflowDisposition::ResearchRequired => "research_required",

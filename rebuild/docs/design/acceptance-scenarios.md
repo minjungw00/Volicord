@@ -381,6 +381,13 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 ### 기대 사용자 경험
 
 - 에이전트가 먼저 repository와 환경에서 사실을 조사한다.
+- Goal과 exact pre-work Analysis Snapshot에서 stable identity를 가진 Engineering Choice를
+  authority 판정 전에 발견하고, credible alternatives, technical consequences, effect category,
+  Source/research basis와 additional evidence need를 inspect할 수 있다.
+- Public API/failure, persistence/reload, compatibility/support, privacy/security와 다른
+  independently consequential fork를 broad feature Goal 하나로 collapse하지 않는다.
+- Actual outcome 하나가 반드시 함께 해결하는 choice만 coupled로 표시하며, coupling rationale와
+  모든 consequence를 보존한다.
 - 조사 뒤 independently material한 unresolved user-owned dimension을 식별하고, 한 API
   또는 implementation 선택의 recommendation이 다른 material policy authority를 대신하지
   않게 한다.
@@ -432,6 +439,10 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - terminal branch 상태
 - independent material-dimension screening, coupled-consequence disclosure와 trivial-detail
   non-fragmentation
+- Engineering Choice identity completeness, independent-choice non-collapse, symmetric necessary
+  coupling과 every-choice-to-one-authority-dimension binding
+- hidden public API/failure와 persistence/reload semantics가 broad Goal의 settled authority로
+  흡수되지 않는 sanitized regression
 - behavior class별 expected outcome: explicit user-owned Decision, hidden user-owned Decision
   discovery, no-question, resolved-by-research, delegated-choice reuse와
   prototype/research/defer
@@ -534,7 +545,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   write 전에 local repository analysis baseline을 만들고 그 exact Analysis Snapshot identity를
   bounded work의 Checkpoint까지 유지한다.
 - 같은 pre-work boundary에서 independently material outcome을 typed Materiality Review로
-  분류하고 `ready_for_work`가 된 뒤 ordinary work를 수행한다. Settled/repository/research path는
+  분류한다. Review는 exact Engineering Choice Discovery identity를 consume하고 모든 discovered
+  choice를 정확히 한 dimension에서 분류한 뒤 `ready_for_work`가 된 경우에만 ordinary work를
+  수행한다. Settled/repository/research path는
   Question을 제조하지 않고 user-owned path는 existing Question/Decision lifecycle을 사용한다.
 - exact baseline부터 current snapshot까지 fingerprint가 바뀐 meaningful path와 적용
   Decision을 구분하고, 이 bounded repository delta가 exclusive actor ownership을 증명한다고
@@ -578,6 +591,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
 - missing, stale, late 또는 unresolved Materiality Review로 completed/paused Checkpoint 기록
 - post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
+- broad Goal 또는 feature label을 subordinate discovered choice의 authority로 사용
+- independent choice를 coupling evidence 없이 한 Materiality dimension으로 collapse
 - user review가 없다는 이유만으로 실제 완료 상태 왜곡
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint 생성
 

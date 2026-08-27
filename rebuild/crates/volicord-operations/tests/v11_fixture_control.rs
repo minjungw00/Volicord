@@ -201,6 +201,7 @@ fn candidate(
         content: CandidateContent {
             bounded_summary: summary.into(),
             question: None,
+            engineering_choice_discovery: None,
             materiality_review: None,
         },
     })? {

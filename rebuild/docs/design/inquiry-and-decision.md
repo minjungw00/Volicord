@@ -39,7 +39,32 @@ Candidate의 text가 설득력 있거나 여러 번 발견되었다는 이유만
 Question으로 승격하지 않는다. Automatic discovery와 materiality quality는 아직
 실행 검증되지 않았으며 이 문서는 generation/ranking algorithm을 선택하지 않는다.
 
-### 1.2 Materiality status
+### 1.2 Engineering Choice Discovery
+
+`Engineering Choice Discovery`는 Question/authority classification 전에 current Goal과 exact
+pre-work Analysis Snapshot에서 meaningful technical fork를 표현하는 Session Candidate다.
+Choice마다 다음 bounded meaning을 보존한다.
+
+- stable choice identity, Project/Goal/baseline binding과 summary
+- affected scope, 실제 viable alternatives와 technical consequences
+- repository/source/research basis와 additional research/prototype need
+- `public API shape/semantics`, `compatibility`, `failure/error semantics`,
+  `persistence/lifetime`, `privacy/disclosure`, `security`, `user-visible behavior/default`,
+  `performance/resource behavior`, `concurrency/operability`, `maintenance/support`,
+  `implementation-internal` effect category
+- independent 또는 actual outcome 하나가 반드시 함께 해결하는 symmetric coupled peer와 rationale
+
+Effect category는 completeness/discovery metadata이며 authority를 자동 결정하지 않는다.
+두 credible approach 또는 meaningful consequence를 가진 unresolved fork가 없으면 discovery-worthy가
+아니다. Syntax, local naming, private helper split와 mechanically equivalent refactor를 inventory하지
+않는다.
+
+Independent choice는 별도 identity로 유지한다. "result retry behavior", "custom parser reload"
+같은 broad Goal label은 API, failure, persistence, network, instrumentation 또는 compatibility
+semantics를 coupled로 만드는 evidence가 아니다. 하나의 authority dimension은 independent choice를
+collapse할 수 없고, multiple choice를 참조할 때는 complete symmetric coupled set을 사용한다.
+
+### 1.3 Materiality status
 
 Materiality assessment는 최소 다음 상태를 구분한다.
 
@@ -56,7 +81,7 @@ Project scope, Source basis와 known prerequisite가 필요하다. `not_material
 Question을 조용히 삭제하지 않고 적절한 terminal outcome 또는 새 revision/source
 basis로 처리한다.
 
-### 1.3 Canonical Question
+### 1.4 Canonical Question
 
 Canonical `Question`은 다음 meaning을 보존한다.
 
@@ -187,9 +212,10 @@ Branch가 authority, delegation, research, prototype evidence, deferment 또는 
 ### Typed Materiality Review와 work readiness
 
 Pre-work screening은 prose-only instruction이 아니라 `Materiality Review` Session Candidate로
-기록한다. Review는 current Project, latest user-stated Goal Context와 exact retained pre-work
-Analysis Snapshot에 bind되고, 하나의 task label이 아니라 independently material한 outcome
-dimension 목록을 가진다. 각 dimension은 bounded Source, accepted contract, applicable Decision,
+기록한다. Review는 current Project, latest user-stated Goal Context, exact retained pre-work
+Analysis Snapshot과 exact Engineering Choice Discovery Candidate에 bind된다. 모든 discovered
+choice identity는 정확히 한 dimension에서 분류되며 independent choice를 broad Goal authority로
+collapse하지 않는다. 각 dimension은 bounded Source, accepted contract, applicable Decision,
 explicit delegation 또는 research/prototype/defer/revisit basis와 함께 다음 disposition 중
 하나를 가진다.
 
@@ -204,6 +230,13 @@ privacy/external disclosure, security posture, user-visible default와 maintenan
 강한 discovery signal이다. Signal 자체가 user ownership을 정하지는 않지만 settled/delegated
 disposition은 inspectable authority가 필요하다. Agent recommendation, implementation
 preference와 library/convention은 authority basis가 될 수 없다.
+
+Bounded counterfactual로 다른 credible implementation이 externally observable contract,
+durable effect, compatibility/support commitment, privacy/security posture 또는 다른 material
+product outcome을 바꾸는지 확인한다. 바뀐다면 exact discovered choice에 적용되는 repository
+fact, accepted contract, applicable Decision 또는 explicit delegation을 식별해야 한다. Overall
+feature request 자체나 implementation preference는 subordinate difference를 settled로 만들지
+않는다. Multiple implementations라는 사실만으로 user ownership을 만들지도 않는다.
 
 첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic

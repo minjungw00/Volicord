@@ -28,7 +28,8 @@ pub use guarded::{
 pub use layout::RuntimeLayout;
 pub use model::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, CommandVerificationDraft, ForgettingOutcome, GroundedCheckpointDraft,
+    ChildProcessOutcome, CommandVerificationDraft, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceDiscoveryOutcome, ForgettingOutcome, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
     LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
     MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
@@ -41,10 +42,11 @@ pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };
 pub use volicord_inquiry::{
-    ExplicitDelegationEvidence, ExploratoryDisposition, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis,
-    WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityRequirement,
-    WorkAuthorityResult, WorkAuthorityStage,
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceEvidenceState,
+    EngineeringChoiceRelationship, EngineeringEffectCategory, ExplicitDelegationEvidence,
+    ExploratoryDisposition, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
+    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition,
+    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

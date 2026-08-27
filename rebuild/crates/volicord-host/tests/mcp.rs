@@ -16,6 +16,8 @@ use volicord_inquiry::{
     SubmissionOutcome,
 };
 use volicord_operations::{
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
     LocalOperations, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
     RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
@@ -155,6 +157,7 @@ fn store_forgetting_candidate(
             content: CandidateContent {
                 bounded_summary: summary.into(),
                 question: None,
+                engineering_choice_discovery: None,
                 materiality_review: None,
             },
         })
@@ -202,6 +205,56 @@ fn setup() -> (tempfile::TempDir, HostAdapter, String) {
     (temporary, HostAdapter::new(operations), project)
 }
 
+fn record_fixture_discovery(
+    adapter: &HostAdapter,
+    project: &str,
+    goal_context_id: &str,
+    baseline_analysis_snapshot_id: &str,
+    source_id: &str,
+    choice_id: &str,
+    affected_scope: &str,
+    effect_category: EngineeringEffectCategory,
+) -> String {
+    let discovery = adapter
+        .operations()
+        .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id: parse_project(project),
+            goal_context_id: parse_context_identity(goal_context_id),
+            baseline_analysis_snapshot_id:
+                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(
+                    baseline_analysis_snapshot_id,
+                )
+                .expect("baseline Analysis Snapshot identity"),
+            session: "mcp-mechanical-discovery-fixture".into(),
+            source_operation: "engineering-choice-discovery-fixture".into(),
+            summary: format!("discover {choice_id}"),
+            choices: vec![EngineeringChoice {
+                choice_id: choice_id.into(),
+                summary: choice_id.into(),
+                affected_scope: vec![affected_scope.into()],
+                alternatives: vec![
+                    EngineeringAlternative {
+                        alternative_id: "first".into(),
+                        summary: "first credible approach".into(),
+                        technical_consequences: vec!["first bounded consequence".into()],
+                    },
+                    EngineeringAlternative {
+                        alternative_id: "second".into(),
+                        summary: "second credible approach".into(),
+                        technical_consequences: vec!["second bounded consequence".into()],
+                    },
+                ],
+                technical_consequences: vec!["the selected approach changes the work".into()],
+                source_basis: vec![parse_source_identity(source_id)],
+                effect_categories: vec![effect_category],
+                relationship: EngineeringChoiceRelationship::Independent,
+                evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+            }],
+        })
+        .expect("mechanical host discovery fixture");
+    discovery.discovery_candidate_id.to_string()
+}
+
 #[test]
 fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let (_temporary, mut adapter, project) = setup();
@@ -229,11 +282,13 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         json!({"project_id":project}),
     );
     let analyzed = structured(&analyzed);
-    assert_eq!(analyzed["workflow"]["stage"], "materiality_review");
-    assert_eq!(analyzed["workflow"]["disposition"], "review_missing");
     assert_eq!(
-        analyzed["workflow"]["required_next_action"]["action"],
-        "record"
+        analyzed["workflow"]["stage"],
+        "engineering_choice_discovery"
+    );
+    assert_eq!(
+        analyzed["workflow"]["disposition"],
+        "engineering_choice_discovery_required"
     );
     let baseline = analyzed["analysis_snapshot_id"]
         .as_str()
@@ -241,6 +296,16 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let repository_source_id = analyzed["repository_source_id"]
         .as_str()
         .expect("repository Source identity");
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal_context_id,
+        baseline,
+        repository_source_id,
+        "failure-mode",
+        "mcp-errors",
+        EngineeringEffectCategory::FailureOrErrorSemantics,
+    );
 
     let review = call(
         &mut adapter,
@@ -250,10 +315,12 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "project_id":project,
             "goal_context_id":goal_context_id,
             "baseline_analysis_snapshot_id":baseline,
+            "engineering_choice_discovery_candidate_id":discovery_id,
             "source_operation":"MCP pre-work outcome review",
             "rationale":"The failure mode is independently user-visible and user-owned.",
             "dimensions":[{
                 "dimension_id":"failure-mode",
+                "discovered_choice_ids":["failure-mode"],
                 "summary":"Choose the user-visible failure mode",
                 "affected_scope":["mcp-errors"],
                 "material_consequences":["Changes observable failure behavior"],
@@ -379,6 +446,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "rationale":"The explicit current-host response now resolves the outcome.",
             "dimensions":[{
                 "dimension_id":"failure-mode",
+                "discovered_choice_ids":["failure-mode"],
                 "summary":"Choose the user-visible failure mode",
                 "affected_scope":["mcp-errors"],
                 "material_consequences":["Changes observable failure behavior"],
@@ -431,6 +499,18 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         json!({"project_id":project}),
     ))
     .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal_context_id,
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline Analysis Snapshot"),
+        goal_source_id,
+        "internal-module-name",
+        "src/lib.rs",
+        EngineeringEffectCategory::ImplementationInternal,
+    );
     let review = structured(&call(
         &mut adapter,
         "materiality_review",
@@ -439,10 +519,12 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
             "project_id":project,
             "goal_context_id":goal_context_id,
             "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+            "engineering_choice_discovery_candidate_id":discovery_id,
             "source_operation":"bounded delegated implementation review",
             "rationale":"The exact Goal delegates only the internal name.",
             "dimensions":[{
                 "dimension_id":"internal-module-name",
+                "discovered_choice_ids":["internal-module-name"],
                 "summary":"Select the internal module name",
                 "affected_scope":["src/lib.rs"],
                 "material_consequences":["Changes only the internal source layout"],
@@ -472,7 +554,14 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         json!({"project_id":project}),
     ))
     .clone();
-    let evidence = &inspected["candidates"][0]["explicit_delegation_evidence"][0];
+    let evidence = inspected["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .filter_map(|candidate| candidate["explicit_delegation_evidence"].as_array())
+        .flatten()
+        .next()
+        .expect("delegation evidence");
     assert_eq!(evidence["dimension_id"], "internal-module-name");
     assert_eq!(evidence["goal_context_id"], goal_context_id);
     assert_eq!(evidence["user_turn_source_id"], goal_source_id);
@@ -539,15 +628,15 @@ fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
     );
     assert_eq!(
         refused["details"]["workflow"]["stage"],
-        "materiality_review"
+        "engineering_choice_discovery"
     );
     assert_eq!(
         refused["details"]["workflow"]["disposition"],
-        "review_missing"
+        "engineering_choice_discovery_required"
     );
     assert_eq!(
         refused["details"]["workflow"]["required_next_action"],
-        json!({"tool":"materiality_review","action":"record"})
+        json!({"tool":"engineering_choice_discovery","action":"record"})
     );
     assert_eq!(refused["details"]["workflow"]["blocks_ordinary_work"], true);
 }
@@ -1900,19 +1989,60 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         .find(|item| item.id.to_string() == goal_context_id)
         .expect("typed Goal Context identity")
         .id;
+    let baseline_identity =
+        volicord_repository_intelligence::AnalysisSnapshotId::from_hex(&baseline_id)
+            .expect("typed baseline identity");
+    let repository_source_id = parse_source_identity(
+        baseline["repository_source_id"]
+            .as_str()
+            .expect("baseline repository Source"),
+    );
+    let discovery = adapter
+        .operations()
+        .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id,
+            goal_context_id: goal_context,
+            baseline_analysis_snapshot_id: baseline_identity,
+            session: "mcp-checkpoint-fixture".into(),
+            source_operation: "engineering-choice-discovery".into(),
+            summary: "discover the grounded Checkpoint contract choice".into(),
+            choices: vec![EngineeringChoice {
+                choice_id: "grounded-checkpoint-contract".into(),
+                summary: "grounded Checkpoint behavior".into(),
+                affected_scope: vec!["host-checkpoint".into()],
+                alternatives: vec![
+                    EngineeringAlternative {
+                        alternative_id: "grounded".into(),
+                        summary: "ground the Checkpoint".into(),
+                        technical_consequences: vec!["preserves truthful evidence".into()],
+                    },
+                    EngineeringAlternative {
+                        alternative_id: "ungrounded".into(),
+                        summary: "omit grounding".into(),
+                        technical_consequences: vec!["loses truthful evidence".into()],
+                    },
+                ],
+                technical_consequences: vec!["records bounded work and truthful evidence".into()],
+                source_basis: vec![repository_source_id],
+                effect_categories: vec![EngineeringEffectCategory::MaintenanceOrSupport],
+                relationship: EngineeringChoiceRelationship::Independent,
+                evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+            }],
+        })
+        .expect("pre-work Engineering Choice Discovery");
     adapter
         .operations()
         .record_materiality_review(MaterialityReviewDraft {
             project_id,
             goal_context_id: goal_context,
-            baseline_analysis_snapshot_id:
-                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(&baseline_id)
-                    .expect("typed baseline identity"),
+            baseline_analysis_snapshot_id: baseline_identity,
             session: "mcp-checkpoint-fixture".into(),
             source_operation: "pre-work-review".into(),
             rationale: "the host fixture follows its accepted grounded-checkpoint contract".into(),
+            engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions: vec![MaterialityDimension {
                 dimension_id: "grounded-checkpoint-contract".into(),
+                discovered_choice_ids: vec!["grounded-checkpoint-contract".into()],
                 summary: "grounded Checkpoint behavior".into(),
                 affected_scope: vec!["host-checkpoint".into()],
                 material_consequences: vec!["records bounded work and truthful evidence".into()],
@@ -1921,11 +2051,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 basis: WorkAuthorityBasis {
                     kinds: vec![WorkAuthorityBasisKind::AcceptedContract],
                     summary: "accepted source-grounded Checkpoint contract".into(),
-                    source_basis: vec![parse_source_identity(
-                        baseline["repository_source_id"]
-                            .as_str()
-                            .expect("baseline repository Source"),
-                    )],
+                    source_basis: vec![repository_source_id],
                     contract_basis: vec!["rebuild/docs/design/inquiry-and-decision.md".into()],
                     decision_basis: Vec::new(),
                     research_basis: Vec::new(),
@@ -2959,6 +3085,15 @@ fn parse_source_identity(value: &str) -> volicord_context::SourceId {
     volicord_context::SourceId::from_bytes(bytes)
 }
 
+fn parse_context_identity(value: &str) -> volicord_context::ContextItemId {
+    let mut bytes = [0_u8; 16];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] =
+            u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
+    }
+    volicord_context::ContextItemId::from_bytes(bytes)
+}
+
 fn assert_schema_is_closed_and_described(schema: &Value) {
     if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
         assert!(!variants.is_empty());
@@ -3030,6 +3165,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
+                    "engineering_choice_discovery_candidate_id",
                     "action",
                     "source_operation",
                     "rationale",
@@ -3040,6 +3176,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
+                    "engineering_choice_discovery_candidate_id",
                     "source_operation",
                     "rationale",
                     "dimensions",

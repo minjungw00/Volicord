@@ -204,9 +204,11 @@ full tool argument, full Source body와 unlimited stdout/stderr는 default long-
 retention 대상이 아니다. Candidate Inspection에 필요한 provenance, scope와 bounded
 observation metadata가 이 기본 제외를 우회하는 raw-content 보존 근거가 되지 않는다.
 
-Typed Materiality Review는 ambient automatic capture가 아니라 explicit current work operation의
-Session Candidate다. Candidate collection opt-out을 무시해 background content를 수집하는 경로가
-아니며, Project/Goal/baseline identity, bounded dimension summary와 evidence reference만 보존한다.
+Typed Engineering Choice Discovery와 Materiality Review는 ambient automatic capture가 아니라
+explicit current work operation의 Session Candidate다. Candidate collection opt-out을 무시해
+background content를 수집하는 경로가 아니며, Project/Goal/baseline identity, bounded
+choice/dimension summary, alternative/consequence/effect/coupling metadata와 evidence reference만
+보존한다.
 Current-task delegation을 주장할 때는 exact Goal/user-turn identity와 Goal에 실제 포함된 bounded
 verbatim delegation statement 및 적용 scope만 inspectable evidence로 추가 보존한다. 이는 full
 user turn이나 unrelated prompt content를 보존하는 허가가 아니다. Full prompt, 그 밖의 Source
