@@ -386,6 +386,10 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   않게 한다.
 - 실제 coupled dimension을 하나의 선택으로 물을 때는 모든 coupled material consequence를
   함께 제시하고, 독립 dimension은 다른 선택 안에 숨기지 않는다.
+- current Goal과 exact retained pre-work Analysis Snapshot에 bind된 typed Materiality Review에서
+  각 dimension의 evidence/disposition과 satisfied/unresolved requirement를 inspect할 수 있다.
+- 첫 review가 meaningful mutation 뒤 backfill되지 않았고, 모든 blocking requirement가
+  해소된 경우에만 explicit `ready_for_work`를 표시한다.
 - 현재 frontier의 질문만 배경, 선택지, 권장안, trade-off와 uncertainty와 함께 제시한다.
 - 질문에는 제품, architecture와 implementation 관점이 필요한 만큼 포함된다.
 - 사용자는 선택, 수정안, 위임, 조사, prototype 또는 보류로 답할 수 있다.

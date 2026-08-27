@@ -345,6 +345,11 @@ meaning을 바꾸지 않으며 parser framework 자체를 이 문서의 영구 p
   tracked/untracked path는 baseline dirty 여부와 무관하게 bounded delta에 포함될 수 있다.
   Baseline dirty set은 별도 evidence로 유지한다. 이 delta는 어느 process 또는 actor가
   변경을 독점적으로 수행했다는 ownership 증명이 아니다.
+- 첫 typed Materiality Review도 retained pre-work Analysis Snapshot과 별도의 fresh current
+  Analysis Snapshot의 같은 `Included` fingerprint delta를 사용한다. Delta가 비어 있지 않으면
+  first authoritative review를 late backfill로 거부한다. Timely first review 뒤 research/prototype
+  evidence에 따른 revision은 새 Analysis Snapshot identity를 보존하되 baseline history를
+  rewrite하지 않는다.
 - local search result에 Source/range, capability, coverage, diagnostic, provenance와
   freshness를 포함하고 historical range를 current navigation으로 표시하지 않는다.
 - parser execution과 search를 process 내부 local operation으로 유지하며 repository

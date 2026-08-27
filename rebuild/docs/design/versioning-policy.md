@@ -38,6 +38,7 @@ global version으로 묶지 않는다.
 | `Analysis Snapshot version` | `repository-intelligence.md`의 snapshot, envelope, capability와 provenance | 이 문서의 analysis read/write boundary | Repository Intelligence와 adapter conformance; V02 normalization, V11 multi-repository freshness |
 | `Derived Index version` | 해당 derived owner의 index/cache meaning과 source basis | 이 문서의 rebuildable-version behavior | Owning index implementation; delete/rebuild/corruption tests, V10 process/filesystem와 V11 recovery |
 | `generated-document metadata version` | `projections-and-documents.md`의 grounding, omission, adoption과 output boundary | 이 문서의 metadata read/write behavior | Projection/document implementation; V06 Markdown/HTML grounding과 V11 handoff |
+| `Session Candidate store format version` | `domain-model.md`의 Candidate meaning과 `inquiry-and-decision.md`의 typed payload/lifecycle | 이 문서의 current-only local Candidate behavior | Inquiry production store; exact-current positive fixture, non-current rejection과 V09/V11 restart behavior |
 
 Meaning owner는 field semantics를 정의하고 이 문서는 current admission/rejection behavior를
 정의한다. 새 field나 version number를 이 표에서 미리 선택하지 않는다. 한 format의
@@ -130,6 +131,15 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
+
+### Session Candidate store format
+
+Current Candidate store format은 Question Candidate와 typed Materiality Review payload를 함께
+해석하는 version `3` 하나다. Review kind/payload, Goal/baseline binding과 dimension evidence
+semantics가 추가되었으므로 이전 version을 decode하거나 default field로 current meaning을
+추정하지 않는다. Current positive store만 reopen하며 version `2`와 다른 non-current value는
+domain decode/mutation 전에 reject한다. Candidate는 portable bundle에 포함되지 않으므로 이
+변경은 canonical schema나 portable bundle version을 바꾸지 않는다.
 
 ## 8. Read-time version checks
 

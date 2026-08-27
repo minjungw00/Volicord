@@ -149,6 +149,7 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
         content: CandidateContent {
             bounded_summary: "one bounded observation".to_owned(),
             question: None,
+            materiality_review: None,
         },
     })? {
         SubmissionOutcome::Stored(value) => value,

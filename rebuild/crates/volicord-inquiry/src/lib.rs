@@ -12,6 +12,7 @@ mod identity;
 mod model;
 mod response;
 mod store;
+mod work_authority;
 
 pub use applicability::{
     evaluate_decision_applicability, mark_review_due, propose_requestioning, ApplicabilityIssue,
@@ -33,9 +34,11 @@ pub use model::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope,
     CandidateContent, CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateKind,
     CandidateObservationBasis, CandidateOrigin, CandidateReadBasis, CandidateRecord,
-    CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, InquiryScope,
-    MaterialityAssessment, MaterialityStatus, PromotionResult, QuestionCandidate,
-    QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome,
+    CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment,
+    ExploratoryDisposition, InquiryScope, MaterialOutcomeSignal, MaterialityAssessment,
+    MaterialityDimension, MaterialityDisposition, MaterialityReview, MaterialityStatus,
+    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
+    SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,
@@ -44,4 +47,9 @@ pub use response::{
 };
 pub use store::{
     resolve_question_by_research, CandidateStore, CANDIDATE_SCHEMA_KIND, CANDIDATE_SCHEMA_VERSION,
+};
+pub use work_authority::{
+    bind_question_candidate_to_materiality, evaluate_work_authority, materiality_scope_token,
+    WorkAuthorityAction, WorkAuthorityDisposition, WorkAuthorityRequirement, WorkAuthorityResult,
+    WorkAuthorityStage,
 };

@@ -603,6 +603,7 @@ fn viewer_candidate(
             content: CandidateContent {
                 bounded_summary: summary.into(),
                 question: None,
+                materiality_review: None,
             },
         })
         .expect("submit Candidate")

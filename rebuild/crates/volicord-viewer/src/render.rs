@@ -3078,6 +3078,7 @@ const fn candidate_kind_label(kind: Option<CandidateKind>, locale: ViewerLocale)
         Some(CandidateKind::Hypothesis) => text(locale, "hypothesis", "가설"),
         Some(CandidateKind::SemanticClaim) => text(locale, "semantic claim", "의미 주장"),
         Some(CandidateKind::QuestionCandidate) => text(locale, "Question candidate", "질문 후보"),
+        Some(CandidateKind::MaterialityReview) => text(locale, "Materiality Review", "중요도 검토"),
         Some(CandidateKind::CheckpointCandidate) => {
             text(locale, "Checkpoint candidate", "체크포인트 후보")
         }

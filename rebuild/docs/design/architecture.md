@@ -153,6 +153,12 @@ Agent recommendation, 조사 결과, prototype 필요와 user choice는 별개�
 Question discovery, frontier transition, response 처리, Recall/Checkpoint와의 상세
 sequence는 active [Inquiry와 Decision 계약](inquiry-and-decision.md)이 소유한다.
 
+Inquiry and Decision은 typed `Materiality Review` Session Candidate와 shared
+work-authority evaluation도 소유한다. Local Operations가 current Goal과 exact pre-work
+Analysis Snapshot을 제공하고 첫 review timing을 검증하며, Inquiry는 dimension별
+disposition/evidence와 `ready_for_work` 조건을 판정한다. 이 결과는 workflow guidance이며
+Kernel write authority나 ordinary repository write admission으로 확장되지 않는다.
+
 ### 3.4 Projections and Documents
 
 Projections and Documents는 정확히 다음 세 logical input class를 읽는다.
@@ -432,6 +438,16 @@ and Decision은 먼저 확인 가능한 fact를 조사하고 current frontier를
 User response는 exact Question identity/revision과 current user-turn Source에
 연결된 경우에만 Kernel이 user Decision으로 기록한다. Agent recommendation이나
 provider result는 이 경로를 대신할 수 없다.
+
+Ordinary work 전에는 Local Operations가 current Goal과 retained pre-work Analysis
+Snapshot에 bind된 typed Materiality Review를 기록한다. 첫 review 시 fresh repository
+observation과 baseline 사이 meaningful file delta가 있으면 late backfill로 거부한다.
+Dimension별 settled fact/authority와 bounded delegation은 Question 없이 만족할 수 있고,
+exploratory uncertainty는 research/prototype/defer/revisit 뒤 같은 Candidate를 revise한다.
+Unresolved user-owned outcome은 기존 Question Candidate → promotion → frontier → exact
+current-host response → Decision path만 사용한다. Shared result는 stage, disposition,
+next Volicord action, blocking 여부, reason, satisfied와 unresolved requirement를 보존하며
+모든 requirement가 충족될 때만 `ready_for_work`를 표시한다.
 
 ### 5. Ordinary work와 source-grounded Checkpoint
 

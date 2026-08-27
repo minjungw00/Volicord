@@ -176,6 +176,46 @@ Question으로 승격하지 않으며 material consequence와 ownership 기준�
 Branch가 authority, delegation, research, prototype evidence, deferment 또는 user Decision으로
 해결된 뒤 ordinary edit에는 별도 approval ceremony를 추가하지 않는다.
 
+### Typed Materiality Review와 work readiness
+
+Pre-work screening은 prose-only instruction이 아니라 `Materiality Review` Session Candidate로
+기록한다. Review는 current Project, latest user-stated Goal Context와 exact retained pre-work
+Analysis Snapshot에 bind되고, 하나의 task label이 아니라 independently material한 outcome
+dimension 목록을 가진다. 각 dimension은 bounded Source, accepted contract, applicable Decision,
+explicit delegation 또는 research/prototype/defer/revisit basis와 함께 다음 disposition 중
+하나를 가진다.
+
+- repository/environment fact
+- already settled authority
+- explicitly delegated implementation choice
+- exploratory uncertainty
+- unresolved material user-owned outcome
+
+Public API semantics, CLI compatibility/exit behavior, observable failure policy,
+privacy/external disclosure, security posture, user-visible default와 maintenance/support policy는
+강한 discovery signal이다. Signal 자체가 user ownership을 정하지는 않지만 settled/delegated
+disposition은 inspectable authority가 필요하다. Agent recommendation, implementation
+preference와 library/convention은 authority basis가 될 수 없다.
+
+첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
+delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic
+Candidate submission으로 timing을 주장할 수 없다. Timely first review 뒤 exploratory research나
+prototype evidence가 alternatives를 바꾸면 같은 Candidate revision으로 재검토할 수 있다.
+Restart는 current Candidate revision과 canonical Question/Decision state에서 workflow를 다시
+평가하고 unresolved state를 ready로 바꾸지 않는다.
+
+Shared work-authority result는 current stage, overall disposition, next required Volicord action,
+blocking 여부, reason/basis, satisfied requirements와 unresolved requirements를 제공한다.
+`ready_for_work`는 current Goal/baseline review가 timely하고 모든 dimension의 evidence가 current이며
+unresolved user-owned 또는 evidence-required exploratory dimension이 없을 때만 가능하다.
+이 result는 일반 file/command admission이 아니다.
+
+User-owned dimension을 Question Candidate로 옮길 때 review의 Source와 affected scope를 재사용하고
+stable dimension scope token을 추가할 수 있다. 그 helper는 Candidate만 만들며 research,
+duplicate/materiality readiness, promotion, frontier, explicit current-host response와 Decision
+invariant를 우회하지 않는다. Resolution Decision은 same dimension token과 current applicability,
+exact current-host response provenance를 모두 만족해야 한다.
+
 ## 5. Question presentation
 
 Frontier의 각 Question은 최소 다음을 함께 표시한다.

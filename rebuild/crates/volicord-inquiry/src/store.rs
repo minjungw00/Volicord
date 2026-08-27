@@ -2,8 +2,8 @@ use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
     CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, Error, ErrorKind,
-    MaterialityAssessment, MaterialityStatus, PromotionResult, RepositoryResearchBasis,
-    SubmissionOutcome,
+    MaterialityAssessment, MaterialityReview, MaterialityStatus, PromotionResult,
+    RepositoryResearchBasis, SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -17,7 +17,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 2;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 3;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -64,6 +64,114 @@ impl CandidateStore {
     }
 
     pub fn submit(&mut self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
+        if draft.kind == CandidateKind::MaterialityReview {
+            return Err(Error::new(
+                ErrorKind::DomainConflict,
+                "Materiality Review requires the typed pre-work submission operation",
+            ));
+        }
+        self.submit_validated(draft)
+    }
+
+    pub fn submit_materiality_review(
+        &mut self,
+        mut draft: CandidateDraft,
+        canonical: &CanonicalReadBasis,
+        baseline: &AnalysisSnapshot,
+        current: &AnalysisSnapshot,
+    ) -> Result<SubmissionOutcome, Error> {
+        if draft.kind != CandidateKind::MaterialityReview
+            || canonical.project.id != draft.project_id
+            || baseline.project.identity() != draft.project_id
+            || current.project.identity() != draft.project_id
+        {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "Materiality Review Project basis does not match",
+            ));
+        }
+        let review =
+            draft.content.materiality_review.as_mut().ok_or_else(|| {
+                Error::new(ErrorKind::InvalidInput, "Materiality Review is missing")
+            })?;
+        if review.baseline_analysis_snapshot_id != baseline.identity {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "Materiality Review does not use the exact retained pre-work Analysis Snapshot",
+            ));
+        }
+        match crate::attribute_repository_changes(
+            draft.project_id,
+            &crate::RepositoryWorkBasis {
+                baseline,
+                current,
+                pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
+            },
+        ) {
+            crate::ChangeAttribution::Attributed { changed_paths, .. }
+                if changed_paths.is_empty() => {}
+            crate::ChangeAttribution::Attributed { changed_paths, .. } => {
+                return Err(Error::new(
+                    ErrorKind::StaleBasis,
+                    format!(
+                        "first Materiality Review is late; meaningful repository paths already changed: {}",
+                        changed_paths.join(", ")
+                    ),
+                ));
+            }
+            crate::ChangeAttribution::Unavailable { reason, .. } => {
+                return Err(Error::new(ErrorKind::StaleBasis, reason));
+            }
+        }
+        review.first_review_analysis_snapshot_id = current.identity;
+        review.current_review_analysis_snapshot_id = current.identity;
+        review.first_review_preceded_meaningful_mutation = true;
+        validate_review_against_canonical(canonical, review)?;
+        self.submit_validated(draft)
+    }
+
+    pub fn revise_materiality_review(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        canonical: &CanonicalReadBasis,
+        current: &AnalysisSnapshot,
+        rationale: String,
+        dimensions: Vec<crate::MaterialityDimension>,
+    ) -> Result<CandidateRecord, Error> {
+        validate_text("Materiality Review rationale", &rationale)?;
+        if canonical.project.id != project_id || current.project.identity() != project_id {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "revised Materiality Review Project basis does not match",
+            ));
+        }
+        self.mutate_pending(project_id, candidate_id, |record| {
+            if record.kind != CandidateKind::MaterialityReview {
+                return Err(Error::new(
+                    ErrorKind::DomainConflict,
+                    "operation requires a Materiality Review Candidate",
+                ));
+            }
+            let review = record
+                .content
+                .as_mut()
+                .and_then(|content| content.materiality_review.as_mut())
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "Materiality Review content is missing",
+                    )
+                })?;
+            review.current_review_analysis_snapshot_id = current.identity;
+            review.rationale = rationale;
+            review.dimensions = dimensions;
+            validate_materiality_review(review)?;
+            validate_review_against_canonical(canonical, review)
+        })
+    }
+
+    fn submit_validated(&mut self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
         validate_candidate_draft(&draft)?;
         let applicable_policies = self.applicable_policies(&draft.collection_scope)?;
         let matching_scopes = applicable_policies
@@ -875,11 +983,116 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
     if let Some(question) = &draft.content.question {
         validate_question_candidate(question)?;
     }
+    if (draft.kind == CandidateKind::MaterialityReview)
+        != draft.content.materiality_review.is_some()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Materiality Review kind and content must agree",
+        ));
+    }
+    if let Some(review) = &draft.content.materiality_review {
+        validate_materiality_review(review)?;
+    }
     let encoded = serde_json::to_vec(&draft.content).map_err(encode_error)?;
     if encoded.len() > MAX_RECORD_BYTES {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "bounded Candidate content exceeds the retained record limit",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> {
+    validate_text("Materiality Review rationale", &review.rationale)?;
+    if review.dimensions.is_empty() || review.dimensions.len() > MAX_LIST_ITEMS {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Materiality Review requires a bounded set of independently material dimensions",
+        ));
+    }
+    let mut identities = BTreeSet::new();
+    for dimension in &review.dimensions {
+        validate_text("materiality dimension identity", &dimension.dimension_id)?;
+        validate_text("materiality dimension summary", &dimension.summary)?;
+        validate_text("work-authority basis summary", &dimension.basis.summary)?;
+        validate_list(&dimension.affected_scope)?;
+        validate_list(&dimension.material_consequences)?;
+        validate_list(&dimension.basis.contract_basis)?;
+        validate_list(&dimension.basis.research_basis)?;
+        validate_id_list(&dimension.basis.source_basis)?;
+        validate_id_list(&dimension.basis.decision_basis)?;
+        if !identities.insert(dimension.dimension_id.as_str())
+            || dimension.affected_scope.is_empty()
+            || dimension.material_consequences.is_empty()
+            || dimension.basis.source_basis.is_empty()
+            || dimension.basis.kinds.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "each materiality dimension requires a unique identity, scope, consequence, and bounded evidence basis",
+            ));
+        }
+        if dimension
+            .basis
+            .kinds
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != dimension.basis.kinds.len()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "work-authority evidence kinds must be unique",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_review_against_canonical(
+    canonical: &CanonicalReadBasis,
+    review: &MaterialityReview,
+) -> Result<(), Error> {
+    let current_goal = canonical
+        .context_items
+        .iter()
+        .filter(|item| item.role == volicord_context::ContextItemRole::Goal)
+        .max_by_key(|item| (item.recorded_at, item.id));
+    let goal = current_goal
+        .filter(|item| item.id == review.goal_context_id)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::StaleBasis,
+                "Materiality Review must bind the current Goal Context",
+            )
+        })?;
+    if goal.provenance_role != volicord_context::StatementProvenanceRole::UserStatement
+        || goal.author.kind != volicord_context::PrincipalKind::User
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Materiality Review Goal must be a current user-stated Goal Context",
+        ));
+    }
+    let available = canonical
+        .sources
+        .iter()
+        .filter(|basis| basis.freshness == volicord_context::SourceFreshness::Current)
+        .map(|basis| basis.source.id)
+        .collect::<BTreeSet<_>>();
+    if review.dimensions.iter().any(|dimension| {
+        dimension
+            .basis
+            .source_basis
+            .iter()
+            .any(|source| !available.contains(source))
+    }) {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Materiality Review contains a missing or non-current Source basis",
         ));
     }
     Ok(())

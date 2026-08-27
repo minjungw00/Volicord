@@ -3,7 +3,7 @@ use volicord_context::{
     CheckpointId, CheckpointKind, CommandTermination, ContextItemId, ContextItemRole, DecisionId,
     LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
 };
-use volicord_inquiry::CandidateFreshness;
+use volicord_inquiry::{CandidateFreshness, CandidateId, MaterialityDimension};
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
     ProcessTreeCleanup,
@@ -129,6 +129,34 @@ pub struct CandidateRepositoryResearchDraft {
     pub source_basis: Vec<SourceId>,
     pub sufficient: bool,
     pub limits: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaterialityReviewDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub session: String,
+    pub source_operation: String,
+    pub rationale: String,
+    pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaterialityReviewRevisionDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub review_candidate_id: CandidateId,
+    pub rationale: String,
+    pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaterialityReviewOutcome {
+    pub review_candidate_id: CandidateId,
+    pub review_revision: u64,
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub review_analysis_snapshot_id: AnalysisSnapshotId,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

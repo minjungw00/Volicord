@@ -204,6 +204,13 @@ full tool argument, full Source body와 unlimited stdout/stderr는 default long-
 retention 대상이 아니다. Candidate Inspection에 필요한 provenance, scope와 bounded
 observation metadata가 이 기본 제외를 우회하는 raw-content 보존 근거가 되지 않는다.
 
+Typed Materiality Review는 ambient automatic capture가 아니라 explicit current work operation의
+Session Candidate다. Candidate collection opt-out을 무시해 background content를 수집하는 경로가
+아니며, Project/Goal/baseline identity, bounded dimension summary와 evidence reference만 보존한다.
+Full prompt, Source body, raw command와 provider payload는 review content가 아니다. Retention,
+explicit deletion, canonical forgetting read barrier와 Candidate Inspection 규칙은 다른 Candidate와
+동일하게 적용되고, deletion/expiry가 canonical Question이나 Decision을 바꾸지 않는다.
+
 Checkpoint verification의 exact command invocation도 같은 transient boundary를 따른다.
 Current host는 실제 실행과 일치하는 bounded invocation material을 trusted Volicord
 operation에 제공하고, operation은 exact UTF-8 bytes에서 SHA-256 fingerprint를 derive한 뒤

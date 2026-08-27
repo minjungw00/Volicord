@@ -67,6 +67,14 @@ Canonical이라는 이름은 영원히 삭제할 수 없거나 항상 현재에 
 승격되지 않은 잠정 정보다. Observation, hypothesis, semantic claim, possible
 Question, possible Checkpoint와 promotion proposal을 포함할 수 있다.
 
+`Materiality Review`도 Session Candidate다. 현재 user-stated Goal, exact retained
+pre-work Analysis Snapshot과 independently material한 outcome dimension을 묶어 각
+dimension의 fact/settled authority/delegation/exploration/user-owned disposition과 bounded
+evidence basis를 보존한다. 이 review는 일곱 번째 canonical entity, user Decision 또는
+ordinary-write permission이 아니다. 첫 authoritative review가 meaningful repository
+mutation 전이었는지와 이후 evidence revision을 구분하며, restart 뒤에도 unresolved
+dimension을 completed authority로 재분류하지 않는다.
+
 Agent, Repository Intelligence, Inquiry and Decision, Host and User Adapter, Local
 Operations와 Optional Semantic Provider Boundary는 각자의 provenance를 가진
 Candidate를 만들 수 있다. User input도 아직 exact Question linkage나 explicit
@@ -86,7 +94,7 @@ retention expiry, access frequency 또는 삭제는 Canonical Context를 수정�
 | Attribute | Required meaning |
 |---|---|
 | `candidate_identity` | local Project context 안에서 Candidate를 다른 Candidate와 구분하는 identity |
-| `candidate_kind` | observation, hypothesis, semantic claim, Question candidate, Checkpoint candidate 또는 promotion proposal 같은 잠정 정보의 종류 |
+| `candidate_kind` | observation, hypothesis, semantic claim, Question candidate, Checkpoint candidate, Materiality Review 또는 promotion proposal 같은 잠정 정보의 종류 |
 | `origin_and_provenance` | 생성 actor/subsystem/session과 repository, command, host turn, provider 또는 generated basis |
 | `collection_scope` | 수집이 허용된 Project/session/source/operation 또는 더 좁은 scope |
 | `creation_or_observation_basis` | 생성/관찰 시각과 사용한 Source, snapshot, execution 또는 request basis |

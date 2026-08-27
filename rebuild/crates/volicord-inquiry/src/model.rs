@@ -1,10 +1,11 @@
 use crate::CandidateId;
 use serde::{Deserialize, Serialize};
 use volicord_context::{
-    AgentRecommendation, NonUserQuestionOutcome, Principal, ProjectId, QuestionAlternative,
-    QuestionDependency, QuestionEstablishedFact, QuestionId, QuestionResearchState, SourceId,
-    TimestampMicros,
+    AgentRecommendation, ContextItemId, DecisionId, NonUserQuestionOutcome, Principal, ProjectId,
+    QuestionAlternative, QuestionDependency, QuestionEstablishedFact, QuestionId,
+    QuestionResearchState, SourceId, TimestampMicros,
 };
+use volicord_repository_intelligence::AnalysisSnapshotId;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CandidateKind {
@@ -14,6 +15,7 @@ pub enum CandidateKind {
     QuestionCandidate,
     CheckpointCandidate,
     PromotionProposal,
+    MaterialityReview,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -189,6 +191,86 @@ pub struct QuestionCandidate {
 pub struct CandidateContent {
     pub bounded_summary: String,
     pub question: Option<QuestionCandidate>,
+    pub materiality_review: Option<MaterialityReview>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum MaterialOutcomeSignal {
+    PublicApiSemantics,
+    CliCompatibilityOrExitBehavior,
+    ObservableFailurePolicy,
+    PrivacyOrExternalDisclosure,
+    SecurityPosture,
+    UserVisibleDefault,
+    MaintenanceOrSupportPolicy,
+    OtherMaterialOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum WorkAuthorityBasisKind {
+    RepositoryOrEnvironmentFact,
+    AcceptedContract,
+    ApplicableDecision,
+    ExplicitDelegation,
+    ResearchEvidence,
+    PrototypeEvidence,
+    DeferOrRevisitBasis,
+    AgentRecommendation,
+    LibraryOrConvention,
+    ImplementationPreference,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WorkAuthorityBasis {
+    pub kinds: Vec<WorkAuthorityBasisKind>,
+    pub summary: String,
+    pub source_basis: Vec<SourceId>,
+    pub contract_basis: Vec<String>,
+    pub decision_basis: Vec<DecisionId>,
+    pub research_basis: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ExploratoryDisposition {
+    ResearchRequired,
+    PrototypeRequired,
+    DeferredWithRevisit,
+    ResolvedByResearch,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum MaterialityDisposition {
+    RepositoryOrEnvironmentFact,
+    SettledAuthority,
+    DelegatedImplementationChoice,
+    ExploratoryUncertainty {
+        disposition: ExploratoryDisposition,
+    },
+    UnresolvedUserOwnedOutcome {
+        resolution_decision_id: Option<DecisionId>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaterialityDimension {
+    pub dimension_id: String,
+    pub summary: String,
+    pub affected_scope: Vec<String>,
+    pub material_consequences: Vec<String>,
+    pub observable_signals: Vec<MaterialOutcomeSignal>,
+    pub disposition: MaterialityDisposition,
+    pub basis: WorkAuthorityBasis,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaterialityReview {
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub first_review_analysis_snapshot_id: AnalysisSnapshotId,
+    pub current_review_analysis_snapshot_id: AnalysisSnapshotId,
+    pub first_review_preceded_meaningful_mutation: bool,
+    pub rationale: String,
+    pub dimensions: Vec<MaterialityDimension>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

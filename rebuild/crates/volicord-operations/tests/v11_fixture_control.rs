@@ -201,6 +201,7 @@ fn candidate(
         content: CandidateContent {
             bounded_summary: summary.into(),
             question: None,
+            materiality_review: None,
         },
     })? {
         SubmissionOutcome::Stored(candidate) => Ok(candidate.id),

@@ -405,6 +405,7 @@ fn candidate_draft(
         content: CandidateContent {
             bounded_summary: content.into(),
             question: None,
+            materiality_review: None,
         },
     }
 }

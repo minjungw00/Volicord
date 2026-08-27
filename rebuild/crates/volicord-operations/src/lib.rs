@@ -31,12 +31,19 @@ pub use model::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
     ChildProcessOutcome, CommandVerificationDraft, ForgettingOutcome, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome,
+    LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
+    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
+    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
+    UserContextRecordingOutcome,
 };
 pub use operations::LocalOperations;
 pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
+};
+pub use volicord_inquiry::{
+    ExploratoryDisposition, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
+    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition,
+    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

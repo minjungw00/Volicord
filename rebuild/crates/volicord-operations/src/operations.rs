@@ -4,9 +4,10 @@ use crate::{
     ChildProcessOutcome, CodexCliProviderConfig, CodexCliSemanticProvider,
     CommandVerificationDraft, Error, ForgettingOutcome, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LongOperationResult, OperationState, PartialOutcome, ProgressState, ProjectInitialization,
-    ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome, RuntimeLayout,
-    UserContextRecordingOutcome,
+    LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
+    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
+    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
+    RuntimeLayout, UserContextRecordingOutcome,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -39,12 +40,14 @@ use volicord_context::{
 };
 use volicord_inquiry::{
     attribute_repository_changes, compute_frontier, evaluate_checkpoint_candidate,
-    evaluate_decision_applicability, record_checkpoint as persist_evaluated_checkpoint,
-    record_response_batch, ApplicabilityQuery, BatchResponseItem, BatchResponseResult,
-    CandidateDraft, CandidateId, CandidateReadBasis, CandidateRecord, CandidateStore,
+    evaluate_decision_applicability, evaluate_work_authority,
+    record_checkpoint as persist_evaluated_checkpoint, record_response_batch, ApplicabilityQuery,
+    BatchResponseItem, BatchResponseResult, CandidateCollectionMode, CandidateCollectionScope,
+    CandidateContent, CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis,
+    CandidateOrigin, CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore,
     ChangeAttribution, CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
-    FrontierRead, InquiryScope, PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis,
-    SubmissionOutcome,
+    FrontierRead, InquiryScope, MaterialityReview, PromotionResult, RepositoryResearchBasis,
+    RepositoryWorkBasis, SubmissionOutcome, WorkAuthorityResult,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, DirtyObservation,
@@ -825,6 +828,212 @@ impl LocalOperations {
         CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| store.submit(draft))
             .map_err(|error| Error::with_source("Candidate submission failed", error))
+    }
+
+    pub fn record_materiality_review(
+        &self,
+        draft: MaterialityReviewDraft,
+    ) -> Result<MaterialityReviewOutcome, Error> {
+        self.initialize_runtime()?;
+        let baseline =
+            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let excluded_paths = baseline
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let current = self
+            .analyze(draft.project_id, excluded_paths)?
+            .value
+            .ok_or_else(|| Error::new("Materiality Review analysis produced no usable snapshot"))?
+            .analysis;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let goal = canonical
+            .context_items
+            .iter()
+            .find(|item| item.id == draft.goal_context_id)
+            .ok_or_else(|| Error::new("Materiality Review Goal Context was not found"))?;
+        let mut source_basis = goal.source_basis.clone();
+        source_basis.push(baseline.repository_source.identity());
+        source_basis.push(current.repository_source.identity());
+        for dimension in &draft.dimensions {
+            source_basis.extend(dimension.basis.source_basis.iter().copied());
+        }
+        source_basis.sort_unstable();
+        source_basis.dedup();
+        let observed_at = SystemClock
+            .now()
+            .map_err(|error| Error::with_source("cannot timestamp Materiality Review", error))?;
+        let candidate = CandidateDraft {
+            project_id: draft.project_id,
+            kind: CandidateKind::MaterialityReview,
+            collection_mode: CandidateCollectionMode::ExplicitUserDirected,
+            origin: CandidateOrigin {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".to_owned(),
+                },
+                subsystem: "inquiry".to_owned(),
+                session: Some(draft.session.clone()),
+                provenance_summary: "typed pre-work Materiality Review".to_owned(),
+            },
+            collection_scope: CandidateCollectionScope {
+                project_id: draft.project_id,
+                session: Some(draft.session),
+                source_operation: Some(draft.source_operation),
+                candidate_kind: CandidateKind::MaterialityReview,
+            },
+            observation_basis: CandidateObservationBasis {
+                source_basis,
+                repository_snapshot: Some(baseline.repository_snapshot.to_string()),
+                analysis_snapshot: Some(baseline.identity.to_string()),
+                execution: None,
+                host_turn: None,
+                other: Some("pre-work work-authority classification".to_owned()),
+            },
+            observed_at,
+            retention: CandidateRetention {
+                retained_until: None,
+                basis: "retain through bounded work and Checkpoint validation".to_owned(),
+            },
+            content: CandidateContent {
+                bounded_summary: draft.rationale.clone(),
+                question: None,
+                materiality_review: Some(MaterialityReview {
+                    goal_context_id: draft.goal_context_id,
+                    baseline_analysis_snapshot_id: baseline.identity,
+                    first_review_analysis_snapshot_id: current.identity,
+                    current_review_analysis_snapshot_id: current.identity,
+                    first_review_preceded_meaningful_mutation: false,
+                    rationale: draft.rationale,
+                    dimensions: draft.dimensions,
+                }),
+            },
+        };
+        let stored = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.submit_materiality_review(candidate, &canonical, &baseline, &current)
+            })
+            .map_err(|error| Error::new(format!("Materiality Review failed: {error}")))?;
+        let SubmissionOutcome::Stored(record) = stored else {
+            return Err(Error::new(
+                "typed Materiality Review was unexpectedly disabled",
+            ));
+        };
+        Ok(MaterialityReviewOutcome {
+            review_candidate_id: record.id,
+            review_revision: record.revision,
+            goal_context_id: draft.goal_context_id,
+            baseline_analysis_snapshot_id: baseline.identity,
+            review_analysis_snapshot_id: current.identity,
+        })
+    }
+
+    pub fn revise_materiality_review(
+        &self,
+        draft: MaterialityReviewRevisionDraft,
+    ) -> Result<MaterialityReviewOutcome, Error> {
+        let existing = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(draft.project_id, draft.review_candidate_id))
+            .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let review = existing
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        let baseline =
+            self.load_analysis_snapshot(draft.project_id, review.baseline_analysis_snapshot_id)?;
+        let excluded_paths = baseline
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let current = self
+            .analyze(draft.project_id, excluded_paths)?
+            .value
+            .ok_or_else(|| Error::new("revised Materiality Review analysis produced no snapshot"))?
+            .analysis;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.revise_materiality_review(
+                    draft.project_id,
+                    draft.review_candidate_id,
+                    &canonical,
+                    &current,
+                    draft.rationale,
+                    draft.dimensions,
+                )
+            })
+            .map_err(|error| Error::new(format!("Materiality Review revision failed: {error}")))?;
+        let review = record
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("revised Materiality Review content is unavailable"))?;
+        Ok(MaterialityReviewOutcome {
+            review_candidate_id: record.id,
+            review_revision: record.revision,
+            goal_context_id: review.goal_context_id,
+            baseline_analysis_snapshot_id: review.baseline_analysis_snapshot_id,
+            review_analysis_snapshot_id: review.current_review_analysis_snapshot_id,
+        })
+    }
+
+    pub fn work_readiness(
+        &self,
+        project_id: ProjectId,
+        goal_context_id: ContextItemId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+        review_candidate_id: CandidateId,
+        paths: Vec<String>,
+        components: Vec<String>,
+        work_contexts: Vec<String>,
+        met_revisit_triggers: Vec<String>,
+    ) -> Result<WorkAuthorityResult, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let candidate = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(project_id, review_candidate_id))
+            .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let current_assumptions = canonical
+            .context_items
+            .iter()
+            .filter(|item| item.role == ContextItemRole::Assumption)
+            .map(|item| item.statement.clone())
+            .collect();
+        Ok(evaluate_work_authority(
+            &canonical,
+            Some(&candidate),
+            project_id,
+            goal_context_id,
+            baseline_analysis_snapshot_id,
+            &ApplicabilityQuery {
+                project_id,
+                paths,
+                components,
+                work_contexts,
+                current_assumptions,
+                met_revisit_triggers,
+            },
+        ))
     }
 
     pub fn attach_candidate_repository_research(

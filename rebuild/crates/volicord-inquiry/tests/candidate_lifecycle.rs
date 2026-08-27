@@ -59,6 +59,7 @@ fn observation(
         content: CandidateContent {
             bounded_summary: summary.to_owned(),
             question: None,
+            materiality_review: None,
         },
     }
 }
@@ -334,5 +335,30 @@ fn candidate_and_canonical_stores_reject_a_shared_database_path(
     let candidate_path = root.path().join("candidates.sqlite3");
     let _candidates = CandidateStore::open(&candidate_path)?;
     assert!(ContextStore::open(&candidate_path).is_err());
+    Ok(())
+}
+
+#[test]
+fn candidate_store_accepts_only_the_current_materiality_format(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let current = root.path().join("current.sqlite3");
+    drop(CandidateStore::open(&current)?);
+    drop(CandidateStore::open(&current)?);
+
+    let non_current = root.path().join("non-current.sqlite3");
+    drop(CandidateStore::open(&non_current)?);
+    rusqlite::Connection::open(&non_current)?.execute(
+        "UPDATE metadata SET value = '2' WHERE key = 'schema_version'",
+        [],
+    )?;
+    let error = CandidateStore::open(&non_current)
+        .err()
+        .ok_or("non-current Candidate format was admitted")?;
+    assert_eq!(
+        error.kind(),
+        volicord_inquiry::ErrorKind::UnsupportedVersion
+    );
+    assert!(error.to_string().contains("current version is 3"));
     Ok(())
 }

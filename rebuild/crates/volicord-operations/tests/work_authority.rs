@@ -1,0 +1,524 @@
+use std::fs;
+use tempfile::tempdir;
+use volicord_context::{
+    AgentRecommendation, ApplicabilityScope, ContextItemRole, NonUserQuestionOutcome, OperationId,
+    Principal, PrincipalKind, QuestionAlternative, QuestionResearchState,
+};
+use volicord_inquiry::{
+    bind_question_candidate_to_materiality, BatchResponseItem, CandidateCollectionMode,
+    CandidateCollectionScope, CandidateContent, CandidateDraft, CandidateFreshness, CandidateKind,
+    CandidateObservationBasis, CandidateOrigin, CandidateRetention, CurrentHostResponse,
+    DisplayedQuestion, DuplicateAssessment, MaterialityAssessment, MaterialityStatus,
+    QuestionCandidate, ResponseMapping, SubmissionOutcome,
+};
+use volicord_operations::{
+    ExploratoryDisposition, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
+    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
+};
+
+fn dimension(
+    id: &str,
+    disposition: MaterialityDisposition,
+    kinds: Vec<WorkAuthorityBasisKind>,
+    source: volicord_context::SourceId,
+) -> MaterialityDimension {
+    MaterialityDimension {
+        dimension_id: id.to_owned(),
+        summary: format!("material outcome {id}"),
+        affected_scope: vec!["src/lib.rs".to_owned()],
+        material_consequences: vec!["changes externally observable behavior".to_owned()],
+        observable_signals: vec![MaterialOutcomeSignal::PublicApiSemantics],
+        disposition,
+        basis: WorkAuthorityBasis {
+            kinds,
+            summary: "bounded repository and owner-contract evidence".to_owned(),
+            source_basis: vec![source],
+            contract_basis: Vec::new(),
+            decision_basis: Vec::new(),
+            research_basis: Vec::new(),
+        },
+    }
+}
+
+struct Fixture {
+    _temporary: tempfile::TempDir,
+    operations: LocalOperations,
+    repository: std::path::PathBuf,
+    project_id: volicord_context::ProjectId,
+    goal_id: volicord_context::ContextItemId,
+    baseline: volicord_repository_intelligence::AnalysisSnapshot,
+}
+
+fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
+    let temporary = tempdir()?;
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src"))?;
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 1 }\n",
+    )?;
+    let operations = LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime"))?);
+    let project = operations
+        .initialize_project("Work authority fixture", Some(&repository))?
+        .project;
+    let goal = operations.record_current_host_user_context(
+        project.id,
+        "codex".to_owned(),
+        "work-authority-session".to_owned(),
+        "Implement the bounded work-authority fixture.".to_owned(),
+        ContextItemRole::Goal,
+        "Implement the bounded work-authority fixture".to_owned(),
+    )?;
+    let baseline = operations
+        .analyze(project.id, Vec::new())?
+        .value
+        .ok_or("baseline analysis is unavailable")?
+        .analysis;
+    Ok(Fixture {
+        _temporary: temporary,
+        operations,
+        repository,
+        project_id: project.id,
+        goal_id: goal.context_item_id,
+        baseline,
+    })
+}
+
+fn review(
+    fixture: &Fixture,
+    dimensions: Vec<MaterialityDimension>,
+) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    fixture
+        .operations
+        .record_materiality_review(MaterialityReviewDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "work-authority-session".to_owned(),
+            source_operation: "pre-work-review".to_owned(),
+            rationale: "review every independently material outcome before ordinary work"
+                .to_owned(),
+            dimensions,
+        })
+}
+
+fn readiness(
+    fixture: &Fixture,
+    review: &volicord_operations::MaterialityReviewOutcome,
+) -> Result<volicord_operations::WorkAuthorityResult, volicord_operations::Error> {
+    fixture.operations.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        review.review_candidate_id,
+        vec!["src/lib.rs".to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+}
+
+#[test]
+fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_restart(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut settled = dimension(
+        "public-contract",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        source,
+    );
+    settled.basis.contract_basis = vec!["rebuild/docs/design/inquiry-and-decision.md".to_owned()];
+    let fact = dimension(
+        "repository-fact",
+        MaterialityDisposition::RepositoryOrEnvironmentFact,
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        source,
+    );
+    let recorded = review(&fixture, vec![settled, fact])?;
+    let result = readiness(&fixture, &recorded)?;
+    assert_eq!(result.stage, WorkAuthorityStage::ReadyForWork);
+    assert_eq!(result.disposition, WorkAuthorityDisposition::ReadyForWork);
+    assert!(!result.blocking);
+    assert_eq!(result.satisfied_requirements.len(), 2);
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_questions
+        .is_empty());
+
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let resumed = reopened.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        vec!["src/lib.rs".to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )?;
+    assert_eq!(resumed.disposition, WorkAuthorityDisposition::ReadyForWork);
+    assert_eq!(resumed.review_revision, Some(1));
+    Ok(())
+}
+
+#[test]
+fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut exploratory = dimension(
+        "parser-behavior",
+        MaterialityDisposition::ExploratoryUncertainty {
+            disposition: ExploratoryDisposition::ResearchRequired,
+        },
+        vec![WorkAuthorityBasisKind::ResearchEvidence],
+        source,
+    );
+    exploratory.basis.research_basis = vec!["inspect the bounded parser behavior".to_owned()];
+    let recorded = review(&fixture, vec![exploratory.clone()])?;
+    let pending = readiness(&fixture, &recorded)?;
+    assert_eq!(pending.stage, WorkAuthorityStage::ResearchOrPrototype);
+    assert!(pending.blocking);
+
+    exploratory.disposition = MaterialityDisposition::ExploratoryUncertainty {
+        disposition: ExploratoryDisposition::ResolvedByResearch,
+    };
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "bounded research resolved the implementation uncertainty".to_owned(),
+            dimensions: vec![exploratory],
+        })?;
+    assert_eq!(revised.review_revision, 2);
+    assert_eq!(
+        readiness(&fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn user_owned_and_hidden_material_signals_require_question_lifecycle(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut api = dimension(
+        "api-failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        source,
+    );
+    api.observable_signals = vec![
+        MaterialOutcomeSignal::PublicApiSemantics,
+        MaterialOutcomeSignal::ObservableFailurePolicy,
+        MaterialOutcomeSignal::PrivacyOrExternalDisclosure,
+    ];
+    api.material_consequences = vec![
+        "fail closed and preserve privacy".to_owned(),
+        "degrade and disclose a bounded external request".to_owned(),
+    ];
+    let recorded = review(&fixture, vec![api])?;
+    let result = readiness(&fixture, &recorded)?;
+    assert_eq!(result.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(
+        result.disposition,
+        WorkAuthorityDisposition::QuestionRequired
+    );
+    assert!(result.blocking);
+    assert_eq!(result.unresolved_requirements.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn recommendation_library_convention_and_fake_delegation_never_establish_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (label, disposition, kind) in [
+        (
+            "recommendation",
+            MaterialityDisposition::SettledAuthority,
+            WorkAuthorityBasisKind::AgentRecommendation,
+        ),
+        (
+            "library-default",
+            MaterialityDisposition::SettledAuthority,
+            WorkAuthorityBasisKind::LibraryOrConvention,
+        ),
+        (
+            "implementation-preference",
+            MaterialityDisposition::SettledAuthority,
+            WorkAuthorityBasisKind::ImplementationPreference,
+        ),
+        (
+            "fake-delegation",
+            MaterialityDisposition::DelegatedImplementationChoice,
+            WorkAuthorityBasisKind::ExplicitDelegation,
+        ),
+    ] {
+        let fixture = fixture()?;
+        let source = fixture.baseline.repository_source.identity();
+        let recorded = review(
+            &fixture,
+            vec![dimension(label, disposition, vec![kind], source)],
+        )?;
+        assert_eq!(
+            readiness(&fixture, &recorded)?.disposition,
+            WorkAuthorityDisposition::ReviewInvalid,
+            "{label}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn first_review_after_meaningful_mutation_is_rejected_and_trivial_details_do_not_explode(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let late_fixture = fixture()?;
+    let source = late_fixture.baseline.repository_source.identity();
+    fs::write(
+        late_fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+    let late = review(
+        &late_fixture,
+        vec![dimension(
+            "implementation-detail",
+            MaterialityDisposition::RepositoryOrEnvironmentFact,
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+            source,
+        )],
+    )
+    .expect_err("late review must not be accepted");
+    assert!(late.message().contains("first Materiality Review is late"));
+
+    let clean = fixture()?;
+    let source = clean.baseline.repository_source.identity();
+    let recorded = review(
+        &clean,
+        vec![dimension(
+            "bounded-task-outcome",
+            MaterialityDisposition::RepositoryOrEnvironmentFact,
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+            source,
+        )],
+    )?;
+    assert_eq!(
+        readiness(&clean, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
+    assert!(clean
+        .operations
+        .canonical_basis(clean.project_id)?
+        .active_questions
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestioning(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let user_owned = dimension(
+        "failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        source,
+    );
+    let review_outcome = review(&fixture, vec![user_owned.clone()])?;
+    assert_eq!(
+        readiness(&fixture, &review_outcome)?.stage,
+        WorkAuthorityStage::QuestionRequired
+    );
+    let review_record = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id == review_outcome.review_candidate_id)
+        .ok_or("review Candidate missing")?;
+    let question_draft = CandidateDraft {
+        project_id: fixture.project_id,
+        kind: CandidateKind::QuestionCandidate,
+        collection_mode: CandidateCollectionMode::ExplicitUserDirected,
+        origin: CandidateOrigin {
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "codex".to_owned(),
+            },
+            subsystem: "inquiry".to_owned(),
+            session: Some("work-authority-session".to_owned()),
+            provenance_summary: "materiality dimension Question draft".to_owned(),
+        },
+        collection_scope: CandidateCollectionScope {
+            project_id: fixture.project_id,
+            session: Some("work-authority-session".to_owned()),
+            source_operation: Some("materiality-question".to_owned()),
+            candidate_kind: CandidateKind::QuestionCandidate,
+        },
+        observation_basis: CandidateObservationBasis {
+            source_basis: vec![source],
+            analysis_snapshot: Some(fixture.baseline.identity.to_string()),
+            ..CandidateObservationBasis::default()
+        },
+        observed_at: volicord_context::TimestampMicros::from_unix_micros(1),
+        retention: CandidateRetention {
+            retained_until: None,
+            basis: "retain through explicit Question lifecycle".to_owned(),
+        },
+        content: CandidateContent {
+            bounded_summary: "choose the externally observable failure policy".to_owned(),
+            question: Some(QuestionCandidate {
+                prompt_basis: "Which failure policy should the public API use?".to_owned(),
+                known_facts: Vec::new(),
+                assumptions: Vec::new(),
+                uncertainty: Vec::new(),
+                affected_scope: vec!["src/lib.rs".to_owned()],
+                possible_prerequisites: Vec::new(),
+                source_basis: vec![source],
+                repository_basis: Vec::new(),
+                freshness: CandidateFreshness::Current,
+                duplicate_assessment: DuplicateAssessment::NoDuplicate {
+                    basis: "no applicable Decision exists".to_owned(),
+                },
+                materiality: MaterialityAssessment {
+                    status: MaterialityStatus::Material,
+                    rationale: Some(
+                        "public callers observe the selected failure policy".to_owned(),
+                    ),
+                    source_basis: vec![source],
+                    assessed_by: Some(Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: "codex".to_owned(),
+                    }),
+                    assessed_at: Some(volicord_context::TimestampMicros::from_unix_micros(1)),
+                },
+                presentation_order: Some(1),
+                why_it_matters_now: "implementation would otherwise choose user-owned behavior"
+                    .to_owned(),
+                alternatives: vec![
+                    QuestionAlternative {
+                        key: "strict".to_owned(),
+                        label: "Strict".to_owned(),
+                        consequence: "return an explicit error".to_owned(),
+                    },
+                    QuestionAlternative {
+                        key: "degraded".to_owned(),
+                        label: "Degraded".to_owned(),
+                        consequence: "continue with an explicit degraded result".to_owned(),
+                    },
+                ],
+                recommendation: AgentRecommendation {
+                    alternative_key: Some("strict".to_owned()),
+                    rationale: "preserves a clear failure boundary".to_owned(),
+                    source_basis: vec![source],
+                },
+                trade_offs: vec!["availability versus strictness".to_owned()],
+                known_limits: Vec::new(),
+                what_the_answer_unlocks: vec!["public API implementation".to_owned()],
+                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                research_state: QuestionResearchState::ReadyToAsk,
+            }),
+            materiality_review: None,
+        },
+    };
+    let bound =
+        bind_question_candidate_to_materiality(&review_record, "failure-policy", question_draft)?;
+    let question_candidate_id = match fixture.operations.submit_candidate(bound)? {
+        SubmissionOutcome::Stored(candidate) => candidate.id,
+        SubmissionOutcome::CollectionDisabled { .. } => {
+            return Err("explicit Question Candidate was disabled".into())
+        }
+    };
+    let promoted = fixture
+        .operations
+        .promote_question_candidate(fixture.project_id, question_candidate_id)?;
+    let user_response = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".to_owned(),
+        "work-authority-session".to_owned(),
+        "Choose strict for the public failure policy.".to_owned(),
+        ContextItemRole::Preference,
+        "Choose strict".to_owned(),
+    )?;
+    let response = fixture.operations.record_inquiry_responses(
+        fixture.project_id,
+        vec![BatchResponseItem {
+            operation_id: OperationId::from_bytes([91; 16]),
+            response: CurrentHostResponse {
+                project_id: fixture.project_id,
+                source_id: user_response.source_id,
+                host: "codex".to_owned(),
+                session: "work-authority-session".to_owned(),
+                turn: "Choose strict for the public failure policy.".to_owned(),
+                displayed: DisplayedQuestion {
+                    question_id: promoted.question_id,
+                    revision: 1,
+                    alternative_keys: vec!["strict".to_owned(), "degraded".to_owned()],
+                    recommendation_key: Some("strict".to_owned()),
+                },
+                mapping: ResponseMapping::ExplicitDelegation {
+                    delegate_to: "implementation-owner".to_owned(),
+                    user_rationale: Some(
+                        "choose within the displayed failure-policy scope".to_owned(),
+                    ),
+                },
+                applicability: ApplicabilityScope {
+                    paths: vec!["src/lib.rs".to_owned()],
+                    components: Vec::new(),
+                    work_contexts: Vec::new(),
+                },
+                assumptions: Vec::new(),
+                revisit_triggers: Vec::new(),
+            },
+        }],
+    )?;
+    assert!(response.all_succeeded());
+    let decision_id = fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions[0]
+        .decision
+        .id;
+    let mut resolved = user_owned;
+    resolved.disposition = MaterialityDisposition::DelegatedImplementationChoice;
+    resolved
+        .basis
+        .kinds
+        .push(WorkAuthorityBasisKind::ExplicitDelegation);
+    resolved.basis.decision_basis.push(decision_id);
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: review_outcome.review_candidate_id,
+            rationale: "the exact current-host response produced an applicable Decision".to_owned(),
+            dimensions: vec![resolved],
+        })?;
+    let ready = readiness(&fixture, &revised)?;
+    assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
+    assert_eq!(
+        ready.satisfied_requirements[0].decision_basis,
+        [decision_id]
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_questions
+        .is_empty());
+    Ok(())
+}

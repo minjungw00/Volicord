@@ -723,6 +723,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - stale Source와 superseded Decision
 - ordinary work with unrelated dirty changes
 - fresh/resumed work에서 Recall 뒤 첫 ordinary repository write 전 Analysis Snapshot baseline
+- current Goal/baseline에 bind된 typed Materiality Review, dimension별 disposition과 explicit
+  `ready_for_work`
+- first authoritative review의 pre-mutation success와 post-mutation backfill rejection
 - bounded work 뒤 처음 만든 Analysis Snapshot을 Checkpoint baseline으로 제출하는 rollout
 - completed, paused와 handoff boundary
 - verification pass, fail와 not-run
@@ -739,6 +742,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - Checkpoint false-positive/false-negative
 - work/verification/review state separation
 - Candidate promotion authorization/disposition과 inspection attribute completeness
+- fact/settled/delegated/exploratory/user-owned work-authority behavior와 false-authority rejection
 - Candidate Inspection no-mutation과 failure isolation
 
 ### 통과 조건
@@ -754,6 +758,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - Candidate Inspection이 existence, kind, provenance, collection scope, retention/expiry,
   promotion disposition과 opt-out state를 노출하고 read/failure가 Candidate를 mutate하지
   않는다.
+- Restart 뒤 Materiality Review revision과 unresolved requirement가 유지되고, agent
+  recommendation/library convention/implementation preference/fake delegation이 ready authority로
+  바뀌지 않는다.
 
 ## 14. V10 — 기존 process/filesystem primitive 재사용 평가
 

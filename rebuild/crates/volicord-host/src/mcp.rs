@@ -733,6 +733,7 @@ impl HostAdapter {
                             allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
                             research_state,
                         }),
+                        materiality_review: None,
                     },
                 };
                 match self

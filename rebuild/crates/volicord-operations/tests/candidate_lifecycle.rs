@@ -320,6 +320,7 @@ fn question_candidate(
                 allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
                 research_state: QuestionResearchState::ReadyToAsk,
             }),
+            materiality_review: None,
         },
     }
 }

@@ -616,6 +616,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         content: CandidateContent {
             bounded_summary: "architecture candidate".to_owned(),
             question: None,
+            materiality_review: None,
         },
     })? {
         SubmissionOutcome::Stored(_) => {}

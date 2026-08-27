@@ -369,6 +369,7 @@ pub fn propose_requestioning(
                 allowed_non_choice_dispositions: question.allowed_non_choice_dispositions.clone(),
                 research_state: QuestionResearchState::ReadyToAsk,
             }),
+            materiality_review: None,
         },
     })
 }
