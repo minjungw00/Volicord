@@ -2916,6 +2916,81 @@ MATERIALITY_DISPOSITIONS = {
     "unresolved_user_owned_outcome",
 }
 
+DELEGATION_CONTRADICTORY_KINDS = {
+    "accepted_contract",
+    "applicable_decision",
+    "agent_recommendation",
+    "library_or_convention",
+    "implementation_preference",
+}
+
+
+def scope_covers(declared_scope: list[str], affected_scope: list[str]) -> bool:
+    return all(
+        any(
+            declared == affected
+            or affected.startswith(f"{declared}/")
+            for declared in declared_scope
+        )
+        for affected in affected_scope
+    )
+
+
+def current_goal_delegation_evidence_valid(
+    dimension: dict[str, Any],
+    *,
+    goal_context_id: str | None,
+    goal_source_id: str | None,
+    goal_statement: str | None,
+    frozen_task: str | None,
+    repository_source_id: str | None,
+) -> bool:
+    basis = dimension["basis"]
+    evidence = basis.get("explicit_delegation")
+    evidence_scope = evidence.get("affected_scope") if isinstance(evidence, dict) else None
+    affected_scope = dimension.get("affected_scope")
+    statement = evidence.get("verbatim_statement") if isinstance(evidence, dict) else None
+    source_ids = set(basis["source_ids"])
+    additional_source_ids = (
+        source_ids - {goal_source_id} if nonempty_string(goal_source_id) else source_ids
+    )
+    independent_research_valid = not additional_source_ids or (
+        nonempty_string(repository_source_id)
+        and additional_source_ids == {repository_source_id}
+        and "research_evidence" in basis["kinds"]
+        and bool(basis["research_basis"])
+    )
+    return (
+        isinstance(evidence, dict)
+        and set(evidence)
+        == {
+            "goal_context_id",
+            "user_turn_source_id",
+            "verbatim_statement",
+            "affected_scope",
+        }
+        and nonempty_string(goal_context_id)
+        and evidence.get("goal_context_id") == goal_context_id
+        and nonempty_string(goal_source_id)
+        and evidence.get("user_turn_source_id") == goal_source_id
+        and goal_source_id in basis["source_ids"]
+        and independent_research_valid
+        and nonempty_string(statement)
+        and nonempty_string(goal_statement)
+        and statement in goal_statement
+        and nonempty_string(frozen_task)
+        and statement in frozen_task
+        and isinstance(evidence_scope, list)
+        and bool(evidence_scope)
+        and all(nonempty_string(item) for item in evidence_scope)
+        and isinstance(affected_scope, list)
+        and bool(affected_scope)
+        and scope_covers(evidence_scope, affected_scope)
+        and not basis["decision_ids"]
+        and not basis["contract_basis"]
+        and not (set(basis["kinds"]) & DELEGATION_CONTRADICTORY_KINDS)
+    )
+
 
 def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | None:
     if not isinstance(value, list) or not value:
@@ -2925,6 +3000,9 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
         dimension_id = dimension.get("dimension_id") if isinstance(dimension, dict) else None
         basis = dimension.get("basis") if isinstance(dimension, dict) else None
         source_ids = basis.get("source_ids") if isinstance(basis, dict) else None
+        explicit_delegation = (
+            basis.get("explicit_delegation") if isinstance(basis, dict) else None
+        )
         if (
             not isinstance(dimension, dict)
             or not nonempty_string(dimension_id)
@@ -2951,6 +3029,29 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             or not isinstance(basis.get("contract_basis"), list)
             or not isinstance(basis.get("decision_ids"), list)
             or not isinstance(basis.get("research_basis"), list)
+            or (
+                explicit_delegation is not None
+                and (
+                    not isinstance(explicit_delegation, dict)
+                    or not nonempty_string(
+                        explicit_delegation.get("goal_context_id")
+                    )
+                    or not nonempty_string(
+                        explicit_delegation.get("user_turn_source_id")
+                    )
+                    or not nonempty_string(
+                        explicit_delegation.get("verbatim_statement")
+                    )
+                    or not isinstance(
+                        explicit_delegation.get("affected_scope"), list
+                    )
+                    or not explicit_delegation["affected_scope"]
+                    or not all(
+                        nonempty_string(item)
+                        for item in explicit_delegation["affected_scope"]
+                    )
+                )
+            )
         ):
             return None
         indexed[str(dimension_id)] = dimension
@@ -2960,7 +3061,10 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
 def materiality_dimension_authority_valid(
     dimension: dict[str, Any],
     *,
+    goal_context_id: str | None,
     goal_source_id: str | None,
+    goal_statement: str | None,
+    frozen_task: str | None,
     repository_source_id: str | None,
     decision_evidence: dict[str, dict[str, Any]],
     require_current_goal_delegation: bool,
@@ -2970,6 +3074,10 @@ def materiality_dimension_authority_valid(
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
     decision_ids = basis["decision_ids"]
+    if disposition != "delegated_implementation_choice" and basis.get(
+        "explicit_delegation"
+    ) is not None:
+        return False
     if disposition == "repository_or_environment_fact":
         return (
             "repository_or_environment_fact" in kinds
@@ -2984,16 +3092,29 @@ def materiality_dimension_authority_valid(
         if "explicit_delegation" not in kinds:
             return False
         current_goal = (
-            nonempty_string(goal_source_id)
-            and source_ids == {goal_source_id}
-            and not decision_ids
-            and bool(basis["research_basis"])
+            current_goal_delegation_evidence_valid(
+                dimension,
+                goal_context_id=goal_context_id,
+                goal_source_id=goal_source_id,
+                goal_statement=goal_statement,
+                frozen_task=frozen_task,
+                repository_source_id=repository_source_id,
+            )
         )
-        decision_path = bool(decision_ids) and all(
-            decision_id in decision_evidence
-            and f"work-authority:{dimension['dimension_id']}"
-            in decision_evidence[decision_id]["material_scope"]
-            for decision_id in decision_ids
+        decision_path = (
+            basis.get("explicit_delegation") is None
+            and not basis["contract_basis"]
+            and not (
+                kinds
+                & (DELEGATION_CONTRADICTORY_KINDS - {"applicable_decision"})
+            )
+            and bool(decision_ids)
+            and all(
+                decision_id in decision_evidence
+                and f"work-authority:{dimension['dimension_id']}"
+                in decision_evidence[decision_id]["material_scope"]
+                for decision_id in decision_ids
+            )
         )
         return current_goal if require_current_goal_delegation else current_goal or decision_path
     if disposition == "exploratory_uncertainty":
@@ -3051,6 +3172,8 @@ def materiality_review_facts(
     bundle: CanonicalBundle | None,
     behavior_class: Any,
     goal_context_id: str | None,
+    goal_statement: str | None,
+    frozen_task: str | None,
     baseline_call: ToolCall | None,
     first_write_sequence: int | None,
     goal_source_id: str | None,
@@ -3107,7 +3230,10 @@ def materiality_review_facts(
     dimension_authority = bool(dimensions) and all(
         materiality_dimension_authority_valid(
             dimension,
+            goal_context_id=goal_context_id,
             goal_source_id=goal_source_id,
+            goal_statement=goal_statement,
+            frozen_task=frozen_task,
             repository_source_id=(
                 str(repository_source_id)
                 if nonempty_string(repository_source_id)
@@ -3240,6 +3366,11 @@ def materiality_review_facts(
         "user_owned_dimension_ids": sorted(user_owned_ids),
         "dimension_correlation": "dimension_id",
         "disposition": expected,
+        "explicit_delegation": (
+            dimensions[primary_dimension_id]["basis"].get("explicit_delegation")
+            if dimensions is not None and primary_dimension_id is not None
+            else None
+        ),
         "pre_write": record.completion_sequence < first_write_sequence,
         "resumed": resumed,
     }
@@ -3791,6 +3922,8 @@ def real_session_evidence(
         bundle,
         behavior_class,
         goal_context_id,
+        goal_statement,
+        work_user_task,
         baseline_call,
         first_work_change,
         goal_source_id,
@@ -4085,6 +4218,8 @@ def real_session_evidence(
         bundle,
         behavior_class,
         goal_context_id,
+        goal_statement,
+        work_user_task,
         resume_baseline_call,
         first_resume_write,
         goal_source_id,
@@ -6277,6 +6412,8 @@ def real_session_fixture(
         "delegated_implementation_choice": "explicit_delegation",
         "exploratory_uncertainty": "research_evidence",
     }[behavior_class]
+    delegation_statement = "choose the internal helper naming and module structure"
+    delegation_scope = "internal helper naming and module structure"
 
     def materiality_dimension(
         *, resolved: bool = False, source_id: str | None = None
@@ -6288,9 +6425,21 @@ def real_session_fixture(
         )
         dimension = {
             "dimension_id": materiality_dimension_id,
-            "summary": "Classify the operator-facing error-detail outcome",
-            "affected_scope": [question_content["user_owned_dimension"]],
-            "material_consequences": [question_content["material_consequence"]],
+            "summary": (
+                "Select the delegated internal helper and module structure"
+                if behavior_class == "delegated_implementation_choice"
+                else "Classify the operator-facing error-detail outcome"
+            ),
+            "affected_scope": [
+                delegation_scope
+                if behavior_class == "delegated_implementation_choice"
+                else question_content["user_owned_dimension"]
+            ],
+            "material_consequences": [
+                "The choice changes internal maintainability without changing public behavior."
+                if behavior_class == "delegated_implementation_choice"
+                else question_content["material_consequence"]
+            ],
             "observable_signals": ["observable_failure_policy"],
             "disposition": materiality_disposition,
             "basis": {
@@ -6300,20 +6449,23 @@ def real_session_fixture(
                 "contract_basis": (
                     evaluation_basis.get("accepted_contract_constraints", [])
                     if behavior_class == "research_or_no_question"
-                    else evaluation_basis.get("delegated_boundaries", [])
-                    if behavior_class == "delegated_implementation_choice"
                     else []
                 ),
                 "decision_ids": [decision] if resolved else [],
                 "research_basis": (
                     evaluation_basis.get("repository_facts", [])
                     if behavior_class == "exploratory_uncertainty"
-                    else evaluation_basis.get("delegated_boundaries", [])
-                    if behavior_class == "delegated_implementation_choice"
                     else []
                 ),
             },
         }
+        if behavior_class == "delegated_implementation_choice" and not resolved:
+            dimension["basis"]["explicit_delegation"] = {
+                "goal_context_id": context,
+                "user_turn_source_id": goal_source,
+                "verbatim_statement": delegation_statement,
+                "affected_scope": [delegation_scope],
+            }
         if behavior_class == "exploratory_uncertainty":
             dimension["exploratory_disposition"] = "resolved_by_research"
         if resolved:
@@ -7598,7 +7750,13 @@ def self_test() -> int:
         repository_revision=revision,
     )
     if external_result["status"] != "passed":
-        raise AssertionError("external sanitized process evidence did not qualify")
+        failed_checks = sorted(
+            key for key, value in external_result["checks"].items() if value != "passed"
+        )
+        raise AssertionError(
+            "external sanitized process evidence did not qualify: "
+            + ", ".join(failed_checks)
+        )
     hidden_fixture = real_session_fixture(
         "volicord",
         2,
@@ -9524,8 +9682,308 @@ def self_test() -> int:
         != "delegated_implementation_choice"
     ):
         raise AssertionError("bounded current-task delegated disposition did not qualify")
+    delegated_capture = load_codex_capture(
+        evidence_directory
+        / delegated_positive["evidence"]["captures"]["work"]["file"]
+    )
+    delegated_records = [
+        call
+        for call in delegated_capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+    ]
+    if (
+        len(delegated_records) != 1
+        or delegated_records[0].arguments["dimensions"][0]["basis"][
+            "research_basis"
+        ]
+        != []
+    ):
+        raise AssertionError("delegated positive no longer proves research independence")
+    delegated_basis = delegated_positive_result["inquiry_behavior_basis"][
+        "materiality_review_basis"
+    ]
+    if (
+        delegated_basis.get("explicit_delegation", {}).get("verbatim_statement")
+        != "choose the internal helper naming and module structure"
+    ):
+        raise AssertionError("delegated evidence was not retained in the evaluation basis")
+
+    def delegated_prewrite_status(fixture: dict[str, Any]) -> str:
+        return real_session_evidence(
+            fixture,
+            kind="polyglot-medium",
+            cycle=2,
+            repository_revision=revision,
+        )["checks"]["pre_write_materiality_work_authority"]
+
+    for label, mutation in (
+        (
+            "missing explicit evidence",
+            lambda arguments: arguments["dimensions"][0]["basis"].pop(
+                "explicit_delegation"
+            ),
+        ),
+        (
+            "non-verbatim statement",
+            lambda arguments: arguments["dimensions"][0]["basis"][
+                "explicit_delegation"
+            ].update({"verbatim_statement": "agent-inferred delegation"}),
+        ),
+        (
+            "wrong Goal",
+            lambda arguments: arguments["dimensions"][0]["basis"][
+                "explicit_delegation"
+            ].update({"goal_context_id": "f5" * 16}),
+        ),
+        (
+            "wrong user turn",
+            lambda arguments: arguments["dimensions"][0]["basis"][
+                "explicit_delegation"
+            ].update({"user_turn_source_id": "02" * 16}),
+        ),
+        (
+            "scope outside delegation",
+            lambda arguments: arguments["dimensions"][0]["basis"][
+                "explicit_delegation"
+            ].update({"affected_scope": ["unrelated public policy"]}),
+        ),
+    ):
+        invalid_delegation = real_session_fixture(
+            "polyglot-medium",
+            2,
+            revision,
+            evidence_directory,
+            behavior_class="delegated_implementation_choice",
+        )
+        mutate_mcp_call_action(
+            invalid_delegation,
+            "work",
+            "materiality_review",
+            "record",
+            mutation,
+        )
+        if delegated_prewrite_status(invalid_delegation) != "failed":
+            raise AssertionError(f"delegation with {label} qualified")
+
+    for masquerading_kind in (
+        "accepted_contract",
+        "agent_recommendation",
+        "library_or_convention",
+        "implementation_preference",
+    ):
+        masquerading = real_session_fixture(
+            "polyglot-medium",
+            2,
+            revision,
+            evidence_directory,
+            behavior_class="delegated_implementation_choice",
+        )
+        mutate_mcp_call_action(
+            masquerading,
+            "work",
+            "materiality_review",
+            "record",
+            lambda arguments, kind=masquerading_kind: arguments["dimensions"][0][
+                "basis"
+            ]["kinds"].append(kind),
+        )
+        if delegated_prewrite_status(masquerading) != "failed":
+            raise AssertionError(
+                f"{masquerading_kind} masquerading as delegation qualified"
+            )
+
+    relabeled_contract = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
     mutate_mcp_call_action(
-        delegated_positive,
+        relabeled_contract,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["dimensions"][0]["basis"].update(
+            {"contract_basis": ["accepted owner contract"]}
+        ),
+    )
+    if delegated_prewrite_status(relabeled_contract) != "failed":
+        raise AssertionError("an accepted contract relabeled as delegation qualified")
+
+    independent_research = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+
+    def add_independent_delegation_research(arguments: dict[str, Any]) -> None:
+        basis = arguments["dimensions"][0]["basis"]
+        basis["kinds"].append("research_evidence")
+        basis["source_ids"].append("0f" * 16)
+        basis["research_basis"] = ["independent repository inspection"]
+
+    mutate_mcp_call_action(
+        independent_research,
+        "work",
+        "materiality_review",
+        "record",
+        add_independent_delegation_research,
+    )
+    if delegated_prewrite_status(independent_research) != "passed":
+        raise AssertionError("valid delegation with independent research was rejected")
+
+    only_one_dimension_delegated = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+
+    def make_second_dimension_bare_delegation(arguments: dict[str, Any]) -> None:
+        second = arguments["dimensions"][1]
+        second["disposition"] = "delegated_implementation_choice"
+        second["basis"]["kinds"] = ["explicit_delegation"]
+        second["basis"]["source_ids"] = ["03" * 16]
+
+    mutate_mcp_call_action(
+        only_one_dimension_delegated,
+        "work",
+        "materiality_review",
+        "record",
+        make_second_dimension_bare_delegation,
+    )
+    if delegated_prewrite_status(only_one_dimension_delegated) != "failed":
+        raise AssertionError("one delegated dimension authorized another dimension")
+
+    each_dimension_delegated = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+
+    def make_second_dimension_explicit(arguments: dict[str, Any]) -> None:
+        primary = arguments["dimensions"][0]
+        second = arguments["dimensions"][1]
+        second["summary"] = "Select the delegated module structure"
+        second["affected_scope"] = ["internal module structure"]
+        second["disposition"] = "delegated_implementation_choice"
+        second["basis"] = json.loads(json.dumps(primary["basis"]))
+        second["basis"]["explicit_delegation"]["affected_scope"] = [
+            "internal module structure"
+        ]
+
+    mutate_mcp_call_action(
+        each_dimension_delegated,
+        "work",
+        "materiality_review",
+        "record",
+        make_second_dimension_explicit,
+    )
+    if delegated_prewrite_status(each_dimension_delegated) != "passed":
+        raise AssertionError("independently evidenced delegated dimensions were rejected")
+
+    shared_scope_delegation = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+
+    def share_bounded_delegation(arguments: dict[str, Any]) -> None:
+        primary = arguments["dimensions"][0]
+        second = arguments["dimensions"][1]
+        primary["affected_scope"] = ["internal/helper"]
+        primary["basis"]["explicit_delegation"]["affected_scope"] = ["internal"]
+        second["summary"] = "Select the delegated module structure"
+        second["affected_scope"] = ["internal/module"]
+        second["disposition"] = "delegated_implementation_choice"
+        second["basis"] = json.loads(json.dumps(primary["basis"]))
+
+    mutate_mcp_call_action(
+        shared_scope_delegation,
+        "work",
+        "materiality_review",
+        "record",
+        share_bounded_delegation,
+    )
+    if delegated_prewrite_status(shared_scope_delegation) != "passed":
+        raise AssertionError("shared bounded delegation evidence was rejected")
+
+    reordered_delegation = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+    mutate_mcp_call_action(
+        reordered_delegation,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["dimensions"].reverse(),
+    )
+    if delegated_prewrite_status(reordered_delegation) != "passed":
+        raise AssertionError("delegated dimension array order became authoritative")
+
+    user_owned_relabel = real_session_fixture(
+        "volicord",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="explicit_user_owned_decision",
+    )
+
+    def relabel_user_owned_as_goal_delegation(arguments: dict[str, Any]) -> None:
+        for dimension in arguments["dimensions"]:
+            dimension["disposition"] = "delegated_implementation_choice"
+            dimension["resolution_decision_id"] = None
+            dimension["basis"] = {
+                "kinds": ["explicit_delegation"],
+                "summary": "A task phrase was incorrectly relabeled as delegation.",
+                "source_ids": ["03" * 16],
+                "contract_basis": [],
+                "decision_ids": [],
+                "research_basis": [],
+                "explicit_delegation": {
+                    "goal_context_id": "08" * 16,
+                    "user_turn_source_id": "03" * 16,
+                    "verbatim_statement": "Improve it",
+                    "affected_scope": dimension["affected_scope"],
+                },
+            }
+
+    mutate_mcp_call_action(
+        user_owned_relabel,
+        "work",
+        "materiality_review",
+        "record",
+        relabel_user_owned_as_goal_delegation,
+    )
+    if real_session_evidence(
+        user_owned_relabel,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("a user-owned non-delegated task was relabeled as delegated")
+
+    stale_delegation_source = real_session_fixture(
+        "polyglot-medium",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+    mutate_mcp_call_action(
+        stale_delegation_source,
         "work",
         "materiality_review",
         "record",
@@ -9534,7 +9992,7 @@ def self_test() -> int:
         ),
     )
     if real_session_evidence(
-        delegated_positive,
+        stale_delegation_source,
         kind="polyglot-medium",
         cycle=2,
         repository_revision=revision,
@@ -9756,6 +10214,51 @@ def self_test() -> int:
         revision_sequence=12,
     ):
         raise AssertionError("one Decision silently resolved an uncovered dimension")
+
+    inquiry_delegation = {
+        "dimension_id": "inquiry-delegated-policy",
+        "summary": "Delegate the bounded policy after Inquiry",
+        "affected_scope": ["public/policy"],
+        "material_consequences": ["The explicit response delegates this exact scope."],
+        "observable_signals": ["public_api_semantics"],
+        "disposition": "delegated_implementation_choice",
+        "basis": {
+            "kinds": ["explicit_delegation", "applicable_decision"],
+            "summary": "Exact current-host delegation Decision",
+            "source_ids": ["02" * 16],
+            "contract_basis": [],
+            "decision_ids": ["decision-inquiry-delegation"],
+            "research_basis": [],
+        },
+    }
+    inquiry_decision_evidence = {
+        "decision-inquiry-delegation": {
+            "material_scope": ["work-authority:inquiry-delegated-policy"],
+            "completion_sequence": 10,
+        }
+    }
+    if not materiality_dimension_authority_valid(
+        inquiry_delegation,
+        goal_context_id=None,
+        goal_source_id=None,
+        goal_statement=None,
+        frozen_task=None,
+        repository_source_id=None,
+        decision_evidence=inquiry_decision_evidence,
+        require_current_goal_delegation=False,
+    ):
+        raise AssertionError("valid Inquiry-time delegation Decision was rejected")
+    if materiality_dimension_authority_valid(
+        inquiry_delegation,
+        goal_context_id=None,
+        goal_source_id=None,
+        goal_statement=None,
+        frozen_task=None,
+        repository_source_id=None,
+        decision_evidence=inquiry_decision_evidence,
+        require_current_goal_delegation=True,
+    ):
+        raise AssertionError("Inquiry-time delegation was confused with current-task evidence")
 
     two_checkpoint_fixture = real_session_fixture(
         "volicord", 1, revision, evidence_directory

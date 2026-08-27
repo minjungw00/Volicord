@@ -302,6 +302,15 @@
       "mixed_dispositions_allowed": true,
       "delegated_expected_disposition": "delegated_implementation_choice",
       "delegated_current_goal_requires_explicit_delegation_basis": true,
+      "delegated_evidence_fields": [
+        "goal_context_id",
+        "user_turn_source_id",
+        "verbatim_statement",
+        "affected_scope"
+      ],
+      "delegated_statement_must_be_verbatim_in_frozen_goal_task": true,
+      "delegated_research_basis_required": false,
+      "inquiry_time_delegation_decision_supported": true,
       "all_unresolved_user_owned_dimensions_block_work": true,
       "resolved_user_owned_decision_correlation": "per_dimension_id",
       "coupled_decision_requires_each_dimension_scope": true,

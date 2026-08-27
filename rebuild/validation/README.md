@@ -244,8 +244,13 @@ For
 `exploratory_uncertainty`, the absence of Candidate, Question, and Decision can
 be the correct passing outcome. The delegated positive control uses the actual
 `delegated_implementation_choice` Materiality disposition and must cite the
-exact frozen Goal's current-host user-turn Source plus its bounded delegated
-scope; `settled_authority` is a different product meaning.
+exact frozen Goal ID and current-host user-turn Source ID together with a
+bounded verbatim statement or excerpt present in both the Goal and frozen task,
+plus the affected scope. That typed evidence must cover every delegated
+dimension. It does not require `research_basis`, and research, recommendation,
+convention, accepted contract, or Decision evidence cannot be relabeled as
+current-task delegation. The distinct Inquiry-time delegation Decision path is
+still supported; `settled_authority` is a different product meaning.
 
 Machine qualification accepts one or more uniquely identified Materiality
 dimensions and correlates revisions by `dimension_id`, independent of array

@@ -125,6 +125,14 @@ Question. Bounded evaluator concerns and counterfactual evidence ground this
 post-execution review only and remain absent from frozen operator tasks and
 work/resume sessions.
 
+For a current-task delegated dimension, machine qualification requires the
+exact Goal ID, current-host user-turn Source ID, a bounded verbatim statement
+or excerpt present in both the Goal and frozen task, and an affected scope that
+covers that dimension. Research remains independent and optional. The
+evaluator rejects missing, stale, non-verbatim, out-of-scope, or relabeled
+authority evidence while retaining the separate Inquiry-time delegation
+Decision path.
+
 ## Commands and configuration
 
 After a later technical-entry gate seals a candidate, start the new campaign

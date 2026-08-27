@@ -102,10 +102,12 @@ plus the bounded review package, not a full Runtime Home.
 - Live Viewer accessibility and bounded real-page behavior, plus repeated
   resource qualification across the complete campaign.
 
-This redesign changes validation support and its tests, not production domain
-semantics, provider transport, Repository Intelligence parsers, Viewer
-rendering, or CLI taxonomy. It does not establish a replacement-gate result or
-authorize Phase 9.
+The current-task delegation evaluator now consumes the production typed,
+verbatim evidence semantics without imposing a research requirement and keeps
+the Inquiry-time delegation Decision path separate. This alignment does not
+change provider transport, Repository Intelligence parsers, Viewer rendering,
+or CLI taxonomy. It does not establish a replacement-gate result or authorize
+Phase 9.
 
 ## Maintained references
 

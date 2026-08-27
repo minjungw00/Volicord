@@ -978,7 +978,12 @@ array position이 아니라 그 identity로 initial/revision authority를 correl
 delegated, exploratory와 user-owned disposition은 같은 review에서 공존할 수 있다. Maintained
 delegated positive control은 `settled_authority`가 아니라 실제
 `delegated_implementation_choice` disposition과 exact frozen Goal current-host Source의 bounded
-delegation을 요구하며, 이미 위임된 choice를 Question/Decision으로 다시 만들면 실패한다.
+delegation을 요구한다. 이 current-task 경로는 exact Goal ID, current-host user-turn Source ID,
+Goal과 frozen task 안의 bounded verbatim statement/excerpt, affected scope를 담은 typed evidence를
+검사하며 research evidence를 요구하지 않는다. 이 evidence는 각 delegated dimension의 scope를
+cover해야 하고 research/recommendation/convention/accepted contract/Decision을 delegation으로
+재분류할 수 없다. Inquiry response 뒤의 delegation Decision 경로는 이 current-task evidence와
+별개로 유지한다. 이미 위임된 choice를 Question/Decision으로 다시 만들면 실패한다.
 기록된 모든 unresolved user-owned dimension은 affected work 전에 blocking이고, resolved revision은
 각 dimension의 `resolution_decision_id`, actual Decision current-host provenance와 materiality scope를
 검사한다. Independent dimension은 각자의 Decision을 사용할 수 있고 하나의 Decision은 recorded
