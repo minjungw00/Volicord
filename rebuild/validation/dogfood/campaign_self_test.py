@@ -624,7 +624,9 @@ def assert_blockers(parent: Path, binary: Path) -> None:
         path for path in activation_captures if path.name == "volicord-1-work-events.jsonl"
     )
     missing = filtered_capture(
-        activation_work, parent / "missing-activation.jsonl", "Volicord is active because"
+        activation_work,
+        parent / "missing-activation.jsonl",
+        "Volicord is active for this explicitly authorized repository.",
     )
     invalid = campaign.collect_work(activation_root, "volicord", 1, missing)
     assert invalid["outcome"] == "operator_environment_invalid"
@@ -1742,7 +1744,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     missing_activation = filtered_capture(
         activation_work,
         parent / "batch-missing-activation.jsonl",
-        "Volicord is active because",
+        "Volicord is active for this explicitly authorized repository.",
     )
     activation_inputs = [
         missing_activation if path == activation_work else path

@@ -18,6 +18,8 @@ CAMPAIGN = HERE / "campaign.py"
 CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
+HOST_MCP = ROOT / "rebuild/crates/volicord-host/src/mcp.rs"
+OPERATIONS = ROOT / "rebuild/crates/volicord-operations/src/operations.rs"
 REVIEWER_SAFE_CONTRACTS = (
     ROOT / "rebuild/docs/design/validation-plan.md",
     ROOT / "rebuild/docs/design/cutover-plan.md",
@@ -31,6 +33,9 @@ def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
     campaign_source = CAMPAIGN.read_text(encoding="utf-8")
     event_source = CODEX_EVENTS.read_text(encoding="utf-8")
+    host_source = HOST_MCP.read_text(encoding="utf-8")
+    compact_host_source = re.sub(r"\s+", "", host_source)
+    operations_source = OPERATIONS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
     if "qualification_behavior_multiset" in definition_value:
@@ -100,6 +105,10 @@ def main() -> int:
         "mcp_tool_call_end",
         "context_record",
         "baseline_analysis_snapshot_id",
+        "materiality_review",
+        "pre_write_materiality_work_authority",
+        "submit_question_from_materiality",
+        "resume_materiality_work_authority",
         "checkpoint_verifications",
         "current_host_user_turn",
         "work_user_task",
@@ -142,6 +151,29 @@ def main() -> int:
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
+    if "evaluate_work_authority(" in host_source:
+        raise AssertionError("the MCP host fabricates work-authority policy")
+    for marker in (
+        "evaluate_work_authority(",
+        "workflow_from_authority(",
+        "workflow_for_review_candidate(",
+        "workflow_for_question_candidate(",
+        "workflow_for_work_basis(",
+    ):
+        if marker not in operations_source:
+            raise AssertionError(
+                f"production Operations no longer derives workflow through {marker}"
+            )
+    for delegation in (
+        ".operations.record_materiality_review(",
+        ".operations.workflow_for_review_candidate(",
+        ".operations.workflow_for_question_candidate(",
+        ".operations.workflow_for_work_basis(",
+    ):
+        if delegation not in compact_host_source:
+            raise AssertionError(
+                f"the MCP host no longer delegates workflow derivation through {delegation}"
+            )
     if "verified_capture" in source or "first_repository_inspection_sequence" in source:
         raise AssertionError("the declaration-only real-session path remains active")
     for obsolete in (
@@ -269,6 +301,9 @@ def main() -> int:
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
+        "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write",
+        "reuse the unresolved review dimension in the Question Candidate",
+        "recompute Materiality Review/work authority before continued ordinary work",
         "event_msg.mcp_tool_call_end",
         "permit one or more successful work Checkpoints",
         "latest terminal Checkpoint candidate after the last meaningful repository change",

@@ -105,6 +105,7 @@ REAL_SESSION_CHECKS = (
     "naturalistic_prompt_integrity",
     "plain_task_goal_linkage",
     "grounded_pre_work_repository_baseline",
+    "pre_write_materiality_work_authority",
     "behavior_classification",
     "appropriate_inquiry_outcome",
     "hidden_material_discovery_order",
@@ -117,6 +118,7 @@ REAL_SESSION_CHECKS = (
     "repository_bound_project_resolution",
     "recall_precedes_inspection_and_continuation",
     "resume_pre_work_repository_baseline",
+    "resume_materiality_work_authority",
     "recall_matches_checkpoint_decision_and_context",
     "resolved_material_question_not_reasked",
     "meaningful_recalled_continuation",
@@ -896,8 +898,10 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
+            "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
+            "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
             "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
             "perform real repository work after the baseline",
@@ -914,6 +918,7 @@ def load_definition() -> dict[str, Any]:
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
+            "after the fresh resume baseline, recompute Materiality Review/work authority before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
             "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
             "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
             "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
@@ -2405,6 +2410,7 @@ WORK_BLOCKER_CHECKS = (
     "project_session_entry",
     "goal_context_operation",
     "repository_baseline_operation",
+    "materiality_review_operation",
     "behavior_class_evidence",
     "source_grounded_checkpoint_operation",
 )
@@ -2513,7 +2519,7 @@ def build_work_blocker_result(
         if call.arguments.get("action") == call.result.get("action")
     }
     required_candidate_actions = {
-        "submit_question",
+        "submit_question_from_materiality",
         "attach_repository_research",
         "mark_research_ready",
         "promote_question",
@@ -2522,10 +2528,21 @@ def build_work_blocker_result(
         required_candidate_actions <= candidate_actions
         and bool(capture.successful_calls("inquiry_frontier"))
     )
+    materiality_review_operation = any(
+        call.arguments.get("action") == "record"
+        and call.result.get("action") == "record"
+        and nonempty_string(call.result.get("review_candidate_id"))
+        and isinstance(call.result.get("workflow"), dict)
+        and baseline_call is not None
+        and baseline_call.completion_sequence < call.sequence
+        and (first_work_change is None or call.completion_sequence < first_work_change)
+        for call in capture.successful_calls("materiality_review")
+    )
     observed = {
         "project_session_entry": bool(project_entries),
         "goal_context_operation": bool(goal_calls),
         "repository_baseline_operation": baseline_grounding_observed,
+        "materiality_review_operation": materiality_review_operation,
         "behavior_class_evidence": descriptor.get("behavior_class") in BEHAVIOR_CLASSES,
         "material_question_candidate_lifecycle": material_question_lifecycle,
         "explicit_current_host_user_decision_operation": bool(
@@ -2826,6 +2843,158 @@ def goal_facts(
     )
 
 
+def expected_materiality_disposition(behavior_class: Any) -> str | None:
+    if is_user_owned_behavior(behavior_class):
+        return "unresolved_user_owned_outcome"
+    return {
+        "research_or_no_question": "repository_or_environment_fact",
+        "delegated_implementation_choice": "settled_authority",
+        "exploratory_uncertainty": "exploratory_uncertainty",
+    }.get(behavior_class)
+
+
+def materiality_review_facts(
+    work: CodexCapture | None,
+    bundle: CanonicalBundle | None,
+    behavior_class: Any,
+    goal_context_id: str | None,
+    baseline_call: ToolCall | None,
+    first_write_sequence: int | None,
+    decision_id: str | None,
+    *,
+    resumed: bool = False,
+) -> tuple[bool, str | None, str | None, dict[str, Any]]:
+    expected = expected_materiality_disposition(behavior_class)
+    if (
+        work is None
+        or bundle is None
+        or expected is None
+        or not nonempty_string(goal_context_id)
+        or baseline_call is None
+        or first_write_sequence is None
+    ):
+        return False, None, None, {}
+    baseline_id = baseline_call.result.get("analysis_snapshot_id")
+    records = [
+        call
+        for call in work.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+        and call.arguments.get("project_id") == bundle.project_id
+        and call.arguments.get("goal_context_id") == goal_context_id
+        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
+    ]
+    if len(records) != 1:
+        return False, None, None, {"matching_record_count": len(records)}
+    record = records[0]
+    review_id = record.result.get("review_candidate_id")
+    dimensions = record.arguments.get("dimensions")
+    dimension = dimensions[0] if isinstance(dimensions, list) and len(dimensions) == 1 else None
+    dimension_id = dimension.get("dimension_id") if isinstance(dimension, dict) else None
+    basis = dimension.get("basis") if isinstance(dimension, dict) else None
+    source_ids = basis.get("source_ids") if isinstance(basis, dict) else None
+    repository_source_id = baseline_call.result.get("repository_source_id")
+    workflow = record.result.get("workflow")
+    common = (
+        baseline_call.completion_sequence < record.sequence
+        and record.completion_sequence < first_write_sequence
+        and nonempty_string(review_id)
+        and record.result.get("goal_context_id") == goal_context_id
+        and record.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and nonempty_string(record.result.get("review_analysis_snapshot_id"))
+        and isinstance(dimension, dict)
+        and nonempty_string(dimension_id)
+        and dimension.get("disposition") == expected
+        and isinstance(dimension.get("affected_scope"), list)
+        and bool(dimension["affected_scope"])
+        and isinstance(dimension.get("material_consequences"), list)
+        and bool(dimension["material_consequences"])
+        and isinstance(dimension.get("observable_signals"), list)
+        and bool(dimension["observable_signals"])
+        and isinstance(basis, dict)
+        and isinstance(basis.get("kinds"), list)
+        and bool(basis["kinds"])
+        and nonempty_string(basis.get("summary"))
+        and isinstance(source_ids, list)
+        and repository_source_id in source_ids
+        and isinstance(workflow, dict)
+        and workflow.get("satisfied_basis_identities") is not None
+        and workflow.get("unresolved_requirements") is not None
+    )
+    if resumed:
+        resolved = (
+            not is_user_owned_behavior(behavior_class)
+            or (
+                nonempty_string(decision_id)
+                and dimension.get("resolution_decision_id") == decision_id
+                and isinstance(basis, dict)
+                and decision_id in basis.get("decision_ids", [])
+            )
+        )
+        valid = (
+            common
+            and resolved
+            and workflow.get("stage") == "ready_for_work"
+            and workflow.get("disposition") == "ready_for_work"
+            and workflow.get("blocks_ordinary_work") is False
+        )
+    elif is_user_owned_behavior(behavior_class):
+        revisions = [
+            call
+            for call in work.successful_calls("materiality_review")
+            if call.arguments.get("action") == "revise"
+            and call.arguments.get("project_id") == bundle.project_id
+            and call.arguments.get("review_candidate_id") == review_id
+        ]
+        revision = revisions[0] if len(revisions) == 1 else None
+        revised_dimensions = revision.arguments.get("dimensions") if revision is not None else None
+        revised = (
+            revised_dimensions[0]
+            if isinstance(revised_dimensions, list) and len(revised_dimensions) == 1
+            else None
+        )
+        revised_basis = revised.get("basis") if isinstance(revised, dict) else None
+        revised_workflow = revision.result.get("workflow") if revision is not None else None
+        decision_call = unique_call(work, "decision_record")
+        valid = (
+            common
+            and workflow.get("stage") == "question_candidate"
+            and workflow.get("blocks_ordinary_work") is True
+            and workflow.get("required_next_action")
+            == {"tool": "candidate_manage", "action": "submit_question_from_materiality"}
+            and decision_call is not None
+            and revision is not None
+            and decision_call.completion_sequence < revision.sequence
+            and revision.completion_sequence < first_write_sequence
+            and isinstance(revised, dict)
+            and revised.get("dimension_id") == dimension_id
+            and revised.get("disposition") == expected
+            and revised.get("resolution_decision_id") == decision_id
+            and isinstance(revised_basis, dict)
+            and decision_id in revised_basis.get("decision_ids", [])
+            and isinstance(revised_workflow, dict)
+            and revised_workflow.get("stage") == "ready_for_work"
+            and revised_workflow.get("blocks_ordinary_work") is False
+        )
+    else:
+        valid = (
+            common
+            and workflow.get("stage") == "ready_for_work"
+            and workflow.get("disposition") == "ready_for_work"
+            and workflow.get("blocks_ordinary_work") is False
+            and not work.calls("candidate_manage")
+            and not work.calls("inquiry_frontier")
+            and not work.calls("decision_record")
+        )
+    return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(dimension_id) if nonempty_string(dimension_id) else None, {
+        "record_sequence": record.sequence,
+        "review_candidate_id": review_id,
+        "dimension_id": dimension_id,
+        "disposition": expected,
+        "pre_write": record.completion_sequence < first_write_sequence,
+        "resumed": resumed,
+    }
+
+
 def question_review_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
@@ -2833,6 +3002,8 @@ def question_review_facts(
     question_revision: int | None,
     evaluation_basis: Any,
     baseline_call: ToolCall | None,
+    review_candidate_id: str | None,
+    dimension_id: str | None,
 ) -> tuple[bool, dict[str, Any]]:
     if (
         work is None
@@ -2880,7 +3051,7 @@ def question_review_facts(
             and call.result.get("action") == action
         ]
         for action in (
-            "submit_question",
+            "submit_question_from_materiality",
             "attach_repository_research",
             "mark_research_ready",
             "promote_question",
@@ -2923,10 +3094,11 @@ def question_review_facts(
             for call in (research_call, ready_call, promote_call)
             if call is not None
         )
+        and submit_call.arguments.get("review_candidate_id") == review_candidate_id
+        and submit_call.result.get("review_candidate_id") == review_candidate_id
+        and submit_call.arguments.get("dimension_id") == dimension_id
+        and submit_call.result.get("dimension_id") == dimension_id
         and submit_call.arguments.get("research_state") == "research_required"
-        and submit_call.arguments.get("source_operation") == "repository_analyze"
-        and submit_call.arguments.get("repository_snapshot")
-        == baseline_call.result.get("repository_snapshot_id")
         and submit_call.result.get("state") == "stored"
         and submit_call.result.get("canonical_mutation") is False
         and research_call.arguments.get("evidence_assessment") == "sufficient"
@@ -2984,6 +3156,7 @@ def question_review_facts(
         and nonempty_string(revision.get("why_it_matters_now"))
         and established_facts is not None
         and alternatives is not None
+        and f"work-authority:{dimension_id}" in (material_scope or [])
         and len(alternatives) >= 2
         and alternatives_have_real_consequences
         and nonempty_string(revision.get("recommendation_rationale"))
@@ -3338,6 +3511,24 @@ def real_session_evidence(
     baseline_analysis_id = (
         baseline_call.result.get("analysis_snapshot_id") if baseline_call is not None else None
     )
+    first_work_change = min(
+        (item.sequence for item in meaningful_work_path_observations(work_capture)),
+        default=None,
+    ) if work_capture else None
+    (
+        materiality_ok,
+        review_candidate_id,
+        materiality_dimension_id,
+        materiality_basis,
+    ) = materiality_review_facts(
+        work_capture,
+        bundle,
+        behavior_class,
+        goal_context_id,
+        baseline_call,
+        first_work_change,
+        decision_id,
+    )
     (
         checkpoint_ok,
         checkpoint_goal_ok,
@@ -3361,6 +3552,8 @@ def real_session_evidence(
         question_revision,
         evaluation_basis,
         baseline_call,
+        review_candidate_id,
+        materiality_dimension_id,
     )
     frontier_interrupted = bool(
         work_capture
@@ -3372,7 +3565,12 @@ def real_session_evidence(
     decision_attempted = bool(
         work_capture and work_capture.calls("decision_record")
     )
-    non_question_outcome_ok = not frontier_interrupted and not decision_attempted
+    non_question_outcome_ok = (
+        not frontier_interrupted
+        and not decision_attempted
+        and bool(work_capture)
+        and not work_capture.calls("candidate_manage")
+    )
     behavior_classification_ok = (
         behavior_class in BEHAVIOR_CLASSES
         and isinstance(evaluation_basis, dict)
@@ -3392,10 +3590,6 @@ def real_session_evidence(
         if isinstance(behavior_review, dict)
         else False
     )
-    first_work_change = min(
-        (item.sequence for item in meaningful_work_path_observations(work_capture)),
-        default=None,
-    ) if work_capture else None
     decision_call_for_order = unique_call(work_capture, "decision_record")
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
@@ -3609,6 +3803,21 @@ def real_session_evidence(
             for call in resume_checkpoint_calls
         )
     )
+    (
+        resume_materiality_ok,
+        _resume_review_candidate_id,
+        _resume_materiality_dimension_id,
+        resume_materiality_basis,
+    ) = materiality_review_facts(
+        resume_capture,
+        bundle,
+        behavior_class,
+        goal_context_id,
+        resume_baseline_call,
+        first_resume_write,
+        decision_id,
+        resumed=True,
+    )
     turns_before_recall = (
         [turn for turn in resume_capture.user_turns if turn.sequence < recall_call.sequence]
         if resume_capture is not None and recall_call is not None
@@ -3775,6 +3984,9 @@ def real_session_evidence(
         "grounded_pre_work_repository_baseline": evidence_check(
             references_present, baseline_ok
         ),
+        "pre_write_materiality_work_authority": evidence_check(
+            references_present, materiality_ok
+        ),
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
         "hidden_material_discovery_order": evidence_check(
@@ -3792,6 +4004,9 @@ def real_session_evidence(
         "repository_bound_project_resolution": evidence_check(references_present, resolution_ok),
         "recall_precedes_inspection_and_continuation": evidence_check(references_present, ordering_ok),
         "resume_pre_work_repository_baseline": evidence_check(references_present, resume_baseline_ok),
+        "resume_materiality_work_authority": evidence_check(
+            references_present, resume_materiality_ok
+        ),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
         "resolved_material_question_not_reasked": evidence_check(
             references_present, resolved_material_question_not_reasked
@@ -3816,6 +4031,7 @@ def real_session_evidence(
             "recall_before_inspection_and_continuation": ordering_ok,
             "pre_work_repository_baseline": resume_baseline_ok,
             "pre_work_analysis_snapshot_id": resume_baseline_analysis_id,
+            "materiality_work_authority": resume_materiality_basis,
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
             "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
@@ -3878,6 +4094,7 @@ def real_session_evidence(
             "decision_attempted": decision_attempted,
             "non_question_outcome_qualified": non_question_outcome_ok,
             "ask_user_question_basis": question_review_basis,
+            "materiality_review_basis": materiality_basis,
             "behavior_review_sha256": hashlib.sha256(
                 json.dumps(behavior_review, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest()
@@ -5545,6 +5762,11 @@ def real_session_fixture(
     resume_current_analysis = "15" * 32
     resume_current_repository = "16" * 32
     resume_checkpoint = "17" * 16
+    review_candidate = "18" * 16
+    resume_review_candidate = "19" * 16
+    review_analysis = "1a" * 32
+    resume_review_analysis = "1b" * 32
+    materiality_dimension_id = "operator-error-boundary"
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
@@ -5596,10 +5818,9 @@ def real_session_fixture(
                     {
                         "type": "input_text",
                         "text": (
-                            "Volicord is active because this repository was explicitly authorized. "
-                            "For every fresh project-scoped session, STOP before repository inspection, "
-                            "edits, or continuation: resolve the current repository first. If found, "
-                            "successfully Recall before inspecting, editing, or continuing work."
+                            "Volicord is active for this explicitly authorized repository. "
+                            "Start project-scoped repository work with project_resolve, then follow "
+                            "every returned workflow.required_next_action until blocks_ordinary_work is false."
                         ),
                     }
                 ],
@@ -5761,16 +5982,79 @@ def real_session_fixture(
     goal_call = f"{kind}-goal-call-{cycle}"
     status_call = f"{kind}-status-call-{cycle}"
     baseline_call = f"{kind}-baseline-call-{cycle}"
+    materiality_call = f"{kind}-materiality-call-{cycle}"
     candidate_submit_call = f"{kind}-candidate-submit-call-{cycle}"
     candidate_research_call = f"{kind}-candidate-research-call-{cycle}"
     candidate_ready_call = f"{kind}-candidate-ready-call-{cycle}"
     candidate_promote_call = f"{kind}-candidate-promote-call-{cycle}"
     inquiry_call = f"{kind}-inquiry-call-{cycle}"
     decision_call = f"{kind}-decision-call-{cycle}"
+    materiality_revision_call = f"{kind}-materiality-revision-call-{cycle}"
     patch_call = f"{kind}-patch-call-{cycle}"
     current_analysis_call = f"{kind}-current-analysis-call-{cycle}"
     verification_call = f"{kind}-verification-call-{cycle}"
     checkpoint_call = f"{kind}-checkpoint-call-{cycle}"
+    materiality_disposition = expected_materiality_disposition(behavior_class)
+    materiality_basis_kind = {
+        "explicit_user_owned_decision": "agent_recommendation",
+        "hidden_user_owned_decision": "agent_recommendation",
+        "research_or_no_question": "repository_or_environment_fact",
+        "delegated_implementation_choice": "accepted_contract",
+        "exploratory_uncertainty": "research_evidence",
+    }[behavior_class]
+
+    def materiality_dimension(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> dict[str, Any]:
+        dimension = {
+            "dimension_id": materiality_dimension_id,
+            "summary": "Classify the operator-facing error-detail outcome",
+            "affected_scope": [question_content["user_owned_dimension"]],
+            "material_consequences": [question_content["material_consequence"]],
+            "observable_signals": ["observable_failure_policy"],
+            "disposition": materiality_disposition,
+            "basis": {
+                "kinds": ["applicable_decision" if resolved else materiality_basis_kind],
+                "summary": "Bounded repository and owner-authority evidence",
+                "source_ids": [source_id],
+                "contract_basis": (
+                    evaluation_basis.get("accepted_contract_constraints", [])
+                    if behavior_class == "research_or_no_question"
+                    else evaluation_basis.get("delegated_boundaries", [])
+                    if behavior_class == "delegated_implementation_choice"
+                    else []
+                ),
+                "decision_ids": [decision] if resolved else [],
+                "research_basis": (
+                    evaluation_basis.get("repository_facts", [])
+                    if behavior_class == "exploratory_uncertainty"
+                    else evaluation_basis.get("delegated_boundaries", [])
+                    if behavior_class == "delegated_implementation_choice"
+                    else []
+                ),
+            },
+        }
+        if behavior_class == "exploratory_uncertainty":
+            dimension["exploratory_disposition"] = "resolved_by_research"
+        if resolved:
+            dimension["resolution_decision_id"] = decision
+        return dimension
+
+    def ready_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
+        return {
+            "stage": "ready_for_work",
+            "disposition": "ready_for_work",
+            "required_next_action": {"tool": "checkpoint_record", "action": None},
+            "blocks_ordinary_work": False,
+            "reason": "all material outcome dimensions have resolved work authority",
+            "satisfied_basis_identities": [
+                {"kind": "project", "identity": project},
+                {"kind": "goal_context", "identity": context},
+                {"kind": "baseline_analysis_snapshot", "identity": baseline_id},
+                {"kind": "materiality_review_candidate", "identity": review_id},
+            ],
+            "unresolved_requirements": [],
+        }
     patch_text = (
         "*** Begin Patch\n"
         + "".join(
@@ -5824,6 +6108,61 @@ def real_session_fixture(
                 "project_id": project,
                 "analysis_snapshot_id": baseline_analysis,
                 "repository_snapshot_id": baseline_repository,
+                "repository_source_id": repository_source,
+            },
+        ),
+        mcp_call(
+            work_turn,
+            materiality_call,
+            "materiality_review",
+            {
+                "action": "record",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "source_operation": "naturalistic pre-work Materiality Review",
+                "rationale": "Classify independently material outcomes before affected work.",
+                "dimensions": [materiality_dimension()],
+            },
+        ),
+        custom_output(
+            work_turn,
+            materiality_call,
+            {
+                "action": "record",
+                "review_candidate_id": review_candidate,
+                "review_revision": 1,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "review_analysis_snapshot_id": review_analysis,
+                "canonical_mutation": False,
+                "workflow": (
+                    {
+                        "stage": "question_candidate",
+                        "disposition": "question_required",
+                        "required_next_action": {
+                            "tool": "candidate_manage",
+                            "action": "submit_question_from_materiality",
+                        },
+                        "blocks_ordinary_work": True,
+                        "reason": "explicit user authority is required",
+                        "satisfied_basis_identities": [
+                            {"kind": "project", "identity": project},
+                            {"kind": "goal_context", "identity": context},
+                            {"kind": "baseline_analysis_snapshot", "identity": baseline_analysis},
+                            {"kind": "materiality_review_candidate", "identity": review_candidate},
+                        ],
+                        "unresolved_requirements": [
+                            {
+                                "dimension_id": materiality_dimension_id,
+                                "reason": "explicit user authority is required",
+                                "basis_identities": [],
+                            }
+                        ],
+                    }
+                    if is_user_owned_behavior(behavior_class)
+                    else ready_workflow(review_candidate, baseline_analysis)
+                ),
             },
         ),
         mcp_call(
@@ -5831,18 +6170,16 @@ def real_session_fixture(
             candidate_submit_call,
             "candidate_manage",
             {
-                "action": "submit_question",
+                "action": "submit_question_from_materiality",
                 "project_id": project,
-                "source_ids": [repository_source],
-                "source_operation": "repository_analyze",
-                "repository_snapshot": baseline_repository,
+                "review_candidate_id": review_candidate,
+                "dimension_id": materiality_dimension_id,
                 "research_state": "research_required",
                 "research_state_basis": question_content["why_repository_inspection_cannot_decide"],
                 "retention_basis": "current work session",
                 "bounded_summary": "Choose the operator-facing error detail boundary",
                 "prompt": question_prompt,
                 "why_now": question_content["material_consequence"],
-                "affected_scope": [question_content["user_owned_dimension"]],
                 "established_facts": question_content["established_repository_facts"],
                 "assumptions": [],
                 "uncertainty": [question_content["why_repository_inspection_cannot_decide"]],
@@ -5855,7 +6192,6 @@ def real_session_fixture(
                 "trade_offs": [question_content["material_consequence"]],
                 "known_limits": [],
                 "what_unlocks": ["ordinary implementation work"],
-                "materiality_rationale": question_content["material_consequence"],
                 "duplicate_basis": "canonical inspection found no matching Question",
                 "presentation_order": 1,
             },
@@ -5864,8 +6200,10 @@ def real_session_fixture(
             work_turn,
             candidate_submit_call,
             {
-                "action": "submit_question",
+                "action": "submit_question_from_materiality",
                 "state": "stored",
+                "review_candidate_id": review_candidate,
+                "dimension_id": materiality_dimension_id,
                 "candidate_id": candidate,
                 "candidate_revision": 1,
                 "research_state": "research_required",
@@ -5982,6 +6320,32 @@ def real_session_fixture(
                 "outcomes": [{"question_id": question, "revision": 1, "outcome": "recorded"}],
             },
         ),
+        mcp_call(
+            decision_turn,
+            materiality_revision_call,
+            "materiality_review",
+            {
+                "action": "revise",
+                "project_id": project,
+                "review_candidate_id": review_candidate,
+                "rationale": "The explicit current-host Decision resolves the user-owned outcome.",
+                "dimensions": [materiality_dimension(resolved=True)],
+            },
+        ),
+        custom_output(
+            decision_turn,
+            materiality_revision_call,
+            {
+                "action": "revise",
+                "review_candidate_id": review_candidate,
+                "review_revision": 2,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "review_analysis_snapshot_id": current_analysis,
+                "canonical_mutation": False,
+                "workflow": ready_workflow(review_candidate, baseline_analysis),
+            },
+        ),
         custom_call(
             decision_turn,
             patch_call,
@@ -6081,6 +6445,7 @@ def real_session_fixture(
     recall_call = f"{kind}-recall-call-{cycle}"
     inspect_call = f"{kind}-inspect-call-{cycle}"
     resume_baseline_call = f"{kind}-resume-baseline-call-{cycle}"
+    resume_materiality_call = f"{kind}-resume-materiality-call-{cycle}"
     resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
     resume_current_analysis_call = f"{kind}-resume-current-analysis-call-{cycle}"
     resume_verification_call = f"{kind}-resume-verification-call-{cycle}"
@@ -6200,6 +6565,42 @@ def real_session_fixture(
                 "repository_source_id": resume_repository_source,
             },
         ),
+        mcp_call(
+            resume_turn,
+            resume_materiality_call,
+            "materiality_review",
+            {
+                "action": "record",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "source_operation": "fresh-session Materiality Review recomputation",
+                "rationale": "Recompute current work authority after Recall and a fresh baseline.",
+                "dimensions": [
+                    materiality_dimension(
+                        resolved=is_user_owned_behavior(behavior_class),
+                        source_id=resume_repository_source,
+                    )
+                ],
+            },
+            fallback="??",
+        ),
+        custom_output(
+            resume_turn,
+            resume_materiality_call,
+            {
+                "action": "record",
+                "review_candidate_id": resume_review_candidate,
+                "review_revision": 1,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "review_analysis_snapshot_id": resume_review_analysis,
+                "canonical_mutation": False,
+                "workflow": ready_workflow(
+                    resume_review_candidate, resume_baseline_analysis
+                ),
+            },
+        ),
         custom_call(
             resume_turn,
             resume_patch_call,
@@ -6303,6 +6704,7 @@ def real_session_fixture(
             candidate_promote_call,
             inquiry_call,
             decision_call,
+            materiality_revision_call,
         }
         work_events = [
             value
@@ -6382,7 +6784,7 @@ def real_session_fixture(
     tables = [
         table("sources", source_columns, sources),
         table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]]),
-        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"]])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
+        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"], f"work-authority:{materiality_dimension_id}"])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
         table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
         table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
         table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
@@ -8360,6 +8762,87 @@ def self_test() -> int:
         ]
         store_capture(fixture, capture, path, events)
 
+    def remove_successful_mcp_operations(
+        fixture: dict[str, Any],
+        capture: str,
+        operation: str,
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        events = [
+            value
+            for value in events
+            if not (
+                value.get("payload", {}).get("type") == "mcp_tool_call_end"
+                and value.get("payload", {}).get("invocation", {}).get("tool")
+                == operation
+            )
+        ]
+        store_capture(fixture, capture, path, events)
+
+    def move_review_completion_after_first_write(fixture: dict[str, Any]) -> None:
+        path, events = capture_events(fixture, "work")
+        matching = [
+            (index, value)
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "mcp_tool_call_end"
+            and value.get("payload", {}).get("invocation", {}).get("tool")
+            == "materiality_review"
+            and value.get("payload", {}).get("invocation", {}).get("arguments", {}).get(
+                "action"
+            )
+            == "record"
+        ]
+        if len(matching) != 1:
+            raise AssertionError("fixture pre-work Materiality Review was not unique")
+        review_index, review = matching[0]
+        del events[review_index]
+        write_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "patch_apply_end"
+        )
+        events.insert(write_index + 1, review)
+        store_capture(fixture, "work", path, events)
+
+    def insert_successful_mcp_completion_before_first_write(
+        fixture: dict[str, Any],
+        operation: str,
+        arguments: dict[str, Any],
+        structured: dict[str, Any],
+    ) -> None:
+        path, events = capture_events(fixture, "work")
+        write_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "patch_apply_end"
+        )
+        events.insert(
+            write_index,
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "mcp_tool_call_end",
+                    "call_id": f"exec-adversarial-{operation}",
+                    "invocation": {
+                        "server": "volicord",
+                        "tool": operation,
+                        "arguments": arguments,
+                    },
+                    "duration": {"secs": 0, "nanos": 1},
+                    "result": {
+                        "Ok": {
+                            "content": [
+                                {"type": "text", "text": json.dumps(structured)}
+                            ],
+                            "structuredContent": structured,
+                            "isError": False,
+                        }
+                    },
+                },
+            },
+        )
+        store_capture(fixture, "work", path, events)
+
     def replace_initial_task_text(
         fixture: dict[str, Any], replacement: Callable[[str], str]
     ) -> None:
@@ -8481,6 +8964,149 @@ def self_test() -> int:
         user_events[0]["payload"]["message"] = task_text
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
+
+    late_review = real_session_fixture("volicord", 1, revision, evidence_directory)
+    move_review_completion_after_first_write(late_review)
+    if real_session_evidence(
+        late_review, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("Materiality Review after the affected write qualified")
+
+    missing_review = real_session_fixture("volicord", 1, revision, evidence_directory)
+    remove_mcp_completion(missing_review, "work", "materiality-call")
+    missing_review_result = real_session_evidence(
+        missing_review, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if (
+        missing_review_result["checks"]["pre_write_materiality_work_authority"]
+        != "failed"
+        or missing_review_result["checks"]["source_grounded_checkpoint"]
+        != "passed"
+    ):
+        raise AssertionError("a Checkpoint hid a missing pre-work Materiality Review")
+
+    no_candidate = real_session_fixture("volicord", 1, revision, evidence_directory)
+    remove_successful_mcp_operations(no_candidate, "work", "candidate_manage")
+    if real_session_evidence(
+        no_candidate, kind="volicord", cycle=1, repository_revision=revision
+    )["checks"]["appropriate_inquiry_outcome"] != "failed":
+        raise AssertionError("a user-owned review without a Candidate qualified")
+
+    candidate_without_decision = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(candidate_without_decision, "work", "decision-call")
+    candidate_without_decision_result = real_session_evidence(
+        candidate_without_decision,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        candidate_without_decision_result["checks"]["appropriate_inquiry_outcome"]
+        != "failed"
+        or candidate_without_decision_result["checks"][
+            "decision_provenance_when_required"
+        ]
+        != "failed"
+    ):
+        raise AssertionError("a Candidate without an explicit Decision qualified")
+
+    trivial_choice_question = real_session_fixture(
+        "small-python",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
+    )
+    insert_successful_mcp_completion_before_first_write(
+        trivial_choice_question,
+        "candidate_manage",
+        {
+            "action": "submit_question_from_materiality",
+            "project_id": "01" * 16,
+            "review_candidate_id": "0d" * 16,
+            "dimension_id": "0f" * 16,
+        },
+        {
+            "action": "submit_question_from_materiality",
+            "state": "stored",
+            "candidate_id": "03" * 16,
+        },
+    )
+    trivial_choice_result = real_session_evidence(
+        trivial_choice_question,
+        kind="small-python",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        trivial_choice_result["checks"]["appropriate_inquiry_outcome"] != "failed"
+        or trivial_choice_result["checks"]["pre_write_materiality_work_authority"]
+        != "failed"
+    ):
+        raise AssertionError("a trivial implementation choice routed to the user qualified")
+
+    accepted_contract_reasked = real_session_fixture(
+        "polyglot-medium",
+        1,
+        revision,
+        evidence_directory,
+        behavior_class="delegated_implementation_choice",
+    )
+    insert_successful_mcp_completion_before_first_write(
+        accepted_contract_reasked,
+        "inquiry_frontier",
+        {"project_id": "01" * 16},
+        {
+            "project_id": "01" * 16,
+            "questions": [
+                {
+                    "identity": "04" * 16,
+                    "revision": 1,
+                    "prompt": "Reconsider the already accepted implementation contract?",
+                }
+            ],
+            "diagnostics": [],
+        },
+    )
+    accepted_contract_result = real_session_evidence(
+        accepted_contract_reasked,
+        kind="polyglot-medium",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        accepted_contract_result["checks"]["appropriate_inquiry_outcome"] != "failed"
+        or accepted_contract_result["checks"]["pre_write_materiality_work_authority"]
+        != "failed"
+    ):
+        raise AssertionError("an accepted contract unnecessarily re-questioned qualified")
+
+    for label, mutation in (
+        (
+            "other Goal",
+            lambda arguments: arguments.update({"goal_context_id": "f1" * 16}),
+        ),
+        (
+            "stale baseline",
+            lambda arguments: arguments.update(
+                {"baseline_analysis_snapshot_id": "f2" * 16}
+            ),
+        ),
+        (
+            "other snapshot source",
+            lambda arguments: arguments["dimensions"][0]["basis"].update(
+                {"source_ids": ["f3" * 16]}
+            ),
+        ),
+    ):
+        stale_basis = real_session_fixture("volicord", 1, revision, evidence_directory)
+        mutate_mcp_call(stale_basis, "work", "materiality_review", mutation)
+        if real_session_evidence(
+            stale_basis, kind="volicord", cycle=1, repository_revision=revision
+        )["checks"]["pre_write_materiality_work_authority"] != "failed":
+            raise AssertionError(f"Materiality Review with {label} basis qualified")
 
     two_checkpoint_fixture = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -9883,6 +10509,13 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "private_qualification_profile_contract": "passed",
         "real_session_positive_path": "passed",
+        "late_materiality_review_rejected": "passed",
+        "checkpoint_cannot_hide_missing_materiality_review": "passed",
+        "user_owned_review_without_candidate_rejected": "passed",
+        "candidate_without_explicit_decision_rejected": "passed",
+        "trivial_implementation_choice_question_rejected": "passed",
+        "accepted_contract_requestion_rejected": "passed",
+        "stale_other_goal_and_snapshot_review_basis_rejected": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
         "actual_style_recall_completion_before_inspection": "passed",
@@ -9953,6 +10586,7 @@ def self_test() -> int:
         "resume_change_and_validation_separated": "passed",
         "checkpoint_owned_continuation_relevance": "passed",
         "user_decision_provenance_rejected": "passed",
+        "agent_recommendation_cannot_replace_user_response": "passed",
         "missing_user_decision_rejected": "passed",
         "valid_hash_insufficient_semantics_rejected": "passed",
         "candidate_question_lifecycle_provenance_required": "passed",

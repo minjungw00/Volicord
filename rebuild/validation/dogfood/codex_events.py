@@ -22,9 +22,9 @@ MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
 ACTIVATION_CONTEXT_MARKERS = (
-    "Volicord is active because this repository was explicitly authorized.",
-    "STOP before repository inspection, edits, or continuation",
-    "successfully Recall before inspecting, editing, or continuing work",
+    "Volicord is active for this explicitly authorized repository.",
+    "Start project-scoped repository work with project_resolve",
+    "workflow.required_next_action",
 )
 VOLICORD_OPERATIONS = {
     "background_semantic_operation",
@@ -40,6 +40,7 @@ VOLICORD_OPERATIONS = {
     "document_preview",
     "guarded_interaction",
     "inquiry_frontier",
+    "materiality_review",
     "checkpoint_record",
     "privacy_status",
     "recall",
