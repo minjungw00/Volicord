@@ -790,7 +790,12 @@ fn validate_current_goal_delegation(
         || !goal.source_basis.contains(&evidence.user_turn_source_id)
         || !goal.statement.contains(&evidence.verbatim_statement)
         || !scope_values_contain(&evidence.affected_scope, &dimension.affected_scope)
-        || !scope_contains_dimension(&goal.applicability, applicability, &evidence.affected_scope)
+        || (applicability_declares_scope(&goal.applicability, applicability)
+            && !scope_contains_dimension(
+                &goal.applicability,
+                applicability,
+                &evidence.affected_scope,
+            ))
     {
         return Err(DimensionIssue::Invalid(
             "explicit delegation evidence must bind the exact current Goal, verbatim statement, user-turn Source, and bounded dimension/work scope"
@@ -821,6 +826,18 @@ fn validate_current_goal_delegation(
         ));
     }
     Ok(())
+}
+
+fn applicability_declares_scope(
+    goal_scope: &ApplicabilityScope,
+    work_scope: &ApplicabilityQuery,
+) -> bool {
+    !goal_scope.paths.is_empty()
+        || !goal_scope.components.is_empty()
+        || !goal_scope.work_contexts.is_empty()
+        || !work_scope.paths.is_empty()
+        || !work_scope.components.is_empty()
+        || !work_scope.work_contexts.is_empty()
 }
 
 fn scope_contains_dimension(

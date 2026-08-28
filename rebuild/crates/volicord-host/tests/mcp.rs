@@ -656,7 +656,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
                 "delegated_scope":["src/lib.rs"],
                 "learning_value":{"state":"routine","rationale":"The delegated implementation detail is routine."}
             }),
-            "materiality_review",
+            "ready_for_work",
         ),
         (
             "research-required",

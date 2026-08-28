@@ -22,7 +22,7 @@ use volicord_operations::{
     LearningResponseDraft, LearningValueAssessment, LocalOperations, MaterialOutcomeSignal,
     MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
     MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
-    WorkAuthorityDisposition, WorkAuthorityStage,
+    WorkAuthorityDisposition, WorkAuthorityStage, WorkflowStage,
 };
 
 fn dimension(
@@ -892,6 +892,13 @@ fn current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision(
         vec!["src/lib.rs".to_owned()],
     ));
     let recorded = review(&fixture, vec![delegated])?;
+    assert_eq!(
+        fixture
+            .operations
+            .workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id)?
+            .stage,
+        WorkflowStage::ReadyForWork
+    );
     let ready = readiness(&fixture, &recorded)?;
     assert_eq!(ready.stage, WorkAuthorityStage::ReadyForWork);
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
