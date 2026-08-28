@@ -268,7 +268,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         "context_record",
         json!({
             "project_id":project,
-            "user_turn":"Decide the user-visible failure mode, then implement it",
+            "user_turn":"Teach me through the choices. Decide the user-visible failure mode, then implement it",
             "role":"goal",
             "statement":"Decide the user-visible failure mode, then implement it",
         }),
@@ -280,6 +280,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         "repository_analyze"
     );
     let goal_context_id = goal["context_item_id"].as_str().expect("Goal identity");
+    let goal_source_id = goal["source_id"].as_str().expect("Goal Source identity");
 
     let analyzed = call(
         &mut adapter,
@@ -325,6 +326,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "engineering_choice_discovery_candidate_id":discovery_id,
             "source_operation":"MCP pre-work outcome review",
             "rationale":"The failure mode is independently user-visible and user-owned.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through the choices"},
             "dimensions":[{
                 "dimension_id":"failure-mode",
                 "discovered_choice_ids":["failure-mode"],
@@ -333,6 +335,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
                 "material_consequences":["Changes observable failure behavior"],
                 "observable_signals":["observable_failure_policy"],
                 "disposition":"unresolved_user_owned_outcome",
+                "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]},
                 "basis":{
                     "kinds":["agent_recommendation"],
                     "summary":"No accepted authority selects the outcome",
@@ -451,6 +454,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "project_id":project,
             "review_candidate_id":review_id,
             "rationale":"The explicit current-host response now resolves the outcome.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through the choices"},
             "dimensions":[{
                 "dimension_id":"failure-mode",
                 "discovered_choice_ids":["failure-mode"],
@@ -460,6 +464,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
                 "observable_signals":["observable_failure_policy"],
                 "disposition":"unresolved_user_owned_outcome",
                 "resolution_decision_id":decision_id,
+                "learning_value":{"state":"routine","rationale":"The canonical Decision resolves authority without a learning interruption."},
                 "basis":{
                     "kinds":["applicable_decision"],
                     "summary":"The current explicit Decision resolves this dimension",
@@ -481,6 +486,363 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         .expect("basis identities")
         .iter()
         .any(|basis| basis["kind"] == "decision" && basis["identity"] == decision_id));
+}
+
+#[test]
+fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision() {
+    let (temporary, mut adapter, project) = setup();
+    let user_turn =
+        "Teach me through meaningful technical choices while we implement the cache boundary";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":user_turn,
+            "role":"goal",
+            "statement":user_turn,
+        }),
+    ))
+    .clone();
+    let goal_context_id = goal["context_item_id"].as_str().expect("Goal identity");
+    let goal_source_id = goal["source_id"].as_str().expect("Goal Source identity");
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let baseline = analyzed["analysis_snapshot_id"]
+        .as_str()
+        .expect("baseline identity");
+    let repository_source = analyzed["repository_source_id"]
+        .as_str()
+        .expect("repository Source identity");
+    assert_eq!(
+        analyzed["workflow"]["input_guidance"]["available_identities"]["goal_context_id"],
+        goal_context_id
+    );
+
+    let discovery = structured(&call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline,
+            "source_operation":"installed MCP learning discovery",
+            "summary":"Choose the cache invalidation boundary",
+            "choices":[{
+                "choice_id":"cache-invalidation-boundary",
+                "summary":"Place invalidation at mutation sites or behind a versioned cache facade",
+                "affected_scope":["cache","mutation paths"],
+                "alternatives":[
+                    {"alternative_id":"mutation-sites","summary":"Invalidate at each mutation site","technical_consequences":["Simple reads but distributed invalidation obligations"]},
+                    {"alternative_id":"versioned-facade","summary":"Use a versioned cache facade","technical_consequences":["Centralized correctness with indirection and version bookkeeping"]}
+                ],
+                "technical_consequences":["The boundary changes consistency reasoning and future extension cost"],
+                "source_ids":[repository_source],
+                "effect_categories":["maintenance_or_support","implementation_internal"],
+                "relationship":{"state":"independent"},
+                "evidence_state":"sufficient"
+            }]
+        }),
+    ))
+    .clone();
+    let discovery_id = discovery["discovery_candidate_id"]
+        .as_str()
+        .expect("discovery identity");
+    assert_eq!(discovery["workflow"]["stage"], "materiality_review");
+    assert_eq!(
+        discovery["workflow"]["input_guidance"]["draft_call"]["action"],
+        "draft"
+    );
+
+    let draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+        }),
+    ))
+    .clone();
+    assert_eq!(draft["goal_context_id"], goal_context_id);
+    assert_eq!(
+        draft["dimension_templates"][0]["prefilled"]["discovered_choice_ids"],
+        json!(["cache-invalidation-boundary"])
+    );
+
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "source_operation":"installed MCP learning review",
+            "rationale":"The cache boundary is agent-owned but worth reasoning through.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through meaningful technical choices"},
+            "dimensions":[{
+                "dimension_id":"cache-invalidation-boundary",
+                "discovered_choice_ids":["cache-invalidation-boundary"],
+                "summary":"Choose the cache invalidation boundary",
+                "affected_scope":["cache","mutation paths"],
+                "material_consequences":["Changes consistency reasoning and maintenance cost"],
+                "observable_signals":["maintenance_or_support_policy"],
+                "disposition":"agent_owned_implementation_choice",
+                "basis":{"kinds":["implementation_preference"],"summary":"No user-owned outcome changes; implementation authority remains with the agent.","source_ids":[repository_source]},
+                "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"]}
+            }]
+        }),
+    ))
+    .clone();
+    let review_id = review["review_candidate_id"]
+        .as_str()
+        .expect("review identity");
+    assert_eq!(review["workflow"]["stage"], "learning_deliberation");
+    assert_eq!(
+        review["workflow"]["input_guidance"]["interaction_kind"],
+        "learning_participation_not_canonical_decision"
+    );
+
+    let begun = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"begin",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "dimension_id":"cache-invalidation-boundary",
+            "source_operation":"installed MCP pre-work deliberation",
+            "problem":"Which invalidation boundary makes the consistency invariant easiest to preserve?",
+            "established_facts":["Mutation sites can grow independently of cache readers"]
+        }),
+    ))
+    .clone();
+    let deliberation_id = begun["deliberation_candidate_id"]
+        .as_str()
+        .expect("Learning Deliberation identity");
+    assert_eq!(begun["state"]["state"], "awaiting_initial_response");
+    assert_eq!(begun["canonical_decision"], false);
+    assert_eq!(begun["rounds"], json!([]));
+    assert!(begun.get("agent_recommendation").is_none());
+
+    let premature_feedback = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"feedback",
+            "project_id":project,
+            "deliberation_candidate_id":deliberation_id,
+            "feedback":"Premature feedback must fail",
+            "recommendation_selections":[{"choice_id":"cache-invalidation-boundary","alternative_id":"versioned-facade"}],
+            "recommendation_rationale":"This must not be recorded before user reasoning."
+        }),
+    ))
+    .clone();
+    assert!(premature_feedback["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("feedback")));
+
+    let responded = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"respond_select",
+            "project_id":project,
+            "deliberation_candidate_id":deliberation_id,
+            "user_turn":"I choose the versioned facade because one explicit invariant is easier to audit.",
+            "user_rationale":"One explicit invariant is easier to audit.",
+            "selections":[{"choice_id":"cache-invalidation-boundary","alternative_id":"versioned-facade"}]
+        }),
+    ))
+    .clone();
+    assert_eq!(responded["state"]["state"], "awaiting_agent_feedback");
+    assert_eq!(
+        responded["rounds"][0]["user_rationale"],
+        "One explicit invariant is easier to audit."
+    );
+
+    let feedback = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"feedback",
+            "project_id":project,
+            "deliberation_candidate_id":deliberation_id,
+            "feedback":"That choice centralizes the invariant; the cost is version bookkeeping and a required facade for every cache access.",
+            "recommendation_selections":[{"choice_id":"cache-invalidation-boundary","alternative_id":"versioned-facade"}],
+            "recommendation_rationale":"The repository has multiple mutation paths, so centralizing invalidation reduces omission risk."
+        }),
+    ))
+    .clone();
+    assert_eq!(feedback["state"]["state"], "feedback_provided");
+    assert!(feedback["rounds"][0]["agent_recommendation"].is_object());
+
+    let completed = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({"action":"complete","project_id":project,"deliberation_candidate_id":deliberation_id}),
+    ))
+    .clone();
+    assert_eq!(completed["state"]["state"], "completed");
+    assert_eq!(completed["workflow"]["stage"], "ready_for_work");
+
+    let runtime = RuntimeLayout::new(temporary.path().join("runtime")).expect("restart runtime");
+    let mut restarted = HostAdapter::new(LocalOperations::new(runtime));
+    let inspected = structured(&call(
+        &mut restarted,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let preserved = inspected["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .find(|candidate| candidate["identity"] == deliberation_id)
+        .expect("preserved Learning Deliberation");
+    assert_eq!(
+        preserved["learning_deliberation"]["state"]["state"],
+        "completed"
+    );
+    let canonical = structured(&call(
+        &mut restarted,
+        "canonical_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!canonical["records"]
+        .as_array()
+        .expect("canonical records")
+        .iter()
+        .any(|record| record["kind"] == "decision"));
+    let recalled = structured(&call(
+        &mut restarted,
+        "recall",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(
+        recalled["learning_context"][0]["learning_deliberation"]["state"]["state"],
+        "completed"
+    );
+}
+
+#[test]
+fn aggregate_schema_diagnostic_reports_independent_discovery_problems() {
+    let (_temporary, mut adapter, project) = setup();
+    let invalid = structured(&call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        json!({"project_id":project,"unexpected":true}),
+    ))
+    .clone();
+    assert_eq!(
+        invalid["details"]["diagnostic"],
+        "aggregate_schema_validation"
+    );
+    let problems = invalid["details"]["problems"]
+        .as_array()
+        .expect("aggregate problems");
+    assert!(problems.len() >= 5, "{invalid}");
+    assert!(problems
+        .iter()
+        .any(|problem| problem == "arguments.goal_context_id is required"));
+    assert!(problems
+        .iter()
+        .any(|problem| problem == "arguments.choices is required"));
+    assert!(problems
+        .iter()
+        .any(|problem| problem == "arguments.unexpected is not allowed"));
+}
+
+#[test]
+fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
+    let (_temporary, mut adapter, project) = setup();
+    let user_turn =
+        "Use learning participation, but do not interrupt me for routine implementation details";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":user_turn,"role":"goal","statement":user_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery = structured(&call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal["context_item_id"],
+            "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+            "source_operation":"routine active-learning control",
+            "summary":"Choose lookup storage for a bounded private collection",
+            "choices":[{
+                "choice_id":"bounded-private-lookup",
+                "summary":"Use a linear vector scan or a map for a collection capped at 16 entries",
+                "affected_scope":["bounded private lookup"],
+                "alternatives":[
+                    {"alternative_id":"vector","summary":"Scan a bounded vector","technical_consequences":["Simpler storage with at most 16 comparisons"]},
+                    {"alternative_id":"map","summary":"Index entries in a map","technical_consequences":["Additional allocation and ordering machinery for bounded lookup"]}
+                ],
+                "technical_consequences":["The bounded internal lookup cost and storage complexity differ"],
+                "source_ids":[analyzed["repository_source_id"]],
+                "effect_categories":["implementation_internal"],
+                "relationship":{"state":"independent"},
+                "evidence_state":"sufficient"
+            }]
+        }),
+    ))
+    .clone();
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "goal_context_id":goal["context_item_id"],
+            "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+            "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
+            "source_operation":"routine active-learning control review",
+            "rationale":"The bounded private lookup is agent-owned and routine.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":"Use learning participation"},
+            "dimensions":[{
+                "dimension_id":"bounded-private-lookup",
+                "discovered_choice_ids":["bounded-private-lookup"],
+                "summary":"Choose lookup storage for a bounded private collection",
+                "affected_scope":["bounded private lookup"],
+                "material_consequences":["Bounded lookup cost and storage complexity differ"],
+                "observable_signals":["other_material_outcome"],
+                "disposition":"agent_owned_implementation_choice",
+                "basis":{"kinds":["implementation_preference"],"summary":"This is internal agent-owned discretion.","source_ids":[analyzed["repository_source_id"]]},
+                "learning_value":{"state":"routine","rationale":"The repository contract fixes a tiny bound, making the trade-off straightforward and not worth interruption."}
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(review["workflow"]["stage"], "ready_for_work");
+    assert_eq!(review["workflow"]["blocks_ordinary_work"], false);
+    let inspected = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!inspected["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .any(|candidate| candidate["learning_deliberation"].is_object()));
 }
 
 #[test]
@@ -531,6 +893,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
             "engineering_choice_discovery_candidate_id":discovery_id,
             "source_operation":"bounded delegated implementation review",
             "rationale":"The exact Goal delegates only the internal name.",
+            "learning_participation":{"state":"inactive"},
             "dimensions":[{
                 "dimension_id":"internal-module-name",
                 "discovered_choice_ids":["internal-module-name"],
@@ -539,6 +902,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "material_consequences":["Changes only the internal source layout"],
                 "observable_signals":["other_material_outcome"],
                 "disposition":"delegated_implementation_choice",
+                "learning_value":{"state":"routine","rationale":"An internal module name is routine."},
                 "basis":{
                     "kinds":["explicit_delegation"],
                     "summary":"Exact bounded current-task delegation",
@@ -1229,7 +1593,7 @@ fn project_initialize_prefers_repository_native_identity_unless_name_is_explicit
     assert_eq!(missing["result"]["isError"], true, "{missing}");
     assert!(structured(&missing)["error"]
         .as_str()
-        .is_some_and(|error| error.contains("does not match any allowed shape")));
+        .is_some_and(|error| error.contains("repository is required")));
     assert!(!adapter.operations().layout().root().exists());
 
     let derived = call(
@@ -1285,7 +1649,7 @@ fn schema_validation_rejects_unknown_missing_and_malformed_arguments_before_muta
         (
             "canonical_mutate",
             json!({"action":"forget","project_id":project,"user_turn":"forget"}),
-            "does not match any allowed shape",
+            "record_id is required",
         ),
         (
             "document_preview",
@@ -1295,7 +1659,7 @@ fn schema_validation_rejects_unknown_missing_and_malformed_arguments_before_muta
         (
             "guarded_interaction",
             json!({"confirmation_request_id":"00000000000000000000000000000000","decision":"confirm"}),
-            "does not match any allowed shape",
+            "request_revision is required",
         ),
     ] {
         let response = call(&mut adapter, name, arguments);
@@ -2222,7 +2586,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     assert!(asserted_digest["result"]["content"][0]["text"]
         .as_str()
         .expect("asserted digest error text")
-        .contains("does not match any allowed shape"));
+        .contains("invocation_fingerprint is not allowed"));
     let not_run_with_invocation = call(
         &mut adapter,
         "checkpoint_record",
@@ -2273,7 +2637,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     assert!(output_only_failure["result"]["content"][0]["text"]
         .as_str()
         .expect("Checkpoint error text")
-        .contains("does not match any allowed shape"));
+        .contains("exit_code is required"));
 
     fs::write(repository.join("implemented.rs"), "pub fn grounded() {}\n")
         .expect("ordinary work change");
@@ -3172,7 +3536,37 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
+        "engineering_choice_discovery" => vec![shape(
+            &[
+                "project_id",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+                "source_operation",
+                "summary",
+                "choices",
+            ],
+            &[
+                "project_id",
+                "goal_context_id",
+                "baseline_analysis_snapshot_id",
+                "source_operation",
+                "summary",
+                "choices",
+            ],
+        )],
         "materiality_review" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "engineering_choice_discovery_candidate_id",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "engineering_choice_discovery_candidate_id",
+                ],
+            ),
             shape(
                 &[
                     "project_id",
@@ -3182,6 +3576,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "action",
                     "source_operation",
                     "rationale",
+                    "learning_participation",
                     "dimensions",
                 ],
                 &[
@@ -3192,6 +3587,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "engineering_choice_discovery_candidate_id",
                     "source_operation",
                     "rationale",
+                    "learning_participation",
                     "dimensions",
                 ],
             ),
@@ -3201,6 +3597,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "review_candidate_id",
                     "rationale",
+                    "learning_participation",
                     "dimensions",
                 ],
                 &[
@@ -3208,6 +3605,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "review_candidate_id",
                     "rationale",
+                    "learning_participation",
                     "dimensions",
                 ],
             ),
@@ -3227,6 +3625,134 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
+                ],
+            ),
+        ],
+        "learning_deliberation" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "dimension_id",
+                    "source_operation",
+                    "problem",
+                    "established_facts",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "review_candidate_id",
+                    "dimension_id",
+                    "source_operation",
+                    "problem",
+                    "established_facts",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "deliberation_candidate_id"],
+                &["action", "project_id", "deliberation_candidate_id"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "user_rationale",
+                    "selections",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "selections",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "user_rationale",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "user_rationale",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "user_rationale",
+                    "evidence_state",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "evidence_state",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "feedback",
+                    "recommendation_selections",
+                    "recommendation_rationale",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "feedback",
+                    "recommendation_selections",
+                    "recommendation_rationale",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "deliberation_candidate_id"],
+                &["action", "project_id", "deliberation_candidate_id"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "rationale",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "rationale",
                 ],
             ),
         ],

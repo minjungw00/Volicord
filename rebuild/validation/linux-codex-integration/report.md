@@ -95,24 +95,26 @@ not retrieve the page or request-authenticity value. The value was absent from
 request URLs and redirects, portable output, canonical inspection, and the
 ordinary generated document.
 
-The installed MCP process advertised 19 high-level tools. Every advertised
+The installed MCP process advertises 21 high-level tools, including bounded
+Engineering Choice Discovery and Learning Deliberation surfaces. Every advertised
 shape was a closed object with typed, described properties and explicit
 required fields. The maintained client-side interpreter constructed Recall,
 Checkpoint, and Guarded calls from those returned schemas. All three executed;
 the Guarded response preserved exact identity and revision. Across the full
-catalog, 39 missing-field or additional-property calls were rejected by the
+catalog, 43 missing-field or additional-property calls are rejected by the
 advertised contract. Production Rust oracles independently match every schema
 shape to handler-consumed fields and verify invalid requests fail before
 mutation.
 
 The installed workflow began with read-only `project_resolve`, which required
-Recall for the found Project. Recall exposed the missing Goal, Goal exposed the
-pre-work analysis requirement, and analysis exposed the exact Materiality
-Review transition. A settled-contract review reached ready-for-work without a
+Recall for the found Project. Recall exposes the missing Goal, Goal exposes the
+pre-work analysis requirement, and analysis exposes Engineering Choice Discovery.
+The discovery result guides a prefilled Materiality draft and exact review
+transition. A settled-contract normal-mode review reaches ready-for-work without a
 Question, ordinary fixture work followed only afterward, and the grounded
 Checkpoint consumed the same Goal, baseline, and review basis. After host
 restart, resolution required Recall again; Recall required a fresh baseline,
-and the fresh baseline required a recomputed Materiality Review instead of
+and the fresh baseline requires recomputed choice discovery and Materiality Review instead of
 trusting the prior Checkpoint or Candidate state as current authority. Separate
 Rust product-path oracles exercise the user-owned Candidate, frontier,
 current-host Decision, review revision, ready-for-work, and actionable
@@ -193,9 +195,11 @@ legacy Runtime Home remained byte- and timestamp-identical.
 - Pass: authenticated Codex selects and completes a Volicord read-only product
   tool from the isolated registered server and returned schema.
 - Pass: installed MCP workflow directives guide resolution, Recall, Goal,
-  baseline, Materiality Review, no-question ready-for-work, Checkpoint, and
+  baseline, Engineering Choice Discovery, draft-assisted Materiality Review,
+  no-question ready-for-work, Checkpoint, and
   restart recomputation; the user-owned Rust journey still requires Candidate,
-  frontier, explicit current-host Decision, and review revision.
+  frontier, explicit current-host Decision, and review revision. Rust coverage
+  separately proves ordered, restartable Learning Deliberation without a Decision.
 - Pass: repair and reindex recover replacement-owned derived analysis from the
   current repository observation, add only required repository provenance to
   canonical state, preserve user meaning and another Project, retain historical

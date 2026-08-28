@@ -27,7 +27,9 @@ EXPECTED_TOOLS = [
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "engineering_choice_discovery",
     "materiality_review",
+    "learning_deliberation",
     "inquiry_frontier",
     "decision_record",
     "context_record",
@@ -247,6 +249,9 @@ def schema_error(schema: dict[str, Any], value: Any, path: str = "arguments") ->
 
 
 def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
+    variants = schema.get("oneOf")
+    if isinstance(variants, list) and variants:
+        return value_from_schema(variants[0], context)
     kind = schema.get("type")
     description = str(schema.get("description", "")).lower()
     if kind == "string":
@@ -363,6 +368,11 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
         "typed pre-work Materiality Review" in descriptions["materiality_review"]
         and "Inquiry owns the authority evaluation" in descriptions["materiality_review"],
         "materiality_review no longer exposes the owned authority boundary",
+    )
+    require(
+        "discovery, not authority or a user Decision" in descriptions["engineering_choice_discovery"]
+        and "never creates or resolves a canonical Decision" in descriptions["learning_deliberation"],
+        "choice and learning tools no longer preserve their authority boundaries",
     )
     require(
         "attach source-grounded repository research" in descriptions["candidate_manage"]
@@ -612,20 +622,51 @@ def exercise_analysis_recovery(
         "repository_analyze",
         {"project_id": first},
     )
-    recovery_review = tool(
+    recovery_discovery = tool(
         recovery_host,
         304,
+        "engineering_choice_discovery",
+        {
+            "project_id": first,
+            "goal_context_id": recovery_goal["context_item_id"],
+            "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
+            "source_operation": "V08 recovery engineering-choice discovery",
+            "summary": "Discover the derived-analysis recovery treatment",
+            "choices": [
+                {
+                    "choice_id": "derived-analysis-recovery",
+                    "summary": "Rebuild derived analysis while preserving canonical meaning",
+                    "affected_scope": ["derived-analysis"],
+                    "alternatives": [
+                        {"alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
+                        {"alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
+                    ],
+                    "technical_consequences": ["The treatment changes only rebuildable derived state"],
+                    "source_ids": [recovery_baseline["repository_source_id"]],
+                    "effect_categories": ["maintenance_or_support"],
+                    "relationship": {"state": "independent"},
+                    "evidence_state": "sufficient",
+                }
+            ],
+        },
+    )
+    recovery_review = tool(
+        recovery_host,
+        305,
         "materiality_review",
         {
             "action": "record",
             "project_id": first,
             "goal_context_id": recovery_goal["context_item_id"],
             "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
+            "engineering_choice_discovery_candidate_id": recovery_discovery["discovery_candidate_id"],
             "source_operation": "V08 recovery work-authority fixture",
             "rationale": "The maintained recovery fixture settles its recovery treatment.",
+            "learning_participation": {"state": "inactive"},
             "dimensions": [
                 {
                     "dimension_id": "derived-analysis-recovery",
+                    "discovered_choice_ids": ["derived-analysis-recovery"],
                     "summary": "Apply the maintained derived-analysis recovery treatment",
                     "affected_scope": ["derived-analysis"],
                     "material_consequences": ["Preserves canonical meaning while rebuilding derived state"],
@@ -637,6 +678,7 @@ def exercise_analysis_recovery(
                         "source_ids": [recovery_baseline["repository_source_id"]],
                         "contract_basis": ["V08 derived-analysis recovery contract"],
                     },
+                    "learning_value": {"state": "routine", "rationale": "The maintained recovery contract already settles this bounded fixture."},
                 }
             ],
         },
@@ -647,7 +689,7 @@ def exercise_analysis_recovery(
     )
     recovery_checkpoint = tool(
         recovery_host,
-        305,
+        306,
         "checkpoint_record",
         {
             "project_id": first,
@@ -1025,26 +1067,77 @@ def main() -> int:
         baseline = tool(host, 6, "repository_analyze", {"project_id": project_id})
         require(baseline.get("analysis_snapshot_id"), "analysis did not expose its stable identity")
         require(
-            baseline["workflow"]["stage"] == "materiality_review"
-            and baseline["workflow"]["disposition"] == "review_missing"
+            baseline["workflow"]["stage"] == "engineering_choice_discovery"
+            and baseline["workflow"]["disposition"] == "engineering_choice_discovery_required"
             and baseline["workflow"]["required_next_action"]
-            == {"tool": "materiality_review", "action": "record"},
-            "pre-work analysis did not expose the Materiality Review requirement",
+            == {"tool": "engineering_choice_discovery", "action": "record"},
+            "pre-work analysis did not expose Engineering Choice Discovery",
+        )
+        discovery = tool(
+            host,
+            7,
+            "engineering_choice_discovery",
+            {
+                "project_id": project_id,
+                "goal_context_id": goal["context_item_id"],
+                "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
+                "source_operation": "V08 installed MCP choice discovery",
+                "summary": "Discover the maintained fixture output choice",
+                "choices": [
+                    {
+                        "choice_id": "checkpoint-fixture-path",
+                        "summary": "Apply the maintained fixture filename and content",
+                        "affected_scope": ["grounded-checkpoint.txt"],
+                        "alternatives": [
+                            {"alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
+                            {"alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
+                        ],
+                        "technical_consequences": ["The choice controls deterministic Checkpoint evidence"],
+                        "source_ids": [baseline["repository_source_id"]],
+                        "effect_categories": ["maintenance_or_support"],
+                        "relationship": {"state": "independent"},
+                        "evidence_state": "sufficient",
+                    }
+                ],
+            },
+        )
+        require(
+            discovery["workflow"]["stage"] == "materiality_review"
+            and discovery["workflow"]["input_guidance"]["draft_call"]["action"] == "draft",
+            "choice discovery did not guide the Materiality draft path",
+        )
+        review_draft = tool(
+            host,
+            8,
+            "materiality_review",
+            {
+                "action": "draft",
+                "project_id": project_id,
+                "engineering_choice_discovery_candidate_id": discovery["discovery_candidate_id"],
+            },
+        )
+        require(
+            review_draft["dimension_templates"][0]["prefilled"]["discovered_choice_ids"]
+            == ["checkpoint-fixture-path"],
+            "Materiality draft did not prefill the discovered choice identity",
         )
         review = tool(
             host,
-            7,
+            9,
             "materiality_review",
             {
                 "action": "record",
                 "project_id": project_id,
                 "goal_context_id": goal["context_item_id"],
                 "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
+                "engineering_choice_discovery_candidate_id": discovery["discovery_candidate_id"],
                 "source_operation": "V08 installed MCP no-question workflow",
                 "rationale": "The maintained fixture already settles its bounded output.",
+                "learning_participation": {"state": "inactive"},
                 "dimensions": [
                     {
                         "dimension_id": "checkpoint-fixture-path",
+                        "discovered_choice_ids": ["checkpoint-fixture-path"],
                         "summary": "Apply the maintained fixture filename and content",
                         "affected_scope": ["grounded-checkpoint.txt"],
                         "material_consequences": ["Changes only the delegated fixture implementation"],
@@ -1056,6 +1149,7 @@ def main() -> int:
                             "source_ids": [baseline["repository_source_id"]],
                             "contract_basis": ["V08 deterministic installed-MCP fixture"],
                         },
+                        "learning_value": {"state": "routine", "rationale": "Normal mode preserves non-interrupting execution."},
                     }
                 ],
             },
@@ -1071,7 +1165,7 @@ def main() -> int:
         )
         checkpoint = tool(
             host,
-            8,
+            10,
             "checkpoint_record",
             {
                 "project_id": project_id,
@@ -1144,8 +1238,8 @@ def main() -> int:
         resumed_baseline = tool(restarted, 15, "repository_analyze", {"project_id": project_id})
         require(
             resumed_baseline["analysis_snapshot_id"] != baseline["analysis_snapshot_id"]
-            and resumed_baseline["workflow"]["stage"] == "materiality_review"
-            and resumed_baseline["workflow"]["disposition"] == "review_missing",
+            and resumed_baseline["workflow"]["stage"] == "engineering_choice_discovery"
+            and resumed_baseline["workflow"]["disposition"] == "engineering_choice_discovery_required",
             "resume trusted stale Checkpoint or Materiality Review authority",
         )
         stop_host(restarted)

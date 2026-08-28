@@ -1,7 +1,8 @@
 use volicord_context::TimestampMicros;
 use volicord_inquiry::{
     CandidateCleanup, CandidateDisposition, CandidateId, CandidateReadBasis, CandidateRecord,
-    CollectionOptOut, CollectionOptOutScope, ExplicitDelegationEvidence,
+    CollectionOptOut, CollectionOptOutScope, EngineeringChoiceDiscovery,
+    ExplicitDelegationEvidence, LearningDeliberation, MaterialityReview,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,6 +67,9 @@ pub struct CandidateInspection {
     pub question_research_state: Option<volicord_context::QuestionResearchState>,
     pub repository_research_basis: Vec<volicord_inquiry::RepositoryResearchBasis>,
     pub explicit_delegation_evidence: Vec<ExplicitDelegationInspection>,
+    pub engineering_choice_discovery: Option<EngineeringChoiceDiscovery>,
+    pub materiality_review: Option<MaterialityReview>,
+    pub learning_deliberation: Option<LearningDeliberation>,
     pub content_omission: Option<CandidateContentOmission>,
 }
 
@@ -103,6 +107,9 @@ pub fn inspect_candidate(
             question_research_state: None,
             repository_research_basis: Vec::new(),
             explicit_delegation_evidence: Vec::new(),
+            engineering_choice_discovery: None,
+            materiality_review: None,
+            learning_deliberation: None,
             content_omission: None,
         };
     };
@@ -216,6 +223,21 @@ fn inspect_existing(
             CandidateContentAccess::PolicyWithheld => Vec::new(),
         }
     };
+    let (engineering_choice_discovery, materiality_review, learning_deliberation) =
+        if forgetting_pending || matches!(content_access, CandidateContentAccess::PolicyWithheld) {
+            (None, None, None)
+        } else {
+            candidate
+                .content
+                .as_ref()
+                .map_or((None, None, None), |content| {
+                    (
+                        content.engineering_choice_discovery.clone(),
+                        content.materiality_review.clone(),
+                        content.learning_deliberation.clone(),
+                    )
+                })
+        };
     CandidateInspection {
         candidate_id: candidate.id,
         exists: true,
@@ -237,6 +259,9 @@ fn inspect_existing(
         question_research_state,
         repository_research_basis,
         explicit_delegation_evidence,
+        engineering_choice_discovery,
+        materiality_review,
+        learning_deliberation,
         content_omission,
     }
 }

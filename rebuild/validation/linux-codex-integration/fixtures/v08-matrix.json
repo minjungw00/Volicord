@@ -42,7 +42,11 @@
       ["V08-H17-self-guiding-authority", "rust", "volicord-host/mcp", "mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work"],
       ["V08-H18-installed-no-question", "harness", "workflow", "the installed MCP path exposes Goal baseline Materiality Review ready-for-work and grounded Checkpoint transitions without fabricating a Question"],
       ["V08-H19-resume-recompute", "harness", "workflow", "a restarted host requires project resolution Recall a fresh baseline and a recomputed Materiality Review rather than trusting stale Checkpoint authority"],
-      ["V08-H20-checkpoint-guidance", "rust", "volicord-host/mcp", "checkpoint_refusal_returns_bounded_actionable_workflow_guidance"]
+      ["V08-H20-checkpoint-guidance", "rust", "volicord-host/mcp", "checkpoint_refusal_returns_bounded_actionable_workflow_guidance"],
+      ["V08-H21-choice-draft-guidance", "harness", "workflow", "the installed MCP path records Engineering Choice Discovery and obtains a prefilled Materiality draft before review"],
+      ["V08-H22-learning-deliberation", "rust", "volicord-host/mcp", "installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision"],
+      ["V08-H23-aggregate-diagnostics", "rust", "volicord-host/mcp", "aggregate_schema_diagnostic_reports_independent_discovery_problems"],
+      ["V08-H24-learning-routine-control", "rust", "volicord-host/mcp", "active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp"]
     ],
     "viewer_http": [
       ["V08-V01-real-listener", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],

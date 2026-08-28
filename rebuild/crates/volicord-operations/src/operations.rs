@@ -1305,6 +1305,19 @@ impl LocalOperations {
         learning_deliberation_outcome(&record)
     }
 
+    /// Returns one bounded Candidate record for a directly coupled adapter.
+    /// Domain validation and lifecycle transitions remain owned by Inquiry;
+    /// adapters use this read only to construct self-guiding representations.
+    pub fn inspect_workflow_candidate(
+        &self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+    ) -> Result<CandidateRecord, Error> {
+        CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(project_id, candidate_id))
+            .map_err(|error| Error::with_source("Workflow Candidate lookup failed", error))
+    }
+
     pub fn record_learning_response(
         &self,
         draft: LearningResponseDraft,

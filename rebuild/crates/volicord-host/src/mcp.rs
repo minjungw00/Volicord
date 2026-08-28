@@ -18,20 +18,25 @@ use volicord_inquiry::{
     BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
     CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateId, CandidateKind,
     CandidateObservationBasis, CandidateOrigin, CandidateRetention, CurrentHostResponse,
-    DisplayedQuestion, DuplicateAssessment, MaterialityAssessment, MaterialityStatus,
-    QuestionCandidate, ResponseMapping, SubmissionOutcome,
+    DisplayedQuestion, DuplicateAssessment, EngineeringAlternative, EngineeringChoice,
+    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
+    LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueAssessment, MaterialityAssessment, MaterialityStatus, QuestionCandidate,
+    ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     AnalysisSnapshotId, BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft,
     CommandVerificationDraft, ConfirmationDecision, ConfirmationRejection, ConfirmationRequestId,
-    ExploratoryDisposition, FilterOutcome, GroundedCheckpointDraft, GuardedOperationId,
-    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
-    GuardedProviderPreparationOutcome, HealthState, LocalOperations, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    MaterialityReviewRevisionDraft, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
-    ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
-    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition,
-    WorkflowStage,
+    EngineeringChoiceDiscoveryDraft, ExploratoryDisposition, FilterOutcome,
+    GroundedCheckpointDraft, GuardedOperationId, GuardedOperationOutcome,
+    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
+    HealthState, LearningDeliberationDraft, LearningFeedbackDraft, LearningReconsiderationDraft,
+    LearningResponseDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft,
+    ProjectResolution, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
+    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition, WorkflowStage,
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
@@ -39,14 +44,16 @@ use volicord_projections::{
     RealizedNarrativeClaim, RealizedNarrativeSection,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 19] = [
+pub const HOST_TOOL_NAMES: [&str; 21] = [
     "project_resolve",
     "project_initialize",
     "project_health",
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "engineering_choice_discovery",
     "materiality_review",
+    "learning_deliberation",
     "inquiry_frontier",
     "decision_record",
     "context_record",
@@ -170,7 +177,9 @@ impl HostAdapter {
                 "recall" => self.recall(&arguments),
                 "repository_understanding" => self.repository_understanding(&arguments),
                 "repository_analyze" => self.repository_analyze(&arguments),
+                "engineering_choice_discovery" => self.engineering_choice_discovery(&arguments),
                 "materiality_review" => self.materiality_review(&arguments),
+                "learning_deliberation" => self.learning_deliberation(&arguments),
                 "inquiry_frontier" => self.inquiry_frontier(&arguments),
                 "decision_record" => self.decision_record(&arguments),
                 "context_record" => self.context_record(&arguments),
@@ -279,10 +288,28 @@ impl HostAdapter {
     }
 
     fn recall(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
         let brief = self
             .operations
-            .recall(project(args)?)
+            .recall(project_id)
             .map_err(operation_error)?;
+        let (learning_context, learning_context_health) =
+            match self.operations.project_projection(project_id) {
+                Ok(projection) => (
+                    projection
+                        .candidate_inspection
+                        .into_iter()
+                        .filter(|candidate| candidate.learning_deliberation.is_some())
+                        .take(64)
+                        .map(candidate_inspection_json)
+                        .collect::<Vec<_>>(),
+                    json!({"state":"available"}),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    json!({"state":"degraded","reason":error.to_string()}),
+                ),
+            };
         let checkpoint = brief.latest_meaningful_checkpoint.map(|value| json!({
             "identity":value.id.to_string(),
             "revision":value.revision,
@@ -315,6 +342,8 @@ impl HostAdapter {
                 "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
                 "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
                 "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
+                "learning_context":learning_context,
+                "learning_context_health":learning_context_health,
                 "read_only":true
             }),
             workflow,
@@ -382,33 +411,92 @@ impl HostAdapter {
         ))
     }
 
+    fn engineering_choice_discovery(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        let goal_context_id = parse_context_item(required_str(args, "goal_context_id")?)?;
+        let baseline_analysis_snapshot_id =
+            parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
+        let outcome = self
+            .operations
+            .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+                project_id,
+                goal_context_id,
+                baseline_analysis_snapshot_id,
+                session: self.host_session.clone(),
+                source_operation: required_str(args, "source_operation")?.to_owned(),
+                summary: required_str(args, "summary")?.to_owned(),
+                choices: engineering_choices(args)?,
+            })
+            .map_err(operation_error)?;
+        let workflow = self
+            .operations
+            .workflow_for_work_basis(
+                project_id,
+                goal_context_id,
+                baseline_analysis_snapshot_id,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+            .map_err(operation_error)?;
+        Ok(with_workflow(
+            json!({
+                "action":"record",
+                "project_id":project_id.to_string(),
+                "goal_context_id":outcome.goal_context_id.to_string(),
+                "baseline_analysis_snapshot_id":outcome.baseline_analysis_snapshot_id.to_string(),
+                "discovery_candidate_id":outcome.discovery_candidate_id.to_string(),
+                "canonical_mutation":false,
+            }),
+            workflow,
+        ))
+    }
+
     fn materiality_review(&self, args: &Value) -> Result<Value, HostError> {
         let project_id = project(args)?;
         match required_str(args, "action")? {
-            "record" => {
-                let outcome = self
+            "draft" => {
+                let candidate_id = parse_candidate(required_str(
+                    args,
+                    "engineering_choice_discovery_candidate_id",
+                )?)?;
+                let candidate = self
                     .operations
-                    .record_materiality_review(MaterialityReviewDraft {
-                        project_id,
-                        goal_context_id: parse_context_item(required_str(
-                            args,
-                            "goal_context_id",
-                        )?)?,
-                        baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
-                            args,
-                            "baseline_analysis_snapshot_id",
-                        )?)?,
-                        session: self.host_session.clone(),
-                        source_operation: required_str(args, "source_operation")?.to_owned(),
-                        rationale: required_str(args, "rationale")?.to_owned(),
-                        learning_participation: volicord_inquiry::LearningParticipation::Inactive,
-                        engineering_choice_discovery_candidate_id: parse_candidate(required_str(
-                            args,
-                            "engineering_choice_discovery_candidate_id",
-                        )?)?,
-                        dimensions: materiality_dimensions(args)?,
-                    })
+                    .inspect_workflow_candidate(project_id, candidate_id)
                     .map_err(operation_error)?;
+                let discovery = candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.engineering_choice_discovery.as_ref())
+                    .ok_or_else(|| {
+                        HostError::new("Engineering Choice Discovery content is unavailable")
+                    })?;
+                Ok(materiality_draft_json(project_id, candidate_id, discovery))
+            }
+            "record" => {
+                let outcome =
+                    self.operations
+                        .record_materiality_review(MaterialityReviewDraft {
+                            project_id,
+                            goal_context_id: parse_context_item(required_str(
+                                args,
+                                "goal_context_id",
+                            )?)?,
+                            baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
+                                args,
+                                "baseline_analysis_snapshot_id",
+                            )?)?,
+                            session: self.host_session.clone(),
+                            source_operation: required_str(args, "source_operation")?.to_owned(),
+                            rationale: required_str(args, "rationale")?.to_owned(),
+                            learning_participation: learning_participation(args)?,
+                            engineering_choice_discovery_candidate_id: parse_candidate(
+                                required_str(args, "engineering_choice_discovery_candidate_id")?,
+                            )?,
+                            dimensions: materiality_dimensions(args)?,
+                        })
+                        .map_err(operation_error)?;
                 let workflow = self
                     .operations
                     .workflow_for_review_candidate(project_id, outcome.review_candidate_id)
@@ -428,7 +516,7 @@ impl HostAdapter {
                             "review_candidate_id",
                         )?)?,
                         rationale: required_str(args, "rationale")?.to_owned(),
-                        learning_participation: volicord_inquiry::LearningParticipation::Inactive,
+                        learning_participation: learning_participation(args)?,
                         dimensions: materiality_dimensions(args)?,
                     })
                     .map_err(operation_error)?;
@@ -470,6 +558,127 @@ impl HostAdapter {
             }
             _ => Err(HostError::new("unknown Materiality Review action")),
         }
+    }
+
+    fn learning_deliberation(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        let action = required_str(args, "action")?;
+        let candidate_id = match action {
+            "begin" => {
+                self.operations
+                    .begin_learning_deliberation(LearningDeliberationDraft {
+                        project_id,
+                        review_candidate_id: parse_candidate(required_str(
+                            args,
+                            "review_candidate_id",
+                        )?)?,
+                        dimension_id: required_str(args, "dimension_id")?.to_owned(),
+                        session: self.host_session.clone(),
+                        source_operation: required_str(args, "source_operation")?.to_owned(),
+                        problem: required_str(args, "problem")?.to_owned(),
+                        established_facts: string_array(args, "established_facts")?,
+                    })
+                    .map_err(operation_error)?
+                    .deliberation_candidate_id
+            }
+            "inspect" => parse_candidate(required_str(args, "deliberation_candidate_id")?)?,
+            "respond_select"
+            | "respond_delegate"
+            | "respond_skip"
+            | "respond_research_or_prototype" => {
+                let deliberation_candidate_id =
+                    parse_candidate(required_str(args, "deliberation_candidate_id")?)?;
+                let response = match action {
+                    "respond_select" => LearningInitialResponse::Select {
+                        selections: learning_selections(args, "selections")?,
+                    },
+                    "respond_delegate" => LearningInitialResponse::DelegateToAgent,
+                    "respond_skip" => LearningInitialResponse::Skip,
+                    "respond_research_or_prototype" => {
+                        LearningInitialResponse::RequestResearchOrPrototype {
+                            evidence_state: engineering_evidence_state(required_str(
+                                args,
+                                "evidence_state",
+                            )?)?,
+                        }
+                    }
+                    _ => {
+                        return Err(HostError::new(
+                            "unknown Learning Deliberation response action",
+                        ))
+                    }
+                };
+                self.operations
+                    .record_learning_response(LearningResponseDraft {
+                        project_id,
+                        deliberation_candidate_id,
+                        host: "codex".into(),
+                        session: self.host_session.clone(),
+                        user_turn: required_str(args, "user_turn")?.to_owned(),
+                        response,
+                        user_rationale: optional_string(args, "user_rationale")?,
+                    })
+                    .map_err(operation_error)?
+                    .deliberation_candidate_id
+            }
+            "feedback" => {
+                let deliberation_candidate_id =
+                    parse_candidate(required_str(args, "deliberation_candidate_id")?)?;
+                self.operations
+                    .provide_learning_feedback(LearningFeedbackDraft {
+                        project_id,
+                        deliberation_candidate_id,
+                        feedback: required_str(args, "feedback")?.to_owned(),
+                        recommendation: LearningRecommendation {
+                            selections: learning_selections(args, "recommendation_selections")?,
+                            rationale: required_str(args, "recommendation_rationale")?.to_owned(),
+                        },
+                    })
+                    .map_err(operation_error)?
+                    .deliberation_candidate_id
+            }
+            "complete" => {
+                let deliberation_candidate_id =
+                    parse_candidate(required_str(args, "deliberation_candidate_id")?)?;
+                self.operations
+                    .complete_learning_deliberation(project_id, deliberation_candidate_id)
+                    .map_err(operation_error)?
+                    .deliberation_candidate_id
+            }
+            "reconsider" => {
+                let deliberation_candidate_id =
+                    parse_candidate(required_str(args, "deliberation_candidate_id")?)?;
+                self.operations
+                    .reconsider_learning_deliberation(LearningReconsiderationDraft {
+                        project_id,
+                        deliberation_candidate_id,
+                        host: "codex".into(),
+                        session: self.host_session.clone(),
+                        user_turn: required_str(args, "user_turn")?.to_owned(),
+                        rationale: required_str(args, "rationale")?.to_owned(),
+                    })
+                    .map_err(operation_error)?
+                    .deliberation_candidate_id
+            }
+            _ => return Err(HostError::new("unknown Learning Deliberation action")),
+        };
+        let candidate = self
+            .operations
+            .inspect_workflow_candidate(project_id, candidate_id)
+            .map_err(operation_error)?;
+        let deliberation = candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.learning_deliberation.as_ref())
+            .ok_or_else(|| HostError::new("Learning Deliberation content is unavailable"))?;
+        let workflow = self
+            .operations
+            .workflow_for_review_candidate(project_id, deliberation.materiality_review_candidate_id)
+            .map_err(operation_error)?;
+        Ok(with_workflow(
+            learning_deliberation_json(action, candidate_id, candidate.revision, deliberation),
+            workflow,
+        ))
     }
 
     fn inquiry_frontier(&self, args: &Value) -> Result<Value, HostError> {
@@ -1408,8 +1617,17 @@ impl ToolBehavior {
 
 impl ToolContract {
     fn validate(&self, arguments: &Value) -> Result<(), HostError> {
-        validate_schema(&self.input_schema, arguments, "arguments")
-            .map_err(|error| HostError::new(format!("invalid {} arguments: {error}", self.name)))
+        validate_schema(&self.input_schema, arguments, "arguments").map_err(|problems| {
+            let summary = problems.join("; ");
+            HostError::with_details(
+                format!("invalid {} arguments: {summary}", self.name),
+                json!({
+                    "diagnostic":"aggregate_schema_validation",
+                    "tool":self.name,
+                    "problems":problems,
+                }),
+            )
+        })
     }
 }
 
@@ -1469,9 +1687,19 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ),
             ToolBehavior::AdditiveClosed,
         ),
+        "engineering_choice_discovery" => (
+            "Record one bounded Engineering Choice Discovery for the current Goal and exact pre-work Analysis Snapshot. Include only consequence-bearing forks with credible alternatives; preserve independent choices separately and declare genuinely coupled peers symmetrically. This is discovery, not authority or a user Decision.",
+            engineering_choice_discovery_schema(),
+            ToolBehavior::AdditiveClosed,
+        ),
         "materiality_review" => (
-            "Record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Classify independently material outcomes by consequence and ownership; Inquiry owns the authority evaluation and returns the next required workflow action.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities and one template per discovered choice. Classify authority and learning value independently; Inquiry owns the authority evaluation and returns the next required workflow action.",
             json!({"oneOf": materiality_review_schemas()}),
+            ToolBehavior::AdditiveClosed,
+        ),
+        "learning_deliberation" => (
+            "Expose one learning-participation interaction for an agent-owned deliberation-worthy choice. Begin or inspect presents facts, alternatives, and consequences without a recommendation; record the current user's initial response before agent feedback, then complete or reconsider. Delegate and skip are terminal learning states. This tool never creates or resolves a canonical Decision; user-owned choices use inquiry_frontier and decision_record.",
+            json!({"oneOf": learning_deliberation_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
@@ -1745,6 +1973,330 @@ fn background_semantic_operation_schemas() -> Vec<Value> {
     ]
 }
 
+fn engineering_choice_discovery_schema() -> Value {
+    let alternative = object_schema(
+        vec![
+            (
+                "alternative_id",
+                text_schema("Stable alternative identity within this choice", 1, 256),
+            ),
+            (
+                "summary",
+                text_schema(
+                    "Credible technical approach without authority claims",
+                    1,
+                    4096,
+                ),
+            ),
+            (
+                "technical_consequences",
+                nonempty_string_array_schema("Consequences specific to this alternative"),
+            ),
+        ],
+        &["alternative_id", "summary", "technical_consequences"],
+    );
+    let relationship = json!({"description":"Whether this choice is independent or necessarily coupled to exact peer choices","oneOf":[
+        object_schema(
+            vec![("state", enum_schema("Choice relationship", &["independent"]))],
+            &["state"],
+        ),
+        object_schema(
+            vec![
+                ("state", enum_schema("Choice relationship", &["coupled"])),
+                ("choice_ids", nonempty_string_array_schema("Exact peer choice identities that must be resolved jointly")),
+                ("rationale", text_schema("Why these exact consequences require a joint outcome", 1, 4096)),
+            ],
+            &["state", "choice_ids", "rationale"],
+        ),
+    ]});
+    let choices = json!({
+        "type":"array",
+        "description":"Bounded consequence-bearing engineering forks; omit mechanically equivalent or trivial syntax/naming details",
+        "minItems":1,
+        "maxItems":64,
+        "items":object_schema(
+            vec![
+                ("choice_id", text_schema("Stable discovered choice identity", 1, 256)),
+                ("summary", text_schema("Bounded technical choice summary", 1, 4096)),
+                ("affected_scope", nonempty_string_array_schema("Repository, product, or operational scope affected by this choice")),
+                ("alternatives", json!({"type":"array","description":"Credible alternatives; two are required when evidence is sufficient","minItems":0,"maxItems":64,"items":alternative})),
+                ("technical_consequences", nonempty_string_array_schema("Consequences that make this a real engineering fork")),
+                ("source_ids", identity_array_schema("Current canonical Source identities grounding discovery", 1)),
+                ("effect_categories", json!({"type":"array","description":"Non-authoritative effect signals","minItems":1,"maxItems":11,"items":enum_schema("Engineering effect category", &[
+                    "public_api_shape_or_semantics", "compatibility", "failure_or_error_semantics",
+                    "persistence_or_lifetime", "privacy_or_disclosure", "security",
+                    "user_visible_behavior_or_default", "performance_or_resource_behavior",
+                    "concurrency_or_operability", "maintenance_or_support", "implementation_internal"
+                ])})),
+                ("relationship", relationship),
+                ("evidence_state", enum_schema("Current alternative evidence state", &["sufficient", "research_required", "prototype_required"])),
+            ],
+            &["choice_id", "summary", "affected_scope", "alternatives", "technical_consequences", "source_ids", "effect_categories", "relationship", "evidence_state"],
+        ),
+    });
+    object_schema(
+        vec![
+            ("project_id", identity_schema("Current Project identity")),
+            (
+                "goal_context_id",
+                identity_schema("Current canonical Goal Context identity"),
+            ),
+            (
+                "baseline_analysis_snapshot_id",
+                digest_identity_schema("Exact retained pre-work Analysis Snapshot identity"),
+            ),
+            (
+                "source_operation",
+                text_schema("Inspectable discovery operation or bounded scope", 1, 4096),
+            ),
+            ("summary", text_schema("Bounded discovery summary", 1, 4096)),
+            ("choices", choices),
+        ],
+        &[
+            "project_id",
+            "goal_context_id",
+            "baseline_analysis_snapshot_id",
+            "source_operation",
+            "summary",
+            "choices",
+        ],
+    )
+}
+
+fn learning_participation_schema() -> Value {
+    json!({"description":"Explicit bounded learning participation; inactive is the default and active requires current-host user provenance","oneOf":[
+        object_schema(
+            vec![("state", enum_schema("Learning participation for this bounded review", &["inactive"]))],
+            &["state"],
+        ),
+        object_schema(
+            vec![
+                ("state", enum_schema("Learning participation for this bounded review", &["active"])),
+                ("user_turn_source_id", identity_schema("Exact current-host user-turn Source containing the explicit opt-in")),
+                ("verbatim_statement", text_schema("Non-empty verbatim learning-participation statement from that Source", 1, 4096)),
+            ],
+            &["state", "user_turn_source_id", "verbatim_statement"],
+        ),
+    ]})
+}
+
+fn learning_value_schema() -> Value {
+    json!({"description":"Learning value assessed independently from authority","oneOf":[
+        object_schema(
+            vec![
+                ("state", enum_schema("Independent learning-value assessment", &["routine"])),
+                ("rationale", text_schema("Why this choice does not justify interruption", 1, 4096)),
+            ],
+            &["state", "rationale"],
+        ),
+        object_schema(
+            vec![
+                ("state", enum_schema("Independent learning-value assessment", &["deliberation_worthy"])),
+                ("rationale", text_schema("Why pre-work user reasoning is worthwhile", 1, 4096)),
+                ("consequence_significance", nonempty_string_array_schema("Significant consequences worth understanding")),
+                ("transferable_principles", nonempty_string_array_schema("Principles transferable to future engineering work")),
+                ("non_obvious_trade_offs", nonempty_string_array_schema("Non-obvious trade-offs between credible alternatives")),
+            ],
+            &["state", "rationale", "consequence_significance", "transferable_principles", "non_obvious_trade_offs"],
+        ),
+    ]})
+}
+
+fn learning_deliberation_schemas() -> Vec<Value> {
+    let project_candidate = || {
+        vec![
+            ("project_id", identity_schema("Project identity")),
+            (
+                "deliberation_candidate_id",
+                identity_schema("Exact Learning Deliberation Candidate identity"),
+            ),
+        ]
+    };
+    let selections = || {
+        json!({
+            "type":"array",
+            "description":"One exact alternative selection for every discovered choice in the deliberation",
+            "minItems":1,
+            "maxItems":64,
+            "items":object_schema(
+                vec![
+                    ("choice_id", text_schema("Exact discovered choice identity", 1, 256)),
+                    ("alternative_id", text_schema("Exact alternative identity", 1, 256)),
+                ],
+                &["choice_id", "alternative_id"],
+            ),
+        })
+    };
+    let simple_candidate = |action: &'static str| {
+        let mut fields = project_candidate();
+        fields.push((
+            "action",
+            enum_schema("Learning Deliberation action", &[action]),
+        ));
+        object_schema(
+            fields,
+            &["action", "project_id", "deliberation_candidate_id"],
+        )
+    };
+    let user_response = |action: &'static str,
+                         mut extra: Vec<(&'static str, Value)>,
+                         mut required: Vec<&'static str>| {
+        let mut fields = project_candidate();
+        fields.push((
+            "action",
+            enum_schema("Learning Deliberation action", &[action]),
+        ));
+        fields.push(("user_turn", user_turn_schema()));
+        fields.push((
+            "user_rationale",
+            text_schema(
+                "Optional current-user reasoning preserved before agent feedback",
+                1,
+                16_384,
+            ),
+        ));
+        fields.append(&mut extra);
+        required.extend([
+            "action",
+            "project_id",
+            "deliberation_candidate_id",
+            "user_turn",
+        ]);
+        object_schema(fields, &required)
+    };
+    vec![
+        object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Learning Deliberation action", &["begin"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "review_candidate_id",
+                    identity_schema("Exact Materiality Review Candidate identity"),
+                ),
+                (
+                    "dimension_id",
+                    text_schema(
+                        "Exact agent-owned deliberation-worthy dimension identity",
+                        1,
+                        256,
+                    ),
+                ),
+                (
+                    "source_operation",
+                    text_schema("Inspectable bounded learning operation", 1, 4096),
+                ),
+                (
+                    "problem",
+                    text_schema(
+                        "Neutral problem statement without agent recommendation",
+                        1,
+                        4096,
+                    ),
+                ),
+                (
+                    "established_facts",
+                    nonempty_string_array_schema(
+                        "Established facts available before user reasoning",
+                    ),
+                ),
+            ],
+            &[
+                "action",
+                "project_id",
+                "review_candidate_id",
+                "dimension_id",
+                "source_operation",
+                "problem",
+                "established_facts",
+            ],
+        ),
+        simple_candidate("inspect"),
+        user_response(
+            "respond_select",
+            vec![("selections", selections())],
+            vec!["selections"],
+        ),
+        user_response("respond_delegate", Vec::new(), Vec::new()),
+        user_response("respond_skip", Vec::new(), Vec::new()),
+        user_response(
+            "respond_research_or_prototype",
+            vec![(
+                "evidence_state",
+                enum_schema(
+                    "Requested evidence path",
+                    &["research_required", "prototype_required"],
+                ),
+            )],
+            vec!["evidence_state"],
+        ),
+        {
+            let mut fields = project_candidate();
+            fields.extend([
+                (
+                    "action",
+                    enum_schema("Learning Deliberation action", &["feedback"]),
+                ),
+                (
+                    "feedback",
+                    text_schema(
+                        "Educational feedback recorded only after the initial user response",
+                        1,
+                        16_384,
+                    ),
+                ),
+                ("recommendation_selections", selections()),
+                (
+                    "recommendation_rationale",
+                    text_schema(
+                        "Bounded post-response agent recommendation rationale",
+                        1,
+                        16_384,
+                    ),
+                ),
+            ]);
+            object_schema(
+                fields,
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "feedback",
+                    "recommendation_selections",
+                    "recommendation_rationale",
+                ],
+            )
+        },
+        simple_candidate("complete"),
+        {
+            let mut fields = project_candidate();
+            fields.extend([
+                (
+                    "action",
+                    enum_schema("Learning Deliberation action", &["reconsider"]),
+                ),
+                ("user_turn", user_turn_schema()),
+                (
+                    "rationale",
+                    text_schema("Explicit current-user reconsideration rationale", 1, 16_384),
+                ),
+            ]);
+            object_schema(
+                fields,
+                &[
+                    "action",
+                    "project_id",
+                    "deliberation_candidate_id",
+                    "user_turn",
+                    "rationale",
+                ],
+            )
+        },
+    ]
+}
+
 fn materiality_review_schemas() -> Vec<Value> {
     let mut kinds = json!({
         "type":"array",
@@ -1764,7 +2316,7 @@ fn materiality_review_schemas() -> Vec<Value> {
         ]),
     });
     kinds["maxItems"] = json!(16);
-    let explicit_delegation = object_schema(
+    let mut explicit_delegation = object_schema(
         vec![
             (
                 "goal_context_id",
@@ -1796,6 +2348,8 @@ fn materiality_review_schemas() -> Vec<Value> {
             "affected_scope",
         ],
     );
+    explicit_delegation["description"] =
+        json!("Exact current-task delegation evidence; semantic inference is not performed");
     let mut basis = object_schema(
         vec![
             ("kinds", kinds),
@@ -1856,6 +2410,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 ("disposition", enum_schema("Authority classification", &[
                     "repository_or_environment_fact",
                     "settled_authority",
+                    "agent_owned_implementation_choice",
                     "delegated_implementation_choice",
                     "exploratory_uncertainty",
                     "unresolved_user_owned_outcome",
@@ -1868,6 +2423,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 ])),
                 ("resolution_decision_id", identity_schema("Applicable Decision resolving a user-owned outcome")),
                 ("basis", basis),
+                ("learning_value", learning_value_schema()),
             ],
             &[
                 "dimension_id",
@@ -1878,6 +2434,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "observable_signals",
                 "disposition",
                 "basis",
+                "learning_value",
             ],
         ),
     });
@@ -1912,6 +2469,7 @@ fn materiality_review_schemas() -> Vec<Value> {
             "rationale",
             text_schema("Bounded review rationale", 1, 4096),
         ),
+        ("learning_participation", learning_participation_schema()),
         ("dimensions", dimensions.clone()),
     ]);
     let mut inspect_fields = common();
@@ -1939,6 +2497,24 @@ fn materiality_review_schemas() -> Vec<Value> {
     ]);
     vec![
         object_schema(
+            vec![
+                (
+                    "action",
+                    enum_schema("Materiality Review action", &["draft"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "engineering_choice_discovery_candidate_id",
+                    identity_schema("Exact Engineering Choice Discovery Candidate identity"),
+                ),
+            ],
+            &[
+                "action",
+                "project_id",
+                "engineering_choice_discovery_candidate_id",
+            ],
+        ),
+        object_schema(
             record_fields,
             &[
                 "action",
@@ -1948,6 +2524,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "source_operation",
                 "engineering_choice_discovery_candidate_id",
                 "rationale",
+                "learning_participation",
                 "dimensions",
             ],
         ),
@@ -1966,6 +2543,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                     "rationale",
                     text_schema("Bounded revision rationale", 1, 4096),
                 ),
+                ("learning_participation", learning_participation_schema()),
                 ("dimensions", dimensions),
             ],
             &[
@@ -1973,6 +2551,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "project_id",
                 "review_candidate_id",
                 "rationale",
+                "learning_participation",
                 "dimensions",
             ],
         ),
@@ -2604,19 +3183,41 @@ fn enum_schema(description: &str, values: &[&str]) -> Value {
     })
 }
 
-fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
     if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
-        let failures = variants
+        let outcomes = variants
             .iter()
-            .filter_map(|variant| validate_schema(variant, value, path).err())
+            .map(|variant| validate_schema(variant, value, path))
             .collect::<Vec<_>>();
-        return match variants.len().saturating_sub(failures.len()) {
+        let success_count = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+        return match success_count {
             1 => Ok(()),
-            0 => Err(format!(
-                "{path} does not match any allowed shape: {}",
-                failures.join("; ")
-            )),
-            _ => Err(format!("{path} matches more than one allowed shape")),
+            0 => {
+                let action = value.get("action").and_then(Value::as_str);
+                let selected = action.and_then(|action| {
+                    variants
+                        .iter()
+                        .zip(outcomes.iter())
+                        .find_map(|(variant, outcome)| {
+                            variant_action_matches(variant, action)
+                                .then(|| outcome.as_ref().err().cloned())
+                                .flatten()
+                        })
+                });
+                let mut problems = selected.unwrap_or_else(|| {
+                    outcomes
+                        .into_iter()
+                        .filter_map(Result::err)
+                        .flatten()
+                        .collect()
+                });
+                problems.truncate(16);
+                if problems.is_empty() {
+                    problems.push(format!("{path} does not match any allowed shape"));
+                }
+                Err(problems)
+            }
+            _ => Err(vec![format!("{path} matches more than one allowed shape")]),
         };
     }
     match schema.get("type").and_then(Value::as_str) {
@@ -2624,52 +3225,70 @@ fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Stri
         Some("string") => validate_string(schema, value, path),
         Some("array") => validate_array(schema, value, path),
         Some("integer") => validate_integer(schema, value, path),
-        Some(kind) => Err(format!("{path} uses unsupported schema type {kind}")),
-        None => Err(format!("{path} schema has no type")),
+        Some(kind) => Err(vec![format!("{path} uses unsupported schema type {kind}")]),
+        None => Err(vec![format!("{path} schema has no type")]),
     }
 }
 
-fn validate_object(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| format!("{path} must be an object"))?;
-    let properties = schema
+fn variant_action_matches(schema: &Value, action: &str) -> bool {
+    schema
         .get("properties")
-        .and_then(Value::as_object)
-        .ok_or_else(|| format!("{path} schema has no properties"))?;
+        .and_then(|properties| properties.get("action"))
+        .and_then(|action_schema| action_schema.get("enum"))
+        .and_then(Value::as_array)
+        .is_some_and(|values| values.iter().any(|value| value.as_str() == Some(action)))
+}
+
+fn validate_object(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
+    let Some(object) = value.as_object() else {
+        return Err(vec![format!("{path} must be an object")]);
+    };
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return Err(vec![format!("{path} schema has no properties")]);
+    };
+    let mut problems = Vec::new();
     if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-        if let Some(name) = object.keys().find(|name| !properties.contains_key(*name)) {
-            return Err(format!("{path}.{name} is not allowed"));
+        for name in object.keys().filter(|name| !properties.contains_key(*name)) {
+            problems.push(format!("{path}.{name} is not allowed"));
         }
     }
     if let Some(required) = schema.get("required").and_then(Value::as_array) {
         for name in required.iter().filter_map(Value::as_str) {
             if !object.contains_key(name) {
-                return Err(format!("{path}.{name} is required"));
+                problems.push(format!("{path}.{name} is required"));
             }
         }
     }
     for (name, child) in object {
         if let Some(child_schema) = properties.get(name) {
-            validate_schema(child_schema, child, &format!("{path}.{name}"))?;
+            if let Err(mut child_problems) =
+                validate_schema(child_schema, child, &format!("{path}.{name}"))
+            {
+                problems.append(&mut child_problems);
+            }
         }
     }
-    Ok(())
+    problems.truncate(16);
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
 }
 
-fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
-    let text = value
-        .as_str()
-        .ok_or_else(|| format!("{path} must be a string"))?;
+fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
+    let Some(text) = value.as_str() else {
+        return Err(vec![format!("{path} must be a string")]);
+    };
     let length = text.chars().count() as u64;
     if let Some(minimum) = schema.get("minLength").and_then(Value::as_u64) {
         if length < minimum {
-            return Err(format!("{path} is shorter than {minimum} characters"));
+            return Err(vec![format!("{path} is shorter than {minimum} characters")]);
         }
     }
     if let Some(maximum) = schema.get("maxLength").and_then(Value::as_u64) {
         if length > maximum {
-            return Err(format!("{path} exceeds {maximum} characters"));
+            return Err(vec![format!("{path} exceeds {maximum} characters")]);
         }
     }
     if let Some(values) = schema.get("enum").and_then(Value::as_array) {
@@ -2677,53 +3296,71 @@ fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), Stri
             .iter()
             .any(|candidate| candidate.as_str() == Some(text))
         {
-            return Err(format!("{path} is not an allowed value"));
+            return Err(vec![format!("{path} is not an allowed value")]);
         }
     }
     match schema.get("pattern").and_then(Value::as_str) {
         Some("^[0-9a-fA-F]{32}$") if !is_hex(text, 32, true) => {
-            Err(format!("{path} must contain 32 hexadecimal digits"))
+            Err(vec![format!("{path} must contain 32 hexadecimal digits")])
         }
         Some("^sha256:[0-9a-f]{64}$")
             if !text
                 .strip_prefix("sha256:")
                 .is_some_and(|value| is_hex(value, 64, false)) =>
         {
-            Err(format!("{path} must be a sha256 fingerprint"))
+            Err(vec![format!("{path} must be a sha256 fingerprint")])
         }
         Some("^[0-9a-fA-F]{64}$") if !is_hex(text, 64, true) => {
-            Err(format!("{path} must contain 64 hexadecimal digits"))
+            Err(vec![format!("{path} must contain 64 hexadecimal digits")])
         }
         Some("^[0-9a-fA-F]{32}$" | "^[0-9a-fA-F]{64}$" | "^sha256:[0-9a-f]{64}$") | None => Ok(()),
-        Some(pattern) => Err(format!("{path} uses unsupported schema pattern {pattern}")),
+        Some(pattern) => Err(vec![format!(
+            "{path} uses unsupported schema pattern {pattern}"
+        )]),
     }
 }
 
-fn validate_array(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
-    let values = value
-        .as_array()
-        .ok_or_else(|| format!("{path} must be an array"))?;
+fn validate_array(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
+    let Some(values) = value.as_array() else {
+        return Err(vec![format!("{path} must be an array")]);
+    };
+    let mut problems = Vec::new();
     if let Some(minimum) = schema.get("minItems").and_then(Value::as_u64) {
         if values.len() < minimum as usize {
-            return Err(format!("{path} must contain at least {minimum} items"));
+            problems.push(format!("{path} must contain at least {minimum} items"));
         }
     }
-    let item_schema = schema
-        .get("items")
-        .ok_or_else(|| format!("{path} schema has no item contract"))?;
-    for (index, item) in values.iter().enumerate() {
-        validate_schema(item_schema, item, &format!("{path}[{index}]"))?;
+    if let Some(maximum) = schema.get("maxItems").and_then(Value::as_u64) {
+        if values.len() > maximum as usize {
+            problems.push(format!("{path} must contain at most {maximum} items"));
+        }
     }
-    Ok(())
+    let Some(item_schema) = schema.get("items") else {
+        problems.push(format!("{path} schema has no item contract"));
+        return Err(problems);
+    };
+    for (index, item) in values.iter().enumerate() {
+        if let Err(mut child_problems) =
+            validate_schema(item_schema, item, &format!("{path}[{index}]"))
+        {
+            problems.append(&mut child_problems);
+        }
+    }
+    problems.truncate(16);
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
 }
 
-fn validate_integer(schema: &Value, value: &Value, path: &str) -> Result<(), String> {
-    let number = value
-        .as_u64()
-        .ok_or_else(|| format!("{path} must be an unsigned integer"))?;
+fn validate_integer(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
+    let Some(number) = value.as_u64() else {
+        return Err(vec![format!("{path} must be an unsigned integer")]);
+    };
     if let Some(minimum) = schema.get("minimum").and_then(Value::as_u64) {
         if number < minimum {
-            return Err(format!("{path} must be at least {minimum}"));
+            return Err(vec![format!("{path} must be at least {minimum}")]);
         }
     }
     Ok(())
@@ -2892,6 +3529,8 @@ const fn filter_outcome_name(outcome: FilterOutcome) -> &'static str {
 }
 
 fn candidate_inspection_json(candidate: volicord_projections::CandidateInspection) -> Value {
+    let candidate_id = candidate.candidate_id;
+    let candidate_revision = candidate.revision;
     let origin = candidate.origin.map(|origin| {
         json!({
             "actor_kind": format!("{:?}", origin.actor.kind).to_lowercase(),
@@ -2960,8 +3599,39 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             })
         })
         .collect::<Vec<_>>();
+    let engineering_choice_discovery = candidate.engineering_choice_discovery.map(|discovery| {
+        json!({
+            "goal_context_id":discovery.goal_context_id.to_string(),
+            "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+            "choices":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
+        })
+    });
+    let materiality_review = candidate.materiality_review.map(|review| json!({
+        "goal_context_id":review.goal_context_id.to_string(),
+        "baseline_analysis_snapshot_id":review.baseline_analysis_snapshot_id.to_string(),
+        "engineering_choice_discovery_candidate_id":review.engineering_choice_discovery_candidate_id.to_string(),
+        "learning_participation":match review.learning_participation {
+            LearningParticipation::Inactive => json!({"state":"inactive"}),
+            LearningParticipation::Active { user_turn_source_id, verbatim_statement } => json!({"state":"active","user_turn_source_id":user_turn_source_id.to_string(),"verbatim_statement":verbatim_statement}),
+        },
+        "dimensions":review.dimensions.iter().map(|dimension| json!({
+            "dimension_id":dimension.dimension_id,
+            "discovered_choice_ids":dimension.discovered_choice_ids,
+            "summary":dimension.summary,
+            "affected_scope":dimension.affected_scope,
+            "authority_disposition":materiality_disposition_json(&dimension.disposition),
+            "learning_value":learning_value_json(&dimension.learning_value),
+        })).collect::<Vec<_>>(),
+    }));
+    let learning_deliberation = candidate
+        .learning_deliberation
+        .as_ref()
+        .zip(candidate_revision)
+        .map(|(deliberation, revision)| {
+            learning_deliberation_json("inspect", candidate_id, revision, deliberation)
+        });
     json!({
-        "identity":candidate.candidate_id.to_string(),
+        "identity":candidate_id.to_string(),
         "exists":candidate.exists,
         "health":format!("{:?}",candidate.health).to_lowercase(),
         "revision":candidate.revision,
@@ -2976,6 +3646,9 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         "research_state":candidate.question_research_state.map(question_research_state_name),
         "repository_research":repository_research,
         "explicit_delegation_evidence":explicit_delegation_evidence,
+        "engineering_choice_discovery":engineering_choice_discovery,
+        "materiality_review":materiality_review,
+        "learning_deliberation":learning_deliberation,
         "content_omission":candidate.content_omission.map(|value| format!("{:?}",value).to_lowercase()),
         "content_cleaned":candidate.content_cleaned,
         "cleanup":cleanup,
@@ -3421,10 +4094,130 @@ fn materiality_dimensions(value: &Value) -> Result<Vec<MaterialityDimension>, Ho
         .collect()
 }
 
+fn engineering_choices(value: &Value) -> Result<Vec<EngineeringChoice>, HostError> {
+    value
+        .get("choices")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("choices must be an array"))?
+        .iter()
+        .map(|choice| {
+            let relationship = choice
+                .get("relationship")
+                .ok_or_else(|| HostError::new("choice relationship is required"))?;
+            let relationship = match required_str(relationship, "state")? {
+                "independent" => EngineeringChoiceRelationship::Independent,
+                "coupled" => EngineeringChoiceRelationship::Coupled {
+                    choice_ids: string_array(relationship, "choice_ids")?,
+                    rationale: required_str(relationship, "rationale")?.to_owned(),
+                },
+                _ => return Err(HostError::new("unknown engineering choice relationship")),
+            };
+            let alternatives = choice
+                .get("alternatives")
+                .and_then(Value::as_array)
+                .ok_or_else(|| HostError::new("choice alternatives must be an array"))?
+                .iter()
+                .map(|alternative| {
+                    Ok(EngineeringAlternative {
+                        alternative_id: required_str(alternative, "alternative_id")?.to_owned(),
+                        summary: required_str(alternative, "summary")?.to_owned(),
+                        technical_consequences: string_array(
+                            alternative,
+                            "technical_consequences",
+                        )?,
+                    })
+                })
+                .collect::<Result<Vec<_>, HostError>>()?;
+            Ok(EngineeringChoice {
+                choice_id: required_str(choice, "choice_id")?.to_owned(),
+                summary: required_str(choice, "summary")?.to_owned(),
+                affected_scope: string_array(choice, "affected_scope")?,
+                alternatives,
+                technical_consequences: string_array(choice, "technical_consequences")?,
+                source_basis: source_ids(choice, "source_ids")?,
+                effect_categories: required_strings(choice, "effect_categories")?
+                    .into_iter()
+                    .map(|category| engineering_effect_category(&category))
+                    .collect::<Result<Vec<_>, _>>()?,
+                relationship,
+                evidence_state: engineering_evidence_state(required_str(
+                    choice,
+                    "evidence_state",
+                )?)?,
+            })
+        })
+        .collect()
+}
+
+fn engineering_effect_category(value: &str) -> Result<EngineeringEffectCategory, HostError> {
+    match value {
+        "public_api_shape_or_semantics" => Ok(EngineeringEffectCategory::PublicApiShapeOrSemantics),
+        "compatibility" => Ok(EngineeringEffectCategory::Compatibility),
+        "failure_or_error_semantics" => Ok(EngineeringEffectCategory::FailureOrErrorSemantics),
+        "persistence_or_lifetime" => Ok(EngineeringEffectCategory::PersistenceOrLifetime),
+        "privacy_or_disclosure" => Ok(EngineeringEffectCategory::PrivacyOrDisclosure),
+        "security" => Ok(EngineeringEffectCategory::Security),
+        "user_visible_behavior_or_default" => {
+            Ok(EngineeringEffectCategory::UserVisibleBehaviorOrDefault)
+        }
+        "performance_or_resource_behavior" => {
+            Ok(EngineeringEffectCategory::PerformanceOrResourceBehavior)
+        }
+        "concurrency_or_operability" => Ok(EngineeringEffectCategory::ConcurrencyOrOperability),
+        "maintenance_or_support" => Ok(EngineeringEffectCategory::MaintenanceOrSupport),
+        "implementation_internal" => Ok(EngineeringEffectCategory::ImplementationInternal),
+        _ => Err(HostError::new("unknown engineering effect category")),
+    }
+}
+
+fn engineering_evidence_state(value: &str) -> Result<EngineeringChoiceEvidenceState, HostError> {
+    match value {
+        "sufficient" => Ok(EngineeringChoiceEvidenceState::Sufficient),
+        "research_required" => Ok(EngineeringChoiceEvidenceState::ResearchRequired),
+        "prototype_required" => Ok(EngineeringChoiceEvidenceState::PrototypeRequired),
+        _ => Err(HostError::new("unknown engineering choice evidence state")),
+    }
+}
+
+fn learning_participation(value: &Value) -> Result<LearningParticipation, HostError> {
+    let participation = value
+        .get("learning_participation")
+        .ok_or_else(|| HostError::new("learning_participation is required"))?;
+    match required_str(participation, "state")? {
+        "inactive" => Ok(LearningParticipation::Inactive),
+        "active" => Ok(LearningParticipation::Active {
+            user_turn_source_id: parse_source(required_str(participation, "user_turn_source_id")?)?,
+            verbatim_statement: required_str(participation, "verbatim_statement")?.to_owned(),
+        }),
+        _ => Err(HostError::new("unknown learning participation state")),
+    }
+}
+
+fn learning_selections(
+    value: &Value,
+    key: &str,
+) -> Result<Vec<LearningAlternativeSelection>, HostError> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new(format!("{key} must be an array")))?
+        .iter()
+        .map(|selection| {
+            Ok(LearningAlternativeSelection {
+                choice_id: required_str(selection, "choice_id")?.to_owned(),
+                alternative_id: required_str(selection, "alternative_id")?.to_owned(),
+            })
+        })
+        .collect()
+}
+
 fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostError> {
     let disposition = match required_str(value, "disposition")? {
         "repository_or_environment_fact" => MaterialityDisposition::RepositoryOrEnvironmentFact,
         "settled_authority" => MaterialityDisposition::SettledAuthority,
+        "agent_owned_implementation_choice" => {
+            MaterialityDisposition::AgentOwnedImplementationChoice
+        }
         "delegated_implementation_choice" => MaterialityDisposition::DelegatedImplementationChoice,
         "exploratory_uncertainty" => MaterialityDisposition::ExploratoryUncertainty {
             disposition: match required_str(value, "exploratory_disposition")? {
@@ -3487,11 +4280,26 @@ fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostErro
                 })
                 .transpose()?,
         },
-        learning_value: volicord_inquiry::LearningValueAssessment::Routine {
-            rationale: "MCP learning assessment is deferred to the dedicated adapter session"
-                .into(),
-        },
+        learning_value: learning_value_assessment(value)?,
     })
+}
+
+fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, HostError> {
+    let assessment = value
+        .get("learning_value")
+        .ok_or_else(|| HostError::new("dimension learning_value is required"))?;
+    match required_str(assessment, "state")? {
+        "routine" => Ok(LearningValueAssessment::Routine {
+            rationale: required_str(assessment, "rationale")?.to_owned(),
+        }),
+        "deliberation_worthy" => Ok(LearningValueAssessment::DeliberationWorthy {
+            rationale: required_str(assessment, "rationale")?.to_owned(),
+            consequence_significance: string_array(assessment, "consequence_significance")?,
+            transferable_principles: string_array(assessment, "transferable_principles")?,
+            non_obvious_trade_offs: string_array(assessment, "non_obvious_trade_offs")?,
+        }),
+        _ => Err(HostError::new("unknown learning-value assessment")),
+    }
 }
 
 fn material_outcome_signal(value: &str) -> Result<MaterialOutcomeSignal, HostError> {
@@ -3526,6 +4334,268 @@ fn work_authority_basis_kind(value: &str) -> Result<WorkAuthorityBasisKind, Host
     }
 }
 
+fn materiality_draft_json(
+    project_id: ProjectId,
+    candidate_id: CandidateId,
+    discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+) -> Value {
+    let dimensions = discovery
+        .choices
+        .iter()
+        .map(|choice| {
+            json!({
+                "prefilled":{
+                    "dimension_id":choice.choice_id,
+                    "discovered_choice_ids":[choice.choice_id],
+                    "summary":choice.summary,
+                    "affected_scope":choice.affected_scope,
+                    "material_consequences":choice.technical_consequences,
+                    "available_source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                },
+                "required_judgments":{
+                    "observable_signals":["one or more values from the materiality_review schema"],
+                    "disposition":["repository_or_environment_fact","settled_authority","agent_owned_implementation_choice","delegated_implementation_choice","exploratory_uncertainty","unresolved_user_owned_outcome"],
+                    "basis":"supply kinds, summary, and applicable Source/contract/Decision/delegation/research evidence",
+                    "learning_value":["routine","deliberation_worthy"],
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "action":"draft",
+        "project_id":project_id.to_string(),
+        "goal_context_id":discovery.goal_context_id.to_string(),
+        "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+        "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
+        "learning_participation":{
+            "allowed_states":["inactive","active"],
+            "active_requires":["exact current-host user-turn Source identity","non-empty verbatim opt-in statement"],
+        },
+        "dimension_templates":dimensions,
+        "required_action":{"tool":"materiality_review","action":"record"},
+        "canonical_mutation":false,
+        "read_only":true,
+    })
+}
+
+fn learning_deliberation_json(
+    action: &str,
+    candidate_id: CandidateId,
+    revision: u64,
+    deliberation: &LearningDeliberation,
+) -> Value {
+    let rounds = deliberation
+        .rounds
+        .iter()
+        .map(|round| {
+            let mut value = json!({
+                "initial_response_source_id":round.initial_response_source_id.to_string(),
+                "response":learning_initial_response_json(&round.response),
+                "user_rationale":round.user_rationale,
+            });
+            if let Some(object) = value.as_object_mut() {
+                if let Some(feedback) = &round.agent_feedback {
+                    object.insert("agent_feedback".into(), json!(feedback));
+                }
+                if let Some(recommendation) = &round.agent_recommendation {
+                    object.insert(
+                        "agent_recommendation".into(),
+                        json!({
+                            "selections":recommendation.selections.iter().map(learning_selection_json).collect::<Vec<_>>(),
+                            "rationale":recommendation.rationale,
+                        }),
+                    );
+                }
+                if let Some(source_id) = round.reconsideration_source_id {
+                    object.insert("reconsideration_source_id".into(), json!(source_id.to_string()));
+                }
+                if let Some(rationale) = &round.reconsideration_rationale {
+                    object.insert("reconsideration_rationale".into(), json!(rationale));
+                }
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "action":action,
+        "interaction_kind":"learning_participation",
+        "canonical_decision":false,
+        "authority_notice":"This Learning Deliberation is not a canonical Question or Decision. Route user-owned outcomes through inquiry_frontier and decision_record.",
+        "deliberation_candidate_id":candidate_id.to_string(),
+        "revision":revision,
+        "goal_context_id":deliberation.goal_context_id.to_string(),
+        "baseline_analysis_snapshot_id":deliberation.baseline_analysis_snapshot_id.to_string(),
+        "engineering_choice_discovery_candidate_id":deliberation.engineering_choice_discovery_candidate_id.to_string(),
+        "materiality_review_candidate_id":deliberation.materiality_review_candidate_id.to_string(),
+        "dimension_id":deliberation.dimension_id,
+        "discovered_choice_ids":deliberation.discovered_choice_ids,
+        "affected_scope":deliberation.affected_scope,
+        "problem":deliberation.problem,
+        "established_facts":deliberation.established_facts,
+        "choices":deliberation.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
+        "rounds":rounds,
+        "state":learning_deliberation_state_json(&deliberation.state),
+    })
+}
+
+fn engineering_choice_json(choice: &EngineeringChoice) -> Value {
+    let relationship = match &choice.relationship {
+        EngineeringChoiceRelationship::Independent => json!({"state":"independent"}),
+        EngineeringChoiceRelationship::Coupled {
+            choice_ids,
+            rationale,
+        } => {
+            json!({"state":"coupled","choice_ids":choice_ids,"rationale":rationale})
+        }
+    };
+    json!({
+        "choice_id":choice.choice_id,
+        "summary":choice.summary,
+        "affected_scope":choice.affected_scope,
+        "alternatives":choice.alternatives.iter().map(|alternative| json!({
+            "alternative_id":alternative.alternative_id,
+            "summary":alternative.summary,
+            "technical_consequences":alternative.technical_consequences,
+        })).collect::<Vec<_>>(),
+        "technical_consequences":choice.technical_consequences,
+        "source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+        "relationship":relationship,
+        "evidence_state":engineering_evidence_state_name(choice.evidence_state),
+    })
+}
+
+fn learning_selection_json(selection: &LearningAlternativeSelection) -> Value {
+    json!({"choice_id":selection.choice_id,"alternative_id":selection.alternative_id})
+}
+
+fn learning_initial_response_json(response: &LearningInitialResponse) -> Value {
+    match response {
+        LearningInitialResponse::Select { selections } => json!({
+            "state":"selected",
+            "selections":selections.iter().map(learning_selection_json).collect::<Vec<_>>(),
+        }),
+        LearningInitialResponse::DelegateToAgent => json!({"state":"delegated"}),
+        LearningInitialResponse::Skip => json!({"state":"skipped"}),
+        LearningInitialResponse::RequestResearchOrPrototype { evidence_state } => json!({
+            "state":"research_or_prototype_requested",
+            "evidence_state":engineering_evidence_state_name(*evidence_state),
+        }),
+    }
+}
+
+fn materiality_disposition_json(disposition: &MaterialityDisposition) -> Value {
+    match disposition {
+        MaterialityDisposition::RepositoryOrEnvironmentFact => {
+            json!({"state":"repository_or_environment_fact"})
+        }
+        MaterialityDisposition::SettledAuthority => json!({"state":"settled_authority"}),
+        MaterialityDisposition::AgentOwnedImplementationChoice => {
+            json!({"state":"agent_owned_implementation_choice"})
+        }
+        MaterialityDisposition::DelegatedImplementationChoice => {
+            json!({"state":"delegated_implementation_choice"})
+        }
+        MaterialityDisposition::ExploratoryUncertainty { disposition } => json!({
+            "state":"exploratory_uncertainty",
+            "exploratory_disposition":match disposition {
+                ExploratoryDisposition::ResearchRequired => "research_required",
+                ExploratoryDisposition::PrototypeRequired => "prototype_required",
+                ExploratoryDisposition::DeferredWithRevisit => "deferred_with_revisit",
+                ExploratoryDisposition::ResolvedByResearch => "resolved_by_research",
+            },
+        }),
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id,
+        } => json!({
+            "state":"unresolved_user_owned_outcome",
+            "resolution_decision_id":resolution_decision_id.map(|identity| identity.to_string()),
+        }),
+    }
+}
+
+fn learning_value_json(assessment: &LearningValueAssessment) -> Value {
+    match assessment {
+        LearningValueAssessment::Routine { rationale } => {
+            json!({"state":"routine","rationale":rationale})
+        }
+        LearningValueAssessment::DeliberationWorthy {
+            rationale,
+            consequence_significance,
+            transferable_principles,
+            non_obvious_trade_offs,
+        } => json!({
+            "state":"deliberation_worthy",
+            "rationale":rationale,
+            "consequence_significance":consequence_significance,
+            "transferable_principles":transferable_principles,
+            "non_obvious_trade_offs":non_obvious_trade_offs,
+        }),
+    }
+}
+
+fn learning_deliberation_state_json(state: &LearningDeliberationState) -> Value {
+    match state {
+        LearningDeliberationState::AwaitingInitialResponse => {
+            json!({"state":"awaiting_initial_response","required_action":"respond"})
+        }
+        LearningDeliberationState::AwaitingAgentFeedback { round } => {
+            json!({"state":"awaiting_agent_feedback","round":round,"required_action":"feedback"})
+        }
+        LearningDeliberationState::FeedbackProvided { round } => {
+            json!({"state":"feedback_provided","round":round,"required_action":"complete_or_reconsider"})
+        }
+        LearningDeliberationState::Completed {
+            round,
+            selected_alternatives,
+        } => {
+            json!({"state":"completed","round":round,"selected_alternatives":selected_alternatives.iter().map(learning_selection_json).collect::<Vec<_>>() })
+        }
+        LearningDeliberationState::Delegated { round } => {
+            json!({"state":"delegated","round":round})
+        }
+        LearningDeliberationState::Skipped { round } => json!({"state":"skipped","round":round}),
+        LearningDeliberationState::ResearchOrPrototypeRequired {
+            round,
+            evidence_state,
+        } => {
+            json!({"state":"research_or_prototype_required","round":round,"evidence_state":engineering_evidence_state_name(*evidence_state)})
+        }
+        LearningDeliberationState::ReconsiderationRequested { round } => {
+            json!({"state":"reconsideration_requested","round":round,"required_action":"respond"})
+        }
+    }
+}
+
+const fn engineering_evidence_state_name(state: EngineeringChoiceEvidenceState) -> &'static str {
+    match state {
+        EngineeringChoiceEvidenceState::Sufficient => "sufficient",
+        EngineeringChoiceEvidenceState::ResearchRequired => "research_required",
+        EngineeringChoiceEvidenceState::PrototypeRequired => "prototype_required",
+    }
+}
+
+const fn engineering_effect_category_name(state: EngineeringEffectCategory) -> &'static str {
+    match state {
+        EngineeringEffectCategory::PublicApiShapeOrSemantics => "public_api_shape_or_semantics",
+        EngineeringEffectCategory::Compatibility => "compatibility",
+        EngineeringEffectCategory::FailureOrErrorSemantics => "failure_or_error_semantics",
+        EngineeringEffectCategory::PersistenceOrLifetime => "persistence_or_lifetime",
+        EngineeringEffectCategory::PrivacyOrDisclosure => "privacy_or_disclosure",
+        EngineeringEffectCategory::Security => "security",
+        EngineeringEffectCategory::UserVisibleBehaviorOrDefault => {
+            "user_visible_behavior_or_default"
+        }
+        EngineeringEffectCategory::PerformanceOrResourceBehavior => {
+            "performance_or_resource_behavior"
+        }
+        EngineeringEffectCategory::ConcurrencyOrOperability => "concurrency_or_operability",
+        EngineeringEffectCategory::MaintenanceOrSupport => "maintenance_or_support",
+        EngineeringEffectCategory::ImplementationInternal => "implementation_internal",
+    }
+}
+
 fn materiality_review_outcome_json(
     action: &str,
     outcome: volicord_operations::MaterialityReviewOutcome,
@@ -3549,6 +4619,7 @@ fn with_workflow(mut value: Value, workflow: WorkflowDirective) -> Value {
 }
 
 fn workflow_json(workflow: WorkflowDirective) -> Value {
+    let input_guidance = workflow_input_guidance(&workflow);
     json!({
         "stage":workflow_stage_name(workflow.stage),
         "disposition":workflow_disposition_name(workflow.disposition),
@@ -3570,7 +4641,75 @@ fn workflow_json(workflow: WorkflowDirective) -> Value {
                 "identity":basis.identity,
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
+        "input_guidance":input_guidance,
     })
+}
+
+fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
+    let identity = |kind: &str| {
+        workflow
+            .satisfied_basis_identities
+            .iter()
+            .find(|basis| basis.kind == kind)
+            .map(|basis| basis.identity.clone())
+    };
+    match workflow.stage {
+        WorkflowStage::EngineeringChoiceDiscovery => json!({
+            "required_action":{"tool":"engineering_choice_discovery","action":"record"},
+            "available_identities":{
+                "project_id":identity("project"),
+                "goal_context_id":identity("goal_context"),
+                "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
+            },
+            "required_fields":["source_operation","summary","choices"],
+            "choice_required_fields":["choice_id","summary","affected_scope","alternatives","technical_consequences","source_ids","effect_categories","relationship","evidence_state"],
+            "allowable_values":{
+                "evidence_state":["sufficient","research_required","prototype_required"],
+                "relationship_state":["independent","coupled"],
+            },
+            "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, and private helper splits.",
+        }),
+        WorkflowStage::MaterialityReview => json!({
+            "required_action":{"tool":"materiality_review","action":"draft_then_record_or_revise"},
+            "available_identities":{
+                "project_id":identity("project"),
+                "goal_context_id":identity("goal_context"),
+                "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
+                "engineering_choice_discovery_candidate_id":identity("engineering_choice_discovery_candidate"),
+                "materiality_review_candidate_id":identity("materiality_review_candidate"),
+            },
+            "draft_call":{
+                "tool":"materiality_review",
+                "action":"draft",
+                "project_id":identity("project"),
+                "engineering_choice_discovery_candidate_id":identity("engineering_choice_discovery_candidate"),
+            },
+            "required_semantic_judgments":["authority disposition and evidence","independent learning value","explicit learning participation state"],
+        }),
+        WorkflowStage::LearningDeliberation => {
+            let pending = workflow
+                .satisfied_basis_identities
+                .iter()
+                .filter(|basis| basis.kind == "learning_deliberation_candidate")
+                .map(|basis| basis.identity.clone())
+                .collect::<Vec<_>>();
+            json!({
+                "interaction_kind":"learning_participation_not_canonical_decision",
+                "required_action":if pending.is_empty() { json!({"tool":"learning_deliberation","action":"begin"}) } else { json!({"tool":"learning_deliberation","action":"inspect"}) },
+                "available_identities":{
+                    "project_id":identity("project"),
+                    "goal_context_id":identity("goal_context"),
+                    "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
+                    "engineering_choice_discovery_candidate_id":identity("engineering_choice_discovery_candidate"),
+                    "materiality_review_candidate_id":identity("materiality_review_candidate"),
+                    "learning_deliberation_candidate_ids":pending,
+                },
+                "ordering":["begin_or_inspect_without_agent_recommendation","record_current_user_initial_response","provide_agent_feedback_and_recommendation_after_selection","complete_or_reconsider"],
+                "allowable_initial_responses":["select","delegate","skip","research_required","prototype_required"],
+            })
+        }
+        _ => Value::Null,
+    }
 }
 
 fn workflow_stage_name(value: WorkflowStage) -> &'static str {

@@ -150,10 +150,16 @@ def main() -> int:
         "rebuild/crates/volicord-host/README.md",
         "rebuild/crates/volicord-host/src/mcp.rs",
         "rebuild/crates/volicord-inquiry/README.md",
+        "rebuild/crates/volicord-inquiry/src/applicability.rs",
+        "rebuild/crates/volicord-inquiry/src/lib.rs",
+        "rebuild/crates/volicord-inquiry/src/model.rs",
         "rebuild/crates/volicord-inquiry/src/store.rs",
         "rebuild/crates/volicord-inquiry/src/work_authority.rs",
         "rebuild/crates/volicord-operations/src/model.rs",
         "rebuild/crates/volicord-operations/src/operations.rs",
+        "rebuild/crates/volicord-projections/src/candidate_inspection.rs",
+        "rebuild/crates/volicord-viewer/src/render.rs",
+        "rebuild/crates/volicord-viewer/src/render_tests.rs",
     }
     require(
         not set(production_drift) - permitted_activation_drift,

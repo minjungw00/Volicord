@@ -220,6 +220,14 @@ stdout/stderr, provider-private payloads, expired/deleted content와 authorized 
 | `promotion_disposition` | pending/retained, promoted, dismissed 또는 expired/retention-cleaned 상태와 result basis |
 | `scope_opt_out_state` | 해당 collection scope의 current opt-out state와 effective basis |
 
+Engineering Choice Discovery에는 exact Goal/baseline, choice identity, credible alternatives,
+consequences, affected scope와 Source basis를 bounded content로 표시할 수 있다. Materiality
+Review에는 learning participation, choice-to-dimension mapping, authority disposition과 독립
+learning-value state를 표시한다. Learning Deliberation에는 problem/facts/alternatives,
+current ordered state, user response/rationale, 이후 agent feedback/recommendation과 terminal
+result를 표시하되 canonical Question/Decision으로 label하지 않는다. 최초 user response 전
+projection은 agent recommendation을 포함하지 않는다.
+
 Candidate Inspection read는 Candidate를 promote, correct, dismiss, expire, delete 또는
 reinterpret하지 않는다. Projection access/omission도 retention clock, promotion
 authorization 또는 opt-out state를 바꾸지 않는다. Mutation은 각각의 explicit domain,
