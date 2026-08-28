@@ -2,14 +2,15 @@
 
 ## Status
 
-Failed diagnostic. The technically gated production/test candidate entered a
-predecessor campaign, but that campaign was stopped after the first six
-completed cycles exposed a production materiality-screening gap and a false
-positive risk in its former combined user-owned class. The incomplete campaign,
-its sealed descriptors, and its private evidence are diagnostic only; they must
-not be repaired, resumed, or reused for replacement qualification.
+Failed diagnostic. Candidate
+`537bd0cadf40bedaf0719b658a860ac369d3faa6` entered the naturalistic campaign.
+Its explicit user-owned control succeeded, but the hidden user-owned control
+failed to discover the material outcome before affected work. The incomplete
+campaign, its sealed descriptors, and its private evidence are diagnostic only;
+they must not be repaired, resumed, or reused for replacement qualification.
 The prior technical-entry capsule remains historical evidence and cannot by
-itself qualify a later campaign contract.
+itself qualify a later campaign contract. A new candidate requires a new
+technical gate and a wholly fresh campaign.
 
 - `replacement_gate = failed`
 - `replacement_pass_candidate = false`
@@ -250,19 +251,11 @@ historical technical entry state for the predecessor campaign contract:
 - same-gate final/V11 artifact ownership valid;
 - no active accepted-Decision revisit trigger reported by official V11.
 
-The first six completed naturalistic cycles established diagnostic failure:
-
-- both completed former combined user-owned cycles implemented without
-  obtaining a user Decision;
-- the Small Python expired-token diagnostic task selected a new stable public
-  API shape directly;
-- the Polyglot generated-package/default-policy task also implemented without a
-  Question or Decision;
-- research/no-question, delegated implementation, and exploratory uncertainty
-  behavior was substantially proportional;
-- one Polyglot descriptor in that former class admitted a plausible complete
-  no-question implementation, exposing the need for independent
-  counterfactual review.
+Candidate `537bd0cadf40bedaf0719b658a860ac369d3faa6` established one successful
+explicit user-owned control and one hidden user-owned discovery failure. The
+failed campaign is diagnostic-only and cannot qualify this or any later
+candidate. A later candidate must pass a new technical gate and use a wholly
+fresh campaign.
 
 The campaign stopped at that point. These observations do not qualify the
 candidate, and V11 remains scripted conformance rather than naturalistic
@@ -311,9 +304,10 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
+| Failed campaign candidate | `537bd0cadf40bedaf0719b658a860ac369d3faa6` |
 | Sealed production/test candidate | `technical_entry_only` |
 | Technical Phase 8 entry | `passed_historical_candidate_evidence` |
-| Naturalistic Dogfood | `failed_diagnostic_after_six_completed_cycles` |
+| Naturalistic Dogfood | `failed_diagnostic_hidden_materiality_discovery` |
 | Complete replacement campaign | `not_run` |
 | Automated Dogfood qualification | `failed` |
 | Campaign-level human review | `not_provided` |
