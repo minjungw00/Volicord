@@ -764,6 +764,44 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     assert invalid["outcome"] == "operator_environment_invalid"
     assert invalid["classification"] == "operator_environment_setup_failure"
 
+    evidence_root, evidence_captures, _evidence_bundles = prepared_batch(
+        parent, "evidence-transport-campaign", binary
+    )
+    evidence_work = next(
+        path
+        for path in evidence_captures
+        if path.name == "volicord-1-work-events.jsonl"
+    )
+    current_evidence_work = current_mcp_tool_call_capture(
+        evidence_work,
+        parent / "evidence-current-work.jsonl",
+    )
+    events = [
+        json.loads(line)
+        for line in current_evidence_work.read_text(encoding="utf-8").splitlines()
+    ]
+    project_item = next(
+        value["payload"]["item"]
+        for value in events
+        if value.get("payload", {}).get("type") == "item_completed"
+        and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+        and value["payload"]["item"].get("tool") == "project_initialize"
+    )
+    project_item["result"].pop("structuredContent")
+    malformed = parent / "evidence-malformed-project-work.jsonl"
+    malformed.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n" for value in events
+        ),
+        encoding="utf-8",
+    )
+    evidence_result = campaign.collect_work(
+        evidence_root, "volicord", 1, malformed
+    )
+    assert evidence_result["outcome"] == "evidence_failed"
+    assert evidence_result["classification"] == "evidence_transport_failure"
+    assert evidence_result["evidence_transport"]["state"] == "indeterminate"
+
 
 def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
     results: list[dict[str, object]] = []
@@ -2625,6 +2663,7 @@ def main() -> int:
             "unresolved_fact_authority_disagreement_blocks_sealing",
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
+            "evidence_transport_failure_is_not_product_failure",
             "missing_activation_operator_environment_invalid",
             "unordered_sixteen_rollout_batch_mapping",
             "compacted_fresh_thread_batch_mapping",

@@ -2793,6 +2793,7 @@ def collect_batch(
                 register_artifact(root, blocker_path)
                 has_environment_invalid |= blocker["outcome"] == "operator_environment_invalid"
                 has_product_blocker |= blocker["outcome"] == "campaign_stop"
+                has_evidence_failure |= blocker["outcome"] == "evidence_failed"
                 state["state"] = blocker["outcome"]
             else:
                 work_intake = {
@@ -2907,7 +2908,9 @@ def collect_batch(
         "operator_environment_invalid"
         if has_environment_invalid
         else "campaign_stop"
-        if has_product_blocker or has_evidence_failure
+        if has_product_blocker
+        else "evidence_failed"
+        if has_evidence_failure
         else None
     )
     save_campaign(root, campaign)
@@ -2924,6 +2927,8 @@ def collect_batch(
             else "operator_environment_invalid"
             if has_environment_invalid
             else "campaign_stop"
+            if has_product_blocker
+            else "evidence_failed"
         ),
         "session_distinctness": {
             "status": "passed",

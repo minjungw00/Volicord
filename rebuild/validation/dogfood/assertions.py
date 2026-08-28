@@ -441,6 +441,12 @@ def main() -> int:
     mcp_completion = definition_value.get("real_session_evidence", {}).get(
         "mcp_completion_contract", {}
     )
+    evidence_transport = definition_value.get("real_session_evidence", {}).get(
+        "evidence_transport_attribution", {}
+    )
+    interaction_diagnostics = definition_value.get("real_session_evidence", {}).get(
+        "interaction_cost_diagnostics", {}
+    )
     if user_turn_normalization != {
         "accepted_representations": [
             "event_msg.user_message with active turn and client_id",
@@ -496,6 +502,33 @@ def main() -> int:
         "numeric_cli_version_dispatch": False,
     }:
         raise AssertionError("Phase 8 Codex MCP completion normalization contract changed")
+    if evidence_transport != {
+        "states": ["complete", "indeterminate"],
+        "indeterminate_causes": [
+            "malformed_mcp_completion",
+            "unsupported_mcp_completion_status",
+            "mcp_completion_status_mismatch",
+        ],
+        "actual_tool_or_application_failure_is_transport_indeterminate": False,
+        "required_operation_indeterminate_classification": "evidence_transport_failure",
+        "required_operation_indeterminate_outcome": "evidence_failed",
+        "actual_missing_required_operation_classification": "product_work_session_blocker",
+        "unknown_means_pass": False,
+    }:
+        raise AssertionError("Phase 8 evidence transport attribution contract changed")
+    if interaction_diagnostics != {
+        "fields": [
+            "tool_call_count",
+            "engineering_choice_discovery_call_count",
+            "materiality_review_call_count",
+            "unsuccessful_or_rejected_call_count",
+            "ready_for_work_observed",
+            "calls_before_ready_for_work",
+        ],
+        "work_and_resume_separate": True,
+        "numeric_pass_threshold": None,
+    }:
+        raise AssertionError("Phase 8 interaction-cost diagnostic contract changed")
     for marker in (
         "control_has_accessible_name",
         "aria-labelledby",
@@ -701,6 +734,9 @@ def main() -> int:
         "phase_9_ready": False,
         "later_evidence_status": "not_run",
         "missing_activation_outcome": "operator_environment_invalid",
+        "indeterminate_required_evidence_outcome": "evidence_failed",
+        "actual_missing_required_operation_outcome": "campaign_stop",
+        "mixed_failure_checks_preserved": True,
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     batch_contract = real_session.get("batch_campaign_contract", {})

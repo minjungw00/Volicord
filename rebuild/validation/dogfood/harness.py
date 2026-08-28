@@ -28,6 +28,7 @@ from codex_events import (
     CodexCapture,
     EvidenceError,
     ToolCall,
+    VOLICORD_OPERATIONS,
     command_is_clean_git_status,
     command_is_repository_inspection,
     decode_established_fact_statements,
@@ -1113,6 +1114,33 @@ def load_definition() -> dict[str, Any]:
         "numeric_cli_version_dispatch": False,
     }:
         raise ValueError("the current MCP completion evidence contract changed")
+    if evidence.get("evidence_transport_attribution") != {
+        "states": ["complete", "indeterminate"],
+        "indeterminate_causes": [
+            "malformed_mcp_completion",
+            "unsupported_mcp_completion_status",
+            "mcp_completion_status_mismatch",
+        ],
+        "actual_tool_or_application_failure_is_transport_indeterminate": False,
+        "required_operation_indeterminate_classification": "evidence_transport_failure",
+        "required_operation_indeterminate_outcome": "evidence_failed",
+        "actual_missing_required_operation_classification": "product_work_session_blocker",
+        "unknown_means_pass": False,
+    }:
+        raise ValueError("the Dogfood evidence transport attribution contract changed")
+    if evidence.get("interaction_cost_diagnostics") != {
+        "fields": [
+            "tool_call_count",
+            "engineering_choice_discovery_call_count",
+            "materiality_review_call_count",
+            "unsuccessful_or_rejected_call_count",
+            "ready_for_work_observed",
+            "calls_before_ready_for_work",
+        ],
+        "work_and_resume_separate": True,
+        "numeric_pass_threshold": None,
+    }:
+        raise ValueError("the Dogfood interaction-cost diagnostic contract changed")
     descriptor_contract = evidence.get("cycle_descriptor_contract", {})
     if (
         descriptor_contract.get("work_user_task_field") != "work_user_task"
@@ -1155,6 +1183,9 @@ def load_definition() -> dict[str, Any]:
             "phase_9_ready": False,
             "later_evidence_status": "not_run",
             "missing_activation_outcome": "operator_environment_invalid",
+            "indeterminate_required_evidence_outcome": "evidence_failed",
+            "actual_missing_required_operation_outcome": "campaign_stop",
+            "mixed_failure_checks_preserved": True,
         }
     ):
         raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
@@ -2582,6 +2613,66 @@ USER_DECISION_BLOCKER_CHECKS = (
     "explicit_current_host_user_decision_operation",
 )
 SETUP_ACTIVATION_CHECK = "repository_scoped_session_start_activation"
+WORK_CHECK_OPERATIONS = {
+    "project_session_entry": ("project_initialize", "project_resolve"),
+    "goal_context_operation": ("context_record",),
+    "repository_baseline_operation": (
+        "project_initialize",
+        "project_resolve",
+        "context_record",
+        "repository_analyze",
+        "checkpoint_record",
+    ),
+    "materiality_review_operation": ("materiality_review",),
+    "behavior_class_evidence": (),
+    "source_grounded_checkpoint_operation": ("checkpoint_record",),
+    "material_question_candidate_lifecycle": (
+        "candidate_manage",
+        "inquiry_frontier",
+    ),
+    "explicit_current_host_user_decision_operation": ("decision_record",),
+}
+
+
+def work_evidence_transport_attribution(
+    capture: CodexCapture, failed_checks: list[str]
+) -> dict[str, Any]:
+    affected_checks = [
+        check
+        for check in failed_checks
+        if WORK_CHECK_OPERATIONS.get(check)
+        and capture.transport_issues(*WORK_CHECK_OPERATIONS[check])
+    ]
+    relevant_operations = {
+        operation
+        for check in affected_checks
+        for operation in WORK_CHECK_OPERATIONS[check]
+    }
+    issues = [
+        issue
+        for issue in capture.evidence_transport_issues
+        if issue.operation in relevant_operations
+    ]
+    unique_issues = {
+        (issue.sequence, issue.turn_id, issue.call_id, issue.operation, issue.reason): issue
+        for issue in issues
+    }
+    return {
+        "state": "indeterminate" if affected_checks else "complete",
+        "affected_checks": affected_checks,
+        "issue_count": len(unique_issues),
+        "issues": [
+            {
+                "sequence": issue.sequence,
+                "turn_id": issue.turn_id,
+                "call_id": issue.call_id,
+                "server": issue.server,
+                "operation": issue.operation,
+                "reason": issue.reason,
+            }
+            for issue in unique_issues.values()
+        ],
+    }
 
 
 def build_work_blocker_result(
@@ -2729,17 +2820,28 @@ def build_work_blocker_result(
         raise ValueError(
             "completed work capture has no machine-observable terminal work blocker; use normal full qualification"
         )
+    evidence_transport = work_evidence_transport_attribution(capture, failed_checks)
+    evidence_failed_checks = evidence_transport["affected_checks"]
+    product_failed_checks = [
+        check
+        for check in failed_checks
+        if check not in evidence_failed_checks and check != SETUP_ACTIVATION_CHECK
+    ]
     result = {
         "kind": "phase8_dogfood_blocker_result",
         "status": "failed",
         "classification": (
             "operator_environment_setup_failure"
             if not activation_observed
+            else "evidence_transport_failure"
+            if evidence_failed_checks
             else "product_work_session_blocker"
         ),
         "outcome": (
             "operator_environment_invalid"
             if not activation_observed
+            else "evidence_failed"
+            if evidence_failed_checks
             else "campaign_stop"
         ),
         "candidate_head": candidate_head,
@@ -2751,6 +2853,8 @@ def build_work_blocker_result(
         "work_capture_sha256": capture.source_sha256,
         "failed_checks": failed_checks,
         "failed_check_count": len(failed_checks),
+        "evidence_transport": evidence_transport,
+        "product_failed_checks": product_failed_checks,
         "campaign_complete": False,
         "replacement_pass_candidate": False,
         "phase_9_ready": False,
@@ -2783,6 +2887,8 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         "work_capture_sha256",
         "failed_checks",
         "failed_check_count",
+        "evidence_transport",
+        "product_failed_checks",
         "campaign_complete",
         "replacement_pass_candidate",
         "phase_9_ready",
@@ -2804,6 +2910,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     outcome = result.get("outcome")
     if (classification, outcome) not in {
         ("operator_environment_setup_failure", "operator_environment_invalid"),
+        ("evidence_transport_failure", "evidence_failed"),
         ("product_work_session_blocker", "campaign_stop"),
     }:
         raise ValueError("work-blocker result has an invalid failure classification")
@@ -2826,7 +2933,8 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
             and failed_checks != [SETUP_ACTIVATION_CHECK]
         )
         or (
-            classification == "product_work_session_blocker"
+            classification
+            in {"product_work_session_blocker", "evidence_transport_failure"}
             and failed_checks
             != [
                 name
@@ -2837,6 +2945,57 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or result.get("failed_check_count") != len(failed_checks)
     ):
         raise ValueError("work-blocker result has invalid failed checks")
+    evidence_transport = result.get("evidence_transport")
+    product_failed_checks = result.get("product_failed_checks")
+    if (
+        not isinstance(evidence_transport, dict)
+        or set(evidence_transport)
+        != {"state", "affected_checks", "issue_count", "issues"}
+        or evidence_transport.get("state") not in {"complete", "indeterminate"}
+        or not isinstance(evidence_transport.get("affected_checks"), list)
+        or not isinstance(evidence_transport.get("issues"), list)
+        or evidence_transport.get("issue_count")
+        != len(evidence_transport.get("issues", []))
+        or not isinstance(product_failed_checks, list)
+        or any(check not in failed_checks for check in product_failed_checks)
+        or any(
+            check in product_failed_checks
+            for check in evidence_transport.get("affected_checks", [])
+        )
+        or set(product_failed_checks)
+        | set(evidence_transport.get("affected_checks", []))
+        != {check for check in failed_checks if check != SETUP_ACTIVATION_CHECK}
+        or any(
+            not isinstance(issue, dict)
+            or set(issue)
+            != {"sequence", "turn_id", "call_id", "server", "operation", "reason"}
+            or not isinstance(issue.get("sequence"), int)
+            or not nonempty_string(issue.get("turn_id"))
+            or not nonempty_string(issue.get("call_id"))
+            or issue.get("server") != "volicord"
+            or issue.get("operation") not in VOLICORD_OPERATIONS
+            or issue.get("reason")
+            not in {
+                "malformed_mcp_completion",
+                "unsupported_mcp_completion_status",
+                "mcp_completion_status_mismatch",
+            }
+            for issue in evidence_transport.get("issues", [])
+        )
+        or (
+            classification == "evidence_transport_failure"
+            and (
+                evidence_transport.get("state") != "indeterminate"
+                or not evidence_transport.get("affected_checks")
+                or not evidence_transport.get("issues")
+            )
+        )
+        or (
+            classification != "evidence_transport_failure"
+            and evidence_transport.get("affected_checks")
+        )
+    ):
+        raise ValueError("work-blocker evidence transport attribution is malformed")
     if (
         not isinstance(later, dict)
         or set(later)
@@ -4305,6 +4464,48 @@ def checkpoint_facts(
     )
 
 
+def interaction_cost_diagnostics(capture: CodexCapture | None) -> dict[str, Any]:
+    if capture is None:
+        return {
+            "tool_call_count": 0,
+            "engineering_choice_discovery_call_count": 0,
+            "materiality_review_call_count": 0,
+            "unsuccessful_or_rejected_call_count": 0,
+            "ready_for_work_observed": False,
+            "calls_before_ready_for_work": None,
+        }
+    ready_calls = [
+        call
+        for call in capture.successful_calls("materiality_review")
+        if isinstance(call.result.get("workflow"), dict)
+        and call.result["workflow"].get("stage") == "ready_for_work"
+        and call.result["workflow"].get("blocks_ordinary_work") is False
+    ]
+    ready_sequence = min(
+        (call.completion_sequence for call in ready_calls),
+        default=None,
+    )
+    return {
+        "tool_call_count": len(capture.tool_calls),
+        "engineering_choice_discovery_call_count": len(
+            capture.calls("engineering_choice_discovery")
+        ),
+        "materiality_review_call_count": len(capture.calls("materiality_review")),
+        "unsuccessful_or_rejected_call_count": sum(
+            call.outcome != "succeeded" for call in capture.tool_calls
+        ),
+        "ready_for_work_observed": ready_sequence is not None,
+        "calls_before_ready_for_work": (
+            sum(
+                call.completion_sequence < ready_sequence
+                for call in capture.tool_calls
+            )
+            if ready_sequence is not None
+            else None
+        ),
+    }
+
+
 def real_session_evidence(
     raw: Any,
     *,
@@ -5060,6 +5261,37 @@ def real_session_evidence(
             else None,
         },
         "campaign_support_evidence": support_basis,
+        "evidence_transport": {
+            "work": {
+                "state": (
+                    work_capture.evidence_transport_state
+                    if work_capture is not None
+                    else "unavailable"
+                ),
+                "issue_count": (
+                    len(work_capture.evidence_transport_issues)
+                    if work_capture is not None
+                    else 0
+                ),
+            },
+            "resume": {
+                "state": (
+                    resume_capture.evidence_transport_state
+                    if resume_capture is not None
+                    else "unavailable"
+                ),
+                "issue_count": (
+                    len(resume_capture.evidence_transport_issues)
+                    if resume_capture is not None
+                    else 0
+                ),
+            },
+        },
+        "interaction_cost_diagnostics": {
+            "thresholds_applied": False,
+            "work": interaction_cost_diagnostics(work_capture),
+            "resume": interaction_cost_diagnostics(resume_capture),
+        },
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
 
@@ -8702,8 +8934,32 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
         failed.successful_calls("materiality_review")
         or [call.error for call in failed.calls("materiality_review")]
         != ["validation failed", "malformed_mcp_completion"]
+        or failed.evidence_transport_state != "indeterminate"
+        or [issue.operation for issue in failed.evidence_transport_issues]
+        != ["materiality_review"]
     ):
         raise AssertionError("failed or malformed current MCP evidence became successful")
+    interpreted_failure = load_codex_capture(
+        write(
+            "interpreted-failure",
+            [
+                current(
+                    "failed-review",
+                    "materiality_review",
+                    {"action": "record"},
+                    {"error": "validation failed"},
+                    status="failed",
+                    is_error=True,
+                )
+            ],
+        )
+    )
+    if (
+        interpreted_failure.evidence_transport_state != "complete"
+        or interpreted_failure.successful_calls("materiality_review")
+        or len(interpreted_failure.calls("materiality_review")) != 1
+    ):
+        raise AssertionError("interpretable application failure became transport failure")
 
     duplicate = load_codex_capture(
         write(
@@ -9231,6 +9487,9 @@ def self_test() -> int:
     current_work_capture = load_codex_capture(current_work_path)
     current_resume_capture = load_codex_capture(current_resume_path)
     current_project_calls = current_work_capture.successful_calls("project_initialize")
+    current_work_diagnostics = current_transport_result[
+        "interaction_cost_diagnostics"
+    ]["work"]
     if (
         current_transport_result["status"] != "passed"
         or len(current_work_capture.user_turns) < 1
@@ -9242,6 +9501,17 @@ def self_test() -> int:
         or not current_work_capture.successful_calls("checkpoint_record")
         or len(current_resume_capture.successful_calls("project_resolve")) != 1
         or len(current_resume_capture.successful_calls("recall")) != 1
+        or current_work_diagnostics["engineering_choice_discovery_call_count"] < 1
+        or current_work_diagnostics["materiality_review_call_count"] < 1
+        or current_work_diagnostics["unsuccessful_or_rejected_call_count"] != 0
+        or current_work_diagnostics["ready_for_work_observed"] is not True
+        or not isinstance(
+            current_work_diagnostics["calls_before_ready_for_work"], int
+        )
+        or current_transport_result["interaction_cost_diagnostics"][
+            "thresholds_applied"
+        ]
+        is not False
     ):
         raise AssertionError(
             "current UserMessage/McpToolCall work-resume journey lost semantic evidence"
@@ -9261,6 +9531,72 @@ def self_test() -> int:
             raise
     else:
         raise AssertionError("valid current-format work intake became an early-stop blocker")
+    current_events = [
+        json.loads(line) for line in current_work_path.read_text(encoding="utf-8").splitlines()
+    ]
+    malformed_project_events = json.loads(json.dumps(current_events))
+    malformed_project_item = next(
+        value["payload"]["item"]
+        for value in malformed_project_events
+        if value.get("payload", {}).get("type") == "item_completed"
+        and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+        and value["payload"]["item"].get("tool") == "project_initialize"
+    )
+    malformed_project_item["result"].pop("structuredContent")
+    malformed_project_path = evidence_directory / "current-malformed-project-work.jsonl"
+    malformed_project_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in malformed_project_events
+        ),
+        encoding="utf-8",
+    )
+    malformed_project_blocker = build_work_blocker_result(
+        candidate_revision,
+        current_transport_fixture,
+        current_descriptor_identity,
+        load_codex_capture(malformed_project_path),
+    )
+    if (
+        malformed_project_blocker["classification"]
+        != "evidence_transport_failure"
+        or malformed_project_blocker["outcome"] != "evidence_failed"
+        or malformed_project_blocker["evidence_transport"]["state"]
+        != "indeterminate"
+        or "project_session_entry"
+        not in malformed_project_blocker["evidence_transport"]["affected_checks"]
+    ):
+        raise AssertionError("malformed required MCP result was attributed to the product")
+
+    missing_project_events = [
+        value
+        for value in current_events
+        if not (
+            value.get("payload", {}).get("type") == "item_completed"
+            and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+            and value["payload"]["item"].get("tool") == "project_initialize"
+        )
+    ]
+    missing_project_path = evidence_directory / "current-missing-project-work.jsonl"
+    missing_project_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in missing_project_events
+        ),
+        encoding="utf-8",
+    )
+    missing_project_blocker = build_work_blocker_result(
+        candidate_revision,
+        current_transport_fixture,
+        current_descriptor_identity,
+        load_codex_capture(missing_project_path),
+    )
+    if (
+        missing_project_blocker["classification"] != "product_work_session_blocker"
+        or missing_project_blocker["outcome"] != "campaign_stop"
+        or missing_project_blocker["evidence_transport"]["state"] != "complete"
+    ):
+        raise AssertionError("actual missing Project operation was not a product blocker")
     hidden_fixture = real_session_fixture(
         "volicord",
         2,
