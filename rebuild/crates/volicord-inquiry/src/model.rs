@@ -280,6 +280,7 @@ pub enum WorkAuthorityBasisKind {
     AgentRecommendation,
     LibraryOrConvention,
     ImplementationPreference,
+    NoSettlingAuthority,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

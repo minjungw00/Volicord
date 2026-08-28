@@ -321,26 +321,14 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         json!({
             "action":"record",
             "project_id":project,
-            "goal_context_id":goal_context_id,
-            "baseline_analysis_snapshot_id":baseline,
             "engineering_choice_discovery_candidate_id":discovery_id,
-            "source_operation":"MCP pre-work outcome review",
             "rationale":"The failure mode is independently user-visible and user-owned.",
             "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through the choices"},
-            "dimensions":[{
-                "dimension_id":"failure-mode",
-                "discovered_choice_ids":["failure-mode"],
-                "summary":"Choose the user-visible failure mode",
-                "affected_scope":["mcp-errors"],
-                "material_consequences":["Changes observable failure behavior"],
-                "observable_signals":["observable_failure_policy"],
+            "judgments":[{
+                "choice_id":"failure-mode",
                 "disposition":"unresolved_user_owned_outcome",
                 "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]},
-                "basis":{
-                    "kinds":["agent_recommendation"],
-                    "summary":"No accepted authority selects the outcome",
-                    "source_ids":[repository_source_id]
-                }
+                "basis_summary":"No accepted authority selects the outcome"
             }]
         }),
     );
@@ -455,22 +443,12 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "review_candidate_id":review_id,
             "rationale":"The explicit current-host response now resolves the outcome.",
             "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through the choices"},
-            "dimensions":[{
-                "dimension_id":"failure-mode",
-                "discovered_choice_ids":["failure-mode"],
-                "summary":"Choose the user-visible failure mode",
-                "affected_scope":["mcp-errors"],
-                "material_consequences":["Changes observable failure behavior"],
-                "observable_signals":["observable_failure_policy"],
+            "judgments":[{
+                "choice_id":"failure-mode",
                 "disposition":"unresolved_user_owned_outcome",
                 "resolution_decision_id":decision_id,
                 "learning_value":{"state":"routine","rationale":"The canonical Decision resolves authority without a learning interruption."},
-                "basis":{
-                    "kinds":["applicable_decision"],
-                    "summary":"The current explicit Decision resolves this dimension",
-                    "source_ids":[repository_source_id],
-                    "decision_ids":[decision_id]
-                }
+                "basis_summary":"The current explicit Decision resolves this dimension"
             }]
         }),
     );
@@ -613,20 +591,295 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
             .as_str()
             .is_some_and(|guidance| guidance.contains("no exact authority"))
     );
-    let templates = draft["dimension_templates"]
+    let templates = draft["judgment_templates"]
         .as_array()
-        .expect("dimension templates");
+        .expect("judgment templates");
     assert_eq!(templates.len(), 3);
     assert!(templates.iter().all(|template| {
-        template["prefilled"].get("disposition").is_none()
-            && template["required_judgments"]["disposition"]
-                .as_array()
-                .is_some_and(|values| {
-                    values
-                        .iter()
-                        .any(|value| value == "unresolved_user_owned_outcome")
-                })
+        template["discovery_owned"].get("disposition").is_none()
+            && template["caller_owned_judgment"]["required_fields"]
+                == json!([
+                    "choice_id",
+                    "disposition",
+                    "basis_summary",
+                    "learning_value"
+                ])
     }));
+    assert!(
+        draft["disposition_input_contracts"]["unresolved_user_owned_outcome"]["forbidden"]
+            .as_array()
+            .is_some_and(|fields| fields.iter().any(|field| field == "contract_basis"))
+    );
+}
+
+#[test]
+fn materiality_draft_has_one_record_path_for_every_disposition() {
+    let cases = vec![
+        (
+            "repository-fact",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"repository_or_environment_fact",
+                "basis_summary":"The repository fixes the only viable value.",
+                "learning_value":{"state":"routine","rationale":"Reading a fixed value is routine."}
+            }),
+            "ready_for_work",
+        ),
+        (
+            "settled-contract",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"settled_authority",
+                "basis_summary":"The active owner settles this exact dimension.",
+                "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"],
+                "learning_value":{"state":"routine","rationale":"Applying a settled contract is routine."}
+            }),
+            "ready_for_work",
+        ),
+        (
+            "agent-owned",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"agent_owned_implementation_choice",
+                "basis_summary":"No user-facing policy varies across the alternatives.",
+                "learning_value":{"state":"routine","rationale":"The bounded implementation detail is routine."}
+            }),
+            "ready_for_work",
+        ),
+        (
+            "current-task-delegation",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"delegated_implementation_choice",
+                "basis_summary":"The exact current Goal delegates this bounded implementation choice.",
+                "delegation_statement":"I delegate the bounded-choice implementation to you",
+                "delegated_scope":["src/lib.rs"],
+                "learning_value":{"state":"routine","rationale":"The delegated implementation detail is routine."}
+            }),
+            "materiality_review",
+        ),
+        (
+            "research-required",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"research_required",
+                "basis_summary":"Repository evidence is still required.",
+                "research_basis":["Inspect the current adapter behavior"],
+                "learning_value":{"state":"routine","rationale":"Research precedes any learning assessment."}
+            }),
+            "research_or_prototype",
+        ),
+        (
+            "prototype-required",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"prototype_required",
+                "basis_summary":"A bounded prototype is still required.",
+                "research_basis":["Prototype both observable behaviors"],
+                "learning_value":{"state":"routine","rationale":"Prototype evidence is not yet available."}
+            }),
+            "research_or_prototype",
+        ),
+        (
+            "deferred-with-revisit",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"deferred_with_revisit",
+                "basis_summary":"The choice is intentionally deferred with an inspectable trigger.",
+                "research_basis":["Revisit when the bounded collection exceeds 16 entries"],
+                "learning_value":{"state":"routine","rationale":"No current learning interaction is required."}
+            }),
+            "ready_for_work",
+        ),
+        (
+            "resolved-by-research",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"resolved_by_research",
+                "basis_summary":"Repository research removed the uncertainty.",
+                "research_basis":["The retained snapshot proves only one supported behavior"],
+                "learning_value":{"state":"routine","rationale":"The fact is now straightforward."}
+            }),
+            "ready_for_work",
+        ),
+        (
+            "unresolved-user-owned",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"unresolved_user_owned_outcome",
+                "basis_summary":"No exact authority settles the materially different outcomes.",
+                "learning_value":{"state":"routine","rationale":"Canonical user authority takes priority."}
+            }),
+            "question_candidate",
+        ),
+    ];
+
+    for (label, judgment, expected_stage) in cases {
+        let (_temporary, mut adapter, project) = setup();
+        let goal_turn =
+            "Implement the change; I delegate the bounded-choice implementation to you.";
+        let goal = structured(&call(
+            &mut adapter,
+            "context_record",
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        ))
+        .clone();
+        let analyzed = structured(&call(
+            &mut adapter,
+            "repository_analyze",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        let discovery_id = record_fixture_discovery(
+            &adapter,
+            &project,
+            goal["context_item_id"].as_str().expect("Goal identity"),
+            analyzed["analysis_snapshot_id"]
+                .as_str()
+                .expect("baseline identity"),
+            analyzed["repository_source_id"]
+                .as_str()
+                .expect("repository Source identity"),
+            FixtureEngineeringChoice {
+                id: "bounded-choice",
+                affected_scope: "src/lib.rs",
+                effect_category: EngineeringEffectCategory::ImplementationInternal,
+            },
+        );
+        let draft = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"draft",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+            }),
+        ))
+        .clone();
+        let recorded = call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":draft["record_request"]["action"],
+                "project_id":draft["record_request"]["project_id"],
+                "engineering_choice_discovery_candidate_id":draft["record_request"]["engineering_choice_discovery_candidate_id"],
+                "rationale":format!("one-pass {label} review"),
+                "learning_participation":{"state":"inactive"},
+                "judgments":[judgment],
+            }),
+        );
+        assert_eq!(recorded["result"]["isError"], false, "{label}: {recorded}");
+        assert_eq!(
+            structured(&recorded)["workflow"]["stage"],
+            expected_stage,
+            "{label}: {recorded}"
+        );
+    }
+}
+
+#[test]
+fn materiality_validation_reports_exact_correction_context() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":"Implement the bounded choice","role":"goal","statement":"Implement the bounded choice"}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        FixtureEngineeringChoice {
+            id: "bounded-choice",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+
+    let forbidden = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"invalid field combination",
+            "learning_participation":{"state":"inactive"},
+            "judgments":[{
+                "choice_id":"bounded-choice",
+                "disposition":"agent_owned_implementation_choice",
+                "basis_summary":"implementation discretion",
+                "contract_basis":["must be forbidden here"],
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }]
+        }),
+    ))
+    .clone();
+    assert!(forbidden["details"]["problems"]
+        .as_array()
+        .expect("schema problems")
+        .iter()
+        .any(|problem| problem.as_str().is_some_and(
+            |problem| problem == "arguments.judgments[0].contract_basis is not allowed"
+        )));
+    assert_eq!(
+        forbidden["details"]["materiality_context"]["bound_identities"]
+            ["engineering_choice_discovery_candidate_id"],
+        discovery_id
+    );
+    assert_eq!(
+        forbidden["details"]["materiality_context"]["next_supported_action"]["action"],
+        "draft"
+    );
+
+    let unknown = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"unknown choice identity",
+            "learning_participation":{"state":"inactive"},
+            "judgments":[{
+                "choice_id":"not-in-discovery",
+                "disposition":"agent_owned_implementation_choice",
+                "basis_summary":"invalid choice",
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(
+        unknown["details"]["field_path"],
+        "arguments.judgments[0].choice_id"
+    );
+    assert_eq!(unknown["details"]["invalid_value"], "not-in-discovery");
+    assert_eq!(
+        unknown["details"]["allowed_values"],
+        json!(["bounded-choice"])
+    );
+    assert_eq!(
+        unknown["details"]["next_supported_action"]["action"],
+        "draft"
+    );
 }
 
 #[test]
@@ -711,8 +964,8 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
     .clone();
     assert_eq!(draft["goal_context_id"], goal_context_id);
     assert_eq!(
-        draft["dimension_templates"][0]["prefilled"]["discovered_choice_ids"],
-        json!(["cache-invalidation-boundary"])
+        draft["judgment_templates"][0]["discovery_owned"]["choice_id"],
+        "cache-invalidation-boundary"
     );
 
     let review = structured(&call(
@@ -721,21 +974,13 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         json!({
             "action":"record",
             "project_id":project,
-            "goal_context_id":goal_context_id,
-            "baseline_analysis_snapshot_id":baseline,
             "engineering_choice_discovery_candidate_id":discovery_id,
-            "source_operation":"installed MCP learning review",
             "rationale":"The cache boundary is agent-owned but worth reasoning through.",
             "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through meaningful technical choices"},
-            "dimensions":[{
-                "dimension_id":"cache-invalidation-boundary",
-                "discovered_choice_ids":["cache-invalidation-boundary"],
-                "summary":"Choose the cache invalidation boundary",
-                "affected_scope":["cache","mutation paths"],
-                "material_consequences":["Changes consistency reasoning and maintenance cost"],
-                "observable_signals":["maintenance_or_support_policy"],
+            "judgments":[{
+                "choice_id":"cache-invalidation-boundary",
                 "disposition":"agent_owned_implementation_choice",
-                "basis":{"kinds":["implementation_preference"],"summary":"No user-owned outcome changes; implementation authority remains with the agent.","source_ids":[repository_source]},
+                "basis_summary":"No user-owned outcome changes; implementation authority remains with the agent.",
                 "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"]}
             }]
         }),
@@ -951,21 +1196,13 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
         json!({
             "action":"record",
             "project_id":project,
-            "goal_context_id":goal["context_item_id"],
-            "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
             "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
-            "source_operation":"routine active-learning control review",
             "rationale":"The bounded private lookup is agent-owned and routine.",
             "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":"Use learning participation"},
-            "dimensions":[{
-                "dimension_id":"bounded-private-lookup",
-                "discovered_choice_ids":["bounded-private-lookup"],
-                "summary":"Choose lookup storage for a bounded private collection",
-                "affected_scope":["bounded private lookup"],
-                "material_consequences":["Bounded lookup cost and storage complexity differ"],
-                "observable_signals":["other_material_outcome"],
+            "judgments":[{
+                "choice_id":"bounded-private-lookup",
                 "disposition":"agent_owned_implementation_choice",
-                "basis":{"kinds":["implementation_preference"],"summary":"This is internal agent-owned discretion.","source_ids":[analyzed["repository_source_id"]]},
+                "basis_summary":"This is internal agent-owned discretion.",
                 "learning_value":{"state":"routine","rationale":"The repository contract fixes a tiny bound, making the trade-off straightforward and not worth interruption."}
             }]
         }),
@@ -1029,33 +1266,16 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         json!({
             "action":"record",
             "project_id":project,
-            "goal_context_id":goal_context_id,
-            "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
             "engineering_choice_discovery_candidate_id":discovery_id,
-            "source_operation":"bounded delegated implementation review",
             "rationale":"The exact Goal delegates only the internal name.",
             "learning_participation":{"state":"inactive"},
-            "dimensions":[{
-                "dimension_id":"internal-module-name",
-                "discovered_choice_ids":["internal-module-name"],
-                "summary":"Select the internal module name",
-                "affected_scope":["src/lib.rs"],
-                "material_consequences":["Changes only the internal source layout"],
-                "observable_signals":["other_material_outcome"],
+            "judgments":[{
+                "choice_id":"internal-module-name",
                 "disposition":"delegated_implementation_choice",
+                "basis_summary":"Exact bounded current-task delegation",
                 "learning_value":{"state":"routine","rationale":"An internal module name is routine."},
-                "basis":{
-                    "kinds":["explicit_delegation"],
-                    "summary":"Exact bounded current-task delegation",
-                    "source_ids":[goal_source_id],
-                    "research_basis":[],
-                    "explicit_delegation":{
-                        "goal_context_id":goal_context_id,
-                        "user_turn_source_id":goal_source_id,
-                        "verbatim_statement":"choose the internal module name",
-                        "affected_scope":["src/lib.rs"]
-                    }
-                }
+                "delegation_statement":"choose the internal module name",
+                "delegated_scope":["src/lib.rs"]
             }]
         }),
     ))
@@ -3710,26 +3930,20 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
             shape(
                 &[
-                    "project_id",
-                    "goal_context_id",
-                    "baseline_analysis_snapshot_id",
-                    "engineering_choice_discovery_candidate_id",
                     "action",
-                    "source_operation",
+                    "project_id",
+                    "engineering_choice_discovery_candidate_id",
                     "rationale",
                     "learning_participation",
-                    "dimensions",
+                    "judgments",
                 ],
                 &[
                     "action",
                     "project_id",
-                    "goal_context_id",
-                    "baseline_analysis_snapshot_id",
                     "engineering_choice_discovery_candidate_id",
-                    "source_operation",
                     "rationale",
                     "learning_participation",
-                    "dimensions",
+                    "judgments",
                 ],
             ),
             shape(
@@ -3739,7 +3953,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "review_candidate_id",
                     "rationale",
                     "learning_participation",
-                    "dimensions",
+                    "judgments",
                 ],
                 &[
                     "action",
@@ -3747,7 +3961,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "review_candidate_id",
                     "rationale",
                     "learning_participation",
-                    "dimensions",
+                    "judgments",
                 ],
             ),
             shape(

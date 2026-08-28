@@ -229,6 +229,27 @@ environment fact, accepted contract, applicable Decision 또는 explicit delegat
 Overall feature request, implementation preference, agent recommendation과 convention은 이 exact
 authority를 대신하지 않는다.
 
+Public host contract는 discovery-owned fact를 caller가 다시 전송하게 하지 않는다. `draft`가 반환한
+단일 `record_request`에 Project와 Engineering Choice Discovery identity를 그대로 사용하고, caller는
+각 discovered choice마다 `choice_id`, disposition, bounded basis summary, learning value와 그
+disposition에만 허용된 semantic evidence를 `judgments`로 한 번 제공한다. Goal/baseline identity,
+dimension/choice linkage, summary, affected scope, technical consequence, observable signal,
+discovery Source와 source-operation provenance는 bound Engineering Choice Discovery와 canonical read
+basis에서 server가 파생한다. `revise`도 review identity와 새 judgments만 받아 같은 discovery-owned
+meaning을 다시 파생한다. 따라서 old full-dimension echo와 simplified judgment path를 동시에
+지원하지 않는다.
+
+각 disposition schema는 closed variant이며 required/forbidden field를 machine-readable하게
+노출한다. Repository fact와 agent-owned choice는 다른 authority field를 받지 않는다. Settled
+authority는 accepted contract basis, applicable Decision identity 또는 둘 다를 요구한다. Current-task
+delegation은 bounded verbatim delegation statement와 delegated scope를 요구하고 Goal/Source identity는
+현재 bound Goal에서 server가 정확히 파생한다. Inquiry-time delegation은 Decision identity만
+요구한다. Exploratory uncertainty는 exact exploratory disposition과 bounded research/prototype/revisit
+basis를 요구한다. Unresolved user-owned outcome은 open 상태에서 다른 settling authority를 금지하고,
+해결 뒤에는 exact resolution Decision 하나만 받는다. Validation failure는 exact field path,
+invalid value, allowed values, bound Goal/baseline identities와 다음 supported `draft` action을 함께
+반환해 같은 invalid payload의 반복을 피하게 한다.
+
 Current Goal 자체가 어떤 outcome을 user control로 남기거나 user가 choice를 retain한다고 밝히면,
 older contract나 repository convention이 존재한다는 이유로 그 exact dimension을 agent-owned
 implementation preference로 낮추지 않는다. Goal/source identity와 checklist는 deterministic하게

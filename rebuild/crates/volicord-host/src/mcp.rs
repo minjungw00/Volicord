@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     fmt,
     io::{BufRead, Write},
@@ -69,7 +69,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active for this explicitly authorized repository. Project-scoped repository work starts with project_resolve. Follow each returned workflow.required_next_action and do not bypass a blocking workflow transition. At Materiality Review, perform the returned counterfactual and identify exact authority for every materially different externally observable or durable outcome; the overall feature request, implementation preference, recommendation, or convention is not blanket authority. A current Goal that reserves an outcome to the user must use the user-owned Question/Decision path unless that exact dimension is explicitly delegated. User-owned Decisions require an explicit response from the current host, background source transmission requires its separate exact authorization, and Checkpoint verification must report only actually observed command outcomes. Non-project requests require no Volicord ceremony.".into()
+    "Volicord is active here. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action and do not bypass a blocking workflow transition. At Materiality Review, use the returned counterfactual: a feature request, preference, recommendation, or convention does not settle a material user outcome. A current Goal user reservation requires Question/Decision unless explicitly delegated. User-owned Decisions require an explicit response from the current host. Background source transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no Volicord ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -198,7 +198,20 @@ impl HostAdapter {
         };
         match result {
             Ok(value) => Ok(tool_result(value, false)),
-            Err(error) => {
+            Err(mut error) => {
+                if name == "materiality_review" && error.details.is_none() {
+                    error.details = Some(json!({
+                        "diagnostic":"materiality_contract_failure",
+                        "problem":error.to_string(),
+                        "bound_identities":{
+                            "project_id":arguments.get("project_id"),
+                            "engineering_choice_discovery_candidate_id":arguments.get("engineering_choice_discovery_candidate_id"),
+                            "materiality_review_candidate_id":arguments.get("review_candidate_id"),
+                        },
+                        "missing_prerequisite_or_evidence":"The problem names the failed typed invariant; call draft to recover current identities and disposition contracts.",
+                        "next_supported_action":{"tool":"materiality_review","action":"draft"},
+                    }));
+                }
                 let mut payload = json!({"error":error.to_string()});
                 if let (Some(object), Some(details)) = (payload.as_object_mut(), error.details) {
                     object.insert("details".into(), details);
@@ -484,26 +497,41 @@ impl HostAdapter {
                 ))
             }
             "record" => {
+                let discovery_candidate_id = parse_candidate(required_str(
+                    args,
+                    "engineering_choice_discovery_candidate_id",
+                )?)?;
+                let discovery_candidate = self
+                    .operations
+                    .inspect_workflow_candidate(project_id, discovery_candidate_id)
+                    .map_err(operation_error)?;
+                let discovery = discovery_candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.engineering_choice_discovery.as_ref())
+                    .ok_or_else(|| {
+                        HostError::new("Engineering Choice Discovery content is unavailable")
+                    })?;
+                let canonical = self
+                    .operations
+                    .canonical_basis(project_id)
+                    .map_err(operation_error)?;
+                let dimensions = materiality_judgments(args, discovery, &canonical)?;
                 let outcome =
                     self.operations
                         .record_materiality_review(MaterialityReviewDraft {
                             project_id,
-                            goal_context_id: parse_context_item(required_str(
-                                args,
-                                "goal_context_id",
-                            )?)?,
-                            baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
-                                args,
-                                "baseline_analysis_snapshot_id",
-                            )?)?,
+                            goal_context_id: discovery.goal_context_id,
+                            baseline_analysis_snapshot_id: discovery
+                                .baseline_analysis_snapshot_id,
                             session: self.host_session.clone(),
-                            source_operation: required_str(args, "source_operation")?.to_owned(),
+                            source_operation: format!(
+                                "MCP Materiality Review for Engineering Choice Discovery {discovery_candidate_id}"
+                            ),
                             rationale: required_str(args, "rationale")?.to_owned(),
                             learning_participation: learning_participation(args)?,
-                            engineering_choice_discovery_candidate_id: parse_candidate(
-                                required_str(args, "engineering_choice_discovery_candidate_id")?,
-                            )?,
-                            dimensions: materiality_dimensions(args)?,
+                            engineering_choice_discovery_candidate_id: discovery_candidate_id,
+                            dimensions,
                         })
                         .map_err(operation_error)?;
                 let workflow = self
@@ -516,17 +544,44 @@ impl HostAdapter {
                 ))
             }
             "revise" => {
+                let review_candidate_id =
+                    parse_candidate(required_str(args, "review_candidate_id")?)?;
+                let review_candidate = self
+                    .operations
+                    .inspect_workflow_candidate(project_id, review_candidate_id)
+                    .map_err(operation_error)?;
+                let review = review_candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.materiality_review.as_ref())
+                    .ok_or_else(|| HostError::new("Materiality Review content is unavailable"))?;
+                let discovery_candidate = self
+                    .operations
+                    .inspect_workflow_candidate(
+                        project_id,
+                        review.engineering_choice_discovery_candidate_id,
+                    )
+                    .map_err(operation_error)?;
+                let discovery = discovery_candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.engineering_choice_discovery.as_ref())
+                    .ok_or_else(|| {
+                        HostError::new("Engineering Choice Discovery content is unavailable")
+                    })?;
+                let canonical = self
+                    .operations
+                    .canonical_basis(project_id)
+                    .map_err(operation_error)?;
+                let dimensions = materiality_judgments(args, discovery, &canonical)?;
                 let outcome = self
                     .operations
                     .revise_materiality_review(MaterialityReviewRevisionDraft {
                         project_id,
-                        review_candidate_id: parse_candidate(required_str(
-                            args,
-                            "review_candidate_id",
-                        )?)?,
+                        review_candidate_id,
                         rationale: required_str(args, "rationale")?.to_owned(),
                         learning_participation: learning_participation(args)?,
-                        dimensions: materiality_dimensions(args)?,
+                        dimensions,
                     })
                     .map_err(operation_error)?;
                 let workflow = self
@@ -1628,12 +1683,23 @@ impl ToolContract {
     fn validate(&self, arguments: &Value) -> Result<(), HostError> {
         validate_schema(&self.input_schema, arguments, "arguments").map_err(|problems| {
             let summary = problems.join("; ");
+            let materiality_context = (self.name == "materiality_review").then(|| json!({
+                "bound_identities":{
+                    "project_id":arguments.get("project_id"),
+                    "engineering_choice_discovery_candidate_id":arguments.get("engineering_choice_discovery_candidate_id"),
+                    "materiality_review_candidate_id":arguments.get("review_candidate_id"),
+                },
+                "missing_or_invalid":"See exact field paths in problems; bounded enum failures include allowed values.",
+                "allowed_dispositions":["repository_or_environment_fact","settled_authority","agent_owned_implementation_choice","delegated_implementation_choice","exploratory_uncertainty","unresolved_user_owned_outcome"],
+                "next_supported_action":{"tool":"materiality_review","action":"draft","requires":["project_id","engineering_choice_discovery_candidate_id"]},
+            }));
             HostError::with_details(
                 format!("invalid {} arguments: {summary}", self.name),
                 json!({
                     "diagnostic":"aggregate_schema_validation",
                     "tool":self.name,
                     "problems":problems,
+                    "materiality_context":materiality_context,
                 }),
             )
         })
@@ -2306,182 +2372,171 @@ fn learning_deliberation_schemas() -> Vec<Value> {
     ]
 }
 
+fn materiality_judgment_schema(
+    disposition: &'static str,
+    mut fields: Vec<(&'static str, Value)>,
+    required_fields: &[&'static str],
+) -> Value {
+    let mut common = vec![
+        (
+            "choice_id",
+            text_schema("Exact Engineering Choice Discovery identity", 1, 256),
+        ),
+        (
+            "disposition",
+            enum_schema("Authority disposition", &[disposition]),
+        ),
+        (
+            "basis_summary",
+            text_schema("Why the exact authority disposition applies", 1, 4096),
+        ),
+        (
+            "additional_source_ids",
+            identity_array_schema(
+                "Additional current canonical Source identities beyond discovery-owned Sources",
+                0,
+            ),
+        ),
+        ("learning_value", learning_value_schema()),
+    ];
+    common.append(&mut fields);
+    let mut required = vec![
+        "choice_id",
+        "disposition",
+        "basis_summary",
+        "learning_value",
+    ];
+    required.extend_from_slice(required_fields);
+    object_schema(common, &required)
+}
+
+fn materiality_judgment_schemas() -> Vec<Value> {
+    let contract_basis =
+        || nonempty_string_array_schema("Exact accepted contract references settling this choice");
+    let decision_ids = || identity_array_schema("Exact current applicable Decision identities", 1);
+    let research_basis =
+        || nonempty_string_array_schema("Bounded research, prototype, defer, or revisit basis");
+    let delegation_statement = || {
+        text_schema(
+            "Bounded verbatim statement from the draft's exact current Goal/user-turn claimed as delegation; semantic judgment remains explicit",
+            1,
+            4096,
+        )
+    };
+    let delegated_scope = || {
+        nonempty_string_array_schema(
+            "Bounded scope delegated by the verbatim current-task statement",
+        )
+    };
+    vec![
+        materiality_judgment_schema("repository_or_environment_fact", vec![], &[]),
+        materiality_judgment_schema(
+            "settled_authority",
+            vec![("contract_basis", contract_basis())],
+            &["contract_basis"],
+        ),
+        materiality_judgment_schema(
+            "settled_authority",
+            vec![("decision_ids", decision_ids())],
+            &["decision_ids"],
+        ),
+        materiality_judgment_schema(
+            "settled_authority",
+            vec![
+                ("contract_basis", contract_basis()),
+                ("decision_ids", decision_ids()),
+            ],
+            &["contract_basis", "decision_ids"],
+        ),
+        materiality_judgment_schema("agent_owned_implementation_choice", vec![], &[]),
+        materiality_judgment_schema(
+            "delegated_implementation_choice",
+            vec![
+                ("delegation_statement", delegation_statement()),
+                ("delegated_scope", delegated_scope()),
+            ],
+            &["delegation_statement", "delegated_scope"],
+        ),
+        materiality_judgment_schema(
+            "delegated_implementation_choice",
+            vec![("decision_ids", decision_ids())],
+            &["decision_ids"],
+        ),
+        materiality_judgment_schema(
+            "exploratory_uncertainty",
+            vec![
+                (
+                    "exploratory_disposition",
+                    enum_schema("Exploratory treatment", &["research_required"]),
+                ),
+                ("research_basis", research_basis()),
+            ],
+            &["exploratory_disposition", "research_basis"],
+        ),
+        materiality_judgment_schema(
+            "exploratory_uncertainty",
+            vec![
+                (
+                    "exploratory_disposition",
+                    enum_schema("Exploratory treatment", &["prototype_required"]),
+                ),
+                ("research_basis", research_basis()),
+            ],
+            &["exploratory_disposition", "research_basis"],
+        ),
+        materiality_judgment_schema(
+            "exploratory_uncertainty",
+            vec![
+                (
+                    "exploratory_disposition",
+                    enum_schema("Exploratory treatment", &["deferred_with_revisit"]),
+                ),
+                ("research_basis", research_basis()),
+            ],
+            &["exploratory_disposition", "research_basis"],
+        ),
+        materiality_judgment_schema(
+            "exploratory_uncertainty",
+            vec![
+                (
+                    "exploratory_disposition",
+                    enum_schema("Exploratory treatment", &["resolved_by_research"]),
+                ),
+                ("research_basis", research_basis()),
+            ],
+            &["exploratory_disposition", "research_basis"],
+        ),
+        materiality_judgment_schema("unresolved_user_owned_outcome", vec![], &[]),
+        materiality_judgment_schema(
+            "unresolved_user_owned_outcome",
+            vec![(
+                "resolution_decision_id",
+                identity_schema("Exact applicable current-host Decision resolving this choice"),
+            )],
+            &["resolution_decision_id"],
+        ),
+    ]
+}
+
 fn materiality_review_schemas() -> Vec<Value> {
-    let mut kinds = json!({
+    let judgments = json!({
         "type":"array",
-        "description":"Inspectable work-authority basis kinds",
-        "minItems":1,
-        "items":enum_schema("Inspectable work-authority basis kind", &[
-            "repository_or_environment_fact",
-            "accepted_contract",
-            "applicable_decision",
-            "explicit_delegation",
-            "research_evidence",
-            "prototype_evidence",
-            "defer_or_revisit_basis",
-            "agent_recommendation",
-            "library_or_convention",
-            "implementation_preference",
-        ]),
-    });
-    kinds["maxItems"] = json!(16);
-    let mut explicit_delegation = object_schema(
-        vec![
-            (
-                "goal_context_id",
-                identity_schema("Exact current user-stated Goal Context identity"),
-            ),
-            (
-                "user_turn_source_id",
-                identity_schema("Exact current-host user-turn Source identity for that Goal"),
-            ),
-            (
-                "verbatim_statement",
-                text_schema(
-                    "Bounded verbatim Goal statement claimed as explicit delegation; no semantic inference is performed",
-                    1,
-                    4096,
-                ),
-            ),
-            (
-                "affected_scope",
-                nonempty_string_array_schema(
-                    "Bounded scope delegated by this exact user statement",
-                ),
-            ),
-        ],
-        &[
-            "goal_context_id",
-            "user_turn_source_id",
-            "verbatim_statement",
-            "affected_scope",
-        ],
-    );
-    explicit_delegation["description"] =
-        json!("Exact current-task delegation evidence; semantic inference is not performed");
-    let mut basis = object_schema(
-        vec![
-            ("kinds", kinds),
-            (
-                "summary",
-                text_schema("Why this basis supports the classification", 1, 4096),
-            ),
-            (
-                "source_ids",
-                identity_array_schema("Canonical supporting Source identities", 0),
-            ),
-            (
-                "contract_basis",
-                string_array_schema("Accepted contract references"),
-            ),
-            (
-                "decision_ids",
-                identity_array_schema("Applicable Decision identities", 0),
-            ),
-            (
-                "research_basis",
-                string_array_schema(
-                    "Research, prototype, or revisit evidence; never delegation authority",
-                ),
-            ),
-            ("explicit_delegation", explicit_delegation),
-        ],
-        &["kinds", "summary"],
-    );
-    basis["description"] = json!("Inspectable evidence and authority basis for this dimension");
-    let dimensions = json!({
-        "type":"array",
-        "description":"Independently material outcome dimensions and their inspected authority basis",
+        "description":"One caller-owned authority and learning judgment for every discovery-owned choice",
         "minItems":1,
         "maxItems":64,
-        "items":object_schema(
-            vec![
-                ("dimension_id", text_schema("Stable dimension identity within this review", 1, 256)),
-                ("discovered_choice_ids", nonempty_string_array_schema("Exact Engineering Choice Discovery identities classified by this dimension")),
-                ("summary", text_schema("Bounded outcome summary", 1, 4096)),
-                ("affected_scope", nonempty_string_array_schema("Affected product, user, or operational scopes")),
-                ("material_consequences", nonempty_string_array_schema("Observable consequences that make the dimension material")),
-                ("observable_signals", json!({
-                    "type":"array",
-                    "description":"Observable signals that make the outcome material",
-                    "minItems":1,
-                    "items":enum_schema("Observable material outcome signal", &[
-                        "public_api_semantics",
-                        "cli_compatibility_or_exit_behavior",
-                        "observable_failure_policy",
-                        "privacy_or_external_disclosure",
-                        "security_posture",
-                        "user_visible_default",
-                        "maintenance_or_support_policy",
-                        "other_material_outcome",
-                    ]),
-                })),
-                ("disposition", enum_schema("Authority classification", &[
-                    "repository_or_environment_fact",
-                    "settled_authority",
-                    "agent_owned_implementation_choice",
-                    "delegated_implementation_choice",
-                    "exploratory_uncertainty",
-                    "unresolved_user_owned_outcome",
-                ])),
-                ("exploratory_disposition", enum_schema("Required bounded treatment for exploratory uncertainty", &[
-                    "research_required",
-                    "prototype_required",
-                    "deferred_with_revisit",
-                    "resolved_by_research",
-                ])),
-                ("resolution_decision_id", identity_schema("Applicable Decision resolving a user-owned outcome")),
-                ("basis", basis),
-                ("learning_value", learning_value_schema()),
-            ],
-            &[
-                "dimension_id",
-                "discovered_choice_ids",
-                "summary",
-                "affected_scope",
-                "material_consequences",
-                "observable_signals",
-                "disposition",
-                "basis",
-                "learning_value",
-            ],
-        ),
+        "items":{"oneOf":materiality_judgment_schemas()},
     });
-    let common = || {
-        vec![
-            ("project_id", identity_schema("Project identity")),
-            (
-                "goal_context_id",
-                identity_schema("Canonical Goal Context identity"),
-            ),
-            (
-                "baseline_analysis_snapshot_id",
-                digest_identity_schema("Exact pre-work Analysis Snapshot identity"),
-            ),
-        ]
-    };
-    let mut record_fields = common();
-    record_fields.extend([
+    let mut inspect_fields = vec![
+        ("project_id", identity_schema("Project identity")),
         (
-            "action",
-            enum_schema("Materiality Review action", &["record"]),
+            "goal_context_id",
+            identity_schema("Canonical Goal Context identity"),
         ),
         (
-            "source_operation",
-            text_schema("Inspectable review operation or scope", 1, 4096),
+            "baseline_analysis_snapshot_id",
+            digest_identity_schema("Exact pre-work Analysis Snapshot identity"),
         ),
-        (
-            "engineering_choice_discovery_candidate_id",
-            identity_schema("Exact Engineering Choice Discovery Candidate identity"),
-        ),
-        (
-            "rationale",
-            text_schema("Bounded review rationale", 1, 4096),
-        ),
-        ("learning_participation", learning_participation_schema()),
-        ("dimensions", dimensions.clone()),
-    ]);
-    let mut inspect_fields = common();
+    ];
     inspect_fields.extend([
         (
             "action",
@@ -2524,17 +2579,30 @@ fn materiality_review_schemas() -> Vec<Value> {
             ],
         ),
         object_schema(
-            record_fields,
+            vec![
+                (
+                    "action",
+                    enum_schema("Materiality Review action", &["record"]),
+                ),
+                ("project_id", identity_schema("Project identity")),
+                (
+                    "engineering_choice_discovery_candidate_id",
+                    identity_schema("Exact Engineering Choice Discovery Candidate identity"),
+                ),
+                (
+                    "rationale",
+                    text_schema("Bounded review rationale", 1, 4096),
+                ),
+                ("learning_participation", learning_participation_schema()),
+                ("judgments", judgments.clone()),
+            ],
             &[
                 "action",
                 "project_id",
-                "goal_context_id",
-                "baseline_analysis_snapshot_id",
-                "source_operation",
                 "engineering_choice_discovery_candidate_id",
                 "rationale",
                 "learning_participation",
-                "dimensions",
+                "judgments",
             ],
         ),
         object_schema(
@@ -2553,7 +2621,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                     text_schema("Bounded revision rationale", 1, 4096),
                 ),
                 ("learning_participation", learning_participation_schema()),
-                ("dimensions", dimensions),
+                ("judgments", judgments),
             ],
             &[
                 "action",
@@ -2561,7 +2629,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "review_candidate_id",
                 "rationale",
                 "learning_participation",
-                "dimensions",
+                "judgments",
             ],
         ),
         object_schema(
@@ -3202,17 +3270,21 @@ fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<
         return match success_count {
             1 => Ok(()),
             0 => {
-                let action = value.get("action").and_then(Value::as_str);
-                let selected = action.and_then(|action| {
-                    variants
-                        .iter()
-                        .zip(outcomes.iter())
-                        .find_map(|(variant, outcome)| {
-                            variant_action_matches(variant, action)
-                                .then(|| outcome.as_ref().err().cloned())
-                                .flatten()
-                        })
-                });
+                let selected = ["action", "disposition", "state"]
+                    .into_iter()
+                    .find_map(|key| {
+                        let discriminator = value.get(key).and_then(Value::as_str)?;
+                        let matched = variants
+                            .iter()
+                            .zip(outcomes.iter())
+                            .filter(|(variant, _)| {
+                                variant_discriminator_matches(variant, key, discriminator)
+                            })
+                            .filter_map(|(_, outcome)| outcome.as_ref().err().cloned())
+                            .flatten()
+                            .collect::<Vec<_>>();
+                        (!matched.is_empty()).then_some(matched)
+                    });
                 let mut problems = selected.unwrap_or_else(|| {
                     outcomes
                         .into_iter()
@@ -3239,13 +3311,17 @@ fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<
     }
 }
 
-fn variant_action_matches(schema: &Value, action: &str) -> bool {
+fn variant_discriminator_matches(schema: &Value, key: &str, value: &str) -> bool {
     schema
         .get("properties")
-        .and_then(|properties| properties.get("action"))
-        .and_then(|action_schema| action_schema.get("enum"))
+        .and_then(|properties| properties.get(key))
+        .and_then(|discriminator_schema| discriminator_schema.get("enum"))
         .and_then(Value::as_array)
-        .is_some_and(|values| values.iter().any(|value| value.as_str() == Some(action)))
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|candidate| candidate.as_str() == Some(value))
+        })
 }
 
 fn validate_object(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<String>> {
@@ -3305,7 +3381,14 @@ fn validate_string(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<
             .iter()
             .any(|candidate| candidate.as_str() == Some(text))
         {
-            return Err(vec![format!("{path} is not an allowed value")]);
+            let allowed = values
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(vec![format!(
+                "{path} value {text:?} is not an allowed value; allowed values: {allowed}"
+            )]);
         }
     }
     match schema.get("pattern").and_then(Value::as_str) {
@@ -4093,14 +4176,314 @@ fn parse_analysis_snapshot(value: &str) -> Result<AnalysisSnapshotId, HostError>
     AnalysisSnapshotId::from_hex(value).map_err(HostError::new)
 }
 
-fn materiality_dimensions(value: &Value) -> Result<Vec<MaterialityDimension>, HostError> {
-    value
-        .get("dimensions")
+fn materiality_judgments(
+    value: &Value,
+    discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+    canonical: &volicord_context::CanonicalReadBasis,
+) -> Result<Vec<MaterialityDimension>, HostError> {
+    let judgments = value
+        .get("judgments")
         .and_then(Value::as_array)
-        .ok_or_else(|| HostError::new("dimensions are required"))?
+        .ok_or_else(|| HostError::new("judgments are required"))?;
+    let allowed_choice_ids = discovery
+        .choices
         .iter()
-        .map(materiality_dimension)
+        .map(|choice| choice.choice_id.clone())
+        .collect::<Vec<_>>();
+    let mut indexed = BTreeMap::new();
+    for (index, judgment) in judgments.iter().enumerate() {
+        let choice_id = required_str(judgment, "choice_id")?;
+        if !allowed_choice_ids
+            .iter()
+            .any(|allowed| allowed == choice_id)
+        {
+            return Err(materiality_contract_error(
+                format!("arguments.judgments[{index}].choice_id"),
+                Some(choice_id),
+                "judgment references a choice outside the bound Engineering Choice Discovery",
+                &allowed_choice_ids,
+                discovery,
+            ));
+        }
+        if indexed.insert(choice_id.to_owned(), judgment).is_some() {
+            return Err(materiality_contract_error(
+                format!("arguments.judgments[{index}].choice_id"),
+                Some(choice_id),
+                "each discovered choice requires exactly one judgment",
+                &allowed_choice_ids,
+                discovery,
+            ));
+        }
+    }
+    let missing = allowed_choice_ids
+        .iter()
+        .filter(|choice_id| !indexed.contains_key(*choice_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(HostError::with_details(
+            "Materiality Review omitted discovery-owned choices",
+            json!({
+                "diagnostic":"materiality_contract_validation",
+                "field_path":"arguments.judgments",
+                "missing_choice_ids":missing,
+                "allowed_choice_ids":allowed_choice_ids,
+                "bound_identities":{
+                    "goal_context_id":discovery.goal_context_id.to_string(),
+                    "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+                },
+                "next_supported_action":{"tool":"materiality_review","action":"draft"},
+            }),
+        ));
+    }
+
+    discovery
+        .choices
+        .iter()
+        .map(|choice| {
+            let judgment = indexed
+                .get(&choice.choice_id)
+                .copied()
+                .ok_or_else(|| HostError::new("materiality judgment indexing failed"))?;
+            materiality_dimension_from_judgment(judgment, choice, discovery, canonical)
+        })
         .collect()
+}
+
+fn materiality_dimension_from_judgment(
+    value: &Value,
+    choice: &EngineeringChoice,
+    discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+    canonical: &volicord_context::CanonicalReadBasis,
+) -> Result<MaterialityDimension, HostError> {
+    let mut source_basis = choice.source_basis.clone();
+    source_basis.extend(source_ids(value, "additional_source_ids")?);
+    let mut contract_basis = string_array(value, "contract_basis")?;
+    let mut decision_basis = decision_ids(value, "decision_ids")?;
+    let mut research_basis = string_array(value, "research_basis")?;
+    let mut explicit_delegation = None;
+    let disposition = match required_str(value, "disposition")? {
+        "repository_or_environment_fact" => MaterialityDisposition::RepositoryOrEnvironmentFact,
+        "settled_authority" => MaterialityDisposition::SettledAuthority,
+        "agent_owned_implementation_choice" => {
+            MaterialityDisposition::AgentOwnedImplementationChoice
+        }
+        "delegated_implementation_choice" => {
+            if let Some(statement) = optional_string(value, "delegation_statement")? {
+                let (goal, user_turn_source_id) = exact_current_goal_user_source(
+                    canonical,
+                    discovery.goal_context_id,
+                    discovery,
+                )?;
+                source_basis.push(user_turn_source_id);
+                explicit_delegation = Some(volicord_inquiry::ExplicitDelegationEvidence {
+                    goal_context_id: goal.id,
+                    user_turn_source_id,
+                    verbatim_statement: statement,
+                    affected_scope: string_array(value, "delegated_scope")?,
+                });
+            }
+            MaterialityDisposition::DelegatedImplementationChoice
+        }
+        "exploratory_uncertainty" => MaterialityDisposition::ExploratoryUncertainty {
+            disposition: match required_str(value, "exploratory_disposition")? {
+                "research_required" => ExploratoryDisposition::ResearchRequired,
+                "prototype_required" => ExploratoryDisposition::PrototypeRequired,
+                "deferred_with_revisit" => ExploratoryDisposition::DeferredWithRevisit,
+                "resolved_by_research" => ExploratoryDisposition::ResolvedByResearch,
+                _ => return Err(HostError::new("unknown exploratory disposition")),
+            },
+        },
+        "unresolved_user_owned_outcome" => {
+            let resolution_decision_id = value
+                .get("resolution_decision_id")
+                .and_then(Value::as_str)
+                .map(|identity| parse_identity(identity).map(DecisionId::from_bytes))
+                .transpose()?;
+            if let Some(decision_id) = resolution_decision_id {
+                decision_basis.push(decision_id);
+            }
+            MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                resolution_decision_id,
+            }
+        }
+        _ => return Err(HostError::new("unknown Materiality Review disposition")),
+    };
+    let kinds = match &disposition {
+        MaterialityDisposition::RepositoryOrEnvironmentFact => {
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact]
+        }
+        MaterialityDisposition::SettledAuthority => {
+            let mut kinds = Vec::new();
+            if !contract_basis.is_empty() {
+                kinds.push(WorkAuthorityBasisKind::AcceptedContract);
+            }
+            if !decision_basis.is_empty() {
+                kinds.push(WorkAuthorityBasisKind::ApplicableDecision);
+            }
+            kinds
+        }
+        MaterialityDisposition::AgentOwnedImplementationChoice => {
+            vec![WorkAuthorityBasisKind::ImplementationPreference]
+        }
+        MaterialityDisposition::DelegatedImplementationChoice => {
+            vec![WorkAuthorityBasisKind::ExplicitDelegation]
+        }
+        MaterialityDisposition::ExploratoryUncertainty { disposition } => vec![match disposition {
+            ExploratoryDisposition::ResearchRequired
+            | ExploratoryDisposition::ResolvedByResearch => {
+                WorkAuthorityBasisKind::ResearchEvidence
+            }
+            ExploratoryDisposition::PrototypeRequired => WorkAuthorityBasisKind::PrototypeEvidence,
+            ExploratoryDisposition::DeferredWithRevisit => {
+                WorkAuthorityBasisKind::DeferOrRevisitBasis
+            }
+        }],
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id,
+        } => {
+            if resolution_decision_id.is_some() {
+                vec![WorkAuthorityBasisKind::ApplicableDecision]
+            } else {
+                vec![WorkAuthorityBasisKind::NoSettlingAuthority]
+            }
+        }
+    };
+    if matches!(
+        disposition,
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None
+        }
+    ) {
+        contract_basis.clear();
+        research_basis.clear();
+    }
+    source_basis.sort_unstable();
+    source_basis.dedup();
+    Ok(MaterialityDimension {
+        dimension_id: choice.choice_id.clone(),
+        discovered_choice_ids: vec![choice.choice_id.clone()],
+        summary: choice.summary.clone(),
+        affected_scope: choice.affected_scope.clone(),
+        material_consequences: choice.technical_consequences.clone(),
+        observable_signals: material_outcome_signals(&choice.effect_categories),
+        disposition,
+        basis: WorkAuthorityBasis {
+            kinds,
+            summary: required_str(value, "basis_summary")?.to_owned(),
+            source_basis,
+            contract_basis,
+            decision_basis,
+            research_basis,
+            explicit_delegation,
+        },
+        learning_value: learning_value_assessment(value)?,
+    })
+}
+
+fn exact_current_goal_user_source<'a>(
+    canonical: &'a volicord_context::CanonicalReadBasis,
+    goal_context_id: ContextItemId,
+    discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+) -> Result<(&'a volicord_context::ContextItem, SourceId), HostError> {
+    let goal = canonical
+        .context_items
+        .iter()
+        .find(|goal| goal.id == goal_context_id)
+        .ok_or_else(|| HostError::new("bound current Goal Context is unavailable"))?;
+    let sources = goal
+        .source_basis
+        .iter()
+        .filter_map(|source_id| {
+            canonical.sources.iter().find(|basis| {
+                basis.source.id == *source_id
+                    && basis.freshness == volicord_context::SourceFreshness::Current
+                    && basis.source.actor.kind == PrincipalKind::User
+                    && matches!(
+                        basis.source.payload,
+                        volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+                    )
+            })
+        })
+        .collect::<Vec<_>>();
+    if sources.len() != 1 {
+        return Err(HostError::with_details(
+            "current-task delegation needs one exact current-host Goal Source",
+            json!({
+                "diagnostic":"materiality_contract_validation",
+                "field_path":"arguments.judgments[].delegation_statement",
+                "missing_prerequisite":"one exact current-host user-turn Source for the bound Goal",
+                "bound_identities":{
+                    "goal_context_id":goal_context_id.to_string(),
+                    "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+                },
+                "next_supported_action":{"tool":"materiality_review","action":"draft"},
+            }),
+        ));
+    }
+    Ok((goal, sources[0].source.id))
+}
+
+fn material_outcome_signals(
+    categories: &[EngineeringEffectCategory],
+) -> Vec<MaterialOutcomeSignal> {
+    let mut signals = categories
+        .iter()
+        .map(|category| match category {
+            EngineeringEffectCategory::PublicApiShapeOrSemantics => {
+                MaterialOutcomeSignal::PublicApiSemantics
+            }
+            EngineeringEffectCategory::FailureOrErrorSemantics => {
+                MaterialOutcomeSignal::ObservableFailurePolicy
+            }
+            EngineeringEffectCategory::PrivacyOrDisclosure => {
+                MaterialOutcomeSignal::PrivacyOrExternalDisclosure
+            }
+            EngineeringEffectCategory::Security => MaterialOutcomeSignal::SecurityPosture,
+            EngineeringEffectCategory::UserVisibleBehaviorOrDefault => {
+                MaterialOutcomeSignal::UserVisibleDefault
+            }
+            EngineeringEffectCategory::MaintenanceOrSupport => {
+                MaterialOutcomeSignal::MaintenanceOrSupportPolicy
+            }
+            EngineeringEffectCategory::Compatibility
+            | EngineeringEffectCategory::PersistenceOrLifetime
+            | EngineeringEffectCategory::PerformanceOrResourceBehavior
+            | EngineeringEffectCategory::ConcurrencyOrOperability
+            | EngineeringEffectCategory::ImplementationInternal => {
+                MaterialOutcomeSignal::OtherMaterialOutcome
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if signals.is_empty() {
+        signals.push(MaterialOutcomeSignal::OtherMaterialOutcome);
+    }
+    signals
+}
+
+fn materiality_contract_error(
+    field_path: String,
+    invalid_value: Option<&str>,
+    problem: &str,
+    allowed_choice_ids: &[String],
+    discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+) -> HostError {
+    HostError::with_details(
+        problem,
+        json!({
+            "diagnostic":"materiality_contract_validation",
+            "field_path":field_path,
+            "invalid_value":invalid_value,
+            "allowed_values":allowed_choice_ids,
+            "bound_identities":{
+                "goal_context_id":discovery.goal_context_id.to_string(),
+                "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+            },
+            "next_supported_action":{"tool":"materiality_review","action":"draft"},
+        }),
+    )
 }
 
 fn engineering_choices(value: &Value) -> Result<Vec<EngineeringChoice>, HostError> {
@@ -4220,79 +4603,6 @@ fn learning_selections(
         .collect()
 }
 
-fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostError> {
-    let disposition = match required_str(value, "disposition")? {
-        "repository_or_environment_fact" => MaterialityDisposition::RepositoryOrEnvironmentFact,
-        "settled_authority" => MaterialityDisposition::SettledAuthority,
-        "agent_owned_implementation_choice" => {
-            MaterialityDisposition::AgentOwnedImplementationChoice
-        }
-        "delegated_implementation_choice" => MaterialityDisposition::DelegatedImplementationChoice,
-        "exploratory_uncertainty" => MaterialityDisposition::ExploratoryUncertainty {
-            disposition: match required_str(value, "exploratory_disposition")? {
-                "research_required" => ExploratoryDisposition::ResearchRequired,
-                "prototype_required" => ExploratoryDisposition::PrototypeRequired,
-                "deferred_with_revisit" => ExploratoryDisposition::DeferredWithRevisit,
-                "resolved_by_research" => ExploratoryDisposition::ResolvedByResearch,
-                _ => return Err(HostError::new("unknown exploratory disposition")),
-            },
-        },
-        "unresolved_user_owned_outcome" => MaterialityDisposition::UnresolvedUserOwnedOutcome {
-            resolution_decision_id: value
-                .get("resolution_decision_id")
-                .and_then(Value::as_str)
-                .map(|identity| parse_identity(identity).map(DecisionId::from_bytes))
-                .transpose()?,
-        },
-        _ => return Err(HostError::new("unknown Materiality Review disposition")),
-    };
-    let basis = value
-        .get("basis")
-        .ok_or_else(|| HostError::new("dimension basis is required"))?;
-    Ok(MaterialityDimension {
-        dimension_id: required_str(value, "dimension_id")?.to_owned(),
-        discovered_choice_ids: string_array(value, "discovered_choice_ids")?,
-        summary: required_str(value, "summary")?.to_owned(),
-        affected_scope: string_array(value, "affected_scope")?,
-        material_consequences: string_array(value, "material_consequences")?,
-        observable_signals: required_strings(value, "observable_signals")?
-            .into_iter()
-            .map(|signal| material_outcome_signal(&signal))
-            .collect::<Result<Vec<_>, _>>()?,
-        disposition,
-        basis: WorkAuthorityBasis {
-            kinds: required_strings(basis, "kinds")?
-                .into_iter()
-                .map(|kind| work_authority_basis_kind(&kind))
-                .collect::<Result<Vec<_>, _>>()?,
-            summary: required_str(basis, "summary")?.to_owned(),
-            source_basis: source_ids(basis, "source_ids")?,
-            contract_basis: string_array(basis, "contract_basis")?,
-            decision_basis: decision_ids(basis, "decision_ids")?,
-            research_basis: string_array(basis, "research_basis")?,
-            explicit_delegation: basis
-                .get("explicit_delegation")
-                .map(|delegation| {
-                    Ok(volicord_inquiry::ExplicitDelegationEvidence {
-                        goal_context_id: parse_context_item(required_str(
-                            delegation,
-                            "goal_context_id",
-                        )?)?,
-                        user_turn_source_id: SourceId::from_bytes(parse_identity(required_str(
-                            delegation,
-                            "user_turn_source_id",
-                        )?)?),
-                        verbatim_statement: required_str(delegation, "verbatim_statement")?
-                            .to_owned(),
-                        affected_scope: string_array(delegation, "affected_scope")?,
-                    })
-                })
-                .transpose()?,
-        },
-        learning_value: learning_value_assessment(value)?,
-    })
-}
-
 fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, HostError> {
     let assessment = value
         .get("learning_value")
@@ -4308,38 +4618,6 @@ fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, H
             non_obvious_trade_offs: string_array(assessment, "non_obvious_trade_offs")?,
         }),
         _ => Err(HostError::new("unknown learning-value assessment")),
-    }
-}
-
-fn material_outcome_signal(value: &str) -> Result<MaterialOutcomeSignal, HostError> {
-    match value {
-        "public_api_semantics" => Ok(MaterialOutcomeSignal::PublicApiSemantics),
-        "cli_compatibility_or_exit_behavior" => {
-            Ok(MaterialOutcomeSignal::CliCompatibilityOrExitBehavior)
-        }
-        "observable_failure_policy" => Ok(MaterialOutcomeSignal::ObservableFailurePolicy),
-        "privacy_or_external_disclosure" => Ok(MaterialOutcomeSignal::PrivacyOrExternalDisclosure),
-        "security_posture" => Ok(MaterialOutcomeSignal::SecurityPosture),
-        "user_visible_default" => Ok(MaterialOutcomeSignal::UserVisibleDefault),
-        "maintenance_or_support_policy" => Ok(MaterialOutcomeSignal::MaintenanceOrSupportPolicy),
-        "other_material_outcome" => Ok(MaterialOutcomeSignal::OtherMaterialOutcome),
-        _ => Err(HostError::new("unknown material outcome signal")),
-    }
-}
-
-fn work_authority_basis_kind(value: &str) -> Result<WorkAuthorityBasisKind, HostError> {
-    match value {
-        "repository_or_environment_fact" => Ok(WorkAuthorityBasisKind::RepositoryOrEnvironmentFact),
-        "accepted_contract" => Ok(WorkAuthorityBasisKind::AcceptedContract),
-        "applicable_decision" => Ok(WorkAuthorityBasisKind::ApplicableDecision),
-        "explicit_delegation" => Ok(WorkAuthorityBasisKind::ExplicitDelegation),
-        "research_evidence" => Ok(WorkAuthorityBasisKind::ResearchEvidence),
-        "prototype_evidence" => Ok(WorkAuthorityBasisKind::PrototypeEvidence),
-        "defer_or_revisit_basis" => Ok(WorkAuthorityBasisKind::DeferOrRevisitBasis),
-        "agent_recommendation" => Ok(WorkAuthorityBasisKind::AgentRecommendation),
-        "library_or_convention" => Ok(WorkAuthorityBasisKind::LibraryOrConvention),
-        "implementation_preference" => Ok(WorkAuthorityBasisKind::ImplementationPreference),
-        _ => Err(HostError::new("unknown work-authority basis kind")),
     }
 }
 
@@ -4372,25 +4650,25 @@ fn materiality_draft_json(
                 .map(|basis| basis.source.id.to_string())
         })
         .collect::<Vec<_>>();
-    let dimensions = discovery
+    let judgment_templates = discovery
         .choices
         .iter()
         .map(|choice| {
             json!({
-                "prefilled":{
-                    "dimension_id":choice.choice_id,
-                    "discovered_choice_ids":[choice.choice_id],
+                "discovery_owned":{
+                    "choice_id":choice.choice_id,
                     "summary":choice.summary,
                     "affected_scope":choice.affected_scope,
                     "material_consequences":choice.technical_consequences,
                     "available_source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                    "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                    "relationship":engineering_choice_json(choice)["relationship"].clone(),
                 },
-                "required_judgments":{
-                    "observable_signals":["one or more values from the materiality_review schema"],
-                    "disposition":["repository_or_environment_fact","settled_authority","agent_owned_implementation_choice","delegated_implementation_choice","exploratory_uncertainty","unresolved_user_owned_outcome"],
-                    "basis":"supply kinds, summary, and applicable Source/contract/Decision/delegation/research evidence",
-                    "learning_value":["routine","deliberation_worthy"],
+                "caller_owned_judgment":{
+                    "choice_id":choice.choice_id,
+                    "required_fields":["choice_id","disposition","basis_summary","learning_value"],
+                    "optional_common_fields":["additional_source_ids"],
+                    "disposition_contract":"Select exactly one entry from disposition_input_contracts and supply only its allowed fields.",
                 }
             })
         })
@@ -4441,7 +4719,46 @@ fn materiality_draft_json(
             "allowed_states":["inactive","active"],
             "active_requires":["exact current-host user-turn Source identity","non-empty verbatim opt-in statement"],
         },
-        "dimension_templates":dimensions,
+        "field_ownership":{
+            "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
+            "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","additional authority evidence allowed for that disposition","learning_value"],
+        },
+        "work_authority_basis_kind_contract":{
+            "repository_or_environment_fact":"derived only for repository_or_environment_fact",
+            "accepted_contract":"derived only from non-empty contract_basis for settled_authority",
+            "applicable_decision":"derived only from Decision identities for settled authority or a resolved user-owned outcome",
+            "explicit_delegation":"derived only for current-task verbatim delegation or Inquiry-time delegation Decision",
+            "research_evidence":"derived only for research-required/resolved exploratory treatment",
+            "prototype_evidence":"derived only for prototype-required exploratory treatment",
+            "defer_or_revisit_basis":"derived only for deferred_with_revisit exploratory treatment",
+            "implementation_preference":"derived only for bounded agent_owned_implementation_choice",
+            "no_settling_authority":"derived only for unresolved_user_owned_outcome without a Decision",
+            "agent_recommendation":"never authority and not accepted as a record input",
+            "library_or_convention":"never authority and not accepted as a record input",
+            "invalid_combinations":[
+                "contract or Decision evidence with agent-owned implementation preference",
+                "accepted contract, recommendation, convention, or implementation preference as delegation",
+                "current-task verbatim delegation combined with Inquiry-time Decision delegation",
+                "resolution Decision on an unresolved user-owned judgment",
+                "disposition-specific fields on any other disposition"
+            ]
+        },
+        "disposition_input_contracts":{
+            "repository_or_environment_fact":{"required":[],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
+            "settled_authority":{"required_one_or_both":["contract_basis","decision_ids"],"forbidden":["delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
+            "agent_owned_implementation_choice":{"required":[],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
+            "delegated_implementation_choice_current_task":{"required":["delegation_statement","delegated_scope"],"derived_identities":{"goal_context_id":discovery.goal_context_id.to_string(),"user_turn_source_ids":current_host_user_turn_source_ids},"forbidden":["contract_basis","decision_ids","research_basis","resolution_decision_id"]},
+            "delegated_implementation_choice_inquiry_time":{"required":["decision_ids"],"forbidden":["contract_basis","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
+            "exploratory_uncertainty":{"required":["exploratory_disposition","research_basis"],"allowed_exploratory_dispositions":["research_required","prototype_required","deferred_with_revisit","resolved_by_research"],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","resolution_decision_id"]},
+            "unresolved_user_owned_outcome":{"required":[],"optional_after_current_host_decision":["resolution_decision_id"],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis"]}
+        },
+        "judgment_templates":judgment_templates,
+        "record_request":{
+            "action":"record",
+            "project_id":project_id.to_string(),
+            "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
+            "caller_must_supply":["rationale","learning_participation","judgments"],
+        },
         "required_action":{"tool":"materiality_review","action":"record"},
         "canonical_mutation":false,
         "read_only":true,
@@ -4753,7 +5070,9 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "project_id":identity("project"),
                 "engineering_choice_discovery_candidate_id":identity("engineering_choice_discovery_candidate"),
             },
-            "required_semantic_judgments":["authority disposition and evidence","independent learning value","explicit learning participation state"],
+            "deterministic_path":["call_draft_with_returned_discovery_identity","copy_record_request_identities","supply_one_disposition_specific_judgment_per_returned_choice","record_once"],
+            "server_derived_discovery_fields":["Goal and baseline identities","dimension and discovered-choice identities","summary","affected scope","material consequences","observable signals","discovery Source basis"],
+            "required_semantic_judgments":["authority disposition and allowed evidence for that disposition","independent learning value","explicit learning participation state"],
         }),
         WorkflowStage::LearningDeliberation => {
             let pending = workflow

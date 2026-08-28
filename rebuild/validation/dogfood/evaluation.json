@@ -407,13 +407,15 @@
       "numeric_pass_threshold": null
     },
     "materiality_review_contract": {
-      "minimum_dimension_count": 1,
-      "dimension_identity_field": "dimension_id",
+      "input_collection_field": "judgments",
+      "minimum_judgment_count": 1,
+      "judgment_identity_field": "choice_id",
       "array_order_is_authoritative": false,
       "mixed_dispositions_allowed": true,
+      "discovery_owned_fields_are_server_derived": true,
+      "closed_disposition_variants": true,
       "engineering_choice_discovery_required": true,
       "discovery_identity_field": "engineering_choice_discovery_candidate_id",
-      "discovered_choice_identity_field": "discovered_choice_ids",
       "choice_effect_and_relationship_evidence_required": true,
       "agent_owned_learning_disposition": "agent_owned_implementation_choice",
       "learning_participation_source": "explicit_current_host_goal_turn",
@@ -423,11 +425,13 @@
       "completed_learning_recall_required": true,
       "delegated_expected_disposition": "delegated_implementation_choice",
       "delegated_current_goal_requires_explicit_delegation_basis": true,
-      "delegated_evidence_fields": [
+      "delegated_caller_fields": [
+        "delegation_statement",
+        "delegated_scope"
+      ],
+      "delegated_server_derived_fields": [
         "goal_context_id",
-        "user_turn_source_id",
-        "verbatim_statement",
-        "affected_scope"
+        "user_turn_source_id"
       ],
       "delegated_statement_must_be_verbatim_in_frozen_goal_task": true,
       "delegated_research_basis_required": false,

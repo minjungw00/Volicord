@@ -3304,11 +3304,9 @@ def current_goal_delegation_evidence_valid(
     additional_source_ids = (
         source_ids - {goal_source_id} if nonempty_string(goal_source_id) else source_ids
     )
-    independent_research_valid = not additional_source_ids or (
+    discovery_source_valid = not additional_source_ids or (
         nonempty_string(repository_source_id)
         and additional_source_ids == {repository_source_id}
-        and "research_evidence" in basis["kinds"]
-        and bool(basis["research_basis"])
     )
     return (
         isinstance(evidence, dict)
@@ -3324,7 +3322,7 @@ def current_goal_delegation_evidence_valid(
         and nonempty_string(goal_source_id)
         and evidence.get("user_turn_source_id") == goal_source_id
         and goal_source_id in basis["source_ids"]
-        and independent_research_valid
+        and discovery_source_valid
         and nonempty_string(statement)
         and nonempty_string(goal_statement)
         and statement in goal_statement
@@ -3484,13 +3482,145 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
     return indexed
 
 
+def materiality_dimensions_from_judgments(
+    value: Any,
+    choices: dict[str, dict[str, Any]] | None,
+    *,
+    goal_context_id: str,
+    goal_source_id: str | None,
+) -> dict[str, dict[str, Any]] | None:
+    if not isinstance(value, list) or not value or not choices:
+        return None
+    common = {
+        "choice_id",
+        "disposition",
+        "basis_summary",
+        "additional_source_ids",
+        "learning_value",
+    }
+    variants = {
+        "repository_or_environment_fact": [set()],
+        "settled_authority": [
+            {"contract_basis"},
+            {"decision_ids"},
+            {"contract_basis", "decision_ids"},
+        ],
+        "agent_owned_implementation_choice": [set()],
+        "delegated_implementation_choice": [
+            {"delegation_statement", "delegated_scope"},
+            {"decision_ids"},
+        ],
+        "exploratory_uncertainty": [
+            {"exploratory_disposition", "research_basis"}
+        ],
+        "unresolved_user_owned_outcome": [set(), {"resolution_decision_id"}],
+    }
+    indexed: dict[str, dict[str, Any]] = {}
+    for judgment in value:
+        if not isinstance(judgment, dict):
+            return None
+        choice_id = judgment.get("choice_id")
+        disposition = judgment.get("disposition")
+        choice = choices.get(choice_id) if nonempty_string(choice_id) else None
+        supplied_variant = set(judgment) - common
+        if (
+            choice is None
+            or choice_id in indexed
+            or disposition not in variants
+            or supplied_variant not in variants[disposition]
+            or not nonempty_string(judgment.get("basis_summary"))
+            or not isinstance(judgment.get("learning_value"), dict)
+        ):
+            return None
+        additional_sources = judgment.get("additional_source_ids", [])
+        if not isinstance(additional_sources, list) or not all(
+            nonempty_string(source_id) for source_id in additional_sources
+        ):
+            return None
+        source_ids = list(dict.fromkeys(choice["source_ids"] + additional_sources))
+        contract_basis = judgment.get("contract_basis", [])
+        decision_ids = judgment.get("decision_ids", [])
+        research_basis = judgment.get("research_basis", [])
+        explicit_delegation = None
+        resolution_decision_id = judgment.get("resolution_decision_id")
+        if disposition == "repository_or_environment_fact":
+            kinds = ["repository_or_environment_fact"]
+        elif disposition == "settled_authority":
+            kinds = (
+                (["accepted_contract"] if contract_basis else [])
+                + (["applicable_decision"] if decision_ids else [])
+            )
+        elif disposition == "agent_owned_implementation_choice":
+            kinds = ["implementation_preference"]
+        elif disposition == "delegated_implementation_choice":
+            if "delegation_statement" in judgment:
+                if not nonempty_string(goal_source_id):
+                    return None
+                source_ids = list(dict.fromkeys(source_ids + [goal_source_id]))
+                explicit_delegation = {
+                    "goal_context_id": goal_context_id,
+                    "user_turn_source_id": goal_source_id,
+                    "verbatim_statement": judgment["delegation_statement"],
+                    "affected_scope": judgment["delegated_scope"],
+                }
+            kinds = ["explicit_delegation"]
+        elif disposition == "exploratory_uncertainty":
+            kinds = [{
+                "research_required": "research_evidence",
+                "prototype_required": "prototype_evidence",
+                "deferred_with_revisit": "defer_or_revisit_basis",
+                "resolved_by_research": "research_evidence",
+            }.get(judgment.get("exploratory_disposition"))]
+            if kinds == [None]:
+                return None
+        else:
+            decision_ids = [resolution_decision_id] if resolution_decision_id else []
+            kinds = ["applicable_decision" if resolution_decision_id else "no_settling_authority"]
+        dimension = {
+            "dimension_id": choice_id,
+            "discovered_choice_ids": [choice_id],
+            "summary": choice["summary"],
+            "affected_scope": choice["affected_scope"],
+            "material_consequences": choice["technical_consequences"],
+            "observable_signals": ["other_material_outcome"],
+            "disposition": disposition,
+            "learning_value": judgment["learning_value"],
+            "basis": {
+                "kinds": kinds,
+                "summary": judgment["basis_summary"],
+                "source_ids": source_ids,
+                "contract_basis": contract_basis,
+                "decision_ids": decision_ids,
+                "research_basis": research_basis,
+            },
+        }
+        if explicit_delegation is not None:
+            dimension["basis"]["explicit_delegation"] = explicit_delegation
+        if disposition == "exploratory_uncertainty":
+            dimension["exploratory_disposition"] = judgment["exploratory_disposition"]
+        if resolution_decision_id:
+            dimension["resolution_decision_id"] = resolution_decision_id
+        indexed[str(choice_id)] = dimension
+    return (
+        indexed_materiality_dimensions(list(indexed.values()))
+        if set(indexed) == set(choices)
+        else None
+    )
+
+
 def engineering_choice_discovery_facts(
     work: CodexCapture,
     bundle: CanonicalBundle,
     goal_context_id: str,
+    goal_source_id: str | None,
     baseline_call: ToolCall,
     review_call: ToolCall,
-) -> tuple[bool, dict[str, Any]]:
+) -> tuple[
+    bool,
+    dict[str, Any],
+    dict[str, dict[str, Any]] | None,
+    dict[str, dict[str, Any]] | None,
+]:
     baseline_id = baseline_call.result.get("analysis_snapshot_id")
     calls = [
         call
@@ -3501,7 +3631,12 @@ def engineering_choice_discovery_facts(
     ]
     discovery = calls[0] if len(calls) == 1 else None
     choices = indexed_engineering_choices(discovery.arguments.get("choices")) if discovery else None
-    dimensions = indexed_materiality_dimensions(review_call.arguments.get("dimensions"))
+    dimensions = materiality_dimensions_from_judgments(
+        review_call.arguments.get("judgments"),
+        choices,
+        goal_context_id=goal_context_id,
+        goal_source_id=goal_source_id,
+    )
     discovered_id = discovery.result.get("discovery_candidate_id") if discovery else None
     referenced_ids = {
         choice_id
@@ -3545,7 +3680,7 @@ def engineering_choice_discovery_facts(
             choice.get("relationship", {}).get("state")
             for choice in (choices or {}).values()
         }),
-    }
+    }, dimensions, choices
 
 
 def materiality_dimension_authority_valid(
@@ -3694,16 +3829,13 @@ def materiality_review_facts(
         for call in work.successful_calls("materiality_review")
         if call.arguments.get("action") == "record"
         and call.arguments.get("project_id") == bundle.project_id
-        and call.arguments.get("goal_context_id") == goal_context_id
-        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
     ]
     if len(records) != 1:
         return False, None, None, {"matching_record_count": len(records)}
     record = records[0]
     review_id = record.result.get("review_candidate_id")
-    dimensions = indexed_materiality_dimensions(record.arguments.get("dimensions"))
-    discovery_ok, discovery_basis = engineering_choice_discovery_facts(
-        work, bundle, goal_context_id, baseline_call, record
+    discovery_ok, discovery_basis, dimensions, discovery_choices = engineering_choice_discovery_facts(
+        work, bundle, goal_context_id, goal_source_id, baseline_call, record
     )
     learning_participation = record.arguments.get("learning_participation")
     learning_active = behavior_class in {
@@ -3766,6 +3898,16 @@ def materiality_review_facts(
         for dimension in dimensions.values()
     )
     common = (
+        set(record.arguments)
+        == {
+            "action",
+            "project_id",
+            "engineering_choice_discovery_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        }
+        and
         baseline_call.completion_sequence < record.sequence
         and record.completion_sequence < first_write_sequence
         and nonempty_string(review_id)
@@ -3818,7 +3960,15 @@ def materiality_review_facts(
         ]
         revisions.sort(key=lambda call: call.sequence)
         revision_chain = [
-            (revision, indexed_materiality_dimensions(revision.arguments.get("dimensions")))
+            (
+                revision,
+                materiality_dimensions_from_judgments(
+                    revision.arguments.get("judgments"),
+                    discovery_choices,
+                    goal_context_id=goal_context_id,
+                    goal_source_id=goal_source_id,
+                ),
+            )
             for revision in revisions
         ]
         final_revision = revision_chain[-1][0] if revision_chain else None
@@ -3831,7 +3981,16 @@ def materiality_review_facts(
             for _, revised in revision_chain
         )
         chain_preserves_review_identity = bool(revision_chain) and all(
-            revision.result.get("review_candidate_id") == review_id
+            set(revision.arguments)
+            == {
+                "action",
+                "project_id",
+                "review_candidate_id",
+                "rationale",
+                "learning_participation",
+                "judgments",
+            }
+            and revision.result.get("review_candidate_id") == review_id
             and revision.result.get("goal_context_id") == goal_context_id
             and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
             and revision.result.get("review_revision") == expected_revision
@@ -7222,15 +7381,6 @@ def real_session_fixture(
     learning_feedback_call = f"{kind}-learning-feedback-call-{cycle}"
     learning_complete_call = f"{kind}-learning-complete-call-{cycle}"
     materiality_disposition = expected_materiality_disposition(behavior_class)
-    materiality_basis_kind = {
-        "explicit_user_owned_decision": "agent_recommendation",
-        "hidden_user_owned_decision": "agent_recommendation",
-        "research_or_no_question": "repository_or_environment_fact",
-        "delegated_implementation_choice": "explicit_delegation",
-        "exploratory_uncertainty": "research_evidence",
-        "learning_deliberation": "implementation_preference",
-        "learning_routine_control": "implementation_preference",
-    }[behavior_class]
     delegation_statement = "choose the internal helper naming and module structure"
     delegation_scope = "internal helper naming and module structure"
     learning_active = behavior_class in {
@@ -7242,8 +7392,16 @@ def real_session_fixture(
         return [
             {
                 "choice_id": materiality_dimension_id,
-                "summary": "Choose the adapter state representation",
-                "affected_scope": ["adapter state representation"],
+                "summary": (
+                    "Choose the delegated internal helper and module structure"
+                    if behavior_class == "delegated_implementation_choice"
+                    else "Choose the adapter state representation"
+                ),
+                "affected_scope": [
+                    delegation_scope
+                    if behavior_class == "delegated_implementation_choice"
+                    else "adapter state representation"
+                ],
                 "alternatives": [
                     {
                         "alternative_id": "ordered-records",
@@ -7286,33 +7444,9 @@ def real_session_fixture(
             },
         ]
 
-    def materiality_dimension(
-        *, resolved: bool = False, source_id: str | None = None
-    ) -> dict[str, Any]:
-        authority_source = (
-            goal_source
-            if behavior_class == "delegated_implementation_choice"
-            else source_id or repository_source
-        )
-        dimension = {
-            "dimension_id": materiality_dimension_id,
-            "discovered_choice_ids": [materiality_dimension_id],
-            "summary": (
-                "Select the delegated internal helper and module structure"
-                if behavior_class == "delegated_implementation_choice"
-                else "Classify the operator-facing error-detail outcome"
-            ),
-            "affected_scope": [
-                delegation_scope
-                if behavior_class == "delegated_implementation_choice"
-                else question_content["user_owned_dimension"]
-            ],
-            "material_consequences": [
-                "The choice changes internal maintainability without changing public behavior."
-                if behavior_class == "delegated_implementation_choice"
-                else question_content["material_consequence"]
-            ],
-            "observable_signals": ["observable_failure_policy"],
+    def materiality_judgment(*, resolved: bool = False) -> dict[str, Any]:
+        judgment = {
+            "choice_id": materiality_dimension_id,
             "disposition": materiality_disposition,
             "learning_value": (
                 {
@@ -7328,89 +7462,39 @@ def real_session_fixture(
                     "rationale": "This bounded detail is routine and should not interrupt implementation.",
                 }
             ),
-            "basis": {
-                "kinds": ["applicable_decision" if resolved else materiality_basis_kind],
-                "summary": "Bounded repository and owner-authority evidence",
-                "source_ids": [authority_source],
-                "contract_basis": (
-                    evaluation_basis.get("accepted_contract_constraints", [])
-                    if behavior_class == "research_or_no_question"
-                    else []
-                ),
-                "decision_ids": [decision] if resolved else [],
-                "research_basis": (
-                    evaluation_basis.get("repository_facts", [])
-                    if behavior_class == "exploratory_uncertainty"
-                    else []
-                ),
-            },
+            "basis_summary": "Bounded repository and owner-authority evidence",
         }
         if behavior_class == "delegated_implementation_choice" and not resolved:
-            dimension["basis"]["explicit_delegation"] = {
-                "goal_context_id": context,
-                "user_turn_source_id": goal_source,
-                "verbatim_statement": delegation_statement,
-                "affected_scope": [delegation_scope],
-            }
+            judgment["delegation_statement"] = delegation_statement
+            judgment["delegated_scope"] = [delegation_scope]
         if behavior_class == "exploratory_uncertainty":
-            dimension["exploratory_disposition"] = "resolved_by_research"
+            judgment["exploratory_disposition"] = "resolved_by_research"
+            judgment["research_basis"] = evaluation_basis.get("repository_facts", [])
         if resolved:
-            dimension["resolution_decision_id"] = decision
-        return dimension
+            judgment["resolution_decision_id"] = decision
+        return judgment
 
-    def secondary_materiality_dimension(
-        *, resolved: bool = False, source_id: str = repository_source
-    ) -> dict[str, Any]:
+    def secondary_materiality_judgment(*, resolved: bool = False) -> dict[str, Any]:
         if is_user_owned_behavior(behavior_class):
-            return {
-                "dimension_id": secondary_materiality_dimension_id,
-                "discovered_choice_ids": [secondary_materiality_dimension_id],
-                "summary": "Classify the coupled diagnostic stability outcome",
-                "affected_scope": ["operator diagnostic stability"],
-                "material_consequences": [
-                    "The same public choice controls stable diagnostic disclosure."
-                ],
-                "observable_signals": ["observable_failure_policy"],
+            judgment = {
+                "choice_id": secondary_materiality_dimension_id,
                 "disposition": "unresolved_user_owned_outcome",
                 "learning_value": {"state": "routine", "rationale": "User-owned authority stays on the Inquiry path."},
-                "resolution_decision_id": decision if resolved else None,
-                "basis": {
-                    "kinds": [
-                        "applicable_decision" if resolved else "agent_recommendation"
-                    ],
-                    "summary": "A coupled independently material diagnostic consequence",
-                    "source_ids": [source_id],
-                    "contract_basis": [],
-                    "decision_ids": [decision] if resolved else [],
-                    "research_basis": [],
-                },
+                "basis_summary": "A coupled independently material diagnostic consequence",
             }
+            if resolved:
+                judgment["resolution_decision_id"] = decision
+            return judgment
         return {
-            "dimension_id": secondary_materiality_dimension_id,
-            "discovered_choice_ids": [secondary_materiality_dimension_id],
-            "summary": "Record the repository-established bounded file shape",
-            "affected_scope": ["repository file shape"],
-            "material_consequences": ["The implementation stays within inspected files."],
-            "observable_signals": ["other_material_outcome"],
+            "choice_id": secondary_materiality_dimension_id,
             "disposition": "repository_or_environment_fact",
             "learning_value": {"state": "routine", "rationale": "A repository-established fact needs no learning interruption."},
-            "basis": {
-                "kinds": ["repository_or_environment_fact"],
-                "summary": "The retained Analysis Snapshot establishes this fact.",
-                "source_ids": [source_id],
-                "contract_basis": [],
-                "decision_ids": [],
-                "research_basis": [],
-            },
+            "basis_summary": "The retained Analysis Snapshot establishes this fact.",
         }
 
-    def materiality_dimensions(
-        *, resolved: bool = False, source_id: str = repository_source
-    ) -> list[dict[str, Any]]:
-        primary = materiality_dimension(resolved=resolved, source_id=source_id)
-        secondary = secondary_materiality_dimension(
-            resolved=resolved, source_id=source_id
-        )
+    def materiality_judgments(*, resolved: bool = False) -> list[dict[str, Any]]:
+        primary = materiality_judgment(resolved=resolved)
+        secondary = secondary_materiality_judgment(resolved=resolved)
         return [secondary, primary] if resolved else [primary, secondary]
 
     def ready_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
@@ -7529,10 +7613,7 @@ def real_session_fixture(
             {
                 "action": "record",
                 "project_id": project,
-                "goal_context_id": context,
-                "baseline_analysis_snapshot_id": baseline_analysis,
                 "engineering_choice_discovery_candidate_id": discovery_candidate,
-                "source_operation": "naturalistic pre-work Materiality Review",
                 "rationale": "Classify independently material outcomes before affected work.",
                 "learning_participation": (
                     {
@@ -7543,7 +7624,7 @@ def real_session_fixture(
                     if learning_active
                     else {"state": "inactive"}
                 ),
-                "dimensions": materiality_dimensions(),
+                "judgments": materiality_judgments(),
             },
         ),
         custom_output(
@@ -7757,7 +7838,8 @@ def real_session_fixture(
                 "project_id": project,
                 "review_candidate_id": review_candidate,
                 "rationale": "The explicit current-host Decision resolves the user-owned outcome.",
-                "dimensions": materiality_dimensions(resolved=True),
+                "learning_participation": {"state": "inactive"},
+                "judgments": materiality_judgments(resolved=True),
             },
         ),
         custom_output(
@@ -8171,10 +8253,7 @@ def real_session_fixture(
             {
                 "action": "record",
                 "project_id": project,
-                "goal_context_id": context,
-                "baseline_analysis_snapshot_id": resume_baseline_analysis,
                 "engineering_choice_discovery_candidate_id": resume_discovery_candidate,
-                "source_operation": "fresh-session Materiality Review recomputation",
                 "rationale": "Recompute current work authority after Recall and a fresh baseline.",
                 "learning_participation": (
                     {
@@ -8185,9 +8264,8 @@ def real_session_fixture(
                     if learning_active
                     else {"state": "inactive"}
                 ),
-                "dimensions": materiality_dimensions(
-                    resolved=is_user_owned_behavior(behavior_class),
-                    source_id=resume_repository_source,
+                "judgments": materiality_judgments(
+                    resolved=is_user_owned_behavior(behavior_class)
                 ),
             },
             fallback="??",
@@ -8941,7 +9019,7 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
                     "failed-review",
                     "materiality_review",
                     {"action": "record"},
-                    {"error": "validation failed", "details": {"field": "dimensions"}},
+                    {"error": "validation failed", "details": {"field": "judgments"}},
                     status="failed",
                     is_error=True,
                 ),
@@ -11635,7 +11713,7 @@ def self_test() -> int:
         ),
         (
             "other snapshot source",
-            lambda arguments: arguments["dimensions"][0]["basis"].update(
+            lambda arguments: arguments["judgments"][0].update(
                 {"source_ids": ["f3" * 16]}
             ),
         ),
@@ -11694,10 +11772,7 @@ def self_test() -> int:
     ]
     if (
         len(delegated_records) != 1
-        or delegated_records[0].arguments["dimensions"][0]["basis"][
-            "research_basis"
-        ]
-        != []
+        or "research_basis" in delegated_records[0].arguments["judgments"][0]
     ):
         raise AssertionError("delegated positive no longer proves research independence")
     delegated_basis = delegated_positive_result["inquiry_behavior_basis"][
@@ -11720,33 +11795,31 @@ def self_test() -> int:
     for label, mutation in (
         (
             "missing explicit evidence",
-            lambda arguments: arguments["dimensions"][0]["basis"].pop(
-                "explicit_delegation"
-            ),
+            lambda arguments: arguments["judgments"][0].pop("delegation_statement"),
         ),
         (
             "non-verbatim statement",
-            lambda arguments: arguments["dimensions"][0]["basis"][
-                "explicit_delegation"
-            ].update({"verbatim_statement": "agent-inferred delegation"}),
+            lambda arguments: arguments["judgments"][0].update(
+                {"delegation_statement": "agent-inferred delegation"}
+            ),
         ),
         (
             "wrong Goal",
-            lambda arguments: arguments["dimensions"][0]["basis"][
-                "explicit_delegation"
-            ].update({"goal_context_id": "f5" * 16}),
+            lambda arguments: arguments["judgments"][0].update(
+                {"goal_context_id": "f5" * 16}
+            ),
         ),
         (
             "wrong user turn",
-            lambda arguments: arguments["dimensions"][0]["basis"][
-                "explicit_delegation"
-            ].update({"user_turn_source_id": "02" * 16}),
+            lambda arguments: arguments["judgments"][0].update(
+                {"user_turn_source_id": "02" * 16}
+            ),
         ),
         (
             "scope outside delegation",
-            lambda arguments: arguments["dimensions"][0]["basis"][
-                "explicit_delegation"
-            ].update({"affected_scope": ["unrelated public policy"]}),
+            lambda arguments: arguments["judgments"][0].update(
+                {"delegated_scope": ["unrelated public policy"]}
+            ),
         ),
     ):
         invalid_delegation = real_session_fixture(
@@ -11784,9 +11857,9 @@ def self_test() -> int:
             "work",
             "materiality_review",
             "record",
-            lambda arguments, kind=masquerading_kind: arguments["dimensions"][0][
-                "basis"
-            ]["kinds"].append(kind),
+            lambda arguments, kind=masquerading_kind: arguments["judgments"][0].update(
+                {"authority_kind": kind}
+            ),
         )
         if delegated_prewrite_status(masquerading) != "failed":
             raise AssertionError(
@@ -11805,7 +11878,7 @@ def self_test() -> int:
         "work",
         "materiality_review",
         "record",
-        lambda arguments: arguments["dimensions"][0]["basis"].update(
+        lambda arguments: arguments["judgments"][0].update(
             {"contract_basis": ["accepted owner contract"]}
         ),
     )
@@ -11821,10 +11894,10 @@ def self_test() -> int:
     )
 
     def add_independent_delegation_research(arguments: dict[str, Any]) -> None:
-        basis = arguments["dimensions"][0]["basis"]
-        basis["kinds"].append("research_evidence")
-        basis["source_ids"].append("0f" * 16)
-        basis["research_basis"] = ["independent repository inspection"]
+        arguments["judgments"][0]["additional_source_ids"] = ["0f" * 16]
+        arguments["judgments"][0]["research_basis"] = [
+            "independent repository inspection"
+        ]
 
     mutate_mcp_call_action(
         independent_research,
@@ -11833,8 +11906,8 @@ def self_test() -> int:
         "record",
         add_independent_delegation_research,
     )
-    if delegated_prewrite_status(independent_research) != "passed":
-        raise AssertionError("valid delegation with independent research was rejected")
+    if delegated_prewrite_status(independent_research) != "failed":
+        raise AssertionError("delegation accepted forbidden research-authority fields")
 
     only_one_dimension_delegated = real_session_fixture(
         "polyglot-medium",
@@ -11845,10 +11918,8 @@ def self_test() -> int:
     )
 
     def make_second_dimension_bare_delegation(arguments: dict[str, Any]) -> None:
-        second = arguments["dimensions"][1]
+        second = arguments["judgments"][1]
         second["disposition"] = "delegated_implementation_choice"
-        second["basis"]["kinds"] = ["explicit_delegation"]
-        second["basis"]["source_ids"] = ["03" * 16]
 
     mutate_mcp_call_action(
         only_one_dimension_delegated,
@@ -11869,15 +11940,11 @@ def self_test() -> int:
     )
 
     def make_second_dimension_explicit(arguments: dict[str, Any]) -> None:
-        primary = arguments["dimensions"][0]
-        second = arguments["dimensions"][1]
-        second["summary"] = "Select the delegated module structure"
-        second["affected_scope"] = ["internal module structure"]
+        primary = arguments["judgments"][0]
+        second = arguments["judgments"][1]
         second["disposition"] = "delegated_implementation_choice"
-        second["basis"] = json.loads(json.dumps(primary["basis"]))
-        second["basis"]["explicit_delegation"]["affected_scope"] = [
-            "internal module structure"
-        ]
+        second["delegation_statement"] = primary["delegation_statement"]
+        second["delegated_scope"] = ["repository file shape"]
 
     mutate_mcp_call_action(
         each_dimension_delegated,
@@ -11898,14 +11965,16 @@ def self_test() -> int:
     )
 
     def share_bounded_delegation(arguments: dict[str, Any]) -> None:
-        primary = arguments["dimensions"][0]
-        second = arguments["dimensions"][1]
-        primary["affected_scope"] = ["internal/helper"]
-        primary["basis"]["explicit_delegation"]["affected_scope"] = ["internal"]
-        second["summary"] = "Select the delegated module structure"
-        second["affected_scope"] = ["internal/module"]
+        primary = arguments["judgments"][0]
+        second = arguments["judgments"][1]
+        shared_scope = [
+            "internal helper naming and module structure",
+            "repository file shape",
+        ]
+        primary["delegated_scope"] = shared_scope
         second["disposition"] = "delegated_implementation_choice"
-        second["basis"] = json.loads(json.dumps(primary["basis"]))
+        second["delegation_statement"] = primary["delegation_statement"]
+        second["delegated_scope"] = shared_scope
 
     mutate_mcp_call_action(
         shared_scope_delegation,
@@ -11929,7 +11998,7 @@ def self_test() -> int:
         "work",
         "materiality_review",
         "record",
-        lambda arguments: arguments["dimensions"].reverse(),
+        lambda arguments: arguments["judgments"].reverse(),
     )
     if delegated_prewrite_status(reordered_delegation) != "passed":
         raise AssertionError("delegated dimension array order became authoritative")
@@ -11943,23 +12012,10 @@ def self_test() -> int:
     )
 
     def relabel_user_owned_as_goal_delegation(arguments: dict[str, Any]) -> None:
-        for dimension in arguments["dimensions"]:
-            dimension["disposition"] = "delegated_implementation_choice"
-            dimension["resolution_decision_id"] = None
-            dimension["basis"] = {
-                "kinds": ["explicit_delegation"],
-                "summary": "A task phrase was incorrectly relabeled as delegation.",
-                "source_ids": ["03" * 16],
-                "contract_basis": [],
-                "decision_ids": [],
-                "research_basis": [],
-                "explicit_delegation": {
-                    "goal_context_id": "08" * 16,
-                    "user_turn_source_id": "03" * 16,
-                    "verbatim_statement": "Improve it",
-                    "affected_scope": dimension["affected_scope"],
-                },
-            }
+        for judgment in arguments["judgments"]:
+            judgment["disposition"] = "delegated_implementation_choice"
+            judgment["delegation_statement"] = "Improve it"
+            judgment["delegated_scope"] = ["adapter state representation"]
 
     mutate_mcp_call_action(
         user_owned_relabel,
@@ -11988,8 +12044,8 @@ def self_test() -> int:
         "work",
         "materiality_review",
         "record",
-        lambda arguments: arguments["dimensions"][0]["basis"]["source_ids"].append(
-            "f4" * 16
+        lambda arguments: arguments["judgments"][0].update(
+            {"additional_source_ids": ["f4" * 16]}
         ),
     )
     if real_session_evidence(
@@ -12009,50 +12065,10 @@ def self_test() -> int:
     )
 
     def add_settled_and_exploratory(arguments: dict[str, Any]) -> None:
-        repository_source_id = "0f" * 16
-        arguments["dimensions"].extend(
-            [
-                {
-                    "dimension_id": "accepted-output-contract",
-                    "discovered_choice_ids": ["operator-error-boundary"],
-                    "summary": "Apply the accepted output contract",
-                    "affected_scope": ["public output"],
-                    "material_consequences": ["The accepted contract fixes the output."],
-                    "observable_signals": ["public_api_semantics"],
-                    "disposition": "settled_authority",
-                    "learning_value": {"state": "routine", "rationale": "Accepted authority needs no learning interruption."},
-                    "basis": {
-                        "kinds": ["accepted_contract"],
-                        "summary": "The active owner contract settles this dimension.",
-                        "source_ids": [repository_source_id],
-                        "contract_basis": [
-                            "rebuild/docs/design/inquiry-and-decision.md"
-                        ],
-                        "decision_ids": [],
-                        "research_basis": [],
-                    },
-                },
-                {
-                    "dimension_id": "bounded-exploration",
-                    "discovered_choice_ids": ["repository-shape-boundary"],
-                    "summary": "Retain the completed exploration basis",
-                    "affected_scope": ["internal exploration"],
-                    "material_consequences": ["Research resolves the implementation uncertainty."],
-                    "observable_signals": ["other_material_outcome"],
-                    "disposition": "exploratory_uncertainty",
-                    "learning_value": {"state": "routine", "rationale": "Resolved exploration needs no learning interruption."},
-                    "exploratory_disposition": "resolved_by_research",
-                    "basis": {
-                        "kinds": ["research_evidence"],
-                        "summary": "Bounded research resolved the uncertainty.",
-                        "source_ids": [repository_source_id],
-                        "contract_basis": [],
-                        "decision_ids": [],
-                        "research_basis": ["inspected implementation evidence"],
-                    },
-                },
-            ]
-        )
+        _, second = arguments["judgments"]
+        second["disposition"] = "exploratory_uncertainty"
+        second["exploratory_disposition"] = "resolved_by_research"
+        second["research_basis"] = ["inspected implementation evidence"]
 
     mutate_mcp_call_action(
         coexistence,
@@ -12072,13 +12088,13 @@ def self_test() -> int:
     for label, mutation in (
         (
             "duplicate dimension identity",
-            lambda arguments: arguments["dimensions"].append(
-                json.loads(json.dumps(arguments["dimensions"][0]))
+            lambda arguments: arguments["judgments"].append(
+                json.loads(json.dumps(arguments["judgments"][0]))
             ),
         ),
         (
             "missing dimension identity",
-            lambda arguments: arguments["dimensions"][0].pop("dimension_id"),
+            lambda arguments: arguments["judgments"][0].pop("choice_id"),
         ),
     ):
         malformed = real_session_fixture(
@@ -12108,10 +12124,8 @@ def self_test() -> int:
     )
 
     def make_extra_dimension_unresolved(arguments: dict[str, Any]) -> None:
-        dimension = arguments["dimensions"][1]
-        dimension["disposition"] = "unresolved_user_owned_outcome"
-        dimension["resolution_decision_id"] = None
-        dimension["basis"]["kinds"] = ["agent_recommendation"]
+        judgment = arguments["judgments"][1]
+        judgment["disposition"] = "unresolved_user_owned_outcome"
 
     mutate_mcp_call_action(
         unresolved_extra,
@@ -12136,7 +12150,7 @@ def self_test() -> int:
         "work",
         "materiality_review",
         "revise",
-        lambda arguments: arguments["dimensions"].pop(),
+        lambda arguments: arguments["judgments"].pop(),
     )
     if real_session_evidence(
         disappearing, kind="volicord", cycle=2, repository_revision=revision
