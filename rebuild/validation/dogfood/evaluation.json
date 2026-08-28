@@ -355,15 +355,28 @@
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
       "event_msg.mcp_tool_call_end with volicord invocation and structured result",
+      "event_msg.item_completed with matching thread_id, outer turn_id, and McpToolCall item identity/status/result",
       "tools.exec_command(literal_object)",
       "tools.apply_patch(literal_string)"
     ],
     "mcp_completion_contract": {
-      "authoritative_event": "event_msg.mcp_tool_call_end",
+      "accepted_representations": [
+        "event_msg.mcp_tool_call_end",
+        "event_msg.item_completed.McpToolCall"
+      ],
       "server": "volicord",
-      "success": "result.Ok.isError is false with object structuredContent",
-      "failure": "result.Err, result.Ok.isError true, malformed completion, or correlated wrapper mismatch cannot qualify",
-      "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source"
+      "success": "legacy result.Ok.isError false or current completed status with isError false, each with object structuredContent",
+      "failure": "tool/application error, validation error, malformed/incomplete result, unsupported status, status/result mismatch, result.Err, or correlated wrapper mismatch cannot qualify",
+      "semantic_identity": [
+        "server",
+        "turn_id",
+        "item_or_call_id"
+      ],
+      "deduplication": "equivalent legacy/current evidence with common transport identity yields one semantic ToolCall",
+      "identity_conflict": "material argument, status, error, result, operation, or turn disagreement rejects the capture",
+      "structured_result_source": "structuredContent",
+      "failed_calls_retained_for_diagnostics": true,
+      "numeric_cli_version_dispatch": false
     },
     "materiality_review_contract": {
       "minimum_dimension_count": 1,
@@ -479,7 +492,7 @@
       "uncorrelated_or_synthesized_status_outcome": "unknown"
     },
     "bounded_parser_limitations": [
-      "MCP semantic facts come only from current mcp_tool_call_end completion evidence; wrapper syntax is parsed only for bounded correlation",
+      "MCP semantic facts come only from maintained mcp_tool_call_end or current item_completed/McpToolCall completion evidence; wrapper syntax is parsed only for bounded correlation",
       "output-only command forwarding is outcome-unknown and cannot qualify passed or failed verification; complete-result and exact same-result output/status forwarding are the supported evidence forms",
       "unsupported or ambiguous JavaScript does not contribute qualification facts"
     ],

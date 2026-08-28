@@ -225,11 +225,28 @@ class ToolCall:
     completion_sequence: int
     turn_id: str
     call_id: str
+    server: str
     operation: str
     arguments: dict[str, Any]
     result: dict[str, Any]
     outcome: str
     error: str | None
+    transport_representations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _ToolCallEvidence:
+    sequence: int
+    completion_sequence: int
+    turn_id: str
+    call_id: str
+    server: str
+    operation: str
+    arguments: dict[str, Any]
+    result: dict[str, Any]
+    outcome: str
+    error: str | None
+    representation: str
 
 
 @dataclass(frozen=True)
@@ -613,7 +630,7 @@ def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
 def normalize_mcp_completion(
     payload: dict[str, Any],
 ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any], str, str | None]:
-    """Normalize the current Codex MCP completion shape without reading wrapper output."""
+    """Normalize the maintained legacy MCP completion representation."""
     invocation = payload.get("invocation")
     if not isinstance(invocation, dict) or invocation.get("server") != "volicord":
         return None, None, {}, "ignored", None
@@ -637,6 +654,94 @@ def normalize_mcp_completion(
         raw_error = structured.get("error")
         return operation, arguments, structured, "failed", str(raw_error) if nonempty(raw_error) else "mcp_error"
     return operation, arguments, structured, "succeeded", None
+
+
+def normalize_current_mcp_completion(
+    payload: dict[str, Any], session_id: str
+) -> tuple[str | None, str | None, dict[str, Any] | None, dict[str, Any], str, str | None] | None:
+    """Normalize ItemCompleted(McpToolCall) by shape and semantic result."""
+    if payload.get("type") != "item_completed":
+        return None
+    item = payload.get("item")
+    if not isinstance(item, dict) or item.get("type") != "McpToolCall":
+        return None
+    server = item.get("server")
+    if server != "volicord":
+        return None
+    if payload.get("thread_id") != session_id or not nonempty(payload.get("turn_id")):
+        raise EvidenceError("Codex McpToolCall thread or turn identity is malformed")
+    call_id = item.get("id")
+    operation = normalize_operation(item.get("tool"))
+    arguments = item.get("arguments")
+    if not nonempty(call_id):
+        raise EvidenceError("Codex McpToolCall item identity is malformed")
+    if operation is None or not isinstance(arguments, dict):
+        return str(call_id), operation, None, {}, "failed", "malformed_mcp_completion"
+
+    status = item.get("status")
+    result = item.get("result")
+    if status not in {"completed", "failed"}:
+        return str(call_id), operation, arguments, {}, "failed", "unsupported_mcp_completion_status"
+    if not isinstance(result, dict):
+        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
+    is_error = result.get("isError")
+    structured = result.get("structuredContent")
+    if not isinstance(is_error, bool) or not isinstance(structured, dict):
+        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
+    if status == "completed" and not is_error:
+        return str(call_id), operation, arguments, structured, "succeeded", None
+    if status == "failed" and is_error:
+        raw_error = structured.get("error")
+        return (
+            str(call_id),
+            operation,
+            arguments,
+            structured,
+            "failed",
+            str(raw_error) if nonempty(raw_error) else "mcp_error",
+        )
+    return str(call_id), operation, arguments, structured, "failed", "mcp_completion_status_mismatch"
+
+
+def merge_tool_call_evidence(evidence: list[_ToolCallEvidence]) -> tuple[ToolCall, ...]:
+    """Deduplicate equivalent transports and reject identity conflicts."""
+    by_identity: dict[tuple[str, str], _ToolCallEvidence] = {}
+    representations: dict[tuple[str, str], set[str]] = {}
+    for candidate in sorted(evidence, key=lambda value: value.sequence):
+        identity = (candidate.server, candidate.call_id)
+        prior = by_identity.get(identity)
+        if prior is None:
+            by_identity[identity] = candidate
+            representations[identity] = {candidate.representation}
+            continue
+        if (
+            prior.turn_id != candidate.turn_id
+            or prior.operation != candidate.operation
+            or prior.arguments != candidate.arguments
+            or prior.result != candidate.result
+            or prior.outcome != candidate.outcome
+            or prior.error != candidate.error
+        ):
+            raise EvidenceError("Codex MCP completion representations conflict")
+        representations[identity].add(candidate.representation)
+    return tuple(
+        ToolCall(
+            value.sequence,
+            value.completion_sequence,
+            value.turn_id,
+            value.call_id,
+            value.server,
+            value.operation,
+            value.arguments,
+            value.result,
+            value.outcome,
+            value.error,
+            tuple(sorted(representations[identity])),
+        )
+        for identity, value in sorted(
+            by_identity.items(), key=lambda item: item[1].sequence
+        )
+    )
 
 
 CUSTOM_OUTPUT_HEADER = re.compile(
@@ -989,6 +1094,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     completions: dict[str, tuple[int, str, Any]] = {}
     mcp_wrappers: dict[str, tuple[int, str, ParsedMcpWrapper]] = {}
     mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
+    current_mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     raw_path_observations: list[tuple[int, str, tuple[str, ...]]] = []
     repository_scoped_activation_observed = False
 
@@ -1041,6 +1147,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
             current_evidence = current_user_turn_evidence(payload, sequence, str(session_id))
             if current_evidence is not None:
                 user_turn_evidence.append(current_evidence)
+            current_mcp = normalize_current_mcp_completion(payload, str(session_id))
+            if current_mcp is not None:
+                turn_id = payload.get("turn_id")
+                if nonempty(turn_id):
+                    current_mcp_completions.append((sequence, str(turn_id), payload))
         elif envelope == "response_item" and payload_type == "custom_tool_call":
             parsed = (
                 parse_custom_call(payload.get("input"))
@@ -1095,7 +1206,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 (sequence, str(turn_id), tuple(sorted(set(paths))))
             )
 
-    tool_calls: list[ToolCall] = []
+    tool_call_evidence: list[_ToolCallEvidence] = []
     commands: list[CommandObservation] = []
     for call_id, (sequence, turn_id, parsed) in calls.items():
         completion = completions.get(call_id)
@@ -1213,21 +1324,48 @@ def load_codex_capture(path: Path) -> CodexCapture:
             if wrapper.operation != operation or wrapper.arguments != arguments:
                 outcome = "failed"
                 error = "mcp_wrapper_completion_mismatch"
-        tool_calls.append(
-            ToolCall(
+        tool_call_evidence.append(
+            _ToolCallEvidence(
                 sequence,
                 sequence,
                 turn_id,
                 completion_call_id,
+                "volicord",
                 operation,
                 arguments,
                 result,
                 outcome,
                 error,
+                "event_msg.mcp_tool_call_end",
             )
         )
 
-    tool_calls.sort(key=lambda value: value.sequence)
+    for sequence, turn_id, payload in current_mcp_completions:
+        normalized = normalize_current_mcp_completion(payload, str(session_id))
+        if normalized is None:
+            continue
+        call_id, operation, arguments, result, outcome, error = normalized
+        if call_id is None or operation is None or arguments is None:
+            continue
+        tool_call_evidence.append(
+            _ToolCallEvidence(
+                sequence,
+                sequence,
+                turn_id,
+                call_id,
+                "volicord",
+                operation,
+                arguments,
+                result,
+                outcome,
+                error,
+                "event_msg.item_completed.McpToolCall",
+            )
+        )
+
+    if any(value.turn_id not in known_turn_ids for value in tool_call_evidence):
+        raise EvidenceError("Codex MCP completion refers to an unknown turn identity")
+    tool_calls = merge_tool_call_evidence(tool_call_evidence)
     commands.sort(key=lambda value: (value.sequence, value.group_index))
     path_observations = [
         PathObservation(sequence, turn_id, paths)
@@ -1254,7 +1392,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),
         user_turns=user_turns,
-        tool_calls=tuple(tool_calls),
+        tool_calls=tool_calls,
         path_observations=tuple(path_observations),
         commands=tuple(commands),
     )

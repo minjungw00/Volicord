@@ -436,6 +436,54 @@ def current_user_message_capture(
     return destination
 
 
+def current_mcp_tool_call_capture(source: Path, destination: Path) -> Path:
+    events = [
+        json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()
+    ]
+    session_id = events[0]["payload"]["session_id"]
+    current_turn: str | None = None
+    converted: list[dict[str, object]] = []
+    for value in events:
+        payload = value.get("payload", {})
+        if value.get("type") == "event_msg" and payload.get("type") == "task_started":
+            current_turn = payload.get("turn_id")
+        if value.get("type") != "event_msg" or payload.get("type") != "mcp_tool_call_end":
+            converted.append(value)
+            continue
+        if not isinstance(current_turn, str):
+            raise AssertionError("legacy fixture MCP completion has no active turn")
+        invocation = payload["invocation"]
+        raw_result = payload["result"]
+        ok = raw_result.get("Ok") if isinstance(raw_result, dict) else None
+        if not isinstance(ok, dict):
+            raise AssertionError("legacy fixture MCP result is not convertible")
+        converted.append(
+            {
+                "timestamp": value.get("timestamp"),
+                "type": "event_msg",
+                "payload": {
+                    "type": "item_completed",
+                    "thread_id": session_id,
+                    "turn_id": current_turn,
+                    "item": {
+                        "type": "McpToolCall",
+                        "id": payload["call_id"],
+                        "server": invocation["server"],
+                        "tool": invocation["tool"],
+                        "arguments": invocation["arguments"],
+                        "status": "failed" if ok["isError"] else "completed",
+                        "result": ok,
+                    },
+                },
+            }
+        )
+    destination.write_text(
+        "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in converted),
+        encoding="utf-8",
+    )
+    return destination
+
+
 def prepared_batch(
     parent: Path,
     name: str,
@@ -1735,10 +1783,14 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 
     work = compacted_work
     resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
-    current_work = current_user_message_capture(
+    current_user_work = current_user_message_capture(
         work,
         parent / "current-user-message-work.jsonl",
         inject_host_user_material=True,
+    )
+    current_work = current_mcp_tool_call_capture(
+        current_user_work,
+        parent / "current-user-message-mcp-work.jsonl",
     )
     current_inputs = [current_work if path == work else path for path in captures]
     current_mapping = campaign.map_batch_rollouts(root, current_inputs)
@@ -1748,10 +1800,29 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         or current_mapped_capture.user_turns[0].text != raw_work_task
         or "Host-injected instruction material"
         in [turn.text for turn in current_mapped_capture.user_turns]
+        or campaign.observed_project_ids(current_mapped_capture) != ["01" * 16]
+        or not current_mapped_capture.successful_calls("repository_analyze")
+        or not current_mapped_capture.successful_calls("checkpoint_record")
     ):
         raise AssertionError(
-            "current UserMessage mapping lost the frozen task, later response, or host boundary"
+            "current UserMessage/McpToolCall mapping lost task, Project, workflow, or host boundary"
         )
+    current_descriptor_path, current_descriptor = campaign.load_sealed_descriptor(
+        root, "volicord", 1
+    )
+    try:
+        harness.build_work_blocker_result(
+            campaign.load_campaign(root)["candidate_head"],
+            current_descriptor,
+            harness.sha256(current_descriptor_path),
+            current_mapped_capture,
+            target_repository=Path(mapped_state["repository_path"]),
+        )
+    except ValueError as error:
+        if "has no machine-observable terminal work blocker" not in str(error):
+            raise
+    else:
+        raise AssertionError("valid current-format work mapping became a work blocker")
 
     duplicate_work = current_user_message_capture(
         work,
@@ -2558,6 +2629,7 @@ def main() -> int:
             "unordered_sixteen_rollout_batch_mapping",
             "compacted_fresh_thread_batch_mapping",
             "current_user_message_batch_mapping",
+            "current_mcp_project_and_work_intake_mapping",
             "current_user_message_frozen_task_and_provenance_failures",
             "legacy_current_user_turn_deduplication_and_conflict_rejection",
             "host_user_role_material_excluded_from_first_turn",

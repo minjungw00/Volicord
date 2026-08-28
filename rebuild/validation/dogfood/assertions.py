@@ -438,6 +438,9 @@ def main() -> int:
     user_turn_normalization = definition_value.get("real_session_evidence", {}).get(
         "codex_user_turn_normalization", {}
     )
+    mcp_completion = definition_value.get("real_session_evidence", {}).get(
+        "mcp_completion_contract", {}
+    )
     if user_turn_normalization != {
         "accepted_representations": [
             "event_msg.user_message with active turn and client_id",
@@ -467,6 +470,32 @@ def main() -> int:
         "other_whitespace_normalized": False,
     }:
         raise AssertionError("Phase 8 Codex user-turn transport identity contract changed")
+    if mcp_completion != {
+        "accepted_representations": [
+            "event_msg.mcp_tool_call_end",
+            "event_msg.item_completed.McpToolCall",
+        ],
+        "server": "volicord",
+        "success": (
+            "legacy result.Ok.isError false or current completed status with isError false, "
+            "each with object structuredContent"
+        ),
+        "failure": (
+            "tool/application error, validation error, malformed/incomplete result, unsupported "
+            "status, status/result mismatch, result.Err, or correlated wrapper mismatch cannot qualify"
+        ),
+        "semantic_identity": ["server", "turn_id", "item_or_call_id"],
+        "deduplication": (
+            "equivalent legacy/current evidence with common transport identity yields one semantic ToolCall"
+        ),
+        "identity_conflict": (
+            "material argument, status, error, result, operation, or turn disagreement rejects the capture"
+        ),
+        "structured_result_source": "structuredContent",
+        "failed_calls_retained_for_diagnostics": True,
+        "numeric_cli_version_dispatch": False,
+    }:
+        raise AssertionError("Phase 8 Codex MCP completion normalization contract changed")
     for marker in (
         "control_has_accessible_name",
         "aria-labelledby",
@@ -499,6 +528,8 @@ def main() -> int:
         "reuse the unresolved review dimension in the Question Candidate",
         "recompute Materiality Review/work authority before continued ordinary work",
         "event_msg.mcp_tool_call_end",
+        "event_msg.item_completed",
+        "McpToolCall",
         "permit one or more successful work Checkpoints",
         "latest terminal Checkpoint candidate after the last meaningful repository change",
         "change continuation produces a relevant repository change",

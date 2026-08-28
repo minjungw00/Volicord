@@ -1025,6 +1025,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(evidence.get("bounded_call_forms", []))
         != (
             "event_msg.mcp_tool_call_end with volicord invocation and structured result",
+            "event_msg.item_completed with matching thread_id, outer turn_id, and McpToolCall item identity/status/result",
             "tools.exec_command(literal_object)",
             "tools.apply_patch(literal_string)",
         )
@@ -1087,11 +1088,29 @@ def load_definition() -> dict[str, Any]:
     ):
         raise ValueError("the current Codex rollout evidence contract changed")
     if evidence.get("mcp_completion_contract") != {
-        "authoritative_event": "event_msg.mcp_tool_call_end",
+        "accepted_representations": [
+            "event_msg.mcp_tool_call_end",
+            "event_msg.item_completed.McpToolCall",
+        ],
         "server": "volicord",
-        "success": "result.Ok.isError is false with object structuredContent",
-        "failure": "result.Err, result.Ok.isError true, malformed completion, or correlated wrapper mismatch cannot qualify",
-        "deduplication": "one completion call_id yields one semantic operation; wrapper output is not a second semantic source",
+        "success": (
+            "legacy result.Ok.isError false or current completed status with isError false, "
+            "each with object structuredContent"
+        ),
+        "failure": (
+            "tool/application error, validation error, malformed/incomplete result, unsupported "
+            "status, status/result mismatch, result.Err, or correlated wrapper mismatch cannot qualify"
+        ),
+        "semantic_identity": ["server", "turn_id", "item_or_call_id"],
+        "deduplication": (
+            "equivalent legacy/current evidence with common transport identity yields one semantic ToolCall"
+        ),
+        "identity_conflict": (
+            "material argument, status, error, result, operation, or turn disagreement rejects the capture"
+        ),
+        "structured_result_source": "structuredContent",
+        "failed_calls_retained_for_diagnostics": True,
+        "numeric_cli_version_dispatch": False,
     }:
         raise ValueError("the current MCP completion evidence contract changed")
     descriptor_contract = evidence.get("cycle_descriptor_contract", {})
@@ -8514,6 +8533,344 @@ def assert_user_turn_normalizer_regressions(directory: Path) -> None:
         raise AssertionError(f"malformed current UserMessage evidence qualified: {path.name}")
 
 
+def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
+    session_id = "current-mcp-session"
+    turn_id = "current-mcp-turn"
+
+    def event(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "timestamp": "2026-08-29T00:00:00Z",
+            "type": event_type,
+            "payload": payload,
+        }
+
+    meta = event(
+        "session_meta",
+        {
+            "id": session_id,
+            "session_id": session_id,
+            "cwd": "/phase8/current-mcp",
+            "originator": "codex_vscode",
+            "cli_version": "shape-not-version-dispatch",
+            "source": "vscode",
+            "thread_source": "user",
+            "git": {"commit_hash": "0" * 40},
+        },
+    )
+    started = event("event_msg", {"type": "task_started", "turn_id": turn_id})
+
+    def legacy(
+        call_id: str,
+        operation: str,
+        arguments: dict[str, Any],
+        structured: dict[str, Any],
+        *,
+        is_error: bool = False,
+    ) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "mcp_tool_call_end",
+                "call_id": call_id,
+                "invocation": {
+                    "server": "volicord",
+                    "tool": operation,
+                    "arguments": arguments,
+                },
+                "result": {
+                    "Ok": {
+                        "content": [],
+                        "structuredContent": structured,
+                        "isError": is_error,
+                    }
+                },
+            },
+        )
+
+    def current(
+        call_id: str,
+        operation: str,
+        arguments: dict[str, Any],
+        structured: dict[str, Any],
+        *,
+        status: str = "completed",
+        is_error: bool = False,
+        result: Any = None,
+    ) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": session_id,
+                "turn_id": turn_id,
+                "item": {
+                    "type": "McpToolCall",
+                    "id": call_id,
+                    "server": "volicord",
+                    "tool": operation,
+                    "arguments": arguments,
+                    "status": status,
+                    "result": (
+                        {
+                            "content": [],
+                            "structuredContent": structured,
+                            "isError": is_error,
+                        }
+                        if result is None
+                        else result
+                    ),
+                },
+            },
+        )
+
+    def write(name: str, body: list[dict[str, Any]]) -> Path:
+        path = directory / f"mcp-{name}.jsonl"
+        path.write_text(
+            "".join(
+                json.dumps(value, separators=(",", ":")) + "\n"
+                for value in [meta, started, *body]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    project_id = "01" * 16
+    successful = load_codex_capture(
+        write(
+            "successful",
+            [
+                legacy(
+                    "legacy-project",
+                    "project_initialize",
+                    {"repository": "/phase8/current-mcp"},
+                    {"project_id": project_id},
+                ),
+                current(
+                    "current-project",
+                    "project_initialize",
+                    {"repository": "/phase8/current-mcp"},
+                    {"project_id": project_id},
+                ),
+                current(
+                    "current-resolve",
+                    "project_resolve",
+                    {"repository": "/phase8/current-mcp"},
+                    {"status": "found", "project_id": project_id},
+                ),
+                current(
+                    "current-recall",
+                    "recall",
+                    {"project_id": project_id},
+                    {"project_id": project_id, "read_only": True},
+                ),
+            ],
+        )
+    )
+    if (
+        len(successful.successful_calls("project_initialize")) != 2
+        or successful.successful_calls("project_initialize")[1].result.get("project_id")
+        != project_id
+        or len(successful.successful_calls("project_resolve")) != 1
+        or len(successful.successful_calls("recall")) != 1
+        or any(call.server != "volicord" for call in successful.tool_calls)
+    ):
+        raise AssertionError("maintained legacy/current MCP success evidence did not normalize")
+
+    failed = load_codex_capture(
+        write(
+            "failed",
+            [
+                current(
+                    "failed-review",
+                    "materiality_review",
+                    {"action": "record"},
+                    {"error": "validation failed", "details": {"field": "dimensions"}},
+                    status="failed",
+                    is_error=True,
+                ),
+                current(
+                    "malformed-review",
+                    "materiality_review",
+                    {"action": "record"},
+                    {},
+                    result={"content": [], "isError": False},
+                ),
+            ],
+        )
+    )
+    if (
+        failed.successful_calls("materiality_review")
+        or [call.error for call in failed.calls("materiality_review")]
+        != ["validation failed", "malformed_mcp_completion"]
+    ):
+        raise AssertionError("failed or malformed current MCP evidence became successful")
+
+    duplicate = load_codex_capture(
+        write(
+            "duplicate",
+            [
+                legacy(
+                    "same-call",
+                    "project_initialize",
+                    {"repository": "/phase8/current-mcp"},
+                    {"project_id": project_id},
+                ),
+                current(
+                    "same-call",
+                    "project_initialize",
+                    {"repository": "/phase8/current-mcp"},
+                    {"project_id": project_id},
+                ),
+            ],
+        )
+    )
+    duplicate_calls = duplicate.calls("project_initialize")
+    if (
+        len(duplicate_calls) != 1
+        or duplicate_calls[0].transport_representations
+        != (
+            "event_msg.item_completed.McpToolCall",
+            "event_msg.mcp_tool_call_end",
+        )
+    ):
+        raise AssertionError("equivalent legacy/current MCP completion was double counted")
+
+    conflicting = write(
+        "conflicting",
+        [
+            legacy(
+                "same-call",
+                "project_initialize",
+                {"repository": "/phase8/current-mcp"},
+                {"project_id": project_id},
+            ),
+            current(
+                "same-call",
+                "project_initialize",
+                {"repository": "/phase8/other"},
+                {"project_id": project_id},
+            ),
+        ],
+    )
+    try:
+        load_codex_capture(conflicting)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("conflicting legacy/current MCP representations qualified")
+
+    non_mcp = load_codex_capture(
+        write(
+            "non-mcp",
+            [
+                event(
+                    "event_msg",
+                    {
+                        "type": "item_completed",
+                        "thread_id": session_id,
+                        "turn_id": turn_id,
+                        "item": {
+                            "type": "AgentMessage",
+                            "id": "not-a-tool",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "project_initialize and arbitrary JSON are prose",
+                                }
+                            ],
+                        },
+                    },
+                ),
+                event(
+                    "response_item",
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": '{"project_id":"fake"}'}
+                        ],
+                    },
+                ),
+            ],
+        )
+    )
+    if non_mcp.tool_calls:
+        raise AssertionError("non-MCP item/prose became ToolCall evidence")
+
+
+def convert_fixture_capture_to_current_transport(
+    descriptor: dict[str, Any], evidence_directory: Path, role: str
+) -> Path:
+    capture_reference = descriptor["evidence"]["captures"][role]
+    path = evidence_directory / capture_reference["file"]
+    events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    session_id = events[0]["payload"]["session_id"]
+    current_turn: str | None = None
+    converted: list[dict[str, Any]] = []
+    for value in events:
+        payload = value.get("payload", {})
+        if value.get("type") == "event_msg" and payload.get("type") == "task_started":
+            current_turn = payload.get("turn_id")
+        if value.get("type") == "event_msg" and payload.get("type") == "user_message":
+            if not isinstance(current_turn, str):
+                raise AssertionError("fixture UserMessage has no active turn")
+            client_id = payload["client_id"]
+            converted.append(
+                {
+                    "timestamp": value.get("timestamp"),
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "item_completed",
+                        "thread_id": session_id,
+                        "turn_id": current_turn,
+                        "item": {
+                            "type": "UserMessage",
+                            "id": f"item-{client_id}",
+                            "client_id": client_id,
+                            "content": [{"type": "text", "text": payload["message"]}],
+                        },
+                    },
+                }
+            )
+            continue
+        if value.get("type") == "event_msg" and payload.get("type") == "mcp_tool_call_end":
+            if not isinstance(current_turn, str):
+                raise AssertionError("fixture McpToolCall has no active turn")
+            invocation = payload["invocation"]
+            raw_result = payload["result"]
+            ok = raw_result.get("Ok") if isinstance(raw_result, dict) else None
+            if not isinstance(ok, dict):
+                raise AssertionError("fixture legacy MCP completion is not convertible")
+            converted.append(
+                {
+                    "timestamp": value.get("timestamp"),
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "item_completed",
+                        "thread_id": session_id,
+                        "turn_id": current_turn,
+                        "item": {
+                            "type": "McpToolCall",
+                            "id": payload["call_id"],
+                            "server": invocation["server"],
+                            "tool": invocation["tool"],
+                            "arguments": invocation["arguments"],
+                            "status": "failed" if ok["isError"] else "completed",
+                            "result": ok,
+                        },
+                    },
+                }
+            )
+            continue
+        converted.append(value)
+    path.write_text(
+        "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in converted),
+        encoding="utf-8",
+    )
+    capture_reference["sha256"] = sha256(path)
+    return path
+
+
 def self_test() -> int:
     definition = load_definition()
     v11 = load_v11()
@@ -8546,6 +8903,7 @@ def self_test() -> int:
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
     assert_user_turn_normalizer_regressions(evidence_directory)
+    assert_mcp_tool_call_normalizer_regressions(evidence_directory)
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
     procfs_unavailability = linux_process_tree_procfs_unavailability()
     observer = LinuxProcessTreePeakRss(
@@ -8855,6 +9213,54 @@ def self_test() -> int:
             "external sanitized process evidence did not qualify: "
             + ", ".join(failed_checks)
         )
+    current_transport_fixture = real_session_fixture(
+        "volicord", 3, revision, evidence_directory
+    )
+    current_work_path = convert_fixture_capture_to_current_transport(
+        current_transport_fixture, evidence_directory, "work"
+    )
+    current_resume_path = convert_fixture_capture_to_current_transport(
+        current_transport_fixture, evidence_directory, "resume"
+    )
+    current_transport_result = real_session_evidence(
+        current_transport_fixture,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )
+    current_work_capture = load_codex_capture(current_work_path)
+    current_resume_capture = load_codex_capture(current_resume_path)
+    current_project_calls = current_work_capture.successful_calls("project_initialize")
+    if (
+        current_transport_result["status"] != "passed"
+        or len(current_work_capture.user_turns) < 1
+        or len(current_project_calls) != 1
+        or current_project_calls[0].result.get("project_id") != "01" * 16
+        or current_project_calls[0].transport_representations
+        != ("event_msg.item_completed.McpToolCall",)
+        or not current_work_capture.successful_calls("repository_analyze")
+        or not current_work_capture.successful_calls("checkpoint_record")
+        or len(current_resume_capture.successful_calls("project_resolve")) != 1
+        or len(current_resume_capture.successful_calls("recall")) != 1
+    ):
+        raise AssertionError(
+            "current UserMessage/McpToolCall work-resume journey lost semantic evidence"
+        )
+    current_descriptor_identity = hashlib.sha256(
+        json.dumps(current_transport_fixture, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    try:
+        build_work_blocker_result(
+            candidate_revision,
+            current_transport_fixture,
+            current_descriptor_identity,
+            current_work_capture,
+        )
+    except ValueError as error:
+        if "has no machine-observable terminal work blocker" not in str(error):
+            raise
+    else:
+        raise AssertionError("valid current-format work intake became an early-stop blocker")
     hidden_fixture = real_session_fixture(
         "volicord",
         2,
