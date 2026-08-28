@@ -158,7 +158,25 @@ rebuild/scripts/dogfood-campaign prepare \
 
 Complete each evaluator input under the private control plane, use
 `prepare-review`, obtain the independent provisional review without disclosing
-the evaluator basis, and record it successfully with the opaque reviewer identity:
+the evaluator basis, and use the preparation's hash-bound reviewer contract and
+non-mutating preflight before recording:
+
+```text
+rebuild/scripts/dogfood-campaign validate-provisional-review \
+  --campaign-root /absolute/private/campaign \
+  --candidate-head <new-sealed-candidate-head> \
+  --review-slot-id <opaque-review-slot-id> \
+  --provisional-review <blind-provisional-review.json>
+```
+
+The stable contract projection is
+`reviewer/provisional-review-contract.json`; `prepare-review` exposes its path and
+SHA-256 in the reviewer index, preparation, and result. Preflight reads only that
+contract, the exact reviewer preparation, and the proposed review, applies the same
+reviewer-visible validator as recording, and does not mutate campaign state. The
+generated template is intentionally incomplete and cannot pass this preflight without
+removing its marker and supplying contract-valid conclusions and grounding. Record the
+validated artifact with the opaque reviewer identity:
 
 ```text
 rebuild/scripts/dogfood-campaign record-provisional-review \

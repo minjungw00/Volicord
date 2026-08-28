@@ -509,6 +509,11 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
 
     index = campaign.read_json(campaign.reviewer_index_path(root))
     assert index["ordering"] == "opaque_review_slot_id"
+    assert index["provisional_review_contract"] == (
+        campaign.reviewer_provisional_contract_reference(root)
+    )
+    assert index["preflight_operation"] == "validate-provisional-review"
+    assert index["preflight_mutates_campaign"] is False
     assert [entry["review_slot_id"] for entry in index["entries"]] == sorted(slots)
     serialized_index = json.dumps(index, sort_keys=True)
     assert "repository_class" not in serialized_index
@@ -652,10 +657,8 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
     try:
         harness.classification_comparison_errors = forbidden_comparison
         campaign.read_json = tracking_read_json
-        for label, classification in (
-            ("correct", "explicit_user_owned_decision"),
-            ("wrong", "research_or_no_question"),
-        ):
+        for classification in campaign.BEHAVIOR_CLASSES:
+            label = classification.replace("_", "-")
             root = parent / f"blind-recording-{label}-campaign"
             prepare(root, parent / f"blind-recording-{label}-sources", binary)
             descriptor, _work, _resume, _bundle = fixture_for(
@@ -694,8 +697,8 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
         harness.classification_comparison_errors = original_comparison
         campaign.read_json = original_read_json
 
-    assert len(results) == len(recorded_paths) == 2
-    assert set(results[0]) == set(results[1])
+    assert len(results) == len(recorded_paths) == len(campaign.BEHAVIOR_CLASSES)
+    assert all(set(result) == set(results[0]) for result in results[1:])
     for result in results:
         serialized = json.dumps(result, sort_keys=True)
         assert result["state"] == "provisional_recorded"
@@ -706,7 +709,7 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
         assert "repository_class" not in serialized
         assert "logical_cycle" not in serialized
     for field in ("kind", "candidate_head", "state", "evaluator_material_exposed"):
-        assert results[0][field] == results[1][field]
+        assert all(result[field] == results[0][field] for result in results[1:])
     assert not any("evaluator/descriptors" in path.as_posix() for path in all_read_paths)
 
 
@@ -716,6 +719,12 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     helper = campaign.ROOT / "rebuild/scripts/dogfood-campaign"
     record_help = subprocess.run(
         [str(helper), "record-provisional-review", "--help"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    validate_help = subprocess.run(
+        [str(helper), "validate-provisional-review", "--help"],
         text=True,
         capture_output=True,
         check=False,
@@ -732,9 +741,17 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         capture_output=True,
         check=False,
     )
-    assert record_help.returncode == seal_help.returncode == reveal_help.returncode == 0
+    assert (
+        record_help.returncode
+        == validate_help.returncode
+        == seal_help.returncode
+        == reveal_help.returncode
+        == 0
+    )
     assert "--review-slot-id" in record_help.stdout
     assert "--provisional-review" in record_help.stdout
+    assert "--review-slot-id" in validate_help.stdout
+    assert "--provisional-review" in validate_help.stdout
     assert "--provisional-review" not in seal_help.stdout
     assert "--candidate-head" in reveal_help.stdout
     run_sheet = root / "operator/RUN-SHEET.md"
@@ -776,6 +793,8 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         "fresh_resume_user_task",
         "work_scope",
         "owner_document_locations",
+        "provisional_review_contract",
+        "preflight",
     }
     assert preparation_body["review_slot_id"] == review_slot_id
     assert Path(preparation["preparation"]).name == f"{review_slot_id}.json"
@@ -793,6 +812,43 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert not any(
         value in serialized_preparation_result for value in campaign.BEHAVIOR_CLASSES
     )
+    contract_path = campaign.reviewer_provisional_contract_path(root)
+    contract = campaign.read_json(contract_path)
+    assert contract == harness.provisional_review_contract()
+    contract_keys = campaign.json_keys(contract)
+    assert not contract_keys.intersection(
+        {
+            "behavior_class",
+            "repository_class",
+            "logical_cycle",
+            "evaluation_basis",
+            "evaluator_classification",
+            "expected_question",
+            "expected_decision",
+            "counterfactual_review",
+            "hidden_behavior_review_conclusion",
+            "slot_to_behavior_mapping",
+            "qualification_profile",
+            "qualification_profile_truth",
+        }
+    )
+    assert preparation_body["provisional_review_contract"] == {
+        "path": campaign.relative(root, contract_path),
+        "sha256": harness.sha256(contract_path),
+    }
+    assert preparation_body["preflight"] == {
+        "operation": "validate-provisional-review",
+        "mutation": "none",
+    }
+    template = campaign.read_json(
+        root / preparation["provisional_review_template"]
+    )
+    assert template["_template_state"] == "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT"
+    assert template["status"] == "recorded"
+    assert template["classification"] is None
+    assert template["materiality_conclusion"] is None
+    assert template["basis"] == ""
+    assert template["provenance_reference_indices"] == []
     provisional = copy.deepcopy(
         descriptor["behavior_review"]["independent_review"]["provisional_review"]
     )
@@ -800,6 +856,176 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     provisional["review_slot_id"] = review_slot_id
     provisional_path = parent / f"{review_slot_id}-fixed-provisional-review.json"
     campaign.write_json(provisional_path, provisional)
+
+    def reviewer_plane_snapshot() -> tuple[tuple[str, int, str], ...]:
+        return tuple(
+            (
+                path.relative_to(root).as_posix(),
+                path.stat().st_size,
+                harness.sha256(path),
+            )
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        )
+
+    candidate_head = campaign.load_campaign(root)["candidate_head"]
+    valid_preflight_paths: list[Path] = []
+    preflight_read_paths: list[Path] = []
+    original_read_json = campaign.read_json
+
+    def track_preflight_read(path: Path):
+        preflight_read_paths.append(Path(path).resolve())
+        return original_read_json(path)
+
+    campaign.read_json = track_preflight_read
+    try:
+        for classification in campaign.BEHAVIOR_CLASSES:
+            valid = copy.deepcopy(provisional)
+            set_provisional_classification(valid, classification)
+            valid_path = parent / f"{review_slot_id}-{classification}-preflight.json"
+            campaign.write_json(valid_path, valid)
+            before = reviewer_plane_snapshot()
+            result = campaign.validate_provisional_review(
+                root, candidate_head, review_slot_id, valid_path
+            )
+            assert reviewer_plane_snapshot() == before
+            assert result["status"] == "passed"
+            assert result["campaign_mutated"] is False
+            assert result["validation_semantics"] == "shared_with_record-provisional-review"
+            serialized_result = json.dumps(result, sort_keys=True)
+            assert not any(value in serialized_result for value in campaign.BEHAVIOR_CLASSES)
+            assert "repository_class" not in serialized_result
+            assert "logical_cycle" not in serialized_result
+            assert "evaluation_basis" not in serialized_result
+            assert "expected" not in serialized_result.casefold()
+            valid_preflight_paths.append(valid_path)
+    finally:
+        campaign.read_json = original_read_json
+    assert len(valid_preflight_paths) == len(campaign.BEHAVIOR_CLASSES)
+    assert set(preflight_read_paths) == {
+        contract_path.resolve(),
+        (root / preparation["preparation"]).resolve(),
+    }
+    before_cli_preflight = reviewer_plane_snapshot()
+    cli_preflight = subprocess.run(
+        [
+            str(helper),
+            "validate-provisional-review",
+            "--campaign-root",
+            str(root),
+            "--candidate-head",
+            candidate_head,
+            "--review-slot-id",
+            review_slot_id,
+            "--provisional-review",
+            str(valid_preflight_paths[0]),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert cli_preflight.returncode == 0, cli_preflight.stdout + cli_preflight.stderr
+    assert json.loads(cli_preflight.stdout)["campaign_mutated"] is False
+    assert reviewer_plane_snapshot() == before_cli_preflight
+
+    invalid_preflights: list[dict[str, object]] = []
+    for status in ("pending", "complete"):
+        invalid = copy.deepcopy(provisional)
+        invalid["status"] = status
+        invalid_preflights.append(invalid)
+    invented = copy.deepcopy(provisional)
+    invented["classification"] = "implementation_policy_choice"
+    invalid_preflights.append(invented)
+    free_form_materiality = copy.deepcopy(provisional)
+    free_form_materiality["materiality_conclusion"] = "This seems material to the user."
+    invalid_preflights.append(free_form_materiality)
+    wrong_preparation_hash = copy.deepcopy(provisional)
+    wrong_preparation_hash["preparation_sha256"] = "00" * 32
+    invalid_preflights.append(wrong_preparation_hash)
+    wrong_slot = copy.deepcopy(provisional)
+    wrong_slot["review_slot_id"] = "00" * 16
+    invalid_preflights.append(wrong_slot)
+    for indices in ([], [1], [-1], [0, 0], [True]):
+        invalid = copy.deepcopy(provisional)
+        invalid["provenance_reference_indices"] = indices
+        invalid_preflights.append(invalid)
+    for classification in (
+        "explicit_user_owned_decision",
+        "hidden_user_owned_decision",
+    ):
+        for field, value in (
+            ("materiality_conclusion", "no_user_owned_material_outcome"),
+            ("material_outcome_unavoidable", False),
+            (
+                "operator_prompt_does_not_disclose_material_outcome",
+                classification != "hidden_user_owned_decision",
+            ),
+        ):
+            invalid = copy.deepcopy(provisional)
+            set_provisional_classification(invalid, classification)
+            invalid[field] = value
+            invalid_preflights.append(invalid)
+    for field, value in (
+        ("materiality_conclusion", "user_owned_material_outcome"),
+        ("material_outcome_unavoidable", True),
+        ("operator_prompt_does_not_disclose_material_outcome", False),
+    ):
+        invalid = copy.deepcopy(provisional)
+        set_provisional_classification(invalid, "research_or_no_question")
+        invalid[field] = value
+        invalid_preflights.append(invalid)
+    for number, invalid in enumerate(invalid_preflights):
+        invalid_path = parent / f"{review_slot_id}-invalid-preflight-{number}.json"
+        campaign.write_json(invalid_path, invalid)
+        before = reviewer_plane_snapshot()
+        try:
+            campaign.validate_provisional_review(
+                root, candidate_head, review_slot_id, invalid_path
+            )
+        except campaign.CampaignError as error:
+            assert "does not qualify" in str(error)
+        else:
+            raise AssertionError("invalid provisional review passed reviewer preflight")
+        assert reviewer_plane_snapshot() == before
+    invalid_cli_path = parent / f"{review_slot_id}-invalid-preflight-0.json"
+    before_invalid_cli = reviewer_plane_snapshot()
+    invalid_cli = subprocess.run(
+        [
+            str(helper),
+            "validate-provisional-review",
+            "--campaign-root",
+            str(root),
+            "--candidate-head",
+            candidate_head,
+            "--review-slot-id",
+            review_slot_id,
+            "--provisional-review",
+            str(invalid_cli_path),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert invalid_cli.returncode == 1
+    assert json.loads(invalid_cli.stdout)["status"] == "failed"
+    assert reviewer_plane_snapshot() == before_invalid_cli
+
+    original_contract = contract_path.read_bytes()
+    stale_contract = copy.deepcopy(contract)
+    stale_contract["fixed_values"]["status"] = "complete"
+    campaign.write_json(contract_path, stale_contract)
+    before_stale_preflight = reviewer_plane_snapshot()
+    try:
+        campaign.validate_provisional_review(
+            root, candidate_head, review_slot_id, provisional_path
+        )
+    except campaign.CampaignError as error:
+        assert "stale or contradictory" in str(error)
+    else:
+        raise AssertionError("stale reviewer contract passed preflight")
+    assert reviewer_plane_snapshot() == before_stale_preflight
+    contract_path.write_bytes(original_contract)
+    campaign.verify_inventory(root)
     assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     try:
@@ -845,6 +1071,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     )
     for expected, attempted_candidate, attempted_slot, attempted_review in invalid_recordings:
         before = recording_snapshot()
+        before_campaign = campaign.load_campaign(root, validate_private=False)
         try:
             campaign.record_provisional_review(
                 root,
@@ -857,6 +1084,11 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         else:
             raise AssertionError("invalid provisional review recording succeeded")
         assert recording_snapshot() == before
+        after_campaign = campaign.load_campaign(root, validate_private=False)
+        assert after_campaign["provisional_count"] == before_campaign["provisional_count"] == 0
+        assert after_campaign["qualification_profile_state"] == before_campaign[
+            "qualification_profile_state"
+        ] == "hidden"
 
     original_atomic_write = campaign.atomic_write_bytes
     injected_failure = {"raised": False}
@@ -891,7 +1123,15 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         read_paths.append(Path(path).resolve())
         return original_read_json(path)
 
+    shared_validation_calls = {"count": 0}
+    original_shared_validation = campaign.load_and_validate_reviewer_provisional_review
+
+    def tracking_shared_validation(*args, **kwargs):
+        shared_validation_calls["count"] += 1
+        return original_shared_validation(*args, **kwargs)
+
     campaign.read_json = tracking_read_json
+    campaign.load_and_validate_reviewer_provisional_review = tracking_shared_validation
     try:
         recorded = campaign.record_provisional_review(
             root,
@@ -901,6 +1141,8 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         )
     finally:
         campaign.read_json = original_read_json
+        campaign.load_and_validate_reviewer_provisional_review = original_shared_validation
+    assert shared_validation_calls["count"] == 1
     serialized_recorded = json.dumps(recorded, sort_keys=True)
     assert recorded["state"] == "provisional_recorded"
     assert recorded["evaluator_material_exposed"] is False
@@ -2091,8 +2333,19 @@ def main() -> int:
             "malformed_private_profile_rejected_by_private_validator",
             "duplicate_slot_rejected_before_campaign_mutation",
             "reviewer_filename_workspace_and_order_opacity",
+            "reviewer_contract_projection_and_preparation_hash_binding",
+            "reviewer_contract_stale_or_contradictory_state_rejected",
+            "reviewer_template_is_deterministically_incomplete",
+            "all_maintained_behavior_classes_pass_reviewer_preflight",
+            "classification_dependent_materiality_unavoidability_and_disclosure",
+            "invalid_status_invented_class_and_free_form_materiality_rejected",
+            "wrong_preparation_slot_and_provenance_rejected",
+            "preflight_success_and_failure_are_non_mutating",
+            "preflight_reads_only_reviewer_visible_preparation_and_contract",
+            "preflight_result_exposes_no_evaluator_or_steward_truth",
+            "preflight_and_recording_share_reviewer_validation_boundary",
             "standalone_provisional_recording_exits_successfully",
-            "correct_and_wrong_same-class_provisionals_record_without_oracle",
+            "all_maintained_behavior_classes_record_without_oracle",
             "recording_does_not_invoke_evaluator_relative_comparison",
             "recording_does_not_read_or_expose_evaluator_material",
             "recording_success_shapes_expose_no_match_or_evaluator_class",

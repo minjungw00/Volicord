@@ -343,7 +343,25 @@ under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control
 agent completes an evaluator input and invokes `prepare-review`. The
 independent reviewer records the provisional review from that bounded artifact
-before receiving the evaluator basis. The control agent then invokes:
+before receiving the evaluator basis. `prepare-review` points to the hash-bound
+`reviewer/provisional-review-contract.json`, which owns every allowed field,
+fixed value, classification, class-dependent conclusion, reasoning bound,
+provenance rule, and preparation binding. Its generated template carries an
+explicit removable incomplete marker and null/empty conclusions, so it is not a
+recordable artifact as generated. Before handing the review back, the reviewer runs:
+
+```text
+rebuild/scripts/dogfood-campaign validate-provisional-review \
+  --campaign-root /absolute/private/campaign \
+  --candidate-head <candidate> \
+  --review-slot-id <opaque-id> \
+  --provisional-review <path>
+```
+
+Preflight reads only the reviewer-visible contract, exact preparation, and proposed
+review. It uses the same reviewer-visible validation boundary as recording and never
+changes campaign state, counts, reveal state, artifacts, or inventory. The control
+agent then invokes:
 
 ```text
 rebuild/scripts/dogfood-campaign record-provisional-review \

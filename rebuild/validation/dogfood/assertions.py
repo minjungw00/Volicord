@@ -561,7 +561,18 @@ def main() -> int:
             "fresh_resume_user_task",
             "work_scope",
             "owner_document_locations",
+            "provisional_review_contract",
+            "preflight",
         ]
+        or blind_first.get("reviewer_contract_path")
+        != "reviewer/provisional-review-contract.json"
+        or blind_first.get("reviewer_contract_integrity")
+        != "sha256_bound_to_each_preparation"
+        or blind_first.get("preflight_operation") != "validate-provisional-review"
+        or blind_first.get("preflight_mutates_campaign") is not False
+        or blind_first.get("preflight_validation_semantics")
+        != "shared_with_record-provisional-review"
+        or blind_first.get("preflight_reads_evaluator_or_steward_truth") is not False
         or agreement.get("sealing_blocked_status") != "unresolved_conflict"
         or set(agreement.get("accepted_statuses", []))
         != {"agreed", "resolved_from_evidence"}
@@ -608,6 +619,8 @@ def main() -> int:
         "opaque_review_slot_id",
         "reviewer/workspaces",
         "record-provisional-review",
+        "validate-provisional-review",
+        "provisional-review-contract.json",
         "provisional_recorded",
         "reveal-qualification-profile",
         "all eight provisional reviews",

@@ -178,6 +178,117 @@ def is_user_owned_behavior(value: Any) -> bool:
     return value in USER_OWNED_BEHAVIOR_CLASSES
 
 
+def provisional_review_contract() -> dict[str, Any]:
+    """Return the single reviewer-visible provisional-review rule projection."""
+    meanings = {
+        "explicit_user_owned_decision": (
+            "The ordinary task discloses an unresolved material user-owned outcome; "
+            "a Question and explicit current-host Decision are required."
+        ),
+        "hidden_user_owned_decision": (
+            "The ordinary task does not disclose the outcome, but complete work necessarily "
+            "encounters a material user-owned outcome that requires a Question and explicit "
+            "current-host Decision."
+        ),
+        "research_or_no_question": (
+            "Research, an accepted contract, or repository fact removes the need for user "
+            "interruption; no Question is appropriate."
+        ),
+        "delegated_implementation_choice": (
+            "The choice is within authority already delegated to the agent; no Question is appropriate."
+        ),
+        "exploratory_uncertainty": (
+            "A prototype, further research, or evidence-backed deferment is more appropriate "
+            "than an immediate user choice."
+        ),
+        "learning_deliberation": (
+            "Explicit learning participation is active and a meaningful agent-owned fork is "
+            "deliberation-worthy before affected work."
+        ),
+        "learning_routine_control": (
+            "Even with explicit learning participation, the detail is routine or trivial and "
+            "must remain non-interrupting."
+        ),
+    }
+    classification_rules = {}
+    for classification in BEHAVIOR_CLASSES:
+        user_owned = is_user_owned_behavior(classification)
+        classification_rules[classification] = {
+            "materiality_conclusion": (
+                "user_owned_material_outcome"
+                if user_owned
+                else "no_user_owned_material_outcome"
+            ),
+            "material_outcome_unavoidable": user_owned,
+            "operator_prompt_does_not_disclose_material_outcome": (
+                True
+                if classification == "hidden_user_owned_decision"
+                else False
+                if classification == "explicit_user_owned_decision"
+                else None
+            ),
+        }
+    return {
+        "kind": "phase8_provisional_review_contract",
+        "schema_version": 1,
+        "artifact_kind": "phase8_provisional_behavior_review",
+        "required_fields": [
+            "kind",
+            "review_slot_id",
+            "status",
+            "reviewer_role",
+            "preparation_sha256",
+            "classification",
+            "materiality_conclusion",
+            "material_outcome_unavoidable",
+            "operator_prompt_does_not_disclose_material_outcome",
+            "basis",
+            "provenance_reference_indices",
+        ],
+        "fixed_values": {
+            "kind": "phase8_provisional_behavior_review",
+            "status": "recorded",
+            "reviewer_role": "campaign_preparation_independent_reviewer",
+        },
+        "maintained_behavior_classes": [
+            {"value": classification, "meaning": meanings[classification]}
+            for classification in BEHAVIOR_CLASSES
+        ],
+        "allowed_materiality_conclusions": [
+            "user_owned_material_outcome",
+            "no_user_owned_material_outcome",
+        ],
+        "classification_rules": classification_rules,
+        "bounded_reasoning": {
+            "field": "basis",
+            "required": "non_empty_utf8_text",
+            "maximum_utf8_bytes": MAX_REVIEW_TEXT_BYTES,
+            "grounding": (
+                "Cite one or more reviewer-visible preparation.owner_document_locations "
+                "through provenance_reference_indices."
+            ),
+        },
+        "provenance_reference_indices": {
+            "required": "non_empty_unique_zero_based_integer_indices",
+            "target": "preparation.owner_document_locations",
+            "upper_bound": "exclusive_current_owner_document_locations_length",
+        },
+        "preparation_binding": {
+            "review_slot_id": "must_equal_preparation.review_slot_id",
+            "preparation_sha256": "must_equal_sha256_of_exact_preparation_bytes",
+        },
+        "preflight": {
+            "operation": "validate-provisional-review",
+            "mutation": "none",
+            "validation_semantics": "shared_with_record-provisional-review",
+        },
+        "privacy_boundary": (
+            "This contract exposes construction rules only; it contains no slot assignment "
+            "or evaluator/steward conclusion."
+        ),
+    }
+
+
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")
 
@@ -1064,6 +1175,8 @@ def load_definition() -> dict[str, Any]:
             "fresh_resume_user_task",
             "work_scope",
             "owner_document_locations",
+            "provisional_review_contract",
+            "preflight",
         ]
         or blind_first.get("provisional_fields")
         != [
@@ -1081,6 +1194,15 @@ def load_definition() -> dict[str, Any]:
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or blind_first.get("reviewer_order") != "opaque_review_slot_id"
         or blind_first.get("logical_identity_visible_before_provisional_fix") is not False
+        or blind_first.get("reviewer_contract_path")
+        != "reviewer/provisional-review-contract.json"
+        or blind_first.get("reviewer_contract_integrity")
+        != "sha256_bound_to_each_preparation"
+        or blind_first.get("preflight_operation") != "validate-provisional-review"
+        or blind_first.get("preflight_mutates_campaign") is not False
+        or blind_first.get("preflight_validation_semantics")
+        != "shared_with_record-provisional-review"
+        or blind_first.get("preflight_reads_evaluator_or_steward_truth") is not False
         or blind_first.get("recording_operation") != "record-provisional-review"
         or blind_first.get("recording_identity")
         != "candidate_and_opaque_review_slot"
@@ -1825,6 +1947,7 @@ def blind_first_review_errors(
     reference_count: int,
 ) -> list[str]:
     errors: list[str] = []
+    contract = provisional_review_contract()
     if not isinstance(preparation, dict) or set(preparation) != {
         "kind",
         "review_slot_id",
@@ -1835,36 +1958,24 @@ def blind_first_review_errors(
         preparation.get("sha256")
     ) or re.fullmatch(r"[0-9a-f]{32}", str(preparation.get("review_slot_id", ""))) is None:
         errors.append("blind review preparation reference is malformed")
-    required = {
-        "kind",
-        "review_slot_id",
-        "status",
-        "reviewer_role",
-        "preparation_sha256",
-        "classification",
-        "materiality_conclusion",
-        "material_outcome_unavoidable",
-        "operator_prompt_does_not_disclose_material_outcome",
-        "basis",
-        "provenance_reference_indices",
-    }
+    required = set(contract["required_fields"])
     if not isinstance(provisional, dict) or set(provisional) != required:
         errors.append("independent review requires the fixed provisional review fields")
         return errors
+    fixed_values = contract["fixed_values"]
     if (
-        provisional.get("kind") != "phase8_provisional_behavior_review"
-        or provisional.get("status") != "recorded"
-        or provisional.get("reviewer_role")
-        != "campaign_preparation_independent_reviewer"
+        any(provisional.get(field) != value for field, value in fixed_values.items())
         or provisional.get("review_slot_id") != preparation.get("review_slot_id")
         or provisional.get("preparation_sha256") != preparation.get("sha256")
     ):
         errors.append("provisional review is not fixed to the blind preparation")
     classification = provisional.get("classification")
-    if classification not in BEHAVIOR_CLASSES:
+    classification_rules = contract["classification_rules"]
+    if classification not in classification_rules:
         errors.append("provisional review classification is unsupported")
     basis = provisional.get("basis")
-    if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+    maximum_basis_bytes = contract["bounded_reasoning"]["maximum_utf8_bytes"]
+    if not nonempty_string(basis) or len(basis.encode("utf-8")) > maximum_basis_bytes:
         errors.append("provisional review requires bounded source-grounded reasoning")
     indices = provisional.get("provenance_reference_indices")
     if (
@@ -1875,24 +1986,27 @@ def blind_first_review_errors(
         or any(index < 0 or index >= reference_count for index in indices)
     ):
         errors.append("provisional review must cite reviewer-visible provenance locations")
-    if is_user_owned_behavior(classification):
-        if provisional.get("materiality_conclusion") != "user_owned_material_outcome":
-            errors.append("user-owned provisional review must identify a material user-owned outcome")
-        if provisional.get("material_outcome_unavoidable") is not True:
-            errors.append("user-owned provisional review must find the material outcome unavoidable")
-        expected_non_disclosure = classification == "hidden_user_owned_decision"
+    if classification in classification_rules:
+        rule = classification_rules[classification]
+        user_owned = is_user_owned_behavior(classification)
+        if provisional.get("materiality_conclusion") != rule["materiality_conclusion"]:
+            if user_owned:
+                errors.append("user-owned provisional review must identify a material user-owned outcome")
+            else:
+                errors.append("non-user-owned provisional review must reject a material user-owned outcome")
+        if provisional.get("material_outcome_unavoidable") is not rule["material_outcome_unavoidable"]:
+            if user_owned:
+                errors.append("user-owned provisional review must find the material outcome unavoidable")
+            else:
+                errors.append("non-user-owned provisional review must reject an unavoidable user-owned outcome")
         if (
             provisional.get("operator_prompt_does_not_disclose_material_outcome")
-            is not expected_non_disclosure
+            is not rule["operator_prompt_does_not_disclose_material_outcome"]
         ):
-            errors.append("provisional prompt-disclosure conclusion is inconsistent with its classification")
-    elif classification in BEHAVIOR_CLASSES:
-        if provisional.get("materiality_conclusion") != "no_user_owned_material_outcome":
-            errors.append("non-user-owned provisional review must reject a material user-owned outcome")
-        if provisional.get("material_outcome_unavoidable") is not False:
-            errors.append("non-user-owned provisional review must reject an unavoidable user-owned outcome")
-        if provisional.get("operator_prompt_does_not_disclose_material_outcome") is not None:
-            errors.append("non-user-owned provisional review does not classify hidden prompt disclosure")
+            if user_owned:
+                errors.append("provisional prompt-disclosure conclusion is inconsistent with its classification")
+            else:
+                errors.append("non-user-owned provisional review does not classify hidden prompt disclosure")
     return errors
 
 

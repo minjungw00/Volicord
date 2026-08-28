@@ -75,7 +75,10 @@ Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
 creates all eight bounded blind-first reviewer preparations, records every provisional
 classification and materiality conclusion before exposing any evaluator basis,
-fixes them through the opaque-slot `record-provisional-review` operation, verifies
+uses the hash-bound `reviewer/provisional-review-contract.json` and non-mutating
+`validate-provisional-review` operation to apply the recorder's reviewer-visible
+semantics before submission, fixes them through the opaque-slot
+`record-provisional-review` operation, verifies
 `provisional_count = 8`, reveals and validates the private qualification profile, and then
 seals each descriptor against its immutable review without exposing evaluator
 material to the operator. Recording validates only reviewer-visible identity,

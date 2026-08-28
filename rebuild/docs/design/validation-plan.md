@@ -1126,7 +1126,16 @@ user-owned outcome과 counterfactual conclusion은 제외한다. Phase A reviewe
 source와 listed owner document를 조사하되 qualification-control implementation이나
 evaluator/steward state가 아닌 prepared reviewer plane만 campaign evidence로 사용한다. 이는
 workflow isolation이며 OS secrecy 주장이 아니다. Independent control agent가 provisional
-review를 작성하면 `record-provisional-review`가 exact candidate,
+review를 작성할 때 reviewer plane의 `reviewer/provisional-review-contract.json`이 exact field,
+fixed value, maintained behavior vocabulary, classification별 materiality/unavoidability/disclosure,
+bounded basis, provenance-index와 preparation binding을 단일 machine-readable projection으로
+제공한다. Reviewer index와 각 preparation은 이 path와 SHA-256을 노출하며 template은 제거해야 하는
+explicit incomplete marker, null conclusion과 빈 basis/provenance를 사용해 final artifact로 오인할
+수 없게 한다. `validate-provisional-review`는 candidate, opaque slot, exact preparation bytes와
+proposed review만 읽어 같은 reviewer-visible validator를 실행하고 campaign/profile/descriptor를
+읽거나 변경하지 않는다. 성공과 실패 모두 `provisional_count`, cycle/reveal state, artifact와
+inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
+제출하면 `record-provisional-review`가 exact candidate,
 opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
 private artifact와 hash/inventory binding을 고정하면서 `review_prepared`에서
 `provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고

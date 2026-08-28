@@ -499,6 +499,24 @@ def reviewer_index_path(root: Path) -> Path:
     return root / "reviewer/index.json"
 
 
+def reviewer_provisional_contract_path(root: Path) -> Path:
+    return root / "reviewer/provisional-review-contract.json"
+
+
+def reviewer_provisional_contract_reference(root: Path) -> dict[str, str]:
+    path = reviewer_provisional_contract_path(root)
+    try:
+        value = read_json(path)
+    except CampaignError as error:
+        raise CampaignError("reviewer provisional-review contract is unavailable") from error
+    if value != harness.provisional_review_contract():
+        raise CampaignError("reviewer provisional-review contract is stale or contradictory")
+    return {
+        "path": relative(root, path),
+        "sha256": harness.sha256(path),
+    }
+
+
 def private_cycle_for_review_slot(
     campaign: dict[str, Any], review_slot_id: str
 ) -> dict[str, Any]:
@@ -516,6 +534,7 @@ def private_cycle_for_review_slot(
 
 def render_reviewer_index(root: Path) -> Path:
     campaign = load_campaign(root)
+    contract = reviewer_provisional_contract_reference(root)
     entries = []
     for state in sorted(
         campaign["cycles"].values(), key=lambda item: item["review_slot_id"]
@@ -531,6 +550,9 @@ def render_reviewer_index(root: Path) -> Path:
     write_json(path, {
         "kind": "phase8_blind_review_index",
         "ordering": "opaque_review_slot_id",
+        "provisional_review_contract": contract,
+        "preflight_operation": "validate-provisional-review",
+        "preflight_mutates_campaign": False,
         "entries": entries,
     })
     return path
@@ -551,11 +573,18 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         not isinstance(index, dict)
         or index.get("kind") != "phase8_blind_review_index"
         or index.get("ordering") != "opaque_review_slot_id"
+        or index.get("provisional_review_contract")
+        != reviewer_provisional_contract_reference(root)
+        or index.get("preflight_operation") != "validate-provisional-review"
+        or index.get("preflight_mutates_campaign") is not False
         or not isinstance(entries, list)
         or [item.get("review_slot_id") for item in entries]
         != sorted(item.get("review_slot_id") for item in entries)
     ):
         raise CampaignError("blind reviewer index does not use opaque-slot ordering")
+    contract = read_json(reviewer_provisional_contract_path(root))
+    if contract != harness.provisional_review_contract():
+        raise CampaignError("reviewer provisional-review contract is stale or contradictory")
     prohibited_keys = {
         "behavior_class",
         "cycle",
@@ -565,10 +594,18 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         "possible_material_concerns",
         "counterfactual_review",
         "evaluator_recommendation",
+        "evaluator_classification",
+        "expected_question",
+        "expected_decision",
+        "hidden_behavior_review_conclusion",
+        "slot_to_behavior_mapping",
         "behavior_histogram",
         "hidden_repository_classes",
         "qualification_profile",
+        "qualification_profile_truth",
     }
+    if json_keys(contract).intersection(prohibited_keys):
+        raise CampaignError("reviewer provisional-review contract exposes evaluator material")
     for directory in ("preparations", "templates", "provisional"):
         for path in sorted((root / "reviewer" / directory).glob("*.json")):
             if REVIEW_SLOT_ID.fullmatch(path.stem) is None:
@@ -1261,22 +1298,28 @@ def prepare_review(
             }
             for reference in references
         ],
+        "provisional_review_contract": reviewer_provisional_contract_reference(root),
+        "preflight": {
+            "operation": "validate-provisional-review",
+            "mutation": "none",
+        },
     }
     preparation_path = reviewer_preparation_path(root, kind, cycle)
     write_json(preparation_path, preparation)
     preparation_sha256 = harness.sha256(preparation_path)
     provisional_template = {
+        "_template_state": "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT",
         "kind": "phase8_provisional_behavior_review",
         "review_slot_id": review_slot_id,
-        "status": "pending",
+        "status": "recorded",
         "reviewer_role": "campaign_preparation_independent_reviewer",
         "preparation_sha256": preparation_sha256,
-        "classification": "REPLACE after repository and owner inspection",
-        "materiality_conclusion": "REPLACE before evaluator material is revealed",
+        "classification": None,
+        "materiality_conclusion": None,
         "material_outcome_unavoidable": None,
         "operator_prompt_does_not_disclose_material_outcome": None,
-        "basis": "REPLACE with the provisional source-grounded conclusion",
-        "provenance_reference_indices": [0],
+        "basis": "",
+        "provenance_reference_indices": [],
     }
     template_path = reviewer_provisional_template_path(root, kind, cycle)
     write_json(template_path, provisional_template)
@@ -1292,28 +1335,28 @@ def prepare_review(
         "preparation": relative(root, preparation_path),
         "preparation_sha256": preparation_sha256,
         "provisional_review_template": relative(root, template_path),
+        "provisional_review_contract": reviewer_provisional_contract_reference(root),
+        "preflight_operation": "validate-provisional-review",
+        "preflight_mutates_campaign": False,
         "evaluator_material_exposed": False,
     }
 
 
-def record_provisional_review(
+def load_and_validate_reviewer_provisional_review(
     root: Path,
     candidate_head: str,
     review_slot_id: str,
     provisional_review_path: Path,
-) -> dict[str, Any]:
-    campaign = load_campaign(root, validate_private=False)
-    verify_inventory(root)
-    if campaign.get("candidate_head") != candidate_head:
-        raise CampaignError("provisional review is bound to a different campaign candidate")
-    state = private_cycle_for_review_slot(campaign, review_slot_id)
-    if state.get("state") != "review_prepared":
-        raise CampaignError("provisional review requires one review-prepared opaque slot")
+) -> tuple[bytes, dict[str, Any], dict[str, Any], str, dict[str, str]]:
+    """Apply only the reviewer-visible validation shared by preflight and recording."""
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+        raise CampaignError("review slot identity is malformed")
     preparation_path = slot_artifact_path(
         root, "reviewer", "preparations", review_slot_id
     )
     preparation = read_json(preparation_path)
     preparation_sha256 = harness.sha256(preparation_path)
+    contract_reference = reviewer_provisional_contract_reference(root)
     expected_preparation_fields = {
         "kind",
         "review_slot_id",
@@ -1324,6 +1367,8 @@ def record_provisional_review(
         "fresh_resume_user_task",
         "work_scope",
         "owner_document_locations",
+        "provisional_review_contract",
+        "preflight",
     }
     if (
         not isinstance(preparation, dict)
@@ -1331,20 +1376,12 @@ def record_provisional_review(
         or preparation.get("kind") != "phase8_blind_review_preparation"
         or preparation.get("review_slot_id") != review_slot_id
         or preparation.get("candidate_head") != candidate_head
-        or preparation.get("repository_revision") != state.get("repository_revision")
-        or preparation.get("reviewer_repository_path")
-        != state.get("reviewer_repository_path")
-        or preparation_sha256 != state.get("review_preparation_sha256")
+        or preparation.get("provisional_review_contract") != contract_reference
+        or preparation.get("preflight")
+        != {"operation": "validate-provisional-review", "mutation": "none"}
     ):
-        raise CampaignError("blind reviewer preparation identity, candidate, or hash changed")
-    provisional_destination = slot_artifact_path(
-        root, "reviewer", "provisional", review_slot_id
-    )
+        raise CampaignError("blind reviewer preparation identity, candidate, or contract changed")
     source = provisional_review_path.resolve()
-    if source == provisional_destination.resolve():
-        raise CampaignError("provisional review input must remain separate until recording")
-    if provisional_destination.exists():
-        raise CampaignError("fixed provisional review already exists")
     try:
         source_bytes = source.read_bytes()
         provisional = json.loads(source_bytes)
@@ -1363,7 +1400,83 @@ def record_provisional_review(
         raise CampaignError(
             "provisional review does not qualify: " + "; ".join(provisional_errors)
         )
+    return (
+        source_bytes,
+        provisional,
+        preparation,
+        preparation_sha256,
+        contract_reference,
+    )
 
+
+def validate_provisional_review(
+    root: Path,
+    candidate_head: str,
+    review_slot_id: str,
+    provisional_review_path: Path,
+) -> dict[str, Any]:
+    _, _, _, preparation_sha256, contract_reference = (
+        load_and_validate_reviewer_provisional_review(
+            root,
+            candidate_head,
+            review_slot_id,
+            provisional_review_path,
+        )
+    )
+    return {
+        "kind": "phase8_provisional_review_preflight_result",
+        "status": "passed",
+        "candidate_head": candidate_head,
+        "review_slot_id": review_slot_id,
+        "preparation_sha256": preparation_sha256,
+        "provisional_review_contract": contract_reference,
+        "validation_semantics": "shared_with_record-provisional-review",
+        "campaign_mutated": False,
+        "evaluator_material_exposed": False,
+        "qualification_profile_exposed": False,
+    }
+
+
+def record_provisional_review(
+    root: Path,
+    candidate_head: str,
+    review_slot_id: str,
+    provisional_review_path: Path,
+) -> dict[str, Any]:
+    campaign = load_campaign(root, validate_private=False)
+    verify_inventory(root)
+    if campaign.get("candidate_head") != candidate_head:
+        raise CampaignError("provisional review is bound to a different campaign candidate")
+    state = private_cycle_for_review_slot(campaign, review_slot_id)
+    if state.get("state") != "review_prepared":
+        raise CampaignError("provisional review requires one review-prepared opaque slot")
+    (
+        source_bytes,
+        provisional,
+        preparation,
+        preparation_sha256,
+        _contract_reference,
+    ) = load_and_validate_reviewer_provisional_review(
+        root,
+        candidate_head,
+        review_slot_id,
+        provisional_review_path,
+    )
+    if (
+        preparation.get("repository_revision") != state.get("repository_revision")
+        or preparation.get("reviewer_repository_path")
+        != state.get("reviewer_repository_path")
+        or preparation_sha256 != state.get("review_preparation_sha256")
+    ):
+        raise CampaignError("blind reviewer preparation identity, candidate, or hash changed")
+    provisional_destination = slot_artifact_path(
+        root, "reviewer", "provisional", review_slot_id
+    )
+    source = provisional_review_path.resolve()
+    if source == provisional_destination.resolve():
+        raise CampaignError("provisional review input must remain separate until recording")
+    if provisional_destination.exists():
+        raise CampaignError("fixed provisional review already exists")
     source_sha256 = hashlib.sha256(source_bytes).hexdigest()
     inventory = load_inventory(root)
     artifact_name = relative(root, provisional_destination)
@@ -1802,6 +1915,8 @@ def prepare_campaign(
     write_json(root / "repository-input.json", raw_input)
     save_campaign(root, campaign)
     write_json(inventory_path(root), load_inventory(root))
+    reviewer_contract = reviewer_provisional_contract_path(root)
+    write_json(reviewer_contract, harness.provisional_review_contract())
     reviewer_index = render_reviewer_index(root)
     assert_reviewer_artifacts_are_behavior_opaque(root)
     run_sheet = render_operator_run_sheet(root)
@@ -1822,6 +1937,7 @@ def prepare_campaign(
         root / "repository-input.json",
         slot_mapping_path(root),
         qualification_profile_path(root),
+        reviewer_contract,
         reviewer_index,
         run_sheet,
         root / "preparation.json",
@@ -3048,6 +3164,7 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
     prepare_reviewer = sub.add_parser("prepare-review")
+    validate_provisional = sub.add_parser("validate-provisional-review")
     record_provisional = sub.add_parser("record-provisional-review")
     reveal_profile = sub.add_parser("reveal-qualification-profile")
     seal = sub.add_parser("seal-cycle")
@@ -3070,10 +3187,11 @@ def parser() -> argparse.ArgumentParser:
             required=True,
         )
     prepare_reviewer.add_argument("--descriptor", required=True)
-    record_provisional.add_argument("--campaign-root", required=True)
-    record_provisional.add_argument("--candidate-head", required=True)
-    record_provisional.add_argument("--review-slot-id", required=True)
-    record_provisional.add_argument("--provisional-review", required=True)
+    for command in (validate_provisional, record_provisional):
+        command.add_argument("--campaign-root", required=True)
+        command.add_argument("--candidate-head", required=True)
+        command.add_argument("--review-slot-id", required=True)
+        command.add_argument("--provisional-review", required=True)
     reveal_profile.add_argument("--campaign-root", required=True)
     reveal_profile.add_argument("--candidate-head", required=True)
     seal.add_argument("--descriptor", required=True)
@@ -3108,6 +3226,13 @@ def main() -> int:
             args.repository_class,
             args.cycle,
             Path(args.descriptor),
+        )
+    elif args.command == "validate-provisional-review":
+        value = validate_provisional_review(
+            root,
+            args.candidate_head,
+            args.review_slot_id,
+            Path(args.provisional_review),
         )
     elif args.command == "record-provisional-review":
         value = record_provisional_review(
