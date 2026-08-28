@@ -265,6 +265,22 @@ clean Linux install
 4. 각 first structural language fixture
 5. first structural 목록 밖 언어 fallback fixture
 
+다음 표는 `rebuild/validation/dogfood/evaluation.json`의 machine-owned 정의에서 공개되는
+현재 운영 계약을 사람이 읽을 수 있게 투영한 것이다. 이 표 자체가 별도 campaign 정의를
+소유하지 않는다.
+
+<!-- phase8-public-campaign-contract:start -->
+| 공개 campaign 항목 | 현재 요구값 |
+| --- | --- |
+| `qualification_cycles` | `8` |
+| `sessions_per_cycle` | `2` |
+| `fresh_sessions` | `16` |
+| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
+| `provisional_reviews_before_reveal` | `8` |
+| `sealed_descriptors_and_reviews` | `8` |
+| `complete_batch_raw_rollouts` | `16` |
+<!-- phase8-public-campaign-contract:end -->
+
 통과 조건은 `acceptance-scenarios.md`의 최종 통과 조건과 일치한다.
 Automated Dogfood passage alone is not replacement passage: the current
 campaign-level human review must also pass, while an absent review leaves
@@ -272,9 +288,10 @@ replacement explicitly pending and a human pass cannot override machine
 failure.
 Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고 maintained
 behavior vocabulary로 independent classification을 수행한다. Exact campaign behavior profile과
-repository distribution은 evaluator/steward-private state에 integrity-bound되고, 모든 six blind
-provisional review가 고정된 뒤에만 reveal·validation·comparison에 사용한다. 세 repository
-class마다 두 cycle, 모든 cycle의 work/resume을 포함하는 6-cycle/12-fresh-session campaign과
+behavior-to-cycle assignment는 evaluator/steward-private state에 integrity-bound되고, 모든 eight blind
+provisional review가 고정된 뒤에만 reveal·validation·comparison에 사용한다. Public repository
+distribution은 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2`이며, 모든 cycle의
+work/resume을 포함하는 8-cycle/16-fresh-session campaign과
 모든 qualifying cycle의 human review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.

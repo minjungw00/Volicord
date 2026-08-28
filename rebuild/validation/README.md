@@ -270,15 +270,32 @@ remain explicit operator actions.
 
 The current result schema reports `automated_qualification`, `human_review`,
 and `replacement_qualification` separately. The automated `run` path covers
-three repository classes, two privately assigned cycles per class, and two
-globally distinct fresh VS Code Codex sessions per cycle: six cycles and
-twelve sessions, plus every maintained machine check. Exact behavior
-multiplicity, duplication, coverage and repository distribution remain in the
-evaluator/steward-private qualification profile until all six provisional reviews
+three repository classes with the public distribution `volicord = 3`,
+`small-python = 3`, and `polyglot-medium = 2`, and two globally distinct fresh
+VS Code Codex sessions per cycle: eight cycles and sixteen sessions, plus every
+maintained machine check. Exact behavior multiplicity, duplication, coverage,
+and behavior-to-cycle assignment remain in the evaluator/steward-private
+qualification profile until all eight provisional reviews
 are fixed.
 It exits successfully when those checks pass even if human review is
 `not_provided`; in that state replacement is `pending_human_review` and neither
 `replacement_pass_candidate` nor Phase 9 readiness is true.
+
+The following table is a human-readable projection of the public operating
+contract in `dogfood/evaluation.json`; it does not own a separate campaign
+definition.
+
+<!-- phase8-public-campaign-contract:start -->
+| Public campaign field | Current requirement |
+| --- | --- |
+| `qualification_cycles` | `8` |
+| `sessions_per_cycle` | `2` |
+| `fresh_sessions` | `16` |
+| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
+| `provisional_reviews_before_reveal` | `8` |
+| `sealed_descriptors_and_reviews` | `8` |
+| `complete_batch_raw_rollouts` | `16` |
+<!-- phase8-public-campaign-contract:end -->
 
 A completed work session with a machine-observable terminal work blocker may
 be classified without executing later qualifying sessions:
@@ -320,7 +337,7 @@ rebuild/scripts/dogfood-campaign prepare \
 
 `prepare` verifies the clean candidate and source identities, performs a
 candidate-local install, privately commits the realized qualification profile
-and assignments, and creates six revision-pinned disposable repository
+and assignments, and creates eight revision-pinned disposable repository
 workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
 under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control
@@ -341,10 +358,10 @@ the exact campaign candidate, opaque preparation identity and strict provisional
 schema/self-consistency from the reviewer's own classification without reading an
 evaluator descriptor or comparing evaluator truth, then atomically fixes the private
 artifact, hash inventory and `provisional_recorded` state. Correct and evaluator-wrong
-well-formed classifications have the same successful non-oracle result shape. The
-After all six successful recordings, the control agent invokes
+well-formed classifications have the same successful non-oracle result shape.
+After all eight successful recordings, the control agent invokes
 `reveal-qualification-profile`; partial completion is rejected. The reveal verifies
-`provisional_count = 6`, all provisional hashes, and the private campaign profile.
+`provisional_count = 8`, all provisional hashes, and the private campaign profile.
 Only then may the control agent invoke `seal-cycle --descriptor <path>`. Sealing reads only that
 immutable recorded review and, after evaluator reveal, verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes. Its
@@ -372,7 +389,7 @@ The roles remain separate throughout a campaign:
   explicitly approves the SessionStart hook, opens every required fresh VS
   Code Codex session, and sends only the frozen work/resume tasks from the run
   sheet. The operator supplies answers only to genuine material Questions,
-  preserves all twelve raw rollouts, and provides them once after the sessions finish.
+  preserves all sixteen raw rollouts, and provides them once after the sessions finish.
 - The helper owns campaign setup, sealed-descriptor validation, operator
   run-sheet generation, byte-exact rollout intake and hashing,
   activation/setup classification, early blocker gating, Project-ID
@@ -381,15 +398,15 @@ The roles remain separate throughout a campaign:
   evidence completion, repository-manifest assembly, deterministic
   campaign-level review sampling, and bounded review packaging.
 
-After all six descriptors are sealed, `activate-all` may enable the six
+After all eight descriptors are sealed, `activate-all` may enable the eight
 repository-scoped integrations before the chats begin. It never grants
 repository or hook trust. It re-reads the owned manifest, MCP entry, SessionStart
 hook, and exact candidate-local executable/Runtime binding after each enable;
 any static inconsistency blocks activation completion. This does not prove VS
 Code executed SessionStart. If trust or activation setup is uncertain, inspect
 it before sending a frozen task. Every raw work/resume capture must still contain
-real SessionStart evidence. `collect-batch` accepts either twelve explicit paths
-or one directory containing exactly twelve files. Before changing campaign
+real SessionStart evidence. `collect-batch` accepts either sixteen explicit paths
+or one directory containing exactly sixteen files. Before changing campaign
 state it maps the unordered captures to the sealed work/resume slots using the
 frozen first task, exact workspace and revision, VS Code source/originator,
 fresh session identity, and SessionStart activation. Ambiguous, missing,
@@ -429,7 +446,7 @@ it is not interchangeable with a generated document and does not share the
 document-adoption lifecycle.
 
 `finalize-manifest` deterministically assembles `repositories.json` after all
-six resume captures. Run the automated Dogfood evaluation without subjective
+eight resume captures. Run the automated Dogfood evaluation without subjective
 inputs. If replacement qualification is needed, create one campaign-level
 review artifact from the immutable automated result:
 
@@ -458,7 +475,7 @@ override any automated failure.
 
 `package-review`
 then creates a deterministic bounded archive containing campaign metadata,
-the manifest, six descriptors, blind-first reviewer preparations,
+the manifest, eight descriptors, blind-first reviewer preparations,
 provisional reviews, derived review views, hash inventory,
 canonical bundles, the campaign-level human review when present,
 runtime/activation summaries, blocker records
@@ -489,7 +506,7 @@ no sealed candidate; its technical entry and Dogfood state are `not_run`.
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden
 evaluator material is independently reviewed and sealed, the user approves
-repository/hook trust, completes all twelve fresh naturalistic chats without
+repository/hook trust, completes all sixteen fresh naturalistic chats without
 per-session evidence processing, and supplies the raw rollouts once to
 `collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
 activation summaries, four document kinds, and static Viewer snapshots.

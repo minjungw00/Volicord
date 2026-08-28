@@ -50,17 +50,33 @@ with the four generated documents or their adoption lifecycle.
 After a later technical-entry gate seals a candidate, the fresh campaign must
 begin from zero in a separate clean worktree whose actual Git `HEAD` is exactly
 that candidate. It must retain the maintained
-three-class, six-cycle/twelve-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
+three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the later sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
 
+This table is a human-readable projection of the public operating contract in
+`rebuild/validation/dogfood/evaluation.json`; it does not own a separate
+campaign definition.
+
+<!-- phase8-public-campaign-contract:start -->
+| Public campaign field | Current requirement |
+| --- | --- |
+| `qualification_cycles` | `8` |
+| `sessions_per_cycle` | `2` |
+| `fresh_sessions` | `16` |
+| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
+| `provisional_reviews_before_reveal` | `8` |
+| `sealed_descriptors_and_reviews` | `8` |
+| `complete_batch_raw_rollouts` | `16` |
+<!-- phase8-public-campaign-contract:end -->
+
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
-creates all six bounded blind-first reviewer preparations, records every provisional
+creates all eight bounded blind-first reviewer preparations, records every provisional
 classification and materiality conclusion before exposing any evaluator basis,
 fixes them through the opaque-slot `record-provisional-review` operation, verifies
-`provisional_count = 6`, reveals and validates the private qualification profile, and then
+`provisional_count = 8`, reveals and validates the private qualification profile, and then
 seals each descriptor against its immutable review without exposing evaluator
 material to the operator. Recording validates only reviewer-visible identity,
 schema, provenance bounds, and self-consistency derived from the reviewer's own
@@ -73,10 +89,10 @@ Repository and SessionStart
 hook trust remain explicit user actions. `activate-all` verifies the owned static manifest, MCP entry,
 SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove VS Code
 executed SessionStart. If setup is uncertain, the operator inspects it before sending a frozen task;
-runtime SessionStart evidence remains required for every capture. The operator then runs all twelve
+runtime SessionStart evidence remains required for every capture. The operator then runs all sixteen
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers
 only genuine material Questions, preserves every raw rollout without
-per-session evidence-processing interruptions, and provides the twelve files
+per-session evidence-processing interruptions, and provides the sixteen files
 once for batch ingestion. The helper maps the cycles and automatically derives
 canonical bundles, bounded Runtime/activation summaries, all four document
 kinds in Markdown and self-contained HTML, and read-only static Viewer
