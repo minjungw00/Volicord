@@ -489,6 +489,147 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
 }
 
 #[test]
+fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn =
+        "Implement the feature, but leave the exit and background-running policy for me to choose.";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":goal_turn,
+            "role":"goal",
+            "statement":goal_turn,
+        }),
+    ))
+    .clone();
+    let goal_context_id = goal["context_item_id"].as_str().expect("Goal identity");
+    let goal_source_id = goal["source_id"].as_str().expect("Goal Source identity");
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let baseline = analyzed["analysis_snapshot_id"]
+        .as_str()
+        .expect("baseline identity");
+    let repository_source = analyzed["repository_source_id"]
+        .as_str()
+        .expect("repository Source identity");
+    let discovery = structured(&call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline,
+            "source_operation":"hidden material-boundary discovery",
+            "summary":"Three independent observable policy boundaries were found during repository research.",
+            "choices":[
+                {
+                    "choice_id":"persistent-default-scope",
+                    "summary":"Choose the persistent default scope",
+                    "affected_scope":["configuration"],
+                    "alternatives":[
+                        {"alternative_id":"project","summary":"Persist per Project","technical_consequences":["All sessions inherit the Project default"]},
+                        {"alternative_id":"session","summary":"Persist per session","technical_consequences":["Each session can select a different default"]}
+                    ],
+                    "technical_consequences":["The visible default and support commitment differ"],
+                    "source_ids":[repository_source],
+                    "effect_categories":["persistence_or_lifetime","user_visible_behavior_or_default","maintenance_or_support"],
+                    "relationship":{"state":"independent"},
+                    "evidence_state":"sufficient"
+                },
+                {
+                    "choice_id":"signed-link-replay-policy",
+                    "summary":"Choose public signed-link replay semantics",
+                    "affected_scope":["public links"],
+                    "alternatives":[
+                        {"alternative_id":"single-use","summary":"Reject every replay","technical_consequences":["A consumed link cannot be reused"]},
+                        {"alternative_id":"bounded-replay","summary":"Allow bounded replay","technical_consequences":["Reliability improves while exposure lasts longer"]}
+                    ],
+                    "technical_consequences":["Public security and replay behavior differ"],
+                    "source_ids":[repository_source],
+                    "effect_categories":["public_api_shape_or_semantics","security"],
+                    "relationship":{"state":"independent"},
+                    "evidence_state":"sufficient"
+                },
+                {
+                    "choice_id":"exit-background-policy",
+                    "summary":"Choose whether close exits or keeps background work running",
+                    "affected_scope":["process lifecycle"],
+                    "alternatives":[
+                        {"alternative_id":"exit","summary":"Exit immediately","technical_consequences":["Background work stops"]},
+                        {"alternative_id":"continue","summary":"Continue in background","technical_consequences":["Work remains active after close"]}
+                    ],
+                    "technical_consequences":["The user-visible close policy differs"],
+                    "source_ids":[repository_source],
+                    "effect_categories":["user_visible_behavior_or_default","concurrency_or_operability"],
+                    "relationship":{"state":"independent"},
+                    "evidence_state":"sufficient"
+                }
+            ]
+        }),
+    ))
+    .clone();
+    let draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
+        }),
+    ))
+    .clone();
+
+    assert_eq!(draft["current_goal"]["goal_context_id"], goal_context_id);
+    assert_eq!(draft["current_goal"]["statement"], goal_turn);
+    assert_eq!(
+        draft["current_goal"]["current_host_user_turn_source_ids"],
+        json!([goal_source_id])
+    );
+    assert!(draft["current_goal"]["ownership_notice"]
+        .as_str()
+        .is_some_and(|notice| notice.contains("do not downgrade")));
+    assert!(
+        draft["authority_decision_checklist"]["counterfactual_question"]
+            .as_str()
+            .is_some_and(|question| question.contains("privacy/security posture"))
+    );
+    assert_eq!(
+        draft["authority_decision_checklist"]["not_authority"],
+        json!([
+            "overall feature request",
+            "implementation preference",
+            "agent recommendation",
+            "library or repository convention"
+        ])
+    );
+    assert!(
+        draft["authority_decision_checklist"]["outcomes"]["unresolved_user_owned_outcome"]
+            .as_str()
+            .is_some_and(|guidance| guidance.contains("no exact authority"))
+    );
+    let templates = draft["dimension_templates"]
+        .as_array()
+        .expect("dimension templates");
+    assert_eq!(templates.len(), 3);
+    assert!(templates.iter().all(|template| {
+        template["prefilled"].get("disposition").is_none()
+            && template["required_judgments"]["disposition"]
+                .as_array()
+                .is_some_and(|values| {
+                    values
+                        .iter()
+                        .any(|value| value == "unresolved_user_owned_outcome")
+                })
+    }));
+}
+
+#[test]
 fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision() {
     let (temporary, mut adapter, project) = setup();
     let user_turn =

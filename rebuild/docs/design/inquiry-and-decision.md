@@ -219,6 +219,23 @@ collapse하지 않는다. 각 dimension은 bounded Source, accepted contract, ap
 explicit delegation 또는 research/prototype/defer/revisit basis와 함께 다음 disposition 중
 하나를 가진다.
 
+Host의 Materiality draft는 이 판단 지점에 exact current Goal Context identity, 그 Goal을 만든
+current-host user-turn Source identity와 Goal statement를 함께 제공한다. 또한 agent가 각 discovered
+choice마다 먼저 다음 counterfactual을 명시적으로 수행하도록 machine-visible checklist를 제공한다.
+Credible alternative가 externally observable contract, durable effect, compatibility/support
+commitment, privacy/security posture, user-visible default, observable failure policy 또는 다른
+material product outcome을 바꾸는가? 바꾼다면 그 exact dimension을 정하는 current repository/
+environment fact, accepted contract, applicable Decision 또는 explicit delegation을 식별해야 한다.
+Overall feature request, implementation preference, agent recommendation과 convention은 이 exact
+authority를 대신하지 않는다.
+
+Current Goal 자체가 어떤 outcome을 user control로 남기거나 user가 choice를 retain한다고 밝히면,
+older contract나 repository convention이 존재한다는 이유로 그 exact dimension을 agent-owned
+implementation preference로 낮추지 않는다. Goal/source identity와 checklist는 deterministic하게
+노출하지만 production은 prose keyword, regex, provider classifier 또는 hidden semantic inference로
+ownership을 자동 판정하지 않는다. Semantic assessment의 품질은 active agent와 naturalistic
+evaluation에 남고 production은 typed provenance, scope와 lifecycle invariant만 검증한다.
+
 - repository/environment fact
 - already settled authority
 - agent-owned implementation choice

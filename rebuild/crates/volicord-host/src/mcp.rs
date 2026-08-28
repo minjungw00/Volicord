@@ -69,7 +69,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active for this explicitly authorized repository. Project-scoped repository work starts with project_resolve. Follow each returned workflow.required_next_action and do not bypass a blocking workflow transition. User-owned Decisions require an explicit response from the current host, background source transmission requires its separate exact authorization, and Checkpoint verification must report only actually observed command outcomes. Non-project requests require no Volicord ceremony.".into()
+    "Volicord is active for this explicitly authorized repository. Project-scoped repository work starts with project_resolve. Follow each returned workflow.required_next_action and do not bypass a blocking workflow transition. At Materiality Review, perform the returned counterfactual and identify exact authority for every materially different externally observable or durable outcome; the overall feature request, implementation preference, recommendation, or convention is not blanket authority. A current Goal that reserves an outcome to the user must use the user-owned Question/Decision path unless that exact dimension is explicitly delegated. User-owned Decisions require an explicit response from the current host, background source transmission requires its separate exact authorization, and Checkpoint verification must report only actually observed command outcomes. Non-project requests require no Volicord ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -472,7 +472,16 @@ impl HostAdapter {
                     .ok_or_else(|| {
                         HostError::new("Engineering Choice Discovery content is unavailable")
                     })?;
-                Ok(materiality_draft_json(project_id, candidate_id, discovery))
+                let canonical = self
+                    .operations
+                    .canonical_basis(project_id)
+                    .map_err(operation_error)?;
+                Ok(materiality_draft_json(
+                    project_id,
+                    candidate_id,
+                    discovery,
+                    &canonical,
+                ))
             }
             "record" => {
                 let outcome =
@@ -1693,7 +1702,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities and one template per discovered choice. Classify authority and learning value independently; Inquiry owns the authority evaluation and returns the next required workflow action.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, and one template per discovered choice. Classify authority and learning value independently; do not use the overall feature request, implementation preference, recommendation, or convention as authority for a materially different user-facing outcome. Inquiry owns the authority evaluation and returns the next required workflow action.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -4338,7 +4347,31 @@ fn materiality_draft_json(
     project_id: ProjectId,
     candidate_id: CandidateId,
     discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
+    canonical: &volicord_context::CanonicalReadBasis,
 ) -> Value {
+    let goal = canonical
+        .context_items
+        .iter()
+        .find(|goal| goal.id == discovery.goal_context_id);
+    let current_host_user_turn_source_ids = goal
+        .into_iter()
+        .flat_map(|goal| goal.source_basis.iter())
+        .filter_map(|source_id| {
+            canonical
+                .sources
+                .iter()
+                .find(|basis| {
+                    basis.source.id == *source_id
+                        && basis.freshness == volicord_context::SourceFreshness::Current
+                        && basis.source.actor.kind == PrincipalKind::User
+                        && matches!(
+                            basis.source.payload,
+                            volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+                        )
+                })
+                .map(|basis| basis.source.id.to_string())
+        })
+        .collect::<Vec<_>>();
     let dimensions = discovery
         .choices
         .iter()
@@ -4368,6 +4401,42 @@ fn materiality_draft_json(
         "goal_context_id":discovery.goal_context_id.to_string(),
         "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
         "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
+        "current_goal":{
+            "goal_context_id":discovery.goal_context_id.to_string(),
+            "statement":goal.map(|goal| goal.statement.clone()),
+            "current_host_user_turn_source_ids":current_host_user_turn_source_ids,
+            "ownership_notice":"If this current Goal reserves an outcome for user control or asks the user to retain the choice, do not downgrade that exact dimension to implementation preference because an older contract or repository convention exists.",
+        },
+        "authority_decision_checklist":{
+            "counterfactual_question":"Would credible alternatives change an externally observable contract, durable effect, compatibility/support commitment, privacy/security posture, user-visible default, observable failure policy, or another material product outcome?",
+            "material_outcome_categories":[
+                "externally_observable_contract",
+                "durable_effect",
+                "compatibility_or_support_commitment",
+                "privacy_or_security_posture",
+                "user_visible_default",
+                "observable_failure_policy",
+                "other_material_product_outcome"
+            ],
+            "exact_authority_required":[
+                "current repository or environment fact settling this exact dimension",
+                "accepted contract settling this exact dimension",
+                "applicable Decision settling this exact dimension",
+                "explicit delegation covering this exact dimension"
+            ],
+            "not_authority":[
+                "overall feature request",
+                "implementation preference",
+                "agent recommendation",
+                "library or repository convention"
+            ],
+            "outcomes":{
+                "unresolved_user_owned_outcome":"Use when credible alternatives have materially different consequences and no exact authority settles the dimension.",
+                "exploratory_uncertainty":"Use when evidence is still required to establish whether the alternatives or material consequences are real.",
+                "agent_owned_implementation_choice":"Use only for bounded implementation discretion remaining after material user-facing policy is settled or credible alternatives do not vary that policy."
+            },
+            "hidden_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics.",
+        },
         "learning_participation":{
             "allowed_states":["inactive","active"],
             "active_requires":["exact current-host user-turn Source identity","non-empty verbatim opt-in statement"],
