@@ -700,8 +700,11 @@ def authenticated_codex(
     if not auth.is_file():
         return step("environment_blocked", "Codex authentication is unavailable")
     prompt = (
-        "Use this repository's Volicord MCP server project_health tool for Project "
-        f"{project_id}. Do not run shell commands. Report its returned connection and capability state."
+        "This is a bounded MCP connectivity probe, not repository work. Call only this "
+        "repository's Volicord MCP server project_health tool for Project "
+        f"{project_id}. Do not call project_resolve, Recall, context_record, "
+        "repository_analyze, another tool, or the shell. Report the returned connection "
+        "and capability state."
     )
     try:
         with staged_codex_authentication(
@@ -1178,6 +1181,18 @@ def rehearse_target(
             review_candidate_id = (
                 review.get("review_candidate_id") if review_ok and review else None
             )
+            review_readiness = review
+            review_readiness_ok = review_ok
+            if technical_delegated and review_candidate_id:
+                review_readiness, review_readiness_ok = host.tool("materiality_review", {
+                    "action": "inspect",
+                    "project_id": project_id,
+                    "goal_context_id": (goal or {}).get("context_item_id"),
+                    "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                        "analysis_snapshot_id"
+                    ),
+                    "work_contexts": ["internal-state"],
+                })
             candidate_research_analysis, candidate_research_analysis_ok = host.tool(
                 "repository_analyze", {"project_id": project_id, "excluded_paths": []}
             )
@@ -1353,9 +1368,24 @@ def rehearse_target(
                     },
                 ],
             }) if review_candidate_id and decision_id else (None, False)
+            resolved_review_readiness = resolved_review
+            resolved_review_readiness_ok = resolved_review_ok
+            if technical_delegated and resolved_review_ok and resolved_review:
+                resolved_review_readiness, resolved_review_readiness_ok = host.tool(
+                    "materiality_review",
+                    {
+                        "action": "inspect",
+                        "project_id": project_id,
+                        "goal_context_id": (goal or {}).get("context_item_id"),
+                        "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                            "analysis_snapshot_id"
+                        ),
+                        "work_contexts": ["internal-state"],
+                    },
+                )
             learning_evidence: dict[str, Any] = {"active": learning_active}
-            work_ready_review = resolved_review
-            work_ready_review_ok = resolved_review_ok
+            work_ready_review = resolved_review_readiness
+            work_ready_review_ok = resolved_review_readiness_ok
             if learning_active and resolved_review_ok and resolved_review:
                 begun, begun_ok = host.tool("learning_deliberation", {
                     "action": "begin",
@@ -1445,6 +1475,7 @@ def rehearse_target(
                 "changed_path": str(ordinary.relative_to(repository)),
                 "guarded_store_unchanged": guarded_before == guarded_after,
                 "resolved_materiality_review": resolved_review,
+                "resolved_materiality_review_readiness": resolved_review_readiness,
                 "learning_deliberation": learning_evidence,
             }
             checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {
@@ -1456,6 +1487,7 @@ def rehearse_target(
                 "kind": "handoff",
                 "work_state": "paused",
                 "applied_decision_ids": [decision_id] if decision_id else [],
+                "work_contexts": ["internal-state"] if technical_delegated else [],
                 "verification": [{"state": "not_run"}],
                 "next_step": checkpoint_next_step,
                 "known_limits": [
@@ -1477,7 +1509,9 @@ def rehearse_target(
                 "goal": goal,
                 "baseline": candidate_analysis,
                 "materiality_review": review,
+                "materiality_review_readiness": review_readiness,
                 "resolved_materiality_review": resolved_review,
+                "resolved_materiality_review_readiness": resolved_review_readiness,
                 "decision_source_id": decision_source_id,
                 "handoff_target": checkpoint_target,
                 "checkpoint": checkpoint_value,
@@ -1506,9 +1540,11 @@ def rehearse_target(
                 == "materiality_review",
                 review_ok,
                 review,
-                (review or {}).get("workflow", {}).get("stage")
+                review_readiness_ok,
+                review_readiness,
+                (review_readiness or {}).get("workflow", {}).get("stage")
                 == "question_candidate",
-                (review or {}).get("workflow", {}).get("required_next_action")
+                (review_readiness or {}).get("workflow", {}).get("required_next_action")
                 == {
                     "tool": "candidate_manage",
                     "action": "submit_question_from_materiality",
@@ -1537,7 +1573,9 @@ def rehearse_target(
                 canonical_after_ok, decision_id, decision_revision, decision_source_id,
                 resolved_review_ok,
                 resolved_review,
-                (resolved_review or {}).get("workflow", {}).get("stage")
+                resolved_review_readiness_ok,
+                resolved_review_readiness,
+                (resolved_review_readiness or {}).get("workflow", {}).get("stage")
                 == ("learning_deliberation" if learning_active else "ready_for_work"),
                 (not learning_active or learning_evidence.get("ordered") is True),
                 work_ready_review_ok,
@@ -1557,6 +1595,7 @@ def rehearse_target(
                 "candidate_research_source_id": research_source_id,
                 "goal": goal,
                 "materiality_review": review,
+                "materiality_review_readiness": review_readiness,
                 "submission": submitted,
                 "inspection_after_submission": submitted_candidate,
                 "frontier_after_submission": frontier_before,
@@ -1574,6 +1613,7 @@ def rehearse_target(
                 "decision": decision,
                 "canonical_decision": decision_record,
                 "resolved_materiality_review": resolved_review,
+                "resolved_materiality_review_readiness": resolved_review_readiness,
                 "learning_deliberation": learning_evidence,
                 "canonical_after_learning": canonical_after_learning,
             }
@@ -2343,6 +2383,11 @@ def assert_authenticated_codex_lifecycle() -> None:
             "expected = b'{\\\"synthetic\\\":\\\"v11-auth-lifecycle\\\"}\\n'\n"
             "if not auth.is_file() or auth.read_bytes() != expected:\n"
             "    raise SystemExit(41)\n"
+            "prompt = sys.argv[-1]\n"
+            "if 'bounded MCP connectivity probe, not repository work' not in prompt:\n"
+            "    raise SystemExit(42)\n"
+            "if 'Do not call project_resolve' not in prompt or 'project_health' not in prompt:\n"
+            "    raise SystemExit(43)\n"
             "pathlib.Path(os.environ['V11_AUTH_VISIBILITY_MARKER']).write_text('visible\\n')\n"
             "if os.environ.get('V11_SYNTHETIC_CODEX_FAILURE') == '1':\n"
             "    raise SystemExit(19)\n"
@@ -2546,6 +2591,7 @@ def self_check() -> int:
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
         '"delegated_implementation_choice"',
         'review, review_ok = host.tool("materiality_review"',
+        '"work_contexts": ["internal-state"]',
         'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
         'resolved_review, resolved_review_ok = host.tool("materiality_review"',
         'begun, begun_ok = host.tool("learning_deliberation"',
