@@ -2955,7 +2955,10 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
                 ),
             })
     if len(review_index) != QUALIFICATION_CYCLE_COUNT:
-        raise CampaignError("review package requires six completed descriptors and behavior reviews")
+        raise CampaignError(
+            f"review package requires {QUALIFICATION_CYCLE_COUNT} completed descriptors "
+            "and behavior reviews"
+        )
     files["behavior-reviews/index.json"] = (
         json.dumps({"kind": "phase8_behavior_review_index", "reviews": review_index}, indent=2, sort_keys=True) + "\n"
     ).encode()

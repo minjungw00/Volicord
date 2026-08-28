@@ -27,6 +27,124 @@ REVIEWER_SAFE_CONTRACTS = (
     ROOT / "rebuild/validation/phase-8-summary.md",
     ROOT / "rebuild/validation/dogfood/report.md",
 )
+PUBLIC_CAMPAIGN_CONTRACTS = (
+    ROOT / "rebuild/docs/design/cutover-plan.md",
+    ROOT / "rebuild/validation/README.md",
+    ROOT / "rebuild/validation/phase-8-summary.md",
+)
+PUBLIC_CAMPAIGN_CONTRACT_START = "<!-- phase8-public-campaign-contract:start -->"
+PUBLIC_CAMPAIGN_CONTRACT_END = "<!-- phase8-public-campaign-contract:end -->"
+
+
+def expected_public_campaign_contract(definition: dict[str, object]) -> dict[str, str]:
+    cycles_by_repository = definition["cycles_by_repository"]
+    real_session = definition["real_session_evidence"]
+    profile = definition["qualification_profile_contract"]
+    if not all(
+        isinstance(value, dict)
+        for value in (cycles_by_repository, real_session, profile)
+    ):
+        raise AssertionError("Phase 8 public campaign definition is malformed")
+    batch = real_session["batch_campaign_contract"]
+    if not isinstance(batch, dict):
+        raise AssertionError("Phase 8 public batch definition is malformed")
+    repository_cycles = ", ".join(
+        f"{repository_class}={count}"
+        for repository_class, count in cycles_by_repository.items()
+    )
+    cycle_count = definition["qualification_cycle_count"]
+    return {
+        "qualification_cycles": str(cycle_count),
+        "sessions_per_cycle": str(real_session["required_codex_sessions_per_cycle"]),
+        "fresh_sessions": str(real_session["full_replacement_session_count"]),
+        "repository_cycles": repository_cycles,
+        "provisional_reviews_before_reveal": str(
+            profile["reveal_requires_provisional_count"]
+        ),
+        "sealed_descriptors_and_reviews": str(cycle_count),
+        "complete_batch_raw_rollouts": str(batch["required_raw_rollout_count"]),
+    }
+
+
+def validate_public_campaign_contract(
+    text: str, source: str, expected: dict[str, str]
+) -> None:
+    blocks = re.findall(
+        re.escape(PUBLIC_CAMPAIGN_CONTRACT_START)
+        + r"(.*?)"
+        + re.escape(PUBLIC_CAMPAIGN_CONTRACT_END),
+        text,
+        flags=re.DOTALL,
+    )
+    if len(blocks) != 1:
+        raise AssertionError(
+            f"maintained public campaign contract must contain one bounded block: {source}"
+        )
+    actual: dict[str, str] = {}
+    for match in re.finditer(
+        r"^\|\s*`([^`]+)`\s*\|\s*`([^`]*)`\s*\|\s*$",
+        blocks[0],
+        flags=re.MULTILINE,
+    ):
+        key, value = match.groups()
+        if key in actual:
+            raise AssertionError(
+                f"maintained public campaign contract repeats {key}: {source}"
+            )
+        actual[key] = value
+    if actual != expected:
+        mismatches = {
+            key: {"expected": expected.get(key), "actual": actual.get(key)}
+            for key in sorted(set(expected) | set(actual))
+            if expected.get(key) != actual.get(key)
+        }
+        raise AssertionError(
+            f"maintained public campaign contract drifted from evaluation.json: "
+            f"{source}: {mismatches}"
+        )
+
+
+def render_public_campaign_contract(values: dict[str, str]) -> str:
+    rows = "\n".join(f"| `{key}` | `{value}` |" for key, value in values.items())
+    return (
+        f"{PUBLIC_CAMPAIGN_CONTRACT_START}\n"
+        "| Public campaign field | Current requirement |\n"
+        "| --- | --- |\n"
+        f"{rows}\n"
+        f"{PUBLIC_CAMPAIGN_CONTRACT_END}\n"
+    )
+
+
+def assert_public_campaign_contract_regressions(expected: dict[str, str]) -> None:
+    stale = dict(expected)
+    stale.update(
+        {
+            "qualification_cycles": "6",
+            "fresh_sessions": "12",
+            "repository_cycles": "volicord=2, small-python=2, polyglot-medium=2",
+            "provisional_reviews_before_reveal": "6",
+            "sealed_descriptors_and_reviews": "6",
+            "complete_batch_raw_rollouts": "12",
+        }
+    )
+    try:
+        validate_public_campaign_contract(
+            render_public_campaign_contract(stale),
+            "deliberately-stale-6-12-sample",
+            expected,
+        )
+    except AssertionError as error:
+        if "drifted from evaluation.json" not in str(error):
+            raise
+    else:
+        raise AssertionError("deliberately stale 6/12 public campaign sample passed")
+    historical_context = (
+        "Historical note: a superseded campaign used six cycles and twelve sessions.\n\n"
+        + render_public_campaign_contract(expected)
+    )
+    validate_public_campaign_contract(
+        historical_context, "historical-prose-control", expected
+    )
 
 
 def main() -> int:
@@ -272,6 +390,19 @@ def main() -> int:
         != 16
     ):
         raise AssertionError("Phase 8 no longer requires sixteen distinct real Codex sessions")
+    public_campaign_contract = expected_public_campaign_contract(definition_value)
+    for path in PUBLIC_CAMPAIGN_CONTRACTS:
+        validate_public_campaign_contract(
+            path.read_text(encoding="utf-8"), str(path), public_campaign_contract
+        )
+    assert_public_campaign_contract_regressions(public_campaign_contract)
+    if (
+        "review package requires six completed descriptors and behavior reviews"
+        in campaign_source
+        or "review package requires {QUALIFICATION_CYCLE_COUNT} completed descriptors"
+        not in campaign_source
+    ):
+        raise AssertionError("Dogfood review-package diagnostic embeds a stale cycle count")
     small_rules = definition_value["repository_classes"]["small-python"]
     polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
     if (
