@@ -1109,71 +1109,34 @@ def rehearse_target(
             review, review_ok = host.tool("materiality_review", {
                 "action": "record",
                 "project_id": project_id,
-                "goal_context_id": (goal or {}).get("context_item_id"),
-                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
-                    "analysis_snapshot_id"
-                ),
                 "engineering_choice_discovery_candidate_id": discovery_id,
-                "source_operation": "V11 installed MCP user-owned workflow",
                 "rationale": "The durable Project context boundary requires explicit user authority.",
                 "learning_participation": learning_participation,
-                "dimensions": [
+                "judgments": [
                     {
-                        "dimension_id": materiality_dimension_id,
-                        "discovered_choice_ids": [materiality_dimension_id],
-                        "summary": "Choose how this Project preserves its durable context boundary",
-                        "affected_scope": ["project-context"],
-                        "material_consequences": [
-                            "The choice changes durable local versus provider-backed context behavior"
-                        ],
-                        "observable_signals": ["other_material_outcome"],
+                        "choice_id": materiality_dimension_id,
                         "disposition": "unresolved_user_owned_outcome",
-                        "basis": {
-                            "kinds": ["agent_recommendation"],
-                            "summary": "Repository evidence establishes the boundary but cannot choose it",
-                            "source_ids": [source_id] if source_id else [],
-                        },
+                        "basis_summary": "Repository evidence establishes the boundary but cannot choose it",
                         "learning_value": {"state": "routine", "rationale": "User authority uses Inquiry even when learning is active."},
                     },
                     {
-                        "dimension_id": technical_dimension_id,
-                        "discovered_choice_ids": [technical_dimension_id],
-                        "summary": "Choose the internal state representation",
-                        "affected_scope": ["internal-state"],
-                        "material_consequences": ["Changes invariant placement and maintenance cost"],
-                        "observable_signals": ["maintenance_or_support_policy"],
+                        "choice_id": technical_dimension_id,
                         "disposition": (
                             "delegated_implementation_choice"
                             if technical_delegated
                             else "agent_owned_implementation_choice"
                         ),
-                        "basis": {
-                            "kinds": [
-                                "explicit_delegation"
-                                if technical_delegated
-                                else "implementation_preference"
-                            ],
-                            "summary": "The representation is explicitly delegated in this Goal and does not change the user-owned context boundary."
+                        "basis_summary": "The representation is explicitly delegated in this Goal and does not change the user-owned context boundary."
+                        if technical_delegated
+                        else "The representation is agent-owned and does not change the user-owned context boundary.",
+                        **(
+                            {
+                                "delegation_statement": "I delegate the internal technical state representation to you",
+                                "delegated_scope": ["internal-state"],
+                            }
                             if technical_delegated
-                            else "The representation is agent-owned and does not change the user-owned context boundary.",
-                            "source_ids": [
-                                (goal or {}).get("source_id")
-                                if technical_delegated
-                                else source_id
-                            ],
-                            **(
-                                {
-                                    "explicit_delegation": {
-                                        "goal_context_id": (goal or {}).get("context_item_id"),
-                                        "user_turn_source_id": (goal or {}).get("source_id"),
-                                        "verbatim_statement": "I delegate the internal technical state representation to you",
-                                        "affected_scope": ["internal-state"],
-                                    }
-                                }
-                                if technical_delegated
-                                else {}
-                            ),
-                        },
+                            else {}
+                        ),
                         "learning_value": technical_learning_value,
                     },
                 ],
@@ -1297,73 +1260,32 @@ def rehearse_target(
                 "review_candidate_id": review_candidate_id,
                 "rationale": "The explicit current-host Decision resolves the Project context boundary.",
                 "learning_participation": learning_participation,
-                "dimensions": [
+                "judgments": [
                     {
-                        "dimension_id": materiality_dimension_id,
-                        "discovered_choice_ids": [materiality_dimension_id],
-                        "summary": "Choose how this Project preserves its durable context boundary",
-                        "affected_scope": ["project-context"],
-                        "material_consequences": [
-                            "The choice changes durable local versus provider-backed context behavior"
-                        ],
-                        "observable_signals": ["other_material_outcome"],
+                        "choice_id": materiality_dimension_id,
                         "disposition": "unresolved_user_owned_outcome",
                         "resolution_decision_id": decision_id,
-                        "basis": {
-                            "kinds": ["applicable_decision"],
-                            "summary": "The explicit current-host Decision supplies current authority",
-                            "source_ids": [
-                                value
-                                for value in (
-                                    source_id,
-                                    research_source_id,
-                                    decision_source_id,
-                                )
-                                if value
-                            ],
-                            "decision_ids": [decision_id] if decision_id else [],
-                        },
+                        "basis_summary": "The explicit current-host Decision supplies current authority",
                         "learning_value": {"state": "routine", "rationale": "The user-owned outcome remains on the canonical Inquiry path."},
                     },
                     {
-                        "dimension_id": technical_dimension_id,
-                        "discovered_choice_ids": [technical_dimension_id],
-                        "summary": "Choose the internal state representation",
-                        "affected_scope": ["internal-state"],
-                        "material_consequences": ["Changes invariant placement and maintenance cost"],
-                        "observable_signals": ["maintenance_or_support_policy"],
+                        "choice_id": technical_dimension_id,
                         "disposition": (
                             "delegated_implementation_choice"
                             if technical_delegated
                             else "agent_owned_implementation_choice"
                         ),
-                        "basis": {
-                            "kinds": [
-                                "explicit_delegation"
-                                if technical_delegated
-                                else "implementation_preference"
-                            ],
-                            "summary": "The representation remains explicitly delegated independently from the canonical Decision."
+                        "basis_summary": "The representation remains explicitly delegated independently from the canonical Decision."
+                        if technical_delegated
+                        else "The representation remains agent-owned independently from the canonical Decision.",
+                        **(
+                            {
+                                "delegation_statement": "I delegate the internal technical state representation to you",
+                                "delegated_scope": ["internal-state"],
+                            }
                             if technical_delegated
-                            else "The representation remains agent-owned independently from the canonical Decision.",
-                            "source_ids": [
-                                (goal or {}).get("source_id")
-                                if technical_delegated
-                                else source_id
-                            ],
-                            **(
-                                {
-                                    "explicit_delegation": {
-                                        "goal_context_id": (goal or {}).get("context_item_id"),
-                                        "user_turn_source_id": (goal or {}).get("source_id"),
-                                        "verbatim_statement": "I delegate the internal technical state representation to you",
-                                        "affected_scope": ["internal-state"],
-                                    }
-                                }
-                                if technical_delegated
-                                else {}
-                            ),
-                        },
+                            else {}
+                        ),
                         "learning_value": technical_learning_value,
                     },
                 ],
@@ -2541,6 +2463,84 @@ def assert_credential_retention_audit() -> None:
             raise AssertionError("credential audit accepted retained authentication")
 
 
+def assert_current_materiality_review_contract(source: str) -> None:
+    required_by_action = {
+        "record": {
+            "action",
+            "project_id",
+            "engineering_choice_discovery_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        },
+        "revise": {
+            "action",
+            "project_id",
+            "review_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        },
+    }
+    obsolete_judgment_fields = {
+        "dimension_id",
+        "discovered_choice_ids",
+        "summary",
+        "affected_scope",
+        "material_consequences",
+        "observable_signals",
+        "basis",
+    }
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "tool"
+            and len(node.args) >= 2
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "materiality_review"
+            and isinstance(node.args[1], ast.Dict)
+        ):
+            continue
+        payload = {
+            key.value: value
+            for key, value in zip(node.args[1].keys, node.args[1].values)
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        }
+        action_node = payload.get("action")
+        if not isinstance(action_node, ast.Constant) or action_node.value not in required_by_action:
+            continue
+        action = action_node.value
+        found.add(action)
+        payload_fields = set(payload)
+        if payload_fields != required_by_action[action]:
+            raise AssertionError(
+                f"V11 {action} materiality payload does not match the current public contract: "
+                f"{sorted(payload_fields)}"
+            )
+        judgments = payload["judgments"]
+        if not isinstance(judgments, ast.List) or not judgments.elts:
+            raise AssertionError(f"V11 {action} materiality payload lost caller-owned judgments")
+        for judgment in judgments.elts:
+            if not isinstance(judgment, ast.Dict):
+                raise AssertionError(f"V11 {action} materiality judgment is not inspectable")
+            judgment_fields = {
+                key.value
+                for key in judgment.keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            }
+            if not {"choice_id", "disposition", "basis_summary", "learning_value"} <= judgment_fields:
+                raise AssertionError(f"V11 {action} materiality judgment lost required authority fields")
+            retained = sorted(judgment_fields & obsolete_judgment_fields)
+            if retained:
+                raise AssertionError(
+                    f"V11 {action} materiality judgment retained discovery-owned fields: {retained}"
+                )
+    if found != set(required_by_action):
+        raise AssertionError(f"V11 materiality journey is incomplete: {sorted(found)}")
+
+
 def self_check() -> int:
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
@@ -2554,6 +2554,7 @@ def self_check() -> int:
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
     source = Path(__file__).read_text(encoding="utf-8")
+    assert_current_materiality_review_contract(source)
     obsolete_pairs = {
         ("project", "init"),
         ("canonical", "user-source"),
