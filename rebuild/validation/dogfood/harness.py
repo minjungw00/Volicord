@@ -64,21 +64,33 @@ BEHAVIOR_CLASSES = (
     "research_or_no_question",
     "delegated_implementation_choice",
     "exploratory_uncertainty",
+    "learning_deliberation",
+    "learning_routine_control",
 )
-CYCLES_PER_REPOSITORY = 2
-QUALIFICATION_CYCLE_COUNT = 6
-QUALIFICATION_SESSION_COUNT = 12
+CYCLE_COUNT_BY_REPOSITORY = {
+    "volicord": 3,
+    "small-python": 3,
+    "polyglot-medium": 2,
+}
+QUALIFICATION_CYCLE_COUNT = sum(CYCLE_COUNT_BY_REPOSITORY.values())
+QUALIFICATION_SESSION_COUNT = QUALIFICATION_CYCLE_COUNT * 2
 _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS = Counter({
     "explicit_user_owned_decision": 1,
     "hidden_user_owned_decision": 2,
     "research_or_no_question": 1,
     "delegated_implementation_choice": 1,
     "exploratory_uncertainty": 1,
+    "learning_deliberation": 1,
+    "learning_routine_control": 1,
 })
 USER_OWNED_BEHAVIOR_CLASSES = {
     "explicit_user_owned_decision",
     "hidden_user_owned_decision",
 }
+
+
+def cycle_numbers(repository_class: str) -> range:
+    return range(1, CYCLE_COUNT_BY_REPOSITORY[repository_class] + 1)
 RESOURCE_OPERATIONS = (
     "repository_analysis",
     "document_projection",
@@ -105,7 +117,12 @@ REAL_SESSION_CHECKS = (
     "naturalistic_prompt_integrity",
     "plain_task_goal_linkage",
     "grounded_pre_work_repository_baseline",
+    "engineering_choice_discovery",
     "pre_write_materiality_work_authority",
+    "learning_participation",
+    "learning_deliberation_order",
+    "learning_not_canonical_decision",
+    "learning_interruption_precision",
     "behavior_classification",
     "appropriate_inquiry_outcome",
     "hidden_material_discovery_order",
@@ -120,6 +137,7 @@ REAL_SESSION_CHECKS = (
     "resume_pre_work_repository_baseline",
     "resume_materiality_work_authority",
     "recall_matches_checkpoint_decision_and_context",
+    "learning_recall_continuity",
     "resolved_material_question_not_reasked",
     "meaningful_recalled_continuation",
     "canonical_bundle_and_provenance",
@@ -766,10 +784,10 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("unexpected Phase 8 evaluation definition kind")
     if set(value.get("status_values", [])) != ALLOWED_STATUS:
         raise ValueError("the Phase 8 status vocabulary is incomplete")
-    if value.get("cycles_per_repository") != CYCLES_PER_REPOSITORY:
-        raise ValueError("Phase 8 requires two cycles per maintained repository class")
+    if value.get("cycles_by_repository") != CYCLE_COUNT_BY_REPOSITORY:
+        raise ValueError("Phase 8 requires the maintained non-uniform repository cycle allocation")
     if value.get("qualification_cycle_count") != QUALIFICATION_CYCLE_COUNT:
-        raise ValueError("Phase 8 requires exactly six qualification cycles")
+        raise ValueError("Phase 8 requires exactly eight qualification cycles")
     profile_contract = value.get("qualification_profile_contract", {})
     if profile_contract != {
         "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
@@ -880,6 +898,13 @@ def load_definition() -> dict[str, Any]:
             "explicit_material_handling_quality",
             "hidden_material_discovery_quality",
             "unnecessary_interruption",
+            "learning_fork_value",
+            "learning_alternatives_and_tradeoffs",
+            "pre_response_recommendation_anchoring",
+            "post_response_feedback_quality",
+            "learning_implementation_fidelity",
+            "routine_detail_omission",
+            "proportional_learning_cost",
         )
     ):
         raise ValueError("the Phase 8 campaign-level human review contract changed")
@@ -898,12 +923,15 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
+            "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
             "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
             "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
+            "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, ready-for-work, and no manufactured Decision",
+            "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
@@ -917,6 +945,7 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
+            "Recall preserves completed learning context as learning participation rather than a canonical Decision",
             "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
             "after the fresh resume baseline, recompute Materiality Review/work authority before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
             "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
@@ -1126,7 +1155,7 @@ def load_definition() -> dict[str, Any]:
     batch = evidence.get("batch_campaign_contract", {})
     if (
         batch.get("operation") != "collect-batch"
-        or batch.get("required_raw_rollout_count") != 12
+        or batch.get("required_raw_rollout_count") != QUALIFICATION_SESSION_COUNT
         or batch.get("global_mapping_precedes_campaign_mutation") is not True
         or batch.get("raw_rollout_bytes_preserved") is not True
         or batch.get("terminal_work_failure_repaired_by_resume") is not False
@@ -2330,8 +2359,9 @@ def cycle_descriptor_errors(
     behavior_class = value.get("behavior_class")
     if behavior_class not in BEHAVIOR_CLASSES:
         errors.append("behavior_class must identify one maintained behavior class")
-    if value.get("cycle") not in range(1, CYCLES_PER_REPOSITORY + 1):
-        errors.append("cycle must identify one of the two private repository assignments")
+    repository_class = value.get("repository_class")
+    if repository_class in CLASSES and value.get("cycle") not in cycle_numbers(repository_class):
+        errors.append("cycle must identify a private assignment for its repository class")
     revision = value.get("repository_revision")
     if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision) is None:
         errors.append("repository_revision must be a full Git object identity")
@@ -2648,7 +2678,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         not re.fullmatch(r"[0-9a-f]{40}", result.get("candidate_head", ""))
         or result.get("repository_class") not in CLASSES
         or result.get("behavior_class") not in BEHAVIOR_CLASSES
-        or result.get("cycle") not in range(1, CYCLES_PER_REPOSITORY + 1)
+        or result.get("cycle") not in cycle_numbers(result.get("repository_class"))
         or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", result.get("repository_revision", ""))
         or not valid_capture_sha256(result.get("descriptor_sha256"))
         or not valid_capture_sha256(result.get("work_capture_sha256"))
@@ -2905,6 +2935,8 @@ def expected_materiality_disposition(behavior_class: Any) -> str | None:
         "research_or_no_question": "repository_or_environment_fact",
         "delegated_implementation_choice": "delegated_implementation_choice",
         "exploratory_uncertainty": "exploratory_uncertainty",
+        "learning_deliberation": "agent_owned_implementation_choice",
+        "learning_routine_control": "agent_owned_implementation_choice",
     }.get(behavior_class)
 
 
@@ -2914,6 +2946,7 @@ MATERIALITY_DISPOSITIONS = {
     "delegated_implementation_choice",
     "exploratory_uncertainty",
     "unresolved_user_owned_outcome",
+    "agent_owned_implementation_choice",
 }
 
 DELEGATION_CONTRADICTORY_KINDS = {
@@ -3003,6 +3036,10 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
         explicit_delegation = (
             basis.get("explicit_delegation") if isinstance(basis, dict) else None
         )
+        discovered_choice_ids = (
+            dimension.get("discovered_choice_ids") if isinstance(dimension, dict) else None
+        )
+        learning_value = dimension.get("learning_value") if isinstance(dimension, dict) else None
         if (
             not isinstance(dimension, dict)
             or not nonempty_string(dimension_id)
@@ -3017,6 +3054,26 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             or not isinstance(dimension.get("observable_signals"), list)
             or not dimension["observable_signals"]
             or dimension.get("disposition") not in MATERIALITY_DISPOSITIONS
+            or not isinstance(discovered_choice_ids, list)
+            or not discovered_choice_ids
+            or not all(nonempty_string(choice_id) for choice_id in discovered_choice_ids)
+            or len(set(discovered_choice_ids)) != len(discovered_choice_ids)
+            or not isinstance(learning_value, dict)
+            or learning_value.get("state") not in {"routine", "deliberation_worthy"}
+            or not nonempty_string(learning_value.get("rationale"))
+            or (
+                learning_value.get("state") == "deliberation_worthy"
+                and not all(
+                    isinstance(learning_value.get(field), list)
+                    and learning_value[field]
+                    and all(nonempty_string(item) for item in learning_value[field])
+                    for field in (
+                        "consequence_significance",
+                        "transferable_principles",
+                        "non_obvious_trade_offs",
+                    )
+                )
+            )
             or not isinstance(basis, dict)
             or not isinstance(basis.get("kinds"), list)
             or not basis["kinds"]
@@ -3056,6 +3113,122 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             return None
         indexed[str(dimension_id)] = dimension
     return indexed
+
+
+def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    indexed: dict[str, dict[str, Any]] = {}
+    for choice in value:
+        choice_id = choice.get("choice_id") if isinstance(choice, dict) else None
+        relationship = choice.get("relationship") if isinstance(choice, dict) else None
+        alternatives = choice.get("alternatives") if isinstance(choice, dict) else None
+        if (
+            not isinstance(choice, dict)
+            or not nonempty_string(choice_id)
+            or choice_id in indexed
+            or not nonempty_string(choice.get("summary"))
+            or not isinstance(choice.get("affected_scope"), list)
+            or not choice["affected_scope"]
+            or not all(nonempty_string(item) for item in choice["affected_scope"])
+            or not isinstance(alternatives, list)
+            or len(alternatives) < 2
+            or any(
+                not isinstance(alternative, dict)
+                or not nonempty_string(alternative.get("alternative_id"))
+                or not nonempty_string(alternative.get("summary"))
+                or not isinstance(alternative.get("technical_consequences"), list)
+                or not alternative["technical_consequences"]
+                or not all(nonempty_string(item) for item in alternative["technical_consequences"])
+                for alternative in alternatives
+            )
+            or len({alternative["alternative_id"] for alternative in alternatives}) != len(alternatives)
+            or not isinstance(choice.get("technical_consequences"), list)
+            or not choice["technical_consequences"]
+            or not isinstance(choice.get("source_ids"), list)
+            or not choice["source_ids"]
+            or not isinstance(choice.get("effect_categories"), list)
+            or not choice["effect_categories"]
+            or not isinstance(relationship, dict)
+            or relationship.get("state") not in {"independent", "coupled"}
+            or choice.get("evidence_state") != "sufficient"
+        ):
+            return None
+        indexed[str(choice_id)] = choice
+    for choice in indexed.values():
+        relationship = choice["relationship"]
+        if relationship["state"] == "coupled" and (
+            not isinstance(relationship.get("choice_ids"), list)
+            or not relationship["choice_ids"]
+            or not set(relationship["choice_ids"]) <= set(indexed)
+            or not nonempty_string(relationship.get("rationale"))
+        ):
+            return None
+    return indexed
+
+
+def engineering_choice_discovery_facts(
+    work: CodexCapture,
+    bundle: CanonicalBundle,
+    goal_context_id: str,
+    baseline_call: ToolCall,
+    review_call: ToolCall,
+) -> tuple[bool, dict[str, Any]]:
+    baseline_id = baseline_call.result.get("analysis_snapshot_id")
+    calls = [
+        call
+        for call in work.successful_calls("engineering_choice_discovery")
+        if call.arguments.get("project_id") == bundle.project_id
+        and call.arguments.get("goal_context_id") == goal_context_id
+        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
+    ]
+    discovery = calls[0] if len(calls) == 1 else None
+    choices = indexed_engineering_choices(discovery.arguments.get("choices")) if discovery else None
+    dimensions = indexed_materiality_dimensions(review_call.arguments.get("dimensions"))
+    discovered_id = discovery.result.get("discovery_candidate_id") if discovery else None
+    referenced_ids = {
+        choice_id
+        for dimension in (dimensions or {}).values()
+        for choice_id in dimension["discovered_choice_ids"]
+    }
+    valid = bool(
+        discovery
+        and choices
+        and dimensions
+        and baseline_call.completion_sequence < discovery.sequence
+        and discovery.completion_sequence < review_call.sequence
+        and nonempty_string(discovered_id)
+        and review_call.arguments.get("engineering_choice_discovery_candidate_id")
+        == discovered_id
+        and discovery.result.get("goal_context_id") == goal_context_id
+        and discovery.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and set(choices) == referenced_ids
+        and nonempty_string(baseline_call.result.get("repository_source_id"))
+        and all(
+            choice.get("source_ids")
+            == [baseline_call.result.get("repository_source_id")]
+            for choice in choices.values()
+        )
+        and all(
+            set(dimension["discovered_choice_ids"]) <= set(choices)
+            for dimension in dimensions.values()
+        )
+    )
+    return valid, {
+        "matching_discovery_count": len(calls),
+        "discovery_candidate_id": discovered_id,
+        "choice_ids": sorted(choices or {}),
+        "materiality_referenced_choice_ids": sorted(referenced_ids),
+        "effect_categories": sorted({
+            effect
+            for choice in (choices or {}).values()
+            for effect in choice.get("effect_categories", [])
+        }),
+        "relationship_states": sorted({
+            choice.get("relationship", {}).get("state")
+            for choice in (choices or {}).values()
+        }),
+    }
 
 
 def materiality_dimension_authority_valid(
@@ -3128,6 +3301,13 @@ def materiality_dimension_authority_valid(
                 if exploratory == "resolved_by_research"
                 else "defer_or_revisit_basis" in kinds
             )
+        )
+    if disposition == "agent_owned_implementation_choice":
+        return (
+            "implementation_preference" in kinds
+            and nonempty_string(repository_source_id)
+            and repository_source_id in source_ids
+            and not decision_ids
         )
     return (
         disposition == "unresolved_user_owned_outcome"
@@ -3205,6 +3385,26 @@ def materiality_review_facts(
     record = records[0]
     review_id = record.result.get("review_candidate_id")
     dimensions = indexed_materiality_dimensions(record.arguments.get("dimensions"))
+    discovery_ok, discovery_basis = engineering_choice_discovery_facts(
+        work, bundle, goal_context_id, baseline_call, record
+    )
+    learning_participation = record.arguments.get("learning_participation")
+    learning_active = behavior_class in {
+        "learning_deliberation",
+        "learning_routine_control",
+    }
+    participation_ok = (
+        isinstance(learning_participation, dict)
+        and (
+            learning_participation == {"state": "inactive"}
+            if not learning_active
+            else learning_participation.get("state") == "active"
+            and learning_participation.get("user_turn_source_id") == goal_source_id
+            and nonempty_string(learning_participation.get("verbatim_statement"))
+            and learning_participation["verbatim_statement"] in (goal_statement or "")
+            and learning_participation["verbatim_statement"] in (frozen_task or "")
+        )
+    )
     repository_source_id = baseline_call.result.get("repository_source_id")
     workflow = record.result.get("workflow")
     dimension_ids = set(dimensions) if dimensions is not None else set()
@@ -3258,6 +3458,18 @@ def materiality_review_facts(
         and nonempty_string(record.result.get("review_analysis_snapshot_id"))
         and dimensions is not None
         and bool(relevant_ids)
+        and discovery_ok
+        and participation_ok
+        and all(
+            dimension["learning_value"]["state"]
+            == (
+                "deliberation_worthy"
+                if behavior_class == "learning_deliberation"
+                and dimension.get("disposition") == expected
+                else "routine"
+            )
+            for dimension in dimensions.values()
+        )
         and dimension_authority
         and isinstance(workflow, dict)
         and workflow.get("satisfied_basis_identities") is not None
@@ -3348,12 +3560,13 @@ def materiality_review_facts(
             and revised_workflow.get("blocks_ordinary_work") is False
         )
     else:
+        learning_deliberation_expected = behavior_class == "learning_deliberation"
         valid = (
             common
             and not user_owned_ids
-            and workflow.get("stage") == "ready_for_work"
-            and workflow.get("disposition") == "ready_for_work"
-            and workflow.get("blocks_ordinary_work") is False
+            and workflow.get("stage")
+            == ("learning_deliberation" if learning_deliberation_expected else "ready_for_work")
+            and workflow.get("blocks_ordinary_work") is learning_deliberation_expected
             and not work.calls("candidate_manage")
             and not work.calls("inquiry_frontier")
             and not work.calls("decision_record")
@@ -3373,6 +3586,149 @@ def materiality_review_facts(
         ),
         "pre_write": record.completion_sequence < first_write_sequence,
         "resumed": resumed,
+        "learning_participation": learning_participation,
+        "engineering_choice_discovery": discovery_basis,
+    }
+
+
+def learning_deliberation_facts(
+    work: CodexCapture | None,
+    bundle: CanonicalBundle | None,
+    behavior_class: Any,
+    review_candidate_id: str | None,
+    dimension_id: str | None,
+    first_write_sequence: int | None,
+    materiality_basis: dict[str, Any],
+) -> tuple[bool, bool, bool, dict[str, Any]]:
+    if work is None or bundle is None or first_write_sequence is None:
+        return False, False, False, {}
+    calls = work.successful_calls("learning_deliberation")
+    participation = materiality_basis.get("learning_participation", {})
+    participation_active = participation.get("state") == "active"
+    expected_active = behavior_class in {
+        "learning_deliberation",
+        "learning_routine_control",
+    }
+    participation_ok = participation_active == expected_active
+    if behavior_class != "learning_deliberation":
+        precision_ok = not calls
+        return participation_ok, precision_ok, precision_ok, {
+            "participation_state": participation.get("state"),
+            "learning_call_count": len(calls),
+            "expected_deliberation": False,
+        }
+    actions = [call.arguments.get("action") for call in calls]
+    by_action = {
+        action: [call for call in calls if call.arguments.get("action") == action]
+        for action in ("begin", "respond_select", "feedback", "complete")
+    }
+    singular = all(len(by_action[action]) == 1 for action in by_action)
+    if not singular:
+        return participation_ok, False, False, {
+            "participation_state": participation.get("state"),
+            "actions": actions,
+            "expected_deliberation": True,
+        }
+    begin, response, feedback, complete = (
+        by_action["begin"][0],
+        by_action["respond_select"][0],
+        by_action["feedback"][0],
+        by_action["complete"][0],
+    )
+    deliberation_id = begin.result.get("deliberation_candidate_id")
+    response_text = response.arguments.get("user_turn")
+    matching_user_turns = [
+        turn
+        for turn in work.user_turns
+        if turn.text == response_text and turn.sequence < response.sequence
+    ]
+    all_non_decision = all(
+        call.result.get("interaction_kind") == "learning_participation"
+        and call.result.get("canonical_decision") is False
+        for call in calls
+    )
+    no_pre_response_recommendation = (
+        not any("recommendation" in key for key in begin.arguments)
+        and not any("recommendation" in key for key in begin.result)
+        and not begin.result.get("rounds")
+    )
+    ordered = (
+        begin.sequence < response.sequence < feedback.sequence < complete.sequence
+        and complete.completion_sequence < first_write_sequence
+        and begin.arguments.get("review_candidate_id") == review_candidate_id
+        and begin.arguments.get("dimension_id") == dimension_id
+        and nonempty_string(deliberation_id)
+        and all(
+            call.arguments.get("deliberation_candidate_id") == deliberation_id
+            and call.result.get("deliberation_candidate_id") == deliberation_id
+            for call in (response, feedback, complete)
+        )
+        and begin.result.get("state", {}).get("state") == "awaiting_initial_response"
+        and response.result.get("state", {}).get("state") == "awaiting_agent_feedback"
+        and feedback.result.get("state", {}).get("state") == "feedback_provided"
+        and complete.result.get("state", {}).get("state") == "completed"
+        and bool(matching_user_turns)
+        and nonempty_string(response.arguments.get("user_rationale"))
+        and isinstance(response.arguments.get("selections"), list)
+        and bool(response.arguments["selections"])
+        and no_pre_response_recommendation
+        and nonempty_string(feedback.arguments.get("feedback"))
+        and complete.result.get("workflow", {}).get("stage") == "ready_for_work"
+        and complete.result.get("workflow", {}).get("blocks_ordinary_work") is False
+    )
+    non_decision_ok = (
+        all_non_decision
+        and not work.calls("decision_record")
+        and not [row for row in bundle.rows("decisions") if row.get("project_id") == bundle.project_id]
+    )
+    return participation_ok, ordered, non_decision_ok, {
+        "participation_state": participation.get("state"),
+        "expected_deliberation": True,
+        "deliberation_candidate_id": deliberation_id,
+        "actions": actions,
+        "current_host_response_count": len(matching_user_turns),
+        "pre_response_recommendation_absent": no_pre_response_recommendation,
+        "terminal_state": complete.result.get("state", {}).get("state"),
+        "ready_for_work_after_terminal": complete.result.get("workflow", {}).get("stage")
+        == "ready_for_work",
+        "canonical_decision_count": len([
+            row for row in bundle.rows("decisions") if row.get("project_id") == bundle.project_id
+        ]),
+    }
+
+
+def learning_recall_facts(
+    resume: CodexCapture | None,
+    behavior_class: Any,
+) -> tuple[bool, dict[str, Any]]:
+    if resume is None:
+        return False, {}
+    recalls = resume.successful_calls("recall")
+    if len(recalls) != 1:
+        return False, {"matching_recall_count": len(recalls)}
+    recall = recalls[0]
+    context = recall.result.get("learning_context")
+    health = recall.result.get("learning_context_health", {})
+    if behavior_class == "learning_deliberation":
+        matching = [
+            item
+            for item in context or []
+            if item.get("learning_deliberation", {}).get("state", {}).get("state")
+            == "completed"
+            and item.get("learning_deliberation", {}).get("canonical_decision") is False
+            and item.get("learning_deliberation", {}).get("interaction_kind")
+            == "learning_participation"
+        ]
+        valid = isinstance(context, list) and len(matching) == 1
+    else:
+        matching = []
+        valid = context == []
+    valid = valid and health.get("state") == "available"
+    return bool(valid), {
+        "learning_context_count": len(context) if isinstance(context, list) else None,
+        "matching_completed_learning_count": len(matching),
+        "health": health,
+        "canonical_decision": False if matching else None,
     }
 
 
@@ -3930,6 +4286,20 @@ def real_session_evidence(
         decision_evidence,
     )
     (
+        learning_participation_ok,
+        learning_order_ok,
+        learning_non_decision_ok,
+        learning_basis,
+    ) = learning_deliberation_facts(
+        work_capture,
+        bundle,
+        behavior_class,
+        review_candidate_id,
+        materiality_dimension_id,
+        first_work_change,
+        materiality_basis,
+    )
+    (
         checkpoint_ok,
         checkpoint_goal_ok,
         checkpoint_verification_ok,
@@ -3998,6 +4368,19 @@ def real_session_evidence(
         or (
             question_ok
             and decision_calls_for_order
+            and len(
+                materiality_basis.get("engineering_choice_discovery", {}).get(
+                    "choice_ids", []
+                )
+            )
+            >= 2
+            and materiality_basis.get("engineering_choice_discovery", {}).get(
+                "effect_categories"
+            )
+            and "coupled"
+            in materiality_basis.get("engineering_choice_discovery", {}).get(
+                "relationship_states", []
+            )
             and first_work_change is not None
             and all(
                 call.completion_sequence < first_work_change
@@ -4092,6 +4475,9 @@ def real_session_evidence(
     )
     resolve_call = unique_call(resume_capture, "project_resolve")
     recall_call = unique_call(resume_capture, "recall")
+    learning_recall_ok, learning_recall_basis = learning_recall_facts(
+        resume_capture, behavior_class
+    )
     resume_checkpoint_calls = (
         resume_capture.successful_calls("checkpoint_record")
         if resume_capture is not None
@@ -4392,8 +4778,31 @@ def real_session_evidence(
         "grounded_pre_work_repository_baseline": evidence_check(
             references_present, baseline_ok
         ),
+        "engineering_choice_discovery": evidence_check(
+            references_present,
+            bool(
+                materiality_basis.get("engineering_choice_discovery", {}).get(
+                    "discovery_candidate_id"
+                )
+            ),
+        ),
         "pre_write_materiality_work_authority": evidence_check(
             references_present, materiality_ok
+        ),
+        "learning_participation": evidence_check(
+            references_present, learning_participation_ok
+        ),
+        "learning_deliberation_order": evidence_check(
+            references_present, learning_order_ok
+        ),
+        "learning_not_canonical_decision": evidence_check(
+            references_present, learning_non_decision_ok
+        ),
+        "learning_interruption_precision": evidence_check(
+            references_present,
+            learning_order_ok
+            if behavior_class == "learning_deliberation"
+            else learning_non_decision_ok,
         ),
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
@@ -4416,6 +4825,9 @@ def real_session_evidence(
             references_present, resume_materiality_ok
         ),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
+        "learning_recall_continuity": evidence_check(
+            references_present, learning_recall_ok
+        ),
         "resolved_material_question_not_reasked": evidence_check(
             references_present, resolved_material_question_not_reasked
         ),
@@ -4448,6 +4860,10 @@ def real_session_evidence(
             "change_continuation_qualified": change_continuation_ok,
             "verified_state_continuation_qualified": verified_state_continuation_ok,
             "final_behavior_contradicts_completed_state": contradictory_resume_behavior,
+        },
+        "learning_basis": {
+            **learning_basis,
+            "recall": learning_recall_basis,
         },
         "activation_basis": {
             "work_session_start_observed": (
@@ -5054,8 +5470,8 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     observed_behaviors: Counter[str] = Counter()
     hidden_repositories: set[str] = set()
     for repository in repositories:
-        if len(repository.get("cycles", [])) != CYCLES_PER_REPOSITORY:
-            raise ValueError("dogfood result does not contain two cycles per repository")
+        if len(repository.get("cycles", [])) != CYCLE_COUNT_BY_REPOSITORY[repository["class"]]:
+            raise ValueError("dogfood result does not contain the maintained repository cycle allocation")
         for cycle in repository["cycles"]:
             behavior_class = cycle.get("real_session_dogfood", {}).get("behavior_class")
             if behavior_class not in BEHAVIOR_CLASSES:
@@ -5192,9 +5608,9 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             != definition["real_session_evidence"]["full_replacement_session_count"]
             or len(set(real_invocations)) != len(real_invocations)
         ):
-            raise ValueError("automated pass requires twelve globally distinct Codex sessions")
+            raise ValueError("automated pass requires sixteen globally distinct Codex sessions")
     if observed_behaviors != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS:
-        raise ValueError("dogfood result does not contain the required six-cycle behavior multiset")
+        raise ValueError("dogfood result does not contain the required eight-cycle behavior multiset")
     if len(hidden_repositories) != 2:
         raise ValueError("hidden qualification cycles must span two repository classes")
     sanitize_check(result)
@@ -5694,7 +6110,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
             kind = identity["class"]
             cycles: list[dict[str, Any]] = []
             if identity["status"] == "passed":
-                for cycle_number in range(1, CYCLES_PER_REPOSITORY + 1):
+                for cycle_number in cycle_numbers(kind):
                     cycle_root = raw_root / f"{kind}-cycle-{cycle_number}"
                     cycle_root.mkdir()
                     recorder = v11.Recorder(cycle_root)
@@ -5753,7 +6169,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         repeated_resources,
                     ))
             else:
-                for cycle_number in range(1, CYCLES_PER_REPOSITORY + 1):
+                for cycle_number in cycle_numbers(kind):
                     skipped = {name: "environment_blocked" for name in definition["required_product_steps"]}
                     actual = real_session_evidence(
                         load_real_session_cycle(
@@ -5950,6 +6366,8 @@ def fixture_work_user_task(kind: str, behavior_class: str) -> str:
         "research_or_no_question": "Correct repository configuration discovery and update the affected multi-file tests.",
         "delegated_implementation_choice": "Refactor the adapter while preserving behavior; choose the internal helper naming and module structure.",
         "exploratory_uncertainty": "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
+        "learning_deliberation": "I want to learn through one meaningful agent-owned technical fork before implementation. Improve the adapter state model and add focused tests.",
+        "learning_routine_control": "I want to learn while you improve the adapter, but keep routine naming and local formatting choices non-interrupting. Add focused tests.",
     }
     repository_reference = (
         "In this repository"
@@ -6175,6 +6593,10 @@ def real_session_fixture(
     resume_review_candidate = "19" * 16
     review_analysis = "1a" * 32
     resume_review_analysis = "1b" * 32
+    discovery_candidate = "1c" * 16
+    resume_discovery_candidate = "1d" * 16
+    learning_candidate = "1e" * 16
+    learning_response_source = "1f" * 16
     materiality_dimension_id = "operator-error-boundary"
     secondary_materiality_dimension_id = "repository-shape-boundary"
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
@@ -6392,6 +6814,7 @@ def real_session_fixture(
     goal_call = f"{kind}-goal-call-{cycle}"
     status_call = f"{kind}-status-call-{cycle}"
     baseline_call = f"{kind}-baseline-call-{cycle}"
+    discovery_call = f"{kind}-discovery-call-{cycle}"
     materiality_call = f"{kind}-materiality-call-{cycle}"
     candidate_submit_call = f"{kind}-candidate-submit-call-{cycle}"
     candidate_research_call = f"{kind}-candidate-research-call-{cycle}"
@@ -6404,6 +6827,10 @@ def real_session_fixture(
     current_analysis_call = f"{kind}-current-analysis-call-{cycle}"
     verification_call = f"{kind}-verification-call-{cycle}"
     checkpoint_call = f"{kind}-checkpoint-call-{cycle}"
+    learning_begin_call = f"{kind}-learning-begin-call-{cycle}"
+    learning_response_call = f"{kind}-learning-response-call-{cycle}"
+    learning_feedback_call = f"{kind}-learning-feedback-call-{cycle}"
+    learning_complete_call = f"{kind}-learning-complete-call-{cycle}"
     materiality_disposition = expected_materiality_disposition(behavior_class)
     materiality_basis_kind = {
         "explicit_user_owned_decision": "agent_recommendation",
@@ -6411,9 +6838,63 @@ def real_session_fixture(
         "research_or_no_question": "repository_or_environment_fact",
         "delegated_implementation_choice": "explicit_delegation",
         "exploratory_uncertainty": "research_evidence",
+        "learning_deliberation": "implementation_preference",
+        "learning_routine_control": "implementation_preference",
     }[behavior_class]
     delegation_statement = "choose the internal helper naming and module structure"
     delegation_scope = "internal helper naming and module structure"
+    learning_active = behavior_class in {
+        "learning_deliberation",
+        "learning_routine_control",
+    }
+
+    def engineering_choices(source_id: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "choice_id": materiality_dimension_id,
+                "summary": "Choose the adapter state representation",
+                "affected_scope": ["adapter state representation"],
+                "alternatives": [
+                    {
+                        "alternative_id": "ordered-records",
+                        "summary": "Use ordered records",
+                        "technical_consequences": ["Deterministic inspection with bounded linear lookup"],
+                    },
+                    {
+                        "alternative_id": "keyed-index",
+                        "summary": "Use a keyed index",
+                        "technical_consequences": ["Direct lookup with ordering synchronization obligations"],
+                    },
+                ],
+                "technical_consequences": ["The representation changes invariant placement and maintenance cost"],
+                "source_ids": [source_id],
+                "effect_categories": ["maintenance_or_support", "implementation_internal"],
+                "relationship": {"state": "independent"},
+                "evidence_state": "sufficient",
+            },
+            {
+                "choice_id": secondary_materiality_dimension_id,
+                "summary": "Choose the coupled repository-shape boundary",
+                "affected_scope": ["repository file shape"],
+                "alternatives": [
+                    {"alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
+                    {"alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
+                ],
+                "technical_consequences": ["The shape affects the scope of implementation changes"],
+                "source_ids": [source_id],
+                "effect_categories": ["maintenance_or_support"],
+                "relationship": (
+                    {
+                        "state": "coupled",
+                        "choice_ids": [materiality_dimension_id],
+                        "rationale": "The observable diagnostic boundary and stable shape share one user-owned outcome.",
+                    }
+                    if is_user_owned_behavior(behavior_class)
+                    else {"state": "independent"}
+                ),
+                "evidence_state": "sufficient",
+            },
+        ]
 
     def materiality_dimension(
         *, resolved: bool = False, source_id: str | None = None
@@ -6425,6 +6906,7 @@ def real_session_fixture(
         )
         dimension = {
             "dimension_id": materiality_dimension_id,
+            "discovered_choice_ids": [materiality_dimension_id],
             "summary": (
                 "Select the delegated internal helper and module structure"
                 if behavior_class == "delegated_implementation_choice"
@@ -6442,6 +6924,20 @@ def real_session_fixture(
             ],
             "observable_signals": ["observable_failure_policy"],
             "disposition": materiality_disposition,
+            "learning_value": (
+                {
+                    "state": "deliberation_worthy",
+                    "rationale": "The state representation exposes transferable invariant-placement trade-offs.",
+                    "consequence_significance": ["The representation determines where consistency invariants live."],
+                    "transferable_principles": ["Choose representations that make invariants explicit."],
+                    "non_obvious_trade_offs": ["Direct lookup adds synchronization and ordering obligations."],
+                }
+                if behavior_class == "learning_deliberation"
+                else {
+                    "state": "routine",
+                    "rationale": "This bounded detail is routine and should not interrupt implementation.",
+                }
+            ),
             "basis": {
                 "kinds": ["applicable_decision" if resolved else materiality_basis_kind],
                 "summary": "Bounded repository and owner-authority evidence",
@@ -6478,6 +6974,7 @@ def real_session_fixture(
         if is_user_owned_behavior(behavior_class):
             return {
                 "dimension_id": secondary_materiality_dimension_id,
+                "discovered_choice_ids": [secondary_materiality_dimension_id],
                 "summary": "Classify the coupled diagnostic stability outcome",
                 "affected_scope": ["operator diagnostic stability"],
                 "material_consequences": [
@@ -6485,6 +6982,7 @@ def real_session_fixture(
                 ],
                 "observable_signals": ["observable_failure_policy"],
                 "disposition": "unresolved_user_owned_outcome",
+                "learning_value": {"state": "routine", "rationale": "User-owned authority stays on the Inquiry path."},
                 "resolution_decision_id": decision if resolved else None,
                 "basis": {
                     "kinds": [
@@ -6499,11 +6997,13 @@ def real_session_fixture(
             }
         return {
             "dimension_id": secondary_materiality_dimension_id,
+            "discovered_choice_ids": [secondary_materiality_dimension_id],
             "summary": "Record the repository-established bounded file shape",
             "affected_scope": ["repository file shape"],
             "material_consequences": ["The implementation stays within inspected files."],
             "observable_signals": ["other_material_outcome"],
             "disposition": "repository_or_environment_fact",
+            "learning_value": {"state": "routine", "rationale": "A repository-established fact needs no learning interruption."},
             "basis": {
                 "kinds": ["repository_or_environment_fact"],
                 "summary": "The retained Analysis Snapshot establishes this fact.",
@@ -6537,6 +7037,17 @@ def real_session_fixture(
                 {"kind": "materiality_review_candidate", "identity": review_id},
             ],
             "unresolved_requirements": [],
+        }
+
+    def learning_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
+        return {
+            **ready_workflow(review_id, baseline_id),
+            "stage": "learning_deliberation",
+            "disposition": "learning_required",
+            "required_next_action": {"tool": "learning_deliberation", "action": "begin"},
+            "blocks_ordinary_work": True,
+            "reason": "explicit learning participation and a deliberation-worthy agent-owned choice require pre-work deliberation",
+            "unresolved_requirements": [{"dimension_id": materiality_dimension_id, "reason": "learning deliberation is pending", "basis_identities": []}],
         }
     patch_text = (
         "*** Begin Patch\n"
@@ -6596,6 +7107,33 @@ def real_session_fixture(
         ),
         mcp_call(
             work_turn,
+            discovery_call,
+            "engineering_choice_discovery",
+            {
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "source_operation": "naturalistic engineering-choice discovery",
+                "summary": "Discover independently meaningful technical choices before authority review.",
+                "choices": engineering_choices(repository_source),
+            },
+        ),
+        custom_output(
+            work_turn,
+            discovery_call,
+            {
+                "action": "record",
+                "discovery_candidate_id": discovery_candidate,
+                "revision": 1,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "choices": engineering_choices(repository_source),
+                "canonical_mutation": False,
+                "workflow": {"stage": "materiality_review", "blocks_ordinary_work": True},
+            },
+        ),
+        mcp_call(
+            work_turn,
             materiality_call,
             "materiality_review",
             {
@@ -6603,8 +7141,18 @@ def real_session_fixture(
                 "project_id": project,
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": baseline_analysis,
+                "engineering_choice_discovery_candidate_id": discovery_candidate,
                 "source_operation": "naturalistic pre-work Materiality Review",
                 "rationale": "Classify independently material outcomes before affected work.",
+                "learning_participation": (
+                    {
+                        "state": "active",
+                        "user_turn_source_id": goal_source,
+                        "verbatim_statement": "I want to learn",
+                    }
+                    if learning_active
+                    else {"state": "inactive"}
+                ),
                 "dimensions": materiality_dimensions(),
             },
         ),
@@ -6649,6 +7197,8 @@ def real_session_fixture(
                         ],
                     }
                     if is_user_owned_behavior(behavior_class)
+                    else learning_workflow(review_candidate, baseline_analysis)
+                    if behavior_class == "learning_deliberation"
                     else ready_workflow(review_candidate, baseline_analysis)
                 ),
             },
@@ -6927,12 +7477,129 @@ def real_session_fixture(
         ),
         task_complete(decision_turn),
     ]
+    if behavior_class == "learning_deliberation":
+        learning_response_text = (
+            "Choose ordered records because deterministic invariant inspection matters more "
+            "than direct lookup."
+        )
+        patch_index = next(
+            index
+            for index, value in enumerate(work_events)
+            if value.get("payload", {}).get("call_id") == patch_call
+        )
+        work_events[patch_index:patch_index] = [
+            user(
+                decision_turn,
+                f"{kind}-learning-user-turn-{cycle}",
+                learning_response_text,
+            ),
+            mcp_call(
+                decision_turn,
+                learning_begin_call,
+                "learning_deliberation",
+                {
+                    "action": "begin",
+                    "project_id": project,
+                    "review_candidate_id": review_candidate,
+                    "dimension_id": materiality_dimension_id,
+                    "source_operation": "naturalistic learning deliberation",
+                    "problem": "Which state representation makes the invariant easiest to preserve?",
+                    "established_facts": ["The state set is bounded and deterministic ordering is required."],
+                },
+            ),
+            custom_output(
+                decision_turn,
+                learning_begin_call,
+                {
+                    "action": "begin",
+                    "interaction_kind": "learning_participation",
+                    "canonical_decision": False,
+                    "deliberation_candidate_id": learning_candidate,
+                    "materiality_review_candidate_id": review_candidate,
+                    "dimension_id": materiality_dimension_id,
+                    "choices": engineering_choices(repository_source)[:1],
+                    "rounds": [],
+                    "state": {"state": "awaiting_initial_response"},
+                    "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+                },
+            ),
+            mcp_call(
+                decision_turn,
+                learning_response_call,
+                "learning_deliberation",
+                {
+                    "action": "respond_select",
+                    "project_id": project,
+                    "deliberation_candidate_id": learning_candidate,
+                    "user_turn": learning_response_text,
+                    "user_rationale": "Deterministic invariant inspection matters more than direct lookup.",
+                    "selections": [{"choice_id": materiality_dimension_id, "alternative_id": "ordered-records"}],
+                },
+            ),
+            custom_output(
+                decision_turn,
+                learning_response_call,
+                {
+                    "action": "respond_select",
+                    "interaction_kind": "learning_participation",
+                    "canonical_decision": False,
+                    "deliberation_candidate_id": learning_candidate,
+                    "rounds": [{"initial_response_source_id": learning_response_source, "response": {"kind": "selected", "selections": [{"choice_id": materiality_dimension_id, "alternative_id": "ordered-records"}]}, "user_rationale": "Deterministic invariant inspection matters more than direct lookup."}],
+                    "state": {"state": "awaiting_agent_feedback"},
+                    "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+                },
+            ),
+            mcp_call(
+                decision_turn,
+                learning_feedback_call,
+                "learning_deliberation",
+                {
+                    "action": "feedback",
+                    "project_id": project,
+                    "deliberation_candidate_id": learning_candidate,
+                    "feedback": "Ordered records keep deterministic inspection explicit; bounded lookup keeps the linear scan insignificant.",
+                    "recommendation_selections": [{"choice_id": materiality_dimension_id, "alternative_id": "ordered-records"}],
+                    "recommendation_rationale": "The bounded size makes direct indexing unnecessary while deterministic order supports auditing.",
+                },
+            ),
+            custom_output(
+                decision_turn,
+                learning_feedback_call,
+                {
+                    "action": "feedback",
+                    "interaction_kind": "learning_participation",
+                    "canonical_decision": False,
+                    "deliberation_candidate_id": learning_candidate,
+                    "state": {"state": "feedback_provided"},
+                    "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+                },
+            ),
+            mcp_call(
+                decision_turn,
+                learning_complete_call,
+                "learning_deliberation",
+                {"action": "complete", "project_id": project, "deliberation_candidate_id": learning_candidate},
+            ),
+            custom_output(
+                decision_turn,
+                learning_complete_call,
+                {
+                    "action": "complete",
+                    "interaction_kind": "learning_participation",
+                    "canonical_decision": False,
+                    "deliberation_candidate_id": learning_candidate,
+                    "state": {"state": "completed"},
+                    "workflow": ready_workflow(review_candidate, baseline_analysis),
+                },
+            ),
+        ]
 
     resume_turn = f"{kind}-resume-turn-{cycle}"
     resolve_call = f"{kind}-resolve-call-{cycle}"
     recall_call = f"{kind}-recall-call-{cycle}"
     inspect_call = f"{kind}-inspect-call-{cycle}"
     resume_baseline_call = f"{kind}-resume-baseline-call-{cycle}"
+    resume_discovery_call = f"{kind}-resume-discovery-call-{cycle}"
     resume_materiality_call = f"{kind}-resume-materiality-call-{cycle}"
     resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
     resume_current_analysis_call = f"{kind}-resume-current-analysis-call-{cycle}"
@@ -6994,6 +7661,32 @@ def real_session_fixture(
                     else []
                 ),
                 "open_questions": [],
+                "learning_context": (
+                    [
+                        {
+                            "identity": learning_candidate,
+                            "kind": "learning_deliberation",
+                            "learning_deliberation": {
+                                "interaction_kind": "learning_participation",
+                                "canonical_decision": False,
+                                "deliberation_candidate_id": learning_candidate,
+                                "materiality_review_candidate_id": review_candidate,
+                                "dimension_id": materiality_dimension_id,
+                                "choices": engineering_choices(repository_source)[:1],
+                                "rounds": [{
+                                    "initial_response_source_id": learning_response_source,
+                                    "response": {"kind": "selected", "selections": [{"choice_id": materiality_dimension_id, "alternative_id": "ordered-records"}]},
+                                    "user_rationale": "Deterministic invariant inspection matters more than direct lookup.",
+                                    "agent_feedback": "Ordered records keep deterministic inspection explicit.",
+                                }],
+                                "state": {"state": "completed"},
+                            },
+                        }
+                    ]
+                    if behavior_class == "learning_deliberation"
+                    else []
+                ),
+                "learning_context_health": {"state": "available"},
                 "known_limits": [],
                 "next_step": next_step,
                 "checkpoint": {
@@ -7055,6 +7748,34 @@ def real_session_fixture(
         ),
         mcp_call(
             resume_turn,
+            resume_discovery_call,
+            "engineering_choice_discovery",
+            {
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "source_operation": "fresh-session engineering-choice rediscovery",
+                "summary": "Re-establish current technical choices after Recall.",
+                "choices": engineering_choices(resume_repository_source),
+            },
+            fallback="??",
+        ),
+        custom_output(
+            resume_turn,
+            resume_discovery_call,
+            {
+                "action": "record",
+                "discovery_candidate_id": resume_discovery_candidate,
+                "revision": 1,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "choices": engineering_choices(resume_repository_source),
+                "canonical_mutation": False,
+                "workflow": {"stage": "materiality_review", "blocks_ordinary_work": True},
+            },
+        ),
+        mcp_call(
+            resume_turn,
             resume_materiality_call,
             "materiality_review",
             {
@@ -7062,8 +7783,18 @@ def real_session_fixture(
                 "project_id": project,
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "engineering_choice_discovery_candidate_id": resume_discovery_candidate,
                 "source_operation": "fresh-session Materiality Review recomputation",
                 "rationale": "Recompute current work authority after Recall and a fresh baseline.",
+                "learning_participation": (
+                    {
+                        "state": "active",
+                        "user_turn_source_id": goal_source,
+                        "verbatim_statement": "I want to learn",
+                    }
+                    if learning_active
+                    else {"state": "inactive"}
+                ),
                 "dimensions": materiality_dimensions(
                     resolved=is_user_owned_behavior(behavior_class),
                     source_id=resume_repository_source,
@@ -7266,14 +7997,19 @@ def real_session_fixture(
         [blob(changed_source_two), blob(project), integer(1), text("file"), text(work_paths[1]), text(revision), null(), null(), null(), null(), text("repository"), text("codex-observer"), null(), null(), text("available"), integer(4)],
         [blob(verification_source), blob(project), integer(1), text("command_execution"), text("focused verification"), null(), text("sha256:" + hashlib.sha256(verification_command.encode("utf-8")).hexdigest()), null(), integer(0), text("exited"), text("command"), text("current-host-reported-command"), text("agent"), text("codex"), text("available"), integer(5)],
         [blob(repository_source), blob(project), integer(1), text("repository_snapshot"), text(revision), text(revision), null(), null(), null(), null(), text("repository"), text("local-repository-observer"), text("agent"), text("codex"), text("available"), integer(6)],
+        *(
+            [[blob(learning_response_source), blob(project), integer(1), text("current_host_user_turn"), text("Choose ordered records because deterministic invariant inspection matters more than direct lookup."), null(), text("codex"), text(work_session), null(), null(), text("user"), text("fixture-user"), null(), null(), text("available"), integer(7)]]
+            if behavior_class == "learning_deliberation"
+            else []
+        ),
     ]
     tables = [
         table("sources", source_columns, sources),
-        table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]]),
-        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"], f"work-authority:{materiality_dimension_id}", *([f"work-authority:{secondary_materiality_dimension_id}"] if is_user_owned_behavior(behavior_class) else [])])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]]),
-        table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]]),
-        table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]]),
-        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
+        table("questions", ["id", "project_id", "revision", "terminal_outcome", "created_at", "updated_at"], [[blob(question), blob(project), integer(1), text("answered"), integer(1), integer(1)]] if is_user_owned_behavior(behavior_class) else []),
+        table("question_revisions", ["question_id", "revision", "project_id", "prompt_basis", "source_basis", "dependencies", "alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "trade_offs", "uncertainty", "material_scope", "materiality", "presentation_order", "why_it_matters_now", "established_facts", "assumptions", "known_limits", "answer_unlocks", "allowed_dispositions", "research_state", "recorded_at"], [[blob(question), integer(1), blob(project), text(question_prompt), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([question_content["material_consequence"]])), blob(encoded_strings([])), blob(encoded_strings([question_content["user_owned_dimension"], f"work-authority:{materiality_dimension_id}", f"work-authority:{secondary_materiality_dimension_id}"])), text("material"), integer(1), text(question_content["material_consequence"]), blob(encoded_established_facts(question_content["established_repository_facts"])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings(["ordinary implementation work"])), blob(encoded_strings(["deferred"])), text("researched"), integer(1)]] if is_user_owned_behavior(behavior_class) else []),
+        table("question_response_sources", ["project_id", "question_id", "question_revision", "source_id", "recorded_at"], [[blob(project), blob(question), integer(1), blob(user_source), integer(1)]] if is_user_owned_behavior(behavior_class) else []),
+        table("question_decision_history_witnesses", ["project_id", "question_id", "question_revision", "root_decision_id", "terminal_outcome", "response_source_id", "response_authority", "creation_kind", "created_at"], [[blob(project), blob(question), integer(1), blob(decision), text("answered"), blob(user_source), text("current_host_user_turn"), text("alternative"), integer(1)]] if is_user_owned_behavior(behavior_class) else []),
+        table("decisions", ["id", "project_id", "revision", "question_id", "question_revision", "user_turn_source_id", "user_authority", "choice_kind", "choice_value", "user_rationale", "displayed_alternatives", "recommendation_key", "recommendation_rationale", "recommendation_sources", "applicability_paths", "applicability_components", "applicability_work_contexts", "assumptions", "revisit_triggers", "recorded_at"], [[blob(decision), blob(project), integer(1), blob(question), integer(1), blob(user_source), text("current_host_user_turn"), text("alternative"), text("concise"), null(), blob(encoded_alternatives(question_content["viable_alternatives"])), text("concise"), text(question_content["recommendation"]), blob(encoded_source_ids([goal_source]).hex()), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]] if is_user_owned_behavior(behavior_class) else []),
         table("context_items", ["id", "project_id", "revision", "role", "statement", "provenance_role", "author_kind", "author_identity", "applicability_paths", "applicability_components", "applicability_work_contexts", "recorded_at"], [[blob(context), blob(project), integer(1), text("goal"), text(work_user_task), text("user_statement"), text("user"), text("fixture-user"), blob(encoded_strings([])), blob(encoded_strings([])), blob(encoded_strings([])), integer(1)]]),
         table("context_item_sources", ["project_id", "context_item_id", "source_id", "position"], [[blob(project), blob(context), blob(goal_source), integer(0)]]),
         table("checkpoints", ["id", "project_id", "revision", "checkpoint_kind", "goal", "work_state", "state_change", "changed_paths", "user_review", "user_review_source_id", "user_acceptance", "user_acceptance_source_id", "known_limits", "non_goals", "next_step", "handoff_to", "recorded_at"], [[blob(checkpoint), blob(project), integer(1), text("handoff"), text(work_user_task), text("paused"), text("Updated the bounded implementation and test"), blob(encoded_strings(work_paths)), text("not_requested"), null(), text("not_requested"), null(), blob(encoded_strings([])), blob(encoded_strings([])), text(next_step), text("next Codex session"), integer(1)]]),
@@ -8085,7 +8821,9 @@ def self_test() -> int:
         ),
         (
             "cycle outside private assignment range",
-            lambda value: value.update({"cycle": 3}),
+            lambda value: value.update({
+                "cycle": CYCLE_COUNT_BY_REPOSITORY[value["repository_class"]] + 1
+            }),
         ),
         (
             "unaccepted independent review",
@@ -8116,7 +8854,7 @@ def self_test() -> int:
             "scripted resume": "Recall",
             "obsolete reserved scope": "obsolete field",
             "repository fact class mismatch": "classification",
-            "cycle outside private assignment range": "two private repository assignments",
+            "cycle outside private assignment range": "private assignment for its repository class",
             "unaccepted independent review": "accepted independent review",
             "obsolete independent review form": "current independent review fields",
         }[label]
@@ -8624,10 +9362,12 @@ def self_test() -> int:
         "volicord": (
             "explicit_user_owned_decision",
             "hidden_user_owned_decision",
+            "learning_deliberation",
         ),
         "small-python": (
             "research_or_no_question",
             "hidden_user_owned_decision",
+            "learning_routine_control",
         ),
         "polyglot-medium": (
             "delegated_implementation_choice",
@@ -8738,7 +9478,12 @@ def self_test() -> int:
         expected = set(interaction_review_criteria(behavior_class, definition))
         if set(interaction_review) != {"sample", *expected}:
             raise AssertionError("behavior-specific human review applicability drifted")
-        if behavior_class in BEHAVIOR_CLASSES[2:]:
+        if behavior_class in {
+            "research_or_no_question",
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+            "learning_routine_control",
+        }:
             if (
                 "unnecessary_interruption" not in interaction_review
                 or "explicit_material_handling_quality" in interaction_review
@@ -8852,11 +9597,13 @@ def self_test() -> int:
     ):
         raise AssertionError("human review overrode a deterministic machine failure")
     weakened_session_contract = json.loads(json.dumps(definition))
-    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = 11
+    weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = (
+        QUALIFICATION_SESSION_COUNT - 1
+    )
     expect_rejected(
         result,
         weakened_session_contract,
-        "replacement passage no longer required twelve distinct real sessions",
+        "replacement passage no longer required sixteen distinct real sessions",
     )
 
     unavailable_peak = {
@@ -9503,6 +10250,131 @@ def self_test() -> int:
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
 
+    missing_discovery = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(missing_discovery, "work", "discovery-call")
+    missing_discovery_result = real_session_evidence(
+        missing_discovery, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if (
+        missing_discovery_result["checks"]["engineering_choice_discovery"]
+        != "failed"
+        or missing_discovery_result["checks"]["pre_write_materiality_work_authority"]
+        != "failed"
+    ):
+        raise AssertionError("Materiality Review qualified without correlated engineering-choice discovery")
+
+    missing_learning_feedback = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    remove_mcp_completion(
+        missing_learning_feedback, "work", "learning-feedback-call"
+    )
+    if real_session_evidence(
+        missing_learning_feedback,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_deliberation_order"] != "failed":
+        raise AssertionError("Learning Deliberation qualified without post-response feedback")
+
+    anchored_learning = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    mutate_mcp_completion(
+        anchored_learning,
+        "work",
+        "learning-begin-call",
+        lambda payload: payload["result"]["Ok"]["structuredContent"].update(
+            {"recommendation": "Choose ordered records"}
+        ),
+    )
+    if real_session_evidence(
+        anchored_learning,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_deliberation_order"] != "failed":
+        raise AssertionError("pre-response Learning Deliberation recommendation anchoring qualified")
+
+    manufactured_learning_decision = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    mutate_mcp_completion(
+        manufactured_learning_decision,
+        "work",
+        "learning-complete-call",
+        lambda payload: payload["result"]["Ok"]["structuredContent"].update(
+            {"canonical_decision": True}
+        ),
+    )
+    if real_session_evidence(
+        manufactured_learning_decision,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_not_canonical_decision"] != "failed":
+        raise AssertionError("Learning Deliberation mislabeled as a canonical Decision qualified")
+
+    interrupted_routine_learning = real_session_fixture(
+        "small-python",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_routine_control",
+    )
+    insert_successful_mcp_completion_before_first_write(
+        interrupted_routine_learning,
+        "learning_deliberation",
+        {"action": "begin", "project_id": "01" * 16},
+        {
+            "action": "begin",
+            "interaction_kind": "learning_participation",
+            "canonical_decision": False,
+        },
+    )
+    if real_session_evidence(
+        interrupted_routine_learning,
+        kind="small-python",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_interruption_precision"] != "failed":
+        raise AssertionError("routine learning-active detail gained an unnecessary deliberation")
+
+    missing_learning_recall = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    mutate_custom_output(
+        missing_learning_recall,
+        "resume",
+        "recall-call",
+        lambda output: output.update({"learning_context": []}),
+    )
+    if real_session_evidence(
+        missing_learning_recall,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_recall_continuity"] != "failed":
+        raise AssertionError("completed Learning Deliberation disappeared from fresh-session Recall")
+
     late_review = real_session_fixture("volicord", 1, revision, evidence_directory)
     move_review_completion_after_first_write(late_review)
     if real_session_evidence(
@@ -10013,11 +10885,13 @@ def self_test() -> int:
             [
                 {
                     "dimension_id": "accepted-output-contract",
+                    "discovered_choice_ids": ["operator-error-boundary"],
                     "summary": "Apply the accepted output contract",
                     "affected_scope": ["public output"],
                     "material_consequences": ["The accepted contract fixes the output."],
                     "observable_signals": ["public_api_semantics"],
                     "disposition": "settled_authority",
+                    "learning_value": {"state": "routine", "rationale": "Accepted authority needs no learning interruption."},
                     "basis": {
                         "kinds": ["accepted_contract"],
                         "summary": "The active owner contract settles this dimension.",
@@ -10031,11 +10905,13 @@ def self_test() -> int:
                 },
                 {
                     "dimension_id": "bounded-exploration",
+                    "discovered_choice_ids": ["repository-shape-boundary"],
                     "summary": "Retain the completed exploration basis",
                     "affected_scope": ["internal exploration"],
                     "material_consequences": ["Research resolves the implementation uncertainty."],
                     "observable_signals": ["other_material_outcome"],
                     "disposition": "exploratory_uncertainty",
+                    "learning_value": {"state": "routine", "rationale": "Resolved exploration needs no learning interruption."},
                     "exploratory_disposition": "resolved_by_research",
                     "basis": {
                         "kinds": ["research_evidence"],
@@ -11661,6 +12537,12 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "private_qualification_profile_contract": "passed",
         "real_session_positive_path": "passed",
+        "engineering_choice_discovery_required": "passed",
+        "learning_feedback_order_required": "passed",
+        "learning_pre_response_anchoring_rejected": "passed",
+        "learning_cannot_manufacture_decision": "passed",
+        "learning_routine_interruption_rejected": "passed",
+        "learning_recall_continuity_required": "passed",
         "late_materiality_review_rejected": "passed",
         "checkpoint_cannot_hide_missing_materiality_review": "passed",
         "user_owned_review_without_candidate_rejected": "passed",
@@ -11757,7 +12639,7 @@ def self_test() -> int:
         "branch_aware_non_question_blocker": "passed",
         "positive_work_blocker_attempt_rejected": "passed",
         "early_stop_completion_claims_rejected": "passed",
-        "twelve_session_replacement_contract": "passed",
+        "sixteen_session_replacement_contract": "passed",
         "arbitrary_event_label_rejected": "passed",
         "accessibility_viewer_shaped_names": "passed",
         "accessibility_hidden_controls_excluded": "passed",

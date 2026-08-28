@@ -106,6 +106,8 @@ def main() -> int:
         "context_record",
         "baseline_analysis_snapshot_id",
         "materiality_review",
+        "engineering_choice_discovery",
+        "learning_deliberation",
         "pre_write_materiality_work_authority",
         "submit_question_from_materiality",
         "resume_materiality_work_authority",
@@ -214,6 +216,16 @@ def main() -> int:
         "dimension_identity_field": "dimension_id",
         "array_order_is_authoritative": False,
         "mixed_dispositions_allowed": True,
+        "engineering_choice_discovery_required": True,
+        "discovery_identity_field": "engineering_choice_discovery_candidate_id",
+        "discovered_choice_identity_field": "discovered_choice_ids",
+        "choice_effect_and_relationship_evidence_required": True,
+        "agent_owned_learning_disposition": "agent_owned_implementation_choice",
+        "learning_participation_source": "explicit_current_host_goal_turn",
+        "learning_value_states": ["routine", "deliberation_worthy"],
+        "learning_deliberation_is_canonical_decision": False,
+        "learning_response_precedes_feedback": True,
+        "completed_learning_recall_required": True,
         "delegated_expected_disposition": "delegated_implementation_choice",
         "delegated_current_goal_requires_explicit_delegation_basis": True,
         "delegated_evidence_fields": [
@@ -234,13 +246,14 @@ def main() -> int:
         raise AssertionError("Phase 8 Materiality Review authority contract changed")
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
-        or real_session.get("full_replacement_session_count") != 12
-        or definition_value.get("cycles_per_repository") != 2
-        or definition_value.get("qualification_cycle_count") != 6
+        or real_session.get("full_replacement_session_count") != 16
+        or definition_value.get("cycles_by_repository")
+        != {"volicord": 3, "small-python": 3, "polyglot-medium": 2}
+        or definition_value.get("qualification_cycle_count") != 8
         or definition_value.get("qualification_profile_contract")
         != {
             "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
-            "reveal_requires_provisional_count": 6,
+            "reveal_requires_provisional_count": 8,
             "validation_phase": "post_reveal_before_sealing",
             "reviewer_safe_profile_disclosure": False,
         }
@@ -250,14 +263,15 @@ def main() -> int:
             "research_or_no_question",
             "delegated_implementation_choice",
             "exploratory_uncertainty",
+            "learning_deliberation",
+            "learning_routine_control",
         )
         or len(definition_value.get("repository_classes", {})) != 3
-        or len(definition_value["repository_classes"])
-        * definition_value["cycles_per_repository"]
+        or sum(definition_value["cycles_by_repository"].values())
         * real_session["required_codex_sessions_per_cycle"]
-        != 12
+        != 16
     ):
-        raise AssertionError("Phase 8 no longer requires twelve distinct real Codex sessions")
+        raise AssertionError("Phase 8 no longer requires sixteen distinct real Codex sessions")
     small_rules = definition_value["repository_classes"]["small-python"]
     polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
     if (
@@ -404,7 +418,7 @@ def main() -> int:
         or blind_first.get("qualification_profile_reveal_operation")
         != "reveal-qualification-profile"
         or blind_first.get("evaluator_reveal_operation") != "seal-cycle"
-        or blind_first.get("required_provisional_count_before_reveal") != 6
+        or blind_first.get("required_provisional_count_before_reveal") != 8
         or blind_first.get("sealing_accepts_provisional_payload") is not False
         or blind_first.get("preparation_fields")
         != [
@@ -465,7 +479,7 @@ def main() -> int:
         "record-provisional-review",
         "provisional_recorded",
         "reveal-qualification-profile",
-        "all six provisional reviews",
+        "all eight provisional reviews",
         "qualification_profile_state",
     ):
         if marker not in campaign_source:
@@ -495,7 +509,7 @@ def main() -> int:
     batch_contract = real_session.get("batch_campaign_contract", {})
     if (
         batch_contract.get("operation") != "collect-batch"
-        or batch_contract.get("required_raw_rollout_count") != 12
+        or batch_contract.get("required_raw_rollout_count") != 16
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
         or "read_only_static_viewer_snapshot"
@@ -524,6 +538,13 @@ def main() -> int:
             "explicit_material_handling_quality",
             "hidden_material_discovery_quality",
             "unnecessary_interruption",
+            "learning_fork_value",
+            "learning_alternatives_and_tradeoffs",
+            "pre_response_recommendation_anchoring",
+            "post_response_feedback_quality",
+            "learning_implementation_fidelity",
+            "routine_detail_omission",
+            "proportional_learning_cost",
         }
         or set(behavior_criteria) != set(human_review.get("interaction_behavior_criteria", []))
         or behavior_criteria.get("explicit_material_handling_quality", {}).get("applies_to")
@@ -535,6 +556,7 @@ def main() -> int:
             "research_or_no_question",
             "delegated_implementation_choice",
             "exploratory_uncertainty",
+            "learning_routine_control",
         }
         or any(
             contract.get("exact_evaluator_wording_required") is not False
@@ -542,9 +564,15 @@ def main() -> int:
             or contract.get("exact_expected_user_answer_required") is not False
             or contract.get("semantically_equivalent_decomposition_allowed") is not True
             or not isinstance(contract.get("review_prompt"), str)
-            or "independently material" not in contract.get("review_prompt", "")
+            or not contract.get("review_prompt", "").strip()
             for criterion, contract in behavior_criteria.items()
-            if criterion != "unnecessary_interruption"
+        )
+        or any(
+            "independently material" not in behavior_criteria[criterion]["review_prompt"]
+            for criterion in (
+                "explicit_material_handling_quality",
+                "hidden_material_discovery_quality",
+            )
         )
         or material_grounding.get("available_only_after_naturalistic_execution") is not True
         or material_grounding.get("operator_task_or_work_resume_session_visibility") is not False

@@ -33,7 +33,7 @@ from codex_events import EvidenceError, command_is_repository_inspection, load_c
 ROOT = Path(__file__).resolve().parents[3]
 CLASSES = harness.CLASSES
 BEHAVIOR_CLASSES = harness.BEHAVIOR_CLASSES
-CYCLES_PER_REPOSITORY = harness.CYCLES_PER_REPOSITORY
+CYCLE_COUNT_BY_REPOSITORY = harness.CYCLE_COUNT_BY_REPOSITORY
 QUALIFICATION_CYCLE_COUNT = harness.QUALIFICATION_CYCLE_COUNT
 _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS = harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
 DOCUMENT_KINDS = (
@@ -125,9 +125,15 @@ def save_campaign(root: Path, value: dict[str, Any]) -> None:
 
 
 def cycle_key(kind: str, cycle: int) -> str:
-    if kind not in CLASSES or cycle not in range(1, CYCLES_PER_REPOSITORY + 1):
-        raise CampaignError("cycle must identify one of two assignments for a maintained repository")
+    if kind not in CLASSES or cycle not in cycle_numbers(kind):
+        raise CampaignError("cycle must identify a maintained repository assignment")
     return f"{kind}-cycle-{cycle}"
+
+
+def cycle_numbers(kind: str) -> range:
+    if kind not in CLASSES:
+        raise CampaignError("repository class is not maintained")
+    return range(1, CYCLE_COUNT_BY_REPOSITORY[kind] + 1)
 
 
 def new_review_slot_id() -> str:
@@ -143,7 +149,7 @@ def opaque_order_exposes_logical_cycle_order(
             key=lambda item: item[3],
         )
         if [number for _kind, number, _behavior, _slot in ordered] == list(
-            range(1, CYCLES_PER_REPOSITORY + 1)
+            cycle_numbers(kind)
         ):
             return True
     return False
@@ -153,7 +159,7 @@ def new_private_behavior_assignments() -> list[tuple[str, int, str]]:
     positions = [
         (kind, cycle)
         for kind in CLASSES
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1)
+        for cycle in cycle_numbers(kind)
     ]
     multiset = [
         behavior
@@ -173,8 +179,14 @@ def new_private_behavior_assignments() -> list[tuple[str, int, str]]:
             if behavior == "hidden_user_owned_decision"
         }
         if len(hidden_repositories) == 2:
-            return assignments
-    raise CampaignError("private behavior assignment could not satisfy hidden repository separation")
+            learning_repositories = {
+                behavior: kind
+                for kind, _cycle, behavior in assignments
+                if behavior in {"learning_deliberation", "learning_routine_control"}
+            }
+            if len(set(learning_repositories.values())) == 2:
+                return assignments
+    raise CampaignError("private behavior assignment could not satisfy repository-separation constraints")
 
 
 def validate_private_behavior_assignments(
@@ -184,7 +196,7 @@ def validate_private_behavior_assignments(
     expected_positions = [
         (kind, cycle)
         for kind in CLASSES
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1)
+        for cycle in cycle_numbers(kind)
     ]
     behavior_counts = Counter(behavior for _kind, _cycle, behavior in assignments)
     hidden_repositories = {
@@ -192,10 +204,16 @@ def validate_private_behavior_assignments(
         for kind, _cycle, behavior in assignments
         if behavior == "hidden_user_owned_decision"
     }
+    learning_repositories = {
+        behavior: kind
+        for kind, _cycle, behavior in assignments
+        if behavior in {"learning_deliberation", "learning_routine_control"}
+    }
     if (
         positions != expected_positions
         or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
         or len(hidden_repositories) != 2
+        or len(set(learning_repositories.values())) != 2
     ):
         raise CampaignError("private behavior assignment violates qualification constraints")
 
@@ -359,10 +377,17 @@ def validate_private_qualification_profile(
         for entry in mapping["entries"]
         if entry.get("expected_behavior_class") == "hidden_user_owned_decision"
     }
+    learning_repositories = {
+        entry.get("expected_behavior_class"): entry.get("repository_class")
+        for entry in mapping["entries"]
+        if entry.get("expected_behavior_class")
+        in {"learning_deliberation", "learning_routine_control"}
+    }
     if (
-        set(repository_counts.values()) != {CYCLES_PER_REPOSITORY}
+        repository_counts != CYCLE_COUNT_BY_REPOSITORY
         or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
         or len(hidden_repositories) != 2
+        or len(set(learning_repositories.values())) != 2
     ):
         raise CampaignError("campaign-private behavior assignment violates qualification constraints")
     profile_path = qualification_profile_path(root)
@@ -866,7 +891,7 @@ def render_operator_run_sheet(root: Path) -> Path:
         states = sorted(
             (
                 campaign["cycles"][cycle_key(kind, cycle)]
-                for cycle in range(1, CYCLES_PER_REPOSITORY + 1)
+                for cycle in cycle_numbers(kind)
             ),
             key=lambda item: item["review_slot_id"],
         )
@@ -908,14 +933,14 @@ def render_operator_run_sheet(root: Path) -> Path:
     path.write_text(
         "# Naturalistic Dogfood Operator Run Sheet\n\n"
         "This helper does not grant repository or hook trust and does not start Codex sessions. "
-        "Use this operator material only after all six sealed slot entries are present. Evaluator "
+        "Use this operator material only after all eight sealed slot entries are present. Evaluator "
         "research is maintained separately; this workflow isolation is not an operating-system "
-        "security boundary against deliberately opening evaluator files. After all six entries are "
+        "security boundary against deliberately opening evaluator files. After all eight entries are "
         "sealed, the campaign steward may run `activate-all`; activation never grants trust. The helper "
         "verifies the production-owned static MCP and SessionStart files, but that does not prove that "
         "VS Code executed SessionStart; every raw session still requires runtime activation evidence. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
-        "twelve fresh work/resume chats, preserve their raw rollouts, and provide the twelve files once "
+        "sixteen fresh work/resume chats, preserve their raw rollouts, and provide the sixteen files once "
         "through `collect-batch`. No per-chat control-session collection is required.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are sealed for operator use yet.\n"),
         encoding="utf-8",
@@ -1397,7 +1422,7 @@ def verify_all_provisional_reviews_fixed(
         or any(state.get("state") not in {"provisional_recorded", "sealed"} for state in states)
     ):
         raise CampaignError(
-            "qualification profile and evaluator reveal require all six provisional reviews"
+            "qualification profile and evaluator reveal require all eight provisional reviews"
         )
     inventory = load_inventory(root)
     for state in states:
@@ -1609,11 +1634,11 @@ def activate_all(root: Path) -> dict[str, Any]:
     campaign = load_campaign(root)
     verify_inventory(root)
     for kind in CLASSES:
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1):
+        for cycle in cycle_numbers(kind):
             load_sealed_descriptor(root, kind, cycle, campaign)
     results = []
     for kind in CLASSES:
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1):
+        for cycle in cycle_numbers(kind):
             state = load_campaign(root)["cycles"][cycle_key(kind, cycle)]
             results.append({
                 "repository_class": kind,
@@ -2394,22 +2419,22 @@ def batch_rollout_paths(
     rollout_directory: Path | None,
 ) -> list[Path]:
     if (explicit_paths is None) == (rollout_directory is None):
-        raise CampaignError("collect-batch requires either twelve raw rollouts or one directory")
+        raise CampaignError("collect-batch requires either sixteen raw rollouts or one directory")
     if rollout_directory is not None:
         directory = rollout_directory.resolve()
         if not directory.is_dir():
             raise CampaignError("batch rollout directory is unavailable")
         entries = sorted(directory.iterdir())
         if len(entries) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in entries):
-            raise CampaignError("batch rollout directory must contain exactly twelve files")
+            raise CampaignError("batch rollout directory must contain exactly sixteen files")
         paths = entries
     else:
         paths = [path.resolve() for path in explicit_paths or []]
         if len(paths) != BATCH_CAPTURE_COUNT:
-            raise CampaignError("collect-batch requires exactly twelve explicit raw rollouts")
+            raise CampaignError("collect-batch requires exactly sixteen explicit raw rollouts")
     resolved = [path.resolve() for path in paths]
     if len(set(resolved)) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in resolved):
-        raise CampaignError("batch rollout inputs must be twelve distinct files")
+        raise CampaignError("batch rollout inputs must be sixteen distinct files")
     return resolved
 
 
@@ -2421,7 +2446,7 @@ def map_batch_rollouts(
     verify_inventory(root)
     slots: dict[tuple[str, int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
     for kind in CLASSES:
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1):
+        for cycle in cycle_numbers(kind):
             _descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
             state = campaign["cycles"][cycle_key(kind, cycle)]
             for role, field in (("work", "work_user_task"), ("resume", "fresh_resume_user_task")):
@@ -2576,7 +2601,7 @@ def collect_batch(
         raise CampaignError("campaign already stopped; create a new campaign identity")
     for state in campaign["cycles"].values():
         if state.get("state") != "sealed":
-            raise CampaignError("batch collection requires all six sealed cycles")
+            raise CampaignError("batch collection requires all eight sealed cycles")
 
     mapped = map_batch_rollouts(root, raw_paths)
     for (kind, cycle, role), (source, _capture) in sorted(mapped.items()):
@@ -2592,7 +2617,7 @@ def collect_batch(
     has_evidence_failure = False
     environment_invalid_diagnostics: list[dict[str, Any]] = []
     for kind in CLASSES:
-        for cycle in range(1, CYCLES_PER_REPOSITORY + 1):
+        for cycle in cycle_numbers(kind):
             key = cycle_key(kind, cycle)
             state = campaign["cycles"][key]
             descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
@@ -2731,11 +2756,12 @@ def collect_batch(
                 "repository_class": kind,
                 "cycle": cycle,
                 "behavior_class": descriptor["behavior_class"],
-                "status": (
-                    "passed"
+                "intake_state": (
+                    "accepted"
                     if blocker is None and work_intake["outcome"] == "resume_allowed" and evidence_complete
-                    else "failed"
+                    else "rejected"
                 ),
+                "qualification_state": "not_run",
                 "work": {
                     "outcome": work_intake["outcome"],
                     "session_id": work_capture.session_id,
@@ -2774,10 +2800,11 @@ def collect_batch(
         "schema_version": 1,
         "candidate_head": campaign["candidate_head"],
         "environment_invalid_diagnostics": environment_invalid_diagnostics,
-        "status": "passed" if all(item["status"] == "passed" for item in cycle_results) else "failed",
+        "intake_state": "accepted" if all(item["intake_state"] == "accepted" for item in cycle_results) else "rejected",
+        "qualification_state": "not_run",
         "outcome": (
             "evidence_collected"
-            if all(item["status"] == "passed" for item in cycle_results)
+            if all(item["intake_state"] == "accepted" for item in cycle_results)
             else "operator_environment_invalid"
             if has_environment_invalid
             else "campaign_stop"
@@ -2808,10 +2835,10 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
     for kind in CLASSES:
         spec = specs[kind]
         real: dict[str, str] = {}
-        for number in range(1, CYCLES_PER_REPOSITORY + 1):
+        for number in cycle_numbers(kind):
             state = campaign["cycles"][cycle_key(kind, number)]
             if state["state"] != "resume_collected":
-                raise CampaignError("all six cycles must have resume evidence before finalization")
+                raise CampaignError("all eight cycles must have resume evidence before finalization")
             descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
             real[str(number)] = relative(root, descriptor)
         repositories.append({
@@ -3035,7 +3062,7 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument(
             "--cycle",
-            choices=range(1, CYCLES_PER_REPOSITORY + 1),
+            choices=range(1, max(CYCLE_COUNT_BY_REPOSITORY.values()) + 1),
             type=int,
             required=True,
         )

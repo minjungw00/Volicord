@@ -882,9 +882,9 @@ indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한�
 
 Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification
 이다. 하나의 current candidate에 대해 `volicord`, `small-python`, `polyglot-medium` 세
-actual repository class에서 정확히 두 cycle씩 실행하고, 각 cycle은 globally distinct한 fresh
-VS Code Codex work session과 fresh resume session을 사용한다. 따라서 automated
-qualification에는 `3 repositories × 2 cycles × 2 sessions = 12`개의 distinct real
+actual repository class에 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2` cycle을
+배분하고, 각 cycle은 globally distinct한 fresh VS Code Codex work session과 fresh resume
+session을 사용한다. 따라서 automated qualification에는 `8 cycles × 2 sessions = 16`개의 distinct real
 session이 필요하다. Current result schema는 `automated_qualification`, `human_review`,
 `replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 human review가
 `not_provided`여도 automated command는 성공하지만 replacement는
@@ -966,10 +966,14 @@ repository placement를 공개하지 않는다.
   선택하고 Question을 만들지 않음
 - `exploratory_uncertainty`: prototype, 추가 research 또는 evidence-backed defer가 immediate user
   choice보다 적절함
+- `learning_deliberation`: explicit learning participation 아래 meaningful agent-owned fork가
+  deliberation-worthy이며 affected work 전에 ordered Learning Deliberation이 필요함
+- `learning_routine_control`: explicit learning participation이 있어도 routine/trivial detail은
+  Learning Deliberation이나 Question 없이 non-interrupting이어야 함
 
 Campaign preparation은 exact realized assignment와 release-qualification profile을
 evaluator/steward-private integrity-bound state에만 보존한다. Profile의 histogram, duplicate,
-coverage와 repository distribution은 모든 six provisional review가 immutable하게 고정된 뒤에만
+coverage와 repository distribution은 모든 eight provisional review가 immutable하게 고정된 뒤에만
 reveal하고 검증한다. Logical cycle number, opaque slot ID, workspace path, reviewer filename,
 operator label과 presentation order는 behavior class를 encode하지 않는다. Question wording이나
 하나의 answer를 고정하지 않는다.
@@ -1085,7 +1089,7 @@ task text, evaluator behavior-review reasoning, source body, credential과 raw p
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
-12개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
+16개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
 Question을 제시한 경우에만 실제로 답하고 raw rollout을 한 번에 제공한다. Helper는
 rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
@@ -1100,7 +1104,7 @@ trust를 자동 승인하지 않고 VS Code가 SessionStart를 실제 실행했�
 activation diagnostic은 capture/hash/session, opaque slot, work/resume role과 관찰 가능한
 Volicord MCP call 존재 여부를 보존하고 product inquiry failure와 분리한다.
 `prepare`는 모든 campaign mutation 전에 evaluator/steward-private qualification profile과
-assignment를 만들고, 6개의 unique cryptographic-random opaque slot과 qualifying
+assignment를 만들고, 8개의 unique cryptographic-random opaque slot과 qualifying
 repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
 Evaluator/steward-private mapping만 opaque slot을 repository class, logical cycle, expected
 behavior class와 authoritative descriptor에 연결하며 mapping은 campaign SHA-256와 evidence
@@ -1112,7 +1116,7 @@ Evaluator material은 operator instruction, example 또는 review index에 넣�
 descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
 repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
 Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. Genuine
-material Question이 실제로 제시된 경우에는 본인의 답을 제공하고 12개 raw
+material Question이나 Learning Deliberation이 실제로 제시된 경우에는 본인의 답을 제공하고 16개 raw
 rollout을 session 사이의 control 접촉 없이 보존한다.
 `prepare`는 evaluator input과 operator material을 분리한다. `prepare-review`는 opaque
 `review_slot_id`, exact candidate/pinned revision, frozen work/resume tasks, work scope,
@@ -1129,9 +1133,9 @@ private artifact와 hash/inventory binding을 고정하면서 `review_prepared`�
 reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
 Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
 class와 일치하지 않아도 성공하며, 결과는 repository class, logical cycle, evaluator behavior
-class 또는 match/mismatch를 노출하지 않는다. 모든 six provisional artifact와 hash가 고정되기
+class 또는 match/mismatch를 노출하지 않는다. 모든 eight provisional artifact와 hash가 고정되기
 전에는 qualification-profile reveal과 `seal-cycle` evaluator reveal을 모두 거부한다.
-`reveal-qualification-profile`은 `provisional_count = 6`과 모든 immutable hash를 확인한 뒤 private
+`reveal-qualification-profile`은 `provisional_count = 8`과 모든 immutable hash를 확인한 뒤 private
 profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
 `classification_comparison`은 provisional/evaluator classification과 classification, materiality,
@@ -1147,16 +1151,18 @@ Operator-facing artifact의 leak check는 prescribed Question, evaluator concern
 prescribed selection, counterfactual approach, fact/authority agreement,
 behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
-6개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
-repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 12개 fresh
-chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 12개
-explicit path 또는 정확히 12개 file만 있는 directory를 받고, state mutation 전에 frozen first
+8개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
+repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 16개 fresh
+chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 16개
+explicit path 또는 정확히 16개 file만 있는 directory를 받고, state mutation 전에 frozen first
 task, exact workspace/revision, work/resume role, `source=vscode`, `originator=codex_vscode`, fresh
 session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
 
 Mapping 뒤 raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
-복구하지 않는다. Missing activation은 operator/environment invalid로 유지한다. 다른 capture는
+복구하지 않는다. Missing activation은 operator/environment invalid로 유지한다. Cycle별
+`intake_state = accepted|rejected`와 `qualification_state = not_run`을 기록하여 batch
+intake acceptance를 full qualification passage와 구분한다. 다른 capture는
 bounded diagnostic과 안전하게 식별 가능한 evidence extraction을 위해 계속 parse한다. Extraction은
 Project identity, canonical bundle, bounded Runtime/activation summary, descriptor evidence reference,
 supported product document-export path로 네 initial kind 각각의 Markdown과
@@ -1178,7 +1184,7 @@ Ordinary independent review의 handoff는 byte-exact raw rollout archive와 boun
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
-Automated run은 repository/candidate identity, 12-session semantics, post-reveal private
+Automated run은 repository/candidate identity, 16-session semantics, post-reveal private
 qualification profile, bundle/provenance, document와 static snapshot 생성,
 requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
@@ -1188,8 +1194,11 @@ automated-passed cycle 하나를 repository class 대표로 삼지 않고 모든
 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
-material handling quality, hidden material discovery quality와 다른 세 class의 unnecessary
-interruption을 구분한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
+material handling quality, hidden material discovery quality, normal-mode no-question interruption
+precision과 learning-active quality를 구분한다. Learning review는 fork의 실제 학습 가치,
+alternatives/trade-offs completeness, initial reasoning 전 recommendation anchoring 부재,
+response 뒤 educational feedback 정확성, implementation fidelity, routine-detail omission과
+proportional interaction cost를 판정한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
 않는다. Affected work 전에 필요한 independently material user-owned dimension을 모두
 식별하고, 각 dimension을 독립적으로 제시하거나 coupled choice의 모든 material consequence를
 진실하게 disclose하며, recommendation·preferred API shape·implementation이 별도 material

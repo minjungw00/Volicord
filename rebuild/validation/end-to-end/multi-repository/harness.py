@@ -988,7 +988,8 @@ def rehearse_target(
 
     candidate_tools = {
         "candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record",
-        "canonical_inspect", "context_record", "repository_analyze", "materiality_review",
+        "canonical_inspect", "context_record", "repository_analyze",
+        "engineering_choice_discovery", "materiality_review", "learning_deliberation",
         "checkpoint_record",
     }
     candidate_evidence: dict[str, Any] = {}
@@ -1017,7 +1018,15 @@ def rehearse_target(
             inquiry_evidence = {"missing_public_tools": missing_candidate_tools}
         else:
             canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
-            goal_text = f"Rehearse {target_kind} through the resolved self-guiding work-authority path"
+            learning_active = target_kind == "small-python"
+            technical_delegated = target_kind == "polyglot-medium"
+            goal_text = (
+                f"Teach me through the meaningful technical fork while rehearsing {target_kind} through the resolved self-guiding work-authority path"
+                if learning_active
+                else f"Rehearse {target_kind} through the resolved self-guiding work-authority path; I delegate the internal technical state representation to you"
+                if technical_delegated
+                else f"Rehearse {target_kind} through the resolved self-guiding work-authority path"
+            )
             goal, goal_ok = host.tool("context_record", {
                 "project_id": project_id,
                 "user_turn": goal_text,
@@ -1030,6 +1039,70 @@ def rehearse_target(
             source_ids = candidate_repository_source_basis(candidate_analysis)
             source_id = source_ids[0] if source_ids else None
             materiality_dimension_id = "project-context-boundary"
+            technical_dimension_id = "technical-state-representation"
+            discovery, discovery_ok = host.tool("engineering_choice_discovery", {
+                "project_id": project_id,
+                "goal_context_id": (goal or {}).get("context_item_id"),
+                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                    "analysis_snapshot_id"
+                ),
+                "source_operation": "V11 installed MCP engineering-choice discovery",
+                "summary": "Discover durable context authority and an independent technical representation fork",
+                "choices": [
+                    {
+                        "choice_id": materiality_dimension_id,
+                        "summary": "Choose how this Project preserves its durable context boundary",
+                        "affected_scope": ["project-context"],
+                        "alternatives": [
+                            {"alternative_id": "local", "summary": "Keep canonical context local", "technical_consequences": ["Canonical context remains locally controlled"]},
+                            {"alternative_id": "remote", "summary": "Use provider-backed canonical context", "technical_consequences": ["Canonical behavior would depend on a separately authorized provider boundary"]},
+                        ],
+                        "technical_consequences": ["The outcome changes durable local versus provider-backed behavior"],
+                        "source_ids": [source_id] if source_id else [],
+                        "effect_categories": ["persistence_or_lifetime", "privacy_or_disclosure"],
+                        "relationship": {"state": "independent"},
+                        "evidence_state": "sufficient",
+                    },
+                    {
+                        "choice_id": technical_dimension_id,
+                        "summary": "Represent bounded state as ordered records or a keyed index",
+                        "affected_scope": ["internal-state"],
+                        "alternatives": [
+                            {"alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
+                            {"alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
+                        ],
+                        "technical_consequences": ["The representation changes invariant placement and maintenance cost"],
+                        "source_ids": [source_id] if source_id else [],
+                        "effect_categories": ["maintenance_or_support", "implementation_internal"],
+                        "relationship": {"state": "independent"},
+                        "evidence_state": "sufficient",
+                    },
+                ],
+            })
+            discovery_id = discovery.get("discovery_candidate_id") if discovery_ok and discovery else None
+            learning_participation = (
+                {
+                    "state": "active",
+                    "user_turn_source_id": (goal or {}).get("source_id"),
+                    "verbatim_statement": "Teach me through the meaningful technical fork",
+                }
+                if learning_active
+                else {"state": "inactive"}
+            )
+            technical_learning_value = (
+                {
+                    "state": "deliberation_worthy",
+                    "rationale": "Invariant placement and representation costs are transferable across repositories.",
+                    "consequence_significance": ["The representation determines where consistency invariants live"],
+                    "transferable_principles": ["Choose representations that make invariants explicit"],
+                    "non_obvious_trade_offs": ["Faster direct lookup adds ordering and synchronization obligations"],
+                }
+                if learning_active
+                else {
+                    "state": "routine",
+                    "rationale": "Normal mode keeps the bounded internal representation agent-owned and non-interrupting.",
+                }
+            )
             review, review_ok = host.tool("materiality_review", {
                 "action": "record",
                 "project_id": project_id,
@@ -1037,11 +1110,14 @@ def rehearse_target(
                 "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
                     "analysis_snapshot_id"
                 ),
+                "engineering_choice_discovery_candidate_id": discovery_id,
                 "source_operation": "V11 installed MCP user-owned workflow",
                 "rationale": "The durable Project context boundary requires explicit user authority.",
+                "learning_participation": learning_participation,
                 "dimensions": [
                     {
                         "dimension_id": materiality_dimension_id,
+                        "discovered_choice_ids": [materiality_dimension_id],
                         "summary": "Choose how this Project preserves its durable context boundary",
                         "affected_scope": ["project-context"],
                         "material_consequences": [
@@ -1054,9 +1130,51 @@ def rehearse_target(
                             "summary": "Repository evidence establishes the boundary but cannot choose it",
                             "source_ids": [source_id] if source_id else [],
                         },
-                    }
+                        "learning_value": {"state": "routine", "rationale": "User authority uses Inquiry even when learning is active."},
+                    },
+                    {
+                        "dimension_id": technical_dimension_id,
+                        "discovered_choice_ids": [technical_dimension_id],
+                        "summary": "Choose the internal state representation",
+                        "affected_scope": ["internal-state"],
+                        "material_consequences": ["Changes invariant placement and maintenance cost"],
+                        "observable_signals": ["maintenance_or_support_policy"],
+                        "disposition": (
+                            "delegated_implementation_choice"
+                            if technical_delegated
+                            else "agent_owned_implementation_choice"
+                        ),
+                        "basis": {
+                            "kinds": [
+                                "explicit_delegation"
+                                if technical_delegated
+                                else "implementation_preference"
+                            ],
+                            "summary": "The representation is explicitly delegated in this Goal and does not change the user-owned context boundary."
+                            if technical_delegated
+                            else "The representation is agent-owned and does not change the user-owned context boundary.",
+                            "source_ids": [
+                                (goal or {}).get("source_id")
+                                if technical_delegated
+                                else source_id
+                            ],
+                            **(
+                                {
+                                    "explicit_delegation": {
+                                        "goal_context_id": (goal or {}).get("context_item_id"),
+                                        "user_turn_source_id": (goal or {}).get("source_id"),
+                                        "verbatim_statement": "I delegate the internal technical state representation to you",
+                                        "affected_scope": ["internal-state"],
+                                    }
+                                }
+                                if technical_delegated
+                                else {}
+                            ),
+                        },
+                        "learning_value": technical_learning_value,
+                    },
                 ],
-            })
+            }) if discovery_id else (None, False)
             review_candidate_id = (
                 review.get("review_candidate_id") if review_ok and review else None
             )
@@ -1163,9 +1281,11 @@ def rehearse_target(
                 "project_id": project_id,
                 "review_candidate_id": review_candidate_id,
                 "rationale": "The explicit current-host Decision resolves the Project context boundary.",
+                "learning_participation": learning_participation,
                 "dimensions": [
                     {
                         "dimension_id": materiality_dimension_id,
+                        "discovered_choice_ids": [materiality_dimension_id],
                         "summary": "Choose how this Project preserves its durable context boundary",
                         "affected_scope": ["project-context"],
                         "material_consequences": [
@@ -1188,15 +1308,128 @@ def rehearse_target(
                             ],
                             "decision_ids": [decision_id] if decision_id else [],
                         },
-                    }
+                        "learning_value": {"state": "routine", "rationale": "The user-owned outcome remains on the canonical Inquiry path."},
+                    },
+                    {
+                        "dimension_id": technical_dimension_id,
+                        "discovered_choice_ids": [technical_dimension_id],
+                        "summary": "Choose the internal state representation",
+                        "affected_scope": ["internal-state"],
+                        "material_consequences": ["Changes invariant placement and maintenance cost"],
+                        "observable_signals": ["maintenance_or_support_policy"],
+                        "disposition": (
+                            "delegated_implementation_choice"
+                            if technical_delegated
+                            else "agent_owned_implementation_choice"
+                        ),
+                        "basis": {
+                            "kinds": [
+                                "explicit_delegation"
+                                if technical_delegated
+                                else "implementation_preference"
+                            ],
+                            "summary": "The representation remains explicitly delegated independently from the canonical Decision."
+                            if technical_delegated
+                            else "The representation remains agent-owned independently from the canonical Decision.",
+                            "source_ids": [
+                                (goal or {}).get("source_id")
+                                if technical_delegated
+                                else source_id
+                            ],
+                            **(
+                                {
+                                    "explicit_delegation": {
+                                        "goal_context_id": (goal or {}).get("context_item_id"),
+                                        "user_turn_source_id": (goal or {}).get("source_id"),
+                                        "verbatim_statement": "I delegate the internal technical state representation to you",
+                                        "affected_scope": ["internal-state"],
+                                    }
+                                }
+                                if technical_delegated
+                                else {}
+                            ),
+                        },
+                        "learning_value": technical_learning_value,
+                    },
                 ],
             }) if review_candidate_id and decision_id else (None, False)
+            learning_evidence: dict[str, Any] = {"active": learning_active}
+            work_ready_review = resolved_review
+            work_ready_review_ok = resolved_review_ok
+            if learning_active and resolved_review_ok and resolved_review:
+                begun, begun_ok = host.tool("learning_deliberation", {
+                    "action": "begin",
+                    "project_id": project_id,
+                    "review_candidate_id": review_candidate_id,
+                    "dimension_id": technical_dimension_id,
+                    "source_operation": "V11 installed MCP learning deliberation",
+                    "problem": "Which state representation makes the invariant easiest to preserve?",
+                    "established_facts": ["The state set is bounded and deterministic ordering is required"],
+                })
+                deliberation_id = begun.get("deliberation_candidate_id") if begun_ok and begun else None
+                responded, responded_ok = host.tool("learning_deliberation", {
+                    "action": "respond_select",
+                    "project_id": project_id,
+                    "deliberation_candidate_id": deliberation_id,
+                    "user_turn": "Choose ordered records because deterministic invariant inspection matters more than direct lookup.",
+                    "user_rationale": "Deterministic invariant inspection matters more than direct lookup.",
+                    "selections": [{"choice_id": technical_dimension_id, "alternative_id": "ordered-records"}],
+                }) if deliberation_id else (None, False)
+                feedback, feedback_ok = host.tool("learning_deliberation", {
+                    "action": "feedback",
+                    "project_id": project_id,
+                    "deliberation_candidate_id": deliberation_id,
+                    "feedback": "Ordered records keep deterministic inspection explicit; bounded lookup avoids making the linear scan operationally significant.",
+                    "recommendation_selections": [{"choice_id": technical_dimension_id, "alternative_id": "ordered-records"}],
+                    "recommendation_rationale": "The bounded size makes direct indexing unnecessary while deterministic order supports auditing.",
+                }) if responded_ok else (None, False)
+                completed, completed_ok = host.tool("learning_deliberation", {
+                    "action": "complete",
+                    "project_id": project_id,
+                    "deliberation_candidate_id": deliberation_id,
+                }) if feedback_ok else (None, False)
+                work_ready_review = completed
+                work_ready_review_ok = completed_ok
+                learning_evidence = {
+                    "active": True,
+                    "begin": begun,
+                    "response": responded,
+                    "feedback": feedback,
+                    "completion": completed,
+                    "ordered": bool(
+                        begun_ok
+                        and begun
+                        and begun.get("state", {}).get("state") == "awaiting_initial_response"
+                        and not begun.get("rounds")
+                        and responded_ok
+                        and responded
+                        and responded.get("state", {}).get("state") == "awaiting_agent_feedback"
+                        and feedback_ok
+                        and feedback
+                        and feedback.get("state", {}).get("state") == "feedback_provided"
+                        and completed_ok
+                        and completed
+                        and completed.get("state", {}).get("state") == "completed"
+                        and completed.get("canonical_decision") is False
+                    ),
+                }
+            canonical_after_learning, canonical_after_learning_ok = host.tool(
+                "canonical_inspect", {"project_id": project_id}
+            )
+            decision_records_after_learning = [
+                record
+                for record in (canonical_after_learning or {}).get("records", [])
+                if record.get("kind") == "decision"
+            ]
+            learning_evidence["canonical_decision_count"] = len(
+                decision_records_after_learning
+            )
             guarded_before = sha256(runtime / "guarded.sqlite3")
             if (
-                resolved_review_ok
-                and resolved_review
-                and resolved_review.get("workflow", {}).get("stage") == "ready_for_work"
-                and resolved_review.get("workflow", {}).get("blocks_ordinary_work") is False
+                work_ready_review_ok
+                and work_ready_review
+                and work_ready_review.get("workflow", {}).get("stage") == "ready_for_work"
+                and work_ready_review.get("workflow", {}).get("blocks_ordinary_work") is False
             ):
                 ordinary.write_text(
                     "ordinary repository work requires no Guarded confirmation\n",
@@ -1212,6 +1445,7 @@ def rehearse_target(
                 "changed_path": str(ordinary.relative_to(repository)),
                 "guarded_store_unchanged": guarded_before == guarded_after,
                 "resolved_materiality_review": resolved_review,
+                "learning_deliberation": learning_evidence,
             }
             checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {
                 "project_id": project_id,
@@ -1265,6 +1499,11 @@ def rehearse_target(
                 == "repository_baseline",
                 candidate_analysis_ok,
                 source_id,
+                discovery_ok,
+                discovery_id,
+                discovery
+                and discovery.get("workflow", {}).get("stage")
+                == "materiality_review",
                 review_ok,
                 review,
                 (review or {}).get("workflow", {}).get("stage")
@@ -1299,13 +1538,21 @@ def rehearse_target(
                 resolved_review_ok,
                 resolved_review,
                 (resolved_review or {}).get("workflow", {}).get("stage")
+                == ("learning_deliberation" if learning_active else "ready_for_work"),
+                (not learning_active or learning_evidence.get("ordered") is True),
+                work_ready_review_ok,
+                work_ready_review,
+                (work_ready_review or {}).get("workflow", {}).get("stage")
                 == "ready_for_work",
+                canonical_after_learning_ok,
+                len(decision_records_after_learning) == 1,
             ])
             candidate_status = "passed" if candidate_ok else "failed"
             inquiry_status = "passed" if inquiry_ok else "failed"
             candidate_evidence = {
                 "repository_analysis": candidate_analysis,
                 "repository_source_id": source_id,
+                "engineering_choice_discovery": discovery,
                 "candidate_research_analysis": candidate_research_analysis,
                 "candidate_research_source_id": research_source_id,
                 "goal": goal,
@@ -1327,6 +1574,8 @@ def rehearse_target(
                 "decision": decision,
                 "canonical_decision": decision_record,
                 "resolved_materiality_review": resolved_review,
+                "learning_deliberation": learning_evidence,
+                "canonical_after_learning": canonical_after_learning,
             }
         candidate_cleanup = host.close()
         candidate_evidence["cleanup"] = candidate_cleanup
@@ -1540,6 +1789,17 @@ def rehearse_target(
         restart_cleanup = restarted.close()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         recall_after, recall_after_ok, restart_cleanup = {"error": str(error)}, False, {}
+    recalled_learning = (recall_after or {}).get("learning_context", [])
+    learning_recall_ok = (
+        any(
+            item.get("learning_deliberation", {}).get("state", {}).get("state")
+            == "completed"
+            and item.get("learning_deliberation", {}).get("canonical_decision") is False
+            for item in recalled_learning
+        )
+        if target_kind == "small-python"
+        else not recalled_learning
+    )
     restart_ok = all([
         checkpoint_value,
         recall_before,
@@ -1549,10 +1809,12 @@ def rehearse_target(
         recall_after,
         len(recall_after.get("decisions", [])) >= 1,
         recall_after.get("next_step") == checkpoint_next_step,
+        recall_after.get("learning_context_health", {}).get("state") == "available",
+        learning_recall_ok,
     ])
     steps["restart_recall"] = step(
         "passed" if restart_ok else "failed",
-        "a new MCP process recovered the integrated Decision and explicit Handoff next step",
+        "a new MCP process recovered the integrated Decision, bounded learning context, and explicit Handoff next step",
         cli_recall=recall_before, cli_operation=recall_op, restarted_recall=recall_after, cleanup=restart_cleanup,
     )
 
@@ -2281,9 +2543,13 @@ def self_check() -> int:
         'provider_request_after.get("outcome") == "provider_unavailable"',
         '"local_canonical": local_canonical',
         '"action": "submit_question_from_materiality"',
+        'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
+        '"delegated_implementation_choice"',
         'review, review_ok = host.tool("materiality_review"',
         'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
         'resolved_review, resolved_review_ok = host.tool("materiality_review"',
+        'begun, begun_ok = host.tool("learning_deliberation"',
+        'recall_after.get("learning_context_health", {}).get("state") == "available"',
         'checkpoint_value, checkpoint_ok = host.tool("checkpoint_record"',
     ):
         if current not in source:
