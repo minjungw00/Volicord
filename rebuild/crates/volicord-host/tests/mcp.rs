@@ -159,6 +159,7 @@ fn store_forgetting_candidate(
                 question: None,
                 engineering_choice_discovery: None,
                 materiality_review: None,
+                learning_deliberation: None,
             },
         })
         .expect("submit Candidate");
@@ -205,15 +206,19 @@ fn setup() -> (tempfile::TempDir, HostAdapter, String) {
     (temporary, HostAdapter::new(operations), project)
 }
 
+struct FixtureEngineeringChoice<'a> {
+    id: &'a str,
+    affected_scope: &'a str,
+    effect_category: EngineeringEffectCategory,
+}
+
 fn record_fixture_discovery(
     adapter: &HostAdapter,
     project: &str,
     goal_context_id: &str,
     baseline_analysis_snapshot_id: &str,
     source_id: &str,
-    choice_id: &str,
-    affected_scope: &str,
-    effect_category: EngineeringEffectCategory,
+    choice: FixtureEngineeringChoice<'_>,
 ) -> String {
     let discovery = adapter
         .operations()
@@ -227,11 +232,11 @@ fn record_fixture_discovery(
                 .expect("baseline Analysis Snapshot identity"),
             session: "mcp-mechanical-discovery-fixture".into(),
             source_operation: "engineering-choice-discovery-fixture".into(),
-            summary: format!("discover {choice_id}"),
+            summary: format!("discover {}", choice.id),
             choices: vec![EngineeringChoice {
-                choice_id: choice_id.into(),
-                summary: choice_id.into(),
-                affected_scope: vec![affected_scope.into()],
+                choice_id: choice.id.into(),
+                summary: choice.id.into(),
+                affected_scope: vec![choice.affected_scope.into()],
                 alternatives: vec![
                     EngineeringAlternative {
                         alternative_id: "first".into(),
@@ -246,7 +251,7 @@ fn record_fixture_discovery(
                 ],
                 technical_consequences: vec!["the selected approach changes the work".into()],
                 source_basis: vec![parse_source_identity(source_id)],
-                effect_categories: vec![effect_category],
+                effect_categories: vec![choice.effect_category],
                 relationship: EngineeringChoiceRelationship::Independent,
                 evidence_state: EngineeringChoiceEvidenceState::Sufficient,
             }],
@@ -302,9 +307,11 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         goal_context_id,
         baseline,
         repository_source_id,
-        "failure-mode",
-        "mcp-errors",
-        EngineeringEffectCategory::FailureOrErrorSemantics,
+        FixtureEngineeringChoice {
+            id: "failure-mode",
+            affected_scope: "mcp-errors",
+            effect_category: EngineeringEffectCategory::FailureOrErrorSemantics,
+        },
     );
 
     let review = call(
@@ -507,9 +514,11 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
             .as_str()
             .expect("baseline Analysis Snapshot"),
         goal_source_id,
-        "internal-module-name",
-        "src/lib.rs",
-        EngineeringEffectCategory::ImplementationInternal,
+        FixtureEngineeringChoice {
+            id: "internal-module-name",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
     );
     let review = structured(&call(
         &mut adapter,
@@ -2039,6 +2048,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             session: "mcp-checkpoint-fixture".into(),
             source_operation: "pre-work-review".into(),
             rationale: "the host fixture follows its accepted grounded-checkpoint contract".into(),
+            learning_participation: volicord_operations::LearningParticipation::Inactive,
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions: vec![MaterialityDimension {
                 dimension_id: "grounded-checkpoint-contract".into(),
@@ -2056,6 +2066,9 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     decision_basis: Vec::new(),
                     research_basis: Vec::new(),
                     explicit_delegation: None,
+                },
+                learning_value: volicord_operations::LearningValueAssessment::Routine {
+                    rationale: "the accepted contract leaves no learning fork".into(),
                 },
             }],
         })

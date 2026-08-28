@@ -3167,6 +3167,9 @@ const fn candidate_kind_label(kind: Option<CandidateKind>, locale: ViewerLocale)
             "엔지니어링 선택 발견",
         ),
         Some(CandidateKind::MaterialityReview) => text(locale, "Materiality Review", "중요도 검토"),
+        Some(CandidateKind::LearningDeliberation) => {
+            text(locale, "Learning Deliberation", "학습 숙고")
+        }
         Some(CandidateKind::CheckpointCandidate) => {
             text(locale, "Checkpoint candidate", "체크포인트 후보")
         }

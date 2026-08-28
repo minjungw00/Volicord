@@ -371,6 +371,7 @@ pub fn propose_requestioning(
             }),
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     })
 }

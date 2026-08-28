@@ -216,6 +216,13 @@ body, raw command와 provider payload는 review content가 아니다. Retention,
 explicit deletion, canonical forgetting read barrier와 Candidate Inspection 규칙은 다른 Candidate와
 동일하게 적용되고, deletion/expiry가 canonical Question이나 Decision을 바꾸지 않는다.
 
+Learning participation과 Learning Deliberation도 같은 local Candidate/privacy boundary를 사용한다.
+Active participation은 bounded verbatim opt-in과 current-host user Source identity만 보존하고 full turn,
+inferred proficiency 또는 permanent learner profile을 만들지 않는다. Deliberation round는 bounded
+response/rationale, 후속 agent feedback/recommendation과 terminal/reconsideration state만 보존한다.
+Recall에 남길 lesson은 별도의 explicit user Source와 canonical `Learning` Context Item operation을
+사용하며 Candidate retention만으로 자동 승격하지 않는다.
+
 Checkpoint verification의 exact command invocation도 같은 transient boundary를 따른다.
 Current host는 실제 실행과 일치하는 bounded invocation material을 trusted Volicord
 operation에 제공하고, operation은 exact UTF-8 bytes에서 SHA-256 fingerprint를 derive한 뒤

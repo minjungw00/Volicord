@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 5. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 6. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The Candidate kinds preserve bounded origin, collection scope,
@@ -69,6 +69,15 @@ categories, evidence needs, and explicit independent/coupled relationships.
 Every Materiality Review dimension references those identities exactly once;
 independent choices cannot be collapsed into one dimension, while a grouped
 dimension must cover the complete symmetric coupled-choice set.
+
+Learning participation is a bounded `Inactive`/explicit-current-host `Active`
+state on that review, independent from authority and explanation depth. Each
+dimension has only `Routine` or evidence-bearing `DeliberationWorthy` learning
+value. Active agent-owned deliberation-worthy work uses a typed Learning
+Deliberation Candidate: its initial state contains no recommendation, a user
+selection precedes agent feedback, and completed selection, delegation, skip,
+research/prototype, and reconsideration remain distinct restart-safe states.
+These transitions never create or substitute for a canonical Decision.
 
 Current-task delegation is a persisted typed basis, not a Source-membership
 shortcut. It binds the exact Goal Context and current-host user Source to a

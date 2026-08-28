@@ -1,7 +1,8 @@
 use crate::{
     evaluate_decision_applicability, ApplicabilityQuery, CandidateKind, CandidateRecord,
-    DecisionApplicabilityState, ExploratoryDisposition, MaterialityDimension,
-    MaterialityDisposition, WorkAuthorityBasisKind,
+    DecisionApplicabilityState, ExploratoryDisposition, LearningDeliberationState,
+    LearningParticipation, LearningValueAssessment, MaterialityDimension, MaterialityDisposition,
+    WorkAuthorityBasisKind,
 };
 use std::collections::BTreeSet;
 use volicord_context::{
@@ -16,6 +17,7 @@ pub enum WorkAuthorityStage {
     MaterialityReview,
     ResearchOrPrototype,
     QuestionRequired,
+    LearningDeliberation,
     ReadyForWork,
 }
 
@@ -25,6 +27,7 @@ pub enum WorkAuthorityDisposition {
     ReviewInvalid,
     ResearchRequired,
     QuestionRequired,
+    LearningDeliberationPending,
     ReadyForWork,
 }
 
@@ -34,6 +37,7 @@ pub enum WorkAuthorityAction {
     ReviseMaterialityReview,
     ContinueResearchOrPrototype,
     EnterExistingQuestionLifecycle,
+    BeginOrContinueLearningDeliberation,
     BeginOrdinaryWork,
 }
 
@@ -51,6 +55,7 @@ pub struct WorkAuthorityResult {
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
     pub review_candidate_id: Option<crate::CandidateId>,
     pub engineering_choice_discovery_candidate_id: Option<crate::CandidateId>,
+    pub learning_deliberation_candidate_ids: Vec<crate::CandidateId>,
     pub review_revision: Option<u64>,
     pub stage: WorkAuthorityStage,
     pub disposition: WorkAuthorityDisposition,
@@ -59,6 +64,13 @@ pub struct WorkAuthorityResult {
     pub reason: String,
     pub satisfied_requirements: Vec<WorkAuthorityRequirement>,
     pub unresolved_requirements: Vec<WorkAuthorityRequirement>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct WorkAuthorityCandidateBasis<'a> {
+    pub review: Option<&'a CandidateRecord>,
+    pub discovery: Option<&'a CandidateRecord>,
+    pub learning_deliberations: &'a [CandidateRecord],
 }
 
 pub fn materiality_scope_token(dimension_id: &str) -> String {
@@ -161,8 +173,7 @@ pub fn bind_question_candidate_to_materiality(
 
 pub fn evaluate_work_authority(
     canonical: &CanonicalReadBasis,
-    review_candidate: Option<&CandidateRecord>,
-    discovery_candidate: Option<&CandidateRecord>,
+    candidate_basis: WorkAuthorityCandidateBasis<'_>,
     project_id: ProjectId,
     goal_context_id: ContextItemId,
     baseline_analysis_snapshot_id: AnalysisSnapshotId,
@@ -172,10 +183,12 @@ pub fn evaluate_work_authority(
         project_id,
         goal_context_id,
         baseline_analysis_snapshot_id,
-        review_candidate_id: review_candidate.map(|candidate| candidate.id),
-        engineering_choice_discovery_candidate_id: discovery_candidate
+        review_candidate_id: candidate_basis.review.map(|candidate| candidate.id),
+        engineering_choice_discovery_candidate_id: candidate_basis
+            .discovery
             .map(|candidate| candidate.id),
-        review_revision: review_candidate.map(|candidate| candidate.revision),
+        learning_deliberation_candidate_ids: Vec::new(),
+        review_revision: candidate_basis.review.map(|candidate| candidate.revision),
         stage: WorkAuthorityStage::MaterialityReview,
         disposition: WorkAuthorityDisposition::ReviewMissing,
         next_action: Some(WorkAuthorityAction::RecordMaterialityReview),
@@ -209,7 +222,7 @@ pub fn evaluate_work_authority(
             "workflow is not bound to the current user-stated Goal",
         );
     }
-    let Some(candidate) = review_candidate else {
+    let Some(candidate) = candidate_basis.review else {
         result.unresolved_requirements.push(requirement(
             None,
             "no Materiality Review exists; this is not evidence that no Question is required",
@@ -250,7 +263,7 @@ pub fn evaluate_work_authority(
             "the review omitted owner classification for every outcome dimension",
         );
     }
-    if let Err(reason) = validate_discovery_boundary(review, discovery_candidate) {
+    if let Err(reason) = validate_discovery_boundary(review, candidate_basis.discovery) {
         return invalid(result, None, reason);
     }
 
@@ -296,6 +309,28 @@ pub fn evaluate_work_authority(
         result.next_action = Some(WorkAuthorityAction::ContinueResearchOrPrototype);
         result.reason =
             "research or prototype evidence must feed a revised Materiality Review".to_owned();
+    } else if let Err(reason) = evaluate_learning_readiness(
+        canonical,
+        candidate,
+        review,
+        candidate_basis.learning_deliberations,
+        &mut result,
+    ) {
+        match reason {
+            LearningIssue::Pending(reason) => {
+                result.stage = WorkAuthorityStage::LearningDeliberation;
+                result.disposition = WorkAuthorityDisposition::LearningDeliberationPending;
+                result.next_action = Some(WorkAuthorityAction::BeginOrContinueLearningDeliberation);
+                result.reason = reason;
+            }
+            LearningIssue::Research(reason) => {
+                result.stage = WorkAuthorityStage::ResearchOrPrototype;
+                result.disposition = WorkAuthorityDisposition::ResearchRequired;
+                result.next_action = Some(WorkAuthorityAction::ContinueResearchOrPrototype);
+                result.reason = reason;
+            }
+            LearningIssue::Invalid(reason) => return invalid(result, None, reason),
+        }
     } else {
         result.stage = WorkAuthorityStage::ReadyForWork;
         result.disposition = WorkAuthorityDisposition::ReadyForWork;
@@ -348,6 +383,167 @@ fn validate_discovery_boundary(
         );
     }
     Ok(())
+}
+
+enum LearningIssue {
+    Pending(String),
+    Research(String),
+    Invalid(String),
+}
+
+fn evaluate_learning_readiness(
+    canonical: &CanonicalReadBasis,
+    review_candidate: &CandidateRecord,
+    review: &crate::MaterialityReview,
+    learning_candidates: &[CandidateRecord],
+    result: &mut WorkAuthorityResult,
+) -> Result<(), LearningIssue> {
+    let participation_active = match &review.learning_participation {
+        LearningParticipation::Inactive => false,
+        LearningParticipation::Active {
+            user_turn_source_id,
+            verbatim_statement,
+        } => {
+            let source = canonical
+                .sources
+                .iter()
+                .find(|basis| basis.source.id == *user_turn_source_id)
+                .ok_or_else(|| {
+                    LearningIssue::Invalid(
+                        "explicit learning participation Source is missing".to_owned(),
+                    )
+                })?;
+            let SourcePayload::CurrentHostUserTurn { turn, .. } = &source.source.payload else {
+                return Err(LearningIssue::Invalid(
+                    "learning participation is not grounded in a current-host user turn".to_owned(),
+                ));
+            };
+            if source.freshness != SourceFreshness::Current
+                || source.source.actor.kind != PrincipalKind::User
+                || verbatim_statement.trim().is_empty()
+                || !turn.contains(verbatim_statement)
+            {
+                return Err(LearningIssue::Invalid(
+                    "learning participation must be explicit, current, user-authored, and verbatim-grounded"
+                        .to_owned(),
+                ));
+            }
+            true
+        }
+    };
+    if !participation_active {
+        return Ok(());
+    }
+
+    let mut pending = false;
+    let mut research = false;
+    for dimension in &review.dimensions {
+        if !matches!(
+            dimension.disposition,
+            MaterialityDisposition::AgentOwnedImplementationChoice
+                | MaterialityDisposition::DelegatedImplementationChoice
+        ) || !matches!(
+            dimension.learning_value,
+            LearningValueAssessment::DeliberationWorthy { .. }
+        ) {
+            continue;
+        }
+        let candidate = learning_candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.project_id == review_candidate.project_id
+                    && candidate.kind == CandidateKind::LearningDeliberation
+                    && matches!(
+                        candidate.disposition,
+                        crate::CandidateDisposition::PendingOrRetained
+                    )
+                    && candidate.content.as_ref().is_some_and(|content| {
+                        content
+                            .learning_deliberation
+                            .as_ref()
+                            .is_some_and(|deliberation| {
+                                deliberation.materiality_review_candidate_id == review_candidate.id
+                                    && deliberation.dimension_id == dimension.dimension_id
+                            })
+                    })
+            })
+            .max_by_key(|candidate| (candidate.created_at, candidate.id));
+        let Some(candidate) = candidate else {
+            pending = true;
+            result.unresolved_requirements.push(requirement(
+                Some(dimension.dimension_id.clone()),
+                "explicit learning participation requires a pre-work Learning Deliberation for this agent-owned choice",
+                Vec::new(),
+            ));
+            continue;
+        };
+        let deliberation = candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.learning_deliberation.as_ref())
+            .ok_or_else(|| {
+                LearningIssue::Invalid(
+                    "Learning Deliberation Candidate content is unavailable".to_owned(),
+                )
+            })?;
+        if deliberation.goal_context_id != review.goal_context_id
+            || deliberation.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
+            || deliberation.engineering_choice_discovery_candidate_id
+                != review.engineering_choice_discovery_candidate_id
+            || deliberation.discovered_choice_ids != dimension.discovered_choice_ids
+            || deliberation.affected_scope != dimension.affected_scope
+        {
+            return Err(LearningIssue::Invalid(
+                "Learning Deliberation does not match the exact current choice, Goal, baseline, review, or affected scope"
+                    .to_owned(),
+            ));
+        }
+        result
+            .learning_deliberation_candidate_ids
+            .push(candidate.id);
+        match deliberation.state {
+            LearningDeliberationState::Completed { .. }
+            | LearningDeliberationState::Delegated { .. }
+            | LearningDeliberationState::Skipped { .. } => {
+                result.satisfied_requirements.push(requirement(
+                    Some(dimension.dimension_id.clone()),
+                    "the learning opportunity reached a terminal non-Decision state",
+                    Vec::new(),
+                ));
+            }
+            LearningDeliberationState::ResearchOrPrototypeRequired { .. } => {
+                research = true;
+                result.unresolved_requirements.push(requirement(
+                    Some(dimension.dimension_id.clone()),
+                    "the learning response requested bounded research or prototype evidence",
+                    Vec::new(),
+                ));
+            }
+            LearningDeliberationState::AwaitingInitialResponse
+            | LearningDeliberationState::AwaitingAgentFeedback { .. }
+            | LearningDeliberationState::FeedbackProvided { .. }
+            | LearningDeliberationState::ReconsiderationRequested { .. } => {
+                pending = true;
+                result.unresolved_requirements.push(requirement(
+                    Some(dimension.dimension_id.clone()),
+                    "the current Learning Deliberation has not reached a valid terminal state",
+                    Vec::new(),
+                ));
+            }
+        }
+    }
+    if research {
+        Err(LearningIssue::Research(
+            "bounded research or prototype evidence is required by a learning response".to_owned(),
+        ))
+    } else if pending {
+        Err(LearningIssue::Pending(
+            "one or more agent-owned learning opportunities require pre-work deliberation"
+                .to_owned(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 enum DimensionIssue {
@@ -433,6 +629,28 @@ fn evaluate_dimension(
                 ));
             }
             Ok(decisions)
+        }
+        MaterialityDisposition::AgentOwnedImplementationChoice => {
+            require_kind(dimension, WorkAuthorityBasisKind::ImplementationPreference)?;
+            if dimension.basis.explicit_delegation.is_some()
+                || !dimension.basis.contract_basis.is_empty()
+                || !dimension.basis.decision_basis.is_empty()
+                || dimension.basis.kinds.iter().any(|kind| {
+                    matches!(
+                        kind,
+                        WorkAuthorityBasisKind::AcceptedContract
+                            | WorkAuthorityBasisKind::ApplicableDecision
+                            | WorkAuthorityBasisKind::ExplicitDelegation
+                            | WorkAuthorityBasisKind::AgentRecommendation
+                    )
+                })
+            {
+                return Err(DimensionIssue::Invalid(
+                    "agent-owned implementation discretion must remain distinct from contract, Decision, delegation, and recommendation authority"
+                        .to_owned(),
+                ));
+            }
+            Ok(Vec::new())
         }
         MaterialityDisposition::DelegatedImplementationChoice => {
             require_kind(dimension, WorkAuthorityBasisKind::ExplicitDelegation)?;

@@ -31,11 +31,13 @@ pub use model::{
     ChildProcessOutcome, CommandVerificationDraft, EngineeringChoiceDiscoveryDraft,
     EngineeringChoiceDiscoveryOutcome, ForgettingOutcome, GroundedCheckpointDraft,
     GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
-    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
-    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
-    UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity, WorkflowDirective,
-    WorkflowDisposition, WorkflowRequirement, WorkflowStage,
+    LearningDeliberationDraft, LearningDeliberationOutcome, LearningFeedbackDraft,
+    LearningReconsiderationDraft, LearningResponseDraft, LongOperationResult,
+    MaterialityReviewDraft, MaterialityReviewOutcome, MaterialityReviewRevisionDraft,
+    OperationState, PartialOutcome, ProgressState, ProjectInitialization, ProjectResolution,
+    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome, WorkflowAction,
+    WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
+    WorkflowStage,
 };
 pub use operations::LocalOperations;
 pub use provider::{
@@ -44,9 +46,11 @@ pub use provider::{
 pub use volicord_inquiry::{
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceEvidenceState,
     EngineeringChoiceRelationship, EngineeringEffectCategory, ExplicitDelegationEvidence,
-    ExploratoryDisposition, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
-    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition,
-    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    ExploratoryDisposition, LearningAlternativeSelection, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueAssessment, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
+    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityCandidateBasis,
+    WorkAuthorityDisposition, WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

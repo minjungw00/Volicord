@@ -17,6 +17,7 @@ pub enum CandidateKind {
     PromotionProposal,
     EngineeringChoiceDiscovery,
     MaterialityReview,
+    LearningDeliberation,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -194,6 +195,7 @@ pub struct CandidateContent {
     pub question: Option<QuestionCandidate>,
     pub engineering_choice_discovery: Option<EngineeringChoiceDiscovery>,
     pub materiality_review: Option<MaterialityReview>,
+    pub learning_deliberation: Option<LearningDeliberation>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -311,12 +313,35 @@ pub enum ExploratoryDisposition {
 pub enum MaterialityDisposition {
     RepositoryOrEnvironmentFact,
     SettledAuthority,
+    AgentOwnedImplementationChoice,
     DelegatedImplementationChoice,
     ExploratoryUncertainty {
         disposition: ExploratoryDisposition,
     },
     UnresolvedUserOwnedOutcome {
         resolution_decision_id: Option<DecisionId>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum LearningParticipation {
+    Inactive,
+    Active {
+        user_turn_source_id: SourceId,
+        verbatim_statement: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum LearningValueAssessment {
+    Routine {
+        rationale: String,
+    },
+    DeliberationWorthy {
+        rationale: String,
+        consequence_significance: Vec<String>,
+        transferable_principles: Vec<String>,
+        non_obvious_trade_offs: Vec<String>,
     },
 }
 
@@ -330,6 +355,7 @@ pub struct MaterialityDimension {
     pub observable_signals: Vec<MaterialOutcomeSignal>,
     pub disposition: MaterialityDisposition,
     pub basis: WorkAuthorityBasis,
+    pub learning_value: LearningValueAssessment,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -341,13 +367,94 @@ pub struct MaterialityReview {
     pub current_review_analysis_snapshot_id: AnalysisSnapshotId,
     pub first_review_preceded_meaningful_mutation: bool,
     pub rationale: String,
+    pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialityReviewRevision {
     pub rationale: String,
+    pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningAlternativeSelection {
+    pub choice_id: String,
+    pub alternative_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum LearningInitialResponse {
+    Select {
+        selections: Vec<LearningAlternativeSelection>,
+    },
+    DelegateToAgent,
+    Skip,
+    RequestResearchOrPrototype {
+        evidence_state: EngineeringChoiceEvidenceState,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningRecommendation {
+    pub selections: Vec<LearningAlternativeSelection>,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningDeliberationRound {
+    pub initial_response_source_id: SourceId,
+    pub response: LearningInitialResponse,
+    pub user_rationale: Option<String>,
+    pub agent_feedback: Option<String>,
+    pub agent_recommendation: Option<LearningRecommendation>,
+    pub reconsideration_source_id: Option<SourceId>,
+    pub reconsideration_rationale: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum LearningDeliberationState {
+    AwaitingInitialResponse,
+    AwaitingAgentFeedback {
+        round: u32,
+    },
+    FeedbackProvided {
+        round: u32,
+    },
+    Completed {
+        round: u32,
+        selected_alternatives: Vec<LearningAlternativeSelection>,
+    },
+    Delegated {
+        round: u32,
+    },
+    Skipped {
+        round: u32,
+    },
+    ResearchOrPrototypeRequired {
+        round: u32,
+        evidence_state: EngineeringChoiceEvidenceState,
+    },
+    ReconsiderationRequested {
+        round: u32,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningDeliberation {
+    pub goal_context_id: ContextItemId,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub engineering_choice_discovery_candidate_id: CandidateId,
+    pub materiality_review_candidate_id: CandidateId,
+    pub dimension_id: String,
+    pub discovered_choice_ids: Vec<String>,
+    pub affected_scope: Vec<String>,
+    pub problem: String,
+    pub established_facts: Vec<String>,
+    pub choices: Vec<EngineeringChoice>,
+    pub rounds: Vec<LearningDeliberationRound>,
+    pub state: LearningDeliberationState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -61,6 +61,7 @@ fn observation(
             question: None,
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     }
 }
@@ -340,7 +341,7 @@ fn candidate_and_canonical_stores_reject_a_shared_database_path(
 }
 
 #[test]
-fn candidate_store_accepts_only_the_current_materiality_format(
+fn candidate_store_accepts_only_the_current_learning_deliberation_format(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;
     let current = root.path().join("current.sqlite3");
@@ -350,7 +351,7 @@ fn candidate_store_accepts_only_the_current_materiality_format(
     let non_current = root.path().join("non-current.sqlite3");
     drop(CandidateStore::open(&non_current)?);
     rusqlite::Connection::open(&non_current)?.execute(
-        "UPDATE metadata SET value = '4' WHERE key = 'schema_version'",
+        "UPDATE metadata SET value = '5' WHERE key = 'schema_version'",
         [],
     )?;
     let error = CandidateStore::open(&non_current)
@@ -360,6 +361,6 @@ fn candidate_store_accepts_only_the_current_materiality_format(
         error.kind(),
         volicord_inquiry::ErrorKind::UnsupportedVersion
     );
-    assert!(error.to_string().contains("current version is 5"));
+    assert!(error.to_string().contains("current version is 6"));
     Ok(())
 }

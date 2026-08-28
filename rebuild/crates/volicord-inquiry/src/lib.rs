@@ -37,11 +37,13 @@ pub use model::{
     CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment,
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscovery,
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, MaterialOutcomeSignal,
-    MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
-    MaterialityReviewRevision, MaterialityStatus, PromotionResult, QuestionCandidate,
-    QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis,
-    WorkAuthorityBasisKind,
+    ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, LearningAlternativeSelection,
+    LearningDeliberation, LearningDeliberationRound, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueAssessment, MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension,
+    MaterialityDisposition, MaterialityReview, MaterialityReviewRevision, MaterialityStatus,
+    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
+    SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,
@@ -53,6 +55,6 @@ pub use store::{
 };
 pub use work_authority::{
     bind_question_candidate_to_materiality, evaluate_work_authority, materiality_scope_token,
-    WorkAuthorityAction, WorkAuthorityDisposition, WorkAuthorityRequirement, WorkAuthorityResult,
-    WorkAuthorityStage,
+    WorkAuthorityAction, WorkAuthorityCandidateBasis, WorkAuthorityDisposition,
+    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
 };

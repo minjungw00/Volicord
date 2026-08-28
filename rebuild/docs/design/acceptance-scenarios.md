@@ -395,6 +395,15 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   함께 제시하고, 독립 dimension은 다른 선택 안에 숨기지 않는다.
 - current Goal과 exact retained pre-work Analysis Snapshot에 bind된 typed Materiality Review에서
   각 dimension의 evidence/disposition과 satisfied/unresolved requirement를 inspect할 수 있다.
+- Learning participation은 absent/inactive가 default이며 current-host user Source와 verbatim opt-in이
+  있을 때만 active다. `overview`/`working`/`deep` 설명 깊이나 inferred proficiency는 이를 대신하지 않는다.
+- Authority와 독립적으로 routine/deliberation-worthy를 분류하고, active learning에서 agent-owned
+  deliberation-worthy choice만 affected work 전에 Learning Deliberation으로 제시한다.
+- 최초 learning state에는 problem, facts, alternatives와 consequences만 있고 agent recommendation은
+  없다. User reasoning/selection 뒤에 feedback/recommendation을 기록하며 select/delegate/skip/
+  prototype/reconsideration을 Decision과 구분한다.
+- User-owned choice는 active learning에서도 existing Question/current-host response/Decision path를
+  유지하고 routine helper/naming choice는 interruption을 만들지 않는다.
 - 첫 review가 meaningful mutation 뒤 backfill되지 않았고, 모든 blocking requirement가
   해소된 경우에만 explicit `ready_for_work`를 표시한다.
 - 현재 frontier의 질문만 배경, 선택지, 권장안, trade-off와 uncertainty와 함께 제시한다.
@@ -593,6 +602,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
 - broad Goal 또는 feature label을 subordinate discovered choice의 authority로 사용
 - independent choice를 coupling evidence 없이 한 Materiality dimension으로 collapse
+- learning participation을 추론하거나 routine detail을 learning blocker로 만들기
+- user-owned authority를 learning-only select/delegate/skip으로 해결하기
+- initial learning response 전에 structured agent recommendation을 기록하기
 - user review가 없다는 이유만으로 실제 완료 상태 왜곡
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint 생성
 
@@ -605,6 +617,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - missing/unresolved/late review의 Checkpoint refusal, valid no-Question와 applicable-Decision path
 - restart 뒤 unresolved Candidate가 ready/completed로 변하지 않고 resolved review는 재사용됨
+- normal/active learning mode, routine non-blocking, user-owned authority priority, pending-learning
+  Checkpoint refusal, response-before-feedback ordering과 selected/delegated/skipped/prototype/
+  reconsideration restart state
 - work, verification, review와 acceptance 상태 독립성
 - label과 invocation이 다른 fixture의 exact invocation fingerprint, Source-ID linkage,
   restart/portable round trip과 raw invocation non-retention

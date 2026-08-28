@@ -3,7 +3,10 @@ use volicord_context::{
     CheckpointId, CheckpointKind, CommandTermination, ContextItemId, ContextItemRole, DecisionId,
     LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
 };
-use volicord_inquiry::{CandidateFreshness, CandidateId, EngineeringChoice, MaterialityDimension};
+use volicord_inquiry::{
+    CandidateFreshness, CandidateId, EngineeringChoice, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation, MaterialityDimension,
+};
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
     ProcessTreeCleanup,
@@ -139,6 +142,7 @@ pub struct MaterialityReviewDraft {
     pub session: String,
     pub source_operation: String,
     pub rationale: String,
+    pub learning_participation: LearningParticipation,
     pub engineering_choice_discovery_candidate_id: CandidateId,
     pub dimensions: Vec<MaterialityDimension>,
 }
@@ -166,7 +170,55 @@ pub struct MaterialityReviewRevisionDraft {
     pub project_id: volicord_context::ProjectId,
     pub review_candidate_id: CandidateId,
     pub rationale: String,
+    pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningDeliberationDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub review_candidate_id: CandidateId,
+    pub dimension_id: String,
+    pub session: String,
+    pub source_operation: String,
+    pub problem: String,
+    pub established_facts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningResponseDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub deliberation_candidate_id: CandidateId,
+    pub host: String,
+    pub session: String,
+    pub user_turn: String,
+    pub response: LearningInitialResponse,
+    pub user_rationale: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningFeedbackDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub deliberation_candidate_id: CandidateId,
+    pub feedback: String,
+    pub recommendation: LearningRecommendation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningReconsiderationDraft {
+    pub project_id: volicord_context::ProjectId,
+    pub deliberation_candidate_id: CandidateId,
+    pub host: String,
+    pub session: String,
+    pub user_turn: String,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningDeliberationOutcome {
+    pub deliberation_candidate_id: CandidateId,
+    pub revision: u64,
+    pub state: LearningDeliberationState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -187,6 +239,7 @@ pub enum WorkflowStage {
     RepositoryBaseline,
     EngineeringChoiceDiscovery,
     MaterialityReview,
+    LearningDeliberation,
     ResearchOrPrototype,
     QuestionCandidate,
     Inquiry,
@@ -204,6 +257,7 @@ pub enum WorkflowDisposition {
     EngineeringChoiceDiscoveryRequired,
     ReviewMissing,
     ReviewInvalid,
+    LearningDeliberationPending,
     ResearchRequired,
     QuestionRequired,
     CandidateResearchRequired,

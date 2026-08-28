@@ -605,6 +605,7 @@ fn viewer_candidate(
                 question: None,
                 engineering_choice_discovery: None,
                 materiality_review: None,
+                learning_deliberation: None,
             },
         })
         .expect("submit Candidate")

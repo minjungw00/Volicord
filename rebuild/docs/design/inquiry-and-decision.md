@@ -221,6 +221,7 @@ explicit delegation 또는 research/prototype/defer/revisit basis와 함께 다�
 
 - repository/environment fact
 - already settled authority
+- agent-owned implementation choice
 - explicitly delegated implementation choice
 - exploratory uncertainty
 - unresolved material user-owned outcome
@@ -229,7 +230,9 @@ Public API semantics, CLI compatibility/exit behavior, observable failure policy
 privacy/external disclosure, security posture, user-visible default와 maintenance/support policy는
 강한 discovery signal이다. Signal 자체가 user ownership을 정하지는 않지만 settled/delegated
 disposition은 inspectable authority가 필요하다. Agent recommendation, implementation
-preference와 library/convention은 authority basis가 될 수 없다.
+preference와 library/convention은 user authority basis가 될 수 없다. Agent-owned implementation
+discretion은 `implementation preference`로 명시하되 contract, Decision, delegation 또는
+recommendation authority로 가장하지 않는다.
 
 Bounded counterfactual로 다른 credible implementation이 externally observable contract,
 durable effect, compatibility/support commitment, privacy/security posture 또는 다른 material
@@ -245,11 +248,45 @@ prototype evidence가 alternatives를 바꾸면 같은 Candidate revision으로 
 Restart는 current Candidate revision과 canonical Question/Decision state에서 workflow를 다시
 평가하고 unresolved state를 ready로 바꾸지 않는다.
 
-Shared work-authority result는 current stage, overall disposition, next required Volicord action,
+Shared work-readiness result는 current stage, overall disposition, next required Volicord action,
 blocking 여부, reason/basis, satisfied requirements와 unresolved requirements를 제공한다.
 `ready_for_work`는 current Goal/baseline review가 timely하고 모든 dimension의 evidence가 current이며
-unresolved user-owned 또는 evidence-required exploratory dimension이 없을 때만 가능하다.
+unresolved user-owned, evidence-required exploratory dimension 또는 active required Learning
+Deliberation이 없을 때만 가능하다.
 이 result는 일반 file/command admission이 아니다.
+
+### Learning participation, assessment와 Deliberation
+
+Materiality Review는 bounded work/session에 `inactive` 또는 `active` learning participation을
+보존한다. Active는 exact current-host user-turn Source와 그 turn에 포함된 non-empty verbatim
+statement가 필요하다. Proficiency, behavior, conversation style, prior choice나 explanation depth로
+추론하지 않는다. Review revision은 state를 바꿀 수 있지만 Project/Goal/baseline 밖의 영구
+preference로 승격하지 않는다.
+
+각 discovered dimension은 authority와 별도로 `routine` 또는 `deliberation-worthy` learning value를
+가진다. Deliberation-worthy는 consequence significance, future engineering problem에 대한
+transferability와 non-obvious trade-off의 bounded evidence를 모두 요구한다. Credible alternatives는
+Engineering Choice Discovery에서 온다. User-owned dimension은 learning value와 무관하게 기존
+Question/Decision path를 사용한다. Settled fact/contract와 routine detail은 learning blocker를 만들지
+않는다.
+
+Active participation에서 agent-owned 또는 explicitly delegated agent choice가
+deliberation-worthy일 때만 exact review dimension에 bind된 `Learning Deliberation` Session
+Candidate가 필요하다. 최초 `awaiting_initial_response` state는 problem, established facts, discovered
+choices, alternatives와 consequences를 제공하지만 round나 agent recommendation을 포함하지 않는다.
+Transition은 다음 ordering을 따른다.
+
+1. current-host user가 select, delegate, skip 또는 research/prototype를 요청하고 rationale를 선택적으로 남긴다.
+2. select 뒤에만 agent feedback과 recommendation을 기록할 수 있다.
+3. feedback 뒤 selected alternatives를 current bounded implementation basis로 complete하거나 explicit
+   current-host reconsideration으로 다시 연다.
+
+Delegate와 skip은 즉시 terminal non-Decision state이며 research/prototype request는 evidence-required
+state다. 어느 learning-only state도 canonical Decision을 만들거나 user-owned authority blocker를
+해결하지 않는다. Pending/feedback/reconsideration state는 restart 뒤에도 learning blocker이고,
+completed/delegated/skipped만 affected work를 해제한다. Durable lesson이 Recall에 필요하면 별도 explicit
+user Source를 가진 기존 `Context Item` role `Learning`을 사용하며 Candidate content에서 permanent
+learner profile을 추론하지 않는다.
 
 User-owned dimension을 Question Candidate로 옮길 때 review의 Source와 affected scope를 재사용하고
 stable dimension scope token을 추가할 수 있다. 그 helper는 Candidate만 만들며 research,
@@ -488,8 +525,8 @@ missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이�
 
 같은 operation은 current Goal과 exact baseline에 bind된 retained Materiality Review를 찾아
 current changed path/Decision applicability로 work authority를 다시 평가한다. Missing review,
-wrong Goal/baseline, late first review, unresolved user-owned dimension 또는 unfinished
-research/prototype는 Checkpoint publication 전에 거부한다. Resolved user-owned outcome과
+wrong Goal/baseline, late first review, unresolved user-owned dimension, active pending Learning
+Deliberation 또는 unfinished research/prototype는 Checkpoint publication 전에 거부한다. Resolved user-owned outcome과
 Inquiry-time explicit delegation에 사용된 applicable Decision은 Checkpoint의 applied Decision
 목록에도 명시되어야 한다. Current Goal의 exact user-turn Source와 typed verbatim/scope
 evidence로 이미 주어진 bounded implementation delegation은 새 Decision을 제조하지 않고
@@ -497,6 +534,9 @@ explicit-delegation satisfied requirement로 남는다. Settled contract/reposit
 basis는 Decision이나 delegation으로 가장하지 않고 각자의
 satisfied requirement로 남는다. Restart 뒤에도 Candidate revision과 canonical state에서 같은
 evaluation을 재구성하므로 pause나 prior attempt가 unresolved authority를 완료로 바꾸지 않는다.
+같은 evaluation은 learning Candidate revision/state도 읽으므로 restart나 Checkpoint attempt가 pending
+learning opportunity를 ready로 바꾸지 않는다. Completed selection은 bounded implementation basis로,
+delegate/skip은 non-Decision terminal state로 구분한다.
 
 Executed verification fact는 existing `source_id`로 정확히 하나의 Command Source에
 연결된다. Current host가 보낸 bounded label은 presentation이고 exact transient invocation은

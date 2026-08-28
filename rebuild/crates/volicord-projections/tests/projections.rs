@@ -151,6 +151,7 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
             question: None,
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     })? {
         SubmissionOutcome::Stored(value) => value,

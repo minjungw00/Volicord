@@ -733,6 +733,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
   `ready_for_work`
 - same Goal/baseline의 prior Engineering Choice Discovery, exact choice identity mapping,
   independent/coupled completeness와 effect-category non-authority
+- inactive/explicit-active learning participation, independent routine/deliberation-worthy assessment,
+  agent-owned Learning Deliberation과 user-owned Question priority
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection
 - bounded work 뒤 처음 만든 Analysis Snapshot을 Checkpoint baseline으로 제출하는 rollout
 - completed, paused와 handoff boundary
@@ -753,6 +755,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - fact/settled/delegated/exploratory/user-owned work-authority behavior와 false-authority rejection
 - hidden API/failure와 persistence/reload choice non-collapse, legitimate coupling과 trivial internal
   detail non-discovery
+- normal-mode autonomy, active pending blocker/Checkpoint refusal, response-before-feedback ordering,
+  select/delegate/skip/prototype/reconsideration terminal/research state와 restart reconstruction
 - Candidate Inspection no-mutation과 failure isolation
 
 ### 통과 조건
@@ -771,6 +775,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - Restart 뒤 Materiality Review revision과 unresolved requirement가 유지되고, agent
   recommendation/library convention/implementation preference/fake delegation이 ready authority로
   바뀌지 않는다.
+- Restart 뒤 pending Learning Deliberation은 pending이고 completed selection은 exact bounded
+  implementation basis로 남는다. Delegate/skip은 Decision을 만들지 않고 prototype request는
+  research state이며, user-owned outcome은 learning transition으로 해제되지 않는다.
 
 ## 14. V10 — 기존 process/filesystem primitive 재사용 평가
 

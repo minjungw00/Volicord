@@ -371,6 +371,7 @@ fn record_ready_review(
         session: "grounded-checkpoint-fixture".into(),
         source_operation: "pre-work-review".into(),
         rationale: "repository-scoped fixture has no unresolved user-owned outcome".into(),
+        learning_participation: volicord_operations::LearningParticipation::Inactive,
         engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
         dimensions: vec![MaterialityDimension {
             dimension_id: "bounded-repository-outcome".into(),
@@ -388,6 +389,9 @@ fn record_ready_review(
                 decision_basis: Vec::new(),
                 research_basis: Vec::new(),
                 explicit_delegation: None,
+            },
+            learning_value: volicord_operations::LearningValueAssessment::Routine {
+                rationale: "the repository fact has no learning fork".into(),
             },
         }],
     })?;

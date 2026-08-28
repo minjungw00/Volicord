@@ -618,6 +618,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             question: None,
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     })? {
         SubmissionOutcome::Stored(_) => {}

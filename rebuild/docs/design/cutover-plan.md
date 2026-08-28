@@ -179,6 +179,7 @@ Projection and Documents
 
 기능:
 
+- Engineering Choice Discovery와 independent authority/learning assessment
 - material Question Candidate
 - fact research before asking
 - dependency frontier
@@ -186,6 +187,7 @@ Projection and Documents
 - current host user response linkage
 - delegation, research, prototype와 deferment
 - pause/resume와 recommendation batch choice
+- explicit learning participation과 ordered Learning Deliberation restart
 - source-grounded Checkpoint
 - first project-scoped bounded Recall
 - Decision applicability와 revisit trigger
@@ -196,6 +198,7 @@ Projection and Documents
 - 같은 판단을 다른 interface에서 다시 입력하지 않음
 - 이미 답한 Question을 반복하지 않음
 - 사용자 Decision과 agent recommendation이 분리됨
+- normal-mode autonomy와 active learning blocker가 authority blocker와 구분됨
 - ordinary repository write가 차단되지 않음
 - unrelated dirty change가 Checkpoint에 귀속되지 않음
 - Recall이 canonical state를 변경하지 않음

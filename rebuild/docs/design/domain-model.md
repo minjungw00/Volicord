@@ -91,6 +91,16 @@ Materiality Review의 각 dimension은 discovered choice identity를 정확히 �
 Independent choice 여러 개를 broad Goal이나 feature label만으로 한 dimension에 넣지 않으며,
 하나의 dimension이 여러 choice를 참조하려면 complete symmetric coupled set이어야 한다.
 
+`Learning Deliberation`도 Session Candidate다. Materiality Review가 explicit active learning
+participation, agent-owned disposition과 deliberation-worthy learning value를 모두 가진 dimension을
+식별할 때 exact discovery/review/Goal/baseline/choice/scope를 보존한다. 최초 state는 problem,
+established facts, alternatives와 consequences만 가지며 user response 전 agent feedback 또는
+recommendation을 갖지 않는다. Current-host user response 뒤 select는 agent feedback을 기다리고,
+delegate/skip은 terminal non-Decision, research/prototype request는 evidence-required state가 된다.
+Feedback 뒤 selected alternative를 bounded implementation basis로 완료하거나 reconsideration으로
+다시 열 수 있다. Revision과 current state는 restart 뒤 유지되지만 canonical Decision이나 영구
+proficiency profile은 아니다.
+
 Agent, Repository Intelligence, Inquiry and Decision, Host and User Adapter, Local
 Operations와 Optional Semantic Provider Boundary는 각자의 provenance를 가진
 Candidate를 만들 수 있다. User input도 아직 exact Question linkage나 explicit
@@ -110,7 +120,7 @@ retention expiry, access frequency 또는 삭제는 Canonical Context를 수정�
 | Attribute | Required meaning |
 |---|---|
 | `candidate_identity` | local Project context 안에서 Candidate를 다른 Candidate와 구분하는 identity |
-| `candidate_kind` | observation, hypothesis, semantic claim, Engineering Choice Discovery, Question candidate, Checkpoint candidate, Materiality Review 또는 promotion proposal 같은 잠정 정보의 종류 |
+| `candidate_kind` | observation, hypothesis, semantic claim, Engineering Choice Discovery, Materiality Review, Learning Deliberation, Question/Checkpoint candidate 또는 promotion proposal 같은 잠정 정보의 종류 |
 | `origin_and_provenance` | 생성 actor/subsystem/session과 repository, command, host turn, provider 또는 generated basis |
 | `collection_scope` | 수집이 허용된 Project/session/source/operation 또는 더 좁은 scope |
 | `creation_or_observation_basis` | 생성/관찰 시각과 사용한 Source, snapshot, execution 또는 request basis |

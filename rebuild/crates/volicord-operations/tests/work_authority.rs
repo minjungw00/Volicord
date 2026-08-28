@@ -16,9 +16,13 @@ use volicord_operations::{
     CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
     EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
     EngineeringEffectCategory, ExplicitDelegationEvidence, ExploratoryDisposition,
-    GroundedCheckpointDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
-    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
+    GroundedCheckpointDraft, LearningAlternativeSelection, LearningDeliberationDraft,
+    LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
+    LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
+    LearningResponseDraft, LearningValueAssessment, LocalOperations, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    WorkAuthorityDisposition, WorkAuthorityStage,
 };
 
 fn dimension(
@@ -44,7 +48,383 @@ fn dimension(
             research_basis: Vec::new(),
             explicit_delegation: None,
         },
+        learning_value: volicord_operations::LearningValueAssessment::Routine {
+            rationale: "normal-mode authority regression fixture".into(),
+        },
     }
+}
+
+#[test]
+fn learning_worthy_agent_choice_is_non_blocking_in_normal_mode_but_blocks_when_explicitly_active(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let normal = fixture()?;
+    let normal_source = normal.baseline.repository_source.identity();
+    let normal_dimension =
+        agent_owned_dimension("error-boundary", normal_source, deliberation_worthy());
+    let normal_review = review(&normal, vec![normal_dimension])?;
+    assert_eq!(
+        readiness(&normal, &normal_review)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let active = fixture_with_goal(
+        "Implement the error boundary. I want to learn before meaningful engineering choices.",
+    )?;
+    let active_source = active.baseline.repository_source.identity();
+    let active_dimension =
+        agent_owned_dimension("error-boundary", active_source, deliberation_worthy());
+    let active_review = review_with_learning(
+        &active,
+        vec![engineering_choice(
+            "error-boundary",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            active_source,
+        )],
+        vec![active_dimension],
+        active_learning(&active),
+    )?;
+    let pending = readiness(&active, &active_review)?;
+    assert_eq!(pending.stage, WorkAuthorityStage::LearningDeliberation);
+    assert_eq!(
+        pending.disposition,
+        WorkAuthorityDisposition::LearningDeliberationPending
+    );
+    assert!(pending.blocking);
+    Ok(())
+}
+
+#[test]
+fn learning_deliberation_orders_response_before_feedback_survives_restart_and_retains_selection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the error boundary. I want to learn before meaningful engineering choices.",
+    )?;
+    let source = fixture.baseline.repository_source.identity();
+    let review = review_with_learning(
+        &fixture,
+        vec![engineering_choice(
+            "error-boundary",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            source,
+        )],
+        vec![agent_owned_dimension(
+            "error-boundary",
+            source,
+            deliberation_worthy(),
+        )],
+        active_learning(&fixture),
+    )?;
+    let deliberation = begin_learning(&fixture, &review, "error-boundary")?;
+    assert_eq!(
+        deliberation.state,
+        LearningDeliberationState::AwaitingInitialResponse
+    );
+    let stored = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id == deliberation.deliberation_candidate_id)
+        .ok_or("Learning Deliberation missing")?;
+    let pre_response = stored
+        .content
+        .and_then(|content| content.learning_deliberation)
+        .ok_or("Learning Deliberation content missing")?;
+    assert!(pre_response.rounds.is_empty());
+    let premature_feedback = fixture
+        .operations
+        .provide_learning_feedback(LearningFeedbackDraft {
+            project_id: fixture.project_id,
+            deliberation_candidate_id: deliberation.deliberation_candidate_id,
+            feedback: "premature feedback".into(),
+            recommendation: LearningRecommendation {
+                selections: selection("error-boundary", "approach-a"),
+                rationale: "premature recommendation".into(),
+            },
+        })
+        .expect_err("feedback cannot anchor the initial response");
+    assert_eq!(premature_feedback.message(), "Learning feedback failed");
+    let unchanged = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id == deliberation.deliberation_candidate_id)
+        .and_then(|candidate| candidate.content)
+        .and_then(|content| content.learning_deliberation)
+        .ok_or("Learning Deliberation missing after rejected feedback")?;
+    assert_eq!(
+        unchanged.state,
+        LearningDeliberationState::AwaitingInitialResponse
+    );
+    assert!(unchanged.rounds.is_empty());
+
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let bypass = reopened
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("Checkpoint cannot bypass pending learning deliberation");
+    assert!(bypass.message().contains("work authority is not resolved"));
+    assert_eq!(
+        reopened
+            .work_readiness(
+                fixture.project_id,
+                fixture.goal_id,
+                fixture.baseline.identity,
+                review.review_candidate_id,
+                vec!["src/lib.rs".into()],
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )?
+            .stage,
+        WorkAuthorityStage::LearningDeliberation
+    );
+    let response = reopened.record_learning_response(LearningResponseDraft {
+        project_id: fixture.project_id,
+        deliberation_candidate_id: deliberation.deliberation_candidate_id,
+        host: "codex".into(),
+        session: "learning-response".into(),
+        user_turn: "I choose approach-a because it isolates failures.".into(),
+        response: LearningInitialResponse::Select {
+            selections: selection("error-boundary", "approach-a"),
+        },
+        user_rationale: Some("it isolates failures at the boundary".into()),
+    })?;
+    assert!(matches!(
+        response.state,
+        LearningDeliberationState::AwaitingAgentFeedback { .. }
+    ));
+    let feedback = reopened.provide_learning_feedback(LearningFeedbackDraft {
+        project_id: fixture.project_id,
+        deliberation_candidate_id: deliberation.deliberation_candidate_id,
+        feedback: "The boundary isolates failures, while adding one translation layer.".into(),
+        recommendation: LearningRecommendation {
+            selections: selection("error-boundary", "approach-a"),
+            rationale: "the containment benefit outweighs the local layer".into(),
+        },
+    })?;
+    assert!(matches!(
+        feedback.state,
+        LearningDeliberationState::FeedbackProvided { .. }
+    ));
+    let completed = reopened.complete_learning_deliberation(
+        fixture.project_id,
+        deliberation.deliberation_candidate_id,
+    )?;
+    assert!(matches!(
+        completed.state,
+        LearningDeliberationState::Completed {
+            ref selected_alternatives,
+            ..
+        } if selected_alternatives == &selection("error-boundary", "approach-a")
+    ));
+    assert_eq!(
+        readiness(&fixture, &review)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
+    let learning_statement = "I learned why error-boundary uses approach-a.";
+    let learning_context = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".into(),
+        "learning-trail".into(),
+        learning_statement.into(),
+        ContextItemRole::Learning,
+        learning_statement.into(),
+    )?;
+    assert_eq!(learning_context.role, ContextItemRole::Learning);
+    Ok(())
+}
+
+#[test]
+fn active_learning_keeps_routine_and_user_owned_choices_on_their_existing_paths(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let routine = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let routine_source = routine.baseline.repository_source.identity();
+    let routine_review = review_with_learning(
+        &routine,
+        vec![engineering_choice(
+            "private-helper-name",
+            EngineeringEffectCategory::ImplementationInternal,
+            routine_source,
+        )],
+        vec![agent_owned_dimension(
+            "private-helper-name",
+            routine_source,
+            LearningValueAssessment::Routine {
+                rationale: "a private helper name has no transferable trade-off".into(),
+            },
+        )],
+        active_learning(&routine),
+    )?;
+    assert_eq!(
+        readiness(&routine, &routine_review)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let user_owned = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let user_source = user_owned.baseline.repository_source.identity();
+    let mut outcome = dimension(
+        "public-failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::AgentRecommendation],
+        user_source,
+    );
+    outcome.learning_value = deliberation_worthy();
+    let user_review = review_with_learning(
+        &user_owned,
+        vec![engineering_choice(
+            "public-failure-policy",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            user_source,
+        )],
+        vec![outcome],
+        active_learning(&user_owned),
+    )?;
+    let blocked = readiness(&user_owned, &user_review)?;
+    assert_eq!(blocked.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(
+        blocked.disposition,
+        WorkAuthorityDisposition::QuestionRequired
+    );
+    assert!(begin_learning(&user_owned, &user_review, "public-failure-policy").is_err());
+    Ok(())
+}
+
+#[test]
+fn delegate_skip_and_prototype_learning_responses_are_non_decision_transitions(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (response, expected_ready) in [
+        (LearningInitialResponse::DelegateToAgent, true),
+        (LearningInitialResponse::Skip, true),
+        (
+            LearningInitialResponse::RequestResearchOrPrototype {
+                evidence_state: EngineeringChoiceEvidenceState::PrototypeRequired,
+            },
+            false,
+        ),
+    ] {
+        let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+        let source = fixture.baseline.repository_source.identity();
+        let review = review_with_learning(
+            &fixture,
+            vec![engineering_choice(
+                "storage-strategy",
+                EngineeringEffectCategory::PersistenceOrLifetime,
+                source,
+            )],
+            vec![agent_owned_dimension(
+                "storage-strategy",
+                source,
+                deliberation_worthy(),
+            )],
+            active_learning(&fixture),
+        )?;
+        let deliberation = begin_learning(&fixture, &review, "storage-strategy")?;
+        fixture
+            .operations
+            .record_learning_response(LearningResponseDraft {
+                project_id: fixture.project_id,
+                deliberation_candidate_id: deliberation.deliberation_candidate_id,
+                host: "codex".into(),
+                session: "learning-terminal".into(),
+                user_turn: "Use the requested learning disposition.".into(),
+                response,
+                user_rationale: None,
+            })?;
+        let state = readiness(&fixture, &review)?;
+        assert_eq!(
+            state.stage,
+            if expected_ready {
+                WorkAuthorityStage::ReadyForWork
+            } else {
+                WorkAuthorityStage::ResearchOrPrototype
+            }
+        );
+        assert!(fixture
+            .operations
+            .canonical_basis(fixture.project_id)?
+            .active_decisions
+            .is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn reconsideration_reopens_learning_without_changing_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let source = fixture.baseline.repository_source.identity();
+    let review = review_with_learning(
+        &fixture,
+        vec![engineering_choice(
+            "cache-lifetime",
+            EngineeringEffectCategory::PersistenceOrLifetime,
+            source,
+        )],
+        vec![agent_owned_dimension(
+            "cache-lifetime",
+            source,
+            deliberation_worthy(),
+        )],
+        active_learning(&fixture),
+    )?;
+    let deliberation = begin_learning(&fixture, &review, "cache-lifetime")?;
+    fixture
+        .operations
+        .record_learning_response(LearningResponseDraft {
+            project_id: fixture.project_id,
+            deliberation_candidate_id: deliberation.deliberation_candidate_id,
+            host: "codex".into(),
+            session: "learning-choice".into(),
+            user_turn: "I select approach-a.".into(),
+            response: LearningInitialResponse::Select {
+                selections: selection("cache-lifetime", "approach-a"),
+            },
+            user_rationale: Some("it is initially simpler".into()),
+        })?;
+    fixture
+        .operations
+        .provide_learning_feedback(LearningFeedbackDraft {
+            project_id: fixture.project_id,
+            deliberation_candidate_id: deliberation.deliberation_candidate_id,
+            feedback: "The simpler lifetime may increase repeated work.".into(),
+            recommendation: LearningRecommendation {
+                selections: selection("cache-lifetime", "approach-b"),
+                rationale: "the bounded cache amortizes repeated work".into(),
+            },
+        })?;
+    let reconsidered =
+        fixture
+            .operations
+            .reconsider_learning_deliberation(LearningReconsiderationDraft {
+                project_id: fixture.project_id,
+                deliberation_candidate_id: deliberation.deliberation_candidate_id,
+                host: "codex".into(),
+                session: "learning-reconsideration".into(),
+                user_turn: "I want to reconsider after that feedback.".into(),
+                rationale: "the repeated-work cost changes my reasoning".into(),
+            })?;
+    assert!(matches!(
+        reconsidered.state,
+        LearningDeliberationState::ReconsiderationRequested { .. }
+    ));
+    assert_eq!(
+        readiness(&fixture, &review)?.stage,
+        WorkAuthorityStage::LearningDeliberation
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
+    Ok(())
 }
 
 fn delegation_evidence(
@@ -147,6 +527,20 @@ fn review_with_choices(
     choices: Vec<EngineeringChoice>,
     dimensions: Vec<MaterialityDimension>,
 ) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    review_with_learning(
+        fixture,
+        choices,
+        dimensions,
+        LearningParticipation::Inactive,
+    )
+}
+
+fn review_with_learning(
+    fixture: &Fixture,
+    choices: Vec<EngineeringChoice>,
+    dimensions: Vec<MaterialityDimension>,
+    learning_participation: LearningParticipation,
+) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
     let discovery = fixture.operations.record_engineering_choice_discovery(
         EngineeringChoiceDiscoveryDraft {
             project_id: fixture.project_id,
@@ -168,9 +562,68 @@ fn review_with_choices(
             source_operation: "pre-work-review".to_owned(),
             rationale: "review every independently material outcome before ordinary work"
                 .to_owned(),
+            learning_participation,
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions,
         })
+}
+
+fn agent_owned_dimension(
+    id: &str,
+    source: volicord_context::SourceId,
+    learning_value: LearningValueAssessment,
+) -> MaterialityDimension {
+    let mut value = dimension(
+        id,
+        MaterialityDisposition::AgentOwnedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ImplementationPreference],
+        source,
+    );
+    value.observable_signals = Vec::new();
+    value.material_consequences = vec!["changes a transferable implementation trade-off".into()];
+    value.learning_value = learning_value;
+    value
+}
+
+fn deliberation_worthy() -> LearningValueAssessment {
+    LearningValueAssessment::DeliberationWorthy {
+        rationale: "the fork is meaningful and transferable".into(),
+        consequence_significance: vec!["changes failure containment and maintenance cost".into()],
+        transferable_principles: vec!["separate policy from mechanism".into()],
+        non_obvious_trade_offs: vec!["simpler code can reduce later observability".into()],
+    }
+}
+
+fn active_learning(fixture: &Fixture) -> LearningParticipation {
+    LearningParticipation::Active {
+        user_turn_source_id: fixture.goal_source_id,
+        verbatim_statement: "I want to learn".into(),
+    }
+}
+
+fn begin_learning(
+    fixture: &Fixture,
+    review: &volicord_operations::MaterialityReviewOutcome,
+    dimension_id: &str,
+) -> Result<volicord_operations::LearningDeliberationOutcome, volicord_operations::Error> {
+    fixture
+        .operations
+        .begin_learning_deliberation(LearningDeliberationDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: review.review_candidate_id,
+            dimension_id: dimension_id.into(),
+            session: "work-authority-session".into(),
+            source_operation: "pre-work-learning".into(),
+            problem: format!("reason about {dimension_id} before implementation"),
+            established_facts: vec!["two credible alternatives are source-grounded".into()],
+        })
+}
+
+fn selection(choice_id: &str, alternative_id: &str) -> Vec<LearningAlternativeSelection> {
+    vec![LearningAlternativeSelection {
+        choice_id: choice_id.into(),
+        alternative_id: alternative_id.into(),
+    }]
 }
 
 fn engineering_choice(
@@ -659,6 +1112,7 @@ fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision
             project_id: fixture.project_id,
             review_candidate_id: recorded.review_candidate_id,
             rationale: "bounded research resolved the implementation uncertainty".to_owned(),
+            learning_participation: volicord_operations::LearningParticipation::Inactive,
             dimensions: vec![exploratory],
         })?;
     assert_eq!(revised.review_revision, 2);
@@ -1014,6 +1468,7 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
             }),
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     };
     let bound =
@@ -1104,6 +1559,7 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
             project_id: fixture.project_id,
             review_candidate_id: review_outcome.review_candidate_id,
             rationale: "the exact current-host response produced an applicable Decision".to_owned(),
+            learning_participation: volicord_operations::LearningParticipation::Inactive,
             dimensions: vec![resolved, resolved_coupled],
         })?;
     let ready = readiness(&fixture, &revised)?;

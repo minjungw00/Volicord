@@ -295,6 +295,13 @@ transferability, subtlety와 credible alternatives 때문에 학습 가치가 �
 conversation style 또는 `overview`/`working`/`deep` 설명 깊이에서 추론하지 않으며, 활성화되지
 않은 normal mode는 기존의 low-interruption agent autonomy를 유지한다.
 
+초기 participation state는 이 bounded Goal/baseline review의 `inactive` 또는 exact current-host
+user-turn Source와 verbatim statement로 입증한 `active`뿐이다. Agent-owned choice의 learning
+assessment는 `routine` 또는 significance, transferability와 non-obvious trade-off evidence를 가진
+`deliberation-worthy`뿐이며 authority를 바꾸지 않는다. Active learning interaction은 Session
+Candidate에 남고 select/delegate/skip은 user-owned Decision을 만들지 않는다. 더 오래 보존할
+가치가 있는 lesson은 user가 명시적으로 기록한 기존 `Learning` Context Item과 Source를 사용한다.
+
 ## 15. 문서 출력
 
 첫 필수 문서 유형은 다음 네 가지다.

@@ -4,12 +4,13 @@ use crate::{
     ChildProcessOutcome, CodexCliProviderConfig, CodexCliSemanticProvider,
     CommandVerificationDraft, EngineeringChoiceDiscoveryDraft, EngineeringChoiceDiscoveryOutcome,
     Error, ForgettingOutcome, GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue,
-    HealthIssueKind, HealthReport, HealthState, LongOperationResult, MaterialityReviewDraft,
-    MaterialityReviewOutcome, MaterialityReviewRevisionDraft, OperationState, PartialOutcome,
-    ProgressState, ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind,
-    RepairOutcome, RuntimeLayout, UserContextRecordingOutcome, WorkflowAction,
-    WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
-    WorkflowStage,
+    HealthIssueKind, HealthReport, HealthState, LearningDeliberationDraft,
+    LearningDeliberationOutcome, LearningFeedbackDraft, LearningReconsiderationDraft,
+    LearningResponseDraft, LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
+    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
+    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
+    RuntimeLayout, UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity,
+    WorkflowDirective, WorkflowDisposition, WorkflowRequirement, WorkflowStage,
 };
 use crate::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,
@@ -49,9 +50,10 @@ use volicord_inquiry::{
     CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis, CandidateOrigin,
     CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore, ChangeAttribution,
     CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
-    EngineeringChoiceDiscovery, FrontierRead, InquiryScope, MaterialityReview, PromotionResult,
-    RepositoryResearchBasis, RepositoryWorkBasis, SubmissionOutcome, WorkAuthorityDisposition,
-    WorkAuthorityResult,
+    EngineeringChoiceDiscovery, FrontierRead, InquiryScope, LearningDeliberation,
+    LearningDeliberationState, LearningParticipation, MaterialityDisposition, MaterialityReview,
+    PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis, SubmissionOutcome,
+    WorkAuthorityCandidateBasis, WorkAuthorityDisposition, WorkAuthorityResult,
 };
 use volicord_local_platform::{
     publish_file_no_replace, CancellationFlag, DirectoryEntryDurability, DirtyObservation,
@@ -918,6 +920,7 @@ impl LocalOperations {
                     choices: draft.choices,
                 }),
                 materiality_review: None,
+                learning_deliberation: None,
             },
         };
         let stored = CandidateStore::open(self.layout.candidate_store())
@@ -985,6 +988,13 @@ impl LocalOperations {
         for dimension in &draft.dimensions {
             source_basis.extend(dimension.basis.source_basis.iter().copied());
         }
+        if let LearningParticipation::Active {
+            user_turn_source_id,
+            ..
+        } = &draft.learning_participation
+        {
+            source_basis.push(*user_turn_source_id);
+        }
         source_basis.sort_unstable();
         source_basis.dedup();
         let observed_at = SystemClock
@@ -1034,8 +1044,10 @@ impl LocalOperations {
                     current_review_analysis_snapshot_id: current.identity,
                     first_review_preceded_meaningful_mutation: false,
                     rationale: draft.rationale,
+                    learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
                 }),
+                learning_deliberation: None,
             },
         };
         let stored = CandidateStore::open(self.layout.candidate_store())
@@ -1117,6 +1129,7 @@ impl LocalOperations {
                     &discovery_candidate,
                     volicord_inquiry::MaterialityReviewRevision {
                         rationale: draft.rationale,
+                        learning_participation: draft.learning_participation,
                         dimensions: draft.dimensions,
                     },
                 )
@@ -1134,6 +1147,239 @@ impl LocalOperations {
             baseline_analysis_snapshot_id: review.baseline_analysis_snapshot_id,
             review_analysis_snapshot_id: review.current_review_analysis_snapshot_id,
         })
+    }
+
+    pub fn begin_learning_deliberation(
+        &self,
+        draft: LearningDeliberationDraft,
+    ) -> Result<LearningDeliberationOutcome, Error> {
+        self.initialize_runtime()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let candidates = self.candidate_basis(draft.project_id)?;
+        let review_candidate = candidates
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == draft.review_candidate_id)
+            .cloned()
+            .ok_or_else(|| Error::new("Learning Deliberation Materiality Review was not found"))?;
+        let review = review_candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("Learning Deliberation Materiality Review is unavailable"))?;
+        if let Some(existing) = candidates.candidates.iter().find(|candidate| {
+            candidate.kind == CandidateKind::LearningDeliberation
+                && matches!(
+                    candidate.disposition,
+                    CandidateDisposition::PendingOrRetained
+                )
+                && candidate.content.as_ref().is_some_and(|content| {
+                    content
+                        .learning_deliberation
+                        .as_ref()
+                        .is_some_and(|deliberation| {
+                            deliberation.materiality_review_candidate_id == review_candidate.id
+                                && deliberation.dimension_id == draft.dimension_id
+                        })
+                })
+        }) {
+            return learning_deliberation_outcome(existing);
+        }
+        let discovery_candidate = candidates
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == review.engineering_choice_discovery_candidate_id)
+            .cloned()
+            .ok_or_else(|| Error::new("Learning Deliberation discovery basis was not found"))?;
+        let discovery = discovery_candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.engineering_choice_discovery.as_ref())
+            .ok_or_else(|| Error::new("Learning Deliberation discovery content is unavailable"))?;
+        let dimension = review
+            .dimensions
+            .iter()
+            .find(|dimension| dimension.dimension_id == draft.dimension_id)
+            .ok_or_else(|| Error::new("Learning Deliberation dimension was not found"))?;
+        if !matches!(
+            dimension.disposition,
+            MaterialityDisposition::AgentOwnedImplementationChoice
+                | MaterialityDisposition::DelegatedImplementationChoice
+        ) {
+            return Err(Error::new(
+                "Learning Deliberation applies only to an agent-owned choice",
+            ));
+        }
+        let choices = discovery
+            .choices
+            .iter()
+            .filter(|choice| dimension.discovered_choice_ids.contains(&choice.choice_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut source_basis = dimension.basis.source_basis.clone();
+        for choice in &choices {
+            source_basis.extend(choice.source_basis.iter().copied());
+        }
+        if let LearningParticipation::Active {
+            user_turn_source_id,
+            ..
+        } = review.learning_participation
+        {
+            source_basis.push(user_turn_source_id);
+        }
+        source_basis.sort_unstable();
+        source_basis.dedup();
+        let observed_at = SystemClock
+            .now()
+            .map_err(|error| Error::with_source("cannot timestamp Learning Deliberation", error))?;
+        let candidate = CandidateDraft {
+            project_id: draft.project_id,
+            kind: CandidateKind::LearningDeliberation,
+            collection_mode: CandidateCollectionMode::ExplicitUserDirected,
+            origin: CandidateOrigin {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".to_owned(),
+                },
+                subsystem: "inquiry".to_owned(),
+                session: Some(draft.session.clone()),
+                provenance_summary: "typed pre-work Learning Deliberation".to_owned(),
+            },
+            collection_scope: CandidateCollectionScope {
+                project_id: draft.project_id,
+                session: Some(draft.session),
+                source_operation: Some(draft.source_operation),
+                candidate_kind: CandidateKind::LearningDeliberation,
+            },
+            observation_basis: CandidateObservationBasis {
+                source_basis,
+                repository_snapshot: None,
+                analysis_snapshot: Some(review.baseline_analysis_snapshot_id.to_string()),
+                execution: None,
+                host_turn: None,
+                other: Some("explicit learning participation before affected work".into()),
+            },
+            observed_at,
+            retention: CandidateRetention {
+                retained_until: None,
+                basis: "retain through bounded work and learning-aware Checkpoint validation"
+                    .into(),
+            },
+            content: CandidateContent {
+                bounded_summary: draft.problem.clone(),
+                question: None,
+                engineering_choice_discovery: None,
+                materiality_review: None,
+                learning_deliberation: Some(LearningDeliberation {
+                    goal_context_id: review.goal_context_id,
+                    baseline_analysis_snapshot_id: review.baseline_analysis_snapshot_id,
+                    engineering_choice_discovery_candidate_id: discovery_candidate.id,
+                    materiality_review_candidate_id: review_candidate.id,
+                    dimension_id: draft.dimension_id,
+                    discovered_choice_ids: dimension.discovered_choice_ids.clone(),
+                    affected_scope: dimension.affected_scope.clone(),
+                    problem: draft.problem,
+                    established_facts: draft.established_facts,
+                    choices,
+                    rounds: Vec::new(),
+                    state: LearningDeliberationState::AwaitingInitialResponse,
+                }),
+            },
+        };
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let stored = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.submit_learning_deliberation(
+                    candidate,
+                    &canonical,
+                    &discovery_candidate,
+                    &review_candidate,
+                )
+            })
+            .map_err(|error| Error::with_source("Learning Deliberation failed", error))?;
+        let SubmissionOutcome::Stored(record) = stored else {
+            return Err(Error::new(
+                "typed Learning Deliberation was unexpectedly disabled",
+            ));
+        };
+        learning_deliberation_outcome(&record)
+    }
+
+    pub fn record_learning_response(
+        &self,
+        draft: LearningResponseDraft,
+    ) -> Result<LearningDeliberationOutcome, Error> {
+        let source =
+            self.create_user_source(draft.project_id, draft.host, draft.session, draft.user_turn)?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.record_learning_response(
+                    draft.project_id,
+                    draft.deliberation_candidate_id,
+                    &canonical,
+                    source.id,
+                    draft.response,
+                    draft.user_rationale,
+                )
+            })
+            .map_err(|error| Error::with_source("Learning response failed", error))?;
+        learning_deliberation_outcome(&record)
+    }
+
+    pub fn provide_learning_feedback(
+        &self,
+        draft: LearningFeedbackDraft,
+    ) -> Result<LearningDeliberationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.provide_learning_feedback(
+                    draft.project_id,
+                    draft.deliberation_candidate_id,
+                    draft.feedback,
+                    draft.recommendation,
+                )
+            })
+            .map_err(|error| Error::with_source("Learning feedback failed", error))?;
+        learning_deliberation_outcome(&record)
+    }
+
+    pub fn complete_learning_deliberation(
+        &self,
+        project_id: ProjectId,
+        deliberation_candidate_id: CandidateId,
+    ) -> Result<LearningDeliberationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.complete_learning_deliberation(project_id, deliberation_candidate_id)
+            })
+            .map_err(|error| Error::with_source("Learning completion failed", error))?;
+        learning_deliberation_outcome(&record)
+    }
+
+    pub fn reconsider_learning_deliberation(
+        &self,
+        draft: LearningReconsiderationDraft,
+    ) -> Result<LearningDeliberationOutcome, Error> {
+        let source =
+            self.create_user_source(draft.project_id, draft.host, draft.session, draft.user_turn)?;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(draft.project_id)?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.reconsider_learning_deliberation(
+                    draft.project_id,
+                    draft.deliberation_candidate_id,
+                    &canonical,
+                    source.id,
+                    draft.rationale,
+                )
+            })
+            .map_err(|error| Error::with_source("Learning reconsideration failed", error))?;
+        learning_deliberation_outcome(&record)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1163,6 +1409,7 @@ impl LocalOperations {
             .map_err(|error| {
                 Error::with_source("Engineering Choice Discovery lookup failed", error)
             })?;
+        let candidate_basis = self.candidate_basis(project_id)?;
         let current_assumptions = canonical
             .context_items
             .iter()
@@ -1171,8 +1418,11 @@ impl LocalOperations {
             .collect();
         Ok(evaluate_work_authority(
             &canonical,
-            Some(&candidate),
-            Some(&discovery_candidate),
+            WorkAuthorityCandidateBasis {
+                review: Some(&candidate),
+                discovery: Some(&discovery_candidate),
+                learning_deliberations: &candidate_basis.candidates,
+            },
             project_id,
             goal_context_id,
             baseline_analysis_snapshot_id,
@@ -1483,8 +1733,11 @@ impl LocalOperations {
             .collect();
         let authority = evaluate_work_authority(
             &canonical,
-            review_candidate,
-            discovery_candidate,
+            WorkAuthorityCandidateBasis {
+                review: review_candidate,
+                discovery: discovery_candidate,
+                learning_deliberations: &candidates.candidates,
+            },
             project_id,
             goal_context_id,
             baseline_analysis_snapshot_id,
@@ -2655,8 +2908,11 @@ impl LocalOperations {
             });
         let authority = evaluate_work_authority(
             &authority_canonical,
-            review_candidate,
-            discovery_candidate,
+            WorkAuthorityCandidateBasis {
+                review: review_candidate,
+                discovery: discovery_candidate,
+                learning_deliberations: &candidate_basis.candidates,
+            },
             draft.project_id,
             draft.goal_context_id,
             draft.baseline_analysis_snapshot_id,
@@ -3540,6 +3796,22 @@ fn baseline_required(project_id: ProjectId, goal_context_id: ContextItemId) -> W
     }
 }
 
+fn learning_deliberation_outcome(
+    record: &CandidateRecord,
+) -> Result<LearningDeliberationOutcome, Error> {
+    let state = record
+        .content
+        .as_ref()
+        .and_then(|content| content.learning_deliberation.as_ref())
+        .map(|deliberation| deliberation.state.clone())
+        .ok_or_else(|| Error::new("Learning Deliberation content is unavailable"))?;
+    Ok(LearningDeliberationOutcome {
+        deliberation_candidate_id: record.id,
+        revision: record.revision,
+        state,
+    })
+}
+
 fn workflow_from_authority(
     canonical: &CanonicalReadBasis,
     candidates: &CandidateReadBasis,
@@ -3562,6 +3834,12 @@ fn workflow_from_authority(
     if let Some(candidate_id) = authority.engineering_choice_discovery_candidate_id {
         satisfied_basis_identities.push(workflow_basis(
             "engineering_choice_discovery_candidate",
+            candidate_id.to_string(),
+        ));
+    }
+    for candidate_id in &authority.learning_deliberation_candidate_ids {
+        satisfied_basis_identities.push(workflow_basis(
+            "learning_deliberation_candidate",
             candidate_id.to_string(),
         ));
     }
@@ -3613,6 +3891,14 @@ fn workflow_from_authority(
             candidates,
             authority.review_candidate_id,
             &authority.unresolved_requirements,
+        ),
+        WorkAuthorityDisposition::LearningDeliberationPending => (
+            WorkflowStage::LearningDeliberation,
+            WorkflowDisposition::LearningDeliberationPending,
+            Some(workflow_action(
+                "learning_deliberation",
+                Some("begin_or_continue"),
+            )),
         ),
         WorkAuthorityDisposition::ReadyForWork => (
             WorkflowStage::ReadyForWork,

@@ -2,8 +2,9 @@ use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
     CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, EngineeringChoiceDiscovery,
-    Error, ErrorKind, MaterialityAssessment, MaterialityReview, MaterialityStatus, PromotionResult,
-    RepositoryResearchBasis, SubmissionOutcome,
+    Error, ErrorKind, LearningDeliberationState, LearningInitialResponse, LearningRecommendation,
+    MaterialityAssessment, MaterialityDisposition, MaterialityReview, MaterialityStatus,
+    PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -17,7 +18,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 5;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 6;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -66,11 +67,13 @@ impl CandidateStore {
     pub fn submit(&mut self, draft: CandidateDraft) -> Result<SubmissionOutcome, Error> {
         if matches!(
             draft.kind,
-            CandidateKind::EngineeringChoiceDiscovery | CandidateKind::MaterialityReview
+            CandidateKind::EngineeringChoiceDiscovery
+                | CandidateKind::MaterialityReview
+                | CandidateKind::LearningDeliberation
         ) {
             return Err(Error::new(
                 ErrorKind::DomainConflict,
-                "pre-work discovery and review require their typed submission operations",
+                "pre-work discovery, review, and learning deliberation require typed submission operations",
             ));
         }
         self.submit_validated(draft)
@@ -205,10 +208,207 @@ impl CandidateStore {
                 })?;
             review.current_review_analysis_snapshot_id = current.identity;
             review.rationale = revision.rationale;
+            review.learning_participation = revision.learning_participation;
             review.dimensions = revision.dimensions;
             validate_materiality_review(review)?;
             validate_review_against_canonical(canonical, review)?;
             validate_review_against_discovery(review, discovery_candidate)
+        })
+    }
+
+    pub fn submit_learning_deliberation(
+        &mut self,
+        draft: CandidateDraft,
+        canonical: &CanonicalReadBasis,
+        discovery_candidate: &CandidateRecord,
+        review_candidate: &CandidateRecord,
+    ) -> Result<SubmissionOutcome, Error> {
+        if draft.kind != CandidateKind::LearningDeliberation
+            || draft.project_id != canonical.project.id
+            || discovery_candidate.project_id != draft.project_id
+            || review_candidate.project_id != draft.project_id
+        {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "Learning Deliberation Project or kind does not match",
+            ));
+        }
+        let deliberation = draft
+            .content
+            .learning_deliberation
+            .as_ref()
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "Learning Deliberation content is missing",
+                )
+            })?;
+        validate_learning_deliberation_basis(
+            canonical,
+            deliberation,
+            discovery_candidate,
+            review_candidate,
+        )?;
+        self.submit_validated(draft)
+    }
+
+    pub fn record_learning_response(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        canonical: &CanonicalReadBasis,
+        user_turn_source_id: volicord_context::SourceId,
+        response: LearningInitialResponse,
+        user_rationale: Option<String>,
+    ) -> Result<CandidateRecord, Error> {
+        validate_current_host_user_source(canonical, user_turn_source_id)?;
+        if let Some(rationale) = &user_rationale {
+            validate_text("learning response rationale", rationale)?;
+        }
+        self.mutate_pending(project_id, candidate_id, |record| {
+            let deliberation = learning_deliberation_mut(record)?;
+            if !matches!(
+                deliberation.state,
+                LearningDeliberationState::AwaitingInitialResponse
+                    | LearningDeliberationState::ReconsiderationRequested { .. }
+            ) {
+                return Err(Error::new(
+                    ErrorKind::DomainConflict,
+                    "Learning Deliberation is not awaiting an initial user response",
+                ));
+            }
+            validate_learning_response(deliberation, &response)?;
+            let round = u32::try_from(deliberation.rounds.len()).map_err(|_| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Learning Deliberation round count is outside the supported range",
+                )
+            })?;
+            let next_state = match &response {
+                LearningInitialResponse::Select { .. } => {
+                    LearningDeliberationState::AwaitingAgentFeedback { round }
+                }
+                LearningInitialResponse::DelegateToAgent => {
+                    LearningDeliberationState::Delegated { round }
+                }
+                LearningInitialResponse::Skip => LearningDeliberationState::Skipped { round },
+                LearningInitialResponse::RequestResearchOrPrototype { evidence_state } => {
+                    LearningDeliberationState::ResearchOrPrototypeRequired {
+                        round,
+                        evidence_state: *evidence_state,
+                    }
+                }
+            };
+            deliberation.rounds.push(crate::LearningDeliberationRound {
+                initial_response_source_id: user_turn_source_id,
+                response,
+                user_rationale,
+                agent_feedback: None,
+                agent_recommendation: None,
+                reconsideration_source_id: None,
+                reconsideration_rationale: None,
+            });
+            deliberation.state = next_state;
+            validate_learning_deliberation(deliberation)
+        })
+    }
+
+    pub fn provide_learning_feedback(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        feedback: String,
+        recommendation: LearningRecommendation,
+    ) -> Result<CandidateRecord, Error> {
+        validate_text("learning feedback", &feedback)?;
+        self.mutate_pending(project_id, candidate_id, |record| {
+            let deliberation = learning_deliberation_mut(record)?;
+            let LearningDeliberationState::AwaitingAgentFeedback { round } = deliberation.state
+            else {
+                return Err(Error::new(
+                    ErrorKind::DomainConflict,
+                    "agent feedback requires a prior selected user response",
+                ));
+            };
+            validate_learning_recommendation(deliberation, &recommendation)?;
+            let round_record = deliberation.rounds.get_mut(round as usize).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Learning Deliberation feedback round is missing",
+                )
+            })?;
+            round_record.agent_feedback = Some(feedback);
+            round_record.agent_recommendation = Some(recommendation);
+            deliberation.state = LearningDeliberationState::FeedbackProvided { round };
+            validate_learning_deliberation(deliberation)
+        })
+    }
+
+    pub fn complete_learning_deliberation(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+    ) -> Result<CandidateRecord, Error> {
+        self.mutate_pending(project_id, candidate_id, |record| {
+            let deliberation = learning_deliberation_mut(record)?;
+            let LearningDeliberationState::FeedbackProvided { round } = deliberation.state else {
+                return Err(Error::new(
+                    ErrorKind::DomainConflict,
+                    "Learning Deliberation completion requires post-response agent feedback",
+                ));
+            };
+            let round_record = deliberation.rounds.get(round as usize).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Learning Deliberation completion round is missing",
+                )
+            })?;
+            let LearningInitialResponse::Select { selections } = &round_record.response else {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Learning Deliberation feedback does not follow a selection",
+                ));
+            };
+            deliberation.state = LearningDeliberationState::Completed {
+                round,
+                selected_alternatives: selections.clone(),
+            };
+            validate_learning_deliberation(deliberation)
+        })
+    }
+
+    pub fn reconsider_learning_deliberation(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        canonical: &CanonicalReadBasis,
+        user_turn_source_id: volicord_context::SourceId,
+        rationale: String,
+    ) -> Result<CandidateRecord, Error> {
+        validate_current_host_user_source(canonical, user_turn_source_id)?;
+        validate_text("learning reconsideration rationale", &rationale)?;
+        self.mutate_pending(project_id, candidate_id, |record| {
+            let deliberation = learning_deliberation_mut(record)?;
+            let round = match deliberation.state {
+                LearningDeliberationState::FeedbackProvided { round }
+                | LearningDeliberationState::Completed { round, .. } => round,
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::DomainConflict,
+                        "reconsideration requires completed post-response feedback",
+                    ))
+                }
+            };
+            let round_record = deliberation.rounds.get_mut(round as usize).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Learning Deliberation reconsideration round is missing",
+                )
+            })?;
+            round_record.reconsideration_source_id = Some(user_turn_source_id);
+            round_record.reconsideration_rationale = Some(rationale);
+            deliberation.state = LearningDeliberationState::ReconsiderationRequested { round };
+            validate_learning_deliberation(deliberation)
         })
     }
 
@@ -899,11 +1099,26 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                                 .any(|choice| choice.source_basis.contains(&source_id))
                         })
                         || content.materiality_review.as_ref().is_some_and(|review| {
-                            review
+                            matches!(
+                                review.learning_participation,
+                                crate::LearningParticipation::Active {
+                                    user_turn_source_id,
+                                    ..
+                                } if user_turn_source_id == source_id
+                            ) || review
                                 .dimensions
                                 .iter()
                                 .any(|dimension| dimension.basis.source_basis.contains(&source_id))
                         })
+                        || content
+                            .learning_deliberation
+                            .as_ref()
+                            .is_some_and(|deliberation| {
+                                deliberation.rounds.iter().any(|round| {
+                                    round.initial_response_source_id == source_id
+                                        || round.reconsideration_source_id == Some(source_id)
+                                })
+                            })
                 })
         }
         CanonicalRecordId::Question(question_id) => {
@@ -937,6 +1152,10 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                         .materiality_review
                         .as_ref()
                         .is_some_and(|review| review.goal_context_id == context_item_id)
+                    || content
+                        .learning_deliberation
+                        .as_ref()
+                        .is_some_and(|deliberation| deliberation.goal_context_id == context_item_id)
             })
         }
         CanonicalRecordId::Checkpoint(_) => false,
@@ -979,6 +1198,27 @@ fn question_mut(record: &mut CandidateRecord) -> Result<&mut crate::QuestionCand
             Error::new(
                 ErrorKind::CorruptState,
                 "Question Candidate content is missing",
+            )
+        })
+}
+
+fn learning_deliberation_mut(
+    record: &mut CandidateRecord,
+) -> Result<&mut crate::LearningDeliberation, Error> {
+    if record.kind != CandidateKind::LearningDeliberation {
+        return Err(Error::new(
+            ErrorKind::DomainConflict,
+            "operation requires a Learning Deliberation Candidate",
+        ));
+    }
+    record
+        .content
+        .as_mut()
+        .and_then(|content| content.learning_deliberation.as_mut())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Learning Deliberation content is missing",
             )
         })
 }
@@ -1080,6 +1320,17 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
     if let Some(review) = &draft.content.materiality_review {
         validate_materiality_review(review)?;
     }
+    if (draft.kind == CandidateKind::LearningDeliberation)
+        != draft.content.learning_deliberation.is_some()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Learning Deliberation kind and content must agree",
+        ));
+    }
+    if let Some(deliberation) = &draft.content.learning_deliberation {
+        validate_learning_deliberation(deliberation)?;
+    }
     let encoded = serde_json::to_vec(&draft.content).map_err(encode_error)?;
     if encoded.len() > MAX_RECORD_BYTES {
         return Err(Error::new(
@@ -1092,6 +1343,12 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
 
 fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> {
     validate_text("Materiality Review rationale", &review.rationale)?;
+    if let crate::LearningParticipation::Active {
+        verbatim_statement, ..
+    } = &review.learning_participation
+    {
+        validate_text("learning participation statement", verbatim_statement)?;
+    }
     if review.dimensions.is_empty() || review.dimensions.len() > MAX_LIST_ITEMS {
         return Err(Error::new(
             ErrorKind::InvalidInput,
@@ -1110,6 +1367,31 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         validate_id_list(&dimension.basis.source_basis)?;
         validate_id_list(&dimension.basis.decision_basis)?;
         validate_list(&dimension.discovered_choice_ids)?;
+        match &dimension.learning_value {
+            crate::LearningValueAssessment::Routine { rationale } => {
+                validate_text("routine learning assessment rationale", rationale)?;
+            }
+            crate::LearningValueAssessment::DeliberationWorthy {
+                rationale,
+                consequence_significance,
+                transferable_principles,
+                non_obvious_trade_offs,
+            } => {
+                validate_text("learning deliberation rationale", rationale)?;
+                validate_list(consequence_significance)?;
+                validate_list(transferable_principles)?;
+                validate_list(non_obvious_trade_offs)?;
+                if consequence_significance.is_empty()
+                    || transferable_principles.is_empty()
+                    || non_obvious_trade_offs.is_empty()
+                {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "deliberation-worthy learning assessment requires significance, transferability, and non-obvious trade-off evidence",
+                    ));
+                }
+            }
+        }
         if let Some(delegation) = &dimension.basis.explicit_delegation {
             validate_text(
                 "explicit delegation verbatim statement",
@@ -1306,6 +1588,37 @@ fn validate_review_against_canonical(
             ErrorKind::StaleBasis,
             "Materiality Review contains a missing or non-current Source basis",
         ));
+    }
+    if let crate::LearningParticipation::Active {
+        user_turn_source_id,
+        verbatim_statement,
+    } = &review.learning_participation
+    {
+        validate_current_host_user_source(canonical, *user_turn_source_id)?;
+        let source = canonical
+            .sources
+            .iter()
+            .find(|basis| basis.source.id == *user_turn_source_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "learning participation Source is missing",
+                )
+            })?;
+        let volicord_context::SourcePayload::CurrentHostUserTurn { turn, .. } =
+            &source.source.payload
+        else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "learning participation requires a current-host user-turn Source",
+            ));
+        };
+        if !turn.contains(verbatim_statement) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "learning participation must preserve the explicit user statement verbatim",
+            ));
+        }
     }
     for dimension in &review.dimensions {
         let Some(delegation) = &dimension.basis.explicit_delegation else {
@@ -1669,6 +1982,401 @@ fn validate_materiality_assessment(assessment: &MaterialityAssessment) -> Result
         ));
     }
     validate_id_list(&assessment.source_basis)
+}
+
+fn validate_learning_deliberation_basis(
+    canonical: &CanonicalReadBasis,
+    deliberation: &crate::LearningDeliberation,
+    discovery_candidate: &CandidateRecord,
+    review_candidate: &CandidateRecord,
+) -> Result<(), Error> {
+    if discovery_candidate.id != deliberation.engineering_choice_discovery_candidate_id
+        || discovery_candidate.kind != CandidateKind::EngineeringChoiceDiscovery
+        || review_candidate.id != deliberation.materiality_review_candidate_id
+        || review_candidate.kind != CandidateKind::MaterialityReview
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Learning Deliberation must reference its exact discovery and review Candidates",
+        ));
+    }
+    let discovery = discovery_candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.engineering_choice_discovery.as_ref())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Learning Deliberation discovery content is unavailable",
+            )
+        })?;
+    let review = review_candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.materiality_review.as_ref())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::CorruptState,
+                "Learning Deliberation review content is unavailable",
+            )
+        })?;
+    if deliberation.goal_context_id != review.goal_context_id
+        || deliberation.goal_context_id != discovery.goal_context_id
+        || deliberation.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
+        || deliberation.baseline_analysis_snapshot_id != discovery.baseline_analysis_snapshot_id
+        || review.engineering_choice_discovery_candidate_id != discovery_candidate.id
+    {
+        return Err(Error::new(
+            ErrorKind::StaleBasis,
+            "Learning Deliberation Goal, baseline, discovery, or review basis is stale",
+        ));
+    }
+    let dimension = review
+        .dimensions
+        .iter()
+        .find(|dimension| dimension.dimension_id == deliberation.dimension_id)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::NotFound,
+                "Learning Deliberation materiality dimension was not found",
+            )
+        })?;
+    if !matches!(
+        review.learning_participation,
+        crate::LearningParticipation::Active { .. }
+    ) || !matches!(
+        dimension.disposition,
+        MaterialityDisposition::AgentOwnedImplementationChoice
+            | MaterialityDisposition::DelegatedImplementationChoice
+    ) || !matches!(
+        dimension.learning_value,
+        crate::LearningValueAssessment::DeliberationWorthy { .. }
+    ) {
+        return Err(Error::new(
+            ErrorKind::DomainConflict,
+            "Learning Deliberation requires explicit participation and an agent-owned deliberation-worthy dimension",
+        ));
+    }
+    let exact_choices = discovery
+        .choices
+        .iter()
+        .filter(|choice| dimension.discovered_choice_ids.contains(&choice.choice_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if deliberation.discovered_choice_ids != dimension.discovered_choice_ids
+        || deliberation.affected_scope != dimension.affected_scope
+        || deliberation.choices != exact_choices
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Learning Deliberation must preserve the exact discovered choices and affected work scope",
+        ));
+    }
+    validate_review_against_canonical(canonical, review)?;
+    validate_learning_deliberation(deliberation)
+}
+
+fn validate_learning_deliberation(deliberation: &crate::LearningDeliberation) -> Result<(), Error> {
+    validate_text(
+        "Learning Deliberation dimension identity",
+        &deliberation.dimension_id,
+    )?;
+    validate_text("Learning Deliberation problem", &deliberation.problem)?;
+    validate_list(&deliberation.discovered_choice_ids)?;
+    validate_list(&deliberation.affected_scope)?;
+    validate_list(&deliberation.established_facts)?;
+    if deliberation.discovered_choice_ids.is_empty()
+        || deliberation.affected_scope.is_empty()
+        || deliberation.established_facts.is_empty()
+        || deliberation.choices.is_empty()
+        || deliberation.rounds.len() > MAX_LIST_ITEMS
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Learning Deliberation requires bounded choice, scope, fact, and round state",
+        ));
+    }
+    let choice_ids = deliberation
+        .choices
+        .iter()
+        .map(|choice| choice.choice_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if choice_ids
+        != deliberation
+            .discovered_choice_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+        || choice_ids.len() != deliberation.discovered_choice_ids.len()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Learning Deliberation choice identities must be exact and unique",
+        ));
+    }
+    for choice in &deliberation.choices {
+        validate_text("Learning Deliberation choice summary", &choice.summary)?;
+        if choice.alternatives.len() < 2 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Learning Deliberation requires credible alternatives",
+            ));
+        }
+    }
+    for round in &deliberation.rounds {
+        if let Some(rationale) = &round.user_rationale {
+            validate_text("learning user rationale", rationale)?;
+        }
+        if let Some(feedback) = &round.agent_feedback {
+            validate_text("learning agent feedback", feedback)?;
+        }
+        if round.agent_feedback.is_some() != round.agent_recommendation.is_some() {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Learning Deliberation feedback and recommendation must be recorded together",
+            ));
+        }
+        if let Some(recommendation) = &round.agent_recommendation {
+            validate_learning_recommendation(deliberation, recommendation)?;
+        }
+        if round.reconsideration_source_id.is_some() != round.reconsideration_rationale.is_some() {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "Learning Deliberation reconsideration Source and rationale must be recorded together",
+            ));
+        }
+        if let Some(rationale) = &round.reconsideration_rationale {
+            validate_text("learning reconsideration rationale", rationale)?;
+        }
+        validate_learning_response(deliberation, &round.response)?;
+    }
+    match &deliberation.state {
+        LearningDeliberationState::AwaitingInitialResponse if deliberation.rounds.is_empty() => {}
+        LearningDeliberationState::AwaitingInitialResponse => {
+            return Err(Error::new(
+                ErrorKind::CorruptState,
+                "initial pre-response state cannot contain a response or recommendation",
+            ));
+        }
+        LearningDeliberationState::AwaitingAgentFeedback { round } => {
+            let value = learning_round(deliberation, *round)?;
+            if !matches!(value.response, LearningInitialResponse::Select { .. })
+                || value.agent_feedback.is_some()
+                || value.agent_recommendation.is_some()
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "agent feedback state must follow a selection and cannot predate it",
+                ));
+            }
+        }
+        LearningDeliberationState::FeedbackProvided { round } => {
+            let value = learning_round(deliberation, *round)?;
+            if !matches!(value.response, LearningInitialResponse::Select { .. })
+                || value.agent_feedback.is_none()
+                || value.agent_recommendation.is_none()
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "feedback-provided state requires a prior selection and later feedback",
+                ));
+            }
+        }
+        LearningDeliberationState::Completed {
+            round,
+            selected_alternatives,
+        } => {
+            let value = learning_round(deliberation, *round)?;
+            let LearningInitialResponse::Select { selections } = &value.response else {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "completed Learning Deliberation requires a selected response",
+                ));
+            };
+            if selections != selected_alternatives
+                || value.agent_feedback.is_none()
+                || value.agent_recommendation.is_none()
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "completed Learning Deliberation must retain its selection and post-response feedback",
+                ));
+            }
+        }
+        LearningDeliberationState::Delegated { round } => {
+            if !matches!(
+                learning_round(deliberation, *round)?.response,
+                LearningInitialResponse::DelegateToAgent
+            ) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "delegated Learning Deliberation must retain the delegation response",
+                ));
+            }
+        }
+        LearningDeliberationState::Skipped { round } => {
+            if !matches!(
+                learning_round(deliberation, *round)?.response,
+                LearningInitialResponse::Skip
+            ) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "skipped Learning Deliberation must retain the skip response",
+                ));
+            }
+        }
+        LearningDeliberationState::ResearchOrPrototypeRequired {
+            round,
+            evidence_state,
+        } => {
+            if !matches!(
+                learning_round(deliberation, *round)?.response,
+                LearningInitialResponse::RequestResearchOrPrototype {
+                    evidence_state: state
+                } if state == *evidence_state
+            ) {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "research Learning Deliberation must retain the requested evidence state",
+                ));
+            }
+        }
+        LearningDeliberationState::ReconsiderationRequested { round } => {
+            let value = learning_round(deliberation, *round)?;
+            if value.agent_feedback.is_none()
+                || value.agent_recommendation.is_none()
+                || value.reconsideration_source_id.is_none()
+            {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "reconsideration requires a prior response, feedback, and explicit user Source",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn learning_round(
+    deliberation: &crate::LearningDeliberation,
+    round: u32,
+) -> Result<&crate::LearningDeliberationRound, Error> {
+    if round as usize + 1 != deliberation.rounds.len() {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Learning Deliberation state must reference the current response round",
+        ));
+    }
+    deliberation.rounds.get(round as usize).ok_or_else(|| {
+        Error::new(
+            ErrorKind::CorruptState,
+            "Learning Deliberation response round is missing",
+        )
+    })
+}
+
+fn validate_learning_response(
+    deliberation: &crate::LearningDeliberation,
+    response: &LearningInitialResponse,
+) -> Result<(), Error> {
+    match response {
+        LearningInitialResponse::Select { selections } => {
+            validate_learning_selections(deliberation, selections)
+        }
+        LearningInitialResponse::RequestResearchOrPrototype {
+            evidence_state:
+                crate::EngineeringChoiceEvidenceState::ResearchRequired
+                | crate::EngineeringChoiceEvidenceState::PrototypeRequired,
+        } => Ok(()),
+        LearningInitialResponse::RequestResearchOrPrototype { .. } => Err(Error::new(
+            ErrorKind::InvalidInput,
+            "learning evidence request must require research or prototype work",
+        )),
+        LearningInitialResponse::DelegateToAgent | LearningInitialResponse::Skip => Ok(()),
+    }
+}
+
+fn validate_learning_recommendation(
+    deliberation: &crate::LearningDeliberation,
+    recommendation: &LearningRecommendation,
+) -> Result<(), Error> {
+    validate_text(
+        "learning recommendation rationale",
+        &recommendation.rationale,
+    )?;
+    validate_learning_selections(deliberation, &recommendation.selections)
+}
+
+fn validate_learning_selections(
+    deliberation: &crate::LearningDeliberation,
+    selections: &[crate::LearningAlternativeSelection],
+) -> Result<(), Error> {
+    if selections.len() != deliberation.choices.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "learning selection must choose one alternative for every discovered choice",
+        ));
+    }
+    let mut selected_choices = BTreeSet::new();
+    for selection in selections {
+        validate_text("learning selection choice identity", &selection.choice_id)?;
+        validate_text(
+            "learning selection alternative identity",
+            &selection.alternative_id,
+        )?;
+        let choice = deliberation
+            .choices
+            .iter()
+            .find(|choice| choice.choice_id == selection.choice_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "learning selection references an unknown discovered choice",
+                )
+            })?;
+        if !selected_choices.insert(selection.choice_id.as_str())
+            || !choice
+                .alternatives
+                .iter()
+                .any(|alternative| alternative.alternative_id == selection.alternative_id)
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "learning selection must reference one credible alternative per choice",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_current_host_user_source(
+    canonical: &CanonicalReadBasis,
+    source_id: SourceId,
+) -> Result<(), Error> {
+    let source = canonical
+        .sources
+        .iter()
+        .find(|basis| basis.source.id == source_id)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                "current-host user Source is missing",
+            )
+        })?;
+    if source.freshness != volicord_context::SourceFreshness::Current
+        || source.source.project_id != canonical.project.id
+        || source.source.actor.kind != volicord_context::PrincipalKind::User
+        || !matches!(
+            source.source.payload,
+            volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+        )
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "learning participation and responses require a current-host user Source",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_sources(canonical: &CanonicalReadBasis, source_ids: &[SourceId]) -> Result<(), Error> {

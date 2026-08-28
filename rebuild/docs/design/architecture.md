@@ -154,10 +154,10 @@ Question discovery, frontier transition, response 처리, Recall/Checkpoint와�
 sequence는 active [Inquiry와 Decision 계약](inquiry-and-decision.md)이 소유한다.
 
 Inquiry and Decision은 typed `Engineering Choice Discovery`, `Materiality Review` Session
-Candidate와 shared work-authority evaluation도 소유한다. Local Operations가 current Goal과
+Candidate, typed learning participation/value/Deliberation과 shared work-readiness evaluation도 소유한다. Local Operations가 current Goal과
 exact pre-work Analysis Snapshot을 제공하고 첫 review timing을 검증하며, Inquiry는 stable
 choice identity/alternative/consequence/effect/coupling completeness와 dimension별
-disposition/evidence와 `ready_for_work` 조건을 판정한다. 이 결과는 workflow guidance이며
+disposition/evidence, ordered learning state와 `ready_for_work` 조건을 판정한다. 이 결과는 workflow guidance이며
 Kernel write authority나 ordinary repository write admission으로 확장되지 않는다.
 
 ### 3.4 Projections and Documents
@@ -453,13 +453,20 @@ current-host response → Decision path만 사용한다. Shared result는 stage,
 next Volicord action, blocking 여부, reason, satisfied와 unresolved requirement를 보존하며
 모든 requirement가 충족될 때만 `ready_for_work`를 표시한다.
 
+Materiality Review의 learning participation은 inactive 또는 exact current-host user Source로 입증된
+active state다. Authority와 독립적인 routine/deliberation-worthy assessment 뒤, active이며 agent-owned인
+deliberation-worthy dimension만 pre-response `Learning Deliberation` Candidate를 만든다. User response가
+select이면 그 뒤에만 agent feedback/recommendation을 기록하고, delegate/skip은 canonical Decision 없는
+terminal state, research/prototype는 evidence-required state다. User-owned dimension은 learning path가
+아니라 기존 Question/Decision path를 유지한다.
+
 ### 5. Ordinary work와 source-grounded Checkpoint
 
 일반 repository 작업은 Volicord의 사전 admission 대상이 아니다. Adapter와 Local
 Operations는 work observation을 Candidate로 전달할 수 있다. 의미 있는 완료,
 pause 또는 handoff boundary에서 source, changed basis, verification, known limits와
 next step이 확인되면 Local Operations는 same Project, current Goal, exact pre-work
-Analysis Snapshot에 대한 timely Materiality Review를 다시 평가한다. `ready_for_work`가
+Analysis Snapshot에 대한 timely Materiality Review와 exact Learning Deliberation state를 다시 평가한다. `ready_for_work`가
 아니거나 authority Decision이 Checkpoint의 applied Decision에 빠지면 canonical publication을
 거부한다. 이 검사는 Checkpoint boundary의 truthfulness이며 ordinary write admission이 아니다.
 검사가 통과하면 Kernel이 Checkpoint를 canonical로 기록한다. Work,

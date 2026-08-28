@@ -143,6 +143,7 @@ fn candidate_draft(project: &Project, source: &Source) -> CandidateDraft {
             question: Some(question_candidate(source)),
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     }
 }

@@ -386,27 +386,29 @@ impl HostAdapter {
         let project_id = project(args)?;
         match required_str(args, "action")? {
             "record" => {
-                let outcome =
-                    self.operations
-                        .record_materiality_review(MaterialityReviewDraft {
-                            project_id,
-                            goal_context_id: parse_context_item(required_str(
-                                args,
-                                "goal_context_id",
-                            )?)?,
-                            baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
-                                args,
-                                "baseline_analysis_snapshot_id",
-                            )?)?,
-                            session: self.host_session.clone(),
-                            source_operation: required_str(args, "source_operation")?.to_owned(),
-                            rationale: required_str(args, "rationale")?.to_owned(),
-                            engineering_choice_discovery_candidate_id: parse_candidate(
-                                required_str(args, "engineering_choice_discovery_candidate_id")?,
-                            )?,
-                            dimensions: materiality_dimensions(args)?,
-                        })
-                        .map_err(operation_error)?;
+                let outcome = self
+                    .operations
+                    .record_materiality_review(MaterialityReviewDraft {
+                        project_id,
+                        goal_context_id: parse_context_item(required_str(
+                            args,
+                            "goal_context_id",
+                        )?)?,
+                        baseline_analysis_snapshot_id: parse_analysis_snapshot(required_str(
+                            args,
+                            "baseline_analysis_snapshot_id",
+                        )?)?,
+                        session: self.host_session.clone(),
+                        source_operation: required_str(args, "source_operation")?.to_owned(),
+                        rationale: required_str(args, "rationale")?.to_owned(),
+                        learning_participation: volicord_inquiry::LearningParticipation::Inactive,
+                        engineering_choice_discovery_candidate_id: parse_candidate(required_str(
+                            args,
+                            "engineering_choice_discovery_candidate_id",
+                        )?)?,
+                        dimensions: materiality_dimensions(args)?,
+                    })
+                    .map_err(operation_error)?;
                 let workflow = self
                     .operations
                     .workflow_for_review_candidate(project_id, outcome.review_candidate_id)
@@ -426,6 +428,7 @@ impl HostAdapter {
                             "review_candidate_id",
                         )?)?,
                         rationale: required_str(args, "rationale")?.to_owned(),
+                        learning_participation: volicord_inquiry::LearningParticipation::Inactive,
                         dimensions: materiality_dimensions(args)?,
                     })
                     .map_err(operation_error)?;
@@ -3379,6 +3382,7 @@ fn question_candidate_draft(
             }),
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     })
 }
@@ -3483,6 +3487,10 @@ fn materiality_dimension(value: &Value) -> Result<MaterialityDimension, HostErro
                 })
                 .transpose()?,
         },
+        learning_value: volicord_inquiry::LearningValueAssessment::Routine {
+            rationale: "MCP learning assessment is deferred to the dedicated adapter session"
+                .into(),
+        },
     })
 }
 
@@ -3574,6 +3582,7 @@ fn workflow_stage_name(value: WorkflowStage) -> &'static str {
         WorkflowStage::RepositoryBaseline => "repository_baseline",
         WorkflowStage::EngineeringChoiceDiscovery => "engineering_choice_discovery",
         WorkflowStage::MaterialityReview => "materiality_review",
+        WorkflowStage::LearningDeliberation => "learning_deliberation",
         WorkflowStage::ResearchOrPrototype => "research_or_prototype",
         WorkflowStage::QuestionCandidate => "question_candidate",
         WorkflowStage::Inquiry => "inquiry",
@@ -3594,6 +3603,7 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
         }
         WorkflowDisposition::ReviewMissing => "review_missing",
         WorkflowDisposition::ReviewInvalid => "review_invalid",
+        WorkflowDisposition::LearningDeliberationPending => "learning_deliberation_pending",
         WorkflowDisposition::ResearchRequired => "research_required",
         WorkflowDisposition::QuestionRequired => "question_required",
         WorkflowDisposition::CandidateResearchRequired => "candidate_research_required",

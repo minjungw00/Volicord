@@ -322,6 +322,7 @@ fn question_candidate(
             }),
             engineering_choice_discovery: None,
             materiality_review: None,
+            learning_deliberation: None,
         },
     }
 }
