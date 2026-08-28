@@ -359,6 +359,83 @@ def compacted_capture(source: Path, destination: Path, after_phrase: str) -> Pat
     return destination
 
 
+def current_user_message_capture(
+    source: Path,
+    destination: Path,
+    *,
+    keep_legacy: bool = False,
+    inject_host_user_material: bool = False,
+    conflict_first_text: bool = False,
+) -> Path:
+    events = [
+        json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()
+    ]
+    session_id = events[0]["payload"]["session_id"]
+    current_turn: str | None = None
+    injected = False
+    converted: list[dict[str, object]] = []
+    for value in events:
+        payload = value.get("payload", {})
+        if value.get("type") == "event_msg" and payload.get("type") == "task_started":
+            current_turn = payload.get("turn_id")
+        if value.get("type") != "event_msg" or payload.get("type") != "user_message":
+            converted.append(value)
+            continue
+        if not isinstance(current_turn, str):
+            raise AssertionError("legacy fixture user message has no active turn")
+        if inject_host_user_material and not injected:
+            converted.append(
+                {
+                    "timestamp": "2026-08-15T00:00:00Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "# AGENTS.md\nHost-injected instruction material",
+                            }
+                        ],
+                    },
+                }
+            )
+            injected = True
+        if keep_legacy:
+            converted.append(value)
+        text = payload["message"]
+        if conflict_first_text and not any(
+            event.get("payload", {}).get("type") == "item_completed"
+            for event in converted
+        ):
+            text += " conflicting"
+        client_id = payload["client_id"]
+        converted.append(
+            {
+                "timestamp": value.get("timestamp"),
+                "type": "event_msg",
+                "payload": {
+                    "type": "item_completed",
+                    "thread_id": session_id,
+                    "turn_id": current_turn,
+                    "item": {
+                        "type": "UserMessage",
+                        "id": f"item-{client_id}",
+                        "client_id": client_id,
+                        "content": [
+                            {"type": "text", "text": text, "text_elements": []}
+                        ],
+                    },
+                },
+            }
+        )
+    destination.write_text(
+        "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in converted),
+        encoding="utf-8",
+    )
+    return destination
+
+
 def prepared_batch(
     parent: Path,
     name: str,
@@ -1658,6 +1735,108 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
 
     work = compacted_work
     resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
+    current_work = current_user_message_capture(
+        work,
+        parent / "current-user-message-work.jsonl",
+        inject_host_user_material=True,
+    )
+    current_inputs = [current_work if path == work else path for path in captures]
+    current_mapping = campaign.map_batch_rollouts(root, current_inputs)
+    current_mapped_capture = current_mapping[("volicord", 1, "work")][1]
+    if (
+        len(current_mapped_capture.user_turns) != 2
+        or current_mapped_capture.user_turns[0].text != raw_work_task
+        or "Host-injected instruction material"
+        in [turn.text for turn in current_mapped_capture.user_turns]
+    ):
+        raise AssertionError(
+            "current UserMessage mapping lost the frozen task, later response, or host boundary"
+        )
+
+    duplicate_work = current_user_message_capture(
+        work,
+        parent / "duplicate-legacy-current-work.jsonl",
+        keep_legacy=True,
+    )
+    duplicate_representation_inputs = [
+        duplicate_work if path == work else path for path in captures
+    ]
+    duplicate_representation_mapping = campaign.map_batch_rollouts(
+        root, duplicate_representation_inputs
+    )
+    if (
+        len(
+            duplicate_representation_mapping[("volicord", 1, "work")][1].user_turns
+        )
+        != 2
+    ):
+        raise AssertionError("duplicate legacy/current transport evidence was double counted")
+
+    conflicting_work = current_user_message_capture(
+        work,
+        parent / "conflicting-legacy-current-work.jsonl",
+        keep_legacy=True,
+        conflict_first_text=True,
+    )
+    conflicting_inputs = [conflicting_work if path == work else path for path in captures]
+    try:
+        campaign.map_batch_rollouts(root, conflicting_inputs)
+    except campaign.CampaignError as error:
+        assert error.diagnostic is not None
+        assert error.diagnostic["mismatch_reasons"] == [
+            "provenance_or_capture_format_mismatch"
+        ]
+    else:
+        raise AssertionError("conflicting legacy/current transport evidence mapped")
+
+    current_wrong_task = replaced_capture(
+        current_work,
+        parent / "current-wrong-task.jsonl",
+        raw_work_task,
+        raw_work_task + " changed",
+    )
+    try:
+        campaign.map_batch_rollouts(
+            root,
+            [current_wrong_task if path == work else path for path in captures],
+        )
+    except campaign.CampaignError as error:
+        assert error.diagnostic is not None
+        assert "frozen_task_mismatch" in error.diagnostic["mismatch_reasons"]
+    else:
+        raise AssertionError("current UserMessage wrong task mapped")
+
+    for label, old, new in (
+        ("source", '"source":"vscode"', '"source":"exec"'),
+        (
+            "originator",
+            '"originator":"codex_vscode"',
+            '"originator":"codex_cli_rs"',
+        ),
+    ):
+        invalid_current = replaced_capture(
+            current_work,
+            parent / f"current-wrong-{label}.jsonl",
+            old,
+            new,
+        )
+        try:
+            campaign.map_batch_rollouts(
+                root,
+                [invalid_current if path == work else path for path in captures],
+            )
+        except campaign.CampaignError as error:
+            assert error.diagnostic is not None
+            assert any(
+                reason in error.diagnostic["mismatch_reasons"]
+                for reason in (
+                    "provenance_mismatch",
+                    "provenance_or_capture_format_mismatch",
+                )
+            )
+        else:
+            raise AssertionError(f"current UserMessage wrong {label} provenance mapped")
+
     duplicate_session = replaced_capture(
         resume,
         parent / "duplicate-session.jsonl",
@@ -2378,6 +2557,10 @@ def main() -> int:
             "missing_activation_operator_environment_invalid",
             "unordered_sixteen_rollout_batch_mapping",
             "compacted_fresh_thread_batch_mapping",
+            "current_user_message_batch_mapping",
+            "current_user_message_frozen_task_and_provenance_failures",
+            "legacy_current_user_turn_deduplication_and_conflict_rejection",
+            "host_user_role_material_excluded_from_first_turn",
             "global_mapping_failure_precedes_campaign_mutation",
             "missing_duplicate_and_wrong_identity_batch_rejection",
             "literal_markdown_escape_batch_rejection",

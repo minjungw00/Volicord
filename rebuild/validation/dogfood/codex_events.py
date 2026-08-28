@@ -21,6 +21,8 @@ from typing import Any
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
+MAX_USER_MESSAGE_CONTENT_ITEMS = 256
+MAX_USER_TURN_TEXT_CHARS = 1 << 20
 ACTIVATION_CONTEXT_MARKERS = (
     "Volicord is active for this explicitly authorized repository.",
     "Start project-scoped repository work with project_resolve",
@@ -118,6 +120,103 @@ class UserTurn:
     turn_id: str
     user_turn_id: str
     text: str
+
+
+@dataclass(frozen=True)
+class _UserTurnEvidence:
+    sequence: int
+    turn_id: str
+    client_id: str
+    text: str
+    item_id: str | None
+
+
+def current_user_turn_evidence(
+    payload: dict[str, Any], sequence: int, session_id: str
+) -> _UserTurnEvidence | None:
+    """Normalize the bounded ItemCompleted(UserMessage) rollout representation.
+
+    Codex's UserMessageItem::message() concatenates ordered text inputs without a
+    separator. Dogfood accepts that same all-text representation and rejects
+    attachments or malformed content rather than guessing at prompt identity.
+    """
+    if payload.get("type") != "item_completed":
+        return None
+    item = payload.get("item")
+    if not isinstance(item, dict) or item.get("type") != "UserMessage":
+        return None
+    thread_id = payload.get("thread_id")
+    turn_id = payload.get("turn_id")
+    item_id = item.get("id")
+    client_id = item.get("client_id")
+    content = item.get("content")
+    if (
+        thread_id != session_id
+        or not nonempty(turn_id)
+        or not nonempty(item_id)
+        or not nonempty(client_id)
+        or not isinstance(content, list)
+        or not content
+        or len(content) > MAX_USER_MESSAGE_CONTENT_ITEMS
+    ):
+        raise EvidenceError("Codex UserMessage item identity or content is malformed")
+    segments: list[str] = []
+    for segment in content:
+        if (
+            not isinstance(segment, dict)
+            or segment.get("type") != "text"
+            or not isinstance(segment.get("text"), str)
+        ):
+            raise EvidenceError("Codex UserMessage item has unsupported textual content")
+        segments.append(segment["text"])
+    text = "".join(segments)
+    if not nonempty(text) or len(text) > MAX_USER_TURN_TEXT_CHARS:
+        raise EvidenceError("Codex UserMessage item text is empty or exceeds the bound")
+    return _UserTurnEvidence(
+        sequence,
+        str(turn_id),
+        str(client_id),
+        text,
+        str(item_id),
+    )
+
+
+def normalize_user_turn_evidence(
+    evidence: list[_UserTurnEvidence], known_turn_ids: set[str]
+) -> tuple[UserTurn, ...]:
+    by_transport: dict[tuple[str, str], _UserTurnEvidence] = {}
+    current_item_transports: dict[str, tuple[str, str]] = {}
+    for candidate in sorted(evidence, key=lambda value: value.sequence):
+        if candidate.turn_id not in known_turn_ids:
+            raise EvidenceError("Codex user turn refers to an unknown turn identity")
+        transport = (candidate.turn_id, candidate.client_id)
+        if candidate.item_id is not None:
+            prior_transport = current_item_transports.get(candidate.item_id)
+            if prior_transport is not None and prior_transport != transport:
+                raise EvidenceError("Codex UserMessage item identity is reused across user turns")
+            current_item_transports[candidate.item_id] = transport
+        prior = by_transport.get(transport)
+        if prior is None:
+            by_transport[transport] = candidate
+            continue
+        if prior.text != candidate.text or (
+            prior.item_id is not None
+            and candidate.item_id is not None
+            and prior.item_id != candidate.item_id
+        ):
+            raise EvidenceError("Codex user-turn representations conflict")
+        if prior.item_id is None and candidate.item_id is not None:
+            by_transport[transport] = _UserTurnEvidence(
+                prior.sequence,
+                prior.turn_id,
+                prior.client_id,
+                prior.text,
+                candidate.item_id,
+            )
+    return tuple(
+        UserTurn(value.sequence, value.turn_id, value.client_id, value.text)
+        for value in sorted(by_transport.values(), key=lambda item: item.sequence)
+    )
 
 
 @dataclass(frozen=True)
@@ -885,7 +984,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     completed_task_sequences: list[int] = []
     compacted_sequences: list[int] = []
     known_turn_ids: set[str] = set()
-    user_turns: list[UserTurn] = []
+    user_turn_evidence: list[_UserTurnEvidence] = []
     calls: dict[str, tuple[int, str, ParsedCustomCall]] = {}
     completions: dict[str, tuple[int, str, Any]] = {}
     mcp_wrappers: dict[str, tuple[int, str, ParsedMcpWrapper]] = {}
@@ -929,7 +1028,19 @@ def load_codex_capture(path: Path) -> CodexCapture:
             message = payload.get("message")
             client_id = payload.get("client_id")
             if current_turn is not None and nonempty(message) and nonempty(client_id):
-                user_turns.append(UserTurn(sequence, current_turn, str(client_id), str(message)))
+                user_turn_evidence.append(
+                    _UserTurnEvidence(
+                        sequence,
+                        current_turn,
+                        str(client_id),
+                        str(message),
+                        None,
+                    )
+                )
+        elif envelope == "event_msg" and payload_type == "item_completed":
+            current_evidence = current_user_turn_evidence(payload, sequence, str(session_id))
+            if current_evidence is not None:
+                user_turn_evidence.append(current_evidence)
         elif envelope == "response_item" and payload_type == "custom_tool_call":
             parsed = (
                 parse_custom_call(payload.get("input"))
@@ -1123,6 +1234,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         for sequence, turn_id, paths in raw_path_observations
     ]
 
+    user_turns = normalize_user_turn_evidence(user_turn_evidence, known_turn_ids)
     fresh_user_thread = (
         thread_source == "user"
         and meta.get("forked_from_id") in {None, ""}
@@ -1141,7 +1253,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         task_sequences=tuple(task_sequences),
         completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),
-        user_turns=tuple(user_turns),
+        user_turns=user_turns,
         tool_calls=tuple(tool_calls),
         path_observations=tuple(path_observations),
         commands=tuple(commands),

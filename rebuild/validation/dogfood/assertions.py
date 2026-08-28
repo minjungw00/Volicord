@@ -435,6 +435,28 @@ def main() -> int:
     transport_identity = definition_value.get("real_session_evidence", {}).get(
         "codex_user_turn_transport_identity", {}
     )
+    user_turn_normalization = definition_value.get("real_session_evidence", {}).get(
+        "codex_user_turn_normalization", {}
+    )
+    if user_turn_normalization != {
+        "accepted_representations": [
+            "event_msg.user_message with active turn and client_id",
+            "event_msg.item_completed with matching thread_id, outer turn_id, and UserMessage item id/client_id",
+        ],
+        "current_text_content": (
+            "one or more ordered text segments concatenated without a separator"
+        ),
+        "unsupported_current_content": (
+            "malformed, empty, oversized, non-text, or identity-ambiguous UserMessage fails closed"
+        ),
+        "deduplication_identity": ["turn_id", "client_id"],
+        "current_item_identity_must_agree": True,
+        "same_identity_same_text_count": 1,
+        "same_identity_conflicting_text": "capture_rejected",
+        "generic_response_item_role_user_is_user_turn": False,
+        "numeric_cli_version_dispatch": False,
+    }:
+        raise AssertionError("Phase 8 Codex user-turn normalization contract changed")
     if transport_identity != {
         "captured_text_allowance": (
             "CRLF-to-LF normalization and removal of only terminal CR/LF characters"

@@ -8267,6 +8267,253 @@ def expect_rejected(result: dict[str, Any], definition: dict[str, Any], message:
     raise AssertionError(message)
 
 
+def assert_user_turn_normalizer_regressions(directory: Path) -> None:
+    session_id = "current-user-turn-session"
+
+    def event(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "timestamp": "2026-08-29T00:00:00Z",
+            "type": event_type,
+            "payload": payload,
+        }
+
+    meta = event(
+        "session_meta",
+        {
+            "id": session_id,
+            "session_id": session_id,
+            "cwd": "/phase8/current-user-turn",
+            "originator": "codex_vscode",
+            "cli_version": "current-schema-fixture",
+            "source": "vscode",
+            "thread_source": "user",
+            "git": {"commit_hash": "0" * 40},
+        },
+    )
+
+    def started(turn_id: str) -> dict[str, Any]:
+        return event("event_msg", {"type": "task_started", "turn_id": turn_id})
+
+    def legacy(client_id: str, text: str) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {"type": "user_message", "client_id": client_id, "message": text},
+        )
+
+    def current(
+        turn_id: str,
+        client_id: str,
+        text: str,
+        *,
+        item_id: str | None = None,
+        content: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": session_id,
+                "turn_id": turn_id,
+                "item": {
+                    "type": "UserMessage",
+                    "id": item_id or f"item-{client_id}",
+                    "client_id": client_id,
+                    "content": content
+                    if content is not None
+                    else [{"type": "text", "text": text, "text_elements": []}],
+                },
+            },
+        )
+
+    def write(name: str, body: list[dict[str, Any]]) -> Path:
+        path = directory / f"user-turn-{name}.jsonl"
+        path.write_text(
+            "".join(
+                json.dumps(value, separators=(",", ":")) + "\n"
+                for value in [meta, *body]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    legacy_capture = load_codex_capture(
+        write(
+            "legacy",
+            [started("turn-legacy"), legacy("client-legacy", "Legacy task")],
+        )
+    )
+    if [turn.text for turn in legacy_capture.user_turns] != ["Legacy task"]:
+        raise AssertionError("maintained legacy user-message event did not normalize")
+
+    current_capture = load_codex_capture(
+        write(
+            "current",
+            [
+                started("turn-current"),
+                current(
+                    "turn-current",
+                    "client-current",
+                    "unused",
+                    content=[
+                        {"type": "text", "text": "Current ", "text_elements": []},
+                        {"type": "text", "text": "task", "text_elements": []},
+                    ],
+                ),
+            ],
+        )
+    )
+    if [turn.text for turn in current_capture.user_turns] != ["Current task"]:
+        raise AssertionError("current UserMessage text segments did not normalize in order")
+
+    two_turn_capture = load_codex_capture(
+        write(
+            "two-current",
+            [
+                started("turn-one"),
+                current("turn-one", "client-one", "Frozen task"),
+                started("turn-two"),
+                current("turn-two", "client-two", "Later genuine response"),
+            ],
+        )
+    )
+    if [
+        (turn.turn_id, turn.user_turn_id, turn.text)
+        for turn in two_turn_capture.user_turns
+    ] != [
+        ("turn-one", "client-one", "Frozen task"),
+        ("turn-two", "client-two", "Later genuine response"),
+    ]:
+        raise AssertionError("two current-format user turns lost identity or source order")
+
+    injected_capture = load_codex_capture(
+        write(
+            "host-injected",
+            [
+                event(
+                    "response_item",
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "# AGENTS.md\nHost-injected instruction material",
+                            }
+                        ],
+                    },
+                ),
+                started("turn-real"),
+                current("turn-real", "client-real", "Actual frozen task"),
+            ],
+        )
+    )
+    if [turn.text for turn in injected_capture.user_turns] != ["Actual frozen task"]:
+        raise AssertionError("host-injected response_item role=user became a user turn")
+
+    duplicate_capture = load_codex_capture(
+        write(
+            "duplicate",
+            [
+                started("turn-duplicate"),
+                legacy("client-duplicate", "Same task"),
+                current("turn-duplicate", "client-duplicate", "Same task"),
+            ],
+        )
+    )
+    if len(duplicate_capture.user_turns) != 1:
+        raise AssertionError("identical legacy/current user-turn evidence was double counted")
+
+    conflicting_path = write(
+        "conflicting",
+        [
+            started("turn-conflicting"),
+            legacy("client-conflicting", "Frozen task"),
+            current("turn-conflicting", "client-conflicting", "Changed task"),
+        ],
+    )
+    try:
+        load_codex_capture(conflicting_path)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("conflicting legacy/current user-turn evidence qualified")
+
+    non_user_capture = load_codex_capture(
+        write(
+            "non-user-item",
+            [
+                started("turn-non-user"),
+                event(
+                    "event_msg",
+                    {
+                        "type": "item_completed",
+                        "thread_id": session_id,
+                        "turn_id": "turn-non-user",
+                        "item": {
+                            "type": "AgentMessage",
+                            "id": "agent-item",
+                            "content": [{"type": "text", "text": "Not user input"}],
+                        },
+                    },
+                ),
+            ],
+        )
+    )
+    if non_user_capture.user_turns:
+        raise AssertionError("non-UserMessage item_completed became a user turn")
+
+    malformed_paths = [
+        write(
+            "unsupported-content",
+            [
+                started("turn-unsupported"),
+                current(
+                    "turn-unsupported",
+                    "client-unsupported",
+                    "unused",
+                    content=[{"type": "image", "image_url": "data:image/png;base64,AA=="}],
+                ),
+            ],
+        ),
+        write(
+            "malformed-text",
+            [
+                started("turn-malformed"),
+                current(
+                    "turn-malformed",
+                    "client-malformed",
+                    "unused",
+                    content=[{"type": "text", "text": 7}],
+                ),
+            ],
+        ),
+        write(
+            "conflicting-item-identity",
+            [
+                started("turn-item-conflict"),
+                current(
+                    "turn-item-conflict",
+                    "client-item-conflict",
+                    "Same task",
+                    item_id="item-one",
+                ),
+                current(
+                    "turn-item-conflict",
+                    "client-item-conflict",
+                    "Same task",
+                    item_id="item-two",
+                ),
+            ],
+        ),
+    ]
+    for path in malformed_paths:
+        try:
+            load_codex_capture(path)
+        except EvidenceError:
+            continue
+        raise AssertionError(f"malformed current UserMessage evidence qualified: {path.name}")
+
+
 def self_test() -> int:
     definition = load_definition()
     v11 = load_v11()
@@ -8298,6 +8545,7 @@ def self_test() -> int:
         raise AssertionError("dogfood self-test could not resolve the current candidate")
     temporary = tempfile.TemporaryDirectory(prefix="volicord-phase8-self-test-")
     evidence_directory = Path(temporary.name)
+    assert_user_turn_normalizer_regressions(evidence_directory)
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
     procfs_unavailability = linux_process_tree_procfs_unavailability()
     observer = LinuxProcessTreePeakRss(
@@ -12651,6 +12899,11 @@ def self_test() -> int:
         "repository_classes": list(CLASSES),
         "private_qualification_profile_contract": "passed",
         "real_session_positive_path": "passed",
+        "legacy_and_current_user_turn_normalization": "passed",
+        "current_user_turn_order_and_text_segments": "passed",
+        "host_user_role_material_excluded": "passed",
+        "user_turn_deduplication_and_conflict_rejection": "passed",
+        "malformed_current_user_turn_rejected": "passed",
         "engineering_choice_discovery_required": "passed",
         "learning_feedback_order_required": "passed",
         "learning_pre_response_anchoring_rejected": "passed",
