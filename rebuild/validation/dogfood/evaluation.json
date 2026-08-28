@@ -733,6 +733,27 @@
       "raw_rollout_bytes_preserved": true,
       "terminal_work_failure_repaired_by_resume": false,
       "missing_activation_classification": "operator_environment_invalid",
+      "candidate_mutation_guard": {
+        "required_state": "campaign candidate equals current HEAD and qualifying worktree is clean",
+        "operations": [
+          "prepare-review",
+          "record-provisional-review",
+          "reveal-qualification-profile",
+          "seal-cycle",
+          "activate-cycle",
+          "activate-all",
+          "collect-work",
+          "collect-resume",
+          "collect-batch",
+          "finalize-manifest",
+          "package-review",
+          "prepare-human-review",
+          "qualify-review"
+        ],
+        "rejection_precedes_mutation": true,
+        "superseded_recovery_exception": false,
+        "read_only_predecessor_inspection_allowed": true
+      },
       "automatic_cycle_evidence": [
         "project_identity",
         "canonical_bundle",

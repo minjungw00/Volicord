@@ -2595,25 +2595,116 @@ def assert_campaign_level_human_review_operations(parent: Path, binary: Path) ->
         harness.combine_human_review = original_combine
 
 
+def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> None:
+    root = parent / "superseded-campaign"
+    prepare(root, parent / "superseded-sources", binary)
+    campaign_state = campaign.load_campaign(root)
+    current_candidate = campaign_state["candidate_head"]
+    state = campaign_state["cycles"]["volicord-cycle-1"]
+    review_slot_id = state["review_slot_id"]
+    missing = parent / "guard-input-does-not-exist.json"
+    archive = parent / "guard-review.tar.gz"
+    qualified = root / "guard-qualified.json"
+
+    def snapshot() -> dict[str, str]:
+        return {
+            path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        }
+
+    operations = {
+        "prepare-review": lambda: campaign.prepare_review(
+            root, "volicord", 1, missing
+        ),
+        "record-provisional-review": lambda: campaign.record_provisional_review(
+            root, current_candidate, review_slot_id, missing
+        ),
+        "reveal-qualification-profile": lambda: campaign.reveal_qualification_profile(
+            root, current_candidate
+        ),
+        "seal-cycle": lambda: campaign.seal_cycle(root, "volicord", 1, missing),
+        "activate-cycle": lambda: campaign.activate_cycle(root, "volicord", 1),
+        "activate-all": lambda: campaign.activate_all(root),
+        "collect-work": lambda: campaign.collect_work(root, "volicord", 1, missing),
+        "collect-resume": lambda: campaign.collect_resume(root, "volicord", 1, missing),
+        "collect-batch": lambda: campaign.collect_batch(root, []),
+        "finalize-manifest": lambda: campaign.finalize_manifest(root),
+        "package-review": lambda: campaign.build_review_package(root, archive),
+        "prepare-human-review": lambda: campaign.prepare_human_review(root, missing),
+        "qualify-review": lambda: campaign.qualify_human_review(
+            root, missing, missing, qualified
+        ),
+    }
+    original_head = harness.git_head
+    original_clean = harness.git_clean
+    before = snapshot()
+    harness.git_head = lambda _path: "cd" * 20
+    harness.git_clean = lambda _path: True
+    try:
+        if campaign.load_campaign(root)["candidate_head"] != current_candidate:
+            raise AssertionError("read-only superseded campaign inspection changed identity")
+        for operation, invoke in operations.items():
+            try:
+                invoke()
+            except campaign.CampaignError as error:
+                if "current clean qualifying HEAD" not in str(error):
+                    raise AssertionError(
+                        f"{operation} failed after rather than at the shared candidate guard"
+                    ) from error
+            else:
+                raise AssertionError(f"{operation} mutated a superseded campaign")
+            if snapshot() != before or archive.exists() or qualified.exists():
+                raise AssertionError(
+                    f"{operation} changed superseded campaign or output state"
+                )
+    finally:
+        harness.git_head = original_head
+        harness.git_clean = original_clean
+
+    harness.git_clean = lambda _path: False
+    try:
+        try:
+            campaign.collect_batch(root, [])
+        except campaign.CampaignError as error:
+            if "current clean qualifying HEAD" not in str(error):
+                raise
+        else:
+            raise AssertionError("collect-batch accepted a dirty qualifying worktree")
+        if snapshot() != before:
+            raise AssertionError("dirty-worktree rejection changed campaign state")
+    finally:
+        harness.git_clean = original_clean
+
+
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="volicord-dogfood-campaign-") as temporary:
-        parent = Path(temporary)
-        binary = parent / "candidate/bin/volicord"
-        write_fake_binary(binary)
-        assert_strict_cli_contract(parent, binary)
-        assert_opaque_slot_preparation(parent, binary)
-        assert_blind_recording_non_oracle(parent, binary)
-        assert_sealing_and_provenance(parent, binary)
-        assert_blockers(parent, binary)
-        assert_batch_workflow(parent, binary)
-        assert_failed_document_kind_is_machine_failure(parent, binary)
-        assert_campaign_level_human_review_operations(parent, binary)
-        assert_resume_baseline_identity_and_ordering(parent)
-        assert_successful_campaign(parent, binary)
+    original_clean = harness.git_clean
+    harness.git_clean = lambda _path: True
+    try:
+        with tempfile.TemporaryDirectory(prefix="volicord-dogfood-campaign-") as temporary:
+            parent = Path(temporary)
+            binary = parent / "candidate/bin/volicord"
+            write_fake_binary(binary)
+            assert_strict_cli_contract(parent, binary)
+            assert_opaque_slot_preparation(parent, binary)
+            assert_blind_recording_non_oracle(parent, binary)
+            assert_sealing_and_provenance(parent, binary)
+            assert_blockers(parent, binary)
+            assert_batch_workflow(parent, binary)
+            assert_failed_document_kind_is_machine_failure(parent, binary)
+            assert_campaign_level_human_review_operations(parent, binary)
+            assert_resume_baseline_identity_and_ordering(parent)
+            assert_successful_campaign(parent, binary)
+            assert_superseded_candidate_mutation_guard(parent, binary)
+    finally:
+        harness.git_clean = original_clean
     print(json.dumps({
         "status": "passed",
         "checks": [
             "campaign_level_human_review_operations",
+            "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
+            "collect_batch_rejects_superseded_or_dirty_candidate",
+            "read_only_superseded_campaign_inspection_remains_available",
             "strict_current_cli_positive_and_obsolete_negative_cases",
             "opaque_slot_generation_and_private_mapping",
             "reviewer_safe_campaign_state_exposes_no_profile",

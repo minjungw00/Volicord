@@ -1325,6 +1325,7 @@ def load_definition() -> dict[str, Any]:
     }:
         raise ValueError("the Phase 8 opaque-slot contract changed")
     batch = evidence.get("batch_campaign_contract", {})
+    candidate_guard = batch.get("candidate_mutation_guard", {})
     if (
         batch.get("operation") != "collect-batch"
         or batch.get("required_raw_rollout_count") != QUALIFICATION_SESSION_COUNT
@@ -1333,6 +1334,30 @@ def load_definition() -> dict[str, Any]:
         or batch.get("terminal_work_failure_repaired_by_resume") is not False
         or batch.get("missing_activation_classification")
         != "operator_environment_invalid"
+        or candidate_guard
+        != {
+            "required_state": (
+                "campaign candidate equals current HEAD and qualifying worktree is clean"
+            ),
+            "operations": [
+                "prepare-review",
+                "record-provisional-review",
+                "reveal-qualification-profile",
+                "seal-cycle",
+                "activate-cycle",
+                "activate-all",
+                "collect-work",
+                "collect-resume",
+                "collect-batch",
+                "finalize-manifest",
+                "package-review",
+                "prepare-human-review",
+                "qualify-review",
+            ],
+            "rejection_precedes_mutation": True,
+            "superseded_recovery_exception": False,
+            "read_only_predecessor_inspection_allowed": True,
+        }
         or "read_only_static_viewer_snapshot"
         not in batch.get("automatic_cycle_evidence", [])
     ):

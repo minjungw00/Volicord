@@ -740,11 +740,36 @@ def main() -> int:
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     batch_contract = real_session.get("batch_campaign_contract", {})
+    candidate_guard = batch_contract.get("candidate_mutation_guard", {})
     if (
         batch_contract.get("operation") != "collect-batch"
         or batch_contract.get("required_raw_rollout_count") != 16
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
+        or candidate_guard
+        != {
+            "required_state": (
+                "campaign candidate equals current HEAD and qualifying worktree is clean"
+            ),
+            "operations": [
+                "prepare-review",
+                "record-provisional-review",
+                "reveal-qualification-profile",
+                "seal-cycle",
+                "activate-cycle",
+                "activate-all",
+                "collect-work",
+                "collect-resume",
+                "collect-batch",
+                "finalize-manifest",
+                "package-review",
+                "prepare-human-review",
+                "qualify-review",
+            ],
+            "rejection_precedes_mutation": True,
+            "superseded_recovery_exception": False,
+            "read_only_predecessor_inspection_allowed": True,
+        }
         or "read_only_static_viewer_snapshot"
         not in batch_contract.get("automatic_cycle_evidence", [])
     ):

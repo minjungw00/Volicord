@@ -54,6 +54,11 @@ three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distin
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the later sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
+Every campaign helper transition that mutates candidate-bound review,
+activation, collection, manifest, package, or human-review state must reject a
+different current HEAD or dirty qualifying worktree before mutation. There is
+no superseded-campaign reprocessing exception; immutable predecessor evidence
+remains available only to read-only diagnostic helpers.
 
 This table is a human-readable projection of the public operating contract in
 `rebuild/validation/dogfood/evaluation.json`; it does not own a separate

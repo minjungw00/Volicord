@@ -1160,6 +1160,13 @@ Operator-facing artifact의 leak check는 prescribed Question, evaluator concern
 prescribed selection, counterfactual approach, fact/authority agreement,
 behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
 isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS security boundary 주장이 아니다.
+Prepared campaign state에 의존하는 모든 mutating helper transition은 shared candidate guard를
+먼저 적용한다. Campaign에 bind된 candidate가 actual current `HEAD`와 다르거나 qualifying
+worktree가 clean하지 않으면 review preparation/record/reveal/seal, activation, work/resume/batch
+collection, manifest/review package와 human-review publication을 어떤 artifact mutation보다 먼저
+거부한다. Superseded campaign을 다른 candidate에서 reprocess하는 예외는 없다. Immutable predecessor
+evidence의 load, mapping과 reviewer-visible non-mutating validation은 diagnostic 목적으로 계속
+허용하지만 qualification state를 바꾸지 않는다.
 8개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
 repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 16개 fresh
 chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 16개

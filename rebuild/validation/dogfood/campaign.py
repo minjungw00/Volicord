@@ -120,6 +120,21 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
     return value
 
 
+def require_current_candidate(candidate_head: str) -> None:
+    if harness.git_head(ROOT) != candidate_head or not harness.git_clean(ROOT):
+        raise CampaignError(
+            "campaign mutation requires its bound candidate to be the current clean qualifying HEAD"
+        )
+
+
+def load_campaign_for_mutation(
+    root: Path, *, validate_private: bool = True
+) -> dict[str, Any]:
+    campaign = load_campaign(root, validate_private=validate_private)
+    require_current_candidate(campaign.get("candidate_head", ""))
+    return campaign
+
+
 def save_campaign(root: Path, value: dict[str, Any]) -> None:
     write_json(campaign_file(root), value)
 
@@ -1255,7 +1270,7 @@ def prepare_review(
     cycle: int,
     draft_descriptor: Path,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     state = campaign["cycles"][cycle_key(kind, cycle)]
     if state.get("state") != "prepared":
@@ -1443,7 +1458,7 @@ def record_provisional_review(
     review_slot_id: str,
     provisional_review_path: Path,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root, validate_private=False)
+    campaign = load_campaign_for_mutation(root, validate_private=False)
     verify_inventory(root)
     if campaign.get("candidate_head") != candidate_head:
         raise CampaignError("provisional review is bound to a different campaign candidate")
@@ -1553,7 +1568,7 @@ def verify_all_provisional_reviews_fixed(
 
 
 def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, Any]:
-    campaign = load_campaign(root, validate_private=False)
+    campaign = load_campaign_for_mutation(root, validate_private=False)
     verify_inventory(root)
     if campaign.get("candidate_head") != candidate_head:
         raise CampaignError("qualification profile reveal is bound to a different candidate")
@@ -1584,7 +1599,7 @@ def seal_cycle(
     cycle: int,
     prepared_descriptor: Path,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     verify_all_provisional_reviews_fixed(root, campaign)
     if campaign.get("qualification_profile_state") != "revealed":
@@ -1712,7 +1727,7 @@ def seal_cycle(
 
 
 def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     key = cycle_key(kind, cycle)
     state = campaign["cycles"][key]
@@ -1744,7 +1759,7 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
 
 
 def activate_all(root: Path) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     for kind in CLASSES:
         for cycle in cycle_numbers(kind):
@@ -1784,9 +1799,7 @@ def prepare_campaign(
     require_private_campaign_root(root)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{2,80}", campaign_id):
         raise CampaignError("campaign identity must be a bounded filesystem-safe value")
-    actual_head = harness.git_head(ROOT)
-    if actual_head != candidate_head or not harness.git_clean(ROOT):
-        raise CampaignError("candidate HEAD/worktree does not match a clean requested candidate")
+    require_current_candidate(candidate_head)
     definition = harness.load_definition()
     raw_input = read_json(repository_input)
     specs = repository_spec_map(raw_input)
@@ -1973,7 +1986,7 @@ def update_activation_summary(root: Path, kind: str, cycle: int, **updates: Any)
 
 
 def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
@@ -2505,7 +2518,7 @@ def collect_resume(
     documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("later collection is blocked; create a new campaign identity")
@@ -2711,7 +2724,7 @@ def collect_batch(
     documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
@@ -2947,7 +2960,7 @@ def collect_batch(
 
 
 def finalize_manifest(root: Path, output: Path | None = None) -> Path:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("a stopped campaign cannot produce a qualifying repository manifest")
@@ -3002,7 +3015,7 @@ def tar_info(name: str, size: int) -> tarfile.TarInfo:
 
 
 def build_review_package(root: Path, output: Path, *, include_raw: bool = False) -> Path:
-    campaign = load_campaign(root)
+    campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
     manifest = root / "repositories.json"
     if not manifest.is_file():
@@ -3104,7 +3117,7 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
 
 
 def prepare_human_review(root: Path, automated_result_path: Path) -> Path:
-    load_campaign(root)
+    load_campaign_for_mutation(root)
     verify_inventory(root)
     automated_bytes = automated_result_path.read_bytes()
     try:
@@ -3131,7 +3144,7 @@ def qualify_human_review(
     human_review_path: Path,
     output: Path,
 ) -> Path:
-    load_campaign(root)
+    load_campaign_for_mutation(root)
     verify_inventory(root)
     if output.exists():
         raise CampaignError("qualified Dogfood result destination already exists")
