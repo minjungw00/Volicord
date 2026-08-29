@@ -250,6 +250,22 @@ basis를 요구한다. Unresolved user-owned outcome은 open 상태에서 다른
 invalid value, allowed values, bound Goal/baseline identities와 다음 supported `draft` action을 함께
 반환해 같은 invalid payload의 반복을 피하게 한다.
 
+`draft`는 validator와 같은 closed schema variant owner에서 각 legal judgment contract를
+기계적으로 투영한다. 각 contract는 stable variant identity, exact required/allowed/forbidden
+field, singleton enum value, caller가 제공할 semantic field와 실제 record/revise input schema를
+포함한다. 별도 hand-maintained disposition table은 public contract가 아니다. 각 discovered
+choice template은 discovery-owned summary/scope/alternative/consequence/effect/Source/evidence와
+exact `choice_id`를 제공하고 모든 legal variant identity를 위 contract에 연결한다.
+`learning_value`의 `routine`/`deliberation_worthy`와 learning participation의
+`inactive`/current-host `active`도 실제 validator schema에서 같은 형태로 투영한다.
+
+반환된 `record_request`는 아직 review가 없으면 exact discovery identity를 가진 `record`, 같은
+discovery의 current review가 있으면 exact review identity를 가진 `revise`를 prefill하고 실제
+request schema와 choice order를 함께 제공한다. Caller는 variant를 semantic하게 선택하고,
+prefilled identity와 그 variant의 fixed enum을 합친 뒤 요구된 semantic field만 채워 각 choice당
+정확히 하나의 judgment를 조립한다. 따라서 one-pass caller는 validation failure를 schema discovery로
+사용하지 않으며 placeholder semantic truth를 제출할 필요도 없다.
+
 Current Goal 자체가 어떤 outcome을 user control로 남기거나 user가 choice를 retain한다고 밝히면,
 older contract나 repository convention이 존재한다는 이유로 그 exact dimension을 agent-owned
 implementation preference로 낮추지 않는다. Goal/source identity와 checklist는 deterministic하게

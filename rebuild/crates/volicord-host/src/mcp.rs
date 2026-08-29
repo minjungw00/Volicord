@@ -489,11 +489,30 @@ impl HostAdapter {
                     .operations
                     .canonical_basis(project_id)
                     .map_err(operation_error)?;
+                let current_review = self
+                    .operations
+                    .candidate_basis(project_id)
+                    .map_err(operation_error)?
+                    .candidates
+                    .into_iter()
+                    .filter(|candidate| {
+                        candidate.kind == CandidateKind::MaterialityReview
+                            && candidate.content.as_ref().is_some_and(|content| {
+                                content.materiality_review.as_ref().is_some_and(|review| {
+                                    review.engineering_choice_discovery_candidate_id == candidate_id
+                                })
+                            })
+                    })
+                    .max_by_key(|candidate| {
+                        (candidate.revision, candidate.created_at, candidate.id)
+                    })
+                    .map(|candidate| candidate.id);
                 Ok(materiality_draft_json(
                     project_id,
                     candidate_id,
                     discovery,
                     &canonical,
+                    current_review,
                 ))
             }
             "record" => {
@@ -1768,7 +1787,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, and one template per discovered choice. Classify authority and learning value independently; do not use the overall feature request, implementation preference, recommendation, or convention as authority for a materially different user-facing outcome. Inquiry owns the authority evaluation and returns the next required workflow action.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Classify authority and learning value independently; do not use the overall feature request, implementation preference, recommendation, or convention as authority for a materially different user-facing outcome. Inquiry owns the authority evaluation and returns the next required workflow action.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2410,7 +2429,13 @@ fn materiality_judgment_schema(
     object_schema(common, &required)
 }
 
-fn materiality_judgment_schemas() -> Vec<Value> {
+#[derive(Clone)]
+struct MaterialityJudgmentContract {
+    variant_id: &'static str,
+    schema: Value,
+}
+
+fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
     let contract_basis =
         || nonempty_string_array_schema("Exact accepted contract references settling this choice");
     let decision_ids = || identity_array_schema("Exact current applicable Decision identities", 1);
@@ -2428,104 +2453,214 @@ fn materiality_judgment_schemas() -> Vec<Value> {
             "Bounded scope delegated by the verbatim current-task statement",
         )
     };
+    let contract = |variant_id, schema| MaterialityJudgmentContract { variant_id, schema };
     vec![
-        materiality_judgment_schema("repository_or_environment_fact", vec![], &[]),
-        materiality_judgment_schema(
-            "settled_authority",
-            vec![("contract_basis", contract_basis())],
-            &["contract_basis"],
+        contract(
+            "repository_or_environment_fact",
+            materiality_judgment_schema("repository_or_environment_fact", vec![], &[]),
         ),
-        materiality_judgment_schema(
-            "settled_authority",
-            vec![("decision_ids", decision_ids())],
-            &["decision_ids"],
+        contract(
+            "settled_authority_by_contract",
+            materiality_judgment_schema(
+                "settled_authority",
+                vec![("contract_basis", contract_basis())],
+                &["contract_basis"],
+            ),
         ),
-        materiality_judgment_schema(
-            "settled_authority",
-            vec![
-                ("contract_basis", contract_basis()),
-                ("decision_ids", decision_ids()),
-            ],
-            &["contract_basis", "decision_ids"],
+        contract(
+            "settled_authority_by_decision",
+            materiality_judgment_schema(
+                "settled_authority",
+                vec![("decision_ids", decision_ids())],
+                &["decision_ids"],
+            ),
         ),
-        materiality_judgment_schema("agent_owned_implementation_choice", vec![], &[]),
-        materiality_judgment_schema(
-            "delegated_implementation_choice",
-            vec![
-                ("delegation_statement", delegation_statement()),
-                ("delegated_scope", delegated_scope()),
-            ],
-            &["delegation_statement", "delegated_scope"],
+        contract(
+            "settled_authority_by_contract_and_decision",
+            materiality_judgment_schema(
+                "settled_authority",
+                vec![
+                    ("contract_basis", contract_basis()),
+                    ("decision_ids", decision_ids()),
+                ],
+                &["contract_basis", "decision_ids"],
+            ),
         ),
-        materiality_judgment_schema(
-            "delegated_implementation_choice",
-            vec![("decision_ids", decision_ids())],
-            &["decision_ids"],
+        contract(
+            "agent_owned_implementation_choice",
+            materiality_judgment_schema("agent_owned_implementation_choice", vec![], &[]),
         ),
-        materiality_judgment_schema(
-            "exploratory_uncertainty",
-            vec![
-                (
-                    "exploratory_disposition",
-                    enum_schema("Exploratory treatment", &["research_required"]),
-                ),
-                ("research_basis", research_basis()),
-            ],
-            &["exploratory_disposition", "research_basis"],
+        contract(
+            "delegated_implementation_choice_current_task",
+            materiality_judgment_schema(
+                "delegated_implementation_choice",
+                vec![
+                    ("delegation_statement", delegation_statement()),
+                    ("delegated_scope", delegated_scope()),
+                ],
+                &["delegation_statement", "delegated_scope"],
+            ),
         ),
-        materiality_judgment_schema(
-            "exploratory_uncertainty",
-            vec![
-                (
-                    "exploratory_disposition",
-                    enum_schema("Exploratory treatment", &["prototype_required"]),
-                ),
-                ("research_basis", research_basis()),
-            ],
-            &["exploratory_disposition", "research_basis"],
+        contract(
+            "delegated_implementation_choice_inquiry_time",
+            materiality_judgment_schema(
+                "delegated_implementation_choice",
+                vec![("decision_ids", decision_ids())],
+                &["decision_ids"],
+            ),
         ),
-        materiality_judgment_schema(
-            "exploratory_uncertainty",
-            vec![
-                (
-                    "exploratory_disposition",
-                    enum_schema("Exploratory treatment", &["deferred_with_revisit"]),
-                ),
-                ("research_basis", research_basis()),
-            ],
-            &["exploratory_disposition", "research_basis"],
+        contract(
+            "exploratory_uncertainty_research_required",
+            materiality_judgment_schema(
+                "exploratory_uncertainty",
+                vec![
+                    (
+                        "exploratory_disposition",
+                        enum_schema("Exploratory treatment", &["research_required"]),
+                    ),
+                    ("research_basis", research_basis()),
+                ],
+                &["exploratory_disposition", "research_basis"],
+            ),
         ),
-        materiality_judgment_schema(
-            "exploratory_uncertainty",
-            vec![
-                (
-                    "exploratory_disposition",
-                    enum_schema("Exploratory treatment", &["resolved_by_research"]),
-                ),
-                ("research_basis", research_basis()),
-            ],
-            &["exploratory_disposition", "research_basis"],
+        contract(
+            "exploratory_uncertainty_prototype_required",
+            materiality_judgment_schema(
+                "exploratory_uncertainty",
+                vec![
+                    (
+                        "exploratory_disposition",
+                        enum_schema("Exploratory treatment", &["prototype_required"]),
+                    ),
+                    ("research_basis", research_basis()),
+                ],
+                &["exploratory_disposition", "research_basis"],
+            ),
         ),
-        materiality_judgment_schema("unresolved_user_owned_outcome", vec![], &[]),
-        materiality_judgment_schema(
+        contract(
+            "exploratory_uncertainty_deferred_with_revisit",
+            materiality_judgment_schema(
+                "exploratory_uncertainty",
+                vec![
+                    (
+                        "exploratory_disposition",
+                        enum_schema("Exploratory treatment", &["deferred_with_revisit"]),
+                    ),
+                    ("research_basis", research_basis()),
+                ],
+                &["exploratory_disposition", "research_basis"],
+            ),
+        ),
+        contract(
+            "exploratory_uncertainty_resolved_by_research",
+            materiality_judgment_schema(
+                "exploratory_uncertainty",
+                vec![
+                    (
+                        "exploratory_disposition",
+                        enum_schema("Exploratory treatment", &["resolved_by_research"]),
+                    ),
+                    ("research_basis", research_basis()),
+                ],
+                &["exploratory_disposition", "research_basis"],
+            ),
+        ),
+        contract(
             "unresolved_user_owned_outcome",
-            vec![(
-                "resolution_decision_id",
-                identity_schema("Exact applicable current-host Decision resolving this choice"),
-            )],
-            &["resolution_decision_id"],
+            materiality_judgment_schema("unresolved_user_owned_outcome", vec![], &[]),
+        ),
+        contract(
+            "resolved_user_owned_outcome",
+            materiality_judgment_schema(
+                "unresolved_user_owned_outcome",
+                vec![(
+                    "resolution_decision_id",
+                    identity_schema("Exact applicable current-host Decision resolving this choice"),
+                )],
+                &["resolution_decision_id"],
+            ),
         ),
     ]
 }
 
-fn materiality_review_schemas() -> Vec<Value> {
-    let judgments = json!({
+fn materiality_judgment_schemas() -> Vec<Value> {
+    materiality_judgment_contracts()
+        .into_iter()
+        .map(|contract| contract.schema)
+        .collect()
+}
+
+fn materiality_judgments_schema() -> Value {
+    json!({
         "type":"array",
         "description":"One caller-owned authority and learning judgment for every discovery-owned choice",
         "minItems":1,
         "maxItems":64,
         "items":{"oneOf":materiality_judgment_schemas()},
-    });
+    })
+}
+
+fn materiality_record_schema() -> Value {
+    object_schema(
+        vec![
+            (
+                "action",
+                enum_schema("Materiality Review action", &["record"]),
+            ),
+            ("project_id", identity_schema("Project identity")),
+            (
+                "engineering_choice_discovery_candidate_id",
+                identity_schema("Exact Engineering Choice Discovery Candidate identity"),
+            ),
+            (
+                "rationale",
+                text_schema("Bounded review rationale", 1, 4096),
+            ),
+            ("learning_participation", learning_participation_schema()),
+            ("judgments", materiality_judgments_schema()),
+        ],
+        &[
+            "action",
+            "project_id",
+            "engineering_choice_discovery_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        ],
+    )
+}
+
+fn materiality_revise_schema() -> Value {
+    object_schema(
+        vec![
+            (
+                "action",
+                enum_schema("Materiality Review action", &["revise"]),
+            ),
+            ("project_id", identity_schema("Project identity")),
+            (
+                "review_candidate_id",
+                identity_schema("Materiality Review Candidate identity"),
+            ),
+            (
+                "rationale",
+                text_schema("Bounded revision rationale", 1, 4096),
+            ),
+            ("learning_participation", learning_participation_schema()),
+            ("judgments", materiality_judgments_schema()),
+        ],
+        &[
+            "action",
+            "project_id",
+            "review_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        ],
+    )
+}
+
+fn materiality_review_schemas() -> Vec<Value> {
     let mut inspect_fields = vec![
         ("project_id", identity_schema("Project identity")),
         (
@@ -2578,60 +2713,8 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "engineering_choice_discovery_candidate_id",
             ],
         ),
-        object_schema(
-            vec![
-                (
-                    "action",
-                    enum_schema("Materiality Review action", &["record"]),
-                ),
-                ("project_id", identity_schema("Project identity")),
-                (
-                    "engineering_choice_discovery_candidate_id",
-                    identity_schema("Exact Engineering Choice Discovery Candidate identity"),
-                ),
-                (
-                    "rationale",
-                    text_schema("Bounded review rationale", 1, 4096),
-                ),
-                ("learning_participation", learning_participation_schema()),
-                ("judgments", judgments.clone()),
-            ],
-            &[
-                "action",
-                "project_id",
-                "engineering_choice_discovery_candidate_id",
-                "rationale",
-                "learning_participation",
-                "judgments",
-            ],
-        ),
-        object_schema(
-            vec![
-                (
-                    "action",
-                    enum_schema("Materiality Review action", &["revise"]),
-                ),
-                ("project_id", identity_schema("Project identity")),
-                (
-                    "review_candidate_id",
-                    identity_schema("Materiality Review Candidate identity"),
-                ),
-                (
-                    "rationale",
-                    text_schema("Bounded revision rationale", 1, 4096),
-                ),
-                ("learning_participation", learning_participation_schema()),
-                ("judgments", judgments),
-            ],
-            &[
-                "action",
-                "project_id",
-                "review_candidate_id",
-                "rationale",
-                "learning_participation",
-                "judgments",
-            ],
-        ),
+        materiality_record_schema(),
+        materiality_revise_schema(),
         object_schema(
             inspect_fields,
             &[
@@ -4463,6 +4546,21 @@ fn material_outcome_signals(
     signals
 }
 
+const fn material_outcome_signal_name(signal: MaterialOutcomeSignal) -> &'static str {
+    match signal {
+        MaterialOutcomeSignal::PublicApiSemantics => "public_api_semantics",
+        MaterialOutcomeSignal::CliCompatibilityOrExitBehavior => {
+            "cli_compatibility_or_exit_behavior"
+        }
+        MaterialOutcomeSignal::ObservableFailurePolicy => "observable_failure_policy",
+        MaterialOutcomeSignal::PrivacyOrExternalDisclosure => "privacy_or_external_disclosure",
+        MaterialOutcomeSignal::SecurityPosture => "security_posture",
+        MaterialOutcomeSignal::UserVisibleDefault => "user_visible_default",
+        MaterialOutcomeSignal::MaintenanceOrSupportPolicy => "maintenance_or_support_policy",
+        MaterialOutcomeSignal::OtherMaterialOutcome => "other_material_outcome",
+    }
+}
+
 fn materiality_contract_error(
     field_path: String,
     invalid_value: Option<&str>,
@@ -4621,11 +4719,119 @@ fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, H
     }
 }
 
+fn schema_required_fields(schema: &Value) -> Vec<String> {
+    schema
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn schema_property_names(schema: &Value) -> Vec<String> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|properties| properties.keys().cloned())
+        .collect()
+}
+
+fn singleton_enum_fields(schema: &Value) -> serde_json::Map<String, Value> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|properties| properties.iter())
+        .filter_map(|(name, property)| {
+            let values = property.get("enum")?.as_array()?;
+            (values.len() == 1).then(|| (name.clone(), values[0].clone()))
+        })
+        .collect()
+}
+
+fn materiality_judgment_contract_json(
+    contract: &MaterialityJudgmentContract,
+    all_fields: &BTreeSet<String>,
+    derived_identities: &Value,
+) -> Value {
+    let required_fields = schema_required_fields(&contract.schema);
+    let allowed_fields = schema_property_names(&contract.schema);
+    let fixed_fields = singleton_enum_fields(&contract.schema);
+    let caller_must_semantically_provide = required_fields
+        .iter()
+        .filter(|field| field.as_str() != "choice_id" && !fixed_fields.contains_key(*field))
+        .cloned()
+        .collect::<Vec<_>>();
+    let caller_may_provide = allowed_fields
+        .iter()
+        .filter(|field| !required_fields.contains(field))
+        .cloned()
+        .collect::<Vec<_>>();
+    let forbidden_fields = all_fields
+        .iter()
+        .filter(|field| !allowed_fields.contains(field))
+        .cloned()
+        .collect::<Vec<_>>();
+    json!({
+        "variant_id":contract.variant_id,
+        "required_fields":required_fields,
+        "forbidden_fields":forbidden_fields,
+        "allowed_fields":allowed_fields,
+        "bounded_allowed_values":fixed_fields,
+        "server_derived_identities":derived_identities,
+        "caller_must_semantically_provide":caller_must_semantically_provide,
+        "caller_may_provide":caller_may_provide,
+        "input_schema":contract.schema,
+    })
+}
+
+fn schema_alternatives(schema: Value) -> Vec<Value> {
+    let alternatives = schema
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let all_fields = alternatives
+        .iter()
+        .flat_map(schema_property_names)
+        .collect::<BTreeSet<_>>();
+    alternatives
+        .into_iter()
+        .map(|input_schema| {
+            let required_fields = schema_required_fields(&input_schema);
+            let allowed_fields = schema_property_names(&input_schema);
+            let forbidden_fields = all_fields
+                .iter()
+                .filter(|field| !allowed_fields.contains(field))
+                .cloned()
+                .collect::<Vec<_>>();
+            let bounded_allowed_values = singleton_enum_fields(&input_schema);
+            let caller_must_semantically_provide = required_fields
+                .iter()
+                .filter(|field| !bounded_allowed_values.contains_key(*field))
+                .cloned()
+                .collect::<Vec<_>>();
+            json!({
+                "required_fields":required_fields,
+                "forbidden_fields":forbidden_fields,
+                "allowed_fields":allowed_fields,
+                "bounded_allowed_values":bounded_allowed_values,
+                "caller_must_semantically_provide":caller_must_semantically_provide,
+                "input_schema":input_schema,
+            })
+        })
+        .collect()
+}
+
 fn materiality_draft_json(
     project_id: ProjectId,
     candidate_id: CandidateId,
     discovery: &volicord_inquiry::EngineeringChoiceDiscovery,
     canonical: &volicord_context::CanonicalReadBasis,
+    current_review: Option<CandidateId>,
 ) -> Value {
     let goal = canonical
         .context_items
@@ -4650,29 +4856,80 @@ fn materiality_draft_json(
                 .map(|basis| basis.source.id.to_string())
         })
         .collect::<Vec<_>>();
+    let contracts = materiality_judgment_contracts();
+    let all_judgment_fields = contracts
+        .iter()
+        .flat_map(|contract| schema_property_names(&contract.schema))
+        .collect::<BTreeSet<_>>();
+    let derived_identities = json!({
+        "project_id":project_id.to_string(),
+        "goal_context_id":discovery.goal_context_id.to_string(),
+        "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+        "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
+        "current_goal_user_turn_source_ids":current_host_user_turn_source_ids,
+    });
+    let judgment_contracts = contracts
+        .iter()
+        .map(|contract| {
+            materiality_judgment_contract_json(contract, &all_judgment_fields, &derived_identities)
+        })
+        .collect::<Vec<_>>();
+    let legal_judgment_variant_ids = contracts
+        .iter()
+        .map(|contract| contract.variant_id)
+        .collect::<Vec<_>>();
     let judgment_templates = discovery
         .choices
         .iter()
         .map(|choice| {
+            let observable_signals = material_outcome_signals(&choice.effect_categories)
+                .into_iter()
+                .map(material_outcome_signal_name)
+                .collect::<Vec<_>>();
             json!({
                 "discovery_owned":{
                     "choice_id":choice.choice_id,
                     "summary":choice.summary,
                     "affected_scope":choice.affected_scope,
+                    "alternatives":choice.alternatives.iter().map(|alternative| json!({
+                        "alternative_id":alternative.alternative_id,
+                        "summary":alternative.summary,
+                        "technical_consequences":alternative.technical_consequences,
+                    })).collect::<Vec<_>>(),
                     "material_consequences":choice.technical_consequences,
                     "available_source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
                     "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                    "observable_signals":observable_signals,
                     "relationship":engineering_choice_json(choice)["relationship"].clone(),
+                    "evidence_state":engineering_evidence_state_name(choice.evidence_state),
                 },
                 "caller_owned_judgment":{
-                    "choice_id":choice.choice_id,
-                    "required_fields":["choice_id","disposition","basis_summary","learning_value"],
-                    "optional_common_fields":["additional_source_ids"],
-                    "disposition_contract":"Select exactly one entry from disposition_input_contracts and supply only its allowed fields.",
+                    "prefilled_fields":{"choice_id":choice.choice_id},
+                    "legal_judgment_variant_ids":legal_judgment_variant_ids,
+                    "assembly":"Choose one referenced judgment_contract, merge prefilled_fields and its bounded_allowed_values, then provide exactly its caller semantic fields. Do not submit any forbidden field.",
                 }
             })
         })
         .collect::<Vec<_>>();
+    let (request_action, request_identity_field, request_identity, request_schema) =
+        match current_review {
+            Some(review_candidate_id) => (
+                "revise",
+                "review_candidate_id",
+                review_candidate_id.to_string(),
+                materiality_revise_schema(),
+            ),
+            None => (
+                "record",
+                "engineering_choice_discovery_candidate_id",
+                candidate_id.to_string(),
+                materiality_record_schema(),
+            ),
+        };
+    let mut request_prefilled_fields = serde_json::Map::new();
+    request_prefilled_fields.insert("action".into(), json!(request_action));
+    request_prefilled_fields.insert("project_id".into(), json!(project_id.to_string()));
+    request_prefilled_fields.insert(request_identity_field.into(), json!(request_identity));
     json!({
         "action":"draft",
         "project_id":project_id.to_string(),
@@ -4716,9 +4973,11 @@ fn materiality_draft_json(
             "hidden_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics.",
         },
         "learning_participation":{
-            "allowed_states":["inactive","active"],
-            "active_requires":["exact current-host user-turn Source identity","non-empty verbatim opt-in statement"],
+            "input_alternatives":schema_alternatives(learning_participation_schema()),
+            "derived_identity_options":{"current_goal_user_turn_source_ids":current_host_user_turn_source_ids},
+            "assembly":"Choose inactive, or choose active and provide a verbatim explicit opt-in from one returned current Goal user-turn Source. Learning participation is independent of authority.",
         },
+        "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
         "field_ownership":{
             "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
             "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","additional authority evidence allowed for that disposition","learning_value"],
@@ -4743,23 +5002,26 @@ fn materiality_draft_json(
                 "disposition-specific fields on any other disposition"
             ]
         },
-        "disposition_input_contracts":{
-            "repository_or_environment_fact":{"required":[],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
-            "settled_authority":{"required_one_or_both":["contract_basis","decision_ids"],"forbidden":["delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
-            "agent_owned_implementation_choice":{"required":[],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
-            "delegated_implementation_choice_current_task":{"required":["delegation_statement","delegated_scope"],"derived_identities":{"goal_context_id":discovery.goal_context_id.to_string(),"user_turn_source_ids":current_host_user_turn_source_ids},"forbidden":["contract_basis","decision_ids","research_basis","resolution_decision_id"]},
-            "delegated_implementation_choice_inquiry_time":{"required":["decision_ids"],"forbidden":["contract_basis","delegation_statement","delegated_scope","research_basis","resolution_decision_id"]},
-            "exploratory_uncertainty":{"required":["exploratory_disposition","research_basis"],"allowed_exploratory_dispositions":["research_required","prototype_required","deferred_with_revisit","resolved_by_research"],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","resolution_decision_id"]},
-            "unresolved_user_owned_outcome":{"required":[],"optional_after_current_host_decision":["resolution_decision_id"],"forbidden":["contract_basis","decision_ids","delegation_statement","delegated_scope","research_basis"]}
-        },
+        "judgment_contract_source":"The same closed schema variants validate materiality_review record and revise calls.",
+        "judgment_contracts":judgment_contracts,
         "judgment_templates":judgment_templates,
         "record_request":{
-            "action":"record",
-            "project_id":project_id.to_string(),
-            "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
+            "action":request_action,
+            "prefilled_fields":request_prefilled_fields,
             "caller_must_supply":["rationale","learning_participation","judgments"],
+            "judgments_assembly":{
+                "choice_order":discovery.choices.iter().map(|choice| choice.choice_id.clone()).collect::<Vec<_>>(),
+                "exactly_one_judgment_per_choice":true,
+                "steps":[
+                    "For each judgment_template, choose one legal_judgment_variant_id without changing the semantic choice.",
+                    "Merge caller_owned_judgment.prefilled_fields with the selected judgment_contract bounded_allowed_values.",
+                    "Provide every caller_must_semantically_provide field, including one learning_value_input_alternative, and only desired caller_may_provide fields.",
+                    "Place the assembled judgments in choice_order and merge them with record_request.prefilled_fields plus rationale and learning_participation."
+                ]
+            },
+            "input_schema":request_schema,
         },
-        "required_action":{"tool":"materiality_review","action":"record"},
+        "required_action":{"tool":"materiality_review","action":request_action},
         "canonical_mutation":false,
         "read_only":true,
     })
@@ -5070,9 +5332,10 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "project_id":identity("project"),
                 "engineering_choice_discovery_candidate_id":identity("engineering_choice_discovery_candidate"),
             },
-            "deterministic_path":["call_draft_with_returned_discovery_identity","copy_record_request_identities","supply_one_disposition_specific_judgment_per_returned_choice","record_once"],
+            "deterministic_path":["call_draft_with_returned_discovery_identity","copy_record_request_prefilled_fields","select_one_returned_schema_variant_per_choice","supply_only_that_variant_semantic_fields","submit_returned_record_or_revise_request_once"],
             "server_derived_discovery_fields":["Goal and baseline identities","dimension and discovered-choice identities","summary","affected scope","material consequences","observable signals","discovery Source basis"],
             "required_semantic_judgments":["authority disposition and allowed evidence for that disposition","independent learning value","explicit learning participation state"],
+            "schema_source":"The draft projects the same closed variants used by Materiality record/revise validation.",
         }),
         WorkflowStage::LearningDeliberation => {
             let pending = workflow

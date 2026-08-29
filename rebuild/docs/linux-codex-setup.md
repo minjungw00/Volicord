@@ -99,6 +99,16 @@ alternatives disclose the material consequences across every coupled dimension.
 Trivial implementation details do not become Questions. Once the branch is
 resolved, ordinary repository edits require no approval ceremony.
 
+Call `materiality_review` with `action=draft` before recording or revising the
+review. That response contains each discovery-owned choice and a catalog of the
+same closed judgment schemas used by host validation: exact required,
+allowed, and forbidden fields; fixed enum values; server-derived Goal and
+Source identities; both learning-value shapes; both learning-participation
+shapes; and the current record/revise request identity. Choose a semantic
+variant for each returned choice and assemble the request from its prefilled
+fields. A validation-error round trip is not required to discover the payload
+shape, and placeholder semantic values should not be submitted.
+
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or
 ownership manifest is a conflict. An untracked local config can be merged when

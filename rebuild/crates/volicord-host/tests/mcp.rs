@@ -8,12 +8,14 @@ use std::{
     thread,
 };
 use tempfile::tempdir;
-use volicord_context::{Principal, PrincipalKind, TimestampMicros};
+use volicord_context::{
+    ApplicabilityScope, OperationId, Principal, PrincipalKind, TimestampMicros,
+};
 use volicord_host::{run_stdio, HostAdapter, HOST_TOOL_NAMES};
 use volicord_inquiry::{
-    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDraft,
-    CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention, CandidateStore,
-    SubmissionOutcome,
+    BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
+    CandidateDraft, CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention,
+    CandidateStore, CurrentHostResponse, DisplayedQuestion, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
@@ -260,6 +262,298 @@ fn record_fixture_discovery(
     discovery.discovery_candidate_id.to_string()
 }
 
+fn fill_draft_variant(
+    variants: &[Value],
+    discriminator_field: &str,
+    discriminator_value: &str,
+    semantic_fields: Value,
+) -> Value {
+    let variant = variants
+        .iter()
+        .find(|variant| {
+            variant["bounded_allowed_values"][discriminator_field] == discriminator_value
+        })
+        .expect("draft variant");
+    let mut result = variant["bounded_allowed_values"]
+        .as_object()
+        .expect("bounded allowed values")
+        .clone();
+    result.extend(
+        semantic_fields
+            .as_object()
+            .expect("semantic fields")
+            .clone(),
+    );
+    for required in variant["required_fields"]
+        .as_array()
+        .expect("required fields")
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        assert!(
+            result.contains_key(required),
+            "missing {required}: {variant}"
+        );
+    }
+    for forbidden in variant["forbidden_fields"]
+        .as_array()
+        .expect("forbidden fields")
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        assert!(!result.contains_key(forbidden), "forbidden {forbidden}");
+    }
+    Value::Object(result)
+}
+
+fn draft_learning_value(draft: &Value, state: &str, semantic_fields: Value) -> Value {
+    fill_draft_variant(
+        draft["learning_value_input_alternatives"]
+            .as_array()
+            .expect("learning-value alternatives"),
+        "state",
+        state,
+        semantic_fields,
+    )
+}
+
+fn draft_learning_participation(draft: &Value, state: &str, semantic_fields: Value) -> Value {
+    fill_draft_variant(
+        draft["learning_participation"]["input_alternatives"]
+            .as_array()
+            .expect("learning-participation alternatives"),
+        "state",
+        state,
+        semantic_fields,
+    )
+}
+
+fn draft_judgment(
+    draft: &Value,
+    choice_id: &str,
+    variant_id: &str,
+    semantic_fields: Value,
+) -> Value {
+    let template = draft["judgment_templates"]
+        .as_array()
+        .expect("judgment templates")
+        .iter()
+        .find(|template| template["discovery_owned"]["choice_id"] == choice_id)
+        .expect("choice template");
+    assert!(
+        template["caller_owned_judgment"]["legal_judgment_variant_ids"]
+            .as_array()
+            .expect("legal judgment variants")
+            .iter()
+            .any(|candidate| candidate == variant_id)
+    );
+    let contract = draft["judgment_contracts"]
+        .as_array()
+        .expect("judgment contracts")
+        .iter()
+        .find(|contract| contract["variant_id"] == variant_id)
+        .expect("judgment contract");
+    let mut result = template["caller_owned_judgment"]["prefilled_fields"]
+        .as_object()
+        .expect("prefilled judgment fields")
+        .clone();
+    result.extend(
+        contract["bounded_allowed_values"]
+            .as_object()
+            .expect("bounded judgment values")
+            .clone(),
+    );
+    result.extend(
+        semantic_fields
+            .as_object()
+            .expect("judgment semantic fields")
+            .clone(),
+    );
+    for required in contract["required_fields"]
+        .as_array()
+        .expect("required judgment fields")
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        assert!(
+            result.contains_key(required),
+            "missing {required}: {contract}"
+        );
+    }
+    for forbidden in contract["forbidden_fields"]
+        .as_array()
+        .expect("forbidden judgment fields")
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        assert!(!result.contains_key(forbidden), "forbidden {forbidden}");
+    }
+    Value::Object(result)
+}
+
+fn draft_request(
+    draft: &Value,
+    rationale: &str,
+    learning_participation: Value,
+    judgments: Vec<Value>,
+) -> Value {
+    let mut request = draft["record_request"]["prefilled_fields"]
+        .as_object()
+        .expect("prefilled request fields")
+        .clone();
+    request.insert("rationale".into(), json!(rationale));
+    request.insert("learning_participation".into(), learning_participation);
+    request.insert("judgments".into(), Value::Array(judgments));
+    Value::Object(request)
+}
+
+fn record_host_question_decision(
+    adapter: &mut HostAdapter,
+    project: &str,
+    source_id: &str,
+    materiality_basis: Option<(&str, &str)>,
+    delegation: bool,
+) -> String {
+    let submit = match materiality_basis {
+        Some((review_candidate_id, dimension_id)) => json!({
+            "action":"submit_question_from_materiality",
+            "project_id":project,
+            "review_candidate_id":review_candidate_id,
+            "dimension_id":dimension_id,
+            "research_state":"ready_to_ask",
+            "research_state_basis":"Repository facts cannot select the remaining outcome",
+            "retention_basis":"Retain through the explicit response",
+            "bounded_summary":"Bounded materiality authority fixture",
+            "prompt":"Who should choose the bounded implementation outcome?",
+            "why_now":"The current review requires exact authority",
+            "alternatives":[
+                {"key":"first","label":"First approach","consequence":"Use the first bounded approach"},
+                {"key":"second","label":"Second approach","consequence":"Use the second bounded approach"}
+            ],
+            "recommendation_key":"first",
+            "recommendation_rationale":"The first approach has the smaller bounded cost",
+            "duplicate_basis":"No current Question covers this dimension",
+            "presentation_order":1
+        }),
+        None => json!({
+            "action":"submit_question",
+            "project_id":project,
+            "source_ids":[source_id],
+            "source_operation":"settled Decision fixture",
+            "affected_scope":["src/lib.rs"],
+            "bounded_summary":"Pre-existing bounded authority fixture",
+            "prompt":"Which existing bounded approach should apply?",
+            "why_now":"The choice establishes reusable current authority",
+            "alternatives":[
+                {"key":"first","label":"First approach","consequence":"Use the first bounded approach"},
+                {"key":"second","label":"Second approach","consequence":"Use the second bounded approach"}
+            ],
+            "recommendation_key":"first",
+            "recommendation_rationale":"The first approach has the smaller bounded cost",
+            "research_state":"ready_to_ask",
+            "research_state_basis":"Repository research is complete",
+            "duplicate_basis":"No current Question covers this scope",
+            "materiality_rationale":"The bounded outcome is materially distinct",
+            "retention_basis":"Retain through the explicit response",
+            "presentation_order":1
+        }),
+    };
+    let submitted = structured(&call(adapter, "candidate_manage", submit)).clone();
+    let candidate_id = submitted["candidate_id"]
+        .as_str()
+        .expect("Question Candidate identity");
+    let promoted = structured(&call(
+        adapter,
+        "candidate_manage",
+        json!({"action":"promote_question","project_id":project,"candidate_id":candidate_id}),
+    ))
+    .clone();
+    let question_id = promoted["question_id"].as_str().expect("Question identity");
+    let frontier = structured(&call(
+        adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let displayed = frontier["questions"]
+        .as_array()
+        .expect("frontier Questions")
+        .iter()
+        .find(|question| question["identity"] == question_id)
+        .expect("displayed Question");
+    let revision = displayed["revision"].as_u64().expect("Question revision");
+    if delegation {
+        let turn = "I delegate this displayed bounded choice to the implementation owner";
+        let source = adapter
+            .operations()
+            .record_user_source(
+                parse_project(project),
+                "codex".into(),
+                "host-materiality-contract".into(),
+                turn.into(),
+            )
+            .expect("delegation response Source");
+        let result = adapter
+            .operations()
+            .record_inquiry_responses(
+                parse_project(project),
+                vec![BatchResponseItem {
+                    operation_id: OperationId::from_bytes([73; 16]),
+                    response: CurrentHostResponse {
+                        project_id: parse_project(project),
+                        source_id: parse_source_identity(&source.identity),
+                        host: "codex".into(),
+                        session: "host-materiality-contract".into(),
+                        turn: turn.into(),
+                        displayed: DisplayedQuestion {
+                            question_id: parse_question_identity(question_id),
+                            revision,
+                            alternative_keys: vec!["first".into(), "second".into()],
+                            recommendation_key: Some("first".into()),
+                        },
+                        mapping: ResponseMapping::ExplicitDelegation {
+                            delegate_to: "implementation-owner".into(),
+                            user_rationale: Some("Choose within the displayed scope".into()),
+                        },
+                        applicability: ApplicabilityScope {
+                            paths: Vec::new(),
+                            components: Vec::new(),
+                            work_contexts: Vec::new(),
+                        },
+                        assumptions: Vec::new(),
+                        revisit_triggers: Vec::new(),
+                    },
+                }],
+            )
+            .expect("record delegation Decision");
+        assert!(result.all_succeeded());
+    } else {
+        let decision = call(
+            adapter,
+            "decision_record",
+            json!({
+                "project_id":project,
+                "question_id":question_id,
+                "question_revision":revision,
+                "alternative_key":"first",
+                "user_turn":"Use the first displayed bounded approach"
+            }),
+        );
+        assert_eq!(decision["result"]["isError"], false, "{decision}");
+    }
+    adapter
+        .operations()
+        .canonical_basis(parse_project(project))
+        .expect("canonical basis")
+        .active_decisions
+        .iter()
+        .find(|decision| decision.decision.question_id.to_string() == question_id)
+        .expect("active Decision")
+        .decision
+        .id
+        .to_string()
+}
+
 #[test]
 fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let (_temporary, mut adapter, project) = setup();
@@ -434,23 +728,53 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         .id
         .to_string();
 
-    let revised = call(
+    let revision_draft = structured(&call(
         &mut adapter,
         "materiality_review",
         json!({
-            "action":"revise",
+            "action":"draft",
             "project_id":project,
-            "review_candidate_id":review_id,
-            "rationale":"The explicit current-host response now resolves the outcome.",
-            "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through the choices"},
-            "judgments":[{
-                "choice_id":"failure-mode",
-                "disposition":"unresolved_user_owned_outcome",
-                "resolution_decision_id":decision_id,
-                "learning_value":{"state":"routine","rationale":"The canonical Decision resolves authority without a learning interruption."},
-                "basis_summary":"The current explicit Decision resolves this dimension"
-            }]
+            "engineering_choice_discovery_candidate_id":discovery_id,
         }),
+    ))
+    .clone();
+    assert_eq!(revision_draft["record_request"]["action"], "revise");
+    assert_eq!(
+        revision_draft["record_request"]["prefilled_fields"]["review_candidate_id"],
+        review_id
+    );
+    let revised_learning = draft_learning_value(
+        &revision_draft,
+        "routine",
+        json!({"rationale":"The canonical Decision resolves authority without a learning interruption."}),
+    );
+    let revised_judgment = draft_judgment(
+        &revision_draft,
+        "failure-mode",
+        "resolved_user_owned_outcome",
+        json!({
+            "resolution_decision_id":decision_id,
+            "learning_value":revised_learning,
+            "basis_summary":"The current explicit Decision resolves this dimension"
+        }),
+    );
+    let revised_participation = draft_learning_participation(
+        &revision_draft,
+        "active",
+        json!({
+            "user_turn_source_id":goal_source_id,
+            "verbatim_statement":"Teach me through the choices"
+        }),
+    );
+    let revised = call(
+        &mut adapter,
+        "materiality_review",
+        draft_request(
+            &revision_draft,
+            "The explicit current-host response now resolves the outcome.",
+            revised_participation,
+            vec![revised_judgment],
+        ),
     );
     let revised = structured(&revised);
     assert_eq!(revised["workflow"]["stage"], "ready_for_work");
@@ -597,19 +921,35 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
     assert_eq!(templates.len(), 3);
     assert!(templates.iter().all(|template| {
         template["discovery_owned"].get("disposition").is_none()
-            && template["caller_owned_judgment"]["required_fields"]
-                == json!([
-                    "choice_id",
-                    "disposition",
-                    "basis_summary",
-                    "learning_value"
-                ])
+            && template["caller_owned_judgment"]["prefilled_fields"]["choice_id"].is_string()
+            && template["caller_owned_judgment"]["legal_judgment_variant_ids"]
+                .as_array()
+                .is_some_and(|variants| variants.len() == 13)
     }));
-    assert!(
-        draft["disposition_input_contracts"]["unresolved_user_owned_outcome"]["forbidden"]
-            .as_array()
-            .is_some_and(|fields| fields.iter().any(|field| field == "contract_basis"))
+    let unresolved = draft["judgment_contracts"]
+        .as_array()
+        .expect("judgment contracts")
+        .iter()
+        .find(|contract| contract["variant_id"] == "unresolved_user_owned_outcome")
+        .expect("unresolved contract");
+    assert!(unresolved["forbidden_fields"]
+        .as_array()
+        .is_some_and(|fields| fields.iter().any(|field| field == "contract_basis")));
+    assert_eq!(
+        draft["learning_value_input_alternatives"][1]["required_fields"],
+        json!([
+            "state",
+            "rationale",
+            "consequence_significance",
+            "transferable_principles",
+            "non_obvious_trade_offs"
+        ])
     );
+    assert_eq!(
+        draft["learning_participation"]["input_alternatives"][1]["required_fields"],
+        json!(["state", "user_turn_source_id", "verbatim_statement"])
+    );
+    assert!(draft["record_request"]["input_schema"].is_object());
 }
 
 #[test]
@@ -617,108 +957,86 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
     let cases = vec![
         (
             "repository-fact",
+            "repository_or_environment_fact",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"repository_or_environment_fact",
-                "basis_summary":"The repository fixes the only viable value.",
-                "learning_value":{"state":"routine","rationale":"Reading a fixed value is routine."}
+                "basis_summary":"The repository fixes the only viable value."
             }),
             "ready_for_work",
         ),
         (
             "settled-contract",
+            "settled_authority_by_contract",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"settled_authority",
                 "basis_summary":"The active owner settles this exact dimension.",
-                "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"],
-                "learning_value":{"state":"routine","rationale":"Applying a settled contract is routine."}
+                "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"]
             }),
             "ready_for_work",
         ),
         (
             "agent-owned",
+            "agent_owned_implementation_choice",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"agent_owned_implementation_choice",
-                "basis_summary":"No user-facing policy varies across the alternatives.",
-                "learning_value":{"state":"routine","rationale":"The bounded implementation detail is routine."}
+                "basis_summary":"No user-facing policy varies across the alternatives."
             }),
             "ready_for_work",
         ),
         (
             "current-task-delegation",
+            "delegated_implementation_choice_current_task",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"delegated_implementation_choice",
                 "basis_summary":"The exact current Goal delegates this bounded implementation choice.",
                 "delegation_statement":"I delegate the bounded-choice implementation to you",
-                "delegated_scope":["src/lib.rs"],
-                "learning_value":{"state":"routine","rationale":"The delegated implementation detail is routine."}
+                "delegated_scope":["src/lib.rs"]
             }),
             "ready_for_work",
         ),
         (
             "research-required",
+            "exploratory_uncertainty_research_required",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"exploratory_uncertainty",
-                "exploratory_disposition":"research_required",
                 "basis_summary":"Repository evidence is still required.",
-                "research_basis":["Inspect the current adapter behavior"],
-                "learning_value":{"state":"routine","rationale":"Research precedes any learning assessment."}
+                "research_basis":["Inspect the current adapter behavior"]
             }),
             "research_or_prototype",
         ),
         (
             "prototype-required",
+            "exploratory_uncertainty_prototype_required",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"exploratory_uncertainty",
-                "exploratory_disposition":"prototype_required",
                 "basis_summary":"A bounded prototype is still required.",
-                "research_basis":["Prototype both observable behaviors"],
-                "learning_value":{"state":"routine","rationale":"Prototype evidence is not yet available."}
+                "research_basis":["Prototype both observable behaviors"]
             }),
             "research_or_prototype",
         ),
         (
             "deferred-with-revisit",
+            "exploratory_uncertainty_deferred_with_revisit",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"exploratory_uncertainty",
-                "exploratory_disposition":"deferred_with_revisit",
                 "basis_summary":"The choice is intentionally deferred with an inspectable trigger.",
-                "research_basis":["Revisit when the bounded collection exceeds 16 entries"],
-                "learning_value":{"state":"routine","rationale":"No current learning interaction is required."}
+                "research_basis":["Revisit when the bounded collection exceeds 16 entries"]
             }),
             "ready_for_work",
         ),
         (
             "resolved-by-research",
+            "exploratory_uncertainty_resolved_by_research",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"exploratory_uncertainty",
-                "exploratory_disposition":"resolved_by_research",
                 "basis_summary":"Repository research removed the uncertainty.",
-                "research_basis":["The retained snapshot proves only one supported behavior"],
-                "learning_value":{"state":"routine","rationale":"The fact is now straightforward."}
+                "research_basis":["The retained snapshot proves only one supported behavior"]
             }),
             "ready_for_work",
         ),
         (
             "unresolved-user-owned",
+            "unresolved_user_owned_outcome",
             json!({
-                "choice_id":"bounded-choice",
-                "disposition":"unresolved_user_owned_outcome",
-                "basis_summary":"No exact authority settles the materially different outcomes.",
-                "learning_value":{"state":"routine","rationale":"Canonical user authority takes priority."}
+                "basis_summary":"No exact authority settles the materially different outcomes."
             }),
             "question_candidate",
         ),
     ];
 
-    for (label, judgment, expected_stage) in cases {
+    for (label, variant_id, semantic_fields, expected_stage) in cases {
         let (_temporary, mut adapter, project) = setup();
         let goal_turn =
             "Implement the change; I delegate the bounded-choice implementation to you.";
@@ -760,17 +1078,32 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             }),
         ))
         .clone();
+        let learning_value = draft_learning_value(
+            &draft,
+            "routine",
+            json!({"rationale":format!("one-pass {label} learning assessment")}),
+        );
+        let mut semantic_fields = semantic_fields
+            .as_object()
+            .expect("case semantic fields")
+            .clone();
+        semantic_fields.insert("learning_value".into(), learning_value);
+        let judgment = draft_judgment(
+            &draft,
+            "bounded-choice",
+            variant_id,
+            Value::Object(semantic_fields),
+        );
+        let participation = draft_learning_participation(&draft, "inactive", json!({}));
         let recorded = call(
             &mut adapter,
             "materiality_review",
-            json!({
-                "action":draft["record_request"]["action"],
-                "project_id":draft["record_request"]["project_id"],
-                "engineering_choice_discovery_candidate_id":draft["record_request"]["engineering_choice_discovery_candidate_id"],
-                "rationale":format!("one-pass {label} review"),
-                "learning_participation":{"state":"inactive"},
-                "judgments":[judgment],
-            }),
+            draft_request(
+                &draft,
+                &format!("one-pass {label} review"),
+                participation,
+                vec![judgment],
+            ),
         );
         assert_eq!(recorded["result"]["isError"], false, "{label}: {recorded}");
         assert_eq!(
@@ -779,6 +1112,199 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "{label}: {recorded}"
         );
     }
+}
+
+#[test]
+fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn = "Implement the bounded choice and preserve explicit authority";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let repository_source_id = analyzed["repository_source_id"]
+        .as_str()
+        .expect("repository Source identity");
+    let settled_decision_id =
+        record_host_question_decision(&mut adapter, &project, repository_source_id, None, false);
+    let settled_discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        repository_source_id,
+        FixtureEngineeringChoice {
+            id: "settled-by-decision",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let settled_draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":settled_discovery_id,
+        }),
+    ))
+    .clone();
+    let settled_learning = draft_learning_value(
+        &settled_draft,
+        "routine",
+        json!({"rationale":"Applying the current Decision is routine."}),
+    );
+    let settled_judgment = draft_judgment(
+        &settled_draft,
+        "settled-by-decision",
+        "settled_authority_by_decision",
+        json!({
+            "basis_summary":"The current applicable Decision settles this exact scope.",
+            "decision_ids":[settled_decision_id],
+            "learning_value":settled_learning,
+        }),
+    );
+    let settled = call(
+        &mut adapter,
+        "materiality_review",
+        draft_request(
+            &settled_draft,
+            "Draft-driven settled Decision review",
+            draft_learning_participation(&settled_draft, "inactive", json!({})),
+            vec![settled_judgment],
+        ),
+    );
+    assert_eq!(settled["result"]["isError"], false, "{settled}");
+    assert_eq!(structured(&settled)["workflow"]["stage"], "ready_for_work");
+
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn = "Implement the bounded choice after any required authority is resolved";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        FixtureEngineeringChoice {
+            id: "inquiry-delegated-choice",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let initial_draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+        }),
+    ))
+    .clone();
+    let unresolved = draft_judgment(
+        &initial_draft,
+        "inquiry-delegated-choice",
+        "unresolved_user_owned_outcome",
+        json!({
+            "basis_summary":"No exact authority currently settles this bounded outcome.",
+            "learning_value":draft_learning_value(
+                &initial_draft,
+                "routine",
+                json!({"rationale":"Canonical authority takes priority."}),
+            ),
+        }),
+    );
+    let recorded = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        draft_request(
+            &initial_draft,
+            "Initial unresolved review",
+            draft_learning_participation(&initial_draft, "inactive", json!({})),
+            vec![unresolved],
+        ),
+    ))
+    .clone();
+    assert_eq!(recorded["workflow"]["stage"], "question_candidate");
+    let review_id = recorded["review_candidate_id"]
+        .as_str()
+        .expect("review identity");
+    let delegation_decision_id = record_host_question_decision(
+        &mut adapter,
+        &project,
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        Some((review_id, "inquiry-delegated-choice")),
+        true,
+    );
+    let revision_draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+        }),
+    ))
+    .clone();
+    assert_eq!(revision_draft["record_request"]["action"], "revise");
+    let delegated = draft_judgment(
+        &revision_draft,
+        "inquiry-delegated-choice",
+        "delegated_implementation_choice_inquiry_time",
+        json!({
+            "basis_summary":"The exact current Question response delegates this dimension.",
+            "decision_ids":[delegation_decision_id],
+            "learning_value":draft_learning_value(
+                &revision_draft,
+                "routine",
+                json!({"rationale":"The delegated bounded implementation is routine."}),
+            ),
+        }),
+    );
+    let revised = call(
+        &mut adapter,
+        "materiality_review",
+        draft_request(
+            &revision_draft,
+            "Draft-driven Inquiry-time delegation revision",
+            draft_learning_participation(&revision_draft, "inactive", json!({})),
+            vec![delegated],
+        ),
+    );
+    assert_eq!(revised["result"]["isError"], false, "{revised}");
+    assert_eq!(
+        structured(&revised)["workflow"]["stage"],
+        "ready_for_work",
+        "{revised}"
+    );
 }
 
 #[test]
@@ -848,6 +1374,66 @@ fn materiality_validation_reports_exact_correction_context() {
         forbidden["details"]["materiality_context"]["next_supported_action"]["action"],
         "draft"
     );
+
+    for (disposition, forbidden_field, judgment) in [
+        (
+            "repository_or_environment_fact",
+            "research_basis",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"repository_or_environment_fact",
+                "basis_summary":"repository fact",
+                "research_basis":["not legal for this disposition"],
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }),
+        ),
+        (
+            "delegated_implementation_choice",
+            "contract_basis",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"delegated_implementation_choice",
+                "basis_summary":"invalid mixed authority",
+                "delegation_statement":"Implement the bounded choice",
+                "delegated_scope":["src/lib.rs"],
+                "contract_basis":["not delegation"],
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }),
+        ),
+        (
+            "exploratory_uncertainty",
+            "resolution_decision_id",
+            json!({
+                "choice_id":"bounded-choice",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"research_required",
+                "basis_summary":"research remains",
+                "research_basis":["inspect the repository"],
+                "resolution_decision_id":"00000000000000000000000000000000",
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }),
+        ),
+    ] {
+        let rejected = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"record",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+                "rationale":format!("reject {disposition} cross-field"),
+                "learning_participation":{"state":"inactive"},
+                "judgments":[judgment]
+            }),
+        ))
+        .clone();
+        let exact_problem = format!("arguments.judgments[0].{forbidden_field} is not allowed");
+        assert!(rejected["details"]["problems"]
+            .as_array()
+            .expect("schema problems")
+            .iter()
+            .any(|problem| problem == &exact_problem));
+    }
 
     let unknown = structured(&call(
         &mut adapter,
@@ -3830,6 +4416,15 @@ fn parse_context_identity(value: &str) -> volicord_context::ContextItemId {
             u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
     }
     volicord_context::ContextItemId::from_bytes(bytes)
+}
+
+fn parse_question_identity(value: &str) -> volicord_context::QuestionId {
+    let mut bytes = [0_u8; 16];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        bytes[index] =
+            u8::from_str_radix(std::str::from_utf8(pair).expect("hex pair"), 16).expect("hex");
+    }
+    volicord_context::QuestionId::from_bytes(bytes)
 }
 
 fn assert_schema_is_closed_and_described(schema: &Value) {
