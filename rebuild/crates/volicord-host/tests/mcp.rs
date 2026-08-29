@@ -1477,6 +1477,38 @@ fn materiality_validation_reports_exact_correction_context() {
         unknown["details"]["next_supported_action"]["action"],
         "draft"
     );
+
+    let invalid_decision = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"inactive Decision authority",
+            "learning_participation":{"state":"inactive"},
+            "judgments":[{
+                "choice_id":"bounded-choice",
+                "disposition":"settled_authority",
+                "basis_summary":"The claimed Decision does not exist in the current Project.",
+                "decision_ids":["00000000000000000000000000000000"],
+                "learning_value":{"state":"routine","rationale":"routine"}
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(
+        invalid_decision["details"]["diagnostic"],
+        "materiality_contract_failure"
+    );
+    assert!(invalid_decision["details"]["problem"]
+        .as_str()
+        .is_some_and(|problem| problem.contains("authority Decision")
+            && problem.contains("not active in the current Project")));
+    assert_eq!(
+        invalid_decision["details"]["next_supported_action"]["action"],
+        "draft"
+    );
 }
 
 #[test]

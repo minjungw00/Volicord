@@ -1589,6 +1589,24 @@ fn validate_review_against_canonical(
             "Materiality Review contains a missing or non-current Source basis",
         ));
     }
+    if let Some(decision_id) = review
+        .dimensions
+        .iter()
+        .flat_map(|dimension| dimension.basis.decision_basis.iter())
+        .find(|decision_id| {
+            !canonical
+                .active_decisions
+                .iter()
+                .any(|lifecycle| lifecycle.decision.id == **decision_id)
+        })
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Materiality Review authority Decision {decision_id} is not active in the current Project"
+            ),
+        ));
+    }
     if let crate::LearningParticipation::Active {
         user_turn_source_id,
         verbatim_statement,
