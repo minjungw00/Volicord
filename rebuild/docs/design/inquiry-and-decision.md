@@ -324,10 +324,23 @@ Engineering Choice Discovery에서 온다. User-owned dimension은 learning valu
 Question/Decision path를 사용한다. Settled fact/contract와 routine detail은 learning blocker를 만들지
 않는다.
 
+Materiality draft와 workflow guidance는 이 독립성을 `authority_learning_routing`으로 기계 판독
+가능하게 노출한다. Learn, alternatives 비교, implementation 전 reasoning 또는 학습을 위한
+implementation approach 선택 요청 자체는 user-owned product authority의 증거가 아니다. Active
+agent가 credible alternatives의 material-consequence counterfactual과 exact authority를 의미적으로
+평가한다. Production은 typed provenance, identity, scope, freshness, lifecycle과 allowed transition만
+결정적으로 검증하며 keyword/regular-expression ownership detection, prompt classifier 또는 provider
+semantic classifier를 사용하지 않는다.
+
 Active participation에서 agent-owned 또는 explicitly delegated agent choice가
 deliberation-worthy일 때만 exact review dimension에 bind된 `Learning Deliberation` Session
 Candidate가 필요하다. 최초 `awaiting_initial_response` state는 problem, established facts, discovered
 choices, alternatives와 consequences를 제공하지만 round나 agent recommendation을 포함하지 않는다.
+이 stage의 workflow guidance는 learner selection을 bounded learning/implementation basis이자
+`canonical_decision: false`로 표시하고, 그 selection만 기록하기 위해
+`candidate_manage.submit_question_from_materiality` 또는 `decision_record`를 사용하지 말라고
+명시한다. 반대로 genuine user-owned material outcome은 active learning 여부와 무관하게 처음부터
+Question/current-host Decision path에 남는다.
 Transition은 다음 ordering을 따른다.
 
 1. current-host user가 select, delegate, skip 또는 research/prototype를 요청하고 rationale를 선택적으로 남긴다.

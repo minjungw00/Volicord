@@ -69,7 +69,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active here. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action and do not bypass a blocking workflow transition. At Materiality Review, use the returned counterfactual: a feature request, preference, recommendation, or convention does not settle a material user outcome. A current Goal user reservation requires Question/Decision unless explicitly delegated. User-owned Decisions require an explicit response from the current host. Background source transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no Volicord ceremony.".into()
+    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. At Materiality Review, learning participation or an implementation selection does not establish user-owned authority. Active deliberation-worthy learning on agent-owned or delegated choices uses learning_deliberation, not Question/decision_record. Genuine user-owned material outcomes require Question/Decision and an explicit response from the current host. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -1787,7 +1787,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Classify authority and learning value independently; do not use the overall feature request, implementation preference, recommendation, or convention as authority for a materially different user-facing outcome. Inquiry owns the authority evaluation and returns the next required workflow action.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -4972,6 +4972,7 @@ fn materiality_draft_json(
             },
             "hidden_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics.",
         },
+        "authority_learning_routing":authority_learning_routing_json(),
         "learning_participation":{
             "input_alternatives":schema_alternatives(learning_participation_schema()),
             "derived_identity_options":{"current_goal_user_turn_source_ids":current_host_user_turn_source_ids},
@@ -5024,6 +5025,56 @@ fn materiality_draft_json(
         "required_action":{"tool":"materiality_review","action":request_action},
         "canonical_mutation":false,
         "read_only":true,
+    })
+}
+
+fn authority_learning_routing_json() -> Value {
+    json!({
+        "assessment_owner":"active_agent",
+        "independence_rule":"Learning participation and learning value are independent of authority ownership.",
+        "learning_requests_not_user_ownership":[
+            "ask_to_learn",
+            "ask_to_compare_alternatives",
+            "ask_to_reason_before_implementation",
+            "ask_to_select_an_implementation_approach_for_learning"
+        ],
+        "ownership_test":{
+            "kind":"material_consequence_and_exact_authority_counterfactual",
+            "question":"Would credible alternatives change a material product outcome, and who retains authority over that exact dimension?",
+            "semantic_assessment_required":true
+        },
+        "routes":[
+            {
+                "when":{"authority":"user_owned_material_outcome","learning_value":"any","learning_participation":"any"},
+                "required_path":"question_then_current_host_decision",
+                "canonical_decision":true
+            },
+            {
+                "when":{"authority":["agent_owned","explicitly_delegated"],"learning_value":"deliberation_worthy","learning_participation":"active"},
+                "required_path":"learning_deliberation",
+                "canonical_decision":false
+            },
+            {
+                "when":{"authority":["agent_owned","explicitly_delegated"],"learning_value":"routine","learning_participation":"any"},
+                "required_path":"no_learning_interruption",
+                "canonical_decision":false
+            },
+            {
+                "when":{"authority":"exploratory_uncertainty","learning_participation":"any"},
+                "required_path":"declared_research_prototype_defer_or_resolution",
+                "canonical_decision":false
+            }
+        ],
+        "learning_selection_authority":{
+            "kind":"bounded_learning_and_implementation_basis",
+            "canonical_decision":false,
+            "does_not_resolve_user_owned_authority":true
+        },
+        "production_boundary":{
+            "deterministically_verified":["typed_provenance","identity","scope","freshness","lifecycle","allowed_state_transition"],
+            "semantic_assessment":"provided_by_active_agent",
+            "forbidden_automation":["keyword_matching","regular_expression_ownership_detection","prompt_classifier","provider_semantic_classifier"]
+        }
     })
 }
 
@@ -5335,6 +5386,7 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
             "deterministic_path":["call_draft_with_returned_discovery_identity","copy_record_request_prefilled_fields","select_one_returned_schema_variant_per_choice","supply_only_that_variant_semantic_fields","submit_returned_record_or_revise_request_once"],
             "server_derived_discovery_fields":["Goal and baseline identities","dimension and discovered-choice identities","summary","affected scope","material consequences","observable signals","discovery Source basis"],
             "required_semantic_judgments":["authority disposition and allowed evidence for that disposition","independent learning value","explicit learning participation state"],
+            "authority_learning_routing":authority_learning_routing_json(),
             "schema_source":"The draft projects the same closed variants used by Materiality record/revise validation.",
         }),
         WorkflowStage::LearningDeliberation => {
@@ -5357,6 +5409,14 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 },
                 "ordering":["begin_or_inspect_without_agent_recommendation","record_current_user_initial_response","provide_agent_feedback_and_recommendation_after_selection","complete_or_reconsider"],
                 "allowable_initial_responses":["select","delegate","skip","research_required","prototype_required"],
+                "authority_learning_routing":authority_learning_routing_json(),
+                "learning_selection_contract":{
+                    "authority":"agent_owned_or_explicitly_delegated",
+                    "selection_kind":"bounded_learning_and_implementation_basis",
+                    "canonical_decision":false,
+                    "forbidden_substitute_operations":["candidate_manage.submit_question_from_materiality","decision_record"],
+                    "warning":"Do not create a Question Candidate or call decision_record merely to record this learning selection. A genuinely user-owned material outcome must have remained on the Question/current-host Decision path instead."
+                },
             })
         }
         _ => Value::Null,

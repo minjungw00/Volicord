@@ -635,6 +635,17 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         review["workflow"]["required_next_action"]["action"],
         "submit_question_from_materiality"
     );
+    let unresolved_candidates = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!unresolved_candidates["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .any(|candidate| candidate["learning_deliberation"].is_object()));
     let review_id = review["review_candidate_id"]
         .as_str()
         .expect("review Candidate identity");
@@ -1553,6 +1564,25 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         draft["judgment_templates"][0]["discovery_owned"]["choice_id"],
         "cache-invalidation-boundary"
     );
+    assert_eq!(
+        draft["authority_learning_routing"]["assessment_owner"],
+        "active_agent"
+    );
+    assert!(
+        draft["authority_learning_routing"]["learning_requests_not_user_ownership"]
+            .as_array()
+            .expect("learning requests")
+            .iter()
+            .any(|request| request == "ask_to_select_an_implementation_approach_for_learning")
+    );
+    assert_eq!(
+        draft["authority_learning_routing"]["routes"][1]["required_path"],
+        "learning_deliberation"
+    );
+    assert_eq!(
+        draft["authority_learning_routing"]["routes"][1]["canonical_decision"],
+        false
+    );
 
     let review = structured(&call(
         &mut adapter,
@@ -1580,6 +1610,29 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         review["workflow"]["input_guidance"]["interaction_kind"],
         "learning_participation_not_canonical_decision"
     );
+    assert_eq!(
+        review["workflow"]["input_guidance"]["learning_selection_contract"]["canonical_decision"],
+        false
+    );
+    assert_eq!(
+        review["workflow"]["input_guidance"]["learning_selection_contract"]
+            ["forbidden_substitute_operations"],
+        json!([
+            "candidate_manage.submit_question_from_materiality",
+            "decision_record"
+        ])
+    );
+    let before_deliberation = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!before_deliberation["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .any(|candidate| candidate["kind"] == "question"));
 
     let begun = structured(&call(
         &mut adapter,
@@ -1807,6 +1860,223 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
         .expect("Candidate array")
         .iter()
         .any(|candidate| candidate["learning_deliberation"].is_object()));
+}
+
+#[test]
+fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn =
+        "Teach me through the trade-offs; choose the internal retry schedule for this task.";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        FixtureEngineeringChoice {
+            id: "retry-schedule",
+            affected_scope: "retry-jitter",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"The current Goal delegates the bounded internal schedule while retaining active learning participation.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":"Teach me through the trade-offs"},
+            "judgments":[{
+                "choice_id":"retry-schedule",
+                "disposition":"delegated_implementation_choice",
+                "basis_summary":"Exact current-task delegation covers the bounded internal retry schedule.",
+                "delegation_statement":"choose the internal retry schedule",
+                "delegated_scope":["retry-jitter"],
+                "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"]}
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(review["workflow"]["stage"], "learning_deliberation");
+    assert_eq!(
+        review["workflow"]["input_guidance"]["learning_selection_contract"]["authority"],
+        "agent_owned_or_explicitly_delegated"
+    );
+    let review_id = review["review_candidate_id"]
+        .as_str()
+        .expect("review identity");
+    let begun = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"begin",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "dimension_id":"retry-schedule",
+            "source_operation":"delegated learning control",
+            "problem":"Which retry schedule best balances load spreading and completion latency?",
+            "established_facts":["The choice is internal and explicitly delegated for this task"]
+        }),
+    ))
+    .clone();
+    let deliberation_id = begun["deliberation_candidate_id"]
+        .as_str()
+        .expect("deliberation identity");
+    let responded = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"respond_select",
+            "project_id":project,
+            "deliberation_candidate_id":deliberation_id,
+            "user_turn":"I select the first approach after comparing the load-shaping consequence.",
+            "user_rationale":"It keeps the bounded implementation easy to inspect.",
+            "selections":[{"choice_id":"retry-schedule","alternative_id":"first"}]
+        }),
+    ))
+    .clone();
+    assert_eq!(responded["state"]["state"], "awaiting_agent_feedback");
+    let feedback = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({
+            "action":"feedback",
+            "project_id":project,
+            "deliberation_candidate_id":deliberation_id,
+            "feedback":"The selected bounded schedule is easy to inspect; its load-spreading limit remains explicit.",
+            "recommendation_selections":[{"choice_id":"retry-schedule","alternative_id":"first"}],
+            "recommendation_rationale":"The bounded implementation favors inspectability for this scope."
+        }),
+    ))
+    .clone();
+    assert_eq!(feedback["state"]["state"], "feedback_provided");
+    let completed = structured(&call(
+        &mut adapter,
+        "learning_deliberation",
+        json!({"action":"complete","project_id":project,"deliberation_candidate_id":deliberation_id}),
+    ))
+    .clone();
+    assert_eq!(completed["workflow"]["stage"], "ready_for_work");
+
+    let canonical = structured(&call(
+        &mut adapter,
+        "canonical_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!canonical["records"]
+        .as_array()
+        .expect("canonical records")
+        .iter()
+        .any(|record| record["kind"] == "decision"));
+    let candidates = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!candidates["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .any(|candidate| candidate["kind"] == "question"));
+}
+
+#[test]
+fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn = "Teach me while you investigate the bounded retry behavior.";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        FixtureEngineeringChoice {
+            id: "retry-observation",
+            affected_scope: "retry-runtime",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"Repository evidence is still required; learning participation does not settle that uncertainty.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":"Teach me while you investigate"},
+            "judgments":[{
+                "choice_id":"retry-observation",
+                "disposition":"exploratory_uncertainty",
+                "exploratory_disposition":"research_required",
+                "basis_summary":"Measure current runtime behavior before choosing an approach.",
+                "research_basis":["Inspect retained runtime observations for retry correlation"],
+                "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"]}
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(review["workflow"]["stage"], "research_or_prototype");
+    assert_eq!(review["workflow"]["disposition"], "research_required");
+    let candidates = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!candidates["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .any(|candidate| candidate["learning_deliberation"].is_object()
+            || candidate["kind"] == "question"));
+    let canonical = structured(&call(
+        &mut adapter,
+        "canonical_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert!(!canonical["records"]
+        .as_array()
+        .expect("canonical records")
+        .iter()
+        .any(|record| record["kind"] == "decision"));
 }
 
 #[test]

@@ -109,6 +109,15 @@ variant for each returned choice and assemble the request from its prefilled
 fields. A validation-error round trip is not required to discover the payload
 shape, and placeholder semantic values should not be submitted.
 
+The same draft exposes `authority_learning_routing`. A request to learn,
+compare, reason first, or select an implementation approach for learning does
+not by itself make the underlying product outcome user-owned. Active,
+deliberation-worthy learning on agent-owned or explicitly delegated authority
+uses `learning_deliberation`; its selection is non-Decision implementation
+basis. A genuinely user-owned material outcome still uses Question and an
+explicit current-host Decision. Follow the workflow warning and do not use
+Candidate Question or `decision_record` merely to persist a learner selection.
+
 For Git worktrees, files newly created by Volicord are added only to that
 worktree's repository-local Git exclusions. A tracked `.codex/config.toml` or
 ownership manifest is a conflict. An untracked local config can be merged when
