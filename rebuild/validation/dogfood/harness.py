@@ -430,60 +430,114 @@ class LinuxProcessTreePeakRss:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        self._sample_lock = threading.Lock()
+
+    def _procfs_unavailability(self) -> str | None:
+        return linux_process_tree_procfs_unavailability()
+
+    def _read_procfs_text(self, path: Path) -> str:
+        return path.read_text(encoding="ascii")
+
+    def _process_is_gone(self, process_id: int) -> bool:
+        try:
+            (Path("/proc") / str(process_id)).stat()
+        except (FileNotFoundError, ProcessLookupError):
+            return True
+        return False
+
+    def _read_process(self, process_id: int, root_pid: int) -> tuple[int, list[int]] | None:
+        process_root = Path("/proc") / str(process_id)
+        try:
+            fields = self._read_procfs_text(process_root / "statm").split()
+            resident_pages = int(fields[1])
+            if resident_pages < 0 or (process_id == root_pid and resident_pages == 0):
+                raise ValueError("invalid resident page count")
+        except (FileNotFoundError, ProcessLookupError):
+            if process_id == root_pid:
+                raise
+            return None
+        except (ValueError, IndexError):
+            if process_id != root_pid and self._process_is_gone(process_id):
+                return None
+            raise
+        try:
+            children_text = self._read_procfs_text(
+                process_root / "task" / str(process_id) / "children"
+            )
+        except (FileNotFoundError, ProcessLookupError):
+            if process_id == root_pid:
+                raise
+            return resident_pages * self._page_size, []
+        try:
+            children = [int(value) for value in children_text.split()]
+        except ValueError:
+            if process_id != root_pid and self._process_is_gone(process_id):
+                return resident_pages * self._page_size, []
+            raise
+        return resident_pages * self._page_size, children
 
     def _process_tree_rss(self) -> tuple[int, int]:
         root_pid = os.getpid()
         pending = [root_pid]
         observed: set[int] = set()
         total = 0
+        process_count = 0
         while pending:
             process_id = pending.pop()
             if process_id in observed:
                 continue
             observed.add(process_id)
-            process_root = Path("/proc") / str(process_id)
-            try:
-                fields = (process_root / "statm").read_text(encoding="ascii").split()
-                total += int(fields[1]) * self._page_size
-                children = (
-                    process_root / "task" / str(process_id) / "children"
-                ).read_text(encoding="ascii")
-            except FileNotFoundError:
-                if process_id == root_pid:
-                    raise
+            process = self._read_process(process_id, root_pid)
+            if process is None:
                 continue
-            pending.extend(int(value) for value in children.split())
-        return total, len(observed)
+            rss_bytes, children = process
+            total += rss_bytes
+            process_count += 1
+            pending.extend(children)
+        return total, process_count
 
     def _sample(self) -> None:
-        try:
-            rss_bytes, process_count = self._process_tree_rss()
-        except (OSError, ValueError, IndexError) as error:
-            self.error = f"linux_procfs_process_tree_sampling_failed:{type(error).__name__}"
-            self._stop.set()
-            return
-        self.peak_bytes = max(self.peak_bytes, rss_bytes)
-        self.observed_process_count = max(self.observed_process_count, process_count)
-        self.sample_count += 1
+        with self._sample_lock:
+            if self.error is not None:
+                return
+            try:
+                rss_bytes, process_count = self._process_tree_rss()
+            except (OSError, ValueError, IndexError) as error:
+                self.error = f"linux_procfs_process_tree_sampling_failed:{type(error).__name__}"
+                self._stop.set()
+                return
+            self.peak_bytes = max(self.peak_bytes, rss_bytes)
+            self.observed_process_count = max(self.observed_process_count, process_count)
+            self.sample_count += 1
 
     def _observe(self) -> None:
         while not self._stop.wait(self.sampling_interval_ms / 1000):
             self._sample()
 
-    def start(self) -> None:
-        unavailability = linux_process_tree_procfs_unavailability()
+    def start(self) -> bool:
+        unavailability = self._procfs_unavailability()
         if unavailability is not None:
             self.error = unavailability
-            return
+            return False
         self._sample()
-        if self.error is None:
+        if (
+            self.error is None
+            and self.sample_count > 0
+            and self.peak_bytes > 0
+            and self.observed_process_count > 0
+        ):
             self._thread = threading.Thread(target=self._observe, daemon=True)
             self._thread.start()
+            return True
+        if self.error is None:
+            self.error = "linux_procfs_process_tree_sampling_failed:NoPositiveRootRss"
+            self._stop.set()
+        return False
 
     def stop(self) -> dict[str, Any]:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=2)
+            self._thread.join()
         if self.error is None:
             self._sample()
         status = (
@@ -501,6 +555,165 @@ class LinuxProcessTreePeakRss:
             "measurement_error": self.error,
             "scope": "dogfood_harness_and_descendant_processes",
         }
+
+
+def assert_linux_process_tree_peak_rss_regressions() -> None:
+    root_pid = os.getpid()
+    child_pid = root_pid + 1_000_000
+    root_statm = f"{root_pid}/statm"
+    root_children = f"{root_pid}/task/{root_pid}/children"
+    child_statm = f"{child_pid}/statm"
+    child_children = f"{child_pid}/task/{child_pid}/children"
+
+    class FixtureProcfsObserver(LinuxProcessTreePeakRss):
+        def __init__(self, responses: dict[str, str | BaseException], existing: set[int]) -> None:
+            super().__init__(60_000)
+            self.responses = responses
+            self.existing = existing
+
+        def _read_procfs_text(self, path: Path) -> str:
+            key = str(path.relative_to("/proc"))
+            value = self.responses[key]
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        def _process_is_gone(self, process_id: int) -> bool:
+            return process_id not in self.existing
+
+    root_only_bytes = 25 * int(os.sysconf("SC_PAGE_SIZE"))
+    disappearing_child = FixtureProcfsObserver(
+        {
+            root_statm: "100 25",
+            root_children: str(child_pid),
+            child_statm: ProcessLookupError(),
+        },
+        {root_pid},
+    )
+    if disappearing_child._process_tree_rss() != (root_only_bytes, 1):
+        raise AssertionError("disappearing procfs child erased a valid root RSS sample")
+
+    empty_disappeared_child = FixtureProcfsObserver(
+        {
+            root_statm: "100 25",
+            root_children: str(child_pid),
+            child_statm: "",
+        },
+        {root_pid},
+    )
+    if empty_disappeared_child._process_tree_rss() != (root_only_bytes, 1):
+        raise AssertionError("empty procfs data from a disappeared child erased root RSS")
+
+    sampled_then_disappeared_child = FixtureProcfsObserver(
+        {
+            root_statm: "100 25",
+            root_children: str(child_pid),
+            child_statm: "40 5",
+            child_children: ProcessLookupError(),
+        },
+        {root_pid},
+    )
+    if sampled_then_disappeared_child._process_tree_rss() != (
+        root_only_bytes + (5 * int(os.sysconf("SC_PAGE_SIZE"))),
+        2,
+    ):
+        raise AssertionError("sampled child RSS was lost when child discovery disappeared")
+
+    for label, observer in (
+        (
+            "root unavailable",
+            FixtureProcfsObserver(
+                {root_statm: ProcessLookupError()},
+                set(),
+            ),
+        ),
+        (
+            "child permission denied",
+            FixtureProcfsObserver(
+                {
+                    root_statm: "100 25",
+                    root_children: str(child_pid),
+                    child_statm: PermissionError(),
+                },
+                {root_pid, child_pid},
+            ),
+        ),
+        (
+            "required child procfs malformed",
+            FixtureProcfsObserver(
+                {
+                    root_statm: "100 25",
+                    root_children: str(child_pid),
+                    child_statm: "",
+                },
+                {root_pid, child_pid},
+            ),
+        ),
+    ):
+        observer._sample()
+        result = observer.stop()
+        if result["status"] != "environment_blocked" or result["sample_count"] != 0:
+            raise AssertionError(f"{label} was converted to a successful RSS measurement")
+
+    class SequenceObserver(LinuxProcessTreePeakRss):
+        def __init__(self, samples: list[tuple[int, int] | BaseException]) -> None:
+            super().__init__(60_000)
+            self.samples = samples
+
+        def _procfs_unavailability(self) -> str | None:
+            return None
+
+        def _process_tree_rss(self) -> tuple[int, int]:
+            value = self.samples.pop(0)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+    lifecycle = SequenceObserver([(100, 1), (80, 1), (120, 2)])
+    if lifecycle.start() is not True or lifecycle.peak_bytes != 100:
+        raise AssertionError("observer start did not establish first-sample readiness")
+    lifecycle._sample()
+    if lifecycle.peak_bytes != 100:
+        raise AssertionError("peak RSS decreased after a lower valid sample")
+    lifecycle_result = lifecycle.stop()
+    if (
+        lifecycle_result["status"] != "passed"
+        or lifecycle_result["peak_memory_bytes"] != 120
+        or lifecycle_result["sample_count"] != 3
+    ):
+        raise AssertionError("observer stop did not preserve and finalize valid peak RSS")
+
+    no_valid_sample = SequenceObserver([PermissionError()])
+    if no_valid_sample.start() is not False:
+        raise AssertionError("observer reported readiness without a valid root sample")
+    no_valid_result = no_valid_sample.stop()
+    if no_valid_result["status"] != "environment_blocked":
+        raise AssertionError("observer fabricated RSS after no valid sample")
+
+    nonpositive_root = SequenceObserver([(0, 1)])
+    if nonpositive_root.start() is not False:
+        raise AssertionError("observer reported readiness without positive root RSS")
+    nonpositive_result = nonpositive_root.stop()
+    if (
+        nonpositive_result["status"] != "environment_blocked"
+        or nonpositive_result["peak_memory_bytes"] is not None
+    ):
+        raise AssertionError("observer fabricated a nonpositive root RSS measurement")
+
+    class BlockedObserver(SequenceObserver):
+        def _procfs_unavailability(self) -> str | None:
+            return "linux_procfs_statm_unavailable:PermissionError"
+
+    blocked = BlockedObserver([])
+    if blocked.start() is not False:
+        raise AssertionError("capability-blocked observer reported readiness")
+    blocked_result = blocked.stop()
+    if (
+        blocked_result["status"] != "environment_blocked"
+        or blocked_result["measurement_error"]
+        != "linux_procfs_statm_unavailable:PermissionError"
+    ):
+        raise AssertionError("capability-blocked procfs state was not preserved")
 
 
 def bounded_process_result(value: dict[str, Any]) -> dict[str, Any]:
@@ -9263,20 +9476,68 @@ def self_test() -> int:
     evidence_directory = Path(temporary.name)
     assert_user_turn_normalizer_regressions(evidence_directory)
     assert_mcp_tool_call_normalizer_regressions(evidence_directory)
+    assert_linux_process_tree_peak_rss_regressions()
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
     procfs_unavailability = linux_process_tree_procfs_unavailability()
     observer = LinuxProcessTreePeakRss(
         definition["resource_qualification"]["peak_memory_sampling_interval_ms"]
     )
-    observer.start()
+    observer_ready = observer.start()
+    if procfs_unavailability is None and not observer_ready:
+        raise AssertionError(
+            "capable Linux procfs observer did not become ready: "
+            + json.dumps(observer.stop(), sort_keys=True)
+        )
+    synchronized_peak_increase = False
+    if observer_ready:
+        peak_before_child = observer.peak_bytes
+        synchronized_child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; x=bytearray(16*1024*1024); "
+                "sys.stdout.buffer.write(b'ready\\n'); sys.stdout.buffer.flush(); "
+                "sys.stdin.buffer.read(1)",
+            ],
+            cwd=ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if synchronized_child.stdout is None:
+            raise AssertionError("synchronized RSS workload stdout was not captured")
+        ready_line = synchronized_child.stdout.readline()
+        if ready_line != b"ready\n":
+            synchronized_child.kill()
+            synchronized_child.communicate()
+            raise AssertionError("synchronized RSS workload did not report allocation readiness")
+        observer._sample()
+        synchronized_peak_increase = (
+            observer.observed_process_count >= 2
+            and observer.peak_bytes > peak_before_child
+        )
+        try:
+            child_stdout, child_stderr = synchronized_child.communicate(
+                input=b"x", timeout=5
+            )
+        except subprocess.TimeoutExpired as error:
+            synchronized_child.kill()
+            synchronized_child.communicate()
+            raise AssertionError("synchronized RSS workload did not exit") from error
+        if (
+            synchronized_child.returncode != 0
+            or child_stdout != b""
+            or child_stderr != b""
+        ):
+            raise AssertionError("synchronized RSS workload did not exit cleanly")
     successful_process = process_recorder.run(
         "successful-capture",
         [
             sys.executable,
             "-c",
-            "import sys,time; x=bytearray(16*1024*1024); "
+            "import sys; x=bytearray(16*1024*1024); "
             "sys.stdout.buffer.write(b'complete stdout\\n'); "
-            "sys.stderr.buffer.write(b'complete stderr\\n'); time.sleep(.12)",
+            "sys.stderr.buffer.write(b'complete stderr\\n')",
         ],
         os.environ.copy(),
         cwd=ROOT,
@@ -9309,8 +9570,13 @@ def self_test() -> int:
             process_peak["status"] != "passed"
             or not isinstance(process_peak["peak_memory_bytes"], int)
             or process_peak["peak_memory_bytes"] <= 0
+            or not synchronized_peak_increase
+            or process_peak["maximum_observed_process_count"] < 2
         ):
-            raise AssertionError("capable Linux procfs did not produce measured peak RSS")
+            raise AssertionError(
+                "capable Linux procfs did not produce measured peak RSS: "
+                + json.dumps(process_peak, sort_keys=True)
+            )
     elif (
         process_peak["status"] != "environment_blocked"
         or process_peak["measurement_error"] != procfs_unavailability
@@ -13798,6 +14064,9 @@ def self_test() -> int:
         "viewer_environment_blocking": "passed",
         "human_review_cannot_override_machine_failure": "passed",
         "linux_process_tree_peak_rss": process_peak["status"],
+        "linux_process_tree_transient_child_disappearance": "passed",
+        "linux_process_tree_start_stop_and_monotonicity": "passed",
+        "linux_process_tree_root_and_capability_fail_closed": "passed",
         "linux_process_tree_environment_classification": "passed",
         "resource_measurement_unavailable_blocks_qualification": "passed",
         "resource_process_truth_preserved": "passed",
