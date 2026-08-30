@@ -619,6 +619,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - deterministically observed late authority correction의 affected path 보존과 prospective-only
   Decision, earlier affected work의 Checkpoint refusal
 - restart 뒤 unresolved Candidate가 ready/completed로 변하지 않고 resolved review는 재사용됨
+- fresh resume에서 new choice가 없으면 retained non-empty discovery를 fresh Goal/baseline/evidence에
+  재평가해 existing record path로 진행하거나 completed state를 read-only verify하며, `choices=[]`를
+  제출하지 않음
 - normal/active learning mode, routine non-blocking, user-owned authority priority, pending-learning
   Checkpoint refusal, response-before-feedback ordering과 selected/delegated/skipped/prototype/
   reconsideration restart state

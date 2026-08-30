@@ -779,6 +779,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - Restart 뒤 Materiality Review revision과 unresolved requirement가 유지되고, agent
   recommendation/library convention/implementation preference/fake delegation이 ready authority로
   바뀌지 않는다.
+- Fresh resume에서 no-new-choice guidance가 retained Candidate inspection과 non-empty stable-choice
+  re-evaluation 또는 verified-state read-only path를 직접 제공하며 invalid empty Discovery를 요구하지 않는다.
 - Restart 뒤 pending Learning Deliberation은 pending이고 completed selection은 exact bounded
   implementation basis로 남는다. Delegate/skip은 Decision을 만들지 않고 prototype request는
   research state이며, user-owned outcome은 learning transition으로 해제되지 않는다.

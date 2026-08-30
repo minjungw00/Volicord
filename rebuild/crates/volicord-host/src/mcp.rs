@@ -4978,6 +4978,28 @@ fn materiality_draft_json(
                 .map(|basis| basis.source.id.to_string())
         })
         .collect::<Vec<_>>();
+    let delegation_evidence_candidates = discovery
+        .choices
+        .iter()
+        .flat_map(|choice| {
+            current_host_user_turn_source_ids
+                .iter()
+                .map(|source_id| {
+                    json!({
+                        "goal_context_id":discovery.goal_context_id.to_string(),
+                        "user_turn_source_id":source_id,
+                        "exact_goal_text":goal.map(|item| item.statement.clone()),
+                        "dimension_id":choice.choice_id,
+                        "discovered_choice_ids":[choice.choice_id.clone()],
+                        "affected_scope":choice.affected_scope,
+                        "material_consequences":choice.technical_consequences,
+                        "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                        "caller_semantic_responsibility":"Quote the exact bounded verbatim delegation excerpt and confirm that it delegates this dimension; production does not infer that meaning from Goal prose.",
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let contracts = materiality_judgment_contracts();
     let all_judgment_fields = contracts
         .iter()
@@ -5064,6 +5086,7 @@ fn materiality_draft_json(
             "current_host_user_turn_source_ids":current_host_user_turn_source_ids,
             "ownership_notice":"If this current Goal reserves an outcome for user control or asks the user to retain the choice, do not downgrade that exact dimension to implementation preference because an older contract or repository convention exists.",
         },
+        "delegation_evidence_candidates":delegation_evidence_candidates,
         "authority_decision_checklist":{
             "counterfactual_question":"Would credible alternatives change an externally observable contract, durable effect, compatibility/support commitment, privacy/security posture, user-visible default, observable failure policy, or another material product outcome?",
             "material_outcome_categories":[
@@ -5532,6 +5555,16 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "relationship_state":["independent","coupled"],
             },
             "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, and private helper splits.",
+            "when_no_new_material_choice":{
+                "empty_discovery_submission":{"valid":false,"reason":"An empty Candidate would falsely claim that Engineering Choice Discovery occurred."},
+                "inspect_previous":{"tool":"candidate_inspect","purpose":"Read the retained prior Engineering Choice Discovery and its exact choice identities before deciding whether bounded work continues."},
+                "continued_work_path":[
+                    "Re-evaluate the retained prior choices against the fresh Goal, baseline, repository Source, and current work scope.",
+                    "If those non-empty choices remain applicable and no additional choice was found, record Engineering Choice Discovery once with the same stable choice identities, current evidence, and the fresh returned Goal/baseline identities.",
+                    "Then call materiality_review draft with the returned discovery identity; do not probe validation with choices=[]."
+                ],
+                "verified_state_path":"If inspection confirms completed current state and no bounded repository work continues, do not fabricate discovery or a Checkpoint; perform the supported read-only inspection/verification continuation.",
+            },
         }),
         WorkflowStage::MaterialityReview => json!({
             "required_action":{"tool":"materiality_review","action":"draft_then_record_or_revise"},

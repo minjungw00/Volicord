@@ -909,6 +909,23 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         draft["current_goal"]["current_host_user_turn_source_ids"],
         json!([goal_source_id])
     );
+    let delegation_candidate = draft["delegation_evidence_candidates"]
+        .as_array()
+        .expect("delegation evidence candidates")
+        .iter()
+        .find(|candidate| candidate["dimension_id"] == "signed-link-replay-policy")
+        .expect("signed-link delegation candidate");
+    assert_eq!(delegation_candidate["goal_context_id"], goal_context_id);
+    assert_eq!(delegation_candidate["user_turn_source_id"], goal_source_id);
+    assert_eq!(delegation_candidate["exact_goal_text"], goal_turn);
+    assert_eq!(
+        delegation_candidate["affected_scope"],
+        json!(["public links"])
+    );
+    assert_eq!(
+        delegation_candidate["effect_categories"],
+        json!(["public_api_shape_or_semantics", "security"])
+    );
     assert!(draft["current_goal"]["ownership_notice"]
         .as_str()
         .is_some_and(|notice| notice.contains("do not downgrade")));
@@ -2118,7 +2135,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
 
 #[test]
 fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
-    let (_temporary, mut adapter, project) = setup();
+    let (temporary, mut adapter, project) = setup();
     let goal_turn = "Implement the change; choose the internal module name.";
     let goal = structured(&call(
         &mut adapter,
@@ -2210,6 +2227,88 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         .to_string()
         .contains("choose the internal module name"));
     assert!(!inspected.to_string().contains(goal_turn));
+
+    fs::create_dir_all(temporary.path().join("repository/src")).expect("resume source directory");
+    fs::write(
+        temporary.path().join("repository/src/lib.rs"),
+        "mod chosen_name {}\n",
+    )
+    .expect("prior bounded work");
+    let layout = adapter.operations().layout().clone();
+    let mut adapter = HostAdapter::new(LocalOperations::new(layout));
+    let resumed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(resumed["workflow"]["stage"], "engineering_choice_discovery");
+    let no_new = &resumed["workflow"]["input_guidance"]["when_no_new_material_choice"];
+    assert_eq!(no_new["empty_discovery_submission"]["valid"], false);
+    assert_eq!(no_new["inspect_previous"]["tool"], "candidate_inspect");
+    assert!(no_new["continued_work_path"]
+        .as_array()
+        .is_some_and(|steps| steps.iter().any(|step| step
+            .as_str()
+            .is_some_and(|text| text.contains("same stable choice identities")))));
+
+    let resumed_discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal_context_id,
+        resumed["analysis_snapshot_id"]
+            .as_str()
+            .expect("resume baseline Analysis Snapshot"),
+        resumed["repository_source_id"]
+            .as_str()
+            .expect("resume repository Source"),
+        FixtureEngineeringChoice {
+            id: "internal-module-name",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let resumed_draft = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"draft",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":resumed_discovery_id,
+        }),
+    ))
+    .clone();
+    let reusable = resumed_draft["delegation_evidence_candidates"]
+        .as_array()
+        .expect("resume delegation candidates")
+        .first()
+        .expect("resume delegation candidate");
+    assert_eq!(reusable["goal_context_id"], goal_context_id);
+    assert_eq!(reusable["user_turn_source_id"], goal_source_id);
+    assert_eq!(reusable["dimension_id"], "internal-module-name");
+    assert_eq!(reusable["affected_scope"], json!(["src/lib.rs"]));
+    let resumed_review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":resumed_discovery_id,
+            "rationale":"The retained choice remains exactly delegated on the fresh baseline.",
+            "learning_participation":{"state":"inactive"},
+            "judgments":[{
+                "choice_id":"internal-module-name",
+                "disposition":"delegated_implementation_choice",
+                "basis_summary":"Re-evaluated exact bounded current-task delegation",
+                "learning_value":{"state":"routine","rationale":"The retained internal module choice remains routine."},
+                "delegation_statement":"choose the internal module name",
+                "delegated_scope":["src/lib.rs"]
+            }]
+        }),
+    ))
+    .clone();
+    assert_eq!(resumed_review["workflow"]["stage"], "ready_for_work");
+    assert_eq!(resumed_review["workflow"]["blocks_ordinary_work"], false);
 }
 
 #[test]

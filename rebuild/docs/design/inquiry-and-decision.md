@@ -260,6 +260,10 @@ choice template은 discovery-owned summary/scope/alternative/consequence/effect/
 exact `choice_id`를 제공하고 모든 legal variant identity를 위 contract에 연결한다.
 `learning_value`의 `routine`/`deliberation_worthy`와 learning participation의
 `inactive`/current-host `active`도 실제 validator schema에서 같은 형태로 투영한다.
+Current-task delegation을 검토할 때 draft는 각 choice별 exact Goal identity/text, current-host Goal
+Source identity, dimension/choice identity, affected scope, material consequence와 effect category를
+하나의 reusable evidence candidate로도 제공한다. 이는 delegation을 semantic하게 선언하지 않으며
+caller가 exact verbatim excerpt와 dimension coverage를 판단할 책임을 유지한다.
 
 반환된 `record_request`는 아직 review가 없으면 exact discovery identity를 가진 `record`, 같은
 discovery의 current review가 있으면 exact review identity를 가진 `revise`를 prefill하고 실제
@@ -316,6 +320,15 @@ blocking 여부, reason/basis, satisfied requirements와 unresolved requirements
 unresolved user-owned, evidence-required exploratory dimension 또는 active required Learning
 Deliberation이 없을 때만 가능하다.
 이 result는 일반 file/command admission이 아니다.
+
+Fresh resume baseline에서 새 material choice가 발견되지 않았다고 `choices=[]` Discovery를 제출하지
+않는다. Host workflow는 retained Candidate inspection을 먼저 가리킨다. Continued bounded work가 있으면
+caller는 prior stable choice identities를 fresh Goal/baseline/repository Source와 current scope에 대해
+재평가하고, prior non-empty choices가 그대로 applicable하며 additional choice가 없다는 결론을 current
+evidence로 한 번 record한 뒤 Materiality draft/review로 진행한다. Completed state를 read-only로
+inspection/verification할 뿐 bounded work가 계속되지 않으면 Discovery나 Checkpoint를 제조하지 않는다.
+이 두 경로는 empty Candidate를 success로 인정하지 않고 기존 inspect/record/read-only operation을
+사용한다.
 
 ### Learning participation, assessment와 Deliberation
 
