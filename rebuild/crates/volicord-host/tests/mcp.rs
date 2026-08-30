@@ -1676,6 +1676,53 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
             "decision_record"
         ])
     );
+    let unsupported_downgrade = call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"revise",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "rationale":"A user Goal Source cannot be relabeled as research evidence to bypass deliberation.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal_source_id,"verbatim_statement":"Teach me through meaningful technical choices"},
+            "judgments":[{
+                "choice_id":"cache-invalidation-boundary",
+                "disposition":"agent_owned_implementation_choice",
+                "basis_summary":"The implementation authority remains agent-owned.",
+                "learning_value":{"state":"routine","rationale":"Unsupported downgrade without repository or prototype evidence."}
+            }],
+            "learning_value_revision_bases":[{
+                "dimension_id":"cache-invalidation-boundary",
+                "kind":"research_evidence",
+                "source_ids":[goal_source_id],
+                "evidence_basis":["The original user request is not repository research."],
+                "rationale":"This deliberately invalid basis must not bypass Learning Deliberation."
+            }]
+        }),
+    );
+    assert_eq!(
+        unsupported_downgrade["result"]["isError"], true,
+        "{unsupported_downgrade}"
+    );
+    assert!(structured(&unsupported_downgrade)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("current non-user evidence Sources")));
+    let after_rejected_downgrade = structured(&call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let preserved_review = after_rejected_downgrade["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .find(|candidate| candidate["identity"] == review_id)
+        .expect("preserved Materiality Review");
+    assert_eq!(
+        preserved_review["materiality_review"]["dimensions"][0]["learning_value"]["state"],
+        "deliberation_worthy"
+    );
     let before_deliberation = structured(&call(
         &mut adapter,
         "candidate_inspect",

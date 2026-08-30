@@ -2204,7 +2204,7 @@ fn learning_value_revision_bases_schema() -> Value {
             vec![
                 ("dimension_id", text_schema("Exact Materiality dimension identity", 1, 256)),
                 ("kind", enum_schema("Supported learning-value revision basis", &[kind])),
-                ("source_ids", identity_array_schema("Current Source identities proving the changed learning value", 1)),
+                ("source_ids", identity_array_schema("Current non-user repository, command, URL, or adopted-artifact Source identities proving the changed learning value", 1)),
                 ("evidence_basis", nonempty_string_array_schema("Bounded research or prototype evidence that removes the prior credible trade-off")),
                 ("rationale", text_schema("Why this evidence makes the choice routine", 1, 4096)),
             ],
@@ -5127,7 +5127,8 @@ fn materiality_draft_json(
         "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
         "learning_value_revision_contract":{
             "rule":"A prior deliberation_worthy assessment cannot become routine merely because an implementation was selected.",
-            "supported_downgrade_bases":["current Source-backed research evidence","current Source-backed prototype evidence","exact current-host user withdrawal or narrowing of learning participation"],
+            "supported_downgrade_bases":["current non-user Source-backed research evidence","current non-user Source-backed prototype evidence","exact current-host user withdrawal or narrowing of learning participation"],
+            "user_turn_boundary":"A current-host user-turn Source is valid only through the explicit current_user_withdrawal variant, not when relabeled as research or prototype evidence.",
             "not_a_basis":["agent preference","implementation selection","desire to avoid Learning Deliberation"],
             "revise_field":"learning_value_revision_bases",
             "input_schema":learning_value_revision_bases_schema(),

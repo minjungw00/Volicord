@@ -2117,16 +2117,29 @@ fn validate_learning_value_revision_basis_against_canonical(
     match basis {
         crate::LearningValueRevisionBasis::ResearchEvidence { source_basis, .. }
         | crate::LearningValueRevisionBasis::PrototypeEvidence { source_basis, .. } => {
-            if source_basis.iter().any(|source_id| {
-                !canonical.sources.iter().any(|candidate| {
-                    candidate.source.id == *source_id
-                        && candidate.freshness == volicord_context::SourceFreshness::Current
-                })
-            }) {
-                return Err(Error::new(
-                    ErrorKind::StaleBasis,
-                    "learning-value revision evidence contains a missing or non-current Source",
-                ));
+            for source_id in source_basis {
+                let source = canonical
+                    .sources
+                    .iter()
+                    .find(|candidate| {
+                        candidate.source.id == *source_id
+                            && candidate.freshness == volicord_context::SourceFreshness::Current
+                    })
+                    .ok_or_else(|| {
+                        Error::new(
+                            ErrorKind::StaleBasis,
+                            "learning-value revision evidence contains a missing or non-current Source",
+                        )
+                    })?;
+                if matches!(
+                    source.source.payload,
+                    volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+                ) {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "research/prototype learning-value revision requires current non-user evidence Sources",
+                    ));
+                }
             }
         }
         crate::LearningValueRevisionBasis::CurrentUserWithdrawal {

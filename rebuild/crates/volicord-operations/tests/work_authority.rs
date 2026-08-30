@@ -138,6 +138,33 @@ fn source_backed_research_can_make_a_prior_learning_fork_routine(
         rationale: "repository evidence proves both alternatives use the same fixed boundary"
             .into(),
     };
+    let rejected = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: review.review_candidate_id,
+            rationale: "a user Goal Source is not repository research evidence".into(),
+            learning_participation: active_learning(&fixture),
+            dimensions: vec![dimension.clone()],
+            learning_value_revision_bases: vec![LearningValueRevisionRequest {
+                dimension_id: "error-boundary".into(),
+                basis: LearningValueRevisionBasis::ResearchEvidence {
+                    source_basis: vec![fixture.goal_source_id],
+                    evidence_basis: vec![
+                        "the original user request cannot remove a repository trade-off".into(),
+                    ],
+                    rationale: "reject a user turn relabeled as research".into(),
+                },
+            }],
+        })
+        .expect_err("current user-turn Source cannot be relabeled as research evidence");
+    assert!(rejected
+        .message()
+        .contains("current non-user evidence Sources"));
+    assert_eq!(
+        readiness(&fixture, &review)?.stage,
+        WorkAuthorityStage::LearningDeliberation
+    );
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
