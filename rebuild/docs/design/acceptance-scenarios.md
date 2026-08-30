@@ -622,6 +622,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - normal/active learning mode, routine non-blocking, user-owned authority priority, pending-learning
   Checkpoint refusal, response-before-feedback ordering과 selected/delegated/skipped/prototype/
   reconsideration restart state
+- unsupported deliberation-worthy-to-routine downgrade rejection과 supported Source/user-turn revision basis
 - work, verification, review와 acceptance 상태 독립성
 - label과 invocation이 다른 fixture의 exact invocation fingerprint, Source-ID linkage,
   restart/portable round trip과 raw invocation non-retention

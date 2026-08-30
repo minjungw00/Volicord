@@ -756,8 +756,13 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     );
     let revised_learning = draft_learning_value(
         &revision_draft,
-        "routine",
-        json!({"rationale":"The canonical Decision resolves authority without a learning interruption."}),
+        "deliberation_worthy",
+        json!({
+            "rationale":"The learning value remains meaningful while the canonical Decision resolves user authority.",
+            "consequence_significance":["Callers observe different failures"],
+            "transferable_principles":["Error contracts are API contracts"],
+            "non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]
+        }),
     );
     let revised_judgment = draft_judgment(
         &revision_draft,
@@ -4857,6 +4862,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "rationale",
                     "learning_participation",
                     "judgments",
+                    "learning_value_revision_bases",
                 ],
                 &[
                     "action",

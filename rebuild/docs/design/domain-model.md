@@ -106,6 +106,12 @@ Feedback 뒤 selected alternative를 bounded implementation basis로 완료하�
 다시 열 수 있다. Revision과 current state는 restart 뒤 유지되지만 canonical Decision이나 영구
 proficiency profile은 아니다.
 
+Materiality Review가 이미 `deliberation-worthy`로 보존한 dimension을 `routine`으로 revise하려면
+exact dimension과 prior/current assessment, revision Analysis Snapshot, supported basis를 inspectable하게
+보존한다. Supported basis는 current Source가 뒷받침하는 repository/research evidence, prototype
+evidence 또는 current-host user-turn Source의 verbatim learning withdrawal/narrowing이다. Agent preference,
+implementation selection이나 interruption 회피는 revision basis가 아니다.
+
 Agent, Repository Intelligence, Inquiry and Decision, Host and User Adapter, Local
 Operations와 Optional Semantic Provider Boundary는 각자의 provenance를 가진
 Candidate를 만들 수 있다. User input도 아직 exact Question linkage나 explicit

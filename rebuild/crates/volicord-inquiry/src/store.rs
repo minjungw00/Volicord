@@ -18,7 +18,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 7;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 8;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -213,11 +213,21 @@ impl CandidateStore {
                 })?;
             let late_corrections =
                 detect_late_authority_corrections(review, &revision.dimensions, baseline, current)?;
+            let learning_value_revisions = validate_learning_value_revisions(
+                review,
+                &revision.dimensions,
+                &revision.learning_value_revision_bases,
+                canonical,
+                current,
+            )?;
             review.current_review_analysis_snapshot_id = current.identity;
             review.rationale = revision.rationale;
             review.learning_participation = revision.learning_participation;
             review.dimensions = revision.dimensions;
             review.late_authority_corrections.extend(late_corrections);
+            review
+                .learning_value_revisions
+                .extend(learning_value_revisions);
             review
                 .late_authority_corrections
                 .sort_by(|left, right| left.dimension_id.cmp(&right.dimension_id));
@@ -1473,6 +1483,28 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             ));
         }
     }
+    for revision in &review.learning_value_revisions {
+        validate_text(
+            "learning-value revision dimension identity",
+            &revision.dimension_id,
+        )?;
+        validate_learning_value_revision_basis(&revision.basis)?;
+        if !identities.contains(revision.dimension_id.as_str())
+            || !matches!(
+                revision.previous,
+                crate::LearningValueAssessment::DeliberationWorthy { .. }
+            )
+            || !matches!(
+                revision.current,
+                crate::LearningValueAssessment::Routine { .. }
+            )
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "persisted learning-value revision must describe a supported deliberation-worthy-to-routine downgrade for a current dimension",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1966,6 +1998,170 @@ fn detect_late_authority_corrections(
         }
     }
     Ok(corrections)
+}
+
+fn validate_learning_value_revisions(
+    existing: &MaterialityReview,
+    revised_dimensions: &[crate::MaterialityDimension],
+    requests: &[crate::LearningValueRevisionRequest],
+    canonical: &CanonicalReadBasis,
+    current: &AnalysisSnapshot,
+) -> Result<Vec<crate::LearningValueRevision>, Error> {
+    let mut indexed = std::collections::BTreeMap::new();
+    for request in requests {
+        validate_text(
+            "learning-value revision dimension identity",
+            &request.dimension_id,
+        )?;
+        validate_learning_value_revision_basis(&request.basis)?;
+        if indexed
+            .insert(request.dimension_id.as_str(), request)
+            .is_some()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "learning-value revision basis must be unique per dimension",
+            ));
+        }
+    }
+    let mut revisions = Vec::new();
+    for revised in revised_dimensions {
+        let Some(previous) = existing
+            .dimensions
+            .iter()
+            .find(|dimension| dimension.dimension_id == revised.dimension_id)
+        else {
+            continue;
+        };
+        let downgrade = matches!(
+            previous.learning_value,
+            crate::LearningValueAssessment::DeliberationWorthy { .. }
+        ) && matches!(
+            revised.learning_value,
+            crate::LearningValueAssessment::Routine { .. }
+        );
+        let request = indexed.remove(revised.dimension_id.as_str());
+        if !downgrade {
+            if request.is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "learning-value revision basis is accepted only for a deliberation-worthy-to-routine downgrade",
+                ));
+            }
+            continue;
+        }
+        let request = request.ok_or_else(|| {
+            Error::new(
+                ErrorKind::DomainConflict,
+                "deliberation-worthy learning cannot be downgraded to routine without a supported research, prototype, or current-user withdrawal basis",
+            )
+        })?;
+        validate_learning_value_revision_basis_against_canonical(&request.basis, canonical)?;
+        revisions.push(crate::LearningValueRevision {
+            dimension_id: revised.dimension_id.clone(),
+            previous: previous.learning_value.clone(),
+            current: revised.learning_value.clone(),
+            basis: request.basis.clone(),
+            revised_analysis_snapshot_id: current.identity,
+        });
+    }
+    if !indexed.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "learning-value revision basis references a missing Materiality dimension",
+        ));
+    }
+    Ok(revisions)
+}
+
+fn validate_learning_value_revision_basis(
+    basis: &crate::LearningValueRevisionBasis,
+) -> Result<(), Error> {
+    match basis {
+        crate::LearningValueRevisionBasis::ResearchEvidence {
+            source_basis,
+            evidence_basis,
+            rationale,
+        }
+        | crate::LearningValueRevisionBasis::PrototypeEvidence {
+            source_basis,
+            evidence_basis,
+            rationale,
+        } => {
+            validate_id_list(source_basis)?;
+            validate_list(evidence_basis)?;
+            validate_text("learning-value revision rationale", rationale)?;
+            if source_basis.is_empty() || evidence_basis.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "research/prototype learning-value revision requires current Source identities and bounded evidence",
+                ));
+            }
+        }
+        crate::LearningValueRevisionBasis::CurrentUserWithdrawal {
+            verbatim_statement,
+            rationale,
+            ..
+        } => {
+            validate_text("learning withdrawal statement", verbatim_statement)?;
+            validate_text("learning-value revision rationale", rationale)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_learning_value_revision_basis_against_canonical(
+    basis: &crate::LearningValueRevisionBasis,
+    canonical: &CanonicalReadBasis,
+) -> Result<(), Error> {
+    match basis {
+        crate::LearningValueRevisionBasis::ResearchEvidence { source_basis, .. }
+        | crate::LearningValueRevisionBasis::PrototypeEvidence { source_basis, .. } => {
+            if source_basis.iter().any(|source_id| {
+                !canonical.sources.iter().any(|candidate| {
+                    candidate.source.id == *source_id
+                        && candidate.freshness == volicord_context::SourceFreshness::Current
+                })
+            }) {
+                return Err(Error::new(
+                    ErrorKind::StaleBasis,
+                    "learning-value revision evidence contains a missing or non-current Source",
+                ));
+            }
+        }
+        crate::LearningValueRevisionBasis::CurrentUserWithdrawal {
+            user_turn_source_id,
+            verbatim_statement,
+            ..
+        } => {
+            validate_current_host_user_source(canonical, *user_turn_source_id)?;
+            let source = canonical
+                .sources
+                .iter()
+                .find(|candidate| candidate.source.id == *user_turn_source_id)
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::InvalidInput,
+                        "learning withdrawal Source is missing",
+                    )
+                })?;
+            let volicord_context::SourcePayload::CurrentHostUserTurn { turn, .. } =
+                &source.source.payload
+            else {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "learning withdrawal requires a current-host user-turn Source",
+                ));
+            };
+            if !turn.contains(verbatim_statement) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "learning withdrawal must preserve the current user's statement verbatim",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn scope_overlaps_path(scope: &[String], path: &str) -> bool {

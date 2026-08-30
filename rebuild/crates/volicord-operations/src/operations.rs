@@ -1047,6 +1047,7 @@ impl LocalOperations {
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
                     late_authority_corrections: Vec::new(),
+                    learning_value_revisions: Vec::new(),
                 }),
                 learning_deliberation: None,
             },
@@ -1133,6 +1134,7 @@ impl LocalOperations {
                         rationale: draft.rationale,
                         learning_participation: draft.learning_participation,
                         dimensions: draft.dimensions,
+                        learning_value_revision_bases: draft.learning_value_revision_bases,
                     },
                 )
             })

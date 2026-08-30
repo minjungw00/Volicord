@@ -40,10 +40,12 @@ pub use model::{
     ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, LateAuthorityCorrection,
     LearningAlternativeSelection, LearningDeliberation, LearningDeliberationRound,
     LearningDeliberationState, LearningInitialResponse, LearningParticipation,
-    LearningRecommendation, LearningValueAssessment, MaterialOutcomeSignal, MaterialityAssessment,
-    MaterialityDimension, MaterialityDisposition, MaterialityReview, MaterialityReviewRevision,
-    MaterialityStatus, PromotionResult, QuestionCandidate, QuestionPresentation,
-    RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    LearningRecommendation, LearningValueAssessment, LearningValueRevision,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialOutcomeSignal,
+    MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
+    MaterialityReviewRevision, MaterialityStatus, PromotionResult, QuestionCandidate,
+    QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis,
+    WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

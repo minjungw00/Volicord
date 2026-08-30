@@ -22,8 +22,9 @@ use volicord_inquiry::{
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
     LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningValueAssessment, MaterialityAssessment, MaterialityStatus, QuestionCandidate,
-    ResponseMapping, SubmissionOutcome,
+    LearningValueAssessment, LearningValueRevisionBasis, LearningValueRevisionRequest,
+    MaterialityAssessment, MaterialityStatus, QuestionCandidate, ResponseMapping,
+    SubmissionOutcome,
 };
 use volicord_operations::{
     AnalysisSnapshotId, BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft,
@@ -601,6 +602,7 @@ impl HostAdapter {
                         rationale: required_str(args, "rationale")?.to_owned(),
                         learning_participation: learning_participation(args)?,
                         dimensions,
+                        learning_value_revision_bases: learning_value_revision_bases(args)?,
                     })
                     .map_err(operation_error)?;
                 let workflow = self
@@ -2196,6 +2198,40 @@ fn learning_value_schema() -> Value {
     ]})
 }
 
+fn learning_value_revision_bases_schema() -> Value {
+    let evidence = |kind| {
+        object_schema(
+            vec![
+                ("dimension_id", text_schema("Exact Materiality dimension identity", 1, 256)),
+                ("kind", enum_schema("Supported learning-value revision basis", &[kind])),
+                ("source_ids", identity_array_schema("Current Source identities proving the changed learning value", 1)),
+                ("evidence_basis", nonempty_string_array_schema("Bounded research or prototype evidence that removes the prior credible trade-off")),
+                ("rationale", text_schema("Why this evidence makes the choice routine", 1, 4096)),
+            ],
+            &["dimension_id", "kind", "source_ids", "evidence_basis", "rationale"],
+        )
+    };
+    json!({
+        "type":"array",
+        "description":"Required only for each deliberation-worthy-to-routine downgrade; agent preference is not a supported basis",
+        "maxItems":64,
+        "items":{"oneOf":[
+            evidence("research_evidence"),
+            evidence("prototype_evidence"),
+            object_schema(
+                vec![
+                    ("dimension_id", text_schema("Exact Materiality dimension identity", 1, 256)),
+                    ("kind", enum_schema("Supported learning-value revision basis", &["current_user_withdrawal"])),
+                    ("user_turn_source_id", identity_schema("Exact current-host user-turn Source identity")),
+                    ("verbatim_statement", text_schema("Verbatim user withdrawal or narrowing of learning participation", 1, 4096)),
+                    ("rationale", text_schema("Why the current user statement changes the learning path", 1, 4096)),
+                ],
+                &["dimension_id", "kind", "user_turn_source_id", "verbatim_statement", "rationale"],
+            ),
+        ]},
+    })
+}
+
 fn learning_deliberation_schemas() -> Vec<Value> {
     let project_candidate = || {
         vec![
@@ -2648,6 +2684,10 @@ fn materiality_revise_schema() -> Value {
             ),
             ("learning_participation", learning_participation_schema()),
             ("judgments", materiality_judgments_schema()),
+            (
+                "learning_value_revision_bases",
+                learning_value_revision_bases_schema(),
+            ),
         ],
         &[
             "action",
@@ -3799,6 +3839,13 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "affected_changed_paths":correction.affected_changed_paths,
             "authority_effect":"later authority is prospective and cannot certify the earlier affected work",
         })).collect::<Vec<_>>(),
+        "learning_value_revisions":review.learning_value_revisions.iter().map(|revision| json!({
+            "dimension_id":revision.dimension_id,
+            "previous":learning_value_json(&revision.previous),
+            "current":learning_value_json(&revision.current),
+            "basis":learning_value_revision_basis_json(&revision.basis),
+            "revised_analysis_snapshot_id":revision.revised_analysis_snapshot_id.to_string(),
+        })).collect::<Vec<_>>(),
         "dimensions":review.dimensions.iter().map(|dimension| json!({
             "dimension_id":dimension.dimension_id,
             "discovered_choice_ids":dimension.discovered_choice_ids,
@@ -4733,6 +4780,67 @@ fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, H
     }
 }
 
+fn learning_value_revision_bases(
+    value: &Value,
+) -> Result<Vec<LearningValueRevisionRequest>, HostError> {
+    value
+        .get("learning_value_revision_bases")
+        .and_then(Value::as_array)
+        .map_or_else(
+            || Ok(Vec::new()),
+            |items| {
+                items
+                    .iter()
+                    .map(|item| {
+                        let dimension_id = required_str(item, "dimension_id")?.to_owned();
+                        let basis = match required_str(item, "kind")? {
+                            kind @ ("research_evidence" | "prototype_evidence") => {
+                                let value = (
+                                    source_ids(item, "source_ids")?,
+                                    string_array(item, "evidence_basis")?,
+                                    required_str(item, "rationale")?.to_owned(),
+                                );
+                                if kind == "research_evidence" {
+                                    LearningValueRevisionBasis::ResearchEvidence {
+                                        source_basis: value.0,
+                                        evidence_basis: value.1,
+                                        rationale: value.2,
+                                    }
+                                } else {
+                                    LearningValueRevisionBasis::PrototypeEvidence {
+                                        source_basis: value.0,
+                                        evidence_basis: value.1,
+                                        rationale: value.2,
+                                    }
+                                }
+                            }
+                            "current_user_withdrawal" => {
+                                LearningValueRevisionBasis::CurrentUserWithdrawal {
+                                    user_turn_source_id: parse_source(required_str(
+                                        item,
+                                        "user_turn_source_id",
+                                    )?)?,
+                                    verbatim_statement: required_str(item, "verbatim_statement")?
+                                        .to_owned(),
+                                    rationale: required_str(item, "rationale")?.to_owned(),
+                                }
+                            }
+                            _ => {
+                                return Err(HostError::new(
+                                    "unknown learning-value revision basis kind",
+                                ))
+                            }
+                        };
+                        Ok(LearningValueRevisionRequest {
+                            dimension_id,
+                            basis,
+                        })
+                    })
+                    .collect()
+            },
+        )
+}
+
 fn schema_required_fields(schema: &Value) -> Vec<String> {
     schema
         .get("required")
@@ -4994,6 +5102,13 @@ fn materiality_draft_json(
             "assembly":"Choose inactive, or choose active and provide a verbatim explicit opt-in from one returned current Goal user-turn Source. Learning participation is independent of authority.",
         },
         "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
+        "learning_value_revision_contract":{
+            "rule":"A prior deliberation_worthy assessment cannot become routine merely because an implementation was selected.",
+            "supported_downgrade_bases":["current Source-backed research evidence","current Source-backed prototype evidence","exact current-host user withdrawal or narrowing of learning participation"],
+            "not_a_basis":["agent preference","implementation selection","desire to avoid Learning Deliberation"],
+            "revise_field":"learning_value_revision_bases",
+            "input_schema":learning_value_revision_bases_schema(),
+        },
         "field_ownership":{
             "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
             "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","additional authority evidence allowed for that disposition","learning_value"],
@@ -5245,6 +5360,41 @@ fn learning_value_json(assessment: &LearningValueAssessment) -> Value {
             "consequence_significance":consequence_significance,
             "transferable_principles":transferable_principles,
             "non_obvious_trade_offs":non_obvious_trade_offs,
+        }),
+    }
+}
+
+fn learning_value_revision_basis_json(basis: &LearningValueRevisionBasis) -> Value {
+    match basis {
+        LearningValueRevisionBasis::ResearchEvidence {
+            source_basis,
+            evidence_basis,
+            rationale,
+        } => json!({
+            "kind":"research_evidence",
+            "source_ids":source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "evidence_basis":evidence_basis,
+            "rationale":rationale,
+        }),
+        LearningValueRevisionBasis::PrototypeEvidence {
+            source_basis,
+            evidence_basis,
+            rationale,
+        } => json!({
+            "kind":"prototype_evidence",
+            "source_ids":source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "evidence_basis":evidence_basis,
+            "rationale":rationale,
+        }),
+        LearningValueRevisionBasis::CurrentUserWithdrawal {
+            user_turn_source_id,
+            verbatim_statement,
+            rationale,
+        } => json!({
+            "kind":"current_user_withdrawal",
+            "user_turn_source_id":user_turn_source_id.to_string(),
+            "verbatim_statement":verbatim_statement,
+            "rationale":rationale,
         }),
     }
 }

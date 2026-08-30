@@ -19,10 +19,11 @@ use volicord_operations::{
     GroundedCheckpointDraft, LearningAlternativeSelection, LearningDeliberationDraft,
     LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
     LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
-    LearningResponseDraft, LearningValueAssessment, LocalOperations, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
-    WorkAuthorityDisposition, WorkAuthorityStage, WorkflowStage,
+    LearningResponseDraft, LearningValueAssessment, LearningValueRevisionBasis,
+    LearningValueRevisionRequest, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
+    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
+    WorkflowStage,
 };
 
 fn dimension(
@@ -80,7 +81,7 @@ fn learning_worthy_agent_choice_is_non_blocking_in_normal_mode_but_blocks_when_e
             EngineeringEffectCategory::FailureOrErrorSemantics,
             active_source,
         )],
-        vec![active_dimension],
+        vec![active_dimension.clone()],
         active_learning(&active),
     )?;
     let pending = readiness(&active, &active_review)?;
@@ -90,6 +91,151 @@ fn learning_worthy_agent_choice_is_non_blocking_in_normal_mode_but_blocks_when_e
         WorkAuthorityDisposition::LearningDeliberationPending
     );
     assert!(pending.blocking);
+
+    let mut unsupported_routine = active_dimension;
+    unsupported_routine.learning_value = LearningValueAssessment::Routine {
+        rationale: "the agent selected an implementation".into(),
+    };
+    let rejected = active
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: active.project_id,
+            review_candidate_id: active_review.review_candidate_id,
+            rationale: "attempt to bypass the learning fork".into(),
+            learning_participation: active_learning(&active),
+            dimensions: vec![unsupported_routine],
+            learning_value_revision_bases: Vec::new(),
+        })
+        .expect_err("agent preference cannot downgrade deliberation-worthy learning");
+    assert!(rejected
+        .message()
+        .contains("Materiality Review revision failed"));
+    let unchanged = readiness(&active, &active_review)?;
+    assert_eq!(unchanged.stage, WorkAuthorityStage::LearningDeliberation);
+    assert!(unchanged.blocking);
+    Ok(())
+}
+
+#[test]
+fn source_backed_research_can_make_a_prior_learning_fork_routine(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the error boundary. I want to learn before meaningful engineering choices.",
+    )?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut dimension = agent_owned_dimension("error-boundary", source, deliberation_worthy());
+    let review = review_with_learning(
+        &fixture,
+        vec![engineering_choice(
+            "error-boundary",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            source,
+        )],
+        vec![dimension.clone()],
+        active_learning(&fixture),
+    )?;
+    dimension.learning_value = LearningValueAssessment::Routine {
+        rationale: "repository evidence proves both alternatives use the same fixed boundary"
+            .into(),
+    };
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: review.review_candidate_id,
+            rationale: "new repository evidence removes the prior trade-off".into(),
+            learning_participation: active_learning(&fixture),
+            dimensions: vec![dimension],
+            learning_value_revision_bases: vec![LearningValueRevisionRequest {
+                dimension_id: "error-boundary".into(),
+                basis: LearningValueRevisionBasis::ResearchEvidence {
+                    source_basis: vec![source],
+                    evidence_basis: vec![
+                        "both credible implementations share the same enforced boundary".into(),
+                    ],
+                    rationale: "the previously credible trade-off is no longer real".into(),
+                },
+            }],
+        })?;
+    assert_eq!(
+        readiness(&fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    let persisted = fixture
+        .operations
+        .inspect_workflow_candidate(fixture.project_id, review.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert_eq!(persisted.learning_value_revisions.len(), 1);
+    assert!(matches!(
+        persisted.learning_value_revisions[0].basis,
+        LearningValueRevisionBasis::ResearchEvidence { .. }
+    ));
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn current_user_can_withdraw_learning_without_creating_a_decision(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the error boundary. I want to learn before meaningful engineering choices.",
+    )?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut dimension = agent_owned_dimension("error-boundary", source, deliberation_worthy());
+    let review = review_with_learning(
+        &fixture,
+        vec![engineering_choice(
+            "error-boundary",
+            EngineeringEffectCategory::FailureOrErrorSemantics,
+            source,
+        )],
+        vec![dimension.clone()],
+        active_learning(&fixture),
+    )?;
+    let withdrawal = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".into(),
+        "learning-withdrawal".into(),
+        "I no longer want to deliberate this choice; proceed routinely.".into(),
+        ContextItemRole::Preference,
+        "I no longer want to deliberate this choice; proceed routinely.".into(),
+    )?;
+    dimension.learning_value = LearningValueAssessment::Routine {
+        rationale: "the current user withdrew this bounded learning interaction".into(),
+    };
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: review.review_candidate_id,
+            rationale: "apply the exact current-user learning withdrawal".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![dimension],
+            learning_value_revision_bases: vec![LearningValueRevisionRequest {
+                dimension_id: "error-boundary".into(),
+                basis: LearningValueRevisionBasis::CurrentUserWithdrawal {
+                    user_turn_source_id: withdrawal.source_id,
+                    verbatim_statement:
+                        "I no longer want to deliberate this choice; proceed routinely.".into(),
+                    rationale: "the user narrowed participation for this exact choice".into(),
+                },
+            }],
+        })?;
+    assert_eq!(
+        readiness(&fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
     Ok(())
 }
 
@@ -1181,6 +1327,7 @@ fn late_user_authority_correction_preserves_prospective_only_work_state(
             rationale: "correct the hidden material authority boundary".into(),
             learning_participation: LearningParticipation::Inactive,
             dimensions: vec![corrected],
+            learning_value_revision_bases: Vec::new(),
         })?;
     let prospective = readiness(&fixture, &revised)?;
     assert_eq!(prospective.stage, WorkAuthorityStage::QuestionRequired);
@@ -1229,6 +1376,7 @@ fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision
             rationale: "bounded research resolved the implementation uncertainty".to_owned(),
             learning_participation: volicord_operations::LearningParticipation::Inactive,
             dimensions: vec![exploratory],
+            learning_value_revision_bases: Vec::new(),
         })?;
     assert_eq!(revised.review_revision, 2);
     assert_eq!(
@@ -1678,6 +1826,7 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
             rationale: "the exact current-host response produced an applicable Decision".to_owned(),
             learning_participation: volicord_operations::LearningParticipation::Inactive,
             dimensions: vec![resolved, resolved_coupled],
+            learning_value_revision_bases: Vec::new(),
         })?;
     let ready = readiness(&fixture, &revised)?;
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);

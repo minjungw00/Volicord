@@ -351,6 +351,40 @@ pub enum LearningValueAssessment {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum LearningValueRevisionBasis {
+    ResearchEvidence {
+        source_basis: Vec<SourceId>,
+        evidence_basis: Vec<String>,
+        rationale: String,
+    },
+    PrototypeEvidence {
+        source_basis: Vec<SourceId>,
+        evidence_basis: Vec<String>,
+        rationale: String,
+    },
+    CurrentUserWithdrawal {
+        user_turn_source_id: SourceId,
+        verbatim_statement: String,
+        rationale: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningValueRevisionRequest {
+    pub dimension_id: String,
+    pub basis: LearningValueRevisionBasis,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningValueRevision {
+    pub dimension_id: String,
+    pub previous: LearningValueAssessment,
+    pub current: LearningValueAssessment,
+    pub basis: LearningValueRevisionBasis,
+    pub revised_analysis_snapshot_id: AnalysisSnapshotId,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialityDimension {
     pub dimension_id: String,
     pub discovered_choice_ids: Vec<String>,
@@ -375,6 +409,7 @@ pub struct MaterialityReview {
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
     pub late_authority_corrections: Vec<LateAuthorityCorrection>,
+    pub learning_value_revisions: Vec<LearningValueRevision>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -389,6 +424,7 @@ pub struct MaterialityReviewRevision {
     pub rationale: String,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+    pub learning_value_revision_bases: Vec<LearningValueRevisionRequest>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

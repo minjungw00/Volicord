@@ -48,9 +48,11 @@ pub use volicord_inquiry::{
     EngineeringChoiceRelationship, EngineeringEffectCategory, ExplicitDelegationEvidence,
     ExploratoryDisposition, LearningAlternativeSelection, LearningDeliberationState,
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningValueAssessment, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
-    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityCandidateBasis,
-    WorkAuthorityDisposition, WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    LearningValueAssessment, LearningValueRevision, LearningValueRevisionBasis,
+    LearningValueRevisionRequest, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    WorkAuthorityCandidateBasis, WorkAuthorityDisposition, WorkAuthorityRequirement,
+    WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

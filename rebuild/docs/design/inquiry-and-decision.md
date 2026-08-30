@@ -332,6 +332,16 @@ Engineering Choice Discovery에서 온다. User-owned dimension은 learning valu
 Question/Decision path를 사용한다. Settled fact/contract와 routine detail은 learning blocker를 만들지
 않는다.
 
+한 번 `deliberation-worthy`로 기록된 dimension은 agent가 implementation을 선택했다는 이유만으로
+`routine`으로 낮출 수 없다. Downgrade는 exact dimension에 bind된 supported revision basis를 요구하고
+prior/current assessment와 revision Analysis Snapshot을 Candidate에 보존한다. Supported basis는 current
+Source-backed repository/research evidence가 credible trade-off를 제거한 경우, current Source-backed
+prototype evidence가 uncertainty를 routine fact로 해소한 경우, 또는 exact current-host user-turn의
+verbatim statement로 user가 learning participation을 withdraw/narrow한 경우다. 이 revision은 user
+Decision을 만들지 않으며 agent preference, selected implementation이나 Learning Deliberation 회피는
+basis가 아니다. Unsupported revision은 mutation 전에 거부하므로 prior deliberation-worthy state와
+pending Learning Deliberation route가 유지된다.
+
 Materiality draft와 workflow guidance는 이 독립성을 `authority_learning_routing`으로 기계 판독
 가능하게 노출한다. Learn, alternatives 비교, implementation 전 reasoning 또는 학습을 위한
 implementation approach 선택 요청 자체는 user-owned product authority의 증거가 아니다. Active

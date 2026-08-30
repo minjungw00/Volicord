@@ -5,7 +5,8 @@ use volicord_context::{
 };
 use volicord_inquiry::{
     CandidateFreshness, CandidateId, EngineeringChoice, LearningDeliberationState,
-    LearningInitialResponse, LearningParticipation, LearningRecommendation, MaterialityDimension,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueRevisionRequest, MaterialityDimension,
 };
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
@@ -172,6 +173,7 @@ pub struct MaterialityReviewRevisionDraft {
     pub rationale: String,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+    pub learning_value_revision_bases: Vec<LearningValueRevisionRequest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
