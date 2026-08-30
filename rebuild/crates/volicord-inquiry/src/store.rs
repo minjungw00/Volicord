@@ -2,9 +2,9 @@ use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
     CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, EngineeringChoiceDiscovery,
-    Error, ErrorKind, LearningDeliberationState, LearningInitialResponse, LearningRecommendation,
-    MaterialityAssessment, MaterialityDisposition, MaterialityReview, MaterialityStatus,
-    PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
+    Error, ErrorKind, LateAuthorityCorrection, LearningDeliberationState, LearningInitialResponse,
+    LearningRecommendation, MaterialityAssessment, MaterialityDisposition, MaterialityReview,
+    MaterialityStatus, PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -18,7 +18,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 6;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 7;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -173,17 +173,22 @@ impl CandidateStore {
         self.submit_validated(draft)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn revise_materiality_review(
         &mut self,
         project_id: ProjectId,
         candidate_id: CandidateId,
         canonical: &CanonicalReadBasis,
+        baseline: &AnalysisSnapshot,
         current: &AnalysisSnapshot,
         discovery_candidate: &CandidateRecord,
         revision: crate::MaterialityReviewRevision,
     ) -> Result<CandidateRecord, Error> {
         validate_text("Materiality Review rationale", &revision.rationale)?;
-        if canonical.project.id != project_id || current.project.identity() != project_id {
+        if canonical.project.id != project_id
+            || baseline.project.identity() != project_id
+            || current.project.identity() != project_id
+        {
             return Err(Error::new(
                 ErrorKind::WrongProject,
                 "revised Materiality Review Project basis does not match",
@@ -206,10 +211,19 @@ impl CandidateStore {
                         "Materiality Review content is missing",
                     )
                 })?;
+            let late_corrections =
+                detect_late_authority_corrections(review, &revision.dimensions, baseline, current)?;
             review.current_review_analysis_snapshot_id = current.identity;
             review.rationale = revision.rationale;
             review.learning_participation = revision.learning_participation;
             review.dimensions = revision.dimensions;
+            review.late_authority_corrections.extend(late_corrections);
+            review
+                .late_authority_corrections
+                .sort_by(|left, right| left.dimension_id.cmp(&right.dimension_id));
+            review
+                .late_authority_corrections
+                .dedup_by(|left, right| left.dimension_id == right.dimension_id);
             validate_materiality_review(review)?;
             validate_review_against_canonical(canonical, review)?;
             validate_review_against_discovery(review, discovery_candidate)
@@ -1397,11 +1411,21 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 "explicit delegation verbatim statement",
                 &delegation.verbatim_statement,
             )?;
+            validate_text(
+                "explicit delegation dimension identity",
+                &delegation.dimension_id,
+            )?;
+            validate_list(&delegation.discovered_choice_ids)?;
             validate_list(&delegation.affected_scope)?;
-            if delegation.affected_scope.is_empty() {
+            validate_list(&delegation.material_consequences)?;
+            if delegation.discovered_choice_ids.is_empty()
+                || delegation.affected_scope.is_empty()
+                || delegation.material_consequences.is_empty()
+                || delegation.effect_categories.is_empty()
+            {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    "explicit delegation evidence requires bounded affected scope",
+                    "explicit delegation evidence requires exact dimension, discovered-choice, scope, consequence, and effect-category boundaries",
                 ));
             }
         }
@@ -1429,6 +1453,23 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "work-authority evidence kinds must be unique",
+            ));
+        }
+    }
+    let mut correction_dimensions = BTreeSet::new();
+    for correction in &review.late_authority_corrections {
+        validate_text(
+            "late authority correction dimension identity",
+            &correction.dimension_id,
+        )?;
+        validate_list(&correction.affected_changed_paths)?;
+        if correction.affected_changed_paths.is_empty()
+            || !correction_dimensions.insert(correction.dimension_id.as_str())
+            || !identities.contains(correction.dimension_id.as_str())
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "late authority correction requires one current dimension and deterministically affected changed paths",
             ));
         }
     }
@@ -1776,6 +1817,51 @@ fn validate_review_against_discovery(
                 ));
             }
         }
+        if let Some(delegation) = &dimension.basis.explicit_delegation {
+            let choices = dimension
+                .discovered_choice_ids
+                .iter()
+                .filter_map(|choice_id| {
+                    discovery
+                        .choices
+                        .iter()
+                        .find(|choice| &choice.choice_id == choice_id)
+                })
+                .collect::<Vec<_>>();
+            let effect_categories = choices
+                .iter()
+                .flat_map(|choice| choice.effect_categories.iter().copied())
+                .collect::<BTreeSet<_>>();
+            if delegation.dimension_id != dimension.dimension_id
+                || delegation
+                    .discovered_choice_ids
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    != dimension
+                        .discovered_choice_ids
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                || delegation
+                    .material_consequences
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    != dimension
+                        .material_consequences
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                || delegation
+                    .effect_categories
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+                    != effect_categories
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "explicit delegation evidence must name the exact dimension, discovered choices, material consequences, and discovery effect categories it claims to settle",
+                ));
+            }
+        }
         if dimension.discovered_choice_ids.len() > 1 {
             let grouped = dimension
                 .discovered_choice_ids
@@ -1820,6 +1906,78 @@ fn validate_review_against_discovery(
         ));
     }
     Ok(())
+}
+
+fn detect_late_authority_corrections(
+    existing: &MaterialityReview,
+    revised_dimensions: &[crate::MaterialityDimension],
+    baseline: &AnalysisSnapshot,
+    current: &AnalysisSnapshot,
+) -> Result<Vec<LateAuthorityCorrection>, Error> {
+    let changed_paths = match crate::attribute_repository_changes(
+        baseline.project.identity(),
+        &crate::RepositoryWorkBasis {
+            baseline,
+            current,
+            pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
+        },
+    ) {
+        crate::ChangeAttribution::Attributed { changed_paths, .. } => changed_paths,
+        crate::ChangeAttribution::Unavailable { .. } => return Ok(Vec::new()),
+    };
+    let already_recorded = existing
+        .late_authority_corrections
+        .iter()
+        .map(|correction| correction.dimension_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut corrections = Vec::new();
+    for revised in revised_dimensions {
+        let Some(previous) = existing
+            .dimensions
+            .iter()
+            .find(|dimension| dimension.dimension_id == revised.dimension_id)
+        else {
+            continue;
+        };
+        if already_recorded.contains(revised.dimension_id.as_str())
+            || !matches!(
+                previous.disposition,
+                MaterialityDisposition::AgentOwnedImplementationChoice
+                    | MaterialityDisposition::DelegatedImplementationChoice
+            )
+            || !matches!(
+                revised.disposition,
+                MaterialityDisposition::UnresolvedUserOwnedOutcome { .. }
+            )
+        {
+            continue;
+        }
+        let affected_changed_paths = changed_paths
+            .iter()
+            .filter(|path| scope_overlaps_path(&revised.affected_scope, path))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !affected_changed_paths.is_empty() {
+            corrections.push(LateAuthorityCorrection {
+                dimension_id: revised.dimension_id.clone(),
+                detected_analysis_snapshot_id: current.identity,
+                affected_changed_paths,
+            });
+        }
+    }
+    Ok(corrections)
+}
+
+fn scope_overlaps_path(scope: &[String], path: &str) -> bool {
+    scope.iter().any(|item| {
+        item == path
+            || path
+                .strip_prefix(item)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+            || item
+                .strip_prefix(path)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
 }
 
 fn delegation_scope_contains_dimension(

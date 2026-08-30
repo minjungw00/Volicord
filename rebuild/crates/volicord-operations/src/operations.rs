@@ -1046,6 +1046,7 @@ impl LocalOperations {
                     rationale: draft.rationale,
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
+                    late_authority_corrections: Vec::new(),
                 }),
                 learning_deliberation: None,
             },
@@ -1125,6 +1126,7 @@ impl LocalOperations {
                     draft.project_id,
                     draft.review_candidate_id,
                     &canonical,
+                    &baseline,
                     &current,
                     &discovery_candidate,
                     volicord_inquiry::MaterialityReviewRevision {

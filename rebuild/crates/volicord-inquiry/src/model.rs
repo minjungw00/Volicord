@@ -288,7 +288,11 @@ pub struct ExplicitDelegationEvidence {
     pub goal_context_id: ContextItemId,
     pub user_turn_source_id: SourceId,
     pub verbatim_statement: String,
+    pub dimension_id: String,
+    pub discovered_choice_ids: Vec<String>,
     pub affected_scope: Vec<String>,
+    pub material_consequences: Vec<String>,
+    pub effect_categories: Vec<EngineeringEffectCategory>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -370,6 +374,14 @@ pub struct MaterialityReview {
     pub rationale: String,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+    pub late_authority_corrections: Vec<LateAuthorityCorrection>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LateAuthorityCorrection {
+    pub dimension_id: String,
+    pub detected_analysis_snapshot_id: AnalysisSnapshotId,
+    pub affected_changed_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -185,8 +185,9 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   선택한다. 이 authority에는 두 경로만 있다. 현재 user-stated Goal 자체의 위임은
   typed explicit-delegation evidence가 exact Goal identity와 그 Goal을 만든 exact
   current-host user-turn Source를 함께 가리키고, bounded verbatim statement가 Goal
-  statement와 exact user turn에 실제 포함되며, evidence scope가 dimension과 current
-  Goal/work scope를 포함할 때 그대로 재사용한다. Source identity만 있거나 delegation
+  statement와 exact user turn에 실제 포함되며, evidence가 dimension identity, discovered
+  choice identity, affected scope, material consequence와 effect category를 명시적으로 bind하고
+  current Goal/work scope를 포함할 때 그대로 재사용한다. Source identity만 있거나 delegation
   statement/scope가 없는 basis는 authority가 아니다. 이 경우 위임을 되풀이하는
   Question이나 Decision을 만들지 않는다.
   Inquiry 중 새로 받은 위임은 기존 Question/current revision/current-host response에서
@@ -242,8 +243,9 @@ meaning을 다시 파생한다. 따라서 old full-dimension echo와 simplified 
 각 disposition schema는 closed variant이며 required/forbidden field를 machine-readable하게
 노출한다. Repository fact와 agent-owned choice는 다른 authority field를 받지 않는다. Settled
 authority는 accepted contract basis, applicable Decision identity 또는 둘 다를 요구한다. Current-task
-delegation은 bounded verbatim delegation statement와 delegated scope를 요구하고 Goal/Source identity는
-현재 bound Goal에서 server가 정확히 파생한다. Inquiry-time delegation은 Decision identity만
+delegation은 bounded verbatim delegation statement와 delegated scope를 caller에게 요구하고,
+Goal/Source identity와 exact dimension/choice/consequence/effect boundary는 현재 bound Goal과
+discovery에서 server가 정확히 파생한다. Inquiry-time delegation은 Decision identity만
 요구한다. Exploratory uncertainty는 exact exploratory disposition과 bounded research/prototype/revisit
 basis를 요구한다. Unresolved user-owned outcome은 open 상태에서 다른 settling authority를 금지하고,
 해결 뒤에는 exact resolution Decision 하나만 받는다. Validation failure는 exact field path,
@@ -299,6 +301,12 @@ feature request 자체나 implementation preference는 subordinate difference를
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic
 Candidate submission으로 timing을 주장할 수 없다. Timely first review 뒤 exploratory research나
 prototype evidence가 alternatives를 바꾸면 같은 Candidate revision으로 재검토할 수 있다.
+Maintained baseline/current fingerprint evidence가 agent/delegated dimension의 affected path 변경 뒤
+user-owned correction을 증명하면 Review는 late authority correction과 exact changed path를 보존한다.
+Question/current-host Decision은 계속 진행할 수 있지만 prospective authority일 뿐 earlier affected
+work를 certify하지 않으며 그 Review는 ready-for-work나 Checkpoint authority로 돌아가지 않는다.
+Path/scope chronology를 deterministically correlate할 수 없으면 durable violation을 만들지 않고 host
+guidance가 같은 prospective limit를 명시하며 naturalistic rollout validation이 operation order를 판정한다.
 Restart는 current Candidate revision과 canonical Question/Decision state에서 workflow를 다시
 평가하고 unresolved state를 ready로 바꾸지 않는다.
 

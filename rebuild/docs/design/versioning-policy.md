@@ -135,10 +135,10 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
 ### Session Candidate store format
 
 Current Candidate store format은 Engineering Choice Discovery, Question Candidate, typed
-Materiality Review와 Learning Deliberation payload를 함께 해석하는 version `6` 하나다. Explicit
-learning participation, independent learning assessment, ordered response/feedback state와 terminal
-selected/delegated/skipped/research/reconsideration meaning이 추가되었으므로 이전 version을 decode하거나
-missing learning state를 normal/ready로 추정하지 않는다. Current positive store만 reopen하며 version `5`와 다른 non-current value는
+Materiality Review와 Learning Deliberation payload를 함께 해석하는 version `7` 하나다. Current-task
+delegation의 exact dimension/choice/scope/consequence/effect boundary와 deterministically observed late
+authority correction state를 함께 보존하므로 이전 version을 decode하거나 missing boundary/chronology를
+ready authority로 추정하지 않는다. Current positive store만 reopen하며 version `6`와 다른 non-current value는
 domain decode/mutation 전에 reject한다. Candidate는 portable bundle에 포함되지 않으므로 이
 변경은 canonical schema나 portable bundle version을 바꾸지 않는다.
 

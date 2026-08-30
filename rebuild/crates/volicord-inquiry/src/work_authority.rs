@@ -301,14 +301,32 @@ pub fn evaluate_work_authority(
         result.stage = WorkAuthorityStage::QuestionRequired;
         result.disposition = WorkAuthorityDisposition::QuestionRequired;
         result.next_action = Some(WorkAuthorityAction::EnterExistingQuestionLifecycle);
-        result.reason =
-            "one or more material user-owned outcomes still require explicit authority".to_owned();
+        result.reason = if review.late_authority_corrections.is_empty() {
+            "one or more material user-owned outcomes still require explicit authority".to_owned()
+        } else {
+            "one or more material user-owned outcomes still require explicit authority; that authority is prospective and cannot certify already-observed affected work"
+                .to_owned()
+        };
     } else if research_required {
         result.stage = WorkAuthorityStage::ResearchOrPrototype;
         result.disposition = WorkAuthorityDisposition::ResearchRequired;
         result.next_action = Some(WorkAuthorityAction::ContinueResearchOrPrototype);
         result.reason =
             "research or prototype evidence must feed a revised Materiality Review".to_owned();
+    } else if !review.late_authority_corrections.is_empty() {
+        let affected = review
+            .late_authority_corrections
+            .iter()
+            .map(|correction| correction.dimension_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return invalid(
+            result,
+            None,
+            format!(
+                "affected work preceded corrected user authority for dimensions {affected}; a later Decision is prospective and cannot certify the earlier work"
+            ),
+        );
     } else if let Err(reason) = evaluate_learning_readiness(
         canonical,
         candidate,
@@ -782,7 +800,11 @@ fn validate_current_goal_delegation(
     }
     if evidence.goal_context_id != goal.id
         || evidence.verbatim_statement.trim().is_empty()
+        || evidence.dimension_id != dimension.dimension_id
+        || evidence.discovered_choice_ids != dimension.discovered_choice_ids
         || evidence.affected_scope.is_empty()
+        || evidence.material_consequences != dimension.material_consequences
+        || evidence.effect_categories.is_empty()
         || !dimension
             .basis
             .source_basis

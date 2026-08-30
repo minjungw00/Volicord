@@ -2185,6 +2185,8 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         .next()
         .expect("delegation evidence");
     assert_eq!(evidence["dimension_id"], "internal-module-name");
+    assert_eq!(evidence["bound_dimension_id"], "internal-module-name");
+    assert_eq!(evidence["discovered_choice_ids"][0], "internal-module-name");
     assert_eq!(evidence["goal_context_id"], goal_context_id);
     assert_eq!(evidence["user_turn_source_id"], goal_source_id);
     assert_eq!(
@@ -2195,6 +2197,10 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         evidence["authority_kind"],
         "explicit_current_task_delegation"
     );
+    assert_eq!(evidence["effect_categories"][0], "implementation_internal");
+    assert!(evidence["material_consequences"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty()));
     assert!(inspected
         .to_string()
         .contains("choose the internal module name"));

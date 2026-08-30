@@ -429,6 +429,7 @@ fn reconsideration_reopens_learning_without_changing_authority(
 
 fn delegation_evidence(
     fixture: &Fixture,
+    dimension_id: &str,
     verbatim_statement: &str,
     affected_scope: Vec<String>,
 ) -> ExplicitDelegationEvidence {
@@ -436,7 +437,11 @@ fn delegation_evidence(
         goal_context_id: fixture.goal_id,
         user_turn_source_id: fixture.goal_source_id,
         verbatim_statement: verbatim_statement.to_owned(),
+        dimension_id: dimension_id.to_owned(),
+        discovered_choice_ids: vec![dimension_id.to_owned()],
         affected_scope,
+        material_consequences: vec!["changes externally observable behavior".to_owned()],
+        effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
     }
 }
 
@@ -888,6 +893,7 @@ fn current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision(
     );
     delegated.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
+        "internal-implementation-structure",
         "choose the internal module naming and structure",
         vec!["src/lib.rs".to_owned()],
     ));
@@ -996,6 +1002,7 @@ fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
     );
     nonverbatim.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
+        "nonverbatim",
         "the user delegates every implementation choice",
         vec!["src/lib.rs".to_owned()],
     ));
@@ -1011,7 +1018,11 @@ fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
         goal_context_id: fixture.goal_id,
         user_turn_source_id: unrelated.source_id,
         verbatim_statement: "You may choose the unrelated logging format.".to_owned(),
+        dimension_id: "wrong-turn".to_owned(),
+        discovered_choice_ids: vec!["wrong-turn".to_owned()],
         affected_scope: vec!["src/lib.rs".to_owned()],
+        material_consequences: vec!["changes externally observable behavior".to_owned()],
+        effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
     });
     assert!(review(&fixture, vec![wrong_turn]).is_err());
 
@@ -1023,6 +1034,7 @@ fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
     );
     excess_scope.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
+        "excess-scope",
         "choose the internal module naming and structure",
         vec!["src".to_owned(), "public/observable-policy".to_owned()],
     ));
@@ -1048,6 +1060,7 @@ fn current_task_delegation_is_per_dimension_and_independent_of_research(
     );
     naming.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
+        "module-naming",
         "Choose the internal module naming and error type",
         vec!["src/lib.rs".to_owned()],
     ));
@@ -1071,6 +1084,12 @@ fn current_task_delegation_is_per_dimension_and_independent_of_research(
     let mut error_type = naming.clone();
     error_type.dimension_id = "internal-error-type".to_owned();
     error_type.discovered_choice_ids = vec!["internal-error-type".to_owned()];
+    error_type.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "internal-error-type",
+        "Choose the internal module naming and error type",
+        vec!["src/lib.rs".to_owned()],
+    ));
     let delegated = review(&fixture, vec![naming.clone(), error_type])?;
     assert_eq!(
         readiness(&fixture, &delegated)?.disposition,
@@ -1087,6 +1106,95 @@ fn current_task_delegation_is_per_dimension_and_independent_of_research(
     assert_eq!(
         readiness(&fixture, &researched)?.disposition,
         WorkAuthorityDisposition::ReadyForWork
+    );
+    Ok(())
+}
+
+#[test]
+fn delegation_binding_cannot_omit_or_borrow_another_material_dimension(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Choose the internal module naming and error type; keep public behavior unchanged.",
+    )?;
+    let mut naming = dimension(
+        "module-naming",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    naming.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "module-naming",
+        "Choose the internal module naming and error type",
+        vec!["src/lib.rs".to_owned()],
+    ));
+    naming
+        .basis
+        .explicit_delegation
+        .as_mut()
+        .ok_or("delegation evidence missing")?
+        .dimension_id = "public-network-default".to_owned();
+    let error = review(&fixture, vec![naming])
+        .expect_err("delegation of another dimension cannot settle this dimension");
+    assert!(error
+        .message()
+        .contains("explicit delegation evidence must name the exact dimension"));
+    Ok(())
+}
+
+#[test]
+fn late_user_authority_correction_preserves_prospective_only_work_state(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let initially_agent_owned = agent_owned_dimension(
+        "network-exposure-default",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "initial authority assessment treated the choice as implementation-owned"
+                .into(),
+        },
+    );
+    let recorded = review(&fixture, vec![initially_agent_owned.clone()])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn exposure_default() -> bool { true }\n",
+    )?;
+
+    let mut corrected = initially_agent_owned;
+    corrected.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
+        resolution_decision_id: None,
+    };
+    corrected.basis.kinds = vec![WorkAuthorityBasisKind::NoSettlingAuthority];
+    corrected.basis.summary =
+        "credible exposure alternatives change an external security outcome and no exact authority settles it"
+            .into();
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "correct the hidden material authority boundary".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![corrected],
+        })?;
+    let prospective = readiness(&fixture, &revised)?;
+    assert_eq!(prospective.stage, WorkAuthorityStage::QuestionRequired);
+    assert!(prospective.reason.contains("prospective"));
+    let review = fixture
+        .operations
+        .inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert_eq!(review.late_authority_corrections.len(), 1);
+    assert_eq!(
+        review.late_authority_corrections[0].affected_changed_paths,
+        ["src/lib.rs"]
     );
     Ok(())
 }
@@ -1223,6 +1331,7 @@ fn recommendation_library_convention_and_fake_delegation_never_establish_authori
         );
         delegated.basis.explicit_delegation = Some(delegation_evidence(
             &fixture,
+            "masquerading-authority",
             "choose the internal module naming and structure",
             vec!["src/lib.rs".to_owned()],
         ));
@@ -1248,6 +1357,7 @@ fn recommendation_library_convention_and_fake_delegation_never_establish_authori
     relabeled_contract.basis.contract_basis = vec!["accepted owner text".to_owned()];
     relabeled_contract.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
+        "relabeled-contract",
         "choose the internal module naming and structure",
         vec!["src/lib.rs".to_owned()],
     ));

@@ -71,13 +71,18 @@ Question, possible Checkpoint와 promotion proposal을 포함할 수 있다.
 pre-work Analysis Snapshot과 independently material한 outcome dimension을 묶어 각
 dimension의 fact/settled authority/delegation/exploration/user-owned disposition과 bounded
 evidence basis를 보존한다. Current-task delegation basis는 exact Goal identity, 그 Goal의
-exact current-host user-turn Source identity, Goal에 포함된 bounded verbatim statement와
-dimension에 적용되는 bounded scope를 별도 typed evidence로 보존한다. Source identity만으로
+exact current-host user-turn Source identity, Goal에 포함된 bounded verbatim statement와 각
+dimension의 identity, discovered choice identity, affected scope, material consequence와 effect
+category를 별도 typed evidence로 보존한다. 같은 statement가 여러 dimension을 실제로 cover해도
+각 dimension은 자기 boundary를 그 statement에 명시적으로 bind한다. Source identity만으로
 delegation을 추론하지 않고 research, recommendation, convention, accepted contract 또는
 Decision authority와 합치지 않는다. 이 review는 일곱 번째 canonical entity, user Decision 또는
 ordinary-write permission이 아니다. 첫 authoritative review가 meaningful repository
-mutation 전이었는지와 이후 evidence revision을 구분하며, restart 뒤에도 unresolved
-dimension을 completed authority로 재분류하지 않는다.
+mutation 전이었는지와 이후 evidence revision을 구분한다. Maintained baseline/current repository
+evidence가 agent/delegated dimension의 affected path 변경 뒤 user-owned correction을
+deterministically 보이면 late correction과 affected path를 보존하고 이후 Decision을 prospective
+authority로만 취급한다. 관찰할 수 없는 chronology는 발명하지 않으며 restart 뒤에도 unresolved
+dimension이나 late affected work를 completed authority로 재분류하지 않는다.
 
 `Engineering Choice Discovery`도 Session Candidate이며 Materiality Review보다 먼저 존재한다.
 Project, current Goal과 exact pre-work Analysis Snapshot에 bind되고 stable choice identity,

@@ -3769,7 +3769,11 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
                 "goal_context_id":inspection.evidence.goal_context_id.to_string(),
                 "user_turn_source_id":inspection.evidence.user_turn_source_id.to_string(),
                 "verbatim_statement":inspection.evidence.verbatim_statement,
+                "bound_dimension_id":inspection.evidence.dimension_id,
+                "discovered_choice_ids":inspection.evidence.discovered_choice_ids,
                 "affected_scope":inspection.evidence.affected_scope,
+                "material_consequences":inspection.evidence.material_consequences,
+                "effect_categories":inspection.evidence.effect_categories.into_iter().map(engineering_effect_category_name).collect::<Vec<_>>(),
                 "authority_kind":"explicit_current_task_delegation",
             })
         })
@@ -3789,6 +3793,12 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             LearningParticipation::Inactive => json!({"state":"inactive"}),
             LearningParticipation::Active { user_turn_source_id, verbatim_statement } => json!({"state":"active","user_turn_source_id":user_turn_source_id.to_string(),"verbatim_statement":verbatim_statement}),
         },
+        "late_authority_corrections":review.late_authority_corrections.iter().map(|correction| json!({
+            "dimension_id":correction.dimension_id,
+            "detected_analysis_snapshot_id":correction.detected_analysis_snapshot_id.to_string(),
+            "affected_changed_paths":correction.affected_changed_paths,
+            "authority_effect":"later authority is prospective and cannot certify the earlier affected work",
+        })).collect::<Vec<_>>(),
         "dimensions":review.dimensions.iter().map(|dimension| json!({
             "dimension_id":dimension.dimension_id,
             "discovered_choice_ids":dimension.discovered_choice_ids,
@@ -4363,7 +4373,11 @@ fn materiality_dimension_from_judgment(
                     goal_context_id: goal.id,
                     user_turn_source_id,
                     verbatim_statement: statement,
+                    dimension_id: choice.choice_id.clone(),
+                    discovered_choice_ids: vec![choice.choice_id.clone()],
                     affected_scope: string_array(value, "delegated_scope")?,
+                    material_consequences: choice.technical_consequences.clone(),
+                    effect_categories: choice.effect_categories.clone(),
                 });
             }
             MaterialityDisposition::DelegatedImplementationChoice
@@ -4971,6 +4985,7 @@ fn materiality_draft_json(
                 "agent_owned_implementation_choice":"Use only for bounded implementation discretion remaining after material user-facing policy is settled or credible alternatives do not vary that policy."
             },
             "hidden_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics.",
+            "authority_revision_chronology":"If a prior agent-owned or delegated assessment is corrected to user-owned after affected work, a later Decision is prospective and does not certify that earlier work. Production records this as late authority correction only when maintained baseline/current path evidence proves the chronology; otherwise rollout validation remains responsible for the ordering judgment.",
         },
         "authority_learning_routing":authority_learning_routing_json(),
         "learning_participation":{
