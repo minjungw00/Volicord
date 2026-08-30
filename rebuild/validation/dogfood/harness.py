@@ -1240,6 +1240,7 @@ def load_definition() -> dict[str, Any]:
         != (
             "event_msg.mcp_tool_call_end with volicord invocation and structured result",
             "event_msg.item_completed with matching thread_id, outer turn_id, and McpToolCall item identity/status/result",
+            "event_msg.item_completed with matching thread_id, outer turn_id, and completed FileChange item identity/typed changes",
             "tools.exec_command(literal_object)",
             "tools.apply_patch(literal_string)",
         )
@@ -1308,8 +1309,9 @@ def load_definition() -> dict[str, Any]:
         ],
         "server": "volicord",
         "success": (
-            "legacy result.Ok.isError false or current completed status with isError false, "
-            "each with object structuredContent"
+            "legacy result.Ok.isError false with object structuredContent, or current "
+            "completed status with isError false and either object structuredContent or "
+            "one bounded serialized CallToolResult content envelope carrying the same object result"
         ),
         "failure": (
             "tool/application error, validation error, malformed/incomplete result, unsupported "
@@ -1322,15 +1324,45 @@ def load_definition() -> dict[str, Any]:
         "identity_conflict": (
             "material argument, status, error, result, operation, or turn disagreement rejects the capture"
         ),
-        "structured_result_source": "structuredContent",
+        "structured_result_sources": [
+            "structuredContent",
+            "one exact serialized CallToolResult text envelope containing one exact structured JSON text object",
+        ],
+        "dual_result_representation": (
+            "equivalent objects are accepted and conflicting objects reject the capture"
+        ),
         "failed_calls_retained_for_diagnostics": True,
         "numeric_cli_version_dispatch": False,
     }:
         raise ValueError("the current MCP completion evidence contract changed")
+    if evidence.get("file_change_contract") != {
+        "accepted_representations": [
+            "event_msg.patch_apply_end",
+            "event_msg.item_completed.FileChange",
+        ],
+        "semantic_identity": ["turn_id", "item_or_call_id"],
+        "current_success": (
+            "matching thread/turn identity, completed status, bounded typed changes, and string stdout/stderr"
+        ),
+        "path_scope": (
+            "bounded repository-relative paths after exact cwd relativization; external absolute paths and generated paths do not become work observations"
+        ),
+        "deduplication": (
+            "equivalent old/current representations with common transport identity yield one PathObservation"
+        ),
+        "identity_conflict": (
+            "path, change type, body, or move-target disagreement rejects the capture"
+        ),
+        "malformed_current_success": "evidence_transport_indeterminate",
+        "prose_or_command_filename_inference": False,
+        "numeric_cli_version_dispatch": False,
+    }:
+        raise ValueError("the current FileChange evidence contract changed")
     if evidence.get("evidence_transport_attribution") != {
         "states": ["complete", "indeterminate"],
         "indeterminate_causes": [
             "malformed_mcp_completion",
+            "malformed_file_change",
             "unsupported_mcp_completion_status",
             "mcp_completion_status_mismatch",
         ],
@@ -2875,11 +2907,23 @@ WORK_CHECK_OPERATIONS = {
 def work_evidence_transport_attribution(
     capture: CodexCapture, failed_checks: list[str]
 ) -> dict[str, Any]:
+    path_dependent_checks = {
+        "repository_baseline_operation",
+        "materiality_review_operation",
+        "source_grounded_checkpoint_operation",
+    }
+    malformed_path_evidence = any(
+        issue.reason == "malformed_file_change"
+        for issue in capture.evidence_transport_issues
+    )
     affected_checks = [
         check
         for check in failed_checks
-        if WORK_CHECK_OPERATIONS.get(check)
-        and capture.transport_issues(*WORK_CHECK_OPERATIONS[check])
+        if (
+            WORK_CHECK_OPERATIONS.get(check)
+            and capture.transport_issues(*WORK_CHECK_OPERATIONS[check])
+        )
+        or (malformed_path_evidence and check in path_dependent_checks)
     ]
     relevant_operations = {
         operation
@@ -2890,6 +2934,10 @@ def work_evidence_transport_attribution(
         issue
         for issue in capture.evidence_transport_issues
         if issue.operation in relevant_operations
+        or (
+            issue.reason == "malformed_file_change"
+            and bool(set(affected_checks) & path_dependent_checks)
+        )
     ]
     unique_issues = {
         (issue.sequence, issue.turn_id, issue.call_id, issue.operation, issue.reason): issue
@@ -9144,7 +9192,35 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
         status: str = "completed",
         is_error: bool = False,
         result: Any = None,
+        content_envelope: dict[str, Any] | None = None,
+        include_structured: bool = True,
     ) -> dict[str, Any]:
+        current_result = {
+            "content": (
+                [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": json.dumps(content_envelope),
+                                    }
+                                ],
+                                "isError": is_error,
+                            },
+                            separators=(",", ":"),
+                        ),
+                    }
+                ]
+                if content_envelope is not None
+                else []
+            ),
+            "isError": is_error,
+        }
+        if include_structured:
+            current_result["structuredContent"] = structured
         return event(
             "event_msg",
             {
@@ -9159,11 +9235,7 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
                     "arguments": arguments,
                     "status": status,
                     "result": (
-                        {
-                            "content": [],
-                            "structuredContent": structured,
-                            "isError": is_error,
-                        }
+                        current_result
                         if result is None
                         else result
                     ),
@@ -9204,12 +9276,26 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
                     "project_resolve",
                     {"repository": "/phase8/current-mcp"},
                     {"status": "found", "project_id": project_id},
+                    content_envelope={"status": "found", "project_id": project_id},
                 ),
                 current(
                     "current-recall",
                     "recall",
                     {"project_id": project_id},
                     {"project_id": project_id, "read_only": True},
+                    content_envelope={"project_id": project_id, "read_only": True},
+                    include_structured=False,
+                ),
+                current(
+                    "current-checkpoint",
+                    "checkpoint_record",
+                    {"project_id": project_id},
+                    {"project_id": project_id, "checkpoint_id": "02" * 16},
+                    content_envelope={
+                        "project_id": project_id,
+                        "checkpoint_id": "02" * 16,
+                    },
+                    include_structured=False,
                 ),
             ],
         )
@@ -9220,6 +9306,7 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
         != project_id
         or len(successful.successful_calls("project_resolve")) != 1
         or len(successful.successful_calls("recall")) != 1
+        or len(successful.successful_calls("checkpoint_record")) != 1
         or any(call.server != "volicord" for call in successful.tool_calls)
     ):
         raise AssertionError("maintained legacy/current MCP success evidence did not normalize")
@@ -9243,16 +9330,31 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
                     {},
                     result={"content": [], "isError": False},
                 ),
+                current(
+                    "malformed-content",
+                    "checkpoint_record",
+                    {"project_id": project_id},
+                    {},
+                    result={
+                        "content": [
+                            {"type": "text", "text": '{"checkpoint_id":"incomplete"'}
+                        ],
+                        "isError": False,
+                    },
+                ),
             ],
         )
     )
     if (
         failed.successful_calls("materiality_review")
         or [call.error for call in failed.calls("materiality_review")]
-        != ["validation failed", "malformed_mcp_completion"]
+        != [
+            "validation failed",
+            "malformed_mcp_completion",
+        ]
         or failed.evidence_transport_state != "indeterminate"
         or [issue.operation for issue in failed.evidence_transport_issues]
-        != ["materiality_review"]
+        != ["materiality_review", "checkpoint_record"]
     ):
         raise AssertionError("failed or malformed current MCP evidence became successful")
     interpreted_failure = load_codex_capture(
@@ -9276,6 +9378,66 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
         or len(interpreted_failure.calls("materiality_review")) != 1
     ):
         raise AssertionError("interpretable application failure became transport failure")
+
+    content_failure = load_codex_capture(
+        write(
+            "content-failure",
+            [
+                current(
+                    "failed-checkpoint",
+                    "checkpoint_record",
+                    {"project_id": project_id},
+                    {"error": "checkpoint rejected"},
+                    status="failed",
+                    is_error=True,
+                    content_envelope={"error": "checkpoint rejected"},
+                    include_structured=False,
+                )
+            ],
+        )
+    )
+    if (
+        content_failure.successful_calls("checkpoint_record")
+        or content_failure.calls("checkpoint_record")[0].error != "checkpoint rejected"
+        or content_failure.evidence_transport_state != "complete"
+    ):
+        raise AssertionError("parseable MCP failure content became successful or indeterminate")
+
+    equivalent_dual = load_codex_capture(
+        write(
+            "equivalent-dual",
+            [
+                current(
+                    "dual-resolve",
+                    "project_resolve",
+                    {"repository": "/phase8/current-mcp"},
+                    {"status": "found", "project_id": project_id},
+                    content_envelope={"status": "found", "project_id": project_id},
+                )
+            ],
+        )
+    )
+    if len(equivalent_dual.successful_calls("project_resolve")) != 1:
+        raise AssertionError("equivalent dual MCP result representations did not normalize")
+
+    conflicting_dual = write(
+        "conflicting-dual",
+        [
+            current(
+                "dual-resolve",
+                "project_resolve",
+                {"repository": "/phase8/current-mcp"},
+                {"status": "found", "project_id": project_id},
+                content_envelope={"status": "missing", "project_id": project_id},
+            )
+        ],
+    )
+    try:
+        load_codex_capture(conflicting_dual)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("conflicting dual MCP result representations qualified")
 
     duplicate = load_codex_capture(
         write(
@@ -9370,6 +9532,146 @@ def assert_mcp_tool_call_normalizer_regressions(directory: Path) -> None:
         raise AssertionError("non-MCP item/prose became ToolCall evidence")
 
 
+def assert_file_change_normalizer_regressions(directory: Path) -> None:
+    session_id = "current-file-change-session"
+    turn_id = "current-file-change-turn"
+    cwd = "/phase8/current-file-change"
+
+    def event(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "timestamp": "2026-08-30T00:00:00Z",
+            "type": event_type,
+            "payload": payload,
+        }
+
+    meta = event(
+        "session_meta",
+        {
+            "id": session_id,
+            "session_id": session_id,
+            "cwd": cwd,
+            "originator": "codex_vscode",
+            "cli_version": "shape-not-version-dispatch",
+            "source": "vscode",
+            "thread_source": "user",
+            "git": {"commit_hash": "0" * 40},
+        },
+    )
+    started = event("event_msg", {"type": "task_started", "turn_id": turn_id})
+
+    def changes(path: str, replacement: str = "new") -> dict[str, Any]:
+        return {
+            f"{cwd}/{path}": {
+                "type": "update",
+                "unified_diff": f"@@ -1 +1 @@\n-old\n+{replacement}\n",
+                "move_path": None,
+            }
+        }
+
+    def legacy(call_id: str, value: dict[str, Any]) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "patch_apply_end",
+                "call_id": call_id,
+                "turn_id": turn_id,
+                "stdout": "",
+                "stderr": "",
+                "success": True,
+                "changes": value,
+                "status": "completed",
+            },
+        )
+
+    def current(
+        call_id: str,
+        value: Any,
+        *,
+        status: str = "completed",
+    ) -> dict[str, Any]:
+        return event(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": session_id,
+                "turn_id": turn_id,
+                "item": {
+                    "type": "FileChange",
+                    "id": call_id,
+                    "changes": value,
+                    "status": status,
+                    "stdout": "Success",
+                    "stderr": "",
+                },
+            },
+        )
+
+    def write(name: str, body: list[dict[str, Any]]) -> Path:
+        path = directory / f"file-change-{name}.jsonl"
+        path.write_text(
+            "".join(
+                json.dumps(value, separators=(",", ":")) + "\n"
+                for value in [meta, started, *body]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    normalized = load_codex_capture(
+        write(
+            "normalized",
+            [
+                current("current-only", changes("src/current.rs")),
+                legacy("dual", changes("src/shared.rs")),
+                current("dual", changes("src/shared.rs")),
+                current("generated", changes("target/generated.rs")),
+                current(
+                    "external",
+                    {
+                        "/tmp/current-file-change.txt": {
+                            "type": "add",
+                            "content": "temporary",
+                        }
+                    },
+                ),
+                current("failed", None, status="failed"),
+            ],
+        )
+    )
+    if [observation.paths for observation in normalized.path_observations] != [
+        ("src/current.rs",),
+        ("src/shared.rs",),
+    ]:
+        raise AssertionError("current FileChange paths did not normalize or deduplicate")
+    if normalized.evidence_transport_state != "complete":
+        raise AssertionError("valid/failed FileChange evidence became transport-indeterminate")
+
+    malformed = load_codex_capture(
+        write("malformed", [current("malformed", {f"{cwd}/src/lib.rs": {"type": "update"}})])
+    )
+    if (
+        malformed.path_observations
+        or malformed.evidence_transport_state != "indeterminate"
+        or [issue.reason for issue in malformed.evidence_transport_issues]
+        != ["malformed_file_change"]
+    ):
+        raise AssertionError("malformed current FileChange silently disappeared")
+
+    conflicting = write(
+        "conflicting",
+        [
+            legacy("dual", changes("src/shared.rs")),
+            current("dual", changes("src/shared.rs", "different")),
+        ],
+    )
+    try:
+        load_codex_capture(conflicting)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("conflicting patch/FileChange representations qualified")
+
+
 def convert_fixture_capture_to_current_transport(
     descriptor: dict[str, Any], evidence_directory: Path, role: str
 ) -> Path:
@@ -9434,6 +9736,29 @@ def convert_fixture_capture_to_current_transport(
                 }
             )
             continue
+        if value.get("type") == "event_msg" and payload.get("type") == "patch_apply_end":
+            if not isinstance(current_turn, str):
+                raise AssertionError("fixture FileChange has no active turn")
+            converted.append(
+                {
+                    "timestamp": value.get("timestamp"),
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "item_completed",
+                        "thread_id": session_id,
+                        "turn_id": current_turn,
+                        "item": {
+                            "type": "FileChange",
+                            "id": payload["call_id"],
+                            "changes": payload["changes"],
+                            "status": payload["status"],
+                            "stdout": payload["stdout"],
+                            "stderr": payload["stderr"],
+                        },
+                    },
+                }
+            )
+            continue
         converted.append(value)
     path.write_text(
         "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in converted),
@@ -9476,6 +9801,7 @@ def self_test() -> int:
     evidence_directory = Path(temporary.name)
     assert_user_turn_normalizer_regressions(evidence_directory)
     assert_mcp_tool_call_normalizer_regressions(evidence_directory)
+    assert_file_change_normalizer_regressions(evidence_directory)
     assert_linux_process_tree_peak_rss_regressions()
     process_recorder = v11.Recorder(evidence_directory / "resource-processes")
     procfs_unavailability = linux_process_tree_procfs_unavailability()

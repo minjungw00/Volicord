@@ -219,6 +219,7 @@ def main() -> int:
         "custom_tool_call",
         "custom_tool_call_output",
         "patch_apply_end",
+        "FileChange",
         "mcp__volicord",
         "mcp_tool_call_end",
         "context_record",
@@ -487,8 +488,9 @@ def main() -> int:
         ],
         "server": "volicord",
         "success": (
-            "legacy result.Ok.isError false or current completed status with isError false, "
-            "each with object structuredContent"
+            "legacy result.Ok.isError false with object structuredContent, or current "
+            "completed status with isError false and either object structuredContent or "
+            "one bounded serialized CallToolResult content envelope carrying the same object result"
         ),
         "failure": (
             "tool/application error, validation error, malformed/incomplete result, unsupported "
@@ -501,15 +503,45 @@ def main() -> int:
         "identity_conflict": (
             "material argument, status, error, result, operation, or turn disagreement rejects the capture"
         ),
-        "structured_result_source": "structuredContent",
+        "structured_result_sources": [
+            "structuredContent",
+            "one exact serialized CallToolResult text envelope containing one exact structured JSON text object",
+        ],
+        "dual_result_representation": (
+            "equivalent objects are accepted and conflicting objects reject the capture"
+        ),
         "failed_calls_retained_for_diagnostics": True,
         "numeric_cli_version_dispatch": False,
     }:
         raise AssertionError("Phase 8 Codex MCP completion normalization contract changed")
+    if definition_value["real_session_evidence"].get("file_change_contract") != {
+        "accepted_representations": [
+            "event_msg.patch_apply_end",
+            "event_msg.item_completed.FileChange",
+        ],
+        "semantic_identity": ["turn_id", "item_or_call_id"],
+        "current_success": (
+            "matching thread/turn identity, completed status, bounded typed changes, and string stdout/stderr"
+        ),
+        "path_scope": (
+            "bounded repository-relative paths after exact cwd relativization; external absolute paths and generated paths do not become work observations"
+        ),
+        "deduplication": (
+            "equivalent old/current representations with common transport identity yield one PathObservation"
+        ),
+        "identity_conflict": (
+            "path, change type, body, or move-target disagreement rejects the capture"
+        ),
+        "malformed_current_success": "evidence_transport_indeterminate",
+        "prose_or_command_filename_inference": False,
+        "numeric_cli_version_dispatch": False,
+    }:
+        raise AssertionError("Phase 8 Codex FileChange normalization contract changed")
     if evidence_transport != {
         "states": ["complete", "indeterminate"],
         "indeterminate_causes": [
             "malformed_mcp_completion",
+            "malformed_file_change",
             "unsupported_mcp_completion_status",
             "mcp_completion_status_mismatch",
         ],

@@ -23,6 +23,8 @@ MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
 MAX_USER_MESSAGE_CONTENT_ITEMS = 256
 MAX_USER_TURN_TEXT_CHARS = 1 << 20
+MAX_MCP_CONTENT_RESULT_CHARS = 2 << 20
+MAX_FILE_CHANGE_BODY_CHARS = 8 << 20
 ACTIVATION_CONTEXT_MARKERS = (
     "Volicord is active for this explicitly authorized repository.",
     "Start project-scoped repository work with project_resolve",
@@ -111,6 +113,84 @@ def generated_repository_path(path: str) -> bool:
             ".mypy_cache",
         }
         for part in Path(path).parts
+    )
+
+
+def normalized_file_changes(
+    value: Any, cwd: Path
+) -> tuple[
+    tuple[str, ...],
+    tuple[tuple[str, str, str, str | None], ...],
+] | None:
+    """Normalize the bounded patch/FileChange change map for identity and paths."""
+    if not isinstance(value, dict) or not value or len(value) > MAX_PATHS:
+        return None
+    changes: list[tuple[str, str, str, str | None]] = []
+    for raw_path, raw_change in value.items():
+        if not isinstance(raw_path, str) or not isinstance(raw_change, dict):
+            return None
+        path = bounded_path(raw_path, cwd)
+        if path is None:
+            if Path(raw_path).is_absolute():
+                continue
+            return None
+        change_type = raw_change.get("type")
+        move_path: str | None = None
+        if change_type == "update":
+            if (
+                set(raw_change) != {"type", "unified_diff", "move_path"}
+                or not isinstance(raw_change.get("unified_diff"), str)
+                or not raw_change["unified_diff"]
+                or len(raw_change["unified_diff"]) > MAX_FILE_CHANGE_BODY_CHARS
+            ):
+                return None
+            raw_move_path = raw_change.get("move_path")
+            if raw_move_path is not None:
+                move_path = bounded_path(raw_move_path, cwd)
+                if move_path is None:
+                    return None
+            body = raw_change["unified_diff"]
+        elif change_type in {"add", "delete"}:
+            if (
+                set(raw_change) != {"type", "content"}
+                or not isinstance(raw_change.get("content"), str)
+                or len(raw_change["content"]) > MAX_FILE_CHANGE_BODY_CHARS
+            ):
+                return None
+            body = raw_change["content"]
+        else:
+            return None
+        changes.append((path, str(change_type), sha256_bytes(body.encode("utf-8")), move_path))
+    changes.sort()
+    paths = tuple(
+        sorted(
+            {
+                path
+                for path, _change_type, _body_sha256, _move_path in changes
+                if not generated_repository_path(path)
+            }
+        )
+    )
+    return paths, tuple(changes)
+
+
+def merge_path_observation_evidence(
+    evidence: list[_PathObservationEvidence],
+) -> tuple[PathObservation, ...]:
+    """Deduplicate equivalent patch transports and reject identity conflicts."""
+    by_identity: dict[tuple[str, str], _PathObservationEvidence] = {}
+    for candidate in sorted(evidence, key=lambda value: value.sequence):
+        identity = (candidate.turn_id, candidate.call_id)
+        prior = by_identity.get(identity)
+        if prior is None:
+            by_identity[identity] = candidate
+            continue
+        if prior.paths != candidate.paths or prior.changes != candidate.changes:
+            raise EvidenceError("Codex file-change representations conflict")
+    return tuple(
+        PathObservation(value.sequence, value.turn_id, value.paths)
+        for value in sorted(by_identity.values(), key=lambda item: item.sequence)
+        if value.paths
     )
 
 
@@ -264,6 +344,16 @@ class PathObservation:
     sequence: int
     turn_id: str
     paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _PathObservationEvidence:
+    sequence: int
+    turn_id: str
+    call_id: str
+    paths: tuple[str, ...]
+    changes: tuple[tuple[str, str, str, str | None], ...]
+    representation: str
 
 
 @dataclass(frozen=True)
@@ -697,8 +787,20 @@ def normalize_current_mcp_completion(
     if not isinstance(result, dict):
         return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
     is_error = result.get("isError")
+    if not isinstance(is_error, bool):
+        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
     structured = result.get("structuredContent")
-    if not isinstance(is_error, bool) or not isinstance(structured, dict):
+    if structured is not None and not isinstance(structured, dict):
+        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
+    content_state, content_structured = current_mcp_content_result(result, is_error)
+    if content_state == "malformed":
+        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
+    if isinstance(structured, dict) and isinstance(content_structured, dict):
+        if structured != content_structured:
+            raise EvidenceError("Codex MCP structured result representations conflict")
+    elif structured is None:
+        structured = content_structured
+    if not isinstance(structured, dict):
         return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
     if status == "completed" and not is_error:
         return str(call_id), operation, arguments, structured, "succeeded", None
@@ -713,6 +815,65 @@ def normalize_current_mcp_completion(
             str(raw_error) if nonempty(raw_error) else "mcp_error",
         )
     return str(call_id), operation, arguments, structured, "failed", "mcp_completion_status_mismatch"
+
+
+def current_mcp_content_result(
+    result: dict[str, Any], is_error: bool
+) -> tuple[str, dict[str, Any] | None]:
+    """Read only the current serialized CallToolResult content envelope.
+
+    Direct tool text is not searched for JSON. The supported fallback is one text
+    block whose complete text is a CallToolResult object, containing one text
+    block whose complete text is the structured product result.
+    """
+    content = result.get("content")
+    if not isinstance(content, list):
+        return "malformed", None
+    if not content:
+        return "absent", None
+    if (
+        len(content) != 1
+        or not isinstance(content[0], dict)
+        or set(content[0]) != {"type", "text"}
+        or content[0].get("type") != "text"
+        or not isinstance(content[0].get("text"), str)
+        or len(content[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS
+    ):
+        return "malformed" if result.get("structuredContent") is None else "absent", None
+    try:
+        envelope = json.loads(content[0]["text"])
+    except json.JSONDecodeError:
+        return "malformed" if result.get("structuredContent") is None else "absent", None
+    if not isinstance(envelope, dict) or set(envelope) not in (
+        {"content", "isError"},
+        {"content", "structuredContent", "isError"},
+    ):
+        return "malformed" if result.get("structuredContent") is None else "absent", None
+    envelope_content = envelope.get("content")
+    if (
+        envelope.get("isError") is not is_error
+        or not isinstance(envelope_content, list)
+        or len(envelope_content) != 1
+        or not isinstance(envelope_content[0], dict)
+        or set(envelope_content[0]) != {"type", "text"}
+        or envelope_content[0].get("type") != "text"
+        or not isinstance(envelope_content[0].get("text"), str)
+        or len(envelope_content[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS
+    ):
+        return "malformed", None
+    try:
+        text_structured = json.loads(envelope_content[0]["text"])
+    except json.JSONDecodeError:
+        return "malformed", None
+    if not isinstance(text_structured, dict):
+        return "malformed", None
+    envelope_structured = envelope.get("structuredContent")
+    if envelope_structured is not None:
+        if not isinstance(envelope_structured, dict):
+            return "malformed", None
+        if envelope_structured != text_structured:
+            raise EvidenceError("Codex MCP content result representations conflict")
+    return "valid", text_structured
 
 
 def merge_tool_call_evidence(evidence: list[_ToolCallEvidence]) -> tuple[ToolCall, ...]:
@@ -1118,7 +1279,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     current_mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     evidence_transport_issues: list[EvidenceTransportIssue] = []
-    raw_path_observations: list[tuple[int, str, tuple[str, ...]]] = []
+    raw_path_observations: list[_PathObservationEvidence] = []
     repository_scoped_activation_observed = False
 
     for sequence, event in enumerate(events):
@@ -1191,6 +1352,56 @@ def load_codex_capture(path: Path) -> CodexCapture:
                                 str(error),
                             )
                         )
+            item = payload.get("item")
+            if isinstance(item, dict) and item.get("type") == "FileChange":
+                turn_id = payload.get("turn_id")
+                call_id = item.get("id")
+                if (
+                    payload.get("thread_id") != session_id
+                    or not nonempty(turn_id)
+                    or not nonempty(call_id)
+                ):
+                    raise EvidenceError("Codex FileChange item identity is malformed")
+                if item.get("status") == "completed":
+                    normalized_changes = normalized_file_changes(item.get("changes"), cwd)
+                    if (
+                        normalized_changes is None
+                        or not isinstance(item.get("stdout"), str)
+                        or not isinstance(item.get("stderr"), str)
+                    ):
+                        evidence_transport_issues.append(
+                            EvidenceTransportIssue(
+                                sequence,
+                                str(turn_id),
+                                str(call_id),
+                                "codex",
+                                None,
+                                "malformed_file_change",
+                            )
+                        )
+                    else:
+                        paths, changes = normalized_changes
+                        raw_path_observations.append(
+                            _PathObservationEvidence(
+                                sequence,
+                                str(turn_id),
+                                str(call_id),
+                                paths,
+                                changes,
+                                "event_msg.item_completed.FileChange",
+                            )
+                        )
+                elif item.get("status") != "failed":
+                    evidence_transport_issues.append(
+                        EvidenceTransportIssue(
+                            sequence,
+                            str(turn_id),
+                            str(call_id),
+                            "codex",
+                            None,
+                            "malformed_file_change",
+                        )
+                    )
         elif envelope == "response_item" and payload_type == "custom_tool_call":
             parsed = (
                 parse_custom_call(payload.get("input"))
@@ -1226,23 +1437,28 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 mcp_completions.append((sequence, current_turn, payload))
         elif envelope == "event_msg" and payload_type == "patch_apply_end":
             turn_id = payload.get("turn_id")
-            raw_paths = payload.get("changes")
+            call_id = payload.get("call_id")
             if (
                 payload.get("success") is not True
                 or payload.get("status") != "completed"
                 or not nonempty(turn_id)
+                or not nonempty(call_id)
                 or str(turn_id) not in known_turn_ids
-                or not isinstance(raw_paths, dict)
             ):
                 continue
-            paths = [bounded_path(value, cwd) for value in raw_paths]
-            if not paths or len(paths) > MAX_PATHS or any(value is None for value in paths):
+            normalized_changes = normalized_file_changes(payload.get("changes"), cwd)
+            if normalized_changes is None:
                 continue
-            paths = [str(value) for value in paths if not generated_repository_path(str(value))]
-            if not paths:
-                continue
+            paths, changes = normalized_changes
             raw_path_observations.append(
-                (sequence, str(turn_id), tuple(sorted(set(paths))))
+                _PathObservationEvidence(
+                    sequence,
+                    str(turn_id),
+                    str(call_id),
+                    paths,
+                    changes,
+                    "event_msg.patch_apply_end",
+                )
             )
 
     tool_call_evidence: list[_ToolCallEvidence] = []
@@ -1419,10 +1635,9 @@ def load_codex_capture(path: Path) -> CodexCapture:
         raise EvidenceError("Codex MCP transport issue refers to an unknown turn identity")
     tool_calls = merge_tool_call_evidence(tool_call_evidence)
     commands.sort(key=lambda value: (value.sequence, value.group_index))
-    path_observations = [
-        PathObservation(sequence, turn_id, paths)
-        for sequence, turn_id, paths in raw_path_observations
-    ]
+    if any(value.turn_id not in known_turn_ids for value in raw_path_observations):
+        raise EvidenceError("Codex file change refers to an unknown turn identity")
+    path_observations = merge_path_observation_evidence(raw_path_observations)
 
     user_turns = normalize_user_turn_evidence(user_turn_evidence, known_turn_ids)
     fresh_user_thread = (
