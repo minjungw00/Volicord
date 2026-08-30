@@ -446,6 +446,9 @@ def main() -> int:
     mcp_completion = definition_value.get("real_session_evidence", {}).get(
         "mcp_completion_contract", {}
     )
+    behavior_specific_work_intake = definition_value.get(
+        "real_session_evidence", {}
+    ).get("behavior_specific_work_intake_contract", {})
     evidence_transport = definition_value.get("real_session_evidence", {}).get(
         "evidence_transport_attribution", {}
     )
@@ -537,6 +540,38 @@ def main() -> int:
         "numeric_cli_version_dispatch": False,
     }:
         raise AssertionError("Phase 8 Codex FileChange normalization contract changed")
+    if behavior_specific_work_intake != {
+        "explicit_user_owned_decision": [
+            "pre-work unresolved user-owned Materiality Review",
+            "ready-to-ask or fully researched material Question Candidate and presented Question",
+            "exact current-host response linked to the current Question revision",
+            "canonical Decision and ready-for-work Materiality revision before affected work",
+        ],
+        "hidden_user_owned_decision_additional": [
+            "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
+            "repository research attachment and ready-to-ask transition before Question promotion",
+            "Decision and ready-for-work Materiality revision before affected work",
+        ],
+        "non_user_owned_classes": {
+            "research_or_no_question": (
+                "repository_or_environment_fact with no Candidate, Question, or Decision"
+            ),
+            "delegated_implementation_choice": (
+                "current Goal delegation with no manufactured Candidate, Question, or Decision"
+            ),
+            "exploratory_uncertainty": (
+                "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision"
+            ),
+            "learning_deliberation": (
+                "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision"
+            ),
+            "learning_routine_control": (
+                "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
+            ),
+        },
+        "all_behavior_classes_require_inquiry": False,
+    }:
+        raise AssertionError("Phase 8 behavior-specific work-intake contract changed")
     if evidence_transport != {
         "states": ["complete", "indeterminate"],
         "indeterminate_causes": [

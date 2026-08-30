@@ -1255,7 +1255,8 @@ def load_definition() -> dict[str, Any]:
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
             "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
-            "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
+            "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
+            "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
             "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, ready-for-work, and no manufactured Decision",
             "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
@@ -1302,6 +1303,38 @@ def load_definition() -> dict[str, Any]:
         or len(evidence.get("bounded_parser_limitations", [])) != 3
     ):
         raise ValueError("the current Codex rollout evidence contract changed")
+    if evidence.get("behavior_specific_work_intake_contract") != {
+        "explicit_user_owned_decision": [
+            "pre-work unresolved user-owned Materiality Review",
+            "ready-to-ask or fully researched material Question Candidate and presented Question",
+            "exact current-host response linked to the current Question revision",
+            "canonical Decision and ready-for-work Materiality revision before affected work",
+        ],
+        "hidden_user_owned_decision_additional": [
+            "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
+            "repository research attachment and ready-to-ask transition before Question promotion",
+            "Decision and ready-for-work Materiality revision before affected work",
+        ],
+        "non_user_owned_classes": {
+            "research_or_no_question": (
+                "repository_or_environment_fact with no Candidate, Question, or Decision"
+            ),
+            "delegated_implementation_choice": (
+                "current Goal delegation with no manufactured Candidate, Question, or Decision"
+            ),
+            "exploratory_uncertainty": (
+                "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision"
+            ),
+            "learning_deliberation": (
+                "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision"
+            ),
+            "learning_routine_control": (
+                "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
+            ),
+        },
+        "all_behavior_classes_require_inquiry": False,
+    }:
+        raise ValueError("the behavior-specific work-intake contract changed")
     if evidence.get("mcp_completion_contract") != {
         "accepted_representations": [
             "event_msg.mcp_tool_call_end",
@@ -2961,6 +2994,222 @@ def work_evidence_transport_attribution(
     }
 
 
+def work_blocker_behavior_observations(
+    capture: CodexCapture,
+    behavior_class: str,
+    baseline_call: ToolCall | None,
+    first_work_change: int | None,
+) -> tuple[bool, bool, bool]:
+    """Return behavior evidence, material Question lifecycle, and user Decision."""
+    if baseline_call is None or first_work_change is None:
+        return False, False, False
+    records = [
+        call
+        for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+        and call.result.get("action") == "record"
+        and call.completion_sequence < first_work_change
+    ]
+    record = records[0] if len(records) == 1 else None
+    if record is None:
+        return False, False, False
+    judgments = record.arguments.get("judgments")
+    dispositions = {
+        judgment.get("disposition")
+        for judgment in judgments
+        if isinstance(judgment, dict)
+    } if isinstance(judgments, list) else set()
+    no_question_path = (
+        not capture.calls("candidate_manage")
+        and not capture.calls("inquiry_frontier")
+        and not capture.calls("decision_record")
+    )
+    workflow = record.result.get("workflow")
+    ready_at_record = (
+        isinstance(workflow, dict)
+        and workflow.get("stage") == "ready_for_work"
+        and workflow.get("blocks_ordinary_work") is False
+    )
+
+    if behavior_class not in USER_OWNED_BEHAVIOR_CLASSES:
+        expected = expected_materiality_disposition(behavior_class)
+        behavior_ok = (
+            expected in dispositions
+            and no_question_path
+            and record.completion_sequence < first_work_change
+        )
+        if behavior_class == "learning_deliberation":
+            calls = capture.successful_calls("learning_deliberation")
+            by_action = {
+                action: [call for call in calls if call.arguments.get("action") == action]
+                for action in ("begin", "respond_select", "feedback", "complete")
+            }
+            if not all(len(values) == 1 for values in by_action.values()):
+                return False, False, False
+            begin, response, feedback, complete = (
+                by_action[action][0]
+                for action in ("begin", "respond_select", "feedback", "complete")
+            )
+            response_turns = [
+                turn
+                for turn in capture.user_turns
+                if turn.text == response.arguments.get("user_turn")
+                and turn.sequence < response.sequence
+            ]
+            behavior_ok = (
+                behavior_ok
+                and workflow.get("stage") == "learning_deliberation"
+                and workflow.get("blocks_ordinary_work") is True
+                and begin.sequence < response.sequence < feedback.sequence < complete.sequence
+                and complete.completion_sequence < first_work_change
+                and bool(response_turns)
+                and complete.result.get("state", {}).get("state") == "completed"
+                and complete.result.get("workflow", {}).get("stage") == "ready_for_work"
+                and complete.result.get("workflow", {}).get("blocks_ordinary_work") is False
+            )
+        elif behavior_class == "learning_routine_control":
+            behavior_ok = (
+                behavior_ok
+                and ready_at_record
+                and record.arguments.get("learning_participation", {}).get("state")
+                == "active"
+                and not capture.calls("learning_deliberation")
+            )
+        else:
+            behavior_ok = behavior_ok and ready_at_record and not capture.calls(
+                "learning_deliberation"
+            )
+        return behavior_ok, False, False
+
+    review_id = record.result.get("review_candidate_id")
+    submit_calls = [
+        call
+        for call in capture.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "submit_question_from_materiality"
+        and call.result.get("action") == "submit_question_from_materiality"
+        and call.arguments.get("review_candidate_id") == review_id
+    ]
+    submit = submit_calls[0] if len(submit_calls) == 1 else None
+    candidate_id = submit.result.get("candidate_id") if submit is not None else None
+    promote_calls = [
+        call
+        for call in capture.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "promote_question"
+        and call.result.get("action") == "promote_question"
+        and call.arguments.get("candidate_id") == candidate_id
+        and call.result.get("candidate_id") == candidate_id
+    ]
+    promote = promote_calls[0] if len(promote_calls) == 1 else None
+    question_id = promote.result.get("question_id") if promote is not None else None
+    frontier_calls = [
+        call
+        for call in capture.successful_calls("inquiry_frontier")
+        if any(
+            isinstance(question, dict)
+            and question.get("identity") == question_id
+            and isinstance(question.get("revision"), int)
+            for question in call.result.get("questions", [])
+        )
+    ]
+    frontier = frontier_calls[0] if len(frontier_calls) == 1 else None
+    question_revision = (
+        next(
+            question["revision"]
+            for question in frontier.result["questions"]
+            if question.get("identity") == question_id
+        )
+        if frontier is not None
+        else None
+    )
+    decision_calls = [
+        call
+        for call in capture.successful_calls("decision_record")
+        if call.arguments.get("question_id") == question_id
+        and call.arguments.get("question_revision") == question_revision
+    ]
+    decision = decision_calls[0] if len(decision_calls) == 1 else None
+    response_turns = [
+        turn
+        for turn in capture.user_turns
+        if decision is not None
+        and turn.text == decision.arguments.get("user_turn")
+        and turn.sequence < decision.sequence
+        and turn.turn_id == decision.turn_id
+    ]
+    decision_ok = bool(
+        decision
+        and response_turns
+        and decision.result.get("all_succeeded") is True
+        and nonempty_string(decision.result.get("user_response_source_id"))
+    )
+    revisions = [
+        call
+        for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "revise"
+        and call.arguments.get("review_candidate_id") == review_id
+        and call.result.get("review_candidate_id") == review_id
+        and isinstance(call.result.get("workflow"), dict)
+        and call.result["workflow"].get("stage") == "ready_for_work"
+        and call.result["workflow"].get("blocks_ordinary_work") is False
+    ]
+    revision = revisions[-1] if revisions else None
+    research_calls = [
+        call
+        for call in capture.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "attach_repository_research"
+        and call.arguments.get("candidate_id") == candidate_id
+    ]
+    ready_calls = [
+        call
+        for call in capture.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "mark_research_ready"
+        and call.arguments.get("candidate_id") == candidate_id
+    ]
+    direct_explicit = bool(
+        behavior_class == "explicit_user_owned_decision"
+        and submit
+        and submit.arguments.get("research_state") == "ready_to_ask"
+        and submit.result.get("research_state") == "ready_to_ask"
+        and not research_calls
+        and not ready_calls
+    )
+    hidden_research = bool(
+        behavior_class == "hidden_user_owned_decision"
+        and submit
+        and submit.arguments.get("research_state") == "research_required"
+        and submit.result.get("research_state") == "research_required"
+        and len(research_calls) == 1
+        and len(ready_calls) == 1
+        and research_calls[0].sequence < ready_calls[0].sequence
+        and ready_calls[0].result.get("research_state") == "ready_to_ask"
+    )
+    discovery_calls = capture.successful_calls("engineering_choice_discovery")
+    discovery = discovery_calls[0] if len(discovery_calls) == 1 else None
+    hidden_investigation = bool(
+        behavior_class == "hidden_user_owned_decision"
+        and discovery is not None
+        and repository_investigation_sequences(
+            capture,
+            after_sequence=baseline_call.completion_sequence,
+            before_sequence=discovery.sequence,
+        )
+    )
+    lifecycle_ok = bool(
+        submit
+        and promote
+        and frontier
+        and decision
+        and revision
+        and record.result.get("workflow", {}).get("stage") == "question_candidate"
+        and record.result.get("workflow", {}).get("blocks_ordinary_work") is True
+        and record.sequence < submit.sequence < promote.sequence < frontier.sequence
+        < decision.sequence < revision.sequence
+        and revision.completion_sequence < first_work_change
+        and (direct_explicit or (hidden_research and hidden_investigation))
+    )
+    return lifecycle_ok and decision_ok, lifecycle_ok, decision_ok
+
+
 def build_work_blocker_result(
     candidate_head: str,
     descriptor: dict[str, Any],
@@ -3015,7 +3264,12 @@ def build_work_blocker_result(
         call
         for call in capture.successful_calls("context_record")
         if call.arguments.get("role") == "goal"
-        and call.arguments.get("user_turn") == descriptor.get("work_user_task")
+        and codex_user_turn_transport_identity_matches(
+            call.arguments.get("user_turn"), descriptor.get("work_user_task")
+        )
+        and codex_user_turn_transport_identity_matches(
+            call.arguments.get("statement"), descriptor.get("work_user_task")
+        )
     ]
     checkpoint_call = terminal_checkpoint_call(capture)
     baseline_call = selected_checkpoint_baseline_call(capture, checkpoint_call)
@@ -3053,20 +3307,15 @@ def build_work_blocker_result(
         and checkpoint_call.arguments.get("baseline_analysis_snapshot_id")
         == baseline_analysis_id
     )
-    candidate_actions = {
-        call.arguments.get("action")
-        for call in capture.successful_calls("candidate_manage")
-        if call.arguments.get("action") == call.result.get("action")
-    }
-    required_candidate_actions = {
-        "submit_question_from_materiality",
-        "attach_repository_research",
-        "mark_research_ready",
-        "promote_question",
-    }
-    material_question_lifecycle = (
-        required_candidate_actions <= candidate_actions
-        and bool(capture.successful_calls("inquiry_frontier"))
+    (
+        behavior_class_evidence,
+        material_question_lifecycle,
+        explicit_user_decision,
+    ) = work_blocker_behavior_observations(
+        capture,
+        str(descriptor.get("behavior_class")),
+        baseline_call,
+        first_work_change,
     )
     materiality_review_operation = any(
         call.arguments.get("action") == "record"
@@ -3083,11 +3332,9 @@ def build_work_blocker_result(
         "goal_context_operation": bool(goal_calls),
         "repository_baseline_operation": baseline_grounding_observed,
         "materiality_review_operation": materiality_review_operation,
-        "behavior_class_evidence": descriptor.get("behavior_class") in BEHAVIOR_CLASSES,
+        "behavior_class_evidence": behavior_class_evidence,
         "material_question_candidate_lifecycle": material_question_lifecycle,
-        "explicit_current_host_user_decision_operation": bool(
-            capture.successful_calls("decision_record")
-        ),
+        "explicit_current_host_user_decision_operation": explicit_user_decision,
         "source_grounded_checkpoint_operation": bool(
             capture.successful_calls("checkpoint_record")
         ),
@@ -3474,12 +3721,17 @@ def goal_facts(
         position=0,
     )
     statement = call.arguments.get("statement")
+    goal_task_identity = (
+        codex_user_turn_transport_identity_matches(statement, descriptor_task)
+        and codex_user_turn_transport_identity_matches(
+            call.arguments.get("user_turn"), descriptor_task
+        )
+    )
     valid = (
         nonempty_string(descriptor_task)
-        and statement == descriptor_task
+        and goal_task_identity
         and turn == first_turn
         and call.arguments.get("project_id") == bundle.project_id
-        and call.arguments.get("user_turn") == descriptor_task
         and call.arguments.get("role") == "goal"
         and call.result.get("project_id") == bundle.project_id
         and call.result.get("role") == "goal"
@@ -3492,7 +3744,7 @@ def goal_facts(
         and item.get("author_kind") == "user"
         and source is not None
         and source.get("source_kind") == "current_host_user_turn"
-        and source.get("locator") == descriptor_task
+        and source.get("locator") == call.arguments.get("user_turn")
         and source.get("detail_one") == "codex"
         and source.get("detail_two") == work.session_id
         and source.get("actor_kind") == "user"
@@ -4472,6 +4724,7 @@ def learning_recall_facts(
 def question_review_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
+    behavior_class: Any,
     question_id: str | None,
     question_revision: int | None,
     evaluation_basis: Any,
@@ -4536,11 +4789,7 @@ def question_review_facts(
         submit_call.result.get("candidate_id") if submit_call is not None else None
     )
     candidate_lifecycle_calls: list[ToolCall | None] = [submit_call]
-    for action in (
-        "attach_repository_research",
-        "mark_research_ready",
-        "promote_question",
-    ):
+    for action in ("attach_repository_research", "mark_research_ready", "promote_question"):
         calls = [
             call
             for call in candidate_calls
@@ -4565,8 +4814,9 @@ def question_review_facts(
             for source_id in research_source_ids
         )
     )
-    candidate_lifecycle_ok = (
-        all(call is not None for call in candidate_lifecycle_calls)
+    common_candidate_lifecycle = (
+        submit_call is not None
+        and promote_call is not None
         and nonempty_string(candidate_id)
         and all(
             call.arguments.get("project_id") == bundle.project_id
@@ -4583,23 +4833,43 @@ def question_review_facts(
         and submit_call.result.get("review_candidate_id") == review_candidate_id
         and submit_call.arguments.get("dimension_id") == dimension_id
         and submit_call.result.get("dimension_id") == dimension_id
-        and submit_call.arguments.get("research_state") == "research_required"
         and submit_call.result.get("state") == "stored"
         and submit_call.result.get("canonical_mutation") is False
+        and promote_call.result.get("question_id") == question_id
+        and baseline_call.completion_sequence < submit_call.sequence
+        and promote_call.completion_sequence
+        < (frontier_call.sequence if frontier_call is not None else -1)
+    )
+    repository_research_lifecycle = (
+        common_candidate_lifecycle
+        and research_call is not None
+        and ready_call is not None
+        and submit_call.arguments.get("research_state") == "research_required"
+        and submit_call.result.get("research_state") == "research_required"
         and research_call.arguments.get("evidence_assessment") == "sufficient"
         and research_sources_are_repository_grounded
         and research_call.result.get("canonical_mutation") is False
         and research_call.result.get("promoted") is False
         and ready_call.result.get("research_state") == "ready_to_ask"
         and ready_call.result.get("canonical_mutation") is False
-        and promote_call.result.get("question_id") == question_id
-        and baseline_call.completion_sequence < submit_call.sequence
-        < research_call.sequence
+        and submit_call.sequence < research_call.sequence
         < ready_call.sequence
         < promote_call.sequence
-        and promote_call.completion_sequence
-        < (frontier_call.sequence if frontier_call is not None else -1)
-    ) if all(call is not None for call in candidate_lifecycle_calls) else False
+    )
+    explicit_ready_lifecycle = (
+        behavior_class == "explicit_user_owned_decision"
+        and common_candidate_lifecycle
+        and research_call is None
+        and ready_call is None
+        and submit_call.arguments.get("research_state") == "ready_to_ask"
+        and submit_call.result.get("research_state") == "ready_to_ask"
+        and submit_call.sequence < promote_call.sequence
+    )
+    candidate_lifecycle_ok = (
+        repository_research_lifecycle
+        if behavior_class == "hidden_user_owned_decision"
+        else repository_research_lifecycle or explicit_ready_lifecycle
+    )
     material_scope = decode_string_blob(revision.get("material_scope")) if revision else None
     prompt_fields = [
         revision.get("prompt_basis") if revision else None,
@@ -4622,6 +4892,8 @@ def question_review_facts(
         "observed_question_basis_bytes": len(observed_question_text.encode("utf-8")),
         "alternatives_have_real_consequences": alternatives_have_real_consequences,
         "candidate_lifecycle_observed": candidate_lifecycle_ok,
+        "repository_research_lifecycle_observed": repository_research_lifecycle,
+        "explicit_ready_lifecycle_observed": explicit_ready_lifecycle,
         "ask_user_invariants": {
             "material_consequence": alternatives_have_real_consequences,
             "user_ownership": True,
@@ -4795,6 +5067,29 @@ def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
             for path in observation.paths
         )
     ]
+
+
+def repository_investigation_sequences(
+    work: CodexCapture | None,
+    *,
+    after_sequence: int,
+    before_sequence: int,
+) -> list[int]:
+    if work is None:
+        return []
+    sequences = [
+        command.sequence
+        for command in work.commands
+        if after_sequence < command.sequence < before_sequence
+        and command_is_repository_inspection(command.parsed_command)
+        and command.exit_code == 0
+    ]
+    sequences.extend(
+        call.sequence
+        for call in work.successful_calls("repository_understanding")
+        if after_sequence < call.sequence < before_sequence
+    )
+    return sorted(set(sequences))
 
 
 def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
@@ -5097,6 +5392,7 @@ def real_session_evidence(
     question_ok, question_review_basis = question_review_facts(
         work_capture,
         bundle,
+        behavior_class,
         question_id,
         question_revision,
         evaluation_basis,
@@ -5142,11 +5438,34 @@ def real_session_evidence(
     decision_calls_for_order = (
         work_capture.successful_calls("decision_record") if work_capture is not None else []
     )
+    discovery_calls_for_order = (
+        work_capture.successful_calls("engineering_choice_discovery")
+        if work_capture is not None
+        else []
+    )
+    hidden_discovery_call = (
+        discovery_calls_for_order[0]
+        if len(discovery_calls_for_order) == 1
+        else None
+    )
+    hidden_repository_investigation = (
+        repository_investigation_sequences(
+            work_capture,
+            after_sequence=baseline_call.completion_sequence,
+            before_sequence=hidden_discovery_call.sequence,
+        )
+        if baseline_call is not None and hidden_discovery_call is not None
+        else []
+    )
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
         or (
             question_ok
             and decision_calls_for_order
+            and bool(hidden_repository_investigation)
+            and question_review_basis.get(
+                "repository_research_lifecycle_observed"
+            )
             and len(
                 materiality_basis.get("engineering_choice_discovery", {}).get(
                     "choice_ids", []
@@ -5697,6 +6016,7 @@ def real_session_evidence(
             "frontier_interrupted_user": frontier_interrupted,
             "decision_attempted": decision_attempted,
             "non_question_outcome_qualified": non_question_outcome_ok,
+            "hidden_pre_discovery_repository_investigation_sequences": hidden_repository_investigation,
             "ask_user_question_basis": question_review_basis,
             "materiality_review_basis": materiality_basis,
             "behavior_review_sha256": hashlib.sha256(
@@ -7631,6 +7951,7 @@ def real_session_fixture(
     candidate_ready_call = f"{kind}-candidate-ready-call-{cycle}"
     candidate_promote_call = f"{kind}-candidate-promote-call-{cycle}"
     inquiry_call = f"{kind}-inquiry-call-{cycle}"
+    hidden_inspection_call = f"{kind}-hidden-inspection-call-{cycle}"
     decision_call = f"{kind}-decision-call-{cycle}"
     materiality_revision_call = f"{kind}-materiality-revision-call-{cycle}"
     patch_call = f"{kind}-patch-call-{cycle}"
@@ -7944,7 +8265,11 @@ def real_session_fixture(
                 "project_id": project,
                 "review_candidate_id": review_candidate,
                 "dimension_id": materiality_dimension_id,
-                "research_state": "research_required",
+                "research_state": (
+                    "ready_to_ask"
+                    if behavior_class == "explicit_user_owned_decision"
+                    else "research_required"
+                ),
                 "research_state_basis": question_content["why_repository_inspection_cannot_decide"],
                 "retention_basis": "current work session",
                 "bounded_summary": "Choose the operator-facing error detail boundary",
@@ -7976,7 +8301,11 @@ def real_session_fixture(
                 "dimension_id": materiality_dimension_id,
                 "candidate_id": candidate,
                 "candidate_revision": 1,
-                "research_state": "research_required",
+                "research_state": (
+                    "ready_to_ask"
+                    if behavior_class == "explicit_user_owned_decision"
+                    else "research_required"
+                ),
                 "canonical_mutation": False,
             },
         ),
@@ -8210,6 +8539,31 @@ def real_session_fixture(
         ),
         task_complete(decision_turn),
     ]
+    if behavior_class == "hidden_user_owned_decision":
+        discovery_index = next(
+            index
+            for index, value in enumerate(work_events)
+            if value.get("payload", {}).get("call_id") == discovery_call
+        )
+        work_events[discovery_index:discovery_index] = [
+            command_call(work_turn, hidden_inspection_call, "rg --files src"),
+            custom_output(
+                work_turn,
+                hidden_inspection_call,
+                {"output": "src/existing.rs\n", "exit_code": 0},
+            ),
+        ]
+    if behavior_class == "explicit_user_owned_decision":
+        hidden_research_call_ids = {
+            candidate_research_call,
+            candidate_ready_call,
+        }
+        work_events = [
+            value
+            for value in work_events
+            if value.get("payload", {}).get("call_id")
+            not in hidden_research_call_ids
+        ]
     if behavior_class == "learning_deliberation":
         learning_response_text = (
             "Choose ordered records because deterministic invariant inspection matters more "
@@ -9768,9 +10122,164 @@ def convert_fixture_capture_to_current_transport(
     return path
 
 
+def assert_local_historical_rollout_interpretation() -> str:
+    """Replay an available sixteen-rollout predecessor corpus without mutation."""
+    campaigns = sorted(
+        path
+        for path in (ROOT / "rebuild/.local").glob(
+            "phase8-naturalistic-*/campaign"
+        )
+        if len(list((path / "raw-rollouts").glob("*.jsonl"))) == 16
+        and len(list((path / "evaluator/descriptors").glob("*.json"))) == 8
+    )
+    if not campaigns:
+        return "not_available"
+    campaign = campaigns[-1]
+    descriptors = sorted((campaign / "evaluator/descriptors").glob("*.json"))
+    raw_rollouts = sorted((campaign / "raw-rollouts").glob("*.jsonl"))
+    slot_rollouts = sorted(
+        campaign / "slots" / descriptor.stem / "evidence" / f"{phase}.rollout.jsonl"
+        for descriptor in descriptors
+        for phase in ("work", "resume")
+    )
+    before_hashes = {path: sha256(path) for path in raw_rollouts}
+    slot_hashes = sorted(sha256(path) for path in slot_rollouts)
+    if sorted(before_hashes.values()) != slot_hashes:
+        raise AssertionError(
+            "historical raw rollouts do not match their immutable slot evidence"
+        )
+
+    goal_calls = 0
+    path_observations = 0
+    checkpoint_calls = 0
+    recall_calls = 0
+    project_resolve_calls = 0
+    activation_count = 0
+    behavior_results: list[tuple[str, str, tuple[bool, bool, bool]]] = []
+    for descriptor_path in descriptors:
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        captures = {
+            phase: load_codex_capture(
+                campaign
+                / "slots"
+                / descriptor_path.stem
+                / "evidence"
+                / f"{phase}.rollout.jsonl"
+            )
+            for phase in ("work", "resume")
+        }
+        work = captures["work"]
+        resume = captures["resume"]
+        if (
+            work.git_revision != descriptor.get("repository_revision")
+            or work.session_id == resume.session_id
+            or work.source != "vscode"
+            or resume.source != "vscode"
+            or work.originator != "codex_vscode"
+            or resume.originator != "codex_vscode"
+            or not work.user_turns
+            or not resume.user_turns
+            or not codex_user_turn_transport_identity_matches(
+                work.user_turns[0].text, descriptor.get("work_user_task")
+            )
+            or not codex_user_turn_transport_identity_matches(
+                resume.user_turns[0].text,
+                descriptor.get("fresh_resume_user_task"),
+            )
+        ):
+            raise AssertionError(
+                "historical project/session/task/provenance identity changed"
+            )
+        for capture in captures.values():
+            path_observations += len(capture.path_observations)
+            checkpoint_calls += len(capture.successful_calls("checkpoint_record"))
+            recall_calls += len(capture.successful_calls("recall"))
+            project_resolve_calls += len(capture.successful_calls("project_resolve"))
+            activation_count += int(capture.repository_scoped_activation_observed)
+        goal_calls += len(
+            [
+                call
+                for call in work.successful_calls("context_record")
+                if call.arguments.get("role") == "goal"
+            ]
+        )
+        changes = meaningful_work_path_observations(work)
+        checkpoint = terminal_checkpoint_call(work)
+        baseline = selected_checkpoint_baseline_call(work, checkpoint)
+        first_change = min(
+            (observation.sequence for observation in changes), default=None
+        )
+        behavior_results.append(
+            (
+                str(descriptor.get("repository_class")),
+                str(descriptor.get("behavior_class")),
+                work_blocker_behavior_observations(
+                    work,
+                    str(descriptor.get("behavior_class")),
+                    baseline,
+                    first_change,
+                ),
+            )
+        )
+
+    if (
+        goal_calls != 8
+        or path_observations != 43
+        or checkpoint_calls != 16
+        or recall_calls != 7
+        or project_resolve_calls != 16
+        or activation_count != 16
+    ):
+        raise AssertionError(
+            "historical current-Codex Goal/FileChange/Checkpoint/Recall evidence changed"
+        )
+    explicit = [
+        result
+        for _repository_class, behavior_class, result in behavior_results
+        if behavior_class == "explicit_user_owned_decision"
+    ]
+    small_python_hidden = [
+        result
+        for repository_class, behavior_class, result in behavior_results
+        if repository_class == "small-python"
+        and behavior_class == "hidden_user_owned_decision"
+    ]
+    volicord_hidden = [
+        result
+        for repository_class, behavior_class, result in behavior_results
+        if repository_class == "volicord"
+        and behavior_class == "hidden_user_owned_decision"
+    ]
+    learning_deliberation = [
+        result
+        for _repository_class, behavior_class, result in behavior_results
+        if behavior_class == "learning_deliberation"
+    ]
+    if (
+        len(explicit) != 1
+        or explicit[0][1] is not True
+        or len(small_python_hidden) != 1
+        or small_python_hidden[0][0] is not False
+        or len(volicord_hidden) != 1
+        or volicord_hidden[0][0] is not False
+        or len(learning_deliberation) != 1
+        or learning_deliberation[0][0] is not False
+    ):
+        raise AssertionError(
+            "historical corrected intake interpretation changed a real behavior failure"
+        )
+    after_hashes = {path: sha256(path) for path in raw_rollouts}
+    if after_hashes != before_hashes:
+        raise AssertionError("historical raw rollout evidence was mutated during replay")
+    return "passed"
+
+
 def self_test() -> int:
     definition = load_definition()
     v11 = load_v11()
+    historical_rollout_interpretation = (
+        assert_local_historical_rollout_interpretation()
+    )
     descriptor_task = "Preserve exact prompt identity."
     transport_identity_cases = (
         ("exact text", descriptor_task, True),
@@ -10226,9 +10735,160 @@ def self_test() -> int:
             raise
     else:
         raise AssertionError("valid current-format work intake became an early-stop blocker")
+    if not current_work_capture.path_observations:
+        raise AssertionError("current FileChange did not reach the work-blocker path")
+
+    def assert_current_work_intake_passes(
+        fixture: dict[str, Any], capture: CodexCapture, label: str
+    ) -> None:
+        identity = hashlib.sha256(
+            json.dumps(fixture, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        try:
+            build_work_blocker_result(
+                candidate_revision,
+                fixture,
+                identity,
+                capture,
+            )
+        except ValueError as error:
+            if "has no machine-observable terminal work blocker" not in str(error):
+                raise
+        else:
+            raise AssertionError(f"valid current {label} work intake became a blocker")
+
+    for behavior_class in BEHAVIOR_CLASSES:
+        behavior_directory = evidence_directory / f"current-intake-{behavior_class}"
+        behavior_directory.mkdir()
+        behavior_fixture = real_session_fixture(
+            "volicord",
+            1,
+            revision,
+            behavior_directory,
+            behavior_class=behavior_class,
+        )
+        behavior_work_path = convert_fixture_capture_to_current_transport(
+            behavior_fixture, behavior_directory, "work"
+        )
+        assert_current_work_intake_passes(
+            behavior_fixture,
+            load_codex_capture(behavior_work_path),
+            behavior_class,
+        )
+
+    hidden_early_directory = evidence_directory / "current-intake-hidden-early-write"
+    hidden_early_directory.mkdir()
+    hidden_early_fixture = real_session_fixture(
+        "volicord",
+        2,
+        revision,
+        hidden_early_directory,
+        behavior_class="hidden_user_owned_decision",
+    )
+    hidden_early_path = convert_fixture_capture_to_current_transport(
+        hidden_early_fixture, hidden_early_directory, "work"
+    )
+    hidden_early_events = [
+        json.loads(line)
+        for line in hidden_early_path.read_text(encoding="utf-8").splitlines()
+    ]
+    file_change_index = next(
+        index
+        for index, value in enumerate(hidden_early_events)
+        if value.get("payload", {}).get("type") == "item_completed"
+        and value.get("payload", {}).get("item", {}).get("type") == "FileChange"
+    )
+    file_change_event = hidden_early_events.pop(file_change_index)
+    decision_index = next(
+        index
+        for index, value in enumerate(hidden_early_events)
+        if value.get("payload", {}).get("type") == "item_completed"
+        and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+        and value["payload"]["item"].get("tool") == "decision_record"
+    )
+    hidden_early_events.insert(decision_index, file_change_event)
+    hidden_early_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in hidden_early_events
+        ),
+        encoding="utf-8",
+    )
+    hidden_early_fixture["evidence"]["captures"]["work"]["sha256"] = sha256(
+        hidden_early_path
+    )
+    hidden_early_identity = hashlib.sha256(
+        json.dumps(hidden_early_fixture, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    hidden_early_result = build_work_blocker_result(
+        candidate_revision,
+        hidden_early_fixture,
+        hidden_early_identity,
+        load_codex_capture(hidden_early_path),
+    )
+    if (
+        "behavior_class_evidence" not in hidden_early_result["failed_checks"]
+        or "material_question_candidate_lifecycle"
+        not in hidden_early_result["failed_checks"]
+    ):
+        raise AssertionError("hidden current work-before-Decision session qualified")
+
     current_events = [
         json.loads(line) for line in current_work_path.read_text(encoding="utf-8").splitlines()
     ]
+    goal_transport_events = json.loads(json.dumps(current_events))
+    goal_item = next(
+        value["payload"]["item"]
+        for value in goal_transport_events
+        if value.get("payload", {}).get("type") == "item_completed"
+        and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+        and value["payload"]["item"].get("tool") == "context_record"
+    )
+    goal_item["arguments"]["statement"] += "\r\n"
+    goal_item["arguments"]["user_turn"] += "\r\n"
+    goal_transport_path = evidence_directory / "current-goal-transport-work.jsonl"
+    goal_transport_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in goal_transport_events
+        ),
+        encoding="utf-8",
+    )
+    assert_current_work_intake_passes(
+        current_transport_fixture,
+        load_codex_capture(goal_transport_path),
+        "Goal transport-equivalent",
+    )
+    for label, suffix in (
+        ("internal difference", " changed"),
+        ("trailing space", " "),
+    ):
+        rejected_goal_events = json.loads(json.dumps(current_events))
+        rejected_goal_item = next(
+            value["payload"]["item"]
+            for value in rejected_goal_events
+            if value.get("payload", {}).get("type") == "item_completed"
+            and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
+            and value["payload"]["item"].get("tool") == "context_record"
+        )
+        rejected_goal_item["arguments"]["statement"] += suffix
+        rejected_goal_item["arguments"]["user_turn"] += suffix
+        rejected_goal_path = evidence_directory / f"current-goal-{label.replace(' ', '-')}.jsonl"
+        rejected_goal_path.write_text(
+            "".join(
+                json.dumps(value, separators=(",", ":")) + "\n"
+                for value in rejected_goal_events
+            ),
+            encoding="utf-8",
+        )
+        rejected_goal_result = build_work_blocker_result(
+            candidate_revision,
+            current_transport_fixture,
+            current_descriptor_identity,
+            load_codex_capture(rejected_goal_path),
+        )
+        if "goal_context_operation" not in rejected_goal_result["failed_checks"]:
+            raise AssertionError(f"Goal {label} qualified as task identity")
     malformed_project_events = json.loads(json.dumps(current_events))
     malformed_project_item = next(
         value["payload"]["item"]
@@ -10879,11 +11539,7 @@ def self_test() -> int:
     if (
         blocker_result["kind"] != "phase8_dogfood_blocker_result"
         or blocker_result["failed_checks"]
-        != [
-            name
-            for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
-            if name != "behavior_class_evidence"
-        ]
+        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
         or blocker_result["classification"] != "product_work_session_blocker"
         or blocker_result["outcome"] != "campaign_stop"
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
@@ -10948,11 +11604,7 @@ def self_test() -> int:
     )
     if (
         transport_blocker_result["failed_checks"]
-        != [
-            name
-            for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
-            if name != "behavior_class_evidence"
-        ]
+        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
         or sha256(transport_blocker_path) != transport_blocker_sha256
     ):
         raise AssertionError("work-blocker transport LF regression did not qualify immutably")
@@ -14274,6 +14926,7 @@ def self_test() -> int:
         "real_session_positive_path": "passed",
         "legacy_and_current_user_turn_normalization": "passed",
         "current_user_turn_order_and_text_segments": "passed",
+        "historical_rollout_corrected_interpretation": historical_rollout_interpretation,
         "host_user_role_material_excluded": "passed",
         "user_turn_deduplication_and_conflict_rejection": "passed",
         "malformed_current_user_turn_rejected": "passed",

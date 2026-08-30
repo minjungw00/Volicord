@@ -514,7 +514,8 @@
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
       "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
       "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
-      "for hidden_user_owned_decision, observe meaningful repository investigation before the material Question path and before the first ordinary repository write that commits the affected outcome",
+      "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
+      "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
       "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
       "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, ready-for-work, and no manufactured Decision",
       "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
@@ -525,6 +526,27 @@
       "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
       "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable Decision or evidence-backed no-Decision behavior basis, truthful numeric-exit verification, limits, and next meaningful state or step"
     ],
+    "behavior_specific_work_intake_contract": {
+      "explicit_user_owned_decision": [
+        "pre-work unresolved user-owned Materiality Review",
+        "ready-to-ask or fully researched material Question Candidate and presented Question",
+        "exact current-host response linked to the current Question revision",
+        "canonical Decision and ready-for-work Materiality revision before affected work"
+      ],
+      "hidden_user_owned_decision_additional": [
+        "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
+        "repository research attachment and ready-to-ask transition before Question promotion",
+        "Decision and ready-for-work Materiality revision before affected work"
+      ],
+      "non_user_owned_classes": {
+        "research_or_no_question": "repository_or_environment_fact with no Candidate, Question, or Decision",
+        "delegated_implementation_choice": "current Goal delegation with no manufactured Candidate, Question, or Decision",
+        "exploratory_uncertainty": "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision",
+        "learning_deliberation": "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision",
+        "learning_routine_control": "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
+      },
+      "all_behavior_classes_require_inquiry": false
+    },
     "resume_session_contract": [
       "repository-scoped SessionStart activation is observed before continuation behavior is judged",
       "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
