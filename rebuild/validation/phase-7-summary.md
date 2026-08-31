@@ -1,7 +1,7 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `fc3f9cac54e9c82e838fc2940b59d00166acc142`; aggregate `succeeded` with four
+  `99a996319a5efa28ac2519ffe811df886161961f`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
@@ -23,15 +23,22 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`fc3f9cac54e9c82e838fc2940b59d00166acc142`. Its four-command aggregate
+`99a996319a5efa28ac2519ffe811df886161961f`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`f76ec5ed2e9929e401a4e879c8b5f8910a2dc26020fe2f6649bc6b7244345abf`.
+`b62abbfe17265983e47fbad7e9a7ee99a728db121e3ecf69c302cc0f00fd8ee7`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `8496c0c3b44a0958601db4635592edb0df81d2ebd49646aefb7adc3a84e357a2`.
-All three authenticated Codex targets passed, the credential-retention audit
-passed with zero auth-named files, credential-content matches, or scan errors,
-the sanitized evidence archive was independently verified, and
+is `c9f121805e59b4413a5bdb875edf344b52f5747503b94639fbf99babdc299d35`.
+The separately authorized production-provider qualification passed for
+provider `openai-codex`, model `gpt-5.6-sol`, with evidence SHA-256
+`cab25069930a8728f6743558e9165f1d01920c276ad17affb2bfc997f8170614`.
+Its bounded success and unavailable-provider degradation retained no source
+body, provider response body, or credential. All three authenticated Codex
+targets passed, the credential-retention audit passed with zero auth-named
+files, credential-content matches, or scan errors,
+the sanitized evidence archive SHA-256
+`35d866c8b29e42dd0bf55b19040590523a2cf79fa43648dcdf5397e5c86ae46c`
+was independently verified, and
 `phase_8_ready = true` is recorded in
 `end-to-end/multi-repository/report.md`.
 
@@ -97,9 +104,10 @@ uses only Project-scoped replacement-owned analysis directories.
 
 ## Accepted-Decision revisit triggers
 
-No accepted Q1–Q13 Decision revisit trigger is active. The sanitized capsule
-records `decision_revisit_trigger_assessment = reported_by_official_v11`, an
-empty active-trigger list, and the assessed Decision-register identity. This
+No accepted Q1–Q13 Decision revisit trigger is active; Q14 likewise has no
+active trigger. The sanitized capsule records
+`decision_revisit_trigger_assessment = reported_by_official_v11`, an empty
+active-trigger list, and the assessed Q1–Q14 Decision-register identity. This
 is official V11-owned evidence, not an independent documentation inference.
 Phase 7 retains the
 Project as the user-facing unit, local-first canonical authority, current-host
@@ -120,18 +128,19 @@ background-provider authority.
 - The Linux journey does not qualify other operating systems, concurrent
   clients, abrupt power loss, hostile filesystem races, large-repository
   latency, accessibility, or long-duration resource ceilings.
-- V06 narrative quality, V07 commercial-provider behavior, and V10 platform
-  portability retain the known limits in their individual reports.
+- V06 narrative quality and V10 platform portability retain the known limits
+  in their individual reports.
 - Official V11 establishes entry eligibility for a fresh Phase 8 naturalistic
   Dogfood campaign. It does not establish dogfood quality or completion. Phase
   8 must still evaluate naturalistic activation, Question relevance, Decision
   comprehension, repeated use, interruption cost, document usefulness, size,
   latency, accessibility, and sustained resource behavior under its maintained
   plan.
-- The unavailable production provider path proved exact Guarded confirmation,
-  terminal cleanup, truthful no-transmission failure, and unaffected local
-  operation. It did not qualify a commercial provider or successful external
-  semantic result.
+- The production provider path qualified one bounded `openai-codex` /
+  `gpt-5.6-sol` success and separately proved exact Guarded confirmation,
+  truthful no-transmission degradation, and unaffected local operation. It
+  does not qualify other providers or models, and provider-side deletion
+  remains unsupported by the adapter.
 - The Volicord document outputs and ignored evidence were large; document
   usefulness, size, latency, accessibility, and sustained resource use remain
   Phase 8 observations rather than V11 conclusions.

@@ -512,14 +512,15 @@ ownership, or the capsule lifecycle described below.
 
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
-`phase_9_ready = false`. Exact final and same-session official V11 passed for a
-prior predecessor-contract candidate:
-admission was `eligible`, exact final succeeded with zero failures, all 54
+`phase_9_ready = false`. The current sealed production/test candidate is
+`99a996319a5efa28ac2519ffe811df886161961f`: admission was `eligible`, exact
+final succeeded with zero failures, the separately authorized live production
+provider qualification passed for `openai-codex` / `gpt-5.6-sol`, all 54
 required V11 steps passed, the credential-retention audit passed with zero
 recorded findings or scan errors, no active accepted-Decision revisit trigger
 was reported, the sanitized evidence archive was independently verified, and
-`phase_8_ready = true` under that prior contract. The redesigned campaign has
-no sealed candidate; its technical entry and Dogfood state are `not_run`.
+`phase_8_ready = true`. Technical entry passed; naturalistic Dogfood remains
+`not_run`.
 
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden
@@ -536,11 +537,11 @@ Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for a future candidate.
 Any predecessor Small Python cycle is diagnostic only and is not qualifying
 evidence for the redesigned campaign.
-Replacement passage remains pending/false, and Phase 9 may not begin. After a
-later technical-entry gate seals a candidate, qualifying Dogfood must run from
-a separate clean worktree whose actual Git `HEAD` is exactly that candidate. A
-different support-branch HEAD cannot qualify by passing only a candidate
-argument.
+Replacement passage remains pending/false, and Phase 9 may not begin.
+Qualifying Dogfood must run from a separate clean worktree whose actual Git
+`HEAD` is exactly `99a996319a5efa28ac2519ffe811df886161961f`. This later
+documentation-only branch HEAD is outside the sealed production/test candidate;
+it cannot qualify by passing only the sealed candidate as a helper argument.
 
 ## Admission, authorization, and handoff
 
