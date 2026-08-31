@@ -2517,6 +2517,89 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     else:
         raise AssertionError("pre-Recall baseline qualified")
 
+    def read_only_resume(
+        name: str,
+        *,
+        completed: bool,
+        include_verification: bool,
+    ) -> Path:
+        destination = parent / name
+        events = [
+            json.loads(line)
+            for line in resume.read_text(encoding="utf-8").splitlines()
+        ]
+        excluded_operations = {
+            "repository_analyze",
+            "engineering_choice_discovery",
+            "materiality_review",
+            "checkpoint_record",
+        }
+        filtered = []
+        for value in events:
+            payload = value.get("payload", {})
+            if payload.get("type") == "patch_apply_end":
+                continue
+            if (
+                payload.get("type") == "mcp_tool_call_end"
+                and payload.get("invocation", {}).get("tool")
+                in excluded_operations
+            ):
+                continue
+            if (
+                not include_verification
+                and "resume-verification-call" in str(payload.get("call_id", ""))
+            ):
+                continue
+            if completed and payload.get("type") == "custom_tool_call_output" and (
+                "recall-call" in str(payload.get("call_id", ""))
+            ):
+                output = payload.get("output")
+                structured = json.loads(output[1]["text"])
+                structured["checkpoint"]["work_state"] = "completed"
+                output[1]["text"] = json.dumps(structured, separators=(",", ":"))
+            if completed and payload.get("type") == "mcp_tool_call_end" and (
+                payload.get("invocation", {}).get("tool") == "recall"
+            ):
+                payload["result"]["Ok"]["structuredContent"]["checkpoint"][
+                    "work_state"
+                ] = "completed"
+            filtered.append(value)
+        destination.write_text(
+            "".join(
+                json.dumps(value, separators=(",", ":")) + "\n"
+                for value in filtered
+            ),
+            encoding="utf-8",
+        )
+        return destination
+
+    completed_read_only = read_only_resume(
+        "completed-read-only-resume.jsonl",
+        completed=True,
+        include_verification=True,
+    )
+    completed_capture = harness.load_codex_capture(completed_read_only)
+    assert not completed_capture.successful_calls("checkpoint_record")
+    assert campaign.inspect_resume(completed_capture, descriptor, state) == "01" * 16
+
+    for name, completed, include_verification in (
+        ("completed-read-only-without-verification.jsonl", True, False),
+        ("unfinished-read-only-resume.jsonl", False, True),
+    ):
+        invalid = harness.load_codex_capture(
+            read_only_resume(
+                name,
+                completed=completed,
+                include_verification=include_verification,
+            )
+        )
+        try:
+            campaign.inspect_resume(invalid, descriptor, state)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError(f"invalid read-only resume qualified: {name}")
+
 
 def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -> None:
     root, captures, bundles = prepared_batch(
@@ -2770,6 +2853,9 @@ def main() -> int:
             "batch_activation_all_preserves_user_controlled_trust",
             "automatic_project_identity_and_bundle_export",
             "resume_baseline_identity_and_ordering",
+            "completed_read_only_resume_without_checkpoint",
+            "read_only_resume_requires_post_inspection_numeric_verification",
+            "unfinished_read_only_resume_rejected",
             "four_kind_markdown_html_document_evidence",
             "static_viewer_snapshot_evidence",
             "failed_document_kind_is_machine_failure",

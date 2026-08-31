@@ -1274,8 +1274,8 @@ def load_definition() -> dict[str, Any]:
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "Recall preserves completed learning context as learning participation rather than a canonical Decision",
-            "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
-            "after the fresh resume baseline, recompute Materiality Review/work authority before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
+            "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
+            "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
             "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
             "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
             "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
@@ -1317,21 +1317,26 @@ def load_definition() -> dict[str, Any]:
         ],
         "non_user_owned_classes": {
             "research_or_no_question": (
-                "repository_or_environment_fact with no Candidate, Question, or Decision"
+                "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision"
             ),
             "delegated_implementation_choice": (
                 "current Goal delegation with no manufactured Candidate, Question, or Decision"
             ),
             "exploratory_uncertainty": (
-                "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision"
+                "evidence-backed exploratory disposition that is ready at record or is resolved through a same-review revision before affected work, with no manufactured Candidate, Question, or Decision"
             ),
             "learning_deliberation": (
-                "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision"
+                "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, to terminal ready-for-work before affected work with no canonical Decision"
             ),
             "learning_routine_control": (
-                "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
+                "active participation, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
             ),
         },
+        "materiality_correlation": (
+            "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, "
+            "review_candidate_id, dimension_id, and ordered review_revision"
+        ),
+        "behavior_class_exact_disposition_oracle": False,
         "all_behavior_classes_require_inquiry": False,
     }:
         raise ValueError("the behavior-specific work-intake contract changed")
@@ -2748,6 +2753,113 @@ def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: i
     )
 
 
+def resume_continuation_facts(
+    capture: CodexCapture | None,
+    recall_call: ToolCall | None,
+    *,
+    next_step: Any,
+    checkpoint_work_state: Any,
+    recalled_work_state: Any,
+    common_identity_and_freshness_ok: bool,
+    change_baseline_ok: bool,
+) -> dict[str, Any]:
+    """Evaluate the two maintained resume modes from observed session facts."""
+
+    first_inspection = (
+        capture.first_inspection_after(recall_call.completion_sequence)
+        if capture is not None and recall_call is not None
+        else None
+    )
+    prior_inspections = []
+    if capture is not None and recall_call is not None:
+        prior_inspections = [
+            sequence
+            for sequence in [
+                *(call.sequence for call in capture.calls("repository_understanding")),
+                *(call.sequence for call in capture.calls("repository_analyze")),
+                *(
+                    command.sequence
+                    for command in capture.commands
+                    if command_is_repository_inspection(command.parsed_command)
+                ),
+            ]
+            if sequence < recall_call.sequence
+        ]
+    ordering_ok = bool(
+        recall_call is not None
+        and first_inspection is not None
+        and not prior_inspections
+        and recall_call.completion_sequence < first_inspection
+    )
+    continuation_paths = (
+        capture.paths_after(first_inspection)
+        if capture is not None and first_inspection is not None
+        else []
+    )
+    relevant_paths = relevant_continuation_paths(continuation_paths, next_step)
+    last_change_sequence = max(
+        (
+            item.sequence
+            for item in capture.path_observations
+            if first_inspection is not None and item.sequence > first_inspection
+        ),
+        default=None,
+    ) if capture is not None else None
+    change_validation_ok = meaningful_resume_validation(
+        capture,
+        last_change_sequence if last_change_sequence is not None else first_inspection,
+    )
+    inspection_validation_ok = meaningful_resume_validation(capture, first_inspection)
+    contradictory_behavior = False
+    if capture is not None and first_inspection is not None:
+        contradictory_behavior = any(
+            command.sequence > first_inspection
+            and isinstance(command.exit_code, int)
+            and command.exit_code != 0
+            for command in capture.commands
+        ) or any(
+            call.sequence > first_inspection
+            and call.arguments.get("work_state") not in {None, "completed"}
+            for call in capture.successful_calls("checkpoint_record")
+        )
+    common = common_identity_and_freshness_ok and ordering_ok
+    change_ok = bool(
+        common
+        and change_baseline_ok
+        and relevant_paths
+        and change_validation_ok
+    )
+    verified_ok = bool(
+        common
+        and checkpoint_work_state == "completed"
+        and recalled_work_state == "completed"
+        and not continuation_paths
+        and inspection_validation_ok
+        and not contradictory_behavior
+    )
+    mode = (
+        "change_continuation"
+        if change_ok
+        else "verified_state_continuation"
+        if verified_ok
+        else None
+    )
+    return {
+        "first_inspection_sequence": first_inspection,
+        "prior_inspection_sequences": prior_inspections,
+        "ordering_ok": ordering_ok,
+        "continuation_paths": continuation_paths,
+        "relevant_paths": relevant_paths,
+        "last_change_sequence": last_change_sequence,
+        "change_numeric_exit_validation": change_validation_ok,
+        "post_inspection_numeric_exit_validation": inspection_validation_ok,
+        "contradictory_behavior": contradictory_behavior,
+        "change_continuation_qualified": change_ok,
+        "verified_state_continuation_qualified": verified_ok,
+        "mode": mode,
+    }
+
+
 def work_scope_errors(
     value: Any,
     repository_class: Any,
@@ -3003,11 +3115,31 @@ def work_blocker_behavior_observations(
     """Return behavior evidence, material Question lifecycle, and user Decision."""
     if baseline_call is None or first_work_change is None:
         return False, False, False
+    baseline_id = baseline_call.result.get("analysis_snapshot_id")
+    discoveries = {
+        call.result.get("discovery_candidate_id"): call
+        for call in capture.successful_calls("engineering_choice_discovery")
+        if nonempty_string(call.result.get("discovery_candidate_id"))
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and baseline_call.completion_sequence < call.sequence
+        and call.completion_sequence < first_work_change
+    }
     records = [
         call
         for call in capture.successful_calls("materiality_review")
         if call.arguments.get("action") == "record"
         and call.result.get("action") == "record"
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and call.arguments.get("engineering_choice_discovery_candidate_id")
+        in discoveries
+        and discoveries[
+            call.arguments.get("engineering_choice_discovery_candidate_id")
+        ].result.get("goal_context_id")
+        == call.result.get("goal_context_id")
+        and discoveries[
+            call.arguments.get("engineering_choice_discovery_candidate_id")
+        ].completion_sequence
+        < call.sequence
         and call.completion_sequence < first_work_change
     ]
     record = records[0] if len(records) == 1 else None
@@ -3025,63 +3157,67 @@ def work_blocker_behavior_observations(
         and not capture.calls("decision_record")
     )
     workflow = record.result.get("workflow")
-    ready_at_record = (
-        isinstance(workflow, dict)
-        and workflow.get("stage") == "ready_for_work"
-        and workflow.get("blocks_ordinary_work") is False
+    review_id = record.result.get("review_candidate_id")
+    revisions = sorted(
+        (
+            call
+            for call in capture.successful_calls("materiality_review")
+            if call.arguments.get("action") == "revise"
+            and call.arguments.get("review_candidate_id") == review_id
+            and call.result.get("review_candidate_id") == review_id
+            and call.result.get("goal_context_id") == record.result.get("goal_context_id")
+            and call.result.get("baseline_analysis_snapshot_id") == baseline_id
+            and call.completion_sequence < first_work_change
+        ),
+        key=lambda call: call.sequence,
+    )
+    final_review = revisions[-1] if revisions else record
+    final_workflow = final_review.result.get("workflow")
+    ready_before_work = (
+        isinstance(final_workflow, dict)
+        and final_workflow.get("stage") == "ready_for_work"
+        and final_workflow.get("blocks_ordinary_work") is False
+        and final_review.completion_sequence < first_work_change
     )
 
     if behavior_class not in USER_OWNED_BEHAVIOR_CLASSES:
-        expected = expected_materiality_disposition(behavior_class)
+        expected = expected_materiality_dispositions(behavior_class)
         behavior_ok = (
-            expected in dispositions
+            bool(expected & dispositions)
             and no_question_path
             and record.completion_sequence < first_work_change
         )
         if behavior_class == "learning_deliberation":
-            calls = capture.successful_calls("learning_deliberation")
-            by_action = {
-                action: [call for call in calls if call.arguments.get("action") == action]
-                for action in ("begin", "respond_select", "feedback", "complete")
-            }
-            if not all(len(values) == 1 for values in by_action.values()):
-                return False, False, False
-            begin, response, feedback, complete = (
-                by_action[action][0]
-                for action in ("begin", "respond_select", "feedback", "complete")
+            learning = learning_deliberation_trace(
+                capture,
+                review_id=(str(review_id) if nonempty_string(review_id) else None),
+                dimension_id=None,
+                first_write_sequence=first_work_change,
             )
-            response_turns = [
-                turn
-                for turn in capture.user_turns
-                if turn.text == response.arguments.get("user_turn")
-                and turn.sequence < response.sequence
-            ]
             behavior_ok = (
                 behavior_ok
                 and workflow.get("stage") == "learning_deliberation"
                 and workflow.get("blocks_ordinary_work") is True
-                and begin.sequence < response.sequence < feedback.sequence < complete.sequence
-                and complete.completion_sequence < first_work_change
-                and bool(response_turns)
-                and complete.result.get("state", {}).get("state") == "completed"
-                and complete.result.get("workflow", {}).get("stage") == "ready_for_work"
-                and complete.result.get("workflow", {}).get("blocks_ordinary_work") is False
+                and learning[0]
             )
         elif behavior_class == "learning_routine_control":
             behavior_ok = (
                 behavior_ok
-                and ready_at_record
+                and ready_before_work
                 and record.arguments.get("learning_participation", {}).get("state")
                 == "active"
                 and not capture.calls("learning_deliberation")
             )
+        elif behavior_class == "exploratory_uncertainty":
+            behavior_ok = behavior_ok and ready_before_work and not capture.calls(
+                "learning_deliberation"
+            )
         else:
-            behavior_ok = behavior_ok and ready_at_record and not capture.calls(
+            behavior_ok = behavior_ok and ready_before_work and not capture.calls(
                 "learning_deliberation"
             )
         return behavior_ok, False, False
 
-    review_id = record.result.get("review_candidate_id")
     submit_calls = [
         call
         for call in capture.successful_calls("candidate_manage")
@@ -3165,13 +3301,26 @@ def work_blocker_behavior_observations(
         if call.arguments.get("action") == "mark_research_ready"
         and call.arguments.get("candidate_id") == candidate_id
     ]
-    direct_explicit = bool(
+    explicit_question_path = bool(
         behavior_class == "explicit_user_owned_decision"
         and submit
-        and submit.arguments.get("research_state") == "ready_to_ask"
-        and submit.result.get("research_state") == "ready_to_ask"
-        and not research_calls
-        and not ready_calls
+        and (
+            (
+                submit.arguments.get("research_state") == "ready_to_ask"
+                and submit.result.get("research_state") == "ready_to_ask"
+                and not research_calls
+                and not ready_calls
+            )
+            or (
+                submit.arguments.get("research_state") == "research_required"
+                and submit.result.get("research_state") == "research_required"
+                and len(research_calls) == 1
+                and len(ready_calls) == 1
+                and submit.sequence < research_calls[0].sequence
+                < ready_calls[0].sequence
+                and ready_calls[0].result.get("research_state") == "ready_to_ask"
+            )
+        )
     )
     hidden_research = bool(
         behavior_class == "hidden_user_owned_decision"
@@ -3205,7 +3354,7 @@ def work_blocker_behavior_observations(
         and record.sequence < submit.sequence < promote.sequence < frontier.sequence
         < decision.sequence < revision.sequence
         and revision.completion_sequence < first_work_change
-        and (direct_explicit or (hidden_research and hidden_investigation))
+        and (explicit_question_path or (hidden_research and hidden_investigation))
     )
     return lifecycle_ok and decision_ok, lifecycle_ok, decision_ok
 
@@ -3758,16 +3907,38 @@ def goal_facts(
     )
 
 
-def expected_materiality_disposition(behavior_class: Any) -> str | None:
+def expected_materiality_dispositions(behavior_class: Any) -> frozenset[str]:
+    """Return the truthful disposition family for one maintained behavior class.
+
+    The behavior class describes why work may proceed or must pause.  It is not
+    an oracle for one serialized Materiality label when multiple evidence-backed
+    authority bases have the same maintained non-interrupting behavior.
+    """
+
     if is_user_owned_behavior(behavior_class):
-        return "unresolved_user_owned_outcome"
+        return frozenset({"unresolved_user_owned_outcome"})
     return {
-        "research_or_no_question": "repository_or_environment_fact",
-        "delegated_implementation_choice": "delegated_implementation_choice",
-        "exploratory_uncertainty": "exploratory_uncertainty",
-        "learning_deliberation": "agent_owned_implementation_choice",
-        "learning_routine_control": "agent_owned_implementation_choice",
-    }.get(behavior_class)
+        "research_or_no_question": frozenset({
+            "repository_or_environment_fact",
+            "settled_authority",
+            "exploratory_uncertainty",
+        }),
+        "delegated_implementation_choice": frozenset({
+            "delegated_implementation_choice"
+        }),
+        "exploratory_uncertainty": frozenset({"exploratory_uncertainty"}),
+        "learning_deliberation": frozenset({
+            "agent_owned_implementation_choice",
+            "delegated_implementation_choice",
+        }),
+        "learning_routine_control": frozenset({
+            "repository_or_environment_fact",
+            "settled_authority",
+            "agent_owned_implementation_choice",
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        }),
+    }.get(behavior_class, frozenset())
 
 
 MATERIALITY_DISPOSITIONS = {
@@ -4326,11 +4497,11 @@ def materiality_review_facts(
     *,
     resumed: bool = False,
 ) -> tuple[bool, str | None, str | None, dict[str, Any]]:
-    expected = expected_materiality_disposition(behavior_class)
+    expected = expected_materiality_dispositions(behavior_class)
     if (
         work is None
         or bundle is None
-        or expected is None
+        or not expected
         or not nonempty_string(goal_context_id)
         or baseline_call is None
         or first_write_sequence is None
@@ -4342,14 +4513,41 @@ def materiality_review_facts(
         for call in work.successful_calls("materiality_review")
         if call.arguments.get("action") == "record"
         and call.arguments.get("project_id") == bundle.project_id
+        and call.result.get("goal_context_id") == goal_context_id
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and baseline_call.completion_sequence < call.sequence
+        and call.completion_sequence < first_write_sequence
     ]
-    if len(records) != 1:
-        return False, None, None, {"matching_record_count": len(records)}
-    record = records[0]
-    review_id = record.result.get("review_candidate_id")
-    discovery_ok, discovery_basis, dimensions, discovery_choices = engineering_choice_discovery_facts(
-        work, bundle, goal_context_id, goal_source_id, baseline_call, record
+    correlated_records: list[
+        tuple[
+            ToolCall,
+            bool,
+            dict[str, Any],
+            dict[str, dict[str, Any]] | None,
+            dict[str, dict[str, Any]] | None,
+        ]
+    ] = []
+    for candidate_record in records:
+        discovery = engineering_choice_discovery_facts(
+            work,
+            bundle,
+            goal_context_id,
+            goal_source_id,
+            baseline_call,
+            candidate_record,
+        )
+        if discovery[0]:
+            correlated_records.append((candidate_record, *discovery))
+    if len(correlated_records) != 1:
+        return False, None, None, {
+            "matching_record_count": len(records),
+            "correlated_record_count": len(correlated_records),
+            "record_correlation": "goal_context_id+baseline_analysis_snapshot_id+engineering_choice_discovery_candidate_id",
+        }
+    record, discovery_ok, discovery_basis, dimensions, discovery_choices = (
+        correlated_records[0]
     )
+    review_id = record.result.get("review_candidate_id")
     learning_participation = record.arguments.get("learning_participation")
     learning_active = behavior_class in {
         "learning_deliberation",
@@ -4374,7 +4572,7 @@ def materiality_review_facts(
         [
             dimension_id
             for dimension_id, dimension in dimensions.items()
-            if dimension.get("disposition") == expected
+            if dimension.get("disposition") in expected
         ]
         if dimensions is not None
         else []
@@ -4388,9 +4586,23 @@ def materiality_review_facts(
         if dimensions is not None
         else set()
     )
-    primary_dimension_id = relevant_ids[0] if relevant_ids else None
-    dimension_authority = bool(dimensions) and all(
-        materiality_dimension_authority_valid(
+    deliberation_ids = [
+        dimension_id
+        for dimension_id in relevant_ids
+        if dimensions is not None
+        and dimensions[dimension_id]["learning_value"]["state"]
+        == "deliberation_worthy"
+    ]
+    primary_dimension_id = (
+        deliberation_ids[0]
+        if behavior_class == "learning_deliberation" and deliberation_ids
+        else relevant_ids[0]
+        if relevant_ids
+        else None
+    )
+
+    def dimension_authority_valid(dimension: dict[str, Any]) -> bool:
+        return materiality_dimension_authority_valid(
             dimension,
             goal_context_id=goal_context_id,
             goal_source_id=goal_source_id,
@@ -4408,7 +4620,23 @@ def materiality_review_facts(
                 == "delegated_implementation_choice"
             ),
         )
-        for dimension in dimensions.values()
+
+    pending_exploratory_ids = {
+        dimension_id
+        for dimension_id in relevant_ids
+        if dimensions is not None
+        and dimensions[dimension_id].get("disposition") == "exploratory_uncertainty"
+        and dimensions[dimension_id].get("exploratory_disposition")
+        in {"research_required", "prototype_required"}
+        and bool(dimensions[dimension_id]["basis"]["research_basis"])
+    }
+    initial_dimension_authority = bool(dimensions) and all(
+        dimension_authority_valid(dimension)
+        or (
+            behavior_class == "exploratory_uncertainty"
+            and dimension_id in pending_exploratory_ids
+        )
+        for dimension_id, dimension in dimensions.items()
     )
     common = (
         set(record.arguments)
@@ -4433,20 +4661,73 @@ def materiality_review_facts(
         and discovery_ok
         and participation_ok
         and all(
-            dimension["learning_value"]["state"]
-            == (
-                "deliberation_worthy"
-                if behavior_class == "learning_deliberation"
-                and dimension.get("disposition") == expected
-                else "routine"
+            dimension["learning_value"]["state"] == "routine"
+            or (
+                behavior_class == "learning_deliberation"
+                and dimension_id in relevant_ids
+                and dimension["learning_value"]["state"]
+                == "deliberation_worthy"
             )
-            for dimension in dimensions.values()
+            for dimension_id, dimension in dimensions.items()
         )
-        and dimension_authority
+        and (
+            bool(deliberation_ids)
+            if behavior_class == "learning_deliberation"
+            else True
+        )
+        and initial_dimension_authority
         and isinstance(workflow, dict)
         and workflow.get("satisfied_basis_identities") is not None
         and workflow.get("unresolved_requirements") is not None
     )
+
+    revisions = [
+        call
+        for call in work.successful_calls("materiality_review")
+        if call.arguments.get("action") == "revise"
+        and call.arguments.get("project_id") == bundle.project_id
+        and call.arguments.get("review_candidate_id") == review_id
+    ]
+    revisions.sort(key=lambda call: call.sequence)
+    revision_chain = [
+        (
+            revision,
+            materiality_dimensions_from_judgments(
+                revision.arguments.get("judgments"),
+                discovery_choices,
+                goal_context_id=goal_context_id,
+                goal_source_id=goal_source_id,
+            ),
+        )
+        for revision in revisions
+    ]
+    chain_preserves_dimensions = bool(revision_chain) and all(
+        revised is not None and set(revised) == dimension_ids
+        for _, revised in revision_chain
+    )
+    chain_preserves_review_identity = bool(revision_chain) and all(
+        set(revision.arguments)
+        == {
+            "action",
+            "project_id",
+            "review_candidate_id",
+            "rationale",
+            "learning_participation",
+            "judgments",
+        }
+        and revision.result.get("review_candidate_id") == review_id
+        and revision.result.get("goal_context_id") == goal_context_id
+        and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
+        and revision.result.get("review_revision") == expected_revision
+        and nonempty_string(revision.result.get("review_analysis_snapshot_id"))
+        for expected_revision, (revision, _) in enumerate(revision_chain, start=2)
+    )
+    final_revision = revision_chain[-1][0] if revision_chain else None
+    final_dimensions = revision_chain[-1][1] if revision_chain else None
+    revised_workflow = (
+        final_revision.result.get("workflow") if final_revision is not None else None
+    )
+
     if resumed:
         resolved = (
             resolved_user_owned_dimensions_valid(
@@ -4464,56 +4745,6 @@ def materiality_review_facts(
             and workflow.get("blocks_ordinary_work") is False
         )
     elif is_user_owned_behavior(behavior_class):
-        revisions = [
-            call
-            for call in work.successful_calls("materiality_review")
-            if call.arguments.get("action") == "revise"
-            and call.arguments.get("project_id") == bundle.project_id
-            and call.arguments.get("review_candidate_id") == review_id
-        ]
-        revisions.sort(key=lambda call: call.sequence)
-        revision_chain = [
-            (
-                revision,
-                materiality_dimensions_from_judgments(
-                    revision.arguments.get("judgments"),
-                    discovery_choices,
-                    goal_context_id=goal_context_id,
-                    goal_source_id=goal_source_id,
-                ),
-            )
-            for revision in revisions
-        ]
-        final_revision = revision_chain[-1][0] if revision_chain else None
-        final_dimensions = revision_chain[-1][1] if revision_chain else None
-        revised_workflow = (
-            final_revision.result.get("workflow") if final_revision is not None else None
-        )
-        chain_preserves_dimensions = bool(revision_chain) and all(
-            revised is not None and set(revised) == dimension_ids
-            for _, revised in revision_chain
-        )
-        chain_preserves_review_identity = bool(revision_chain) and all(
-            set(revision.arguments)
-            == {
-                "action",
-                "project_id",
-                "review_candidate_id",
-                "rationale",
-                "learning_participation",
-                "judgments",
-            }
-            and revision.result.get("review_candidate_id") == review_id
-            and revision.result.get("goal_context_id") == goal_context_id
-            and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
-            and revision.result.get("review_revision") == expected_revision
-            and nonempty_string(
-                revision.result.get("review_analysis_snapshot_id")
-            )
-            for expected_revision, (revision, _) in enumerate(
-                revision_chain, start=2
-            )
-        )
         resolved = bool(final_dimensions) and final_revision is not None and (
             resolved_user_owned_dimensions_valid(
                 final_dimensions,
@@ -4548,6 +4779,29 @@ def materiality_review_facts(
             and revised_workflow.get("stage") == "ready_for_work"
             and revised_workflow.get("blocks_ordinary_work") is False
         )
+    elif behavior_class == "exploratory_uncertainty":
+        initially_ready = (
+            not pending_exploratory_ids
+            and all(dimension_authority_valid(value) for value in (dimensions or {}).values())
+            and workflow.get("stage") == "ready_for_work"
+            and workflow.get("blocks_ordinary_work") is False
+        )
+        resolved_after_evidence = bool(
+            pending_exploratory_ids
+            and workflow.get("blocks_ordinary_work") is True
+            and final_dimensions
+            and final_revision is not None
+            and chain_preserves_dimensions
+            and chain_preserves_review_identity
+            and all(dimension_authority_valid(value) for value in final_dimensions.values())
+            and final_revision.completion_sequence < first_write_sequence
+            and isinstance(revised_workflow, dict)
+            and revised_workflow.get("stage") == "ready_for_work"
+            and revised_workflow.get("blocks_ordinary_work") is False
+        )
+        valid = common and (initially_ready or resolved_after_evidence) and not work.calls(
+            "candidate_manage"
+        ) and not work.calls("inquiry_frontier") and not work.calls("decision_record")
     else:
         learning_deliberation_expected = behavior_class == "learning_deliberation"
         valid = (
@@ -4567,16 +4821,181 @@ def materiality_review_facts(
         "relevant_dimension_ids": relevant_ids,
         "user_owned_dimension_ids": sorted(user_owned_ids),
         "dimension_correlation": "dimension_id",
-        "disposition": expected,
+        "disposition": (
+            dimensions[primary_dimension_id].get("disposition")
+            if dimensions is not None and primary_dimension_id is not None
+            else None
+        ),
+        "allowed_dispositions": sorted(expected),
         "explicit_delegation": (
             dimensions[primary_dimension_id]["basis"].get("explicit_delegation")
             if dimensions is not None and primary_dimension_id is not None
             else None
         ),
         "pre_write": record.completion_sequence < first_write_sequence,
+        "revision_count": len(revision_chain),
+        "final_revision_sequence": (
+            final_revision.sequence if final_revision is not None else None
+        ),
         "resumed": resumed,
         "learning_participation": learning_participation,
         "engineering_choice_discovery": discovery_basis,
+    }
+
+
+def learning_deliberation_trace(
+    work: CodexCapture,
+    *,
+    review_id: str | None,
+    dimension_id: str | None,
+    first_write_sequence: int,
+) -> tuple[bool, dict[str, Any]]:
+    """Validate the maintained Learning Deliberation transition machine."""
+
+    calls = sorted(work.successful_calls("learning_deliberation"), key=lambda call: call.sequence)
+    actions = [call.arguments.get("action") for call in calls]
+    begin_calls = [call for call in calls if call.arguments.get("action") == "begin"]
+    begin = begin_calls[0] if len(begin_calls) == 1 else None
+    deliberation_id = begin.result.get("deliberation_candidate_id") if begin else None
+    valid = bool(
+        begin
+        and begin.arguments.get("review_candidate_id") == review_id
+        and (dimension_id is None or begin.arguments.get("dimension_id") == dimension_id)
+        and nonempty_string(deliberation_id)
+        and begin.result.get("state", {}).get("state") == "awaiting_initial_response"
+        and not any("recommendation" in key for key in begin.arguments)
+        and not any("recommendation" in key for key in begin.result)
+        and not begin.result.get("rounds")
+    )
+    state = "awaiting_initial_response" if valid else None
+    terminal_call: ToolCall | None = None
+    current_host_response_count = 0
+    response_actions = {
+        "respond_select",
+        "respond_delegate",
+        "respond_skip",
+        "respond_research_or_prototype",
+    }
+    terminal_states = {"completed", "delegated", "skipped"}
+    for call in calls:
+        action = call.arguments.get("action")
+        if call is begin:
+            continue
+        if (
+            not valid
+            or not nonempty_string(deliberation_id)
+            or call.sequence <= begin.sequence
+            or call.arguments.get("deliberation_candidate_id") != deliberation_id
+            or call.result.get("deliberation_candidate_id") != deliberation_id
+        ):
+            valid = False
+            continue
+        if action == "inspect":
+            continue
+        if state in terminal_states:
+            valid = False
+            continue
+        if action in response_actions:
+            turns = [
+                turn
+                for turn in work.user_turns
+                if turn.turn_id == call.turn_id
+                and turn.text == call.arguments.get("user_turn")
+                and turn.sequence < call.sequence
+            ]
+            response_valid = (
+                state in {"awaiting_initial_response", "reconsideration_requested"}
+                and len(turns) == 1
+            )
+            current_host_response_count += int(response_valid)
+            if action == "respond_select":
+                response_valid &= (
+                    isinstance(call.arguments.get("selections"), list)
+                    and bool(call.arguments["selections"])
+                    and call.result.get("state", {}).get("state")
+                    == "awaiting_agent_feedback"
+                )
+                state = "awaiting_agent_feedback"
+            elif action == "respond_delegate":
+                response_valid &= call.result.get("state", {}).get("state") == "delegated"
+                state = "delegated"
+                terminal_call = call
+            elif action == "respond_skip":
+                response_valid &= call.result.get("state", {}).get("state") == "skipped"
+                state = "skipped"
+                terminal_call = call
+            else:
+                response_valid &= (
+                    call.arguments.get("evidence_state")
+                    in {"research_required", "prototype_required"}
+                    and call.result.get("state", {}).get("state")
+                    == "research_or_prototype_required"
+                )
+                state = "research_or_prototype_required"
+            valid &= response_valid
+        elif action == "feedback":
+            valid &= (
+                state == "awaiting_agent_feedback"
+                and nonempty_string(call.arguments.get("feedback"))
+                and call.result.get("state", {}).get("state") == "feedback_provided"
+            )
+            state = "feedback_provided"
+        elif action == "reconsider":
+            turns = [
+                turn
+                for turn in work.user_turns
+                if turn.turn_id == call.turn_id
+                and turn.text == call.arguments.get("user_turn")
+                and turn.sequence < call.sequence
+            ]
+            reconsider_valid = (
+                state == "feedback_provided"
+                and len(turns) == 1
+                and nonempty_string(call.arguments.get("rationale"))
+                and call.result.get("state", {}).get("state")
+                == "reconsideration_requested"
+            )
+            current_host_response_count += int(reconsider_valid)
+            valid &= reconsider_valid
+            state = "reconsideration_requested"
+        elif action == "complete":
+            valid &= (
+                state == "feedback_provided"
+                and call.result.get("state", {}).get("state") == "completed"
+                and call.result.get("workflow", {}).get("stage") == "ready_for_work"
+                and call.result.get("workflow", {}).get("blocks_ordinary_work") is False
+            )
+            state = "completed"
+            terminal_call = call
+        else:
+            valid = False
+    all_non_decision = all(
+        call.result.get("interaction_kind") == "learning_participation"
+        and call.result.get("canonical_decision") is False
+        for call in calls
+    )
+    valid = bool(
+        valid
+        and state in terminal_states
+        and terminal_call is not None
+        and terminal_call.completion_sequence < first_write_sequence
+        and all_non_decision
+    )
+    return valid, {
+        "deliberation_candidate_id": deliberation_id,
+        "actions": actions,
+        "current_host_response_count": current_host_response_count,
+        "pre_response_recommendation_absent": bool(begin) and not begin.result.get("rounds")
+        if begin is not None
+        else False,
+        "terminal_state": state,
+        "ready_for_work_after_terminal": bool(
+            terminal_call
+            and terminal_call.result.get("workflow", {}).get("stage") == "ready_for_work"
+        )
+        if state == "completed"
+        else state in {"delegated", "skipped"},
+        "transition_count": len([action for action in actions if action != "inspect"]),
     }
 
 
@@ -4606,83 +5025,31 @@ def learning_deliberation_facts(
             "learning_call_count": len(calls),
             "expected_deliberation": False,
         }
-    actions = [call.arguments.get("action") for call in calls]
-    by_action = {
-        action: [call for call in calls if call.arguments.get("action") == action]
-        for action in ("begin", "respond_select", "feedback", "complete")
-    }
-    singular = all(len(by_action[action]) == 1 for action in by_action)
-    if not singular:
-        return participation_ok, False, False, {
-            "participation_state": participation.get("state"),
-            "actions": actions,
-            "expected_deliberation": True,
-        }
-    begin, response, feedback, complete = (
-        by_action["begin"][0],
-        by_action["respond_select"][0],
-        by_action["feedback"][0],
-        by_action["complete"][0],
+    ordered, basis = learning_deliberation_trace(
+        work,
+        review_id=review_candidate_id,
+        dimension_id=dimension_id,
+        first_write_sequence=first_write_sequence,
     )
-    deliberation_id = begin.result.get("deliberation_candidate_id")
-    response_text = response.arguments.get("user_turn")
-    matching_user_turns = [
-        turn
-        for turn in work.user_turns
-        if turn.text == response_text and turn.sequence < response.sequence
-    ]
-    all_non_decision = all(
-        call.result.get("interaction_kind") == "learning_participation"
-        and call.result.get("canonical_decision") is False
-        for call in calls
-    )
-    no_pre_response_recommendation = (
-        not any("recommendation" in key for key in begin.arguments)
-        and not any("recommendation" in key for key in begin.result)
-        and not begin.result.get("rounds")
-    )
-    ordered = (
-        begin.sequence < response.sequence < feedback.sequence < complete.sequence
-        and complete.completion_sequence < first_write_sequence
-        and begin.arguments.get("review_candidate_id") == review_candidate_id
-        and begin.arguments.get("dimension_id") == dimension_id
-        and nonempty_string(deliberation_id)
-        and all(
-            call.arguments.get("deliberation_candidate_id") == deliberation_id
-            and call.result.get("deliberation_candidate_id") == deliberation_id
-            for call in (response, feedback, complete)
-        )
-        and begin.result.get("state", {}).get("state") == "awaiting_initial_response"
-        and response.result.get("state", {}).get("state") == "awaiting_agent_feedback"
-        and feedback.result.get("state", {}).get("state") == "feedback_provided"
-        and complete.result.get("state", {}).get("state") == "completed"
-        and bool(matching_user_turns)
-        and nonempty_string(response.arguments.get("user_rationale"))
-        and isinstance(response.arguments.get("selections"), list)
-        and bool(response.arguments["selections"])
-        and no_pre_response_recommendation
-        and nonempty_string(feedback.arguments.get("feedback"))
-        and complete.result.get("workflow", {}).get("stage") == "ready_for_work"
-        and complete.result.get("workflow", {}).get("blocks_ordinary_work") is False
-    )
+    canonical_decision_count = len([
+        row
+        for row in bundle.rows("decisions")
+        if row.get("project_id") == bundle.project_id
+    ])
     non_decision_ok = (
-        all_non_decision
+        all(
+            call.result.get("interaction_kind") == "learning_participation"
+            and call.result.get("canonical_decision") is False
+            for call in calls
+        )
         and not work.calls("decision_record")
-        and not [row for row in bundle.rows("decisions") if row.get("project_id") == bundle.project_id]
+        and canonical_decision_count == 0
     )
     return participation_ok, ordered, non_decision_ok, {
         "participation_state": participation.get("state"),
         "expected_deliberation": True,
-        "deliberation_candidate_id": deliberation_id,
-        "actions": actions,
-        "current_host_response_count": len(matching_user_turns),
-        "pre_response_recommendation_absent": no_pre_response_recommendation,
-        "terminal_state": complete.result.get("state", {}).get("state"),
-        "ready_for_work_after_terminal": complete.result.get("workflow", {}).get("stage")
-        == "ready_for_work",
-        "canonical_decision_count": len([
-            row for row in bundle.rows("decisions") if row.get("project_id") == bundle.project_id
-        ]),
+        **basis,
+        "canonical_decision_count": canonical_decision_count,
     }
 
 
@@ -5616,46 +5983,6 @@ def real_session_evidence(
         if resume_capture is not None and recall_call is not None
         else None
     )
-    continuation_paths = (
-        resume_capture.paths_after(first_inspection)
-        if resume_capture is not None and first_inspection is not None
-        else []
-    )
-    last_continuation_sequence = max(
-        (
-            item.sequence
-            for item in resume_capture.path_observations
-            if item.sequence > (first_inspection if first_inspection is not None else -1)
-        ),
-        default=None,
-    ) if resume_capture is not None else None
-    resume_validation_ok = meaningful_resume_validation(
-        resume_capture,
-        last_continuation_sequence
-        if last_continuation_sequence is not None
-        else first_inspection,
-    )
-    prior_inspections = []
-    if resume_capture is not None and recall_call is not None:
-        prior_inspections = [
-            sequence
-            for sequence in [
-                *(call.sequence for call in resume_capture.calls("repository_understanding")),
-                *(
-                    command.sequence
-                    for command in resume_capture.commands
-                    if command_is_repository_inspection(command.parsed_command)
-                ),
-            ]
-            if sequence < recall_call.sequence
-        ]
-    ordering_ok = (
-        resolution_ok
-        and recall_call is not None
-        and first_inspection is not None
-        and not prior_inspections
-        and recall_call.completion_sequence < first_inspection
-    )
     first_resume_write = min(
         (
             observation.sequence
@@ -5807,15 +6134,6 @@ def real_session_evidence(
         and recall_match_ok
         and recalled_goal_ok
     )
-    relevant_resume_paths = relevant_continuation_paths(continuation_paths, next_step)
-    change_continuation_ok = (
-        recall_match_ok
-        and fresh_ok
-        and ordering_ok
-        and resume_baseline_ok
-        and bool(relevant_resume_paths)
-        and resume_validation_ok
-    )
     checkpoint_work_state = (
         recalled_checkpoint_row.get("work_state")
         if recalled_checkpoint_row is not None
@@ -5826,37 +6144,36 @@ def real_session_evidence(
         if isinstance(recall_checkpoint, dict)
         else None
     )
-    contradictory_resume_behavior = False
-    if resume_capture is not None and first_inspection is not None:
-        contradictory_resume_behavior = any(
-            command.sequence > first_inspection
-            and isinstance(command.exit_code, int)
-            and command.exit_code != 0
-            for command in resume_capture.commands
-        ) or any(
-            call.sequence > first_inspection
-            and call.arguments.get("work_state") not in {None, "completed"}
-            for call in resume_capture.successful_calls("checkpoint_record")
-        )
-    verified_state_continuation_ok = (
-        recall_match_ok
-        and fresh_ok
-        and ordering_ok
-        and resume_baseline_ok
-        and checkpoint_work_state == "completed"
-        and recalled_work_state == "completed"
-        and not continuation_paths
-        and meaningful_resume_validation(resume_capture, first_inspection)
-        and not contradictory_resume_behavior
+    continuation_facts = resume_continuation_facts(
+        resume_capture,
+        recall_call,
+        next_step=next_step,
+        checkpoint_work_state=checkpoint_work_state,
+        recalled_work_state=recalled_work_state,
+        common_identity_and_freshness_ok=(
+            recall_match_ok
+            and fresh_ok
+            and resolution_ok
+            and (not resume_checkpoint_calls or resume_baseline_ok)
+        ),
+        change_baseline_ok=resume_baseline_ok and resume_materiality_ok,
     )
-    continuation_mode = (
-        "change_continuation"
-        if change_continuation_ok
-        else "verified_state_continuation"
-        if verified_state_continuation_ok
-        else None
-    )
+    first_inspection = continuation_facts["first_inspection_sequence"]
+    continuation_paths = continuation_facts["continuation_paths"]
+    relevant_resume_paths = continuation_facts["relevant_paths"]
+    resume_validation_ok = continuation_facts["change_numeric_exit_validation"]
+    ordering_ok = resolution_ok and continuation_facts["ordering_ok"]
+    change_continuation_ok = continuation_facts["change_continuation_qualified"]
+    verified_state_continuation_ok = continuation_facts[
+        "verified_state_continuation_qualified"
+    ]
+    continuation_mode = continuation_facts["mode"]
+    contradictory_resume_behavior = continuation_facts["contradictory_behavior"]
     continuation_ok = continuation_mode is not None
+    resume_baseline_requirement_ok = resume_baseline_ok or verified_state_continuation_ok
+    resume_materiality_requirement_ok = (
+        resume_materiality_ok or verified_state_continuation_ok
+    )
     resolved_material_question_not_reasked = (
         not is_user_owned_behavior(behavior_class)
         or (
@@ -5918,9 +6235,11 @@ def real_session_evidence(
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
         "repository_bound_project_resolution": evidence_check(references_present, resolution_ok),
         "recall_precedes_inspection_and_continuation": evidence_check(references_present, ordering_ok),
-        "resume_pre_work_repository_baseline": evidence_check(references_present, resume_baseline_ok),
+        "resume_pre_work_repository_baseline": evidence_check(
+            references_present, resume_baseline_requirement_ok
+        ),
         "resume_materiality_work_authority": evidence_check(
-            references_present, resume_materiality_ok
+            references_present, resume_materiality_requirement_ok
         ),
         "recall_matches_checkpoint_decision_and_context": evidence_check(references_present, recall_match_ok),
         "learning_recall_continuity": evidence_check(
@@ -5948,11 +6267,16 @@ def real_session_evidence(
             "repository_bound_project_resolution": resolution_ok,
             "recall_before_inspection_and_continuation": ordering_ok,
             "pre_work_repository_baseline": resume_baseline_ok,
+            "pre_work_repository_baseline_required": continuation_mode
+            == "change_continuation",
             "pre_work_analysis_snapshot_id": resume_baseline_analysis_id,
             "materiality_work_authority": resume_materiality_basis,
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
             "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
+            "post_inspection_numeric_exit_validation": continuation_facts[
+                "post_inspection_numeric_exit_validation"
+            ],
             "recalled_checkpoint_work_state": checkpoint_work_state,
             "continuation_mode": continuation_mode,
             "change_continuation_qualified": change_continuation_ok,
@@ -7962,7 +8286,15 @@ def real_session_fixture(
     learning_response_call = f"{kind}-learning-response-call-{cycle}"
     learning_feedback_call = f"{kind}-learning-feedback-call-{cycle}"
     learning_complete_call = f"{kind}-learning-complete-call-{cycle}"
-    materiality_disposition = expected_materiality_disposition(behavior_class)
+    materiality_disposition = {
+        "explicit_user_owned_decision": "unresolved_user_owned_outcome",
+        "hidden_user_owned_decision": "unresolved_user_owned_outcome",
+        "research_or_no_question": "repository_or_environment_fact",
+        "delegated_implementation_choice": "delegated_implementation_choice",
+        "exploratory_uncertainty": "exploratory_uncertainty",
+        "learning_deliberation": "agent_owned_implementation_choice",
+        "learning_routine_control": "agent_owned_implementation_choice",
+    }[behavior_class]
     delegation_statement = "choose the internal helper naming and module structure"
     delegation_scope = "internal helper naming and module structure"
     learning_active = behavior_class in {
@@ -12579,6 +12911,78 @@ def self_test() -> int:
         )
         store_capture(fixture, "work", path, events)
 
+    def insert_successful_mcp_completion_before(
+        fixture: dict[str, Any],
+        *,
+        before_call_marker: str,
+        call_id: str,
+        operation: str,
+        arguments: dict[str, Any],
+        structured: dict[str, Any],
+        user_turn: str | None = None,
+    ) -> None:
+        path, events = capture_events(fixture, "work")
+        insertion_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "custom_tool_call"
+            and before_call_marker in str(value.get("payload", {}).get("call_id"))
+        )
+        turn_id = (
+            events[insertion_index]
+            .get("payload", {})
+            .get("internal_chat_message_metadata_passthrough", {})
+            .get("turn_id")
+        )
+        inserted: list[dict[str, Any]] = []
+        if user_turn is not None:
+            inserted.append({
+                "type": "event_msg",
+                "payload": {
+                    "type": "user_message",
+                    "client_id": f"client-{call_id}",
+                    "message": user_turn,
+                },
+            })
+        encoded_arguments = json.dumps(arguments, separators=(",", ":"))
+        inserted.append({
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "id": f"ctc-{call_id}",
+                "call_id": call_id,
+                "name": "exec",
+                "status": "completed",
+                "input": (
+                    f"const r=await tools.mcp__volicord__{operation}({encoded_arguments});\n"
+                    'for(const c of (r.content||[])) if(c.type==="text") text(c.text);\n'
+                ),
+                "internal_chat_message_metadata_passthrough": {"turn_id": turn_id},
+            },
+        })
+        inserted.append({
+            "type": "event_msg",
+            "payload": {
+                "type": "mcp_tool_call_end",
+                "call_id": f"exec-{call_id}",
+                "invocation": {
+                    "server": "volicord",
+                    "tool": operation,
+                    "arguments": arguments,
+                },
+                "duration": {"secs": 0, "nanos": 1},
+                "result": {
+                    "Ok": {
+                        "content": [{"type": "text", "text": json.dumps(structured)}],
+                        "structuredContent": structured,
+                        "isError": False,
+                    }
+                },
+            },
+        })
+        events[insertion_index:insertion_index] = inserted
+        store_capture(fixture, "work", path, events)
+
     def replace_initial_task_text(
         fixture: dict[str, Any], replacement: Callable[[str], str]
     ) -> None:
@@ -12716,6 +13120,36 @@ def self_test() -> int:
     ):
         raise AssertionError("Materiality Review qualified without correlated engineering-choice discovery")
 
+    hidden_without_investigation = real_session_fixture(
+        "volicord",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="hidden_user_owned_decision",
+    )
+    hidden_path, hidden_events = capture_events(hidden_without_investigation, "work")
+    hidden_events = [
+        value
+        for value in hidden_events
+        if "hidden-inspection-call"
+        not in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    store_capture(
+        hidden_without_investigation,
+        "work",
+        hidden_path,
+        hidden_events,
+    )
+    if real_session_evidence(
+        hidden_without_investigation,
+        kind="volicord",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["hidden_material_discovery_order"] != "failed":
+        raise AssertionError(
+            "hidden user-owned choice qualified without pre-discovery repository investigation"
+        )
+
     missing_learning_feedback = real_session_fixture(
         "volicord",
         3,
@@ -12756,6 +13190,137 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["learning_deliberation_order"] != "failed":
         raise AssertionError("pre-response Learning Deliberation recommendation anchoring qualified")
+
+    multi_round_learning = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    learning_project = "01" * 16
+    learning_candidate = "1e" * 16
+    reconsider_text = "I want to reconsider after seeing that feedback."
+    second_selection_text = "Use the keyed index after all; the lookup trade-off matters here."
+    insert_successful_mcp_completion_before(
+        multi_round_learning,
+        before_call_marker="learning-complete-call",
+        call_id="learning-reconsider-round",
+        operation="learning_deliberation",
+        arguments={
+            "action": "reconsider",
+            "project_id": learning_project,
+            "deliberation_candidate_id": learning_candidate,
+            "user_turn": reconsider_text,
+            "rationale": "The feedback changed the lookup trade-off.",
+        },
+        structured={
+            "action": "reconsider",
+            "interaction_kind": "learning_participation",
+            "canonical_decision": False,
+            "deliberation_candidate_id": learning_candidate,
+            "state": {"state": "reconsideration_requested", "round": 0},
+            "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+        },
+        user_turn=reconsider_text,
+    )
+    insert_successful_mcp_completion_before(
+        multi_round_learning,
+        before_call_marker="learning-complete-call",
+        call_id="learning-second-selection",
+        operation="learning_deliberation",
+        arguments={
+            "action": "respond_select",
+            "project_id": learning_project,
+            "deliberation_candidate_id": learning_candidate,
+            "user_turn": second_selection_text,
+            "user_rationale": "The lookup trade-off now dominates.",
+            "selections": [{"choice_id": "operator-error-boundary", "alternative_id": "keyed-index"}],
+        },
+        structured={
+            "action": "respond_select",
+            "interaction_kind": "learning_participation",
+            "canonical_decision": False,
+            "deliberation_candidate_id": learning_candidate,
+            "state": {"state": "awaiting_agent_feedback", "round": 1},
+            "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+        },
+        user_turn=second_selection_text,
+    )
+    insert_successful_mcp_completion_before(
+        multi_round_learning,
+        before_call_marker="learning-complete-call",
+        call_id="learning-second-feedback",
+        operation="learning_deliberation",
+        arguments={
+            "action": "feedback",
+            "project_id": learning_project,
+            "deliberation_candidate_id": learning_candidate,
+            "feedback": "The keyed index improves direct lookup but must preserve deterministic ordering.",
+            "recommendation_selections": [{"choice_id": "operator-error-boundary", "alternative_id": "keyed-index"}],
+            "recommendation_rationale": "The clarified lookup need justifies the synchronization cost.",
+        },
+        structured={
+            "action": "feedback",
+            "interaction_kind": "learning_participation",
+            "canonical_decision": False,
+            "deliberation_candidate_id": learning_candidate,
+            "state": {"state": "feedback_provided", "round": 1},
+            "workflow": {"stage": "learning_deliberation", "blocks_ordinary_work": True},
+        },
+    )
+    multi_round_result = real_session_evidence(
+        multi_round_learning,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )
+    if (
+        multi_round_result["checks"]["learning_deliberation_order"] != "passed"
+        or multi_round_result["learning_basis"]["terminal_state"] != "completed"
+        or multi_round_result["learning_basis"]["transition_count"] != 7
+    ):
+        raise AssertionError(
+            "valid Learning reconsideration lifecycle did not qualify: "
+            f"{multi_round_result['checks']} {multi_round_result['learning_basis']} "
+            f"{[(call.arguments.get('action'), call.outcome, call.result) for call in load_codex_capture(evidence_directory / multi_round_learning['evidence']['captures']['work']['file']).calls('learning_deliberation')]}"
+        )
+
+    malformed_multi_round = real_session_fixture(
+        "volicord",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+    insert_successful_mcp_completion_before(
+        malformed_multi_round,
+        before_call_marker="learning-feedback-call",
+        call_id="learning-early-reconsider",
+        operation="learning_deliberation",
+        arguments={
+            "action": "reconsider",
+            "project_id": learning_project,
+            "deliberation_candidate_id": learning_candidate,
+            "user_turn": reconsider_text,
+            "rationale": "Too early.",
+        },
+        structured={
+            "action": "reconsider",
+            "interaction_kind": "learning_participation",
+            "canonical_decision": False,
+            "deliberation_candidate_id": learning_candidate,
+            "state": {"state": "reconsideration_requested"},
+        },
+        user_turn=reconsider_text,
+    )
+    if real_session_evidence(
+        malformed_multi_round,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["learning_deliberation_order"] != "failed":
+        raise AssertionError("Learning reconsideration before feedback qualified")
 
     manufactured_learning_decision = real_session_fixture(
         "volicord",
@@ -12872,6 +13437,357 @@ def self_test() -> int:
         != "failed"
     ):
         raise AssertionError("a Candidate without an explicit Decision qualified")
+
+    researched_explicit = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_mcp_call_action(
+        researched_explicit,
+        "work",
+        "candidate_manage",
+        "submit_question_from_materiality",
+        lambda arguments: arguments.update({"research_state": "research_required"}),
+    )
+    mutate_custom_output(
+        researched_explicit,
+        "work",
+        "candidate-submit-call",
+        lambda output: output.update({"research_state": "research_required"}),
+    )
+    insert_successful_mcp_completion_before(
+        researched_explicit,
+        before_call_marker="candidate-promote-call",
+        call_id="explicit-repository-research",
+        operation="candidate_manage",
+        arguments={
+            "action": "attach_repository_research",
+            "project_id": "01" * 16,
+            "candidate_id": "10" * 16,
+            "capability": "structural",
+            "coverage": "current adapter and tests",
+            "freshness": "current",
+            "source_ids": ["0f" * 16],
+            "evidence_assessment": "sufficient",
+            "limits": [],
+        },
+        structured={
+            "action": "attach_repository_research",
+            "candidate_id": "10" * 16,
+            "candidate_revision": 2,
+            "research_state": "research_required",
+            "canonical_mutation": False,
+            "promoted": False,
+        },
+    )
+    insert_successful_mcp_completion_before(
+        researched_explicit,
+        before_call_marker="candidate-promote-call",
+        call_id="explicit-research-ready",
+        operation="candidate_manage",
+        arguments={
+            "action": "mark_research_ready",
+            "project_id": "01" * 16,
+            "candidate_id": "10" * 16,
+        },
+        structured={
+            "action": "mark_research_ready",
+            "candidate_id": "10" * 16,
+            "candidate_revision": 3,
+            "research_state": "ready_to_ask",
+            "canonical_mutation": False,
+            "promoted": False,
+        },
+    )
+    researched_capture_path = (
+        evidence_directory
+        / researched_explicit["evidence"]["captures"]["work"]["file"]
+    )
+    researched_capture = load_codex_capture(researched_capture_path)
+    initial_review = next(
+        call
+        for call in researched_capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+    )
+    insert_successful_mcp_completion_before(
+        researched_explicit,
+        before_call_marker="materiality-revision-call",
+        call_id="explicit-intermediate-review-revision",
+        operation="materiality_review",
+        arguments={
+            "action": "revise",
+            "project_id": "01" * 16,
+            "review_candidate_id": "18" * 16,
+            "rationale": "Preserve the unresolved dimensions while repository research completes.",
+            "learning_participation": {"state": "inactive"},
+            "judgments": initial_review.arguments["judgments"],
+        },
+        structured={
+            "action": "revise",
+            "review_candidate_id": "18" * 16,
+            "review_revision": 2,
+            "goal_context_id": "08" * 16,
+            "baseline_analysis_snapshot_id": "0b" * 32,
+            "review_analysis_snapshot_id": "aa" * 32,
+            "canonical_mutation": False,
+            "workflow": initial_review.result["workflow"],
+        },
+    )
+    mutate_custom_output(
+        researched_explicit,
+        "work",
+        "materiality-revision-call",
+        lambda output: output.update({"review_revision": 3}),
+    )
+    insert_successful_mcp_completion_before(
+        researched_explicit,
+        before_call_marker="patch-call",
+        call_id="unrelated-materiality-discovery",
+        operation="engineering_choice_discovery",
+        arguments={
+            "project_id": "01" * 16,
+            "goal_context_id": "fe" * 16,
+            "baseline_analysis_snapshot_id": "fd" * 32,
+            "choices": [{"choice_id": "unrelated-choice"}],
+        },
+        structured={
+            "action": "record",
+            "discovery_candidate_id": "fc" * 16,
+            "goal_context_id": "fe" * 16,
+            "baseline_analysis_snapshot_id": "fd" * 32,
+        },
+    )
+    insert_successful_mcp_completion_before(
+        researched_explicit,
+        before_call_marker="patch-call",
+        call_id="unrelated-materiality-record",
+        operation="materiality_review",
+        arguments={
+            "action": "record",
+            "project_id": "01" * 16,
+            "engineering_choice_discovery_candidate_id": "fc" * 16,
+            "rationale": "A separate bounded review.",
+            "learning_participation": {"state": "inactive"},
+            "judgments": [],
+        },
+        structured={
+            "action": "record",
+            "review_candidate_id": "fb" * 16,
+            "review_revision": 1,
+            "goal_context_id": "fe" * 16,
+            "baseline_analysis_snapshot_id": "fd" * 32,
+            "review_analysis_snapshot_id": "fa" * 32,
+            "workflow": {"stage": "ready_for_work", "blocks_ordinary_work": False},
+        },
+    )
+    researched_result = real_session_evidence(
+        researched_explicit,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        researched_result["status"] != "passed"
+        or not researched_result["inquiry_behavior_basis"][
+            "ask_user_question_basis"
+        ]["repository_research_lifecycle_observed"]
+        or researched_result["inquiry_behavior_basis"][
+            "materiality_review_basis"
+        ]["revision_count"]
+        != 2
+    ):
+        raise AssertionError(
+            "explicit researched Question path or identity-correlated revisions did not qualify"
+        )
+    researched_capture = load_codex_capture(researched_capture_path)
+    researched_checkpoint = terminal_checkpoint_call(researched_capture)
+    researched_baseline = selected_checkpoint_baseline_call(
+        researched_capture, researched_checkpoint
+    )
+    researched_first_write = min(
+        item.sequence for item in meaningful_work_path_observations(researched_capture)
+    )
+    if work_blocker_behavior_observations(
+        researched_capture,
+        "explicit_user_owned_decision",
+        researched_baseline,
+        researched_first_write,
+    ) != (True, True, True):
+        raise AssertionError(
+            "work blocker rejected explicit research or unrelated Materiality records"
+        )
+
+    def exploratory_research_fixture(*, resolve_before_work: bool) -> dict[str, Any]:
+        fixture = real_session_fixture(
+            "polyglot-medium",
+            2,
+            revision,
+            evidence_directory,
+            behavior_class="exploratory_uncertainty",
+        )
+
+        def require_research(arguments: dict[str, Any]) -> None:
+            primary = next(
+                judgment
+                for judgment in arguments["judgments"]
+                if judgment["choice_id"] == "operator-error-boundary"
+            )
+            primary["exploratory_disposition"] = "research_required"
+            primary["research_basis"] = [
+                "the inspected adapter leaves the consequence unresolved"
+            ]
+
+        mutate_mcp_call_action(
+            fixture,
+            "work",
+            "materiality_review",
+            "record",
+            require_research,
+        )
+
+        def block_for_research(output: dict[str, Any]) -> None:
+            output["workflow"].update({
+                "stage": "evidence_required",
+                "disposition": "research_required",
+                "required_next_action": {
+                    "tool": "repository_analyze",
+                    "action": "refresh",
+                },
+                "blocks_ordinary_work": True,
+                "unresolved_requirements": [{
+                    "dimension_id": "operator-error-boundary",
+                    "reason": "repository evidence must settle the exploratory path",
+                    "basis_identities": [],
+                }],
+            })
+
+        mutate_custom_output(
+            fixture,
+            "work",
+            "materiality-call",
+            block_for_research,
+        )
+        capture_path = evidence_directory / fixture["evidence"]["captures"]["work"]["file"]
+        capture = load_codex_capture(capture_path)
+        record = next(
+            call
+            for call in capture.successful_calls("materiality_review")
+            if call.arguments.get("action") == "record"
+        )
+        resolved_judgments = json.loads(json.dumps(record.arguments["judgments"]))
+        resolved_primary = next(
+            judgment
+            for judgment in resolved_judgments
+            if judgment["choice_id"] == "operator-error-boundary"
+        )
+        resolved_primary["exploratory_disposition"] = "resolved_by_research"
+        resolved_primary["research_basis"] = [
+            "targeted repository research established the bounded path"
+        ]
+        resolved_workflow = json.loads(json.dumps(record.result["workflow"]))
+        resolved_workflow.update({
+            "stage": "ready_for_work",
+            "disposition": "ready_for_work",
+            "required_next_action": {"tool": "checkpoint_record", "action": None},
+            "blocks_ordinary_work": False,
+            "unresolved_requirements": [],
+        })
+        resolution_call_id = "exploratory-research-resolution"
+        insert_successful_mcp_completion_before(
+            fixture,
+            before_call_marker="patch-call",
+            call_id=resolution_call_id,
+            operation="materiality_review",
+            arguments={
+                "action": "revise",
+                "project_id": "01" * 16,
+                "review_candidate_id": "18" * 16,
+                "rationale": "Apply the targeted research result before ordinary work.",
+                "learning_participation": {"state": "inactive"},
+                "judgments": resolved_judgments,
+            },
+            structured={
+                "action": "revise",
+                "review_candidate_id": "18" * 16,
+                "review_revision": 2,
+                "goal_context_id": "08" * 16,
+                "baseline_analysis_snapshot_id": "0b" * 32,
+                "review_analysis_snapshot_id": "ab" * 32,
+                "canonical_mutation": False,
+                "workflow": resolved_workflow,
+            },
+        )
+        if not resolve_before_work:
+            path, events = capture_events(fixture, "work")
+            moved = [
+                value
+                for value in events
+                if resolution_call_id in str(value.get("payload", {}).get("call_id", ""))
+            ]
+            events = [
+                value
+                for value in events
+                if resolution_call_id not in str(value.get("payload", {}).get("call_id", ""))
+            ]
+            write_index = next(
+                index
+                for index, value in enumerate(events)
+                if value.get("payload", {}).get("type") == "patch_apply_end"
+            )
+            events[write_index + 1:write_index + 1] = moved
+            store_capture(fixture, "work", path, events)
+        return fixture
+
+    exploratory_researched = exploratory_research_fixture(resolve_before_work=True)
+    if real_session_evidence(
+        exploratory_researched,
+        kind="polyglot-medium",
+        cycle=2,
+        repository_revision=revision,
+    )["status"] != "passed":
+        raise AssertionError(
+            "exploratory research followed by a ready revision before work was rejected"
+        )
+
+    exploratory_write_before_ready = exploratory_research_fixture(
+        resolve_before_work=False
+    )
+    if real_session_evidence(
+        exploratory_write_before_ready,
+        kind="polyglot-medium",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError(
+            "exploratory ordinary work before its ready revision qualified"
+        )
+
+    explicit_write_before_decision = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    early_path, early_events = capture_events(explicit_write_before_decision, "work")
+    patch_index = next(
+        index
+        for index, value in enumerate(early_events)
+        if value.get("payload", {}).get("type") == "patch_apply_end"
+    )
+    patch_event = early_events.pop(patch_index)
+    decision_index = next(
+        index
+        for index, value in enumerate(early_events)
+        if value.get("payload", {}).get("type") == "mcp_tool_call_end"
+        and "decision-call" in str(value.get("payload", {}).get("call_id", ""))
+    )
+    early_events.insert(decision_index, patch_event)
+    store_capture(
+        explicit_write_before_decision, "work", early_path, early_events
+    )
+    if real_session_evidence(
+        explicit_write_before_decision,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("explicit affected work before Decision qualified")
 
     trivial_choice_question = real_session_fixture(
         "small-python",
@@ -13328,6 +14244,70 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["pre_write_materiality_work_authority"] != "passed":
         raise AssertionError("valid mixed-disposition Materiality Review was rejected")
+
+    settled_research_control = real_session_fixture(
+        "small-python",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
+    )
+
+    def settle_research_control(arguments: dict[str, Any]) -> None:
+        primary = arguments["judgments"][0]
+        primary["disposition"] = "settled_authority"
+        primary["contract_basis"] = [
+            "the accepted repository contract already settles this choice"
+        ]
+
+    mutate_mcp_call_action(
+        settled_research_control,
+        "work",
+        "materiality_review",
+        "record",
+        settle_research_control,
+    )
+    if real_session_evidence(
+        settled_research_control,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "passed":
+        raise AssertionError(
+            "research/no-question behavior was coupled to one exact disposition label"
+        )
+
+    factual_learning_control = real_session_fixture(
+        "small-python",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_routine_control",
+    )
+    mutate_mcp_call_action(
+        factual_learning_control,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["judgments"][0].update(
+            {"disposition": "repository_or_environment_fact"}
+        ),
+    )
+    factual_learning_result = real_session_evidence(
+        factual_learning_control,
+        kind="small-python",
+        cycle=3,
+        repository_revision=revision,
+    )
+    if (
+        factual_learning_result["checks"]["pre_write_materiality_work_authority"]
+        != "passed"
+        or factual_learning_result["checks"]["learning_interruption_precision"]
+        != "passed"
+    ):
+        raise AssertionError(
+            "routine learning behavior was coupled to one exact non-user disposition label"
+        )
 
     for label, mutation in (
         (
@@ -14797,6 +15777,15 @@ def self_test() -> int:
         if value.get("payload", {}).get("type") != "patch_apply_end"
     ]
     store_capture(verified_completed_state, "resume", verified_path, verified_events)
+    for operation in (
+        "repository_analyze",
+        "engineering_choice_discovery",
+        "materiality_review",
+        "checkpoint_record",
+    ):
+        remove_successful_mcp_operations(
+            verified_completed_state, "resume", operation
+        )
 
     def mark_canonical_checkpoint_completed(bundle: dict[str, Any]) -> None:
         for table_value in bundle["payload"]["tables"]:
@@ -14826,8 +15815,14 @@ def self_test() -> int:
         or verified_completed_result["continuation_basis"]["continuation_mode"]
         != "verified_state_continuation"
         or verified_completed_result["continuation_paths"]
+        or verified_completed_result["continuation_basis"][
+            "pre_work_repository_baseline_required"
+        ]
+        or load_codex_capture(verified_path).successful_calls("checkpoint_record")
     ):
-        raise AssertionError("completed recalled state could not qualify through inspection and verification")
+        raise AssertionError(
+            "completed recalled state could not qualify through read-only inspection and verification"
+        )
 
     recall_and_stop = real_session_fixture("volicord", 1, revision, evidence_directory)
     stop_path, stop_events = capture_events(recall_and_stop, "resume")
@@ -14931,7 +15926,12 @@ def self_test() -> int:
         "user_turn_deduplication_and_conflict_rejection": "passed",
         "malformed_current_user_turn_rejected": "passed",
         "engineering_choice_discovery_required": "passed",
+        "hidden_pre_discovery_investigation_required": "passed",
+        "explicit_researched_question_and_identity_correlated_revisions": "passed",
+        "explicit_decision_before_affected_write_required": "passed",
         "learning_feedback_order_required": "passed",
+        "learning_reconsideration_and_repeated_rounds": "passed",
+        "malformed_learning_transition_order_rejected": "passed",
         "learning_pre_response_anchoring_rejected": "passed",
         "learning_cannot_manufacture_decision": "passed",
         "learning_routine_interruption_rejected": "passed",
@@ -14947,6 +15947,9 @@ def self_test() -> int:
         "delegated_stale_source_rejected": "passed",
         "multi_dimension_no_question_and_user_owned_positive_paths": "passed",
         "mixed_materiality_dispositions_coexist": "passed",
+        "non_user_disposition_families": "passed",
+        "exploratory_pre_write_resolution": "passed",
+        "exploratory_post_write_resolution_rejected": "passed",
         "dimension_identity_not_array_position": "passed",
         "duplicate_and_missing_dimension_identity_rejected": "passed",
         "unresolved_extra_user_owned_dimension_rejected": "passed",

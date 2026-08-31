@@ -539,12 +539,14 @@
         "Decision and ready-for-work Materiality revision before affected work"
       ],
       "non_user_owned_classes": {
-        "research_or_no_question": "repository_or_environment_fact with no Candidate, Question, or Decision",
+        "research_or_no_question": "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision",
         "delegated_implementation_choice": "current Goal delegation with no manufactured Candidate, Question, or Decision",
-        "exploratory_uncertainty": "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision",
-        "learning_deliberation": "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision",
-        "learning_routine_control": "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
+        "exploratory_uncertainty": "evidence-backed exploratory disposition that is ready at record or is resolved through a same-review revision before affected work, with no manufactured Candidate, Question, or Decision",
+        "learning_deliberation": "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, to terminal ready-for-work before affected work with no canonical Decision",
+        "learning_routine_control": "active participation, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
       },
+      "materiality_correlation": "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, review_candidate_id, dimension_id, and ordered review_revision",
+      "behavior_class_exact_disposition_oracle": false,
       "all_behavior_classes_require_inquiry": false
     },
     "resume_session_contract": [
@@ -553,8 +555,8 @@
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
       "Recall preserves completed learning context as learning participation rather than a canonical Decision",
-      "after Recall a fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
-      "after the fresh resume baseline, recompute Materiality Review/work authority before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
+      "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
+      "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
       "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
       "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
       "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",

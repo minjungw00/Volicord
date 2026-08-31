@@ -1017,6 +1017,21 @@ cover해야 하고 research/recommendation/convention/accepted contract/Decision
 scope가 모든 coupled dimension identity를 실제 포함할 때만 함께 적용된다. Revision array 순서가
 바뀌어도 결과는 같지만 duplicate/missing identity, stale Goal/baseline, late first review와 authority
 chain에서 사라진 dimension은 실패한다.
+Evaluator는 unrelated Goal/baseline/Discovery의 Materiality record를 current work authority로
+세지 않는다. Current record와 후속 revisions는 Goal, baseline, Discovery candidate,
+`review_candidate_id`, stable `dimension_id`와 monotonic `review_revision`으로 correlate하며 valid
+intermediate revision이 하나보다 많다는 이유만으로 실패시키지 않는다.
+Explicit user-owned Question Candidate는 evidence가 이미 충분하면 direct `ready_to_ask`일 수 있고,
+필요한 경우 repository research attachment와 ready transition 뒤 promotion할 수 있다. 두 경로
+모두 exact current-host response, Decision, 같은 material dimension의 ready revision이 affected
+write보다 먼저 완료되어야 한다. Hidden user-owned path의 meaningful pre-Discovery repository
+investigation 요구는 이 선택적 explicit research allowance로 약화되지 않는다.
+Learning Deliberation은 begin 뒤 current-host response와 feedback의 ordered rounds를 처리하며
+legal reconsider transition 뒤 response/feedback round를 반복할 수 있다. Affected write보다 먼저
+completed/delegated/skipped terminal state와 ready workflow에 도달해야 하고 Learning participation을
+Decision authority로 재분류하지 않는다. Exploratory uncertainty가 initial blocking research 또는
+prototype requirement를 남기면 같은 review와 dimension identity의 evidence-backed ready revision이
+affected write보다 먼저 완료되어야 하며 post-write revision은 pre-work authority를 복구하지 못한다.
 Work session은 pause/handoff history를 포함해 하나 이상의 successful Checkpoint를 가질 수
 있다. Qualification은 마지막 meaningful repository change 뒤의 latest Checkpoint candidate를
 terminal state로 결정하며 malformed final candidate에서 earlier valid Checkpoint로 fallback하지
@@ -1032,12 +1047,12 @@ Recall은 이 successful resolution 뒤, repository inspection/continuation 전�
 Resume session은 identity를 얻기 위해 `project_initialize`로 replacement Project를
 만들 수 없다. Work/resume session의 global distinctness 조건은 그대로 유지한다.
 
-Fresh resume session은 successful Recall 뒤 local `repository_analyze` baseline을 만들고
-그 Analysis Snapshot identity를 첫 ordinary repository write 전에 보존한다. Change
-continuation의 eventual grounded Checkpoint는 이 exact pre-write identity를 사용하며 first
-post-edit analysis는 baseline으로 qualification되지 않는다. Current provenance가 edit ordering을
-deterministically 증명하지 못하므로 timestamp나 dirty-state heuristic으로 이를 대체하지 않고
-rollout operation order와 exact identity linkage로 검증한다.
+Fresh resume session에서 ordinary work가 계속되면 successful Recall 뒤 local
+`repository_analyze` baseline을 만들고 그 Analysis Snapshot identity를 첫 ordinary repository
+write 전에 보존한다. Change continuation의 eventual grounded Checkpoint는 이 exact pre-write
+identity를 사용하며 first post-edit analysis는 baseline으로 qualification되지 않는다. Current
+provenance가 edit ordering을 deterministically 증명하지 못하므로 timestamp나 dirty-state
+heuristic으로 이를 대체하지 않고 rollout operation order와 exact identity linkage로 검증한다.
 Work와 resume session에 추가 successful `repository_analyze`가 first write 전, write 뒤 또는
 validation 뒤 존재할 수 있다. Qualification은 analysis call count나 first-call heuristic을 쓰지
 않고 각 applicable Checkpoint의 `baseline_analysis_snapshot_id`와 일치하는 same-Project
@@ -1046,12 +1061,14 @@ successful analysis evidence를 선택해 required Goal/Recall boundary 뒤와 f
 post-write baseline substitution은 실패한다.
 
 Resume continuation은 두 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
-relevant repository change와 그 뒤의 별도 numeric-exit validation을 요구한다.
+pre-write baseline, current Materiality work authority, relevant repository change, 그 뒤의 별도
+numeric-exit validation과 grounded Checkpoint를 요구한다.
 `verified_state_continuation`은 recalled terminal Checkpoint가 `completed`이고 inspection이
 그 state가 current임을 확인하며 post-inspection numeric-exit validation이 있고 final behavior가
-completed state와 충돌하지 않을 때 source mutation 없이 통과할 수 있다. Paused/in-progress
-Checkpoint나 meaningful unfinished next step이 있는 state는 no-change mode를 사용할 수 없고,
-Recall 뒤 inspection/validation 없이 끝난 session도 통과하지 않는다.
+completed state와 충돌하지 않을 때 source mutation, 새 Discovery, 새 Materiality Review 또는 새
+Checkpoint 없이 통과할 수 있다. Paused/in-progress Checkpoint나 meaningful unfinished next step이
+있는 state는 no-change mode를 사용할 수 없고, Recall 뒤 inspection/validation 없이 끝난
+session도 통과하지 않는다.
 
 Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
 evidence를 확인한다. Activation이 없으면 operator/environment setup failure로 분류하고 그

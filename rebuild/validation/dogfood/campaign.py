@@ -2067,8 +2067,6 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
     checkpoints = capture.successful_calls("checkpoint_record")
     if len(resolves) != 1 or len(recalls) != 1 or capture.successful_calls("project_initialize"):
         raise CampaignError("resume must resolve one existing Project and must not initialize a replacement")
-    if not checkpoints:
-        raise CampaignError("resume must retain its pre-work analysis baseline in a Checkpoint")
     resolve, recall = resolves[0], recalls[0]
     project_id = resolve.result.get("project_id")
     if (
@@ -2094,7 +2092,7 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         (item.sequence for item in meaningful_changes),
         default=None,
     )
-    if not all(
+    change_baseline_ok = bool(checkpoints) and all(
         harness.checkpoint_baseline_is_pre_work(
             capture,
             checkpoint,
@@ -2103,9 +2101,32 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
             first_write_sequence=first_write,
         )
         for checkpoint in checkpoints
-    ):
+    )
+    recalled_checkpoint = recall.result.get("checkpoint")
+    continuation = harness.resume_continuation_facts(
+        capture,
+        recall,
+        next_step=(
+            recalled_checkpoint.get("next_step")
+            if isinstance(recalled_checkpoint, dict)
+            else recall.result.get("next_step")
+        ),
+        checkpoint_work_state=(
+            recalled_checkpoint.get("work_state")
+            if isinstance(recalled_checkpoint, dict)
+            else None
+        ),
+        recalled_work_state=(
+            recalled_checkpoint.get("work_state")
+            if isinstance(recalled_checkpoint, dict)
+            else None
+        ),
+        common_identity_and_freshness_ok=(not checkpoints or change_baseline_ok),
+        change_baseline_ok=change_baseline_ok,
+    )
+    if continuation["mode"] is None:
         raise CampaignError(
-            "resume Checkpoint baseline identity, Project, Recall boundary, or pre-write ordering is invalid"
+            "resume does not satisfy change-continuation or verified-state-continuation invariants"
         )
     return str(project_id)
 
