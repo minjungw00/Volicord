@@ -79,10 +79,14 @@ delegation을 추론하지 않고 research, recommendation, convention, accepted
 Decision authority와 합치지 않는다. 이 review는 일곱 번째 canonical entity, user Decision 또는
 ordinary-write permission이 아니다. 첫 authoritative review가 meaningful repository
 mutation 전이었는지와 이후 evidence revision을 구분한다. Maintained baseline/current repository
-evidence가 agent/delegated dimension의 affected path 변경 뒤 user-owned correction을
-deterministically 보이면 late correction과 affected path를 보존하고 이후 Decision을 prospective
-authority로만 취급한다. 관찰할 수 없는 chronology는 발명하지 않으며 restart 뒤에도 unresolved
-dimension이나 late affected work를 completed authority로 재분류하지 않는다.
+evidence가 dimension의 affected path 변경 뒤 disposition, authority anchor, blocking readiness 또는
+affected-scope applicability 변경을 deterministically 보이면 late work-authority revision과 affected
+path를 보존하고 변경된 meaning을 prospective로만 취급한다. 이는 agent/delegated에서 user-owned로
+고친 경우뿐 아니라 delegated에서 repository fact/agent-owned로 바꾼 경우와 blocking exploratory/
+learning state를 ready로 바꾼 경우도 포함한다. Rationale, summary와 authority/readiness/
+applicability를 바꾸지 않는 설명 metadata 수정은 marker를 만들지 않는다. 관찰할 수 없는
+chronology는 발명하지 않으며 restart 뒤에도 unresolved dimension이나 late affected work를 completed
+authority로 재분류하지 않는다.
 
 `Engineering Choice Discovery`도 Session Candidate이며 Materiality Review보다 먼저 존재한다.
 Project, current Goal과 exact pre-work Analysis Snapshot에 bind되고 stable choice identity,

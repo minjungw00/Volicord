@@ -948,6 +948,21 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
             .as_str()
             .is_some_and(|guidance| guidance.contains("no exact authority"))
     );
+    assert!(
+        draft["authority_decision_checklist"]["hidden_boundary_instruction"]
+            .as_str()
+            .is_some_and(|guidance| guidance.contains("overall Goal is not blanket authority"))
+    );
+    assert!(
+        draft["authority_decision_checklist"]["outcomes"]["agent_owned_implementation_choice"]
+            .as_str()
+            .is_some_and(|guidance| guidance.contains("material user-facing policy is settled"))
+    );
+    assert!(
+        draft["authority_decision_checklist"]["authority_revision_chronology"]
+            .as_str()
+            .is_some_and(|guidance| guidance.contains("blocking readiness"))
+    );
     let templates = draft["judgment_templates"]
         .as_array()
         .expect("judgment templates");

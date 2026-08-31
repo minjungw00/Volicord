@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 8. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 9. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The Candidate kinds preserve bounded origin, collection scope,
@@ -85,6 +85,14 @@ bounded verbatim Goal statement and affected scope. Inquiry-time delegation
 continues to use an applicable delegation Decision. Research, recommendation,
 convention, accepted contract, and implementation preference remain separate
 evidence kinds.
+
+After a timely first review, a revision that changes a dimension's disposition,
+authority anchors, blocking learning/readiness meaning, or affected-scope
+applicability remains prospective when retained baseline/current fingerprints
+show already-changed paths overlapping the prior or revised scope. The durable
+marker blocks those earlier paths from later Checkpoint certification. Summary,
+rationale, and basis-description edits that leave those meanings unchanged do
+not create a marker, and unavailable path chronology is not fabricated.
 
 ## Frontier boundary
 

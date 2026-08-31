@@ -37,7 +37,7 @@ pub use model::{
     CandidateRetention, CollectionOptOut, CollectionOptOutScope, DuplicateAssessment,
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscovery,
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, LateAuthorityCorrection,
+    ExplicitDelegationEvidence, ExploratoryDisposition, InquiryScope, LateWorkAuthorityRevision,
     LearningAlternativeSelection, LearningDeliberation, LearningDeliberationRound,
     LearningDeliberationState, LearningInitialResponse, LearningParticipation,
     LearningRecommendation, LearningValueAssessment, LearningValueRevision,

@@ -616,8 +616,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - `.venv`/`.ruff_cache` generated descendant exclusion
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - missing/unresolved/late review의 Checkpoint refusal, valid no-Question와 applicable-Decision path
-- deterministically observed late authority correction의 affected path 보존과 prospective-only
-  Decision, earlier affected work의 Checkpoint refusal
+- deterministically observed late disposition/authority-anchor/blocking-readiness/affected-scope
+  revision의 affected path 보존과 prospective-only meaning, earlier affected work의 Checkpoint refusal
 - restart 뒤 unresolved Candidate가 ready/completed로 변하지 않고 resolved review는 재사용됨
 - fresh resume에서 new choice가 없으면 retained non-empty discovery를 fresh Goal/baseline/evidence에
   재평가해 existing record path로 진행하거나 completed state를 read-only verify하며, `choices=[]`를

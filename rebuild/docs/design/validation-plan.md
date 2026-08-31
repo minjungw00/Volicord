@@ -738,8 +738,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - unsupported deliberation-worthy-to-routine revision rejection, prior learning path preservation과
   Source-backed research/prototype 또는 exact current-user withdrawal/narrowing revision basis
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection
-- agent/delegated authority에서 user-owned authority로 늦게 수정된 dimension의 affected path가
-  maintained baseline/current evidence로 증명되면 later Decision이 earlier work를 certify하지 않는 상태
+- disposition, authority anchor, blocking readiness 또는 affected-scope applicability를 늦게 수정한
+  dimension의 affected path가 maintained baseline/current evidence로 증명되면 later fact/agent/
+  delegation/Decision/research/learning-ready meaning이 earlier work를 certify하지 않는 상태
 - bounded work 뒤 처음 만든 Analysis Snapshot을 Checkpoint baseline으로 제출하는 rollout
 - completed, paused와 handoff boundary
 - verification pass, fail와 not-run

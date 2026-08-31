@@ -305,10 +305,14 @@ feature request 자체나 implementation preference는 subordinate difference를
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic
 Candidate submission으로 timing을 주장할 수 없다. Timely first review 뒤 exploratory research나
 prototype evidence가 alternatives를 바꾸면 같은 Candidate revision으로 재검토할 수 있다.
-Maintained baseline/current fingerprint evidence가 agent/delegated dimension의 affected path 변경 뒤
-user-owned correction을 증명하면 Review는 late authority correction과 exact changed path를 보존한다.
-Question/current-host Decision은 계속 진행할 수 있지만 prospective authority일 뿐 earlier affected
-work를 certify하지 않으며 그 Review는 ready-for-work나 Checkpoint authority로 돌아가지 않는다.
+Maintained baseline/current fingerprint evidence가 dimension의 affected path 변경 뒤 disposition,
+authority anchor, blocking readiness 또는 affected-scope applicability 변경을 증명하면 Review는 late
+work-authority revision과 exact changed path를 보존한다. Delegated에서 repository fact/agent-owned로
+바꾸거나 evidence-required exploratory/learning blocker를 ready로 바꾼 경우도 같은 prospective
+경계다. Current truthful state와 필요한 Question/current-host Decision은 계속 기록할 수 있지만
+earlier affected work를 certify하지 않으며 그 Review는 그 work의 ready-for-work나 Checkpoint authority로
+돌아가지 않는다. Rationale, summary 또는 authority/readiness/applicability를 바꾸지 않는 metadata
+revision은 late marker가 아니다.
 Path/scope chronology를 deterministically correlate할 수 없으면 durable violation을 만들지 않고 host
 guidance가 같은 prospective limit를 명시하며 naturalistic rollout validation이 operation order를 판정한다.
 Restart는 current Candidate revision과 canonical Question/Decision state에서 workflow를 다시

@@ -618,6 +618,22 @@ fn delegation_evidence(
     }
 }
 
+fn delegated_dimension(fixture: &Fixture, dimension_id: &str) -> MaterialityDimension {
+    let mut delegated = dimension(
+        dimension_id,
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    delegated.basis.explicit_delegation = Some(delegation_evidence(
+        fixture,
+        dimension_id,
+        "choose the bounded implementation",
+        vec!["src/lib.rs".to_owned()],
+    ));
+    delegated
+}
+
 struct Fixture {
     _temporary: tempfile::TempDir,
     operations: LocalOperations,
@@ -1365,11 +1381,318 @@ fn late_user_authority_correction_preserves_prospective_only_work_state(
         .content
         .and_then(|content| content.materiality_review)
         .ok_or("Materiality Review content missing")?;
-    assert_eq!(review.late_authority_corrections.len(), 1);
+    assert_eq!(review.late_work_authority_revisions.len(), 1);
     assert_eq!(
-        review.late_authority_corrections[0].affected_changed_paths,
+        review.late_work_authority_revisions[0].affected_changed_paths,
         ["src/lib.rs"]
     );
+    Ok(())
+}
+
+#[test]
+fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after_restart(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture =
+        fixture_with_goal("Implement the bounded change; choose the bounded implementation.")?;
+    let delegated = delegated_dimension(&fixture, "implementation-boundary");
+    let recorded = review(&fixture, vec![delegated.clone()])?;
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+
+    let mut repository_fact = delegated;
+    repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
+    repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
+    repository_fact.basis.explicit_delegation = None;
+    repository_fact.basis.summary = "current repository evidence fixes the value".into();
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "record the current repository-fact disposition".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![repository_fact],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let blocked = reopened.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        revised.review_candidate_id,
+        vec!["src/lib.rs".into()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )?;
+    assert_eq!(blocked.disposition, WorkAuthorityDisposition::ReviewInvalid);
+    assert!(blocked.reason.contains("prospective"));
+    let persisted = reopened
+        .inspect_workflow_candidate(fixture.project_id, revised.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert_eq!(persisted.late_work_authority_revisions.len(), 1);
+    assert_eq!(
+        persisted.late_work_authority_revisions[0].affected_changed_paths,
+        ["src/lib.rs"]
+    );
+    let error = reopened
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("late repository-fact revision cannot certify earlier work");
+    assert!(error.message().contains("work authority is not resolved"));
+    Ok(())
+}
+
+#[test]
+fn late_delegated_to_agent_owned_revision_cannot_certify_affected_work(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture =
+        fixture_with_goal("Implement the bounded change; choose the bounded implementation.")?;
+    let delegated = delegated_dimension(&fixture, "implementation-boundary");
+    let recorded = review(&fixture, vec![delegated.clone()])?;
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+
+    let mut agent_owned = delegated;
+    agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
+    agent_owned.basis.explicit_delegation = None;
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "record bounded agent-owned implementation discretion".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![agent_owned],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+
+    assert_eq!(
+        readiness(&fixture, &revised)?.disposition,
+        WorkAuthorityDisposition::ReviewInvalid
+    );
+    let error = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("late agent-owned revision cannot certify earlier work");
+    assert!(error.message().contains("work authority is not resolved"));
+    Ok(())
+}
+
+#[test]
+fn late_exploratory_resolution_cannot_certify_affected_work(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut exploratory = dimension(
+        "parser-behavior",
+        MaterialityDisposition::ExploratoryUncertainty {
+            disposition: ExploratoryDisposition::ResearchRequired,
+        },
+        vec![WorkAuthorityBasisKind::ResearchEvidence],
+        source,
+    );
+    exploratory.basis.research_basis = vec!["inspect the bounded parser behavior".into()];
+    let recorded = review(&fixture, vec![exploratory.clone()])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ResearchOrPrototype
+    );
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+
+    exploratory.disposition = MaterialityDisposition::ExploratoryUncertainty {
+        disposition: ExploratoryDisposition::ResolvedByResearch,
+    };
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "bounded research resolved the uncertainty".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![exploratory],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+    assert_eq!(
+        readiness(&fixture, &revised)?.disposition,
+        WorkAuthorityDisposition::ReviewInvalid
+    );
+    Ok(())
+}
+
+#[test]
+fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture =
+        fixture_with_goal("Implement the bounded change; choose the bounded implementation.")?;
+    let delegated = delegated_dimension(&fixture, "implementation-boundary");
+    let recorded = review(&fixture, vec![delegated.clone()])?;
+
+    let mut repository_fact = delegated;
+    repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
+    repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
+    repository_fact.basis.explicit_delegation = None;
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "pre-work repository evidence fixed the value".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![repository_fact.clone()],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+    assert_eq!(
+        readiness(&fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let mut agent_owned = repository_fact;
+    agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
+    let revised = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "pre-work evidence leaves bounded implementation discretion".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![agent_owned.clone()],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+    assert_eq!(
+        readiness(&fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let mut exploratory = agent_owned;
+    exploratory.disposition = MaterialityDisposition::ExploratoryUncertainty {
+        disposition: ExploratoryDisposition::ResearchRequired,
+    };
+    exploratory.basis.kinds = vec![WorkAuthorityBasisKind::ResearchEvidence];
+    exploratory.basis.research_basis = vec!["inspect the parser behavior".into()];
+    let pending = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "pre-work research remains necessary".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![exploratory.clone()],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+    assert_eq!(
+        readiness(&fixture, &pending)?.stage,
+        WorkAuthorityStage::ResearchOrPrototype
+    );
+    exploratory.disposition = MaterialityDisposition::ExploratoryUncertainty {
+        disposition: ExploratoryDisposition::ResolvedByResearch,
+    };
+    let ready = fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: recorded.review_candidate_id,
+            rationale: "pre-work research resolved the uncertainty".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions: vec![exploratory],
+            learning_value_revision_bases: Vec::new(),
+        })?;
+    assert_eq!(
+        readiness(&fixture, &ready)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    let review = fixture
+        .operations
+        .inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert!(review.late_work_authority_revisions.is_empty());
+    Ok(())
+}
+
+#[test]
+fn unrelated_paths_and_metadata_only_revisions_do_not_create_late_blockers(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let unrelated =
+        fixture_with_goal("Implement the bounded change; choose the bounded implementation.")?;
+    let delegated = delegated_dimension(&unrelated, "implementation-boundary");
+    let recorded = review(&unrelated, vec![delegated.clone()])?;
+    fs::create_dir_all(unrelated.repository.join("docs"))?;
+    fs::write(
+        unrelated.repository.join("docs/notes.md"),
+        "unrelated notes\n",
+    )?;
+    let mut agent_owned = delegated;
+    agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
+    agent_owned.basis.explicit_delegation = None;
+    let revised =
+        unrelated
+            .operations
+            .revise_materiality_review(MaterialityReviewRevisionDraft {
+                project_id: unrelated.project_id,
+                review_candidate_id: recorded.review_candidate_id,
+                rationale: "revise only the src/lib.rs authority meaning".into(),
+                learning_participation: LearningParticipation::Inactive,
+                dimensions: vec![agent_owned],
+                learning_value_revision_bases: Vec::new(),
+            })?;
+    assert_eq!(
+        readiness(&unrelated, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let metadata = fixture()?;
+    let source = metadata.baseline.repository_source.identity();
+    let initial = agent_owned_dimension(
+        "internal-boundary",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "bounded internal choice".into(),
+        },
+    );
+    let recorded = review(&metadata, vec![initial.clone()])?;
+    fs::write(
+        metadata.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+    let mut clarified = initial;
+    clarified.summary = "clarified bounded internal boundary description".into();
+    clarified.basis.summary = "clarified evidence description without changing authority".into();
+    let revised =
+        metadata
+            .operations
+            .revise_materiality_review(MaterialityReviewRevisionDraft {
+                project_id: metadata.project_id,
+                review_candidate_id: recorded.review_candidate_id,
+                rationale: "clarify review prose after work".into(),
+                learning_participation: LearningParticipation::Inactive,
+                dimensions: vec![clarified],
+                learning_value_revision_bases: Vec::new(),
+            })?;
+    assert_eq!(
+        readiness(&metadata, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    let review = metadata
+        .operations
+        .inspect_workflow_candidate(metadata.project_id, recorded.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert!(review.late_work_authority_revisions.is_empty());
     Ok(())
 }
 

@@ -1046,7 +1046,7 @@ impl LocalOperations {
                     rationale: draft.rationale,
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
-                    late_authority_corrections: Vec::new(),
+                    late_work_authority_revisions: Vec::new(),
                     learning_value_revisions: Vec::new(),
                 }),
                 learning_deliberation: None,

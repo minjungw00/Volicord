@@ -301,7 +301,7 @@ pub fn evaluate_work_authority(
         result.stage = WorkAuthorityStage::QuestionRequired;
         result.disposition = WorkAuthorityDisposition::QuestionRequired;
         result.next_action = Some(WorkAuthorityAction::EnterExistingQuestionLifecycle);
-        result.reason = if review.late_authority_corrections.is_empty() {
+        result.reason = if review.late_work_authority_revisions.is_empty() {
             "one or more material user-owned outcomes still require explicit authority".to_owned()
         } else {
             "one or more material user-owned outcomes still require explicit authority; that authority is prospective and cannot certify already-observed affected work"
@@ -313,9 +313,9 @@ pub fn evaluate_work_authority(
         result.next_action = Some(WorkAuthorityAction::ContinueResearchOrPrototype);
         result.reason =
             "research or prototype evidence must feed a revised Materiality Review".to_owned();
-    } else if !review.late_authority_corrections.is_empty() {
+    } else if !review.late_work_authority_revisions.is_empty() {
         let affected = review
-            .late_authority_corrections
+            .late_work_authority_revisions
             .iter()
             .map(|correction| correction.dimension_id.as_str())
             .collect::<Vec<_>>()
@@ -324,7 +324,7 @@ pub fn evaluate_work_authority(
             result,
             None,
             format!(
-                "affected work preceded corrected user authority for dimensions {affected}; a later Decision is prospective and cannot certify the earlier work"
+                "affected work preceded a work-authority or readiness revision for dimensions {affected}; the revision is prospective and cannot certify the earlier work"
             ),
         );
     } else if let Err(reason) = evaluate_learning_readiness(

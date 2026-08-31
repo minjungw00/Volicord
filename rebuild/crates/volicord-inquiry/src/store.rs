@@ -2,9 +2,10 @@ use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
     CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, EngineeringChoiceDiscovery,
-    Error, ErrorKind, LateAuthorityCorrection, LearningDeliberationState, LearningInitialResponse,
-    LearningRecommendation, MaterialityAssessment, MaterialityDisposition, MaterialityReview,
-    MaterialityStatus, PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
+    Error, ErrorKind, LateWorkAuthorityRevision, LearningDeliberationState,
+    LearningInitialResponse, LearningRecommendation, MaterialityAssessment, MaterialityDisposition,
+    MaterialityReview, MaterialityStatus, PromotionResult, RepositoryResearchBasis,
+    SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -18,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 8;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 9;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -211,8 +212,13 @@ impl CandidateStore {
                         "Materiality Review content is missing",
                     )
                 })?;
-            let late_corrections =
-                detect_late_authority_corrections(review, &revision.dimensions, baseline, current)?;
+            let late_revisions = detect_late_work_authority_revisions(
+                review,
+                &revision.learning_participation,
+                &revision.dimensions,
+                baseline,
+                current,
+            )?;
             let learning_value_revisions = validate_learning_value_revisions(
                 review,
                 &revision.dimensions,
@@ -224,15 +230,15 @@ impl CandidateStore {
             review.rationale = revision.rationale;
             review.learning_participation = revision.learning_participation;
             review.dimensions = revision.dimensions;
-            review.late_authority_corrections.extend(late_corrections);
+            review.late_work_authority_revisions.extend(late_revisions);
             review
                 .learning_value_revisions
                 .extend(learning_value_revisions);
             review
-                .late_authority_corrections
+                .late_work_authority_revisions
                 .sort_by(|left, right| left.dimension_id.cmp(&right.dimension_id));
             review
-                .late_authority_corrections
+                .late_work_authority_revisions
                 .dedup_by(|left, right| left.dimension_id == right.dimension_id);
             validate_materiality_review(review)?;
             validate_review_against_canonical(canonical, review)?;
@@ -1466,20 +1472,20 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             ));
         }
     }
-    let mut correction_dimensions = BTreeSet::new();
-    for correction in &review.late_authority_corrections {
+    let mut late_revision_dimensions = BTreeSet::new();
+    for revision in &review.late_work_authority_revisions {
         validate_text(
-            "late authority correction dimension identity",
-            &correction.dimension_id,
+            "late work-authority revision dimension identity",
+            &revision.dimension_id,
         )?;
-        validate_list(&correction.affected_changed_paths)?;
-        if correction.affected_changed_paths.is_empty()
-            || !correction_dimensions.insert(correction.dimension_id.as_str())
-            || !identities.contains(correction.dimension_id.as_str())
+        validate_list(&revision.affected_changed_paths)?;
+        if revision.affected_changed_paths.is_empty()
+            || !late_revision_dimensions.insert(revision.dimension_id.as_str())
+            || !identities.contains(revision.dimension_id.as_str())
         {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                "late authority correction requires one current dimension and deterministically affected changed paths",
+                "late work-authority revision requires one current dimension and deterministically affected changed paths",
             ));
         }
     }
@@ -1940,12 +1946,13 @@ fn validate_review_against_discovery(
     Ok(())
 }
 
-fn detect_late_authority_corrections(
+fn detect_late_work_authority_revisions(
     existing: &MaterialityReview,
+    revised_learning_participation: &crate::LearningParticipation,
     revised_dimensions: &[crate::MaterialityDimension],
     baseline: &AnalysisSnapshot,
     current: &AnalysisSnapshot,
-) -> Result<Vec<LateAuthorityCorrection>, Error> {
+) -> Result<Vec<LateWorkAuthorityRevision>, Error> {
     let changed_paths = match crate::attribute_repository_changes(
         baseline.project.identity(),
         &crate::RepositoryWorkBasis {
@@ -1958,11 +1965,11 @@ fn detect_late_authority_corrections(
         crate::ChangeAttribution::Unavailable { .. } => return Ok(Vec::new()),
     };
     let already_recorded = existing
-        .late_authority_corrections
+        .late_work_authority_revisions
         .iter()
-        .map(|correction| correction.dimension_id.as_str())
+        .map(|revision| revision.dimension_id.as_str())
         .collect::<BTreeSet<_>>();
-    let mut corrections = Vec::new();
+    let mut late_revisions = Vec::new();
     for revised in revised_dimensions {
         let Some(previous) = existing
             .dimensions
@@ -1972,32 +1979,138 @@ fn detect_late_authority_corrections(
             continue;
         };
         if already_recorded.contains(revised.dimension_id.as_str())
-            || !matches!(
-                previous.disposition,
-                MaterialityDisposition::AgentOwnedImplementationChoice
-                    | MaterialityDisposition::DelegatedImplementationChoice
-            )
-            || !matches!(
-                revised.disposition,
-                MaterialityDisposition::UnresolvedUserOwnedOutcome { .. }
+            || !work_authority_meaning_changed(
+                &existing.learning_participation,
+                previous,
+                revised_learning_participation,
+                revised,
             )
         {
             continue;
         }
+        let affected_scope = previous
+            .affected_scope
+            .iter()
+            .chain(&revised.affected_scope)
+            .cloned()
+            .collect::<BTreeSet<_>>();
         let affected_changed_paths = changed_paths
             .iter()
-            .filter(|path| scope_overlaps_path(&revised.affected_scope, path))
+            .filter(|path| scope_overlaps_path(affected_scope.iter(), path))
             .cloned()
             .collect::<Vec<_>>();
         if !affected_changed_paths.is_empty() {
-            corrections.push(LateAuthorityCorrection {
+            late_revisions.push(LateWorkAuthorityRevision {
                 dimension_id: revised.dimension_id.clone(),
                 detected_analysis_snapshot_id: current.identity,
                 affected_changed_paths,
             });
         }
     }
-    Ok(corrections)
+    Ok(late_revisions)
+}
+
+fn work_authority_meaning_changed(
+    previous_learning_participation: &crate::LearningParticipation,
+    previous: &crate::MaterialityDimension,
+    revised_learning_participation: &crate::LearningParticipation,
+    revised: &crate::MaterialityDimension,
+) -> bool {
+    previous.disposition != revised.disposition
+        || previous.affected_scope.iter().collect::<BTreeSet<_>>()
+            != revised.affected_scope.iter().collect::<BTreeSet<_>>()
+        || authority_anchors_changed(previous, revised)
+        || requires_learning_before_work(previous_learning_participation, previous)
+            != requires_learning_before_work(revised_learning_participation, revised)
+}
+
+fn authority_anchors_changed(
+    previous: &crate::MaterialityDimension,
+    revised: &crate::MaterialityDimension,
+) -> bool {
+    previous
+        .basis
+        .kinds
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        != revised.basis.kinds.iter().copied().collect::<BTreeSet<_>>()
+        || previous
+            .basis
+            .contract_basis
+            .iter()
+            .collect::<BTreeSet<_>>()
+            != revised.basis.contract_basis.iter().collect::<BTreeSet<_>>()
+        || previous
+            .basis
+            .decision_basis
+            .iter()
+            .collect::<BTreeSet<_>>()
+            != revised.basis.decision_basis.iter().collect::<BTreeSet<_>>()
+        || explicit_delegation_changed(
+            previous.basis.explicit_delegation.as_ref(),
+            revised.basis.explicit_delegation.as_ref(),
+        )
+}
+
+fn explicit_delegation_changed(
+    previous: Option<&crate::ExplicitDelegationEvidence>,
+    revised: Option<&crate::ExplicitDelegationEvidence>,
+) -> bool {
+    match (previous, revised) {
+        (None, None) => false,
+        (Some(previous), Some(revised)) => {
+            previous.goal_context_id != revised.goal_context_id
+                || previous.user_turn_source_id != revised.user_turn_source_id
+                || previous.verbatim_statement != revised.verbatim_statement
+                || previous.dimension_id != revised.dimension_id
+                || previous
+                    .discovered_choice_ids
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    != revised
+                        .discovered_choice_ids
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                || previous.affected_scope.iter().collect::<BTreeSet<_>>()
+                    != revised.affected_scope.iter().collect::<BTreeSet<_>>()
+                || previous
+                    .material_consequences
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    != revised
+                        .material_consequences
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                || previous
+                    .effect_categories
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+                    != revised
+                        .effect_categories
+                        .iter()
+                        .copied()
+                        .collect::<BTreeSet<_>>()
+        }
+        _ => true,
+    }
+}
+
+fn requires_learning_before_work(
+    participation: &crate::LearningParticipation,
+    dimension: &crate::MaterialityDimension,
+) -> bool {
+    matches!(participation, crate::LearningParticipation::Active { .. })
+        && matches!(
+            dimension.disposition,
+            MaterialityDisposition::AgentOwnedImplementationChoice
+                | MaterialityDisposition::DelegatedImplementationChoice
+        )
+        && matches!(
+            dimension.learning_value,
+            crate::LearningValueAssessment::DeliberationWorthy { .. }
+        )
 }
 
 fn validate_learning_value_revisions(
@@ -2177,8 +2290,8 @@ fn validate_learning_value_revision_basis_against_canonical(
     Ok(())
 }
 
-fn scope_overlaps_path(scope: &[String], path: &str) -> bool {
-    scope.iter().any(|item| {
+fn scope_overlaps_path<'a>(scope: impl Iterator<Item = &'a String>, path: &str) -> bool {
+    scope.into_iter().any(|item| {
         item == path
             || path
                 .strip_prefix(item)

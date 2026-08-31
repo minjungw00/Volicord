@@ -408,12 +408,12 @@ pub struct MaterialityReview {
     pub rationale: String,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
-    pub late_authority_corrections: Vec<LateAuthorityCorrection>,
+    pub late_work_authority_revisions: Vec<LateWorkAuthorityRevision>,
     pub learning_value_revisions: Vec<LearningValueRevision>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct LateAuthorityCorrection {
+pub struct LateWorkAuthorityRevision {
     pub dimension_id: String,
     pub detected_analysis_snapshot_id: AnalysisSnapshotId,
     pub affected_changed_paths: Vec<String>,
