@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import json
 import re
 from pathlib import Path
@@ -34,6 +35,262 @@ PUBLIC_CAMPAIGN_CONTRACTS = (
 )
 PUBLIC_CAMPAIGN_CONTRACT_START = "<!-- phase8-public-campaign-contract:start -->"
 PUBLIC_CAMPAIGN_CONTRACT_END = "<!-- phase8-public-campaign-contract:end -->"
+
+
+def require_semantic_clauses(
+    value: object,
+    contract_name: str,
+    required_term_groups: tuple[tuple[str, ...], ...],
+) -> None:
+    """Require each semantic relationship in at least one maintained clause."""
+
+    if not isinstance(value, list) or not all(
+        isinstance(clause, str) and clause.strip() for clause in value
+    ):
+        raise AssertionError(f"{contract_name} must be a non-empty clause list")
+    normalized = [clause.casefold() for clause in value]
+    for terms in required_term_groups:
+        if not any(all(term.casefold() in clause for term in terms) for clause in normalized):
+            raise AssertionError(
+                f"{contract_name} is missing semantic relationship: {', '.join(terms)}"
+            )
+
+
+def require_semantic_terms(
+    value: object, contract_name: str, required_terms: tuple[str, ...]
+) -> None:
+    """Require semantic terms without freezing the complete contract wording."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise AssertionError(f"{contract_name} must be a non-empty string")
+    normalized = value.casefold()
+    missing = [term for term in required_terms if term.casefold() not in normalized]
+    if missing:
+        raise AssertionError(
+            f"{contract_name} is missing semantic terms: {', '.join(missing)}"
+        )
+
+
+def validate_behavior_specific_work_intake_contract(
+    contract: object, behavior_classes: object
+) -> None:
+    """Check durable work-intake semantics without copying the definition subtree."""
+
+    if not isinstance(contract, dict):
+        raise AssertionError("Phase 8 behavior-specific work-intake contract is malformed")
+    if not isinstance(behavior_classes, list) or not all(
+        isinstance(value, str) for value in behavior_classes
+    ):
+        raise AssertionError("Phase 8 behavior classes are malformed")
+
+    required_fields = {
+        "explicit_user_owned_decision",
+        "hidden_user_owned_decision_additional",
+        "non_user_owned_classes",
+        "materiality_correlation",
+        "behavior_class_exact_disposition_oracle",
+        "all_behavior_classes_require_inquiry",
+    }
+    missing_fields = required_fields - set(contract)
+    if missing_fields:
+        raise AssertionError(
+            "Phase 8 behavior-specific work-intake contract is missing fields: "
+            + ", ".join(sorted(missing_fields))
+        )
+
+    require_semantic_clauses(
+        contract["explicit_user_owned_decision"],
+        "explicit user-owned work intake",
+        (
+            ("pre-work", "unresolved", "user-owned", "Materiality Review"),
+            (
+                "ready-to-ask or fully researched",
+                "material Question Candidate",
+                "presented Question",
+            ),
+            ("exact current-host response", "current Question revision"),
+            (
+                "canonical Decision",
+                "ready-for-work Materiality revision",
+                "before affected work",
+            ),
+        ),
+    )
+    require_semantic_clauses(
+        contract["hidden_user_owned_decision_additional"],
+        "hidden user-owned work intake",
+        (
+            (
+                "successful meaningful repository investigation",
+                "after baseline",
+                "before Engineering Choice Discovery",
+            ),
+            (
+                "repository research attachment",
+                "ready-to-ask transition",
+                "before Question promotion",
+            ),
+            ("Decision", "ready-for-work Materiality revision", "before affected work"),
+        ),
+    )
+
+    non_user_contracts = contract["non_user_owned_classes"]
+    if not isinstance(non_user_contracts, dict):
+        raise AssertionError("Phase 8 non-user-owned work-intake contracts are malformed")
+    expected_non_user_classes = set(behavior_classes) - {
+        "explicit_user_owned_decision",
+        "hidden_user_owned_decision",
+    }
+    if set(non_user_contracts) != expected_non_user_classes:
+        raise AssertionError(
+            "Phase 8 non-user-owned work-intake coverage does not match behavior classes"
+        )
+
+    require_semantic_terms(
+        non_user_contracts["research_or_no_question"],
+        "research/no-question work intake",
+        (
+            "repository/environment fact",
+            "settled authority",
+            "resolved research",
+            "another maintained non-user-owned ready basis",
+            "no manufactured Candidate, Question, or Decision",
+        ),
+    )
+    require_semantic_terms(
+        non_user_contracts["delegated_implementation_choice"],
+        "delegated implementation work intake",
+        ("current Goal delegation", "no manufactured Candidate, Question, or Decision"),
+    )
+    require_semantic_terms(
+        non_user_contracts["exploratory_uncertainty"],
+        "exploratory work intake",
+        (
+            "evidence-backed exploratory disposition",
+            "ready at record or is resolved through a same-review revision",
+            "before affected work",
+            "no manufactured Candidate, Question, or Decision",
+        ),
+    )
+    require_semantic_terms(
+        non_user_contracts["learning_deliberation"],
+        "Learning Deliberation work intake",
+        (
+            "legal current-host Learning Deliberation state transitions",
+            "valid reconsideration",
+            "repeated response/feedback rounds",
+            "terminal ready-for-work",
+            "before affected work",
+            "no canonical Decision",
+        ),
+    )
+    require_semantic_terms(
+        non_user_contracts["learning_routine_control"],
+        "routine learning work intake",
+        (
+            "active participation",
+            "routine value",
+            "truthful maintained non-user-owned ready basis",
+            "no Learning Deliberation, Candidate, Question, or Decision",
+        ),
+    )
+    require_semantic_terms(
+        contract["materiality_correlation"],
+        "Materiality correlation",
+        (
+            "Goal Context",
+            "baseline Analysis Snapshot",
+            "Engineering Choice Discovery identity",
+            "review_candidate_id",
+            "dimension_id",
+            "ordered review_revision",
+        ),
+    )
+    if contract["behavior_class_exact_disposition_oracle"] is not False:
+        raise AssertionError("Phase 8 exact behavior-disposition oracle must remain disabled")
+    if contract["all_behavior_classes_require_inquiry"] is not False:
+        raise AssertionError("Phase 8 must not require Inquiry for every behavior class")
+
+
+def assert_behavior_specific_work_intake_regressions(
+    contract: dict[str, object], behavior_classes: list[str]
+) -> None:
+    """Prove current semantics reject each recently superseded oracle assumption."""
+
+    def expect_rejected(name: str, mutation: object) -> None:
+        candidate = copy.deepcopy(contract)
+        if not callable(mutation):
+            raise AssertionError(f"invalid behavior-contract regression mutation: {name}")
+        mutation(candidate)
+        try:
+            validate_behavior_specific_work_intake_contract(candidate, behavior_classes)
+        except AssertionError:
+            return
+        raise AssertionError(f"obsolete behavior-contract assumption passed: {name}")
+
+    expect_rejected(
+        "missing stable Materiality correlation",
+        lambda value: value.pop("materiality_correlation"),
+    )
+    expect_rejected(
+        "explicit Question must be ready without research",
+        lambda value: value["explicit_user_owned_decision"].__setitem__(
+            1, "ready-to-ask material Question Candidate and presented Question"
+        ),
+    )
+    expect_rejected(
+        "research/no-question requires one exact disposition",
+        lambda value: value["non_user_owned_classes"].__setitem__(
+            "research_or_no_question",
+            "repository_or_environment_fact with no Candidate, Question, or Decision",
+        ),
+    )
+    expect_rejected(
+        "exploratory work must be ready at initial record",
+        lambda value: value["non_user_owned_classes"].__setitem__(
+            "exploratory_uncertainty",
+            "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision",
+        ),
+    )
+    expect_rejected(
+        "Learning Deliberation is one fixed response round",
+        lambda value: value["non_user_owned_classes"].__setitem__(
+            "learning_deliberation",
+            "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision",
+        ),
+    )
+    expect_rejected(
+        "exact behavior-disposition oracle re-enabled",
+        lambda value: value.__setitem__("behavior_class_exact_disposition_oracle", True),
+    )
+    expect_rejected(
+        "Inquiry universally required",
+        lambda value: value.__setitem__("all_behavior_classes_require_inquiry", True),
+    )
+
+
+def validate_evaluation_consumer_integration(
+    harness_source: str, campaign_source: str
+) -> None:
+    """Keep direct consumers routed through the authoritative definition/helper."""
+
+    for marker in (
+        'DEFINITION = HERE / "evaluation.json"',
+        'value = json.loads(DEFINITION.read_text(encoding="utf-8"))',
+        'evidence.get("behavior_specific_work_intake_contract")',
+    ):
+        if marker not in harness_source:
+            raise AssertionError(
+                f"Dogfood harness no longer consumes evaluation.json through {marker}"
+            )
+    for marker in (
+        "BEHAVIOR_CLASSES = harness.BEHAVIOR_CLASSES",
+        "definition = harness.load_definition()",
+    ):
+        if marker not in campaign_source:
+            raise AssertionError(
+                f"Dogfood campaign no longer shares authoritative evaluation helpers through {marker}"
+            )
 
 
 def expected_public_campaign_contract(definition: dict[str, object]) -> dict[str, str]:
@@ -156,6 +413,7 @@ def main() -> int:
     operations_source = OPERATIONS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
+    validate_evaluation_consumer_integration(source, campaign_source)
     if "qualification_behavior_multiset" in definition_value:
         raise AssertionError("reviewer-safe evaluation definition exposes the behavior histogram")
     profile_contract = definition_value.get("qualification_profile_contract")
@@ -540,38 +798,13 @@ def main() -> int:
         "numeric_cli_version_dispatch": False,
     }:
         raise AssertionError("Phase 8 Codex FileChange normalization contract changed")
-    if behavior_specific_work_intake != {
-        "explicit_user_owned_decision": [
-            "pre-work unresolved user-owned Materiality Review",
-            "ready-to-ask or fully researched material Question Candidate and presented Question",
-            "exact current-host response linked to the current Question revision",
-            "canonical Decision and ready-for-work Materiality revision before affected work",
-        ],
-        "hidden_user_owned_decision_additional": [
-            "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
-            "repository research attachment and ready-to-ask transition before Question promotion",
-            "Decision and ready-for-work Materiality revision before affected work",
-        ],
-        "non_user_owned_classes": {
-            "research_or_no_question": (
-                "repository_or_environment_fact with no Candidate, Question, or Decision"
-            ),
-            "delegated_implementation_choice": (
-                "current Goal delegation with no manufactured Candidate, Question, or Decision"
-            ),
-            "exploratory_uncertainty": (
-                "evidence-backed exploratory disposition with no manufactured Candidate, Question, or Decision"
-            ),
-            "learning_deliberation": (
-                "ordered current-host Learning Deliberation to terminal ready-for-work with no canonical Decision"
-            ),
-            "learning_routine_control": (
-                "active participation and routine value with no Learning Deliberation, Candidate, Question, or Decision"
-            ),
-        },
-        "all_behavior_classes_require_inquiry": False,
-    }:
-        raise AssertionError("Phase 8 behavior-specific work-intake contract changed")
+    behavior_classes = definition_value.get("behavior_classes")
+    validate_behavior_specific_work_intake_contract(
+        behavior_specific_work_intake, behavior_classes
+    )
+    assert_behavior_specific_work_intake_regressions(
+        behavior_specific_work_intake, behavior_classes
+    )
     if evidence_transport != {
         "states": ["complete", "indeterminate"],
         "indeterminate_causes": [
@@ -630,7 +863,7 @@ def main() -> int:
         "a fresh resume session invokes Recall after project_resolve",
         "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write",
         "reuse the unresolved review dimension in the Question Candidate",
-        "recompute Materiality Review/work authority before continued ordinary work",
+        "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work",
         "event_msg.mcp_tool_call_end",
         "event_msg.item_completed",
         "McpToolCall",
@@ -808,6 +1041,12 @@ def main() -> int:
         "indeterminate_required_evidence_outcome": "evidence_failed",
         "actual_missing_required_operation_outcome": "campaign_stop",
         "mixed_failure_checks_preserved": True,
+        "failure_attribution_domains": [
+            "environment",
+            "evidence",
+            "behavior_contract",
+        ],
+        "failure_attribution_basis_visibility": "bounded_evaluator_safe_identifier",
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     batch_contract = real_session.get("batch_campaign_contract", {})
