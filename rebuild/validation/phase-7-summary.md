@@ -1,7 +1,7 @@
 # Phase 7 product-surface validation and V11 handoff state
 
 - Exact-final production/test candidate:
-  `99a996319a5efa28ac2519ffe811df886161961f`; aggregate `succeeded` with four
+  `6031641c46cf014a754442dcee3137caf265882e`; aggregate `succeeded` with four
   commands succeeded and zero failures
 - V11 integrated result: `passed` with 54 of 54 required steps passed; Phase 8
   entry: `phase_8_ready = true`
@@ -23,21 +23,21 @@
 | V10 | passed | `local-platform-primitives` | qualified Linux process/filesystem/storage primitives without legacy API promotion |
 
 Exact final sealed production/test candidate HEAD
-`99a996319a5efa28ac2519ffe811df886161961f`. Its four-command aggregate
+`6031641c46cf014a754442dcee3137caf265882e`. Its four-command aggregate
 `succeeded` with zero failures; summary SHA-256 is
-`b62abbfe17265983e47fbad7e9a7ee99a728db121e3ecf69c302cc0f00fd8ee7`.
+`ada27af45ba7dee5606e0a8e2fcc0b305617d6ce2a1fd5a05f950c75f62e5cc4`.
 The same-session official V11 then passed all 54 required steps with no failed,
 partial, unsupported, skipped, or environment-blocked status. Result SHA-256
-is `c9f121805e59b4413a5bdb875edf344b52f5747503b94639fbf99babdc299d35`.
+is `015d50dd0201992d1944c2413863b55319602c23b7462e56b9ed70f82d3b661e`.
 The separately authorized production-provider qualification passed for
 provider `openai-codex`, model `gpt-5.6-sol`, with evidence SHA-256
-`cab25069930a8728f6743558e9165f1d01920c276ad17affb2bfc997f8170614`.
+`31adc8b010babed6ef40b10ebfb716377f13a4987be84aeb815ed137e0a68576`.
 Its bounded success and unavailable-provider degradation retained no source
 body, provider response body, or credential. All three authenticated Codex
 targets passed, the credential-retention audit passed with zero auth-named
 files, credential-content matches, or scan errors,
 the sanitized evidence archive SHA-256
-`35d866c8b29e42dd0bf55b19040590523a2cf79fa43648dcdf5397e5c86ae46c`
+`bed36fa89e82a60e198dd3dc3ef5b8864e9ce27332a8a60461f230a4f74adc0e`
 was independently verified, and
 `phase_8_ready = true` is recorded in
 `end-to-end/multi-repository/report.md`.

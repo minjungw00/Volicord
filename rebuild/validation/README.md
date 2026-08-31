@@ -513,7 +513,7 @@ ownership, or the capsule lifecycle described below.
 The current maintained pre-Dogfood entry state is summarized in
 `phase-8-summary.md`: `replacement_gate = pending` and
 `phase_9_ready = false`. The current sealed production/test candidate is
-`99a996319a5efa28ac2519ffe811df886161961f`: admission was `eligible`, exact
+`6031641c46cf014a754442dcee3137caf265882e`: admission was `eligible`, exact
 final succeeded with zero failures, the separately authorized live production
 provider qualification passed for `openai-codex` / `gpt-5.6-sol`, all 54
 required V11 steps passed, the credential-retention audit passed with zero
@@ -539,7 +539,7 @@ Any predecessor Small Python cycle is diagnostic only and is not qualifying
 evidence for the redesigned campaign.
 Replacement passage remains pending/false, and Phase 9 may not begin.
 Qualifying Dogfood must run from a separate clean worktree whose actual Git
-`HEAD` is exactly `99a996319a5efa28ac2519ffe811df886161961f`. This later
+`HEAD` is exactly `6031641c46cf014a754442dcee3137caf265882e`. This later
 documentation-only branch HEAD is outside the sealed production/test candidate;
 it cannot qualify by passing only the sealed candidate as a helper argument.
 

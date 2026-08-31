@@ -3,7 +3,7 @@
 - `replacement_gate = pending`
 - `phase_9_ready = false`
 - Current sealed pre-Dogfood production/test candidate:
-  `99a996319a5efa28ac2519ffe811df886161961f`
+  `6031641c46cf014a754442dcee3137caf265882e`
 - Technical Phase 8 entry gate: `passed`; `phase_8_ready = true`
 - Admission: `eligible`; exact final: `succeeded` with four commands and zero
   failures; official V11: `passed` with 54 of 54 required steps
@@ -13,9 +13,9 @@
 - Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q14
   trigger reported
 - Sanitized gate capsule: `verified`; SHA-256
-  `0acf892b4e33b87ff8a28862926c1f06cf8539f5cdef0363c4359917d2be5c93`
+  `a657b8c517a3135c8b64ce5b75ae98ef66a0e5f43573ef2c092e590e3eba7695`
 - Sanitized evidence archive: `verified`; SHA-256
-  `35d866c8b29e42dd0bf55b19040590523a2cf79fa43648dcdf5397e5c86ae46c`
+  `bed36fa89e82a60e198dd3dc3ef5b8864e9ce27332a8a60461f230a4f74adc0e`
 - Naturalistic Dogfood for this candidate: `not_run`
 - Automated Dogfood qualification: `not_run`
 - Campaign-level human review: `not_provided`
@@ -24,7 +24,7 @@
 ## Maintained conclusion
 
 The reviewer-blind campaign now has sealed production/test candidate
-`99a996319a5efa28ac2519ffe811df886161961f` and is technically eligible to
+`6031641c46cf014a754442dcee3137caf265882e` and is technically eligible to
 begin naturalistic Dogfood. Admission passed with a clean, unchanged worktree;
 the exact final succeeded with all four commands, zero failures, and a
 warning-clean clippy result; the separately authorized live
@@ -56,7 +56,7 @@ with the four generated documents or their adoption lifecycle.
 
 The fresh campaign for this candidate must begin from zero in a separate clean
 worktree whose actual Git `HEAD` is exactly
-`99a996319a5efa28ac2519ffe811df886161961f`. It must retain the maintained
+`6031641c46cf014a754442dcee3137caf265882e`. It must retain the maintained
 three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the sealed candidate; a different
