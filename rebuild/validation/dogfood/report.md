@@ -221,6 +221,15 @@ at the candidate revision or a real file at the pinned target revision.
 Batch collection reports `intake_state = accepted|rejected` and always records
 `qualification_state = not_run`; intake acceptance means only that bounded
 work-blocker/evidence collection completed and is never a qualification pass.
+Each rejected cycle now reports `failed_checks` plus bounded
+`failure_attribution` entries with `phase`, `domain`, and an evaluator-safe
+`basis`. The maintained domains are `environment`, `evidence`,
+`behavior_contract`, and `validation_internal`; the last is emitted only for an
+actual validator assertion/internal invariant failure. The batch summary counts
+the same domains and checks across affected cycles. These diagnostics do not
+alter outcome precedence or allow later resume evidence to repair a terminal
+work-behavior failure, and they do not include evaluator reasoning or raw
+rollout content.
 
 New campaigns use cryptographically random opaque slot IDs for qualifying
 workspace, Runtime Home, reviewer preparation/template/provisional filenames,

@@ -1469,6 +1469,14 @@ def load_definition() -> dict[str, Any]:
             "indeterminate_required_evidence_outcome": "evidence_failed",
             "actual_missing_required_operation_outcome": "campaign_stop",
             "mixed_failure_checks_preserved": True,
+            "failure_attribution_domains": [
+                "environment",
+                "evidence",
+                "behavior_contract",
+            ],
+            "failure_attribution_basis_visibility": (
+                "bounded_evaluator_safe_identifier"
+            ),
         }
     ):
         raise ValueError("the Phase 8 evaluation-basis or work-blocker contract changed")
@@ -3509,6 +3517,23 @@ def build_work_blocker_result(
         for check in failed_checks
         if check not in evidence_failed_checks and check != SETUP_ACTIVATION_CHECK
     ]
+    failure_attribution = {
+        "domain": (
+            "environment"
+            if not activation_observed
+            else "evidence"
+            if evidence_failed_checks
+            else "behavior_contract"
+        ),
+        "basis": (
+            "repository_session_activation_missing"
+            if not activation_observed
+            else "required_evidence_transport_indeterminate"
+            if evidence_failed_checks
+            else "maintained_work_behavior_contract_failed"
+        ),
+        "failed_checks": failed_checks,
+    }
     result = {
         "kind": "phase8_dogfood_blocker_result",
         "status": "failed",
@@ -3535,6 +3560,7 @@ def build_work_blocker_result(
         "work_capture_sha256": capture.source_sha256,
         "failed_checks": failed_checks,
         "failed_check_count": len(failed_checks),
+        "failure_attribution": failure_attribution,
         "evidence_transport": evidence_transport,
         "product_failed_checks": product_failed_checks,
         "campaign_complete": False,
@@ -3569,6 +3595,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         "work_capture_sha256",
         "failed_checks",
         "failed_check_count",
+        "failure_attribution",
         "evidence_transport",
         "product_failed_checks",
         "campaign_complete",
@@ -3578,6 +3605,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         "evidence_origin",
     }
     failed_checks = result.get("failed_checks")
+    failure_attribution = result.get("failure_attribution")
     later = result.get("later_required_evidence")
     if set(result) != expected_keys or result.get("kind") != "phase8_dogfood_blocker_result":
         raise ValueError("unexpected Phase 8 work-blocker result shape")
@@ -3627,6 +3655,26 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or result.get("failed_check_count") != len(failed_checks)
     ):
         raise ValueError("work-blocker result has invalid failed checks")
+    expected_attribution = {
+        "operator_environment_setup_failure": (
+            "environment",
+            "repository_session_activation_missing",
+        ),
+        "evidence_transport_failure": (
+            "evidence",
+            "required_evidence_transport_indeterminate",
+        ),
+        "product_work_session_blocker": (
+            "behavior_contract",
+            "maintained_work_behavior_contract_failed",
+        ),
+    }[classification]
+    if failure_attribution != {
+        "domain": expected_attribution[0],
+        "basis": expected_attribution[1],
+        "failed_checks": failed_checks,
+    }:
+        raise ValueError("work-blocker failure attribution is inconsistent")
     evidence_transport = result.get("evidence_transport")
     product_failed_checks = result.get("product_failed_checks")
     if (

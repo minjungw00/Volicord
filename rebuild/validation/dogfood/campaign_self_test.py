@@ -742,6 +742,11 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     broken = filtered_capture(work, parent / "missing-completions.jsonl", '"type":"mcp_tool_call_end"')
     result = campaign.collect_work(blocker_root, "volicord", 1, broken)
     assert result["outcome"] == "campaign_stop"
+    assert result["failure_attribution"] == {
+        "domain": "behavior_contract",
+        "basis": "maintained_work_behavior_contract_failed",
+        "failed_checks": result["failed_checks"],
+    }
     try:
         campaign.collect_resume(blocker_root, "volicord", 1, resume)
     except campaign.CampaignError as error:
@@ -763,6 +768,11 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     invalid = campaign.collect_work(activation_root, "volicord", 1, missing)
     assert invalid["outcome"] == "operator_environment_invalid"
     assert invalid["classification"] == "operator_environment_setup_failure"
+    assert invalid["failure_attribution"] == {
+        "domain": "environment",
+        "basis": "repository_session_activation_missing",
+        "failed_checks": [harness.SETUP_ACTIVATION_CHECK],
+    }
 
     evidence_root, evidence_captures, _evidence_bundles = prepared_batch(
         parent, "evidence-transport-campaign", binary
@@ -801,6 +811,11 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     assert evidence_result["outcome"] == "evidence_failed"
     assert evidence_result["classification"] == "evidence_transport_failure"
     assert evidence_result["evidence_transport"]["state"] == "indeterminate"
+    assert evidence_result["failure_attribution"] == {
+        "domain": "evidence",
+        "basis": "required_evidence_transport_indeterminate",
+        "failed_checks": evidence_result["failed_checks"],
+    }
 
 
 def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
@@ -2176,6 +2191,8 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert summary["intake_state"] == "accepted", summary
     assert summary["qualification_state"] == "not_run", summary
     assert summary["outcome"] == "evidence_collected"
+    assert summary["failed_checks"] == []
+    assert summary["failure_attribution"] == []
     assert summary["session_distinctness"] == {
         "status": "passed",
         "expected_count": campaign.BATCH_CAPTURE_COUNT,
@@ -2185,6 +2202,8 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     for item in summary["cycles"]:
         assert item["intake_state"] == "accepted"
         assert item["qualification_state"] == "not_run"
+        assert item["failed_checks"] == []
+        assert item["failure_attribution"] == []
         assert "status" not in item
         assert item["supported_evidence_complete"] is True
         assert item["terminal_work_failure_preserved"] is False
@@ -2255,15 +2274,89 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         '"type":"mcp_tool_call_end"',
     )
     blocker_inputs = [blocked if path == blocker_work else path for path in blocker_captures]
-    blocker_summary = campaign.collect_batch(
-        blocker_root,
-        blocker_inputs,
-        exporter=batch_exporter(blocker_bundles),
-        documenter=documenter,
+    normal_blocker_exporter = batch_exporter(blocker_bundles)
+    failed_bundle_destination = (
+        campaign.cycle_root(blocker_root, "small-python", 1)
+        / "context.bundle.json"
     )
-    blocked_cycle = blocker_summary["cycles"][0]
+
+    def selectively_failed_exporter(
+        binary_path: Path,
+        runtime: Path,
+        repository: Path,
+        destination: Path,
+    ) -> None:
+        if destination == failed_bundle_destination:
+            raise OSError("injected supported-evidence failure")
+        normal_blocker_exporter(binary_path, runtime, repository, destination)
+
+    original_blocker_builder = harness.build_work_blocker_result
+
+    def internally_failed_blocker_builder(*args, **kwargs):
+        descriptor = args[1]
+        if (
+            descriptor["repository_class"] == "polyglot-medium"
+            and descriptor["cycle"] == 2
+        ):
+            raise AssertionError("injected validator invariant failure")
+        return original_blocker_builder(*args, **kwargs)
+
+    harness.build_work_blocker_result = internally_failed_blocker_builder
+    try:
+        blocker_summary = campaign.collect_batch(
+            blocker_root,
+            blocker_inputs,
+            exporter=selectively_failed_exporter,
+            documenter=documenter,
+        )
+    finally:
+        harness.build_work_blocker_result = original_blocker_builder
+    blocked_cycle = next(
+        item
+        for item in blocker_summary["cycles"]
+        if item["repository_class"] == "volicord" and item["cycle"] == 1
+    )
+    evidence_cycle = next(
+        item
+        for item in blocker_summary["cycles"]
+        if item["repository_class"] == "small-python" and item["cycle"] == 1
+    )
+    internal_cycle = next(
+        item
+        for item in blocker_summary["cycles"]
+        if item["repository_class"] == "polyglot-medium" and item["cycle"] == 2
+    )
     assert blocker_summary["outcome"] == "campaign_stop"
     assert blocked_cycle["terminal_work_failure_preserved"] is True
+    assert blocked_cycle["failure_attribution"][0]["domain"] == "behavior_contract"
+    assert evidence_cycle["resume"]["basis"] == (
+        "resume_supported_evidence_collection_failed"
+    )
+    assert evidence_cycle["failure_attribution"] == [{
+        "phase": "resume",
+        "domain": "evidence",
+        "basis": "resume_supported_evidence_collection_failed",
+        "failed_checks": ["resume_supported_evidence_collection"],
+    }]
+    assert internal_cycle["work"]["outcome"] == "evidence_failed"
+    assert internal_cycle["failure_attribution"] == [{
+        "phase": "work",
+        "domain": "validation_internal",
+        "basis": "validator_invariant_failure",
+        "failed_checks": ["work_validator_consistency"],
+    }]
+    assert [item["domain"] for item in blocker_summary["failure_attribution"]] == [
+        "evidence",
+        "behavior_contract",
+        "validation_internal",
+    ]
+    aggregate_failed_checks = {
+        item["check"] for item in blocker_summary["failed_checks"]
+    }
+    assert {
+        "resume_supported_evidence_collection",
+        "work_validator_consistency",
+    } <= aggregate_failed_checks
     assert (
         campaign.cycle_root(blocker_root, "volicord", 1)
         / "evidence/resume.rollout.jsonl"
@@ -2293,6 +2386,25 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         documenter=documenter,
     )
     assert activation_summary["outcome"] == "operator_environment_invalid"
+    activation_cycle = next(
+        item
+        for item in activation_summary["cycles"]
+        if item["repository_class"] == "volicord" and item["cycle"] == 1
+    )
+    assert activation_cycle["failed_checks"] == [
+        harness.SETUP_ACTIVATION_CHECK
+    ]
+    assert activation_cycle["failure_attribution"] == [{
+        "phase": "work",
+        "domain": "environment",
+        "basis": "repository_session_activation_missing",
+        "failed_checks": [harness.SETUP_ACTIVATION_CHECK],
+    }]
+    assert activation_summary["failure_attribution"] == [{
+        "domain": "environment",
+        "cycle_count": 1,
+        "attribution_count": 1,
+    }]
     assert activation_summary["environment_invalid_diagnostics"] == [{
         "kind": "phase8_dogfood_missing_session_start_activation",
         "classification": "operator_environment_setup_failure",
@@ -2837,6 +2949,7 @@ def main() -> int:
             "unresolved_fact_authority_disagreement_blocks_sealing",
             "typed_behavior_review_provenance_verification",
             "terminal_work_blocker_stops_collection",
+            "bounded_work_blocker_failure_domains",
             "evidence_transport_failure_is_not_product_failure",
             "missing_activation_operator_environment_invalid",
             "unordered_sixteen_rollout_batch_mapping",
@@ -2850,6 +2963,9 @@ def main() -> int:
             "missing_duplicate_and_wrong_identity_batch_rejection",
             "literal_markdown_escape_batch_rejection",
             "batch_terminal_work_failure_preserved_with_later_resume",
+            "batch_cycle_failed_check_and_domain_attribution",
+            "batch_attribution_does_not_change_outcome_precedence",
+            "validation_internal_requires_validator_invariant_failure",
             "batch_activation_all_preserves_user_controlled_trust",
             "automatic_project_identity_and_bundle_export",
             "resume_baseline_identity_and_ordering",

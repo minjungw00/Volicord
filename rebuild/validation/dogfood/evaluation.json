@@ -784,6 +784,14 @@
       "raw_rollout_bytes_preserved": true,
       "terminal_work_failure_repaired_by_resume": false,
       "missing_activation_classification": "operator_environment_invalid",
+      "failure_attribution": {
+        "cycle_fields": ["failed_checks", "failure_attribution"],
+        "batch_fields": ["failed_checks", "failure_attribution"],
+        "domains": ["environment", "evidence", "behavior_contract", "validation_internal"],
+        "basis_visibility": "bounded_evaluator_safe_identifier",
+        "validation_internal_scope": "actual_validator_invariant_or_internal_failure_only",
+        "changes_qualification_outcome": false
+      },
       "candidate_mutation_guard": {
         "required_state": "campaign candidate equals current HEAD and qualifying worktree is clean",
         "operations": [
@@ -831,7 +839,9 @@
       "missing_activation_outcome": "operator_environment_invalid",
       "indeterminate_required_evidence_outcome": "evidence_failed",
       "actual_missing_required_operation_outcome": "campaign_stop",
-      "mixed_failure_checks_preserved": true
+      "mixed_failure_checks_preserved": true,
+      "failure_attribution_domains": ["environment", "evidence", "behavior_contract"],
+      "failure_attribution_basis_visibility": "bounded_evaluator_safe_identifier"
     }
   }
 }
