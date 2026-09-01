@@ -640,6 +640,12 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     assert index["preflight_operation"] == "validate-provisional-review"
     assert index["preflight_mutates_campaign"] is False
     assert [entry["review_slot_id"] for entry in index["entries"]] == sorted(slots)
+    assert all("provisional_review_template" not in entry for entry in index["entries"])
+    assert all(
+        entry["provisional_review_draft"] == f"drafts/{entry['review_slot_id']}.json"
+        for entry in index["entries"]
+    )
+    assert not (root / "reviewer/templates").exists()
     serialized_index = json.dumps(index, sort_keys=True)
     assert "repository_class" not in serialized_index
     assert "logical_cycle" not in serialized_index
@@ -1014,26 +1020,64 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         "path": campaign.relative(root, contract_path),
         "sha256": harness.sha256(contract_path),
     }
+    assert contract["artifact_ownership"] == {
+        "preparation": "read_only_inventory_bound_campaign_evidence",
+        "draft_path": "reviewer/drafts/<review_slot_id>.json",
+        "draft": "reviewer_owned_mutable_work_product_before_recording",
+        "draft_mutable_before_recording": True,
+        "draft_inventory_bound_before_recording": False,
+        "recorded_path": "reviewer/provisional/<review_slot_id>.json",
+        "recorded_provisional": "immutable_inventory_bound_campaign_evidence",
+        "recorded_bytes": "exact_accepted_input_bytes",
+    }
+    assert contract["preflight"]["inventory_bound_campaign_artifact_allowed_as_input"] is False
     assert preparation_body["preflight"] == {
         "operation": "validate-provisional-review",
         "mutation": "none",
     }
-    template = campaign.read_json(
-        root / preparation["provisional_review_template"]
+    assert "provisional_review_template" not in preparation
+    assert preparation["provisional_review_draft_ownership"] == (
+        "reviewer_owned_mutable_before_recording"
     )
-    assert template["_template_state"] == "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT"
-    assert template["status"] == "recorded"
-    assert template["classification"] is None
-    assert template["materiality_conclusion"] is None
-    assert template["basis"] == ""
-    assert template["provenance_reference_indices"] == []
+    assert preparation["provisional_review_draft_inventory_bound"] is False
+    provisional_path = root / preparation["provisional_review_draft"]
+    provisional_draft = campaign.read_json(provisional_path)
+    assert provisional_draft["_draft_state"] == (
+        "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT"
+    )
+    assert provisional_draft["status"] == "recorded"
+    assert provisional_draft["classification"] is None
+    assert provisional_draft["materiality_conclusion"] is None
+    assert provisional_draft["basis"] == ""
+    assert provisional_draft["provenance_reference_indices"] == []
+    draft_inventory_name = campaign.relative(root, provisional_path)
+    assert draft_inventory_name not in campaign.load_inventory(root)["artifacts"]
+    campaign.verify_inventory(root)
     provisional = copy.deepcopy(
         descriptor["behavior_review"]["independent_review"]["provisional_review"]
     )
     provisional["preparation_sha256"] = preparation["preparation_sha256"]
     provisional["review_slot_id"] = review_slot_id
-    provisional_path = parent / f"{review_slot_id}-fixed-provisional-review.json"
     campaign.write_json(provisional_path, provisional)
+    campaign.verify_inventory(root)
+    assert draft_inventory_name not in campaign.load_inventory(root)["artifacts"]
+
+    preparation_path = root / preparation["preparation"]
+    original_preparation = preparation_path.read_bytes()
+    campaign_before_preparation_corruption = campaign.campaign_file(root).read_bytes()
+    preparation_path.write_bytes(original_preparation + b" ")
+    try:
+        campaign.record_provisional_review(
+            root, campaign.load_campaign(root)["candidate_head"], review_slot_id, provisional_path
+        )
+    except campaign.CampaignError as error:
+        assert "evidence hash mismatch" in str(error)
+    else:
+        raise AssertionError("corrupt inventory-bound preparation allowed campaign mutation")
+    assert campaign.campaign_file(root).read_bytes() == campaign_before_preparation_corruption
+    assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
+    preparation_path.write_bytes(original_preparation)
+    campaign.verify_inventory(root)
 
     def reviewer_plane_snapshot() -> tuple[tuple[str, int, str], ...]:
         return tuple(
@@ -1082,6 +1126,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert len(valid_preflight_paths) == len(campaign.BEHAVIOR_CLASSES)
     assert set(preflight_read_paths) == {
         contract_path.resolve(),
+        campaign.inventory_path(root).resolve(),
         (root / preparation["preparation"]).resolve(),
     }
     before_cli_preflight = reviewer_plane_snapshot()
@@ -1105,6 +1150,21 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert cli_preflight.returncode == 0, cli_preflight.stdout + cli_preflight.stderr
     assert json.loads(cli_preflight.stdout)["campaign_mutated"] is False
     assert reviewer_plane_snapshot() == before_cli_preflight
+
+    before_inventory_bound_misuse = reviewer_plane_snapshot()
+    try:
+        campaign.validate_provisional_review(
+            root,
+            candidate_head,
+            review_slot_id,
+            root / preparation["preparation"],
+        )
+    except campaign.CampaignError as error:
+        assert "inventory-bound campaign artifact" in str(error)
+        assert "mutable reviewer draft" in str(error)
+    else:
+        raise AssertionError("inventory-bound campaign evidence passed reviewer preflight")
+    assert reviewer_plane_snapshot() == before_inventory_bound_misuse
 
     invalid_preflights: list[dict[str, object]] = []
     for status in ("pending", "complete"):
@@ -1471,6 +1531,14 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         raise AssertionError("bypassable material user-owned descriptor sealed")
     fixed_provisional = campaign.reviewer_provisional_path(root, "volicord", 1)
     assert fixed_provisional.read_bytes() == provisional_path.read_bytes()
+    fixed_after_record = fixed_provisional.read_bytes()
+    fixed_hash_after_record = harness.sha256(fixed_provisional)
+    provisional["basis"] += " reviewer continues editing the old draft"
+    campaign.write_json(provisional_path, provisional)
+    campaign.verify_inventory(root)
+    assert fixed_provisional.read_bytes() == fixed_after_record
+    assert harness.sha256(fixed_provisional) == fixed_hash_after_record
+    assert draft_inventory_name not in campaign.load_inventory(root)["artifacts"]
     assert campaign.cycle_state(root, "volicord", 1)["state"] == "provisional_recorded"
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     altered_provisional = copy.deepcopy(provisional)
@@ -2909,7 +2977,11 @@ def main() -> int:
             "reviewer_filename_workspace_and_order_opacity",
             "reviewer_contract_projection_and_preparation_hash_binding",
             "reviewer_contract_stale_or_contradictory_state_rejected",
-            "reviewer_template_is_deterministically_incomplete",
+            "reviewer_draft_is_mutable_and_not_inventory_bound",
+            "inventory_bound_preparation_corruption_blocks_mutation",
+            "inventory_bound_campaign_artifact_rejected_as_reviewer_input",
+            "recorded_provisional_is_independent_of_later_draft_mutation",
+            "superseded_reviewer_template_path_is_absent",
             "all_maintained_behavior_classes_pass_reviewer_preflight",
             "classification_dependent_materiality_unavoidability_and_disclosure",
             "invalid_status_invented_class_and_free_form_materiality_rejected",

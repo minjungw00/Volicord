@@ -278,10 +278,21 @@ def provisional_review_contract() -> dict[str, Any]:
             "review_slot_id": "must_equal_preparation.review_slot_id",
             "preparation_sha256": "must_equal_sha256_of_exact_preparation_bytes",
         },
+        "artifact_ownership": {
+            "preparation": "read_only_inventory_bound_campaign_evidence",
+            "draft_path": "reviewer/drafts/<review_slot_id>.json",
+            "draft": "reviewer_owned_mutable_work_product_before_recording",
+            "draft_mutable_before_recording": True,
+            "draft_inventory_bound_before_recording": False,
+            "recorded_path": "reviewer/provisional/<review_slot_id>.json",
+            "recorded_provisional": "immutable_inventory_bound_campaign_evidence",
+            "recorded_bytes": "exact_accepted_input_bytes",
+        },
         "preflight": {
             "operation": "validate-provisional-review",
             "mutation": "none",
             "validation_semantics": "shared_with_record-provisional-review",
+            "inventory_bound_campaign_artifact_allowed_as_input": False,
         },
         "privacy_boundary": (
             "This contract exposes construction rules only; it contains no slot assignment "
@@ -1506,6 +1517,15 @@ def load_definition() -> dict[str, Any]:
         != "phase8_blind_review_preparation"
         or blind_first.get("provisional_artifact_kind")
         != "phase8_provisional_behavior_review"
+        or blind_first.get("preparation_immutable_and_inventory_bound") is not True
+        or blind_first.get("draft_artifact_kind")
+        != "phase8_provisional_behavior_review"
+        or blind_first.get("draft_path")
+        != "reviewer/drafts/<review_slot_id>.json"
+        or blind_first.get("draft_ownership")
+        != "reviewer_owned_mutable_work_product_before_recording"
+        or blind_first.get("draft_mutable_before_recording") is not True
+        or blind_first.get("draft_inventory_bound_before_recording") is not False
         or blind_first.get("preparation_fields")
         != [
             "review_slot_id",
@@ -1544,6 +1564,8 @@ def load_definition() -> dict[str, Any]:
         or blind_first.get("preflight_validation_semantics")
         != "shared_with_record-provisional-review"
         or blind_first.get("preflight_reads_evaluator_or_steward_truth") is not False
+        or blind_first.get("preflight_rejects_inventory_bound_campaign_artifact")
+        is not True
         or blind_first.get("recording_operation") != "record-provisional-review"
         or blind_first.get("recording_identity")
         != "candidate_and_opaque_review_slot"
@@ -1554,6 +1576,10 @@ def load_definition() -> dict[str, Any]:
         or blind_first.get("recording_compares_evaluator_classification_or_materiality")
         is not False
         or blind_first.get("recording_failure_atomic") is not True
+        or blind_first.get("recording_preserves_exact_accepted_input_bytes") is not True
+        or blind_first.get("recorded_destination")
+        != "reviewer/provisional/<review_slot_id>.json"
+        or blind_first.get("recorded_independent_of_later_draft_mutation") is not True
         or blind_first.get("sealed_provisional_immutable_and_inventory_bound") is not True
         or blind_first.get("all_provisionals_required_before_any_reveal") is not True
         or blind_first.get("qualification_profile_reveal_operation")

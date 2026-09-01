@@ -504,9 +504,9 @@ def reviewer_preparation_path(root: Path, kind: str, cycle: int) -> Path:
     return slot_artifact_path(root, "reviewer", "preparations", state["review_slot_id"])
 
 
-def reviewer_provisional_template_path(root: Path, kind: str, cycle: int) -> Path:
+def reviewer_provisional_draft_path(root: Path, kind: str, cycle: int) -> Path:
     state = cycle_state(root, kind, cycle)
-    return slot_artifact_path(root, "reviewer", "templates", state["review_slot_id"])
+    return slot_artifact_path(root, "reviewer", "drafts", state["review_slot_id"])
 
 
 def reviewer_provisional_path(root: Path, kind: str, cycle: int) -> Path:
@@ -562,7 +562,7 @@ def render_reviewer_index(root: Path) -> Path:
         entries.append({
             "review_slot_id": review_slot_id,
             "preparation": f"preparations/{review_slot_id}.json",
-            "provisional_review_template": f"templates/{review_slot_id}.json",
+            "provisional_review_draft": f"drafts/{review_slot_id}.json",
             "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
         })
     path = reviewer_index_path(root)
@@ -625,14 +625,14 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
     }
     if json_keys(contract).intersection(prohibited_keys):
         raise CampaignError("reviewer provisional-review contract exposes evaluator material")
-    for directory in ("preparations", "templates", "provisional"):
+    for directory in ("preparations", "drafts", "provisional"):
         for path in sorted((root / "reviewer" / directory).glob("*.json")):
             if REVIEW_SLOT_ID.fullmatch(path.stem) is None:
                 raise CampaignError("blind reviewer filename exposes a non-opaque identity")
             value = read_json(path)
             if json_keys(value).intersection(prohibited_keys):
                 raise CampaignError("blind reviewer artifact exposes evaluator identity or material")
-            if directory != "provisional" and any(
+            if directory == "preparations" and any(
                 behavior_class in path.read_text(encoding="utf-8")
                 for behavior_class in BEHAVIOR_CLASSES
             ):
@@ -644,7 +644,7 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         expected = {
             "review_slot_id": review_slot_id,
             "preparation": f"preparations/{review_slot_id}.json",
-            "provisional_review_template": f"templates/{review_slot_id}.json",
+            "provisional_review_draft": f"drafts/{review_slot_id}.json",
             "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
         }
         if entry != expected:
@@ -1326,8 +1326,8 @@ def prepare_review(
     preparation_path = reviewer_preparation_path(root, kind, cycle)
     write_json(preparation_path, preparation)
     preparation_sha256 = harness.sha256(preparation_path)
-    provisional_template = {
-        "_template_state": "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT",
+    provisional_draft = {
+        "_draft_state": "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT",
         "kind": "phase8_provisional_behavior_review",
         "review_slot_id": review_slot_id,
         "status": "recorded",
@@ -1340,20 +1340,21 @@ def prepare_review(
         "basis": "",
         "provenance_reference_indices": [],
     }
-    template_path = reviewer_provisional_template_path(root, kind, cycle)
-    write_json(template_path, provisional_template)
+    provisional_draft_path = reviewer_provisional_draft_path(root, kind, cycle)
+    write_json(provisional_draft_path, provisional_draft)
     state["state"] = "review_prepared"
     state["review_preparation_sha256"] = preparation_sha256
     save_campaign(root, campaign)
     register_artifact(root, preparation_path)
-    register_artifact(root, template_path)
     assert_reviewer_artifacts_are_behavior_opaque(root)
     return {
         "kind": "phase8_blind_review_preparation_result",
         "review_slot_id": review_slot_id,
         "preparation": relative(root, preparation_path),
         "preparation_sha256": preparation_sha256,
-        "provisional_review_template": relative(root, template_path),
+        "provisional_review_draft": relative(root, provisional_draft_path),
+        "provisional_review_draft_ownership": "reviewer_owned_mutable_before_recording",
+        "provisional_review_draft_inventory_bound": False,
         "provisional_review_contract": reviewer_provisional_contract_reference(root),
         "preflight_operation": "validate-provisional-review",
         "preflight_mutates_campaign": False,
@@ -1401,6 +1402,14 @@ def load_and_validate_reviewer_provisional_review(
     ):
         raise CampaignError("blind reviewer preparation identity, candidate, or contract changed")
     source = provisional_review_path.resolve()
+    inventory = load_inventory(root)
+    for artifact_name in inventory.get("artifacts", {}):
+        artifact_path = (root / artifact_name).resolve()
+        if source == artifact_path:
+            raise CampaignError(
+                "provisional review input is an inventory-bound campaign artifact; "
+                "use the mutable reviewer draft or a reviewer-owned file outside the campaign root"
+            )
     try:
         source_bytes = source.read_bytes()
         provisional = json.loads(source_bytes)

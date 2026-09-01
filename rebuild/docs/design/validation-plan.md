@@ -1153,20 +1153,26 @@ workflow isolation이며 OS secrecy 주장이 아니다. Independent control age
 review를 작성할 때 reviewer plane의 `reviewer/provisional-review-contract.json`이 exact field,
 fixed value, maintained behavior vocabulary, classification별 materiality/unavoidability/disclosure,
 bounded basis, provenance-index와 preparation binding을 단일 machine-readable projection으로
-제공한다. Reviewer index와 각 preparation은 이 path와 SHA-256을 노출하며 template은 제거해야 하는
-explicit incomplete marker, null conclusion과 빈 basis/provenance를 사용해 final artifact로 오인할
-수 없게 한다. `validate-provisional-review`는 candidate, opaque slot, exact preparation bytes와
-proposed review만 읽어 같은 reviewer-visible validator를 실행하고 campaign/profile/descriptor를
-읽거나 변경하지 않는다. 성공과 실패 모두 `provisional_count`, cycle/reveal state, artifact와
-inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
+제공한다. Reviewer index와 각 preparation은 이 path와 SHA-256을 노출한다. `prepare-review`는
+제거해야 하는 explicit incomplete marker, null conclusion과 빈 basis/provenance를 가진
+reviewer-owned mutable draft를 `reviewer/drafts/<review_slot_id>.json`에 만든다. Preparation은 read-only campaign
+evidence이고 inventory-bound지만 draft는 recording 전 reviewer work product이며 inventory에
+등록하지 않는다. `validate-provisional-review`는 candidate, opaque slot, exact preparation bytes,
+proposed review와 proposed path가 inventory-bound campaign artifact인지 판정하는 inventory
+membership만 읽어 같은 reviewer-visible validator를 실행하고 evaluator/profile/descriptor를
+읽거나 어떤 campaign state도 변경하지 않는다. Inventory-bound campaign artifact를 mutable
+reviewer input으로 전달하면 명시적으로 거부한다. 성공과 실패 모두 `provisional_count`,
+cycle/reveal state, artifact와 inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
 제출하면 `record-provisional-review`가 exact candidate,
 opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
-private artifact와 hash/inventory binding을 고정하면서 `review_prepared`에서
+private artifact `reviewer/provisional/<review_slot_id>.json`에 accepted input의 exact bytes를
+복사하고 그 bytes/hash를 inventory에 고정하면서 `review_prepared`에서
 `provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
 reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
 Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
 class와 일치하지 않아도 성공하며, 결과는 repository class, logical cycle, evaluator behavior
-class 또는 match/mismatch를 노출하지 않는다. 모든 eight provisional artifact와 hash가 고정되기
+class 또는 match/mismatch를 노출하지 않는다. Recording 뒤 이전 draft를 더 편집해도 recorded
+provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 eight provisional artifact와 hash가 고정되기
 전에는 qualification-profile reveal과 `seal-cycle` evaluator reveal을 모두 거부한다.
 `reveal-qualification-profile`은 `provisional_count = 8`과 모든 immutable hash를 확인한 뒤 private
 profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
