@@ -1,6 +1,7 @@
 use std::{
     fs,
-    process::Command,
+    io::{Read, Write},
+    process::{Command, Stdio},
     sync::{Arc, Barrier},
     thread,
     time::{Duration, Instant},
@@ -577,14 +578,7 @@ fn mutation_lock_excludes_another_open_description() {
     let runtime = temporary.path().join("runtime");
     ensure_private_directory(&runtime).expect("runtime");
     let path = runtime.join("mutation.lock");
-    let first = MutationLockGuard::acquire(&path).expect("first lock");
-    assert!(MutationLockGuard::try_acquire(&path)
-        .expect("contended observation")
-        .is_none());
-    drop(first);
-    assert!(MutationLockGuard::try_acquire(&path)
-        .expect("released observation")
-        .is_some());
+    run_lock_process(&path, "local-lifecycle");
 }
 
 #[cfg(target_os = "linux")]
@@ -593,19 +587,41 @@ fn mutation_lock_process_probe() {
     let Some(path) = std::env::var_os("VOLICORD_TEST_MUTATION_LOCK") else {
         return;
     };
-    let guard =
-        MutationLockGuard::try_acquire(std::path::Path::new(&path)).expect("process lock probe");
-    let acquired = guard.is_some();
-    let expected =
-        std::env::var_os("VOLICORD_TEST_LOCK_EXPECTED").expect("expected state") == "acquired";
-    assert_eq!(acquired, expected);
-    if acquired {
-        if let Some(ready) = std::env::var_os("VOLICORD_TEST_LOCK_HOLD_READY") {
-            fs::write(ready, b"ready\n").expect("lock-holder readiness");
-            loop {
-                thread::sleep(Duration::from_secs(60));
-            }
+    let mode = std::env::var("VOLICORD_TEST_MUTATION_LOCK_MODE").expect("lock probe mode");
+    let path = std::path::Path::new(&path);
+    match mode.as_str() {
+        "local-lifecycle" => {
+            let first = MutationLockGuard::acquire(path).expect("first lock");
+            assert!(
+                rustix::io::fcntl_getfd(first.file())
+                    .expect("mutation lock descriptor flags")
+                    .contains(rustix::io::FdFlags::CLOEXEC),
+                "mutation lock descriptor must be close-on-exec"
+            );
+            assert!(MutationLockGuard::try_acquire(path)
+                .expect("contended observation")
+                .is_none());
+            drop(first);
+            assert!(MutationLockGuard::try_acquire(path)
+                .expect("released observation")
+                .is_some());
         }
+        "observe-contended" | "observe-acquired" => {
+            let guard = MutationLockGuard::try_acquire(path).expect("process lock probe");
+            let acquired = guard.is_some();
+            assert_eq!(acquired, mode == "observe-acquired");
+        }
+        "hold" => {
+            let _guard = MutationLockGuard::acquire(path).expect("process lock holder");
+            let ready = std::env::var_os("VOLICORD_TEST_LOCK_HOLD_READY")
+                .expect("lock-holder readiness path");
+            fs::write(ready, b"ready\n").expect("lock-holder readiness");
+            let mut release = [0_u8; 1];
+            std::io::stdin()
+                .read_exact(&mut release)
+                .expect("lock-holder release handshake");
+        }
+        other => panic!("unknown mutation lock probe mode: {other}"),
     }
 }
 
@@ -616,10 +632,20 @@ fn mutation_lock_excludes_a_separate_process() {
     let runtime = temporary.path().join("runtime");
     ensure_private_directory(&runtime).expect("runtime");
     let path = runtime.join("mutation.lock");
-    let parent = MutationLockGuard::acquire(&path).expect("parent lock");
-    run_lock_probe(&path, "contended");
-    drop(parent);
-    run_lock_probe(&path, "acquired");
+    let ready = runtime.join("holder.ready");
+    let mut child = spawn_lock_holder(&path, &ready);
+    wait_for_lock_holder(&mut child, &ready);
+    run_lock_process(&path, "observe-contended");
+    child
+        .0
+        .stdin
+        .as_mut()
+        .expect("lock-holder stdin")
+        .write_all(b"release")
+        .expect("release lock holder");
+    let status = child.0.wait().expect("reap released lock holder");
+    assert!(status.success());
+    run_lock_process(&path, "observe-acquired");
 }
 
 #[cfg(target_os = "linux")]
@@ -631,25 +657,8 @@ fn mutation_lock_is_released_after_holder_process_termination() {
     let path = runtime.join("mutation.lock");
     for iteration in 0..8 {
         let ready = runtime.join(format!("holder-{iteration}.ready"));
-        let mut child = KillAndReap(
-            Command::new(std::env::current_exe().expect("current test executable"))
-                .args(["--exact", "mutation_lock_process_probe", "--nocapture"])
-                .env("VOLICORD_TEST_MUTATION_LOCK", &path)
-                .env("VOLICORD_TEST_LOCK_EXPECTED", "acquired")
-                .env("VOLICORD_TEST_LOCK_HOLD_READY", &ready)
-                .spawn()
-                .expect("lock-holder process"),
-        );
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !ready.exists() && Instant::now() < deadline {
-            if let Some(status) = child.0.try_wait().expect("holder status") {
-                panic!("lock holder exited before readiness: {status}");
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        if !ready.exists() {
-            panic!("lock holder did not become ready");
-        }
+        let mut child = spawn_lock_holder(&path, &ready);
+        wait_for_lock_holder(&mut child, &ready);
         let contended = MutationLockGuard::try_acquire(&path);
         child.0.kill().expect("terminate lock holder");
         let status = child.0.wait().expect("reap lock holder");
@@ -662,11 +671,39 @@ fn mutation_lock_is_released_after_holder_process_termination() {
 }
 
 #[cfg(target_os = "linux")]
-fn run_lock_probe(path: &std::path::Path, expected: &str) {
+fn spawn_lock_holder(path: &std::path::Path, ready: &std::path::Path) -> KillAndReap {
+    KillAndReap(
+        Command::new(std::env::current_exe().expect("current test executable"))
+            .args(["--exact", "mutation_lock_process_probe", "--nocapture"])
+            .env("VOLICORD_TEST_MUTATION_LOCK", path)
+            .env("VOLICORD_TEST_MUTATION_LOCK_MODE", "hold")
+            .env("VOLICORD_TEST_LOCK_HOLD_READY", ready)
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("lock-holder process"),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_lock_holder(child: &mut KillAndReap, ready: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ready.exists() && Instant::now() < deadline {
+        if let Some(status) = child.0.try_wait().expect("holder status") {
+            panic!("lock holder exited before readiness: {status}");
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    if !ready.exists() {
+        panic!("lock holder did not become ready");
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_lock_process(path: &std::path::Path, mode: &str) {
     let status = Command::new(std::env::current_exe().expect("current test executable"))
         .args(["--exact", "mutation_lock_process_probe", "--nocapture"])
         .env("VOLICORD_TEST_MUTATION_LOCK", path)
-        .env("VOLICORD_TEST_LOCK_EXPECTED", expected)
+        .env("VOLICORD_TEST_MUTATION_LOCK_MODE", mode)
         .status()
         .expect("lock probe process");
     assert!(status.success());
