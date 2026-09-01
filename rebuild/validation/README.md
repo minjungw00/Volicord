@@ -510,17 +510,20 @@ artifacts. It does not require, and must not substitute, a full Runtime Home.
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
 
-The current maintained pre-Dogfood entry state is summarized in
-`phase-8-summary.md`: `replacement_gate = pending` and
-`phase_9_ready = false`. The current sealed production/test candidate is
-`6031641c46cf014a754442dcee3137caf265882e`: admission was `eligible`, exact
-final succeeded with zero failures, the separately authorized live production
-provider qualification passed for `openai-codex` / `gpt-5.6-sol`, all 54
-required V11 steps passed, the credential-retention audit passed with zero
-recorded findings or scan errors, no active accepted-Decision revisit trigger
-was reported, the sanitized evidence archive was independently verified, and
-`phase_8_ready = true`. Technical entry passed; naturalistic Dogfood remains
-`not_run`.
+The maintained Phase 8 candidate-authority summary is
+`phase-8-summary.md`; replacement passage is not established and
+`phase_9_ready = false`. Candidate
+`6031641c46cf014a754442dcee3137caf265882e` is historical sealed evidence:
+admission was `eligible`, exact final succeeded with zero failures, the
+separately authorized live production-provider qualification passed for
+`openai-codex` / `gpt-5.6-sol`, all 54 required V11 steps passed, the
+credential-retention audit passed with zero recorded findings or scan errors,
+no active accepted-Decision revisit trigger was reported, and the sanitized
+evidence archive was independently verified. `phase_8_ready = true` and the
+corresponding technical eligibility apply only to that exact candidate HEAD.
+No later HEAD inherits either result; only its own successful maintained gate
+and verified capsule/evidence archive can make it a sealed candidate.
+Naturalistic Dogfood for the historical candidate remains `not_run`.
 
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden

@@ -1,10 +1,11 @@
-# Phase 8 pre-Dogfood entry state
+# Phase 8 technical-entry candidate authority
 
-- `replacement_gate = pending`
+- Replacement passage: `not_established`
 - `phase_9_ready = false`
-- Current sealed pre-Dogfood production/test candidate:
+- Historical sealed pre-Dogfood production/test candidate:
   `6031641c46cf014a754442dcee3137caf265882e`
-- Technical Phase 8 entry gate: `passed`; `phase_8_ready = true`
+- Historical candidate's technical Phase 8 entry gate: `passed`;
+  `phase_8_ready = true` only for that exact candidate HEAD
 - Admission: `eligible`; exact final: `succeeded` with four commands and zero
   failures; official V11: `passed` with 54 of 54 required steps
 - Live production-provider qualification: `passed`; provider `openai-codex`,
@@ -23,27 +24,34 @@
 
 ## Maintained conclusion
 
-The reviewer-blind campaign now has sealed production/test candidate
-`6031641c46cf014a754442dcee3137caf265882e` and is technically eligible to
-begin naturalistic Dogfood. Admission passed with a clean, unchanged worktree;
-the exact final succeeded with all four commands, zero failures, and a
-warning-clean clippy result; the separately authorized live
-production-provider qualification passed; and the same-session official V11
-passed all 54 required steps. All
+Candidate `6031641c46cf014a754442dcee3137caf265882e` historically passed the
+technical-entry gate and was eligible to begin a candidate-bound naturalistic
+Dogfood campaign at that exact HEAD. Admission passed with a clean, unchanged
+worktree; the exact final succeeded with all four commands, zero failures, and
+a warning-clean clippy result; the separately authorized live production-provider
+qualification passed; and the same-session official V11 passed all 54 required
+steps. All
 three authenticated Codex targets passed, the credential-retention audit passed
 with zero recorded findings or scan errors, official V11 reported no active
 accepted-Decision revisit trigger, and the sanitized archive was independently
 verified. The capsule, archive, final, provider, and V11 evidence identify the
 same candidate and gate invocation.
 
+That capsule and archive remain historical evidence only. A later HEAD never
+inherits technical-entry or Dogfood eligibility from an earlier successful
+gate. Technical eligibility is authoritative only for the exact candidate HEAD
+identified by a successful maintained gate and its verified capsule/evidence
+archive; a failed or blocked gate establishes no eligibility for its candidate.
+
 This technical entry does not qualify naturalistic Dogfood or replacement
 passage. Naturalistic Dogfood is `not_run`. Automated qualification has not run
 and human review has not been provided, so `replacement_gate = pending`,
 `replacement_pass_candidate = false`, and `phase_9_ready = false` remain
-unchanged. Predecessor Dogfood descriptors, captures, Runtime Homes,
-workspaces, bundles, observations, or session identities cannot qualify or be
-reused for a future candidate. Any predecessor Small Python cycle remains diagnostic
-only and is not qualifying evidence for the redesigned campaign.
+unchanged for the historical candidate. The failed naturalistic campaign
+recorded in `rebuild/validation/dogfood/report.md`, including its descriptors,
+captures, Runtime Homes, workspaces, bundles, observations, and session
+identities, remains diagnostic-only. It cannot be repaired, continued, or
+reused for this or any future candidate.
 
 The current human-facing surface gives generated documents a
 comprehension-first body and keeps inspectable grounding and audit detail in a
@@ -52,12 +60,14 @@ same human-first hierarchy. A static Viewer snapshot is a distinct,
 self-contained, read-only share and review artifact; it is not interchangeable
 with the four generated documents or their adoption lifecycle.
 
-## Current entry boundary
+## Candidate-bound entry boundary
 
-The fresh campaign for this candidate must begin from zero in a separate clean
-worktree whose actual Git `HEAD` is exactly
-`6031641c46cf014a754442dcee3137caf265882e`. It must retain the maintained
-three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
+Any future campaign must begin from zero in a separate clean worktree whose
+actual Git `HEAD` exactly matches the newly sealed candidate identified by its
+own successful maintained gate and verified capsule. Supplying the historical
+candidate `6031641c46cf014a754442dcee3137caf265882e`, or any other candidate
+argument, cannot qualify a different worktree HEAD. The fresh campaign must
+retain the maintained three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
 replacement-required human-review, resource, and accessibility qualification contract.
 The campaign worktree itself must be the sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
@@ -120,9 +130,11 @@ than failing automated Dogfood, and a human pass cannot override any machine
 failure. Ordinary independent review uses the byte-exact raw rollout archive
 plus the bounded review package, not a full Runtime Home.
 
-This documentation-only conclusion commit is outside the sealed
-production/test candidate. Its later branch HEAD cannot qualify Dogfood by
-passing only the older sealed candidate as a helper argument.
+The candidate-specific gate capsule and verified evidence archive, rather than
+this tracked summary, own the technical-entry result. This summary therefore
+does not require a post-gate commit to name a new current candidate: any later
+tracked commit would create a different HEAD and cannot inherit the capsule's
+authority.
 
 ## Remaining Phase 8 risks
 
