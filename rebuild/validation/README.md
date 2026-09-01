@@ -540,11 +540,13 @@ Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for a future candidate.
 Any predecessor Small Python cycle is diagnostic only and is not qualifying
 evidence for the redesigned campaign.
-Replacement passage remains pending/false, and Phase 9 may not begin.
+Replacement passage remains not established, and Phase 9 may not begin.
 Qualifying Dogfood must run from a separate clean worktree whose actual Git
-`HEAD` is exactly `6031641c46cf014a754442dcee3137caf265882e`. This later
-documentation-only branch HEAD is outside the sealed production/test candidate;
-it cannot qualify by passing only the sealed candidate as a helper argument.
+`HEAD` exactly matches the newly sealed candidate identified by its own
+successful maintained gate and verified capsule/evidence archive. Historical
+candidate `6031641c46cf014a754442dcee3137caf265882e` and any later documentation
+HEAD remain distinct; neither can qualify a different HEAD through a helper
+argument.
 
 ## Admission, authorization, and handoff
 
