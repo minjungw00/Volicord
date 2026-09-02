@@ -458,7 +458,10 @@ exploratory uncertainty는 research/prototype/defer/revisit 뒤 같은 Candidate
 Unresolved user-owned outcome은 기존 Question Candidate → promotion → frontier → exact
 current-host response → Decision path만 사용한다. Shared result는 stage, disposition,
 next Volicord action, blocking 여부, reason, satisfied와 unresolved requirement를 보존하며
-모든 requirement가 충족될 때만 `ready_for_work`를 표시한다.
+모든 requirement가 충족되고 descriptive materiality scope와 분리된 typed executable path/component/
+work-context scope가 existing Materiality inspection transition으로 current review에 bind된 뒤에만
+`ready_for_work`를 표시한다. Parent repository path는 descendant를 cover하고 material scope expansion은
+binding을 invalidate하며 이미 변경된 path에 대한 late expansion은 거부한다.
 
 Materiality Review의 learning participation은 inactive 또는 exact current-host user Source로 입증된
 active state다. Authority와 독립적인 routine/deliberation-worthy assessment 뒤, active이며 agent-owned인
@@ -469,13 +472,14 @@ terminal state, research/prototype는 evidence-required state다. User-owned dim
 
 ### 5. Ordinary work와 source-grounded Checkpoint
 
-일반 repository 작업은 Volicord의 사전 admission 대상이 아니다. Adapter와 Local
+일반 repository 작업은 새 approval ceremony의 대상이 아니다. Adapter와 Local
 Operations는 work observation을 Candidate로 전달할 수 있다. 의미 있는 완료,
 pause 또는 handoff boundary에서 source, changed basis, verification, known limits와
 next step이 확인되면 Local Operations는 same Project, current Goal, exact pre-work
 Analysis Snapshot에 대한 timely Materiality Review와 exact Learning Deliberation state를 다시 평가한다. `ready_for_work`가
 아니거나 authority Decision이 Checkpoint의 applied Decision에 빠지면 canonical publication을
-거부한다. 이 검사는 Checkpoint boundary의 truthfulness이며 ordinary write admission이 아니다.
+거부한다. 이 검사는 pre-write executable-scope binding과 Checkpoint boundary의 truthfulness이며
+general-purpose file/command permission system이 아니다.
 검사가 통과하면 Kernel이 Checkpoint를 canonical로 기록한다. Work,
 verification, user review와 user acceptance는 서로 독립적으로 남는다.
 

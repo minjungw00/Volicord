@@ -730,7 +730,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - ordinary work with unrelated dirty changes
 - fresh/resumed work에서 Recall 뒤 첫 ordinary repository write 전 Analysis Snapshot baseline
 - current Goal/baseline에 bind된 typed Materiality Review, dimension별 disposition과 explicit
-  `ready_for_work`
+  executable path/component/work-context scope 뒤의 `ready_for_work`
 - same Goal/baseline의 prior Engineering Choice Discovery, exact choice identity mapping,
   independent/coupled completeness와 effect-category non-authority
 - inactive/explicit-active learning participation, independent routine/deliberation-worthy assessment,
@@ -738,6 +738,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - unsupported deliberation-worthy-to-routine revision rejection, prior learning path preservation과
   Source-backed research/prototype 또는 exact current-user withdrawal/narrowing revision basis
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection
+- production/test/document multi-file executable scope의 first-Checkpoint success, parent-root
+  descendant coverage, material expansion 뒤 rebind requirement와 changed-path late expansion rejection
 - disposition, authority anchor, blocking readiness 또는 affected-scope applicability를 늦게 수정한
   dimension의 affected path가 maintained baseline/current evidence로 증명되면 later fact/agent/
   delegation/Decision/research/learning-ready meaning이 earlier work를 certify하지 않는 상태

@@ -25,6 +25,7 @@ pub enum WorkAuthorityStage {
 pub enum WorkAuthorityDisposition {
     ReviewMissing,
     ReviewInvalid,
+    ExecutableScopeRequired,
     ResearchRequired,
     QuestionRequired,
     LearningDeliberationPending,
@@ -35,6 +36,7 @@ pub enum WorkAuthorityDisposition {
 pub enum WorkAuthorityAction {
     RecordMaterialityReview,
     ReviseMaterialityReview,
+    BindExecutableWorkScope,
     ContinueResearchOrPrototype,
     EnterExistingQuestionLifecycle,
     BeginOrContinueLearningDeliberation,
@@ -297,8 +299,21 @@ pub fn evaluate_work_authority(
             }
         }
     }
-    if let Err(reason) = validate_requested_work_scope(review, applicability) {
-        return invalid(result, None, reason);
+    if !question_required && !research_required && !review.late_work_authority_revisions.is_empty()
+    {
+        let affected = review
+            .late_work_authority_revisions
+            .iter()
+            .map(|correction| correction.dimension_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return invalid(
+            result,
+            None,
+            format!(
+                "affected work preceded a work-authority or readiness revision for dimensions {affected}; the revision is prospective and cannot certify the earlier work"
+            ),
+        );
     }
     if question_required {
         result.stage = WorkAuthorityStage::QuestionRequired;
@@ -316,20 +331,6 @@ pub fn evaluate_work_authority(
         result.next_action = Some(WorkAuthorityAction::ContinueResearchOrPrototype);
         result.reason =
             "research or prototype evidence must feed a revised Materiality Review".to_owned();
-    } else if !review.late_work_authority_revisions.is_empty() {
-        let affected = review
-            .late_work_authority_revisions
-            .iter()
-            .map(|correction| correction.dimension_id.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return invalid(
-            result,
-            None,
-            format!(
-                "affected work preceded a work-authority or readiness revision for dimensions {affected}; the revision is prospective and cannot certify the earlier work"
-            ),
-        );
     } else if let Err(reason) = evaluate_learning_readiness(
         canonical,
         candidate,
@@ -353,6 +354,22 @@ pub fn evaluate_work_authority(
             LearningIssue::Invalid(reason) => return invalid(result, None, reason),
         }
     } else {
+        let Some(binding) = review.executable_work_scope.as_ref() else {
+            result.disposition = WorkAuthorityDisposition::ExecutableScopeRequired;
+            result.next_action = Some(WorkAuthorityAction::BindExecutableWorkScope);
+            result.reason =
+                "bind a bounded executable work scope to the current Materiality Review before ordinary writes"
+                    .to_owned();
+            result.unresolved_requirements.push(requirement(
+                None,
+                "the current review has no retained executable path, component, or work-context scope",
+                Vec::new(),
+            ));
+            return result;
+        };
+        if let Err(reason) = validate_requested_work_scope(binding, applicability) {
+            return invalid(result, None, reason);
+        }
         result.stage = WorkAuthorityStage::ReadyForWork;
         result.disposition = WorkAuthorityDisposition::ReadyForWork;
         result.next_action = Some(WorkAuthorityAction::BeginOrdinaryWork);
@@ -860,23 +877,16 @@ fn work_scope_requested(work_scope: &ApplicabilityQuery) -> bool {
 }
 
 fn validate_requested_work_scope(
-    review: &crate::MaterialityReview,
+    binding: &crate::ExecutableWorkScopeBinding,
     work_scope: &ApplicabilityQuery,
 ) -> Result<(), String> {
     if !work_scope_requested(work_scope) {
         return Ok(());
     }
-    let reviewed_scope = review
-        .dimensions
-        .iter()
-        .filter_map(|dimension| dimension.basis.explicit_delegation.as_ref())
-        .flat_map(|delegation| delegation.affected_scope.iter())
-        .collect::<Vec<_>>();
-    if reviewed_scope.is_empty() {
-        return Ok(());
-    }
     if let Some(path) = work_scope.paths.iter().find(|path| {
-        !reviewed_scope
+        !binding
+            .scope
+            .paths
             .iter()
             .any(|scope| path_is_covered(scope, path))
     }) {
@@ -885,7 +895,9 @@ fn validate_requested_work_scope(
         ));
     }
     if let Some(component) = work_scope.components.iter().find(|component| {
-        !reviewed_scope
+        !binding
+            .scope
+            .components
             .iter()
             .any(|scope| scope.as_str() == component.as_str())
     }) {
@@ -894,7 +906,9 @@ fn validate_requested_work_scope(
         ));
     }
     if let Some(work_context) = work_scope.work_contexts.iter().find(|work_context| {
-        !reviewed_scope
+        !binding
+            .scope
+            .work_contexts
             .iter()
             .any(|scope| scope.as_str() == work_context.as_str())
     }) {

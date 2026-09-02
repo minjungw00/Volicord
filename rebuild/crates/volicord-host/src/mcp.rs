@@ -626,16 +626,42 @@ impl HostAdapter {
                 let goal_context_id = parse_context_item(required_str(args, "goal_context_id")?)?;
                 let baseline_analysis_snapshot_id =
                     parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
+                let review_candidate_id =
+                    parse_candidate(required_str(args, "review_candidate_id")?)?;
+                let mut paths = string_array(args, "paths")?;
+                let mut components = string_array(args, "components")?;
+                let mut work_contexts = string_array(args, "work_contexts")?;
+                paths.sort();
+                paths.dedup();
+                components.sort();
+                components.dedup();
+                work_contexts.sort();
+                work_contexts.dedup();
+                let met_revisit_triggers = string_array(args, "met_revisit_triggers")?;
+                let outcome = self
+                    .operations
+                    .bind_executable_work_scope(
+                        project_id,
+                        goal_context_id,
+                        baseline_analysis_snapshot_id,
+                        review_candidate_id,
+                        volicord_context::ApplicabilityScope {
+                            paths: paths.clone(),
+                            components: components.clone(),
+                            work_contexts: work_contexts.clone(),
+                        },
+                    )
+                    .map_err(operation_error)?;
                 let workflow = self
                     .operations
                     .workflow_for_work_basis(
                         project_id,
                         goal_context_id,
                         baseline_analysis_snapshot_id,
-                        string_array(args, "paths")?,
-                        string_array(args, "components")?,
-                        string_array(args, "work_contexts")?,
-                        string_array(args, "met_revisit_triggers")?,
+                        paths.clone(),
+                        components.clone(),
+                        work_contexts.clone(),
+                        met_revisit_triggers,
                     )
                     .map_err(operation_error)?;
                 Ok(with_workflow(
@@ -644,7 +670,14 @@ impl HostAdapter {
                         "project_id":project_id.to_string(),
                         "goal_context_id":goal_context_id.to_string(),
                         "baseline_analysis_snapshot_id":baseline_analysis_snapshot_id.to_string(),
-                        "read_only":true,
+                        "review_candidate_id":outcome.review_candidate_id.to_string(),
+                        "review_revision":outcome.review_revision,
+                        "executable_work_scope": {
+                            "paths": paths,
+                            "components": components,
+                            "work_contexts": work_contexts,
+                        },
+                        "read_only":false,
                     }),
                     workflow,
                 ))
@@ -1798,7 +1831,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. After authority and any required learning are resolved, inspect binds the explicit typed executable paths, components, and work contexts to the current review before ready_for_work; descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2729,6 +2762,10 @@ fn materiality_review_schemas() -> Vec<Value> {
             "baseline_analysis_snapshot_id",
             digest_identity_schema("Exact pre-work Analysis Snapshot identity"),
         ),
+        (
+            "review_candidate_id",
+            identity_schema("Current Materiality Review Candidate identity"),
+        ),
     ];
     inspect_fields.extend([
         (
@@ -2780,6 +2817,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "project_id",
                 "goal_context_id",
                 "baseline_analysis_snapshot_id",
+                "review_candidate_id",
             ],
         ),
     ]
@@ -5682,6 +5720,7 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
         }
         WorkflowDisposition::ReviewMissing => "review_missing",
         WorkflowDisposition::ReviewInvalid => "review_invalid",
+        WorkflowDisposition::ExecutableScopeRequired => "executable_scope_required",
         WorkflowDisposition::LearningDeliberationPending => "learning_deliberation_pending",
         WorkflowDisposition::ResearchRequired => "research_required",
         WorkflowDisposition::QuestionRequired => "question_required",

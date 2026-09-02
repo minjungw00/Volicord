@@ -32,14 +32,14 @@ use std::{
     time::{Duration, Instant},
 };
 use volicord_context::{
-    Availability, BundleComparison, BundleMerge, CanonicalInvalidation, CanonicalReadBasis,
-    CanonicalReadOptions, CanonicalRecordId, CheckpointDraft, CheckpointId, Clock, CommandOutcome,
-    ContextItemCorrectionDraft, ContextItemDraft, ContextItemId, ContextItemRole, DecisionChoice,
-    DecisionCorrectionDraft, DecisionId, DecisionSupersessionDraft, MergeResolution, OperationId,
-    OperationResult, Principal, PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload,
-    StatementProvenanceRole, Store, SystemClock, TimestampMicros, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, UserTurnSource, VerificationFact,
-    VerificationState,
+    ApplicabilityScope, Availability, BundleComparison, BundleMerge, CanonicalInvalidation,
+    CanonicalReadBasis, CanonicalReadOptions, CanonicalRecordId, CheckpointDraft, CheckpointId,
+    Clock, CommandOutcome, ContextItemCorrectionDraft, ContextItemDraft, ContextItemId,
+    ContextItemRole, DecisionChoice, DecisionCorrectionDraft, DecisionId,
+    DecisionSupersessionDraft, MergeResolution, OperationId, OperationResult, Principal,
+    PrincipalKind, ProjectId, SourceDraft, SourceId, SourcePayload, StatementProvenanceRole, Store,
+    SystemClock, TimestampMicros, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
+    UserReviewState, UserTurnSource, VerificationFact, VerificationState,
 };
 use volicord_inquiry::{
     attribute_repository_changes, bind_question_candidate_to_materiality, compute_frontier,
@@ -1071,6 +1071,7 @@ impl LocalOperations {
                     rationale: draft.rationale,
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
+                    executable_work_scope: None,
                     late_work_authority_revisions: Vec::new(),
                     learning_value_revisions: Vec::new(),
                 }),
@@ -1175,6 +1176,75 @@ impl LocalOperations {
             goal_context_id: review.goal_context_id,
             baseline_analysis_snapshot_id: review.baseline_analysis_snapshot_id,
             review_analysis_snapshot_id: review.current_review_analysis_snapshot_id,
+        })
+    }
+
+    pub fn bind_executable_work_scope(
+        &self,
+        project_id: ProjectId,
+        goal_context_id: ContextItemId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+        review_candidate_id: CandidateId,
+        scope: ApplicabilityScope,
+    ) -> Result<MaterialityReviewOutcome, Error> {
+        self.initialize_runtime()?;
+        let existing = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|store| store.get(project_id, review_candidate_id))
+            .map_err(|error| Error::with_source("Materiality Review lookup failed", error))?;
+        let existing_review = existing
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        if existing_review.goal_context_id != goal_context_id
+            || existing_review.baseline_analysis_snapshot_id != baseline_analysis_snapshot_id
+        {
+            return Err(Error::new(
+                "executable work scope Goal or baseline basis does not match",
+            ));
+        }
+        let baseline = self.load_analysis_snapshot(project_id, baseline_analysis_snapshot_id)?;
+        let excluded_paths = baseline
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let current = self
+            .analyze(project_id, excluded_paths)?
+            .value
+            .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
+            .analysis;
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        let record = CandidateStore::open(self.layout.candidate_store())
+            .and_then(|mut store| {
+                store.bind_executable_work_scope(
+                    project_id,
+                    review_candidate_id,
+                    &baseline,
+                    &current,
+                    scope,
+                )
+            })
+            .map_err(|error| Error::with_source("Executable work scope binding failed", error))?;
+        let review = record
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| Error::new("Materiality Review content is unavailable"))?;
+        Ok(MaterialityReviewOutcome {
+            review_candidate_id: record.id,
+            review_revision: record.revision,
+            goal_context_id: review.goal_context_id,
+            baseline_analysis_snapshot_id: review.baseline_analysis_snapshot_id,
+            review_analysis_snapshot_id: current.identity,
         })
     }
 
@@ -3923,6 +3993,11 @@ fn workflow_from_authority(
             WorkflowStage::MaterialityReview,
             WorkflowDisposition::ReviewInvalid,
             Some(workflow_action("materiality_review", Some("revise"))),
+        ),
+        WorkAuthorityDisposition::ExecutableScopeRequired => (
+            WorkflowStage::MaterialityReview,
+            WorkflowDisposition::ExecutableScopeRequired,
+            Some(workflow_action("materiality_review", Some("inspect"))),
         ),
         WorkAuthorityDisposition::ResearchRequired => (
             WorkflowStage::ResearchOrPrototype,

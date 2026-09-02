@@ -555,7 +555,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   bounded work의 Checkpoint까지 유지한다.
 - 같은 pre-work boundary에서 independently material outcome을 typed Materiality Review로
   분류한다. Review는 exact Engineering Choice Discovery identity를 consume하고 모든 discovered
-  choice를 정확히 한 dimension에서 분류한 뒤 `ready_for_work`가 된 경우에만 ordinary work를
+  choice를 정확히 한 dimension에서 분류한다. Descriptive affected scope와 별도의 typed executable
+  path/component/work-context scope를 existing Materiality inspection으로 bind한 뒤 `ready_for_work`가
+  된 경우에만 ordinary work를
   수행한다. Settled/repository/research path는
   Question을 제조하지 않고 user-owned path는 existing Question/Decision lifecycle을 사용한다.
 - exact baseline부터 current snapshot까지 fingerprint가 바뀐 meaningful path와 적용
@@ -600,6 +602,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - bounded work 뒤 처음 만든 Analysis Snapshot을 pre-work Checkpoint baseline으로 사용
 - missing, stale, late 또는 unresolved Materiality Review로 completed/paused Checkpoint 기록
 - post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
+- already-changed path를 late executable-scope expansion으로 retroactively authorize
 - broad Goal 또는 feature label을 subordinate discovered choice의 authority로 사용
 - independent choice를 coupling evidence 없이 한 Materiality dimension으로 collapse
 - learning participation을 추론하거나 routine detail을 learning blocker로 만들기
@@ -615,6 +618,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - tracked/untracked baseline-dirty path의 unchanged/changed-again 구분과 별도 pre-existing evidence
 - `.venv`/`.ruff_cache` generated descendant exclusion
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
+- production/test/document multi-file scope의 pre-write binding, parent-root descendant coverage,
+  review expansion invalidation과 late-scope refusal
 - missing/unresolved/late review의 Checkpoint refusal, valid no-Question와 applicable-Decision path
 - deterministically observed late disposition/authority-anchor/blocking-readiness/affected-scope
   revision의 affected path 보존과 prospective-only meaning, earlier affected work의 Checkpoint refusal

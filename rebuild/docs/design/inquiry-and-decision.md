@@ -322,7 +322,12 @@ Shared work-readiness result는 current stage, overall disposition, next require
 blocking 여부, reason/basis, satisfied requirements와 unresolved requirements를 제공한다.
 `ready_for_work`는 current Goal/baseline review가 timely하고 모든 dimension의 evidence가 current이며
 unresolved user-owned, evidence-required exploratory dimension 또는 active required Learning
-Deliberation이 없을 때만 가능하다.
+Deliberation이 없고 current review에 bounded executable work scope가 bind되었을 때만 가능하다.
+Descriptive `affected_scope`는 material outcome을 설명하고 executable scope를 암묵적으로 만들지
+않는다. Existing `materiality_review.inspect(paths, components, work_contexts)` transition이 exact
+current dimension set에 typed scope를 보존한다. Repository-relative parent path는 descendant를
+cover하지만 component와 work context는 exact match다. Material dimension/scope expansion은 binding을
+invalidate하며 baseline 뒤 이미 변경된 path를 뒤늦게 추가해 earlier work를 authorize할 수 없다.
 이 result는 일반 file/command admission이 아니다.
 
 Fresh resume baseline에서 새 material choice가 발견되지 않았다고 `choices=[]` Discovery를 제출하지

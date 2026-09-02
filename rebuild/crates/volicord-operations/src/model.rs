@@ -373,6 +373,7 @@ pub enum WorkflowDisposition {
     EngineeringChoiceDiscoveryRequired,
     ReviewMissing,
     ReviewInvalid,
+    ExecutableScopeRequired,
     LearningDeliberationPending,
     ResearchRequired,
     QuestionRequired,

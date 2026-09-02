@@ -11,15 +11,15 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
 use std::path::Path;
 use volicord_context::{
-    CanonicalInvalidation, CanonicalReadBasis, CanonicalRecordId, Clock, IdGenerator, OperationId,
-    OperationResult, ProjectId, Question, QuestionDispositionDraft, QuestionDraft,
-    QuestionMateriality, QuestionResearchState, SourceId, Store as ContextStore, SystemClock,
-    SystemIdGenerator,
+    ApplicabilityScope, CanonicalInvalidation, CanonicalReadBasis, CanonicalRecordId, Clock,
+    IdGenerator, OperationId, OperationResult, ProjectId, Question, QuestionDispositionDraft,
+    QuestionDraft, QuestionMateriality, QuestionResearchState, SourceId, Store as ContextStore,
+    SystemClock, SystemIdGenerator,
 };
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 10;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 11;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -226,10 +226,24 @@ impl CandidateStore {
                 canonical,
                 current,
             )?;
+            let executable_scope_still_bound = review.dimensions.len() == revision.dimensions.len()
+                && review
+                    .dimensions
+                    .iter()
+                    .zip(&revision.dimensions)
+                    .all(|(before, after)| {
+                        before.dimension_id == after.dimension_id
+                            && before.affected_scope == after.affected_scope
+                    });
             review.current_review_analysis_snapshot_id = current.identity;
             review.rationale = revision.rationale;
             review.learning_participation = revision.learning_participation;
             review.dimensions = revision.dimensions;
+            if !executable_scope_still_bound {
+                // Scope follows the exact dimension identities and descriptive
+                // boundaries; a material expansion requires another explicit bind.
+                review.executable_work_scope = None;
+            }
             review.late_work_authority_revisions.extend(late_revisions);
             review
                 .learning_value_revisions
@@ -243,6 +257,107 @@ impl CandidateStore {
             validate_materiality_review(review)?;
             validate_review_against_canonical(canonical, review)?;
             validate_review_against_discovery(review, discovery_candidate)
+        })
+    }
+
+    pub fn bind_executable_work_scope(
+        &mut self,
+        project_id: ProjectId,
+        candidate_id: CandidateId,
+        baseline: &AnalysisSnapshot,
+        current: &AnalysisSnapshot,
+        mut scope: ApplicabilityScope,
+    ) -> Result<CandidateRecord, Error> {
+        if baseline.project.identity() != project_id || current.project.identity() != project_id {
+            return Err(Error::new(
+                ErrorKind::WrongProject,
+                "executable work scope Project basis does not match",
+            ));
+        }
+        normalize_executable_scope(&mut scope)?;
+        let changes = crate::attribute_repository_changes(
+            project_id,
+            &crate::RepositoryWorkBasis {
+                baseline,
+                current,
+                pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
+            },
+        );
+        let changed_paths = match changes {
+            crate::ChangeAttribution::Attributed { changed_paths, .. } => changed_paths,
+            crate::ChangeAttribution::Unavailable { reason, .. } => {
+                return Err(Error::new(ErrorKind::StaleBasis, reason));
+            }
+        };
+        let existing = self.get(project_id, candidate_id)?;
+        let existing_review = existing
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::DomainConflict,
+                    "operation requires a Materiality Review Candidate",
+                )
+            })?;
+        if existing_review.baseline_analysis_snapshot_id != baseline.identity {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "executable work scope does not use the review baseline",
+            ));
+        }
+        if existing_review
+            .executable_work_scope
+            .as_ref()
+            .is_some_and(|binding| binding.scope == scope)
+        {
+            return Ok(existing);
+        }
+        let old_scope = existing_review
+            .executable_work_scope
+            .as_ref()
+            .map(|binding| &binding.scope);
+        let late_paths = changed_paths
+            .iter()
+            .filter(|path| {
+                !old_scope.is_some_and(|old| executable_path_is_covered(&old.paths, path))
+                    && executable_path_is_covered(&scope.paths, path)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !late_paths.is_empty() {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                format!(
+                    "executable work scope cannot retroactively authorize already-changed paths: {}",
+                    late_paths.join(", ")
+                ),
+            ));
+        }
+        self.mutate_pending(project_id, candidate_id, |record| {
+            let review = record
+                .content
+                .as_mut()
+                .and_then(|content| content.materiality_review.as_mut())
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "Materiality Review content is missing",
+                    )
+                })?;
+            let mut materiality_dimension_ids = review
+                .dimensions
+                .iter()
+                .map(|dimension| dimension.dimension_id.clone())
+                .collect::<Vec<_>>();
+            materiality_dimension_ids.sort();
+            review.current_review_analysis_snapshot_id = current.identity;
+            review.executable_work_scope = Some(crate::ExecutableWorkScopeBinding {
+                scope,
+                materiality_dimension_ids,
+                bound_analysis_snapshot_id: current.identity,
+            });
+            validate_materiality_review(review)
         })
     }
 
@@ -1481,6 +1596,22 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             ));
         }
     }
+    if let Some(binding) = &review.executable_work_scope {
+        validate_executable_scope(&binding.scope)?;
+        let bound_dimensions = binding
+            .materiality_dimension_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if bound_dimensions != identities
+            || binding.materiality_dimension_ids.len() != identities.len()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "executable work scope must bind the exact current materiality dimension set",
+            ));
+        }
+    }
     let mut late_revision_dimensions = BTreeSet::new();
     for revision in &review.late_work_authority_revisions {
         validate_text(
@@ -1521,6 +1652,51 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         }
     }
     Ok(())
+}
+
+fn normalize_executable_scope(scope: &mut ApplicabilityScope) -> Result<(), Error> {
+    scope.paths.sort();
+    scope.paths.dedup();
+    scope.components.sort();
+    scope.components.dedup();
+    scope.work_contexts.sort();
+    scope.work_contexts.dedup();
+    validate_executable_scope(scope)
+}
+
+fn validate_executable_scope(scope: &ApplicabilityScope) -> Result<(), Error> {
+    validate_list(&scope.paths)?;
+    validate_list(&scope.components)?;
+    validate_list(&scope.work_contexts)?;
+    if scope.paths.is_empty() && scope.components.is_empty() && scope.work_contexts.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "executable work scope requires at least one path, component, or work context",
+        ));
+    }
+    if scope.paths.iter().any(|path| {
+        path == "."
+            || path.starts_with('/')
+            || path.ends_with('/')
+            || path
+                .split('/')
+                .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    }) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "executable work paths must be bounded normalized repository-relative paths",
+        ));
+    }
+    Ok(())
+}
+
+fn executable_path_is_covered(declared_paths: &[String], requested: &str) -> bool {
+    declared_paths.iter().any(|declared| {
+        declared == requested
+            || requested
+                .strip_prefix(declared)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
 }
 
 fn validate_engineering_choice_discovery(

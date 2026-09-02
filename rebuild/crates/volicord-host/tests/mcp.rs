@@ -797,7 +797,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             vec![revised_judgment],
         ),
     );
-    let revised = structured(&revised);
+    let revised = structured(&revised).clone();
+    let revised = structured(&bind_recorded_scope(&mut adapter, &revised, &["src"])).clone();
     assert_eq!(revised["workflow"]["stage"], "ready_for_work");
     assert_eq!(revised["workflow"]["blocks_ordinary_work"], false);
     assert_eq!(
@@ -1174,11 +1175,24 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             ),
         );
         assert_eq!(recorded["result"]["isError"], false, "{label}: {recorded}");
-        assert_eq!(
-            structured(&recorded)["workflow"]["stage"],
-            expected_stage,
-            "{label}: {recorded}"
-        );
+        if expected_stage == "ready_for_work" {
+            assert_eq!(
+                structured(&recorded)["workflow"]["stage"],
+                "materiality_review"
+            );
+            let bound = bind_recorded_scope(&mut adapter, &recorded, &["src/lib.rs"]);
+            assert_eq!(
+                structured(&bound)["workflow"]["stage"],
+                expected_stage,
+                "{label}: {bound}"
+            );
+        } else {
+            assert_eq!(
+                structured(&recorded)["workflow"]["stage"],
+                expected_stage,
+                "{label}: {recorded}"
+            );
+        }
     }
 }
 
@@ -1377,6 +1391,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         ),
     );
     assert_eq!(settled["result"]["isError"], false, "{settled}");
+    let settled = bind_recorded_scope(&mut adapter, &settled, &["src/lib.rs"]);
     assert_eq!(structured(&settled)["workflow"]["stage"], "ready_for_work");
 
     let (_temporary, mut adapter, project) = setup();
@@ -1494,6 +1509,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         ),
     );
     assert_eq!(revised["result"]["isError"], false, "{revised}");
+    let revised = bind_recorded_scope(&mut adapter, &revised, &["src/lib.rs"]);
     assert_eq!(
         structured(&revised)["workflow"]["stage"],
         "ready_for_work",
@@ -1985,7 +2001,9 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
     ))
     .clone();
     assert_eq!(completed["state"]["state"], "completed");
-    assert_eq!(completed["workflow"]["stage"], "ready_for_work");
+    assert_eq!(completed["workflow"]["stage"], "materiality_review");
+    let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
+    assert_eq!(bound["workflow"]["stage"], "ready_for_work");
 
     let runtime = RuntimeLayout::new(temporary.path().join("runtime")).expect("restart runtime");
     let mut restarted = HostAdapter::new(LocalOperations::new(runtime));
@@ -2118,8 +2136,10 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
         }),
     ))
     .clone();
-    assert_eq!(review["workflow"]["stage"], "ready_for_work");
-    assert_eq!(review["workflow"]["blocks_ordinary_work"], false);
+    assert_eq!(review["workflow"]["stage"], "materiality_review");
+    let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
+    assert_eq!(bound["workflow"]["stage"], "ready_for_work");
+    assert_eq!(bound["workflow"]["blocks_ordinary_work"], false);
     let inspected = structured(&call(
         &mut adapter,
         "candidate_inspect",
@@ -2246,7 +2266,9 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
         json!({"action":"complete","project_id":project,"deliberation_candidate_id":deliberation_id}),
     ))
     .clone();
-    assert_eq!(completed["workflow"]["stage"], "ready_for_work");
+    assert_eq!(completed["workflow"]["stage"], "materiality_review");
+    let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
+    assert_eq!(bound["workflow"]["stage"], "ready_for_work");
 
     let canonical = structured(&call(
         &mut adapter,
@@ -2327,8 +2349,10 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
     ))
     .clone();
 
-    assert_eq!(review["workflow"]["stage"], "ready_for_work");
-    assert_eq!(review["workflow"]["blocks_ordinary_work"], false);
+    assert_eq!(review["workflow"]["stage"], "materiality_review");
+    let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
+    assert_eq!(bound["workflow"]["stage"], "ready_for_work");
+    assert_eq!(bound["workflow"]["blocks_ordinary_work"], false);
 }
 
 #[test]
@@ -2590,8 +2614,14 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         }),
     ))
     .clone();
-    assert_eq!(resumed_review["workflow"]["stage"], "ready_for_work");
-    assert_eq!(resumed_review["workflow"]["blocks_ordinary_work"], false);
+    let rebound = structured(&bind_recorded_scope(
+        &mut adapter,
+        &resumed_review,
+        &["src/lib.rs"],
+    ))
+    .clone();
+    assert_eq!(rebound["workflow"]["stage"], "ready_for_work");
+    assert_eq!(rebound["workflow"]["blocks_ordinary_work"], false);
 }
 
 #[test]
@@ -4173,7 +4203,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             }],
         })
         .expect("pre-work Engineering Choice Discovery");
-    adapter
+    let review = adapter
         .operations()
         .record_materiality_review(MaterialityReviewDraft {
             project_id,
@@ -4209,6 +4239,20 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             }],
         })
         .expect("pre-work Materiality Review");
+    adapter
+        .operations()
+        .bind_executable_work_scope(
+            project_id,
+            goal_context,
+            baseline_identity,
+            review.review_candidate_id,
+            ApplicabilityScope {
+                paths: vec!["implemented.rs".into()],
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+            },
+        )
+        .expect("pre-work executable scope");
 
     let other_repository = temporary.path().join("other-repository");
     fs::create_dir(&other_repository).expect("other repository");
@@ -5217,6 +5261,33 @@ fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt:
 fn call(adapter: &mut HostAdapter, name: &str, arguments: Value) -> Value {
     adapter.handle(json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":name,"arguments":arguments}})).expect("tool response")
 }
+
+fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&str]) -> Value {
+    let recorded = recorded
+        .get("result")
+        .and_then(|result| result.get("structuredContent"))
+        .unwrap_or(recorded);
+    let project_id = recorded["workflow"]["satisfied_basis_identities"]
+        .as_array()
+        .and_then(|basis| basis.iter().find(|item| item["kind"] == "project"))
+        .and_then(|item| item["identity"].as_str())
+        .expect("recorded workflow Project identity");
+    call(
+        adapter,
+        "materiality_review",
+        json!({
+            "action":"inspect",
+            "project_id":project_id,
+            "goal_context_id":recorded["goal_context_id"],
+            "baseline_analysis_snapshot_id":recorded["baseline_analysis_snapshot_id"],
+            "review_candidate_id":recorded["review_candidate_id"],
+            "paths":paths,
+            "components":[],
+            "work_contexts":[],
+            "met_revisit_triggers":[],
+        }),
+    )
+}
 fn structured(response: &Value) -> &Value {
     &response["result"]["structuredContent"]
 }
@@ -5394,6 +5465,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
+                    "review_candidate_id",
                     "action",
                     "paths",
                     "components",
@@ -5405,6 +5477,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
+                    "review_candidate_id",
                 ],
             ),
         ],

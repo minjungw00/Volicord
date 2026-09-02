@@ -23,7 +23,7 @@ use volicord_operations::{
     LearningValueRevisionRequest, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
     MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
     WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
-    WorkflowStage,
+    WorkflowDisposition, WorkflowStage,
 };
 
 fn dimension(
@@ -738,6 +738,31 @@ fn review_with_learning(
     dimensions: Vec<MaterialityDimension>,
     learning_participation: LearningParticipation,
 ) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    let mut paths = dimensions
+        .iter()
+        .flat_map(|dimension| dimension.affected_scope.iter().cloned())
+        .collect::<Vec<_>>();
+    paths.push("src/lib.rs".into());
+    let review = record_review_with_learning(fixture, choices, dimensions, learning_participation)?;
+    fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        review.review_candidate_id,
+        volicord_context::ApplicabilityScope {
+            paths,
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+    )
+}
+
+fn record_review_with_learning(
+    fixture: &Fixture,
+    choices: Vec<EngineeringChoice>,
+    dimensions: Vec<MaterialityDimension>,
+    learning_participation: LearningParticipation,
+) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
     let discovery = fixture.operations.record_engineering_choice_discovery(
         EngineeringChoiceDiscoveryDraft {
             project_id: fixture.project_id,
@@ -953,7 +978,7 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
         Vec::new(),
     )?;
     assert_eq!(resumed.disposition, WorkAuthorityDisposition::ReadyForWork);
-    assert_eq!(resumed.review_revision, Some(1));
+    assert_eq!(resumed.review_revision, Some(2));
     fs::write(
         fixture.repository.join("src/lib.rs"),
         "pub fn value() -> u32 { 2 }\n",
@@ -1186,6 +1211,17 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
         reviewed_scope,
     ));
     let recorded = review(&fixture, vec![delegated])?;
+    let recorded = fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        volicord_context::ApplicabilityScope {
+            paths: vec!["src/serializer".into()],
+            components: vec!["serializer-core".into()],
+            work_contexts: vec!["checkpoint-publication".into()],
+        },
+    )?;
 
     let ready = fixture.operations.work_readiness(
         fixture.project_id,
@@ -1244,6 +1280,149 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
     assert!(checkpoint_error
         .message()
         .contains("requested work path `src/transport.rs` is outside the reviewed affected scope"));
+    Ok(())
+}
+
+#[test]
+fn binds_parent_roots_before_work_and_accepts_a_multi_file_checkpoint(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Add bounded Repository Intelligence regression coverage; choose the test structure.",
+    )?;
+    let semantic_scope = vec!["Repository Intelligence regression coverage".to_owned()];
+    let mut delegated = dimension(
+        "regression-test-structure",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    delegated.affected_scope = semantic_scope.clone();
+    delegated.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "regression-test-structure",
+        "choose the test structure",
+        semantic_scope,
+    ));
+    let choices = vec![EngineeringChoice {
+        choice_id: "regression-test-structure".into(),
+        summary: "implementation structure".into(),
+        affected_scope: delegated.affected_scope.clone(),
+        alternatives: vec![
+            EngineeringAlternative {
+                alternative_id: "one".into(),
+                summary: "one layout".into(),
+                technical_consequences: delegated.material_consequences.clone(),
+            },
+            EngineeringAlternative {
+                alternative_id: "two".into(),
+                summary: "another layout".into(),
+                technical_consequences: delegated.material_consequences.clone(),
+            },
+        ],
+        technical_consequences: delegated.material_consequences.clone(),
+        source_basis: delegated.basis.source_basis.clone(),
+        effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
+        relationship: EngineeringChoiceRelationship::Independent,
+        evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+    }];
+    let recorded = record_review_with_learning(
+        &fixture,
+        choices,
+        vec![delegated],
+        LearningParticipation::Inactive,
+    )?;
+
+    let blocked = fixture
+        .operations
+        .workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    assert_eq!(
+        blocked.disposition,
+        WorkflowDisposition::ExecutableScopeRequired
+    );
+    assert!(blocked.blocks_ordinary_work);
+    let bound = fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        volicord_context::ApplicabilityScope {
+            paths: vec!["src".into(), "tests".into(), "docs".into()],
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+    )?;
+    let advertised = fixture
+        .operations
+        .workflow_for_review_candidate(fixture.project_id, bound.review_candidate_id)?;
+    assert_eq!(advertised.stage, WorkflowStage::ReadyForWork);
+    assert!(!advertised.blocks_ordinary_work);
+
+    fs::create_dir_all(fixture.repository.join("tests"))?;
+    fs::create_dir_all(fixture.repository.join("docs"))?;
+    fs::write(
+        fixture.repository.join("src/structural.rs"),
+        "pub fn bounded() -> bool { true }\n",
+    )?;
+    fs::write(
+        fixture.repository.join("tests/structural.rs"),
+        "#[test] fn bounded() { assert!(true); }\n",
+    )?;
+    fs::write(
+        fixture.repository.join("docs/structural.md"),
+        "# Bounded structural behavior\n",
+    )?;
+
+    let checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn executable_scope_expansion_cannot_retroactively_cover_changed_work(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![dimension(
+            "bounded-implementation",
+            MaterialityDisposition::AgentOwnedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ImplementationPreference],
+            source,
+        )],
+    )?;
+    fs::create_dir_all(fixture.repository.join("tests"))?;
+    fs::write(
+        fixture.repository.join("tests/late_scope.rs"),
+        "#[test] fn late() { assert!(true); }\n",
+    )?;
+
+    let error = fixture
+        .operations
+        .bind_executable_work_scope(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            recorded.review_candidate_id,
+            volicord_context::ApplicabilityScope {
+                paths: vec!["src/lib.rs".into(), "tests".into()],
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+            },
+        )
+        .expect_err("late scope expansion cannot authorize an already-changed path");
+    assert!(std::error::Error::source(&error)
+        .expect("late-scope source error")
+        .to_string()
+        .contains("cannot retroactively authorize already-changed paths: tests/late_scope.rs"));
+
+    let checkpoint_error = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("the original executable scope remains authoritative");
+    assert!(checkpoint_error.to_string().contains("tests/late_scope.rs"));
     Ok(())
 }
 
@@ -1891,7 +2070,7 @@ fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision
             dimensions: vec![exploratory],
             learning_value_revision_bases: Vec::new(),
         })?;
-    assert_eq!(revised.review_revision, 2);
+    assert_eq!(revised.review_revision, 3);
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork

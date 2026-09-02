@@ -53,6 +53,12 @@ baseline-dirty path whose fingerprint changed again is included in the bounded
 delta. This observation does not claim exclusive actor or process ownership.
 Missing, stale, freshness-unknown, wrong-Project, or incompatible-source
 grounding still rejects canonical Checkpoint creation.
+Before the first ordinary write, `materiality_review` action `inspect` binds one
+explicit executable scope to the current review. Its `paths`, `components`, and
+`work_contexts` are typed independently from descriptive materiality scope;
+parent repository paths cover descendants. The action is additive rather than a
+new approval ceremony, and it rejects a late expansion over already-changed
+paths.
 It validates explicit applied Decision identities through
 the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative

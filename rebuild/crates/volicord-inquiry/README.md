@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 10. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 11. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The Candidate kinds preserve bounded origin, collection scope,
@@ -69,6 +69,14 @@ categories, evidence needs, and explicit independent/coupled relationships.
 Every Materiality Review dimension references those identities exactly once;
 independent choices cannot be collapsed into one dimension, while a grouped
 dimension must cover the complete symmetric coupled-choice set.
+
+The review also retains a typed executable work-scope binding with separate
+repository paths, components, and work contexts. Descriptive `affected_scope`
+explains the material outcome; it never authorizes files by inference. The
+existing Materiality inspection transition binds the explicit executable scope
+before `ReadyForWork`, and a review expansion invalidates that binding.
+Repository-relative parent paths cover descendants, while an expansion cannot
+retroactively cover a path already changed after the retained baseline.
 
 Learning participation is a bounded `Inactive`/explicit-current-host `Active`
 state on that review, independent from authority and explanation depth. Each

@@ -77,7 +77,11 @@ category를 별도 typed evidence로 보존한다. 같은 statement가 여러 di
 각 dimension은 자기 boundary를 그 statement에 명시적으로 bind한다. Source identity만으로
 delegation을 추론하지 않고 research, recommendation, convention, accepted contract 또는
 Decision authority와 합치지 않는다. 이 review는 일곱 번째 canonical entity, user Decision 또는
-ordinary-write permission이 아니다. 첫 authoritative review가 meaningful repository
+ordinary-write permission이 아니다. Review는 descriptive `affected_scope`와 별도로 path,
+component, work-context를 구분한 typed executable work scope를 보존한다. 이 scope는 current
+dimension identity set에 bind되며 parent repository path는 descendant file을 포함한다. Material
+dimension identity/affected-scope가 확장되면 binding은 invalidated되고, baseline 뒤 이미 변경된
+path를 새 binding으로 retroactively 포함할 수 없다. 첫 authoritative review가 meaningful repository
 mutation 전이었는지와 이후 evidence revision을 구분한다. Maintained baseline/current repository
 evidence가 dimension의 affected path 변경 뒤 disposition, authority anchor, blocking readiness 또는
 affected-scope applicability 변경을 deterministically 보이면 late work-authority revision과 affected

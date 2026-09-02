@@ -2,8 +2,8 @@ use rusqlite::Connection;
 use std::{ffi::OsString, fs, path::Path, process::Command, time::Duration};
 use tempfile::TempDir;
 use volicord_context::{
-    CheckpointKind, ContextItemId, ContextItemRole, PrincipalKind, ProjectId, SourcePayload,
-    VerificationState, WorkState,
+    ApplicabilityScope, CheckpointKind, ContextItemId, ContextItemRole, PrincipalKind, ProjectId,
+    SourcePayload, VerificationState, WorkState,
 };
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
@@ -366,7 +366,7 @@ fn record_ready_review(
                 evidence_state: EngineeringChoiceEvidenceState::Sufficient,
             }],
         })?;
-    operations.record_materiality_review(MaterialityReviewDraft {
+    let review = operations.record_materiality_review(MaterialityReviewDraft {
         project_id,
         goal_context_id,
         baseline_analysis_snapshot_id: baseline.identity,
@@ -399,6 +399,22 @@ fn record_ready_review(
             },
         }],
     })?;
+    operations.bind_executable_work_scope(
+        project_id,
+        goal_context_id,
+        baseline.identity,
+        review.review_candidate_id,
+        ApplicabilityScope {
+            paths: vec![
+                "src".into(),
+                "README.md".into(),
+                "pyproject.toml".into(),
+                "draft.rs".into(),
+            ],
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+    )?;
     Ok(())
 }
 

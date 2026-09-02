@@ -497,7 +497,7 @@ pub struct Question {
     pub updated_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ApplicabilityScope {
     pub paths: Vec<String>,
     pub components: Vec<String>,

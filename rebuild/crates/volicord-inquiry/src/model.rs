@@ -410,8 +410,16 @@ pub struct MaterialityReview {
     pub rationale: String,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
+    pub executable_work_scope: Option<ExecutableWorkScopeBinding>,
     pub late_work_authority_revisions: Vec<LateWorkAuthorityRevision>,
     pub learning_value_revisions: Vec<LearningValueRevision>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExecutableWorkScopeBinding {
+    pub scope: volicord_context::ApplicabilityScope,
+    pub materiality_dimension_ids: Vec<String>,
+    pub bound_analysis_snapshot_id: AnalysisSnapshotId,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
