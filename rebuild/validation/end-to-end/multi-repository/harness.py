@@ -1171,15 +1171,19 @@ def rehearse_target(
             )
             review_readiness = review
             review_readiness_ok = review_ok
-            if technical_delegated and review_candidate_id:
+            if review_candidate_id:
                 review_readiness, review_readiness_ok = host.tool("materiality_review", {
                     "action": "inspect",
                     "project_id": project_id,
+                    "review_candidate_id": review_candidate_id,
                     "goal_context_id": (goal or {}).get("context_item_id"),
                     "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
                         "analysis_snapshot_id"
                     ),
-                    "work_contexts": ["internal-state"],
+                    "paths": ["v11-ordinary-work.txt"],
+                    "components": [],
+                    "work_contexts": ["internal-state"] if technical_delegated else [],
+                    "met_revisit_triggers": [],
                 })
             candidate_research_analysis, candidate_research_analysis_ok = host.tool(
                 "repository_analyze", {"project_id": project_id, "excluded_paths": []}
@@ -1324,17 +1328,21 @@ def rehearse_target(
             }) if review_candidate_id and decision_id else (None, False)
             resolved_review_readiness = resolved_review
             resolved_review_readiness_ok = resolved_review_ok
-            if technical_delegated and resolved_review_ok and resolved_review:
+            if resolved_review_ok and resolved_review:
                 resolved_review_readiness, resolved_review_readiness_ok = host.tool(
                     "materiality_review",
                     {
                         "action": "inspect",
                         "project_id": project_id,
+                        "review_candidate_id": review_candidate_id,
                         "goal_context_id": (goal or {}).get("context_item_id"),
                         "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
                             "analysis_snapshot_id"
                         ),
-                        "work_contexts": ["internal-state"],
+                        "paths": ["v11-ordinary-work.txt"],
+                        "components": [],
+                        "work_contexts": ["internal-state"] if technical_delegated else [],
+                        "met_revisit_triggers": [],
                     },
                 )
             learning_evidence: dict[str, Any] = {"active": learning_active}
@@ -2644,7 +2652,10 @@ def self_check() -> int:
         '"affected_scope": ["internal-state", "v11-ordinary-work.txt"]',
         '"v11-ordinary-work.txt",\n                                ],',
         'review, review_ok = host.tool("materiality_review"',
-        '"work_contexts": ["internal-state"]',
+        '"review_candidate_id": review_candidate_id,',
+        '"paths": ["v11-ordinary-work.txt"],',
+        '"components": [],',
+        '"work_contexts": ["internal-state"] if technical_delegated else []',
         'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
         'resolved_review, resolved_review_ok = host.tool("materiality_review"',
         'begun, begun_ok = host.tool("learning_deliberation"',
