@@ -1116,6 +1116,135 @@ fn current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision(
 }
 
 #[test]
+fn broad_current_task_delegation_covers_discovered_child_path_at_first_checkpoint(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the serializer module; choose the bounded internal representation.",
+    )?;
+    let mut delegated = dimension(
+        "serializer-representation",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    delegated.affected_scope = vec!["src".to_owned()];
+    delegated.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "serializer-representation",
+        "choose the bounded internal representation",
+        vec!["src".to_owned()],
+    ));
+    let recorded = review(&fixture, vec![delegated])?;
+    let ready = fixture.operations.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        vec!["src".to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )?;
+    assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
+
+    fs::write(
+        fixture.repository.join("src/serializer.rs"),
+        "pub fn encode(value: u32) -> String { value.to_string() }\n",
+    )?;
+    let checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths, ["src/serializer.rs"]);
+    Ok(())
+}
+
+#[test]
+fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Implement the serializer module; choose the bounded internal representation.",
+    )?;
+    let reviewed_scope = vec![
+        "src/serializer".to_owned(),
+        "serializer-core".to_owned(),
+        "checkpoint-publication".to_owned(),
+    ];
+    let mut delegated = dimension(
+        "serializer-representation",
+        MaterialityDisposition::DelegatedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ExplicitDelegation],
+        fixture.goal_source_id,
+    );
+    delegated.affected_scope = reviewed_scope.clone();
+    delegated.basis.explicit_delegation = Some(delegation_evidence(
+        &fixture,
+        "serializer-representation",
+        "choose the bounded internal representation",
+        reviewed_scope,
+    ));
+    let recorded = review(&fixture, vec![delegated])?;
+
+    let ready = fixture.operations.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        vec!["src/serializer/encode.rs".to_owned()],
+        vec!["serializer-core".to_owned()],
+        vec!["checkpoint-publication".to_owned()],
+        Vec::new(),
+    )?;
+    assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
+
+    for (paths, components, work_contexts, expected) in [
+        (
+            vec!["src/transport.rs".to_owned()],
+            vec!["serializer-core".to_owned()],
+            vec!["checkpoint-publication".to_owned()],
+            "requested work path `src/transport.rs` is outside the reviewed affected scope",
+        ),
+        (
+            vec!["src/serializer/encode.rs".to_owned()],
+            vec!["transport-core".to_owned()],
+            vec!["checkpoint-publication".to_owned()],
+            "requested work component `transport-core` is outside the reviewed affected scope",
+        ),
+        (
+            vec!["src/serializer/encode.rs".to_owned()],
+            vec!["serializer-core".to_owned()],
+            vec!["release-publication".to_owned()],
+            "requested work context `release-publication` is outside the reviewed affected scope",
+        ),
+    ] {
+        let blocked = fixture.operations.work_readiness(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            recorded.review_candidate_id,
+            paths,
+            components,
+            work_contexts,
+            Vec::new(),
+        )?;
+        assert_eq!(blocked.disposition, WorkAuthorityDisposition::ReviewInvalid);
+        assert_eq!(blocked.reason, expected);
+    }
+
+    fs::write(
+        fixture.repository.join("src/transport.rs"),
+        "pub fn send(value: u32) -> u32 { value }\n",
+    )?;
+    let checkpoint_error = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
+        .expect_err("Checkpoint cannot accept work outside the reviewed authority scope");
+    assert!(checkpoint_error
+        .message()
+        .contains("requested work path `src/transport.rs` is outside the reviewed affected scope"));
+    Ok(())
+}
+
+#[test]
 fn current_task_delegation_rejects_unrelated_goal_missing_and_out_of_scope_basis(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture_with_goal(

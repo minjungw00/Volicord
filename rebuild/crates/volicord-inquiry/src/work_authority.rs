@@ -297,6 +297,9 @@ pub fn evaluate_work_authority(
             }
         }
     }
+    if let Err(reason) = validate_requested_work_scope(review, applicability) {
+        return invalid(result, None, reason);
+    }
     if question_required {
         result.stage = WorkAuthorityStage::QuestionRequired;
         result.disposition = WorkAuthorityDisposition::QuestionRequired;
@@ -673,7 +676,7 @@ fn evaluate_dimension(
         MaterialityDisposition::DelegatedImplementationChoice => {
             require_kind(dimension, WorkAuthorityBasisKind::ExplicitDelegation)?;
             if dimension.basis.decision_basis.is_empty() {
-                validate_current_goal_delegation(canonical, goal, dimension, applicability)?;
+                validate_current_goal_delegation(canonical, goal, dimension)?;
                 return Ok(Vec::new());
             }
             if dimension.basis.explicit_delegation.is_some() {
@@ -770,7 +773,6 @@ fn validate_current_goal_delegation(
     canonical: &CanonicalReadBasis,
     goal: &ContextItem,
     dimension: &MaterialityDimension,
-    applicability: &ApplicabilityQuery,
 ) -> Result<(), DimensionIssue> {
     let evidence = dimension
         .basis
@@ -812,12 +814,9 @@ fn validate_current_goal_delegation(
         || !goal.source_basis.contains(&evidence.user_turn_source_id)
         || !goal.statement.contains(&evidence.verbatim_statement)
         || !scope_values_contain(&evidence.affected_scope, &dimension.affected_scope)
-        || (applicability_declares_scope(&goal.applicability, applicability)
-            && !scope_contains_dimension(
-                &goal.applicability,
-                applicability,
-                &evidence.affected_scope,
-            ))
+        || !scope_values_are_relevant(&evidence.affected_scope, &dimension.affected_scope)
+        || (scope_declared(&goal.applicability)
+            && !scope_contains_affected(&goal.applicability, &evidence.affected_scope))
     {
         return Err(DimensionIssue::Invalid(
             "explicit delegation evidence must bind the exact current Goal, verbatim statement, user-turn Source, and bounded dimension/work scope"
@@ -850,31 +849,75 @@ fn validate_current_goal_delegation(
     Ok(())
 }
 
-fn applicability_declares_scope(
-    goal_scope: &ApplicabilityScope,
-    work_scope: &ApplicabilityQuery,
-) -> bool {
-    !goal_scope.paths.is_empty()
-        || !goal_scope.components.is_empty()
-        || !goal_scope.work_contexts.is_empty()
-        || !work_scope.paths.is_empty()
+fn scope_declared(scope: &ApplicabilityScope) -> bool {
+    !scope.paths.is_empty() || !scope.components.is_empty() || !scope.work_contexts.is_empty()
+}
+
+fn work_scope_requested(work_scope: &ApplicabilityQuery) -> bool {
+    !work_scope.paths.is_empty()
         || !work_scope.components.is_empty()
         || !work_scope.work_contexts.is_empty()
 }
 
-fn scope_contains_dimension(
-    goal_scope: &ApplicabilityScope,
+fn validate_requested_work_scope(
+    review: &crate::MaterialityReview,
     work_scope: &ApplicabilityQuery,
-    affected_scope: &[String],
-) -> bool {
+) -> Result<(), String> {
+    if !work_scope_requested(work_scope) {
+        return Ok(());
+    }
+    let reviewed_scope = review
+        .dimensions
+        .iter()
+        .filter_map(|dimension| dimension.basis.explicit_delegation.as_ref())
+        .flat_map(|delegation| delegation.affected_scope.iter())
+        .collect::<Vec<_>>();
+    if reviewed_scope.is_empty() {
+        return Ok(());
+    }
+    if let Some(path) = work_scope.paths.iter().find(|path| {
+        !reviewed_scope
+            .iter()
+            .any(|scope| path_is_covered(scope, path))
+    }) {
+        return Err(format!(
+            "requested work path `{path}` is outside the reviewed affected scope"
+        ));
+    }
+    if let Some(component) = work_scope.components.iter().find(|component| {
+        !reviewed_scope
+            .iter()
+            .any(|scope| scope.as_str() == component.as_str())
+    }) {
+        return Err(format!(
+            "requested work component `{component}` is outside the reviewed affected scope"
+        ));
+    }
+    if let Some(work_context) = work_scope.work_contexts.iter().find(|work_context| {
+        !reviewed_scope
+            .iter()
+            .any(|scope| scope.as_str() == work_context.as_str())
+    }) {
+        return Err(format!(
+            "requested work context `{work_context}` is outside the reviewed affected scope"
+        ));
+    }
+    Ok(())
+}
+
+fn scope_contains_affected(goal_scope: &ApplicabilityScope, affected_scope: &[String]) -> bool {
     affected_scope.iter().all(|affected| {
         scope_item_matches(&goal_scope.paths, affected, true)
             || scope_item_matches(&goal_scope.components, affected, false)
             || scope_item_matches(&goal_scope.work_contexts, affected, false)
-            || scope_item_matches(&work_scope.paths, affected, true)
-            || scope_item_matches(&work_scope.components, affected, false)
-            || scope_item_matches(&work_scope.work_contexts, affected, false)
     })
+}
+
+fn path_is_covered(declared: &str, requested: &str) -> bool {
+    declared == requested
+        || requested
+            .strip_prefix(declared)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 fn scope_item_matches(scope: &[String], affected: &str, path_like: bool) -> bool {
@@ -895,6 +938,14 @@ fn scope_values_contain(scope: &[String], affected_scope: &[String]) -> bool {
                     .strip_prefix(declared)
                     .is_some_and(|suffix| suffix.starts_with('/'))
         })
+    })
+}
+
+fn scope_values_are_relevant(scope: &[String], affected_scope: &[String]) -> bool {
+    scope.iter().all(|declared| {
+        affected_scope
+            .iter()
+            .any(|affected| path_is_covered(declared, affected))
     })
 }
 
