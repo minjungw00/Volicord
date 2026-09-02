@@ -2657,6 +2657,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["decision_record"].contains("explicit current-host user response"));
     assert!(descriptions["decision_record"].contains("current Question revision"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
+    assert!(descriptions["repository_analyze"].contains("source-semantic analysis"));
+    assert!(descriptions["repository_analyze"].contains("source-semantic analyzer is local"));
     assert!(
         descriptions["repository_analyze"].contains("before the first ordinary repository write")
     );

@@ -75,9 +75,9 @@ use volicord_projections::{
     ProjectionBound, RecallBound, RecallInputs, ResumeBrief,
 };
 use volicord_repository_intelligence::{
-    analyze_repository, AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding, CapabilityState,
-    EntryKind, InventoryClassification, InventoryEntry, InventoryRequest,
-    RepositoryWorktreeObservation, StructuralAnalysisRequest,
+    analyze_repository_semantics, AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding,
+    CapabilityState, EntryKind, InventoryClassification, InventoryEntry, InventoryRequest,
+    RepositoryWorktreeObservation, SemanticAnalysisRequest, StructuralAnalysisRequest,
 };
 
 pub struct LocalOperations {
@@ -559,8 +559,10 @@ impl LocalOperations {
         .map_err(|error| Error::with_source("cannot create repository inventory request", error))?
         .with_repository_worktree(repository_worktree);
         inventory.excluded_paths = excluded_paths;
-        let (repository, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory))
-            .map_err(|error| Error::with_source("repository analysis failed", error))?;
+        let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory),
+        ))
+        .map_err(|error| Error::with_source("repository analysis failed", error))?;
         let stored_at = if replace_existing {
             self.replace_analysis(&analysis)?
         } else {

@@ -1773,7 +1773,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (
-            "Run authorized local repository inventory and structural analysis. In every fresh initialized or resumed meaningful work session, call this after initialization or successful Recall and before the first ordinary repository write; retain the returned analysis_snapshot_id as that bounded session's pre-work Checkpoint baseline. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. It performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
+            "Run authorized local repository inventory, structural, ecosystem, and source-semantic analysis. In every fresh initialized or resumed meaningful work session, call this after initialization or successful Recall and before the first ordinary repository write; retain the returned analysis_snapshot_id as that bounded session's pre-work Checkpoint baseline. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. Its source-semantic analyzer is local and performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

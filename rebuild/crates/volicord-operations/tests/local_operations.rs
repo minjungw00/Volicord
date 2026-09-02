@@ -14,7 +14,9 @@ use volicord_operations::{
     ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
-use volicord_repository_intelligence::{AnalysisSnapshot, AnalysisSnapshotId};
+use volicord_repository_intelligence::{
+    AnalysisSnapshot, AnalysisSnapshotId, Capability, CapabilityState, Language,
+};
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -505,6 +507,40 @@ fn project_analysis_recall_and_portable_io_use_current_owners(
         .stored_at
         .starts_with(operations.layout().analysis_dir()));
     assert!(!analysis_value.analysis.inventory.entries.is_empty());
+    let rust_structural = analysis_value.analysis.capabilities.iter().find(|report| {
+        report.language == Some(Language::Rust) && report.capability == Capability::Structural
+    });
+    assert!(rust_structural.is_some_and(|report| {
+        matches!(
+            report.state,
+            CapabilityState::Available | CapabilityState::Partial
+        ) && report.coverage.covered_entity_count > 0
+            && report.adapter.is_some()
+            && report.analyzer.is_some()
+    }));
+    let cargo_ecosystem = analysis_value.analysis.capabilities.iter().find(|report| {
+        report.language == Some(Language::Rust) && report.capability == Capability::Ecosystem
+    });
+    assert!(cargo_ecosystem.is_some_and(|report| {
+        matches!(
+            report.state,
+            CapabilityState::Available | CapabilityState::Partial
+        ) && !report.coverage.included.is_empty()
+            && report.usable_remainder.is_some()
+    }));
+    let rust_semantic = analysis_value.analysis.capabilities.iter().find(|report| {
+        report.language == Some(Language::Rust) && report.capability == Capability::Semantic
+    });
+    assert!(rust_semantic.is_some_and(|report| {
+        matches!(
+            report.state,
+            CapabilityState::Available | CapabilityState::Partial
+        ) && report.coverage.covered_relation_count > 0
+            && report.analyzer.as_ref().is_some_and(|analyzer| {
+                analyzer.name == "volicord-source-semantic-index" && analyzer.version == "1"
+            })
+    }));
+    assert!(!analysis_value.analysis.semantic_results.is_empty());
 
     let before = operations.canonical_basis(initialized.project.id)?;
     let recall = operations.recall(initialized.project.id)?;
