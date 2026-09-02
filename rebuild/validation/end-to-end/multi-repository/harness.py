@@ -1150,7 +1150,10 @@ def rehearse_target(
                         **(
                             {
                                 "delegation_statement": "I delegate the internal technical state representation to you",
-                                "delegated_scope": ["internal-state"],
+                                "delegated_scope": [
+                                    "internal-state",
+                                    "v11-ordinary-work.txt",
+                                ],
                             }
                             if technical_delegated
                             else {}
@@ -2622,6 +2625,7 @@ def self_check() -> int:
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
         '"delegated_implementation_choice"',
         '"affected_scope": ["internal-state", "v11-ordinary-work.txt"]',
+        '"v11-ordinary-work.txt",\n                                ],',
         'review, review_ok = host.tool("materiality_review"',
         '"work_contexts": ["internal-state"]',
         'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
