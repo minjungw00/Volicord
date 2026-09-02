@@ -568,6 +568,24 @@ def step(status: str, summary: str, **evidence: Any) -> dict[str, Any]:
     return {"status": status, "summary": summary, "evidence": evidence}
 
 
+def parser_degradation_status(result: dict[str, Any] | None) -> str:
+    degraded_scopes = (
+        [
+            *result.get("partial_scopes", []),
+            *result.get("failed_scopes", []),
+        ]
+        if result
+        else []
+    )
+    return (
+        "passed"
+        if result
+        and result.get("state") == "partial"
+        and any(scope.startswith("Structural:") for scope in degraded_scopes)
+        else "failed"
+    )
+
+
 def recall_meaning(value: dict[str, Any] | None) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -1069,7 +1087,7 @@ def rehearse_target(
                     {
                         "choice_id": technical_dimension_id,
                         "summary": "Represent bounded state as ordered records or a keyed index",
-                        "affected_scope": ["internal-state"],
+                        "affected_scope": ["internal-state", "v11-ordinary-work.txt"],
                         "alternatives": [
                             {"alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
                             {"alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
@@ -2075,7 +2093,7 @@ def rehearse_target(
     parser_result, parser_op = cli_json(
         recorder, "parser-degradation", cli, env, "analyze", cwd=repository
     )
-    parser_status = "passed" if parser_result and parser_result.get("state") == "partial" and parser_result.get("failed_scopes") else "failed"
+    parser_status = parser_degradation_status(parser_result)
     steps["parser_failure"] = step(
         parser_status, "malformed language area was analyzed and required scoped failure/partial reporting",
         result=parser_result, operation=parser_op,
@@ -2553,6 +2571,18 @@ def self_check() -> int:
         raise AssertionError("polyglot fixture lost three languages or documentation")
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
+    if parser_degradation_status(
+        {"state": "partial", "partial_scopes": ["Structural:Some(Rust):."]}
+    ) != "passed":
+        raise AssertionError("V11 rejected a truthful partial structural degradation")
+    if parser_degradation_status(
+        {"state": "partial", "failed_scopes": ["Structural:Some(Python):."]}
+    ) != "passed":
+        raise AssertionError("V11 rejected a truthful failed structural degradation")
+    if parser_degradation_status(
+        {"state": "partial", "partial_scopes": ["Ecosystem:Some(Rust):."]}
+    ) != "failed":
+        raise AssertionError("V11 accepted degradation without a structural scope")
     source = Path(__file__).read_text(encoding="utf-8")
     assert_current_materiality_review_contract(source)
     obsolete_pairs = {
@@ -2591,6 +2621,7 @@ def self_check() -> int:
         '"action": "submit_question_from_materiality"',
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
         '"delegated_implementation_choice"',
+        '"affected_scope": ["internal-state", "v11-ordinary-work.txt"]',
         'review, review_ok = host.tool("materiality_review"',
         '"work_contexts": ["internal-state"]',
         'candidate_research_analysis, candidate_research_analysis_ok = host.tool(',
@@ -2598,6 +2629,7 @@ def self_check() -> int:
         'begun, begun_ok = host.tool("learning_deliberation"',
         'recall_after.get("learning_context_health", {}).get("state") == "available"',
         'checkpoint_value, checkpoint_ok = host.tool("checkpoint_record"',
+        'parser_status = parser_degradation_status(parser_result)',
     ):
         if current not in source:
             raise AssertionError(f"V11 lost a current public-journey contract: {current}")
