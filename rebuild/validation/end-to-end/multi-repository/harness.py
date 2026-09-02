@@ -1302,7 +1302,10 @@ def rehearse_target(
                         **(
                             {
                                 "delegation_statement": "I delegate the internal technical state representation to you",
-                                "delegated_scope": ["internal-state"],
+                                "delegated_scope": [
+                                    "internal-state",
+                                    "v11-ordinary-work.txt",
+                                ],
                             }
                             if technical_delegated
                             else {}
@@ -2637,6 +2640,8 @@ def self_check() -> int:
     ):
         if current not in source:
             raise AssertionError(f"V11 lost a current public-journey contract: {current}")
+    if source.count('"delegated_scope": ["internal-state"],') != 1:
+        raise AssertionError("V11 retained a delegation narrower than the reviewed work scope")
     with tempfile.TemporaryDirectory(prefix="volicord-v11-viewer-contract-") as directory:
         viewer_contract = Path(directory) / "project-understanding.html"
         viewer_contract.write_text(
