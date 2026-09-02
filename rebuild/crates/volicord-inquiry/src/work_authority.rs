@@ -51,6 +51,16 @@ pub struct WorkAuthorityRequirement {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkScopeMismatch {
+    pub uncovered_paths: Vec<String>,
+    pub uncovered_components: Vec<String>,
+    pub uncovered_work_contexts: Vec<String>,
+    pub executable_scope: ApplicabilityScope,
+    pub materiality_dimension_ids: Vec<String>,
+    pub bound_analysis_snapshot_id: AnalysisSnapshotId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkAuthorityResult {
     pub project_id: ProjectId,
     pub goal_context_id: ContextItemId,
@@ -66,6 +76,7 @@ pub struct WorkAuthorityResult {
     pub reason: String,
     pub satisfied_requirements: Vec<WorkAuthorityRequirement>,
     pub unresolved_requirements: Vec<WorkAuthorityRequirement>,
+    pub scope_mismatch: Option<WorkScopeMismatch>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -198,6 +209,7 @@ pub fn evaluate_work_authority(
         reason: "a current pre-work Materiality Review is required".to_owned(),
         satisfied_requirements: Vec::new(),
         unresolved_requirements: Vec::new(),
+        scope_mismatch: None,
     };
     if canonical.project.id != project_id || applicability.project_id != project_id {
         return invalid(result, None, "workflow Project basis does not match");
@@ -367,8 +379,8 @@ pub fn evaluate_work_authority(
             ));
             return result;
         };
-        if let Err(reason) = validate_requested_work_scope(binding, applicability) {
-            return invalid(result, None, reason);
+        if let Some(mismatch) = validate_requested_work_scope(binding, applicability) {
+            return scope_invalid(result, mismatch);
         }
         result.stage = WorkAuthorityStage::ReadyForWork;
         result.disposition = WorkAuthorityDisposition::ReadyForWork;
@@ -879,44 +891,55 @@ fn work_scope_requested(work_scope: &ApplicabilityQuery) -> bool {
 fn validate_requested_work_scope(
     binding: &crate::ExecutableWorkScopeBinding,
     work_scope: &ApplicabilityQuery,
-) -> Result<(), String> {
+) -> Option<WorkScopeMismatch> {
     if !work_scope_requested(work_scope) {
-        return Ok(());
+        return None;
     }
-    if let Some(path) = work_scope.paths.iter().find(|path| {
-        !binding
-            .scope
-            .paths
-            .iter()
-            .any(|scope| path_is_covered(scope, path))
-    }) {
-        return Err(format!(
-            "requested work path `{path}` is outside the reviewed affected scope"
-        ));
+    let mut uncovered_paths = work_scope
+        .paths
+        .iter()
+        .filter(|path| {
+            !binding
+                .scope
+                .paths
+                .iter()
+                .any(|scope| path_is_covered(scope, path))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut uncovered_components = work_scope
+        .components
+        .iter()
+        .filter(|component| !binding.scope.components.contains(component))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut uncovered_work_contexts = work_scope
+        .work_contexts
+        .iter()
+        .filter(|work_context| !binding.scope.work_contexts.contains(work_context))
+        .cloned()
+        .collect::<Vec<_>>();
+    uncovered_paths.sort();
+    uncovered_paths.dedup();
+    uncovered_components.sort();
+    uncovered_components.dedup();
+    uncovered_work_contexts.sort();
+    uncovered_work_contexts.dedup();
+    if uncovered_paths.is_empty()
+        && uncovered_components.is_empty()
+        && uncovered_work_contexts.is_empty()
+    {
+        None
+    } else {
+        Some(WorkScopeMismatch {
+            uncovered_paths,
+            uncovered_components,
+            uncovered_work_contexts,
+            executable_scope: binding.scope.clone(),
+            materiality_dimension_ids: binding.materiality_dimension_ids.clone(),
+            bound_analysis_snapshot_id: binding.bound_analysis_snapshot_id,
+        })
     }
-    if let Some(component) = work_scope.components.iter().find(|component| {
-        !binding
-            .scope
-            .components
-            .iter()
-            .any(|scope| scope.as_str() == component.as_str())
-    }) {
-        return Err(format!(
-            "requested work component `{component}` is outside the reviewed affected scope"
-        ));
-    }
-    if let Some(work_context) = work_scope.work_contexts.iter().find(|work_context| {
-        !binding
-            .scope
-            .work_contexts
-            .iter()
-            .any(|scope| scope.as_str() == work_context.as_str())
-    }) {
-        return Err(format!(
-            "requested work context `{work_context}` is outside the reviewed affected scope"
-        ));
-    }
-    Ok(())
 }
 
 fn scope_contains_affected(goal_scope: &ApplicabilityScope, affected_scope: &[String]) -> bool {
@@ -1078,6 +1101,24 @@ fn invalid(
     result
         .unresolved_requirements
         .push(requirement(dimension_id, reason, Vec::new()));
+    result
+}
+
+fn scope_invalid(
+    mut result: WorkAuthorityResult,
+    mismatch: WorkScopeMismatch,
+) -> WorkAuthorityResult {
+    let reason = format!(
+        "executable work scope does not cover paths {:?}, components {:?}, or work contexts {:?}",
+        mismatch.uncovered_paths, mismatch.uncovered_components, mismatch.uncovered_work_contexts,
+    );
+    result.disposition = WorkAuthorityDisposition::ReviewInvalid;
+    result.next_action = Some(WorkAuthorityAction::BindExecutableWorkScope);
+    result.reason = reason.clone();
+    result
+        .unresolved_requirements
+        .push(requirement(None, reason, Vec::new()));
+    result.scope_mismatch = Some(mismatch);
     result
 }
 

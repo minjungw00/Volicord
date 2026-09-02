@@ -3031,6 +3031,27 @@ impl LocalOperations {
             &applicability,
         );
         if authority.disposition != WorkAuthorityDisposition::ReadyForWork {
+            if let Some(mismatch) = authority.scope_mismatch.clone() {
+                let review_candidate_id = authority.review_candidate_id;
+                let review_revision = authority.review_revision;
+                let workflow = workflow_from_authority(
+                    &authority_canonical,
+                    &candidate_basis,
+                    authority.clone(),
+                );
+                return Err(Error::with_checkpoint_scope_violation(
+                    format!(
+                        "Checkpoint work authority is not resolved: {}",
+                        authority.reason
+                    ),
+                    crate::CheckpointScopeViolation {
+                        mismatch,
+                        review_candidate_id,
+                        review_revision,
+                        workflow,
+                    },
+                ));
+            }
             return Err(Error::new(format!(
                 "Checkpoint work authority is not resolved: {}",
                 authority.reason
@@ -3983,6 +4004,7 @@ fn workflow_from_authority(
         })
         .collect::<Vec<_>>();
 
+    let authority_next_action = authority.next_action;
     let (stage, disposition, required_next_action) = match authority.disposition {
         WorkAuthorityDisposition::ReviewMissing => (
             WorkflowStage::MaterialityReview,
@@ -3992,7 +4014,18 @@ fn workflow_from_authority(
         WorkAuthorityDisposition::ReviewInvalid => (
             WorkflowStage::MaterialityReview,
             WorkflowDisposition::ReviewInvalid,
-            Some(workflow_action("materiality_review", Some("revise"))),
+            Some(workflow_action(
+                "materiality_review",
+                Some(
+                    if authority_next_action
+                        == Some(volicord_inquiry::WorkAuthorityAction::BindExecutableWorkScope)
+                    {
+                        "inspect"
+                    } else {
+                        "revise"
+                    },
+                ),
+            )),
         ),
         WorkAuthorityDisposition::ExecutableScopeRequired => (
             WorkflowStage::MaterialityReview,

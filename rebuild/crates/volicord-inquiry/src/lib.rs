@@ -58,5 +58,5 @@ pub use store::{
 pub use work_authority::{
     bind_question_candidate_to_materiality, evaluate_work_authority, materiality_scope_token,
     WorkAuthorityAction, WorkAuthorityCandidateBasis, WorkAuthorityDisposition,
-    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage, WorkScopeMismatch,
 };

@@ -740,6 +740,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection
 - production/test/document multi-file executable scope의 first-Checkpoint success, parent-root
   descendant coverage, material expansion 뒤 rebind requirement와 changed-path late expansion rejection
+- 한 Checkpoint의 multiple uncovered path/component/work-context가 current binding/review basis와
+  maintained next action을 포함한 one-response diagnostic으로 aggregate되는지
 - disposition, authority anchor, blocking readiness 또는 affected-scope applicability를 늦게 수정한
   dimension의 affected path가 maintained baseline/current evidence로 증명되면 later fact/agent/
   delegation/Decision/research/learning-ready meaning이 earlier work를 certify하지 않는 상태

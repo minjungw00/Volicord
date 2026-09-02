@@ -77,6 +77,9 @@ existing Materiality inspection transition binds the explicit executable scope
 before `ReadyForWork`, and a review expansion invalidates that binding.
 Repository-relative parent paths cover descendants, while an expansion cannot
 retroactively cover a path already changed after the retained baseline.
+Scope evaluation visits all supplied paths, components, and work contexts and
+returns one deterministic mismatch containing every uncovered value plus the
+current binding; it does not stop at the first path.
 
 Learning participation is a bounded `Inactive`/explicit-current-host `Active`
 state on that review, independent from authority and explanation depth. Each

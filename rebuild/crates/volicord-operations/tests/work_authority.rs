@@ -1235,24 +1235,30 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
     )?;
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
 
-    for (paths, components, work_contexts, expected) in [
+    for (paths, components, work_contexts, expected_path, expected_component, expected_context) in [
         (
             vec!["src/transport.rs".to_owned()],
             vec!["serializer-core".to_owned()],
             vec!["checkpoint-publication".to_owned()],
-            "requested work path `src/transport.rs` is outside the reviewed affected scope",
+            Some("src/transport.rs"),
+            None,
+            None,
         ),
         (
             vec!["src/serializer/encode.rs".to_owned()],
             vec!["transport-core".to_owned()],
             vec!["checkpoint-publication".to_owned()],
-            "requested work component `transport-core` is outside the reviewed affected scope",
+            None,
+            Some("transport-core"),
+            None,
         ),
         (
             vec!["src/serializer/encode.rs".to_owned()],
             vec!["serializer-core".to_owned()],
             vec!["release-publication".to_owned()],
-            "requested work context `release-publication` is outside the reviewed affected scope",
+            None,
+            None,
+            Some("release-publication"),
         ),
     ] {
         let blocked = fixture.operations.work_readiness(
@@ -1266,7 +1272,23 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
             Vec::new(),
         )?;
         assert_eq!(blocked.disposition, WorkAuthorityDisposition::ReviewInvalid);
-        assert_eq!(blocked.reason, expected);
+        assert_eq!(
+            blocked.next_action,
+            Some(volicord_operations::WorkAuthorityAction::BindExecutableWorkScope)
+        );
+        let mismatch = blocked.scope_mismatch.expect("typed scope mismatch");
+        assert_eq!(
+            mismatch.uncovered_paths.first().map(String::as_str),
+            expected_path
+        );
+        assert_eq!(
+            mismatch.uncovered_components.first().map(String::as_str),
+            expected_component
+        );
+        assert_eq!(
+            mismatch.uncovered_work_contexts.first().map(String::as_str),
+            expected_context
+        );
     }
 
     fs::write(
@@ -1277,9 +1299,8 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
         .operations
         .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
         .expect_err("Checkpoint cannot accept work outside the reviewed authority scope");
-    assert!(checkpoint_error
-        .message()
-        .contains("requested work path `src/transport.rs` is outside the reviewed affected scope"));
+    assert!(checkpoint_error.message().contains("src/transport.rs"));
+    assert!(checkpoint_error.checkpoint_scope_violation().is_some());
     Ok(())
 }
 
@@ -1423,6 +1444,66 @@ fn executable_scope_expansion_cannot_retroactively_cover_changed_work(
         .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))
         .expect_err("the original executable scope remains authoritative");
     assert!(checkpoint_error.to_string().contains("tests/late_scope.rs"));
+    Ok(())
+}
+
+#[test]
+fn checkpoint_reports_every_scope_violation_with_current_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![dimension(
+            "bounded-implementation",
+            MaterialityDisposition::AgentOwnedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ImplementationPreference],
+            source,
+        )],
+    )?;
+    fs::create_dir_all(fixture.repository.join("docs"))?;
+    fs::create_dir_all(fixture.repository.join("tests"))?;
+    fs::write(fixture.repository.join("docs/z.md"), "# uncovered\n")?;
+    fs::write(
+        fixture.repository.join("tests/a.rs"),
+        "#[test] fn uncovered() {}\n",
+    )?;
+    let mut draft = checkpoint_draft(&fixture, Vec::new());
+    draft.decision_components = vec!["transport-core".into(), "release-core".into()];
+    draft.work_contexts = vec!["release".into(), "transport".into()];
+
+    let error = fixture
+        .operations
+        .record_grounded_checkpoint(draft)
+        .expect_err("all uncovered scope dimensions must reject together");
+    let violation = error
+        .checkpoint_scope_violation()
+        .expect("typed Checkpoint scope violation");
+    assert_eq!(
+        violation.mismatch.uncovered_paths,
+        ["docs/z.md", "tests/a.rs"]
+    );
+    assert_eq!(
+        violation.mismatch.uncovered_components,
+        ["release-core", "transport-core"]
+    );
+    assert_eq!(
+        violation.mismatch.uncovered_work_contexts,
+        ["release", "transport"]
+    );
+    assert_eq!(violation.mismatch.executable_scope.paths, ["src/lib.rs"]);
+    assert_eq!(
+        violation.review_candidate_id,
+        Some(recorded.review_candidate_id)
+    );
+    assert_eq!(violation.review_revision, Some(recorded.review_revision));
+    assert_eq!(
+        violation.workflow.required_next_action,
+        Some(volicord_operations::WorkflowAction {
+            tool: "materiality_review".into(),
+            action: Some("inspect".into()),
+        })
+    );
     Ok(())
 }
 

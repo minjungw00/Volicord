@@ -59,6 +59,9 @@ explicit executable scope to the current review. Its `paths`, `components`, and
 parent repository paths cover descendants. The action is additive rather than a
 new approval ceremony, and it rejects a late expansion over already-changed
 paths.
+When Checkpoint scope validation fails, the MCP error details contain every
+uncovered changed path, component, and work context, the current executable
+scope and review basis, and the maintained next action in one response.
 It validates explicit applied Decision identities through
 the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative

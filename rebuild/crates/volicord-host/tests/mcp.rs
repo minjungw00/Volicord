@@ -2296,7 +2296,7 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
 
 #[test]
 fn exact_current_task_delegation_can_cover_one_material_outcome() {
-    let (_temporary, mut adapter, project) = setup();
+    let (temporary, mut adapter, project) = setup();
     let goal_turn =
         "Add npm update availability; choose whether update checks are automatic or opt-in.";
     let goal = structured(&call(
@@ -2353,6 +2353,52 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
     let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
     assert_eq!(bound["workflow"]["stage"], "ready_for_work");
     assert_eq!(bound["workflow"]["blocks_ordinary_work"], false);
+
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("docs")).expect("docs directory");
+    fs::create_dir_all(repository.join("tests")).expect("tests directory");
+    fs::write(repository.join("docs/z.md"), "# uncovered\n").expect("docs change");
+    fs::write(repository.join("tests/a.rs"), "#[test] fn uncovered() {}\n").expect("test change");
+    let rejected = call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":review["goal_context_id"],
+            "baseline_analysis_snapshot_id":review["baseline_analysis_snapshot_id"],
+            "kind":"handoff",
+            "work_state":"paused",
+            "applied_decision_ids":[],
+            "decision_components":["transport-core","release-core"],
+            "work_contexts":["transport","release"],
+            "verification":[{"state":"not_run"}],
+            "next_step":"Correct the bounded executable scope",
+            "handoff_to":"next session"
+        }),
+    );
+    assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+    let details = &structured(&rejected)["details"];
+    assert_eq!(
+        details["scope_violations"]["uncovered_paths"],
+        json!(["docs/z.md", "tests/a.rs"])
+    );
+    assert_eq!(
+        details["scope_violations"]["uncovered_components"],
+        json!(["release-core", "transport-core"])
+    );
+    assert_eq!(
+        details["scope_violations"]["uncovered_work_contexts"],
+        json!(["release", "transport"])
+    );
+    assert_eq!(
+        details["scope_violations"]["executable_scope"]["paths"],
+        json!(["src"])
+    );
+    assert_eq!(
+        details["scope_violations"]["required_next_action"],
+        json!({"tool":"materiality_review","action":"inspect"})
+    );
+    assert_eq!(details["workflow"]["disposition"], "review_invalid");
 }
 
 #[test]

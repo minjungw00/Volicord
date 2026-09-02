@@ -956,6 +956,35 @@ impl HostAdapter {
         let result = match result {
             Ok(result) => result,
             Err(error) => {
+                if let Some(violation) = error.checkpoint_scope_violation() {
+                    let mismatch = &violation.mismatch;
+                    return Err(HostError::with_details(
+                        error.to_string(),
+                        json!({
+                            "scope_violations": {
+                                "uncovered_paths": mismatch.uncovered_paths,
+                                "uncovered_components": mismatch.uncovered_components,
+                                "uncovered_work_contexts": mismatch.uncovered_work_contexts,
+                                "executable_scope": {
+                                    "paths": mismatch.executable_scope.paths,
+                                    "components": mismatch.executable_scope.components,
+                                    "work_contexts": mismatch.executable_scope.work_contexts,
+                                },
+                                "basis": {
+                                    "review_candidate_id": violation.review_candidate_id.map(|id| id.to_string()),
+                                    "review_revision": violation.review_revision,
+                                    "materiality_dimension_ids": mismatch.materiality_dimension_ids,
+                                    "bound_analysis_snapshot_id": mismatch.bound_analysis_snapshot_id.to_string(),
+                                },
+                                "required_next_action": violation.workflow.required_next_action.as_ref().map(|action| json!({
+                                    "tool": action.tool,
+                                    "action": action.action,
+                                })),
+                            },
+                            "workflow": workflow_json(violation.workflow.clone()),
+                        }),
+                    ));
+                }
                 let workflow = self
                     .operations
                     .workflow_for_work_basis(
@@ -5635,6 +5664,27 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "verified_state_path":"If inspection confirms completed current state and no bounded repository work continues, do not fabricate discovery or a Checkpoint; perform the supported read-only inspection/verification continuation.",
             },
         }),
+        WorkflowStage::MaterialityReview
+            if workflow
+                .required_next_action
+                .as_ref()
+                .is_some_and(|action| {
+                    action.tool == "materiality_review"
+                        && action.action.as_deref() == Some("inspect")
+                }) =>
+        {
+            json!({
+                "required_action":{"tool":"materiality_review","action":"inspect"},
+                "available_identities":{
+                    "project_id":identity("project"),
+                    "goal_context_id":identity("goal_context"),
+                    "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
+                    "materiality_review_candidate_id":identity("materiality_review_candidate"),
+                },
+                "required_scope_fields":["paths","components","work_contexts"],
+                "scope_contract":"Bind the complete bounded executable scope before ordinary writes; descriptive affected_scope does not authorize repository paths.",
+            })
+        }
         WorkflowStage::MaterialityReview => json!({
             "required_action":{"tool":"materiality_review","action":"draft_then_record_or_revise"},
             "available_identities":{

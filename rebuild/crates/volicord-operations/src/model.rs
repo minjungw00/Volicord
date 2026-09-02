@@ -415,6 +415,14 @@ pub struct WorkflowDirective {
     pub unresolved_requirements: Vec<WorkflowRequirement>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckpointScopeViolation {
+    pub mismatch: volicord_inquiry::WorkScopeMismatch,
+    pub review_candidate_id: Option<CandidateId>,
+    pub review_revision: Option<u64>,
+    pub workflow: WorkflowDirective,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HealthState {
     Healthy,

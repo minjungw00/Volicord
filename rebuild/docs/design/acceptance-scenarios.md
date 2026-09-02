@@ -620,6 +620,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - fresh/resumed session의 pre-write Analysis Snapshot과 Checkpoint baseline identity/order
 - production/test/document multi-file scope의 pre-write binding, parent-root descendant coverage,
   review expansion invalidation과 late-scope refusal
+- 여러 uncovered path/component/work-context의 deterministic one-response aggregation, current
+  executable scope/review basis와 maintained correction action projection
 - missing/unresolved/late review의 Checkpoint refusal, valid no-Question와 applicable-Decision path
 - deterministically observed late disposition/authority-anchor/blocking-readiness/affected-scope
   revision의 affected path 보존과 prospective-only meaning, earlier affected work의 Checkpoint refusal
