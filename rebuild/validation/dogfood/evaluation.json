@@ -498,7 +498,17 @@
       "numeric_cli_version_dispatch": false
     },
     "codex_user_turn_transport_identity": {
-      "captured_text_allowance": "CRLF-to-LF normalization and removal of only terminal CR/LF characters",
+      "captured_text_allowance": "CRLF-to-LF normalization, removal of only terminal CR/LF characters, and uniquely reversible raw-only backslash insertion before exact Markdown-escapable ASCII punctuation",
+      "markdown_escapable_ascii_punctuation": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+      "comparison_direction": "frozen_descriptor_task_to_raw_captured_first_user_turn",
+      "ambiguous_alignment": "rejected",
+      "bounded_success_diagnostic": [
+        "transport_equivalence_used",
+        "ignored_escape_count",
+        "ignored_escape_normalized_raw_utf8_offsets",
+        "ignored_escape_offsets_truncated",
+        "normalized_comparison_sha256"
+      ],
       "descriptor_task_mutated": false,
       "raw_capture_mutated": false,
       "evidence_sha256_mutated": false,
@@ -506,7 +516,7 @@
     },
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
-      "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
+      "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
       "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
@@ -551,7 +561,7 @@
     },
     "resume_session_contract": [
       "repository-scoped SessionStart activation is observed before continuation behavior is judged",
-      "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
+      "the first captured user turn matches the descriptor plain fresh_resume_user_task under the directional fail-closed transport-equivalence contract, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
       "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
       "Recall preserves completed learning context as learning participation rather than a canonical Decision",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import copy
+from dataclasses import dataclass
 import gzip
 import hashlib
 import io
@@ -70,6 +71,13 @@ class CampaignError(ValueError):
 
 class ResumeContractError(CampaignError):
     """A captured resume violates the maintained continuation contract."""
+
+
+@dataclass(frozen=True)
+class MappedRollout:
+    source: Path
+    capture: Any
+    task_transport: harness.FrozenTaskTransportComparison
 
 
 def read_json(path: Path) -> Any:
@@ -2610,7 +2618,7 @@ def batch_rollout_paths(
 def map_batch_rollouts(
     root: Path,
     raw_paths: list[Path],
-) -> dict[tuple[str, int, str], tuple[Path, Any]]:
+) -> dict[tuple[str, int, str], MappedRollout]:
     campaign = load_campaign(root)
     verify_inventory(root)
     slots: dict[tuple[str, int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
@@ -2621,7 +2629,7 @@ def map_batch_rollouts(
             for role, field in (("work", "work_user_task"), ("resume", "fresh_resume_user_task")):
                 slots[(kind, cycle, role)] = (state, descriptor)
 
-    mapped: dict[tuple[str, int, str], tuple[Path, Any]] = {}
+    mapped: dict[tuple[str, int, str], MappedRollout] = {}
     sessions: dict[str, Path] = {}
     for path in raw_paths:
         try:
@@ -2651,16 +2659,20 @@ def map_batch_rollouts(
             raise CampaignError("batch rollout reuses a Codex session identity")
         sessions[capture.session_id] = path
         candidates = []
+        candidate_transport: dict[
+            tuple[str, int, str], harness.FrozenTaskTransportComparison
+        ] = {}
         task_candidates = []
         revision_candidates = []
         workspace_candidates = []
         for slot, (state, descriptor) in slots.items():
             role = slot[2]
             task_field = "work_user_task" if role == "work" else "fresh_resume_user_task"
-            task_matches = bool(capture.user_turns) and harness.codex_user_turn_transport_identity_matches(
-                capture.user_turns[0].text,
+            comparison = harness.compare_frozen_task_transport(
                 descriptor[task_field],
+                capture.user_turns[0].text if capture.user_turns else None,
             )
+            task_matches = comparison.equivalent
             revision_matches = capture.git_revision == state["repository_revision"]
             workspace_matches = capture.cwd.resolve(strict=False) == Path(
                 state["repository_path"]
@@ -2673,6 +2685,7 @@ def map_batch_rollouts(
                 workspace_candidates.append(slot)
             if provenance_matches and task_matches and revision_matches and workspace_matches:
                 candidates.append(slot)
+                candidate_transport[slot] = comparison
         if len(candidates) != 1:
             if not candidates:
                 mismatch_reasons = []
@@ -2721,7 +2734,7 @@ def map_batch_rollouts(
         slot = candidates[0]
         if slot in mapped:
             raise CampaignError("batch rollouts contain duplicate evidence for one sealed cycle role")
-        mapped[slot] = (path, capture)
+        mapped[slot] = MappedRollout(path, capture, candidate_transport[slot])
     missing = sorted(set(slots) - set(mapped))
     if missing:
         raise CampaignError("batch rollouts are missing one or more sealed cycle roles")
@@ -2850,7 +2863,8 @@ def collect_batch(
             raise CampaignError("batch collection requires all eight sealed cycles")
 
     mapped = map_batch_rollouts(root, raw_paths)
-    for (kind, cycle, role), (source, _capture) in sorted(mapped.items()):
+    for (kind, cycle, role), mapped_rollout in sorted(mapped.items()):
+        source = mapped_rollout.source
         destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
         if source.resolve() == destination.resolve():
             raise CampaignError("batch rollout source must be outside its sealed evidence destination")
@@ -2869,8 +2883,10 @@ def collect_batch(
             descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
             work_destination = cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"
             resume_destination = cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl"
-            work_capture = mapped[(kind, cycle, "work")][1]
-            resume_capture = mapped[(kind, cycle, "resume")][1]
+            work_mapping = mapped[(kind, cycle, "work")]
+            resume_mapping = mapped[(kind, cycle, "resume")]
+            work_capture = work_mapping.capture
+            resume_capture = resume_mapping.capture
             cycle_attributions: list[dict[str, Any]] = []
             if (
                 not work_capture.repository_scoped_activation_observed
@@ -2879,7 +2895,7 @@ def collect_batch(
                 has_environment_invalid = True
             if not work_capture.repository_scoped_activation_observed:
                 environment_invalid_diagnostics.append(missing_activation_diagnostic(
-                    mapped[(kind, cycle, "work")][0],
+                    mapped[(kind, cycle, "work")].source,
                     work_capture,
                     state["review_slot_id"],
                     "work",
@@ -2892,7 +2908,7 @@ def collect_batch(
                 ))
             if not resume_capture.repository_scoped_activation_observed:
                 environment_invalid_diagnostics.append(missing_activation_diagnostic(
-                    mapped[(kind, cycle, "resume")][0],
+                    mapped[(kind, cycle, "resume")].source,
                     resume_capture,
                     state["review_slot_id"],
                     "resume",
@@ -3147,6 +3163,7 @@ def collect_batch(
                     "relative_evidence_path": relative(root, work_destination),
                     "sha256": work_capture.source_sha256,
                     "activation_observed": work_capture.repository_scoped_activation_observed,
+                    "task_transport_equivalence": work_mapping.task_transport.bounded_evidence(),
                 },
                 "resume": {
                     "outcome": resume_result["outcome"],
@@ -3154,6 +3171,7 @@ def collect_batch(
                     "relative_evidence_path": relative(root, resume_destination),
                     "sha256": resume_capture.source_sha256,
                     "activation_observed": resume_capture.repository_scoped_activation_observed,
+                    "task_transport_equivalence": resume_mapping.task_transport.bounded_evidence(),
                     **(
                         {"basis": resume_result["basis"]}
                         if isinstance(resume_result.get("basis"), str)
@@ -3206,7 +3224,7 @@ def collect_batch(
             "status": "passed",
             "expected_count": BATCH_CAPTURE_COUNT,
             "observed_count": len({
-                mapped[slot][1].session_id for slot in mapped
+                mapped[slot].capture.session_id for slot in mapped
             }),
         },
         "cycles": cycle_results,

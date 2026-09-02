@@ -1868,7 +1868,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
     assert len({capture.session_id for _path, capture in mapped.values()}) == campaign.BATCH_CAPTURE_COUNT
-    compacted_mapped_capture = mapped[("volicord", 1, "work")][1]
+    compacted_mapped_capture = mapped[("volicord", 1, "work")].capture
     assert compacted_mapped_capture.fresh_user_thread is True
     assert len(compacted_mapped_capture.compacted_sequences) == 1
     mapped_state = campaign.cycle_state(root, "volicord", 1)
@@ -1915,7 +1915,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     )
     current_inputs = [current_work if path == work else path for path in captures]
     current_mapping = campaign.map_batch_rollouts(root, current_inputs)
-    current_mapped_capture = current_mapping[("volicord", 1, "work")][1]
+    current_mapped_capture = current_mapping[("volicord", 1, "work")].capture
     if (
         len(current_mapped_capture.user_turns) != 2
         or current_mapped_capture.user_turns[0].text != raw_work_task
@@ -1958,7 +1958,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     )
     if (
         len(
-            duplicate_representation_mapping[("volicord", 1, "work")][1].user_turns
+            duplicate_representation_mapping[("volicord", 1, "work")].capture.user_turns
         )
         != 2
     ):
@@ -2056,7 +2056,9 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     ]
     multiple_newline_bytes = multiple_newline_work.read_bytes()
     multiple_newline_mapping = campaign.map_batch_rollouts(root, multiple_newline_inputs)
-    mapped_source, mapped_capture = multiple_newline_mapping[("volicord", 1, "work")]
+    mapped_rollout = multiple_newline_mapping[("volicord", 1, "work")]
+    mapped_source = mapped_rollout.source
+    mapped_capture = mapped_rollout.capture
     assert mapped_source == multiple_newline_work
     assert mapped_source.read_bytes() == multiple_newline_bytes
     assert mapped_capture.source_sha256 == hashlib.sha256(multiple_newline_bytes).hexdigest()
@@ -2088,15 +2090,23 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         else:
             raise AssertionError(f"batch mapping accepted wrong {label}")
 
-    assert harness.canonical_frozen_task_transport_text(
-        "transport_marker"
-    ) != harness.canonical_frozen_task_transport_text("transport\\_marker")
+    assert harness.compare_frozen_task_transport(
+        "transport_marker", "transport\\_marker"
+    ).equivalent
     escaped_task = replaced_capture(
         work,
-        parent / "wrong-literal-escape.jsonl",
+        parent / "reversible-markdown-escape-work.jsonl",
         descriptor["work_user_task"],
         descriptor["work_user_task"] + " transport\\\\_marker",
     )
+    escaped_resume = replaced_capture(
+        resume,
+        parent / "reversible-markdown-escape-resume.jsonl",
+        descriptor["fresh_resume_user_task"],
+        descriptor["fresh_resume_user_task"] + " transport\\\\_marker",
+    )
+    escaped_task_bytes = escaped_task.read_bytes()
+    escaped_resume_bytes = escaped_resume.read_bytes()
     original_load_descriptor = campaign.load_sealed_descriptor
 
     def descriptor_with_literal_underscore(
@@ -2111,17 +2121,35 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         if (kind, cycle) == ("volicord", 1):
             loaded = copy.deepcopy(loaded)
             loaded["work_user_task"] += " transport_marker"
+            loaded["fresh_resume_user_task"] += " transport_marker"
         return path, loaded
 
     campaign.load_sealed_descriptor = descriptor_with_literal_underscore
     try:
-        escaped_inputs = [escaped_task if path == work else path for path in captures]
-        campaign.map_batch_rollouts(root, escaped_inputs)
-    except campaign.CampaignError as error:
-        assert error.diagnostic is not None
-        assert "frozen_task_mismatch" in error.diagnostic["mismatch_reasons"]
-    else:
-        raise AssertionError("batch mapping normalized a literal Markdown escape")
+        escaped_inputs = [
+            escaped_task
+            if path == work
+            else escaped_resume
+            if path == resume
+            else path
+            for path in captures
+        ]
+        escaped_mapping = campaign.map_batch_rollouts(root, escaped_inputs)
+        work_transport = escaped_mapping[("volicord", 1, "work")].task_transport
+        resume_transport = escaped_mapping[("volicord", 1, "resume")].task_transport
+        assert work_transport.equivalent and resume_transport.equivalent
+        assert work_transport.transport_equivalence_used
+        assert resume_transport.transport_equivalence_used
+        assert len(work_transport.ignored_escape_normalized_raw_utf8_offsets) == 1
+        assert len(resume_transport.ignored_escape_normalized_raw_utf8_offsets) == 1
+        assert escaped_task.read_bytes() == escaped_task_bytes
+        assert escaped_resume.read_bytes() == escaped_resume_bytes
+        assert escaped_mapping[("volicord", 1, "work")].capture.source_sha256 == hashlib.sha256(
+            escaped_task_bytes
+        ).hexdigest()
+        assert escaped_mapping[("volicord", 1, "resume")].capture.source_sha256 == hashlib.sha256(
+            escaped_resume_bytes
+        ).hexdigest()
     finally:
         campaign.load_sealed_descriptor = original_load_descriptor
 

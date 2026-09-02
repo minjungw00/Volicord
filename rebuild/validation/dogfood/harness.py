@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from dataclasses import dataclass
 import datetime as dt
 import hashlib
 from html.parser import HTMLParser
@@ -1258,7 +1259,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(evidence.get("work_session_contract", []))
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
-            "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
+            "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
             "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
@@ -1281,7 +1282,7 @@ def load_definition() -> dict[str, Any]:
         or tuple(evidence.get("resume_session_contract", []))
         != (
             "repository-scoped SessionStart activation is observed before continuation behavior is judged",
-            "the first captured user turn matches the descriptor plain fresh_resume_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters, and does not disclose Recall",
+            "the first captured user turn matches the descriptor plain fresh_resume_user_task under the directional fail-closed transport-equivalence contract, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
             "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
             "Recall preserves completed learning context as learning participation rather than a canonical Decision",
@@ -1295,8 +1296,20 @@ def load_definition() -> dict[str, Any]:
         or evidence.get("codex_user_turn_transport_identity")
         != {
             "captured_text_allowance": (
-                "CRLF-to-LF normalization and removal of only terminal CR/LF characters"
+                "CRLF-to-LF normalization, removal of only terminal CR/LF characters, "
+                "and uniquely reversible raw-only backslash insertion before exact "
+                "Markdown-escapable ASCII punctuation"
             ),
+            "markdown_escapable_ascii_punctuation": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+            "comparison_direction": "frozen_descriptor_task_to_raw_captured_first_user_turn",
+            "ambiguous_alignment": "rejected",
+            "bounded_success_diagnostic": [
+                "transport_equivalence_used",
+                "ignored_escape_count",
+                "ignored_escape_normalized_raw_utf8_offsets",
+                "ignored_escape_offsets_truncated",
+                "normalized_comparison_sha256",
+            ],
             "descriptor_task_mutated": False,
             "raw_capture_mutated": False,
             "evidence_sha256_mutated": False,
@@ -2116,15 +2129,124 @@ def normalized_prompt_text(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+MARKDOWN_ESCAPABLE_ASCII_PUNCTUATION = frozenset(
+    "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+)
+MAX_REPORTED_TRANSPORT_ESCAPE_OFFSETS = 64
+
+
+@dataclass(frozen=True)
+class FrozenTaskTransportComparison:
+    equivalent: bool
+    transport_equivalence_used: bool
+    ignored_escape_normalized_raw_utf8_offsets: tuple[int, ...]
+    normalized_comparison_sha256: str | None
+    ambiguous: bool
+
+    def bounded_evidence(self) -> dict[str, Any]:
+        offsets = self.ignored_escape_normalized_raw_utf8_offsets
+        return {
+            "equivalent": self.equivalent,
+            "transport_equivalence_used": self.transport_equivalence_used,
+            "ignored_escape_count": len(offsets),
+            "ignored_escape_normalized_raw_utf8_offsets": list(
+                offsets[:MAX_REPORTED_TRANSPORT_ESCAPE_OFFSETS]
+            ),
+            "ignored_escape_offsets_truncated": len(offsets)
+            > MAX_REPORTED_TRANSPORT_ESCAPE_OFFSETS,
+            "normalized_comparison_sha256": self.normalized_comparison_sha256,
+            "ambiguous": self.ambiguous,
+        }
+
+
+def compare_frozen_task_transport(
+    frozen_task: Any,
+    raw_captured_task: Any,
+) -> FrozenTaskTransportComparison:
+    """Compare one frozen task to raw host text without rewriting either identity.
+
+    Besides the established line-ending allowance, raw text may contain an extra
+    backslash immediately before the exact corresponding Markdown-escapable ASCII
+    punctuation character.  Every possible directional alignment is counted; a
+    capture is equivalent only when exactly one alignment consumes both streams.
+    """
+    if not isinstance(frozen_task, str) or not isinstance(raw_captured_task, str):
+        return FrozenTaskTransportComparison(False, False, (), None, False)
+    frozen = canonical_frozen_task_transport_text(frozen_task)
+    raw = canonical_frozen_task_transport_text(raw_captured_task)
+    digest = hashlib.sha256(frozen.encode("utf-8")).hexdigest()
+    if frozen == raw:
+        return FrozenTaskTransportComparison(True, False, (), digest, False)
+    if len(raw) <= len(frozen):
+        return FrozenTaskTransportComparison(False, False, (), None, False)
+
+    # raw character position -> (alignment count, ignored normalized raw offsets).
+    # Counts are capped at two because any second complete alignment is rejection.
+    states: dict[int, tuple[int, tuple[int, ...] | None]] = {0: (1, ())}
+    raw_utf8_offsets = [0]
+    for character in raw:
+        raw_utf8_offsets.append(
+            raw_utf8_offsets[-1] + len(character.encode("utf-8"))
+        )
+
+    def add_state(
+        target: dict[int, tuple[int, tuple[int, ...] | None]],
+        raw_position: int,
+        count: int,
+        ignored: tuple[int, ...] | None,
+    ) -> None:
+        existing_count, existing_ignored = target.get(raw_position, (0, ()))
+        combined_count = min(2, existing_count + count)
+        if existing_count == 0 and count == 1:
+            unique_ignored = ignored
+        elif combined_count == 1:
+            unique_ignored = existing_ignored
+        else:
+            unique_ignored = None
+        target[raw_position] = (combined_count, unique_ignored)
+
+    for frozen_position, character in enumerate(frozen):
+        remaining_frozen = len(frozen) - frozen_position - 1
+        next_states: dict[int, tuple[int, tuple[int, ...] | None]] = {}
+        for raw_position, (count, ignored) in states.items():
+            if raw_position < len(raw) and raw[raw_position] == character:
+                next_raw_position = raw_position + 1
+                remaining_raw = len(raw) - next_raw_position
+                if remaining_frozen <= remaining_raw <= remaining_frozen * 2:
+                    add_state(next_states, next_raw_position, count, ignored)
+            if (
+                character in MARKDOWN_ESCAPABLE_ASCII_PUNCTUATION
+                and raw_position + 1 < len(raw)
+                and raw[raw_position] == "\\"
+                and raw[raw_position + 1] == character
+            ):
+                next_raw_position = raw_position + 2
+                remaining_raw = len(raw) - next_raw_position
+                if remaining_frozen <= remaining_raw <= remaining_frozen * 2:
+                    next_ignored = (
+                        None
+                        if ignored is None
+                        else ignored + (raw_utf8_offsets[raw_position],)
+                    )
+                    add_state(next_states, next_raw_position, count, next_ignored)
+        states = next_states
+        if not states:
+            return FrozenTaskTransportComparison(False, False, (), None, False)
+
+    count, ignored = states.get(len(raw), (0, ()))
+    if count != 1 or ignored is None:
+        return FrozenTaskTransportComparison(False, False, (), None, count > 1)
+    return FrozenTaskTransportComparison(True, bool(ignored), ignored, digest, False)
+
+
 def codex_user_turn_transport_identity_matches(
     captured_user_turn: Any,
     descriptor_task: Any,
 ) -> bool:
-    if not isinstance(captured_user_turn, str) or not isinstance(descriptor_task, str):
-        return False
-    return canonical_frozen_task_transport_text(
-        captured_user_turn
-    ) == canonical_frozen_task_transport_text(descriptor_task)
+    return compare_frozen_task_transport(
+        descriptor_task,
+        captured_user_turn,
+    ).equivalent
 
 
 def canonical_frozen_task_transport_text(value: str) -> str:
@@ -10700,6 +10822,7 @@ def self_test() -> int:
         ("extra instruction", descriptor_task + "\nextra instruction", False),
         ("terminal tab", descriptor_task + "\t", False),
         ("terminal Unicode whitespace", descriptor_task + "\u00a0", False),
+        ("backslash before ordinary letter", r"Preserve e\xact prompt identity.", False),
     )
     for label, captured, expected in transport_identity_cases:
         if codex_user_turn_transport_identity_matches(captured, descriptor_task) is not expected:
@@ -10708,6 +10831,38 @@ def self_test() -> int:
         raise AssertionError("Codex user-turn transport identity did not normalize internal CRLF")
     if codex_user_turn_transport_identity_matches(descriptor_task, None):
         raise AssertionError("non-text descriptor qualified as Codex user-turn identity")
+    accepted_escapes = (
+        ("underscore", "Serializer.iter_unsigners", r"Serializer.iter\_unsigners"),
+        ("asterisk", "Use *args", r"Use \*args"),
+        ("bracket", "Inspect [target]", r"Inspect \[target\]"),
+        ("hash", "Keep #anchor", r"Keep \#anchor"),
+    )
+    for label, frozen, raw in accepted_escapes:
+        comparison = compare_frozen_task_transport(frozen, raw)
+        if (
+            not comparison.equivalent
+            or not comparison.transport_equivalence_used
+            or not comparison.ignored_escape_normalized_raw_utf8_offsets
+            or comparison.ambiguous
+        ):
+            raise AssertionError(f"Codex user-turn transport identity rejected {label}")
+    rejected_escapes = (
+        ("frozen backslash removal", r"literal\_value", "literal_value"),
+        ("Windows path mutation", r"C:\work\task", r"C:work\task"),
+        ("regex escape mutation", r"^item\s+$", "^items+$"),
+        ("bold wrapper", "task", "**task**"),
+        ("interior whitespace", "two words", "two  words"),
+        ("prefix", "task", "prefix task"),
+        ("suffix", "task", "task suffix"),
+        ("ambiguous backslashes", r"\_", r"\\_"),
+    )
+    for label, frozen, raw in rejected_escapes:
+        if compare_frozen_task_transport(frozen, raw).equivalent:
+            raise AssertionError(f"Codex user-turn transport identity accepted {label}")
+    if not compare_frozen_task_transport(r"C:\work\task", r"C:\work\task").equivalent:
+        raise AssertionError("exact Windows path lost meaningful backslashes")
+    if not compare_frozen_task_transport(r"^item\s+$", r"^item\s+$").equivalent:
+        raise AssertionError("exact regex text lost meaningful backslashes")
     revision = "0" * 40
     candidate_revision = git_head(ROOT)
     if candidate_revision is None:

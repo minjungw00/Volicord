@@ -734,8 +734,20 @@ def main() -> int:
         raise AssertionError("Phase 8 Codex user-turn normalization contract changed")
     if transport_identity != {
         "captured_text_allowance": (
-            "CRLF-to-LF normalization and removal of only terminal CR/LF characters"
+            "CRLF-to-LF normalization, removal of only terminal CR/LF characters, "
+            "and uniquely reversible raw-only backslash insertion before exact "
+            "Markdown-escapable ASCII punctuation"
         ),
+        "markdown_escapable_ascii_punctuation": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+        "comparison_direction": "frozen_descriptor_task_to_raw_captured_first_user_turn",
+        "ambiguous_alignment": "rejected",
+        "bounded_success_diagnostic": [
+            "transport_equivalence_used",
+            "ignored_escape_count",
+            "ignored_escape_normalized_raw_utf8_offsets",
+            "ignored_escape_offsets_truncated",
+            "normalized_comparison_sha256",
+        ],
         "descriptor_task_mutated": False,
         "raw_capture_mutated": False,
         "evidence_sha256_mutated": False,
@@ -857,7 +869,7 @@ def main() -> int:
         '"correlated_split_evidence"',
         '"output_only_outcome": "unknown"',
         '"uncorrelated_or_synthesized_status_outcome": "unknown"',
-        "the first captured user turn matches the descriptor plain work_user_task after comparison-only CRLF-to-LF normalization and removal of terminal CR/LF characters",
+        "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
