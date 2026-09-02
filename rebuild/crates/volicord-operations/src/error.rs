@@ -4,7 +4,7 @@ use std::{error::Error as StdError, fmt};
 pub struct Error {
     message: String,
     source: Option<Box<dyn StdError + Send + Sync>>,
-    checkpoint_scope_violation: Option<crate::CheckpointScopeViolation>,
+    checkpoint_scope_violation: Option<Box<crate::CheckpointScopeViolation>>,
 }
 
 impl Error {
@@ -32,7 +32,7 @@ impl Error {
     }
 
     pub fn checkpoint_scope_violation(&self) -> Option<&crate::CheckpointScopeViolation> {
-        self.checkpoint_scope_violation.as_ref()
+        self.checkpoint_scope_violation.as_deref()
     }
 
     pub(crate) fn with_checkpoint_scope_violation(
@@ -42,7 +42,7 @@ impl Error {
         Self {
             message: message.into(),
             source: None,
-            checkpoint_scope_violation: Some(violation),
+            checkpoint_scope_violation: Some(Box::new(violation)),
         }
     }
 }
