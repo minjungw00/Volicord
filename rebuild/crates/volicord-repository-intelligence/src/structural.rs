@@ -2424,6 +2424,27 @@ mod tests {
                 && report.capability == Capability::Structural
         });
         assert!(typescript.is_some_and(|report| report.state == CapabilityState::Failed));
+        assert!(typescript.is_some_and(|report| {
+            !report.coverage.failed.is_empty()
+                && report.usable_remainder.is_some()
+                && report.user_visible_consequence.is_some()
+                && !report.diagnostics.is_empty()
+        }));
+        assert!(analysis.capabilities.iter().any(|report| {
+            report.language.is_none()
+                && report.capability == Capability::Inventory
+                && report.state == CapabilityState::Available
+                && report.coverage.covered_file_count > 0
+        }));
+        assert!(analysis.capabilities.iter().any(|report| {
+            report.language == Some(Language::Java)
+                && report.capability == Capability::Structural
+                && matches!(
+                    report.state,
+                    CapabilityState::Available | CapabilityState::Partial
+                )
+                && report.coverage.covered_entity_count > 0
+        }));
         assert!(analysis
             .structural_facts
             .iter()

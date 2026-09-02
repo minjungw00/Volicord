@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use serde_json::{json, Value};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 use volicord_context::{
     CheckpointId, CheckpointKind, CommandTermination, ContextItemId, ContextItemRole, DecisionId,
     LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
@@ -13,7 +17,9 @@ use volicord_local_platform::{
     ProcessTreeCleanup,
 };
 use volicord_privacy::ProviderDeletionOutcome;
-use volicord_repository_intelligence::{AnalysisSnapshot, RepositorySnapshot};
+use volicord_repository_intelligence::{
+    AnalysisSnapshot, CapabilityState, DiagnosticSeverity, RepositorySnapshot,
+};
 use volicord_repository_intelligence::{AnalysisSnapshotId, RepositorySnapshotId};
 
 use crate::ForgettingState;
@@ -42,8 +48,116 @@ pub struct ProgressState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PartialOutcome {
     pub completed_scopes: Vec<String>,
+    pub partial_scopes: Vec<String>,
     pub failed_scopes: Vec<String>,
     pub omitted_scopes: Vec<String>,
+}
+
+pub fn bounded_repository_analysis_json(analysis: &AnalysisSnapshot) -> Value {
+    const DIAGNOSTICS_PER_CAPABILITY: usize = 3;
+    const DIAGNOSTIC_LIMIT: usize = 64;
+
+    let diagnostics_by_id = analysis
+        .diagnostics
+        .iter()
+        .map(|diagnostic| (diagnostic.identity.as_str(), diagnostic))
+        .collect::<BTreeMap<_, _>>();
+    let mut selected_ids = BTreeSet::new();
+    let capability_reports = analysis
+        .capabilities
+        .iter()
+        .map(|report| {
+            let mut representative_ids = Vec::new();
+            let mut representative_causes = BTreeSet::new();
+            for severity in [
+                DiagnosticSeverity::Error,
+                DiagnosticSeverity::Warning,
+                DiagnosticSeverity::Information,
+            ] {
+                for identity in &report.diagnostics {
+                    let Some(diagnostic) = diagnostics_by_id.get(identity.as_str()) else {
+                        continue;
+                    };
+                    if diagnostic.severity != severity
+                        || !representative_causes
+                            .insert((diagnostic.code.clone(), diagnostic.message.clone()))
+                        || representative_ids.len() >= DIAGNOSTICS_PER_CAPABILITY
+                        || selected_ids.len() >= DIAGNOSTIC_LIMIT
+                    {
+                        continue;
+                    }
+                    representative_ids.push(identity.clone());
+                    selected_ids.insert(identity.clone());
+                }
+            }
+            let (recovery_owner, safe_next_action) = capability_recovery(report.state);
+            json!({
+                "capability":report.capability,
+                "language":report.language,
+                "area":report.area,
+                "state":report.state,
+                "reason":report.reason,
+                "usable_remainder":report.usable_remainder,
+                "user_visible_consequence":report.user_visible_consequence,
+                "coverage":{
+                    "included_count":report.coverage.included.len(),
+                    "excluded_count":report.coverage.excluded.len(),
+                    "unsupported_count":report.coverage.unsupported.len(),
+                    "unavailable_count":report.coverage.unavailable.len(),
+                    "failed_count":report.coverage.failed.len(),
+                    "stale_count":report.coverage.stale.len(),
+                    "covered_file_count":report.coverage.covered_file_count,
+                    "covered_entity_count":report.coverage.covered_entity_count,
+                    "covered_relation_count":report.coverage.covered_relation_count,
+                },
+                "diagnostic_count":report.diagnostics.len(),
+                "diagnostic_ids":representative_ids,
+                "adapter":report.adapter,
+                "analyzer":report.analyzer,
+                "provenance_class":report.provenance_class,
+                "freshness":report.freshness,
+                "uncertainty":report.uncertainty,
+                "recovery_owner":recovery_owner,
+                "safe_next_action":safe_next_action,
+            })
+        })
+        .collect::<Vec<_>>();
+    let diagnostics = selected_ids
+        .iter()
+        .filter_map(|identity| diagnostics_by_id.get(identity.as_str()))
+        .map(|diagnostic| json!(diagnostic))
+        .collect::<Vec<_>>();
+    json!({
+        "capability_reports":capability_reports,
+        "diagnostics_omitted_count":analysis.diagnostics.len().saturating_sub(diagnostics.len()),
+        "diagnostics":diagnostics,
+    })
+}
+
+fn capability_recovery(state: CapabilityState) -> (Option<&'static str>, Option<&'static str>) {
+    match state {
+        CapabilityState::Available => (None, None),
+        CapabilityState::Partial => (
+            Some("repository_intelligence"),
+            Some("Use the reported usable remainder now; inspect linked diagnostics and rerun repository_analyze after correcting affected source or analyzer limits."),
+        ),
+        CapabilityState::Failed => (
+            Some("repository_intelligence"),
+            Some("Keep inventory and unaffected capability results; correct the reported source or analyzer failure, then rerun repository_analyze."),
+        ),
+        CapabilityState::Unavailable => (
+            Some("repository_intelligence"),
+            Some("Use available inventory or structural evidence; satisfy the reported prerequisite before retrying this capability."),
+        ),
+        CapabilityState::Unsupported => (
+            Some("repository_intelligence"),
+            Some("Use the supported capability results; do not retry this capability until Repository Intelligence support is added."),
+        ),
+        CapabilityState::Stale => (
+            Some("repository_intelligence"),
+            Some("Rerun repository_analyze against the current repository state."),
+        ),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,4 +1,5 @@
 use crate::{
+    bounded_repository_analysis_json,
     operations::{parse_identity, select_document},
     ConfirmationDecision, ConfirmationRequestId, Error, GuardedEffectCategory, GuardedEffectDraft,
     GuardedRisk, LocalOperations, RequestingProvenance, RuntimeLayout,
@@ -1309,11 +1310,14 @@ fn analyze(
         .value
         .as_ref()
         .ok_or_else(|| Error::new("analysis ended without an inspectable result"))?;
+    let summary = bounded_repository_analysis_json(&analysis.analysis);
     Ok(json!({
         "operation":if rebuild {"analysis_rebuild"} else {"analyze"}, "operation_id":result.operation_id.to_string(), "state":debug_name(result.state),
         "duration_micros":result.duration_micros, "repository_snapshot":analysis.repository.identity.to_string(), "analysis_snapshot":analysis.analysis.identity.to_string(),
-        "stored_at":analysis.stored_at, "completed_scopes":result.partial.completed_scopes, "failed_scopes":result.partial.failed_scopes,
-        "omitted_scopes":result.partial.omitted_scopes, "diagnostic":result.diagnostic
+        "stored_at":analysis.stored_at, "completed_scopes":result.partial.completed_scopes, "partial_scopes":result.partial.partial_scopes,
+        "failed_scopes":result.partial.failed_scopes, "omitted_scopes":result.partial.omitted_scopes,
+        "capability_reports":summary["capability_reports"], "diagnostics":summary["diagnostics"],
+        "diagnostics_omitted_count":summary["diagnostics_omitted_count"], "diagnostic":result.diagnostic
     }))
 }
 
@@ -1353,6 +1357,7 @@ fn repair_json(operation: &str, result: crate::RepairOutcome) -> Result<Value, E
         result.operation.value.as_ref().ok_or_else(|| {
             Error::new("derived reconstruction ended without an inspectable result")
         })?;
+    let summary = bounded_repository_analysis_json(&analysis.analysis);
     Ok(json!({
         "operation":operation,
         "operation_id":result.operation.operation_id.to_string(),
@@ -1364,8 +1369,12 @@ fn repair_json(operation: &str, result: crate::RepairOutcome) -> Result<Value, E
         "analysis_snapshot":analysis.analysis.identity.to_string(),
         "stored_at":analysis.stored_at,
         "completed_scopes":result.operation.partial.completed_scopes,
+        "partial_scopes":result.operation.partial.partial_scopes,
         "failed_scopes":result.operation.partial.failed_scopes,
         "omitted_scopes":result.operation.partial.omitted_scopes,
+        "capability_reports":summary["capability_reports"],
+        "diagnostics":summary["diagnostics"],
+        "diagnostics_omitted_count":summary["diagnostics_omitted_count"],
         "diagnostic":result.operation.diagnostic,
     }))
 }

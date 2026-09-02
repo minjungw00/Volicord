@@ -2762,6 +2762,126 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
 }
 
 #[test]
+fn repository_analysis_preserves_typed_degradation_and_bounded_diagnostics() {
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::create_dir(repository.join("src")).expect("Rust source directory");
+    fs::write(
+        repository.join("Cargo.toml"),
+        "[package]\nname='host-analysis-fixture'\nversion='0.1.0'\n",
+    )
+    .expect("Cargo manifest");
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn answer() -> u32 { 42 }\n#[cfg(test)]\nmod tests { #[test] fn answer_is_stable() { assert_eq!(super::answer(), 42); } }\n",
+    )
+    .expect("Rust source");
+
+    let response = call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    );
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let result = structured(&response);
+    assert_eq!(result["state"], "partial", "{result}");
+    assert!(result["diagnostic"]
+        .as_str()
+        .is_some_and(|diagnostic| diagnostic.contains("inspect capability_reports")));
+    assert!(result["partial_scopes"]
+        .as_array()
+        .is_some_and(|scopes| scopes.iter().any(|scope| scope
+            .as_str()
+            .is_some_and(|scope| scope.contains("Structural:Some(Rust)")))));
+    assert!(!result["failed_scopes"]
+        .as_array()
+        .expect("failed scopes")
+        .iter()
+        .any(|scope| scope
+            .as_str()
+            .is_some_and(|scope| scope.contains("Structural:Some(Rust)"))));
+
+    let reports = result["capability_reports"]
+        .as_array()
+        .expect("capability reports");
+    let report = |capability: &str, language: Option<&str>| {
+        reports
+            .iter()
+            .find(|report| {
+                report["capability"] == capability
+                    && match language {
+                        Some(language) => report["language"]["kind"] == language,
+                        None => report["language"].is_null(),
+                    }
+            })
+            .unwrap_or_else(|| panic!("missing {capability} report for {language:?}"))
+    };
+    let rust_structural = report("structural", Some("rust"));
+    assert_eq!(rust_structural["state"], "partial");
+    assert!(rust_structural["coverage"]["covered_entity_count"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
+    assert!(rust_structural["reason"].is_string());
+    assert!(rust_structural["usable_remainder"].is_string());
+    assert_eq!(rust_structural["recovery_owner"], "repository_intelligence");
+    assert!(rust_structural["safe_next_action"]
+        .as_str()
+        .is_some_and(|action| action.contains("Use the reported usable remainder")));
+    assert!(rust_structural["adapter"].is_object());
+    assert!(rust_structural["analyzer"].is_object());
+
+    let cargo_ecosystem = report("ecosystem", Some("rust"));
+    assert!(matches!(
+        cargo_ecosystem["state"].as_str(),
+        Some("available" | "partial")
+    ));
+    assert!(cargo_ecosystem["coverage"]["included_count"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
+    assert!(cargo_ecosystem["usable_remainder"].is_string());
+
+    let rust_semantic = report("semantic", Some("rust"));
+    assert!(matches!(
+        rust_semantic["state"].as_str(),
+        Some("available" | "partial")
+    ));
+    assert!(rust_semantic["coverage"]["covered_relation_count"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
+    assert_eq!(
+        rust_semantic["analyzer"]["name"],
+        "volicord-source-semantic-index"
+    );
+
+    let agent_assisted = report("agent_assisted", Some("rust"));
+    assert_eq!(agent_assisted["state"], "unavailable");
+    assert!(agent_assisted["reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("no interactive host interpretation")));
+    assert!(agent_assisted["safe_next_action"].is_string());
+
+    let toml_structural = report("structural", Some("toml"));
+    assert_eq!(toml_structural["state"], "unsupported");
+    assert!(toml_structural["reason"].is_string());
+    assert!(toml_structural["safe_next_action"]
+        .as_str()
+        .is_some_and(|action| action.contains("do not retry")));
+
+    let diagnostics = result["diagnostics"].as_array().expect("diagnostics");
+    assert!(diagnostics.len() <= 64);
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic["code"] == "structural.construct_limit"));
+    assert!(diagnostics.iter().all(|diagnostic| {
+        diagnostic["identity"].is_string()
+            && diagnostic["severity"].is_string()
+            && diagnostic["message"].is_string()
+            && diagnostic["affected_area"].is_object()
+    }));
+    assert!(result["diagnostics_omitted_count"].is_u64());
+}
+
+#[test]
 fn failed_repository_analysis_does_not_fabricate_a_source_identity() {
     let (temporary, mut adapter, project) = setup();
     fs::remove_dir(temporary.path().join("repository")).expect("remove bound repository");

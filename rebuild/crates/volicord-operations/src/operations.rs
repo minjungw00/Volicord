@@ -569,8 +569,12 @@ impl LocalOperations {
             self.store_analysis(&analysis)?
         };
         let mut completed_scopes = Vec::new();
+        let mut partial_scopes = Vec::new();
         let mut failed_scopes = Vec::new();
         let mut omitted_scopes = Vec::new();
+        let mut unavailable_count = 0usize;
+        let mut unsupported_count = 0usize;
+        let mut stale_count = 0usize;
         for capability in &analysis.capabilities {
             let scope = format!(
                 "{:?}:{:?}:{}",
@@ -578,17 +582,35 @@ impl LocalOperations {
             );
             match capability.state {
                 CapabilityState::Available => completed_scopes.push(scope),
-                CapabilityState::Partial | CapabilityState::Failed => failed_scopes.push(scope),
-                CapabilityState::Unavailable
-                | CapabilityState::Unsupported
-                | CapabilityState::Stale => omitted_scopes.push(scope),
+                CapabilityState::Partial => partial_scopes.push(scope),
+                CapabilityState::Failed => failed_scopes.push(scope),
+                CapabilityState::Unavailable => {
+                    unavailable_count += 1;
+                    omitted_scopes.push(scope);
+                }
+                CapabilityState::Unsupported => {
+                    unsupported_count += 1;
+                    omitted_scopes.push(scope);
+                }
+                CapabilityState::Stale => {
+                    stale_count += 1;
+                    omitted_scopes.push(scope);
+                }
             }
         }
-        let state = if failed_scopes.is_empty() && omitted_scopes.is_empty() {
-            OperationState::Succeeded
-        } else {
-            OperationState::Partial
-        };
+        let state =
+            if partial_scopes.is_empty() && failed_scopes.is_empty() && omitted_scopes.is_empty() {
+                OperationState::Succeeded
+            } else {
+                OperationState::Partial
+            };
+        let diagnostic = (state == OperationState::Partial).then(|| {
+            format!(
+                "repository analysis is partial: {} partial, {} failed, {unavailable_count} unavailable, {unsupported_count} unsupported, and {stale_count} stale capability scopes; inspect capability_reports and diagnostics for causes, usable remainder, and safe next actions",
+                partial_scopes.len(),
+                failed_scopes.len(),
+            )
+        });
         let duration = duration_micros(monotonic.elapsed());
         Ok(LongOperationResult {
             operation_id,
@@ -606,6 +628,7 @@ impl LocalOperations {
             },
             partial: PartialOutcome {
                 completed_scopes,
+                partial_scopes,
                 failed_scopes,
                 omitted_scopes,
             },
@@ -614,7 +637,7 @@ impl LocalOperations {
                 analysis,
                 stored_at,
             }),
-            diagnostic: None,
+            diagnostic,
         })
     }
 
@@ -3578,6 +3601,7 @@ fn empty_applicability(project_id: ProjectId) -> ApplicabilityQuery {
 fn empty_partial() -> PartialOutcome {
     PartialOutcome {
         completed_scopes: Vec::new(),
+        partial_scopes: Vec::new(),
         failed_scopes: Vec::new(),
         omitted_scopes: Vec::new(),
     }

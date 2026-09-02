@@ -27,17 +27,17 @@ pub use guarded::{
 };
 pub use layout::RuntimeLayout;
 pub use model::{
-    AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
-    ChildProcessOutcome, CommandVerificationDraft, EngineeringChoiceDiscoveryDraft,
-    EngineeringChoiceDiscoveryOutcome, ForgettingOutcome, GroundedCheckpointDraft,
-    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
-    LearningDeliberationDraft, LearningDeliberationOutcome, LearningFeedbackDraft,
-    LearningReconsiderationDraft, LearningResponseDraft, LongOperationResult,
-    MaterialityReviewDraft, MaterialityReviewOutcome, MaterialityReviewRevisionDraft,
-    OperationState, PartialOutcome, ProgressState, ProjectInitialization, ProjectResolution,
-    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome, WorkflowAction,
-    WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
-    WorkflowStage,
+    bounded_repository_analysis_json, AnalysisOutcome, BindingOutcome,
+    CandidateRepositoryResearchDraft, CanonicalMutationOutcome, ChildProcessOutcome,
+    CommandVerificationDraft, EngineeringChoiceDiscoveryDraft, EngineeringChoiceDiscoveryOutcome,
+    ForgettingOutcome, GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue,
+    HealthIssueKind, HealthReport, HealthState, LearningDeliberationDraft,
+    LearningDeliberationOutcome, LearningFeedbackDraft, LearningReconsiderationDraft,
+    LearningResponseDraft, LongOperationResult, MaterialityReviewDraft, MaterialityReviewOutcome,
+    MaterialityReviewRevisionDraft, OperationState, PartialOutcome, ProgressState,
+    ProjectInitialization, ProjectResolution, PublicationOutcome, RepairKind, RepairOutcome,
+    UserContextRecordingOutcome, WorkflowAction, WorkflowBasisIdentity, WorkflowDirective,
+    WorkflowDisposition, WorkflowRequirement, WorkflowStage,
 };
 pub use operations::LocalOperations;
 pub use provider::{

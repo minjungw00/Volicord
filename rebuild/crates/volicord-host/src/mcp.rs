@@ -27,17 +27,18 @@ use volicord_inquiry::{
     SubmissionOutcome,
 };
 use volicord_operations::{
-    AnalysisSnapshotId, BackgroundProviderOperationDraft, CandidateRepositoryResearchDraft,
-    CommandVerificationDraft, ConfirmationDecision, ConfirmationRejection, ConfirmationRequestId,
-    EngineeringChoiceDiscoveryDraft, ExploratoryDisposition, FilterOutcome,
-    GroundedCheckpointDraft, GuardedOperationId, GuardedOperationOutcome,
-    GuardedProviderInspection, GuardedProviderPreparation, GuardedProviderPreparationOutcome,
-    HealthState, LearningDeliberationDraft, LearningFeedbackDraft, LearningReconsiderationDraft,
-    LearningResponseDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft,
-    ProjectResolution, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
-    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome, WorkAuthorityBasis,
-    WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition, WorkflowStage,
+    bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
+    CandidateRepositoryResearchDraft, CommandVerificationDraft, ConfirmationDecision,
+    ConfirmationRejection, ConfirmationRequestId, EngineeringChoiceDiscoveryDraft,
+    ExploratoryDisposition, FilterOutcome, GroundedCheckpointDraft, GuardedOperationId,
+    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
+    GuardedProviderPreparationOutcome, HealthState, LearningDeliberationDraft,
+    LearningFeedbackDraft, LearningReconsiderationDraft, LearningResponseDraft, LocalOperations,
+    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialityReviewRevisionDraft, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
+    ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
+    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition,
+    WorkflowStage,
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
@@ -409,6 +410,13 @@ impl HostAdapter {
             .value
             .as_ref()
             .map(|value| value.analysis.repository_source.identity().to_string());
+        let analysis_summary = result
+            .value
+            .as_ref()
+            .map(|value| bounded_repository_analysis_json(&value.analysis))
+            .unwrap_or_else(
+                || json!({"capability_reports":[],"diagnostics":[],"diagnostics_omitted_count":0}),
+            );
         let workflow = match result.value.as_ref() {
             Some(value) => self
                 .operations
@@ -420,7 +428,7 @@ impl HostAdapter {
                 .map_err(operation_error)?,
         };
         Ok(with_workflow(
-            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"diagnostic":result.diagnostic}),
+            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"partial_scopes":result.partial.partial_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"capability_reports":analysis_summary["capability_reports"],"diagnostics":analysis_summary["diagnostics"],"diagnostics_omitted_count":analysis_summary["diagnostics_omitted_count"],"diagnostic":result.diagnostic}),
             workflow,
         ))
     }
