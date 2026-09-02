@@ -1001,6 +1001,14 @@ recommendation이나 implementation preference를 response로 사용하지 않�
 completion/pause는 Goal, baseline, applicable Decision 또는 no-Decision behavior basis, actual
 changed basis와 numeric-exit verification을 연결한 source-grounded Checkpoint를 요구한다.
 
+Frozen task와 raw first user turn의 role mapping은 별도 directional transport-equivalence
+comparison을 사용할 수 있지만 raw rollout과 frozen bytes/hash는 바꾸지 않는다. 반면 현재
+stdio MCP가 raw host message를 authenticate하지 못하므로 `context_record.user_turn`은 captured
+raw first turn과 byte-identical해야 raw-host-consistent Dogfood provenance로 인정한다. 같은
+descriptor에 각각 transport-equivalent하다는 사실만으로 reconstructed/normalized caller text를
+raw Source로 인정하지 않는다. 별도 semantic Goal statement가 필요하면 raw Source를 rewrite하지
+않고 그 관계와 weaker content provenance를 inspectable하게 유지한다.
+
 Machine evaluator는 Materiality Review에 하나 이상의 bounded unique `dimension_id`를 요구하고
 array position이 아니라 그 identity로 initial/revision authority를 correlate한다. Fact, settled,
 delegated, exploratory와 user-owned disposition은 같은 review에서 공존할 수 있다. Maintained

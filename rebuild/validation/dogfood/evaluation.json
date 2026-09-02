@@ -514,10 +514,16 @@
       "evidence_sha256_mutated": false,
       "other_whitespace_normalized": false
     },
+    "current_host_goal_provenance": {
+      "mcp_raw_host_turn_authentication": "unavailable",
+      "context_record_user_turn_content": "caller_supplied_not_host_authenticated",
+      "dogfood_raw_consistency": "byte_exact_context_record_user_turn_to_captured_first_user_turn",
+      "semantic_statement_relation": "verbatim_containment_without_raw_source_rewrite"
+    },
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
       "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-      "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
+      "after Project initialization source canonical goal Context from the byte-exact raw first host turn while checking the verbatim Goal statement against descriptor transport identity",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",

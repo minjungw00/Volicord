@@ -210,6 +210,13 @@ input/output을 logical use case로 번역한다. Adapter는 user turn, agent se
 confirmation과 display context를 손실 없이 전달하고 subsystem 결과를 host에
 맞게 표현한다.
 
+Adapter가 host-authenticated raw message identity/content를 받지 못하는 transport에서는
+caller가 전달한 user-turn text를 authenticated 또는 byte-exact host capture로 표시하지
+않는다. 현재 stdio MCP `context_record`는 server-generated session identity와 caller-supplied
+turn text만 가지므로 그 content provenance를 inspectable하게 `not host authenticated`로
+보고한다. 별도 raw rollout을 가진 qualification은 caller-supplied turn과 raw host turn의
+byte identity를 검증하며, semantic Context statement는 raw Source content를 대체하지 않는다.
+
 Codex adapter activation은 user-global registration이 아니라 explicit repository
 authorization으로 시작한다. 설치된 CLI가 trusted project의 `.codex/config.toml`에서
 정확히 한 `mcp_servers.volicord` stdio server와 `startup|resume|clear|compact`를 포괄하는

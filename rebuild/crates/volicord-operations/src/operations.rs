@@ -2333,7 +2333,7 @@ impl LocalOperations {
     ) -> Result<UserContextRecordingOutcome, Error> {
         if !user_turn.contains(&statement) {
             return Err(Error::new(
-                "user Context statement must occur verbatim in the exact current-host user turn",
+                "user Context statement must occur verbatim in the caller-supplied current-host user turn",
             ));
         }
         let _mutation = self.layout.acquire_mutation_lock()?;

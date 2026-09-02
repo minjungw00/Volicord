@@ -1260,7 +1260,7 @@ def load_definition() -> dict[str, Any]:
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
             "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-            "after Project initialization source canonical goal Context from the exact descriptor work_user_task",
+            "after Project initialization source canonical goal Context from the byte-exact raw first host turn while checking the verbatim Goal statement against descriptor transport identity",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
@@ -1314,6 +1314,19 @@ def load_definition() -> dict[str, Any]:
             "raw_capture_mutated": False,
             "evidence_sha256_mutated": False,
             "other_whitespace_normalized": False,
+        }
+        or evidence.get("current_host_goal_provenance")
+        != {
+            "mcp_raw_host_turn_authentication": "unavailable",
+            "context_record_user_turn_content": (
+                "caller_supplied_not_host_authenticated"
+            ),
+            "dogfood_raw_consistency": (
+                "byte_exact_context_record_user_turn_to_captured_first_user_turn"
+            ),
+            "semantic_statement_relation": (
+                "verbatim_containment_without_raw_source_rewrite"
+            ),
         }
         or evidence.get("command_forwarding_contract")
         != {
@@ -4048,10 +4061,10 @@ def goal_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
     descriptor_task: Any,
-) -> tuple[bool, str | None, str | None, str | None]:
+) -> tuple[bool, str | None, str | None, str | None, bool]:
     call = unique_call(work, "context_record")
     if call is None or work is None or bundle is None or not work.user_turns:
-        return False, None, None, None
+        return False, None, None, None, False
     first_turn = work.user_turns[0]
     turn = work.turn_for_call(call)
     context_id = call.result.get("context_item_id")
@@ -4072,9 +4085,13 @@ def goal_facts(
             call.arguments.get("user_turn"), descriptor_task
         )
     )
+    caller_turn_matches_raw_host_turn = (
+        call.arguments.get("user_turn") == first_turn.text
+    )
     valid = (
         nonempty_string(descriptor_task)
         and goal_task_identity
+        and caller_turn_matches_raw_host_turn
         and turn == first_turn
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("role") == "goal"
@@ -4100,6 +4117,7 @@ def goal_facts(
         str(context_id) if nonempty_string(context_id) else None,
         str(source_id) if nonempty_string(source_id) else None,
         str(statement) if nonempty_string(statement) else None,
+        caller_turn_matches_raw_host_turn,
     )
 
 
@@ -5893,9 +5911,13 @@ def real_session_evidence(
         user_source_id,
         decision_evidence,
     ) = decision_facts(work_capture, bundle)
-    goal_ok, goal_context_id, goal_source_id, goal_statement = goal_facts(
-        work_capture, bundle, work_user_task
-    )
+    (
+        goal_ok,
+        goal_context_id,
+        goal_source_id,
+        goal_statement,
+        caller_turn_matches_raw_host_turn,
+    ) = goal_facts(work_capture, bundle, work_user_task)
     checkpoint_call = terminal_checkpoint_call(work_capture)
     baseline_call = selected_checkpoint_baseline_call(work_capture, checkpoint_call)
     baseline_analysis_id = (
@@ -6529,6 +6551,9 @@ def real_session_evidence(
             "repository_revision_matches": task_revision_ok,
             "checkpoint_call_and_canonical_goal_match": checkpoint_goal_ok,
             "goal_context_matches_descriptor_task": goal_ok,
+            "context_record_user_turn_matches_raw_first_turn": (
+                caller_turn_matches_raw_host_turn
+            ),
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
@@ -11397,28 +11422,45 @@ def self_test() -> int:
     current_events = [
         json.loads(line) for line in current_work_path.read_text(encoding="utf-8").splitlines()
     ]
-    goal_transport_events = json.loads(json.dumps(current_events))
-    goal_item = next(
+    reconstructed_goal_events = json.loads(json.dumps(current_events))
+    goal_user_item = next(
         value["payload"]["item"]
-        for value in goal_transport_events
+        for value in reconstructed_goal_events
         if value.get("payload", {}).get("type") == "item_completed"
-        and value.get("payload", {}).get("item", {}).get("type") == "McpToolCall"
-        and value["payload"]["item"].get("tool") == "context_record"
+        and value.get("payload", {}).get("item", {}).get("type") == "UserMessage"
     )
-    goal_item["arguments"]["statement"] += "\r\n"
-    goal_item["arguments"]["user_turn"] += "\r\n"
-    goal_transport_path = evidence_directory / "current-goal-transport-work.jsonl"
-    goal_transport_path.write_text(
+    raw_goal_text = goal_user_item["content"][0]["text"]
+    goal_user_item["content"][0]["text"] = raw_goal_text.replace(".", r"\.", 1)
+    reconstructed_goal_path = evidence_directory / "current-goal-reconstructed-work.jsonl"
+    reconstructed_goal_path.write_text(
         "".join(
             json.dumps(value, separators=(",", ":")) + "\n"
-            for value in goal_transport_events
+            for value in reconstructed_goal_events
         ),
         encoding="utf-8",
     )
+    reconstructed_goal_capture = load_codex_capture(reconstructed_goal_path)
+    if not compare_frozen_task_transport(
+        current_transport_fixture["work_user_task"],
+        reconstructed_goal_capture.user_turns[0].text,
+    ).equivalent:
+        raise AssertionError("reversible Markdown escape did not retain task mapping identity")
+    reconstructed_goal_facts = goal_facts(
+        reconstructed_goal_capture,
+        load_canonical_bundle(
+            evidence_directory
+            / current_transport_fixture["evidence"]["canonical_bundle"]["file"]
+        ),
+        current_transport_fixture["work_user_task"],
+    )
+    if reconstructed_goal_facts[0] or reconstructed_goal_facts[4]:
+        raise AssertionError(
+            "caller-reconstructed context_record user_turn qualified as raw host provenance"
+        )
     assert_current_work_intake_passes(
         current_transport_fixture,
-        load_codex_capture(goal_transport_path),
-        "Goal transport-equivalent",
+        reconstructed_goal_capture,
+        "caller-reconstructed Goal",
     )
     for label, suffix in (
         ("internal difference", " changed"),

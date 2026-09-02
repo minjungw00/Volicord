@@ -2656,6 +2656,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     );
     assert!(descriptions["decision_record"].contains("explicit current-host user response"));
     assert!(descriptions["decision_record"].contains("current Question revision"));
+    assert!(descriptions["context_record"].contains("caller-reported"));
+    assert!(descriptions["context_record"].contains("does not authenticate"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
     assert!(descriptions["repository_analyze"].contains("source-semantic analysis"));
     assert!(descriptions["repository_analyze"].contains("source-semantic analyzer is local"));
@@ -4409,6 +4411,10 @@ fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
     ))
     .clone();
     assert_eq!(recorded["role"], "goal", "{recorded}");
+    assert_eq!(
+        recorded["user_turn_content_provenance"], "caller_supplied_not_host_authenticated",
+        "{recorded}"
+    );
     assert_eq!(
         recorded["source_id"].as_str().map(str::len),
         Some(32),

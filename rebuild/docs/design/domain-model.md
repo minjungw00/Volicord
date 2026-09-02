@@ -310,6 +310,13 @@ User-authored record는 어느 current host interaction의 어떤 user-turn Sour
 identity와 displayed revision도 함께 연결한다. Agent가 과거 대화나 preference를
 해석한 것은 user provenance가 아니다.
 
+`current_host_user_turn` Source kind와 User actor는 attributed content/interaction
+provenance이며 그 자체가 host-authenticated raw message attestation은 아니다. Adapter가
+authenticated message identity/content를 받지 못하면 caller-supplied state를 명시하고,
+raw host capture를 별도로 가진 evaluator만 두 text의 byte identity를 추가로 입증할 수
+있다. Normalized 또는 reconstructed semantic statement는 별도 Context statement로만
+남으며 Source의 supplied turn을 rewrite하거나 raw-host authentication으로 승격하지 않는다.
+
 ### Agent provenance
 
 Agent-authored record는 agent identity, host와 session context, 사용한 Source basis와

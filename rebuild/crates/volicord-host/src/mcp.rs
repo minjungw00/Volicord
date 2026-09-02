@@ -991,6 +991,7 @@ impl HostAdapter {
             "context_item_id": result.context_item_id.to_string(),
             "revision": result.context_item_revision,
             "role": context_item_role_name(result.role),
+            "user_turn_content_provenance": "caller_supplied_not_host_authenticated",
         });
         Ok(if result.role == ContextItemRole::Goal {
             with_workflow(
@@ -1833,13 +1834,13 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "context_record" => (
-            "Record one verbatim statement from the exact current-host user turn as canonical Project Context.",
+            "Record one verbatim statement from the caller-reported current-host user turn as canonical Project Context. This MCP boundary does not authenticate raw host message content; callers must preserve the host text without reconstructing it.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
-                    ("user_turn", user_turn_schema()),
+                    ("user_turn", text_schema("Caller-supplied raw current-host user turn; not authenticated by MCP", 1, 16_384)),
                     ("role", enum_schema("User-statement Context role", &["goal", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
-                    ("statement", text_schema("Verbatim bounded statement from the current-host user turn", 1, 16_384)),
+                    ("statement", text_schema("Verbatim bounded statement within the caller-supplied user_turn", 1, 16_384)),
                 ],
                 &["project_id", "user_turn", "role", "statement"],
             ),

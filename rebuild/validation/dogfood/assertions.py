@@ -701,6 +701,9 @@ def main() -> int:
     user_turn_normalization = definition_value.get("real_session_evidence", {}).get(
         "codex_user_turn_normalization", {}
     )
+    goal_provenance = definition_value.get("real_session_evidence", {}).get(
+        "current_host_goal_provenance", {}
+    )
     mcp_completion = definition_value.get("real_session_evidence", {}).get(
         "mcp_completion_contract", {}
     )
@@ -754,6 +757,17 @@ def main() -> int:
         "other_whitespace_normalized": False,
     }:
         raise AssertionError("Phase 8 Codex user-turn transport identity contract changed")
+    if goal_provenance != {
+        "mcp_raw_host_turn_authentication": "unavailable",
+        "context_record_user_turn_content": "caller_supplied_not_host_authenticated",
+        "dogfood_raw_consistency": (
+            "byte_exact_context_record_user_turn_to_captured_first_user_turn"
+        ),
+        "semantic_statement_relation": (
+            "verbatim_containment_without_raw_source_rewrite"
+        ),
+    }:
+        raise AssertionError("Phase 8 current-host Goal provenance contract changed")
     if mcp_completion != {
         "accepted_representations": [
             "event_msg.mcp_tool_call_end",

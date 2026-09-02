@@ -15,9 +15,14 @@ deterministic, while a missing host realization never reports the requested
 language as complete.
 
 `context_record` preserves a bounded statement that occurs verbatim in the
-exact current-host user turn as a user-authored Context Item. It returns both
-the canonical Source and Context Item identities; a `goal` recorded this way is
-available to ordinary Recall without creating a Decision.
+caller-supplied current-host user turn as a user-authored Context Item. The
+current stdio MCP boundary has no authenticated raw host-message identity or
+content, so the returned `user_turn_content_provenance` explicitly reports
+`caller_supplied_not_host_authenticated`. The Source retains the supplied turn;
+the separate Context statement cannot rewrite it. A `goal` recorded this way is
+available to ordinary Recall without creating a Decision. Evaluators that also
+hold raw host capture require byte-identical `user_turn` content before treating
+the Source as raw-host-consistent evidence.
 
 After `project_resolve` returns `not_found`, `project_initialize` accepts the
 repository without a display name and derives the initial Project display name
