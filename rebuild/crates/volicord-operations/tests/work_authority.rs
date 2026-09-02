@@ -43,6 +43,8 @@ fn dimension(
         basis: WorkAuthorityBasis {
             kinds,
             summary: "bounded repository and owner-contract evidence".to_owned(),
+            authority_counterfactual: "The fixture names the exact outcome and authority basis."
+                .to_owned(),
             source_basis: vec![source],
             contract_basis: Vec::new(),
             decision_basis: Vec::new(),
@@ -615,6 +617,7 @@ fn delegation_evidence(
         affected_scope,
         material_consequences: vec!["changes externally observable behavior".to_owned()],
         effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
+        semantic_rationale: "The fixture names the exact outcome and authority basis.".to_owned(),
     }
 }
 
@@ -1312,6 +1315,36 @@ fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
         "You may choose the unrelated logging format.".to_owned(),
     )?;
 
+    let mut missing_counterfactual = delegated_dimension(&fixture, "missing-counterfactual");
+    missing_counterfactual
+        .basis
+        .explicit_delegation
+        .as_mut()
+        .expect("delegation evidence")
+        .verbatim_statement = "choose the internal module naming and structure".to_owned();
+    missing_counterfactual
+        .basis
+        .authority_counterfactual
+        .clear();
+    assert!(review(&fixture, vec![missing_counterfactual]).is_err());
+
+    let mut missing_semantic_rationale =
+        delegated_dimension(&fixture, "missing-semantic-rationale");
+    missing_semantic_rationale
+        .basis
+        .explicit_delegation
+        .as_mut()
+        .expect("delegation evidence")
+        .verbatim_statement = "choose the internal module naming and structure".to_owned();
+    missing_semantic_rationale
+        .basis
+        .explicit_delegation
+        .as_mut()
+        .expect("delegation evidence")
+        .semantic_rationale
+        .clear();
+    assert!(review(&fixture, vec![missing_semantic_rationale]).is_err());
+
     let mut nonverbatim = dimension(
         "nonverbatim",
         MaterialityDisposition::DelegatedImplementationChoice,
@@ -1341,6 +1374,7 @@ fn current_task_delegation_rejects_nonverbatim_wrong_goal_and_excess_scope(
         affected_scope: vec!["src/lib.rs".to_owned()],
         material_consequences: vec!["changes externally observable behavior".to_owned()],
         effect_categories: vec![EngineeringEffectCategory::PublicApiShapeOrSemantics],
+        semantic_rationale: "The fixture names the exact outcome and authority basis.".to_owned(),
     });
     assert!(review(&fixture, vec![wrong_turn]).is_err());
 

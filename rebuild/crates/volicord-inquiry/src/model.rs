@@ -293,12 +293,14 @@ pub struct ExplicitDelegationEvidence {
     pub affected_scope: Vec<String>,
     pub material_consequences: Vec<String>,
     pub effect_categories: Vec<EngineeringEffectCategory>,
+    pub semantic_rationale: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkAuthorityBasis {
     pub kinds: Vec<WorkAuthorityBasisKind>,
     pub summary: String,
+    pub authority_counterfactual: String,
     pub source_basis: Vec<SourceId>,
     pub contract_basis: Vec<String>,
     pub decision_basis: Vec<DecisionId>,

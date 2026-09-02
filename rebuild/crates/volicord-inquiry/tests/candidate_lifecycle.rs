@@ -361,6 +361,6 @@ fn candidate_store_accepts_only_the_current_learning_deliberation_format(
         error.kind(),
         volicord_inquiry::ErrorKind::UnsupportedVersion
     );
-    assert!(error.to_string().contains("current version is 9"));
+    assert!(error.to_string().contains("current version is 10"));
     Ok(())
 }

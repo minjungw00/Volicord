@@ -386,6 +386,8 @@ fn record_ready_review(
             basis: WorkAuthorityBasis {
                 kinds: vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
                 summary: "retained pre-work repository observation".into(),
+                authority_counterfactual:
+                    "The repository fact selects the only supported bounded outcome.".into(),
                 source_basis: vec![baseline.repository_source.identity()],
                 contract_basis: Vec::new(),
                 decision_basis: Vec::new(),

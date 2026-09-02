@@ -1135,6 +1135,7 @@ def rehearse_target(
                         "choice_id": materiality_dimension_id,
                         "disposition": "unresolved_user_owned_outcome",
                         "basis_summary": "Repository evidence establishes the boundary but cannot choose it",
+                        "authority_counterfactual": "The Goal can be satisfied with either Project or clone-local context; no repository fact, contract, Decision, or exact delegation selects the user-owned boundary.",
                         "learning_value": {"state": "routine", "rationale": "User authority uses Inquiry even when learning is active."},
                     },
                     {
@@ -1147,6 +1148,9 @@ def rehearse_target(
                         "basis_summary": "The representation is explicitly delegated in this Goal and does not change the user-owned context boundary."
                         if technical_delegated
                         else "The representation is agent-owned and does not change the user-owned context boundary.",
+                        "authority_counterfactual": "The Goal explicitly delegates the exact internal technical state representation, independently from the user-owned context boundary."
+                        if technical_delegated
+                        else "The alternatives change only the internal state representation and no material user-owned product outcome.",
                         **(
                             {
                                 "delegation_statement": "I delegate the internal technical state representation to you",
@@ -1287,6 +1291,7 @@ def rehearse_target(
                         "disposition": "unresolved_user_owned_outcome",
                         "resolution_decision_id": decision_id,
                         "basis_summary": "The explicit current-host Decision supplies current authority",
+                        "authority_counterfactual": "The current-host Decision now selects the exact context boundary that the broad Goal left unresolved.",
                         "learning_value": {"state": "routine", "rationale": "The user-owned outcome remains on the canonical Inquiry path."},
                     },
                     {
@@ -1299,6 +1304,9 @@ def rehearse_target(
                         "basis_summary": "The representation remains explicitly delegated independently from the canonical Decision."
                         if technical_delegated
                         else "The representation remains agent-owned independently from the canonical Decision.",
+                        "authority_counterfactual": "The Goal explicitly delegates the exact internal technical state representation, independently from the canonical Decision."
+                        if technical_delegated
+                        else "The alternatives still change only the internal representation and no material user-owned product outcome.",
                         **(
                             {
                                 "delegation_statement": "I delegate the internal technical state representation to you",
@@ -2554,7 +2562,13 @@ def assert_current_materiality_review_contract(source: str) -> None:
                 for key in judgment.keys
                 if isinstance(key, ast.Constant) and isinstance(key.value, str)
             }
-            if not {"choice_id", "disposition", "basis_summary", "learning_value"} <= judgment_fields:
+            if not {
+                "choice_id",
+                "disposition",
+                "basis_summary",
+                "authority_counterfactual",
+                "learning_value",
+            } <= judgment_fields:
                 raise AssertionError(f"V11 {action} materiality judgment lost required authority fields")
             retained = sorted(judgment_fields & obsolete_judgment_fields)
             if retained:

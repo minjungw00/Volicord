@@ -369,6 +369,9 @@ fn draft_judgment(
             .expect("judgment semantic fields")
             .clone(),
     );
+    result.entry("authority_counterfactual").or_insert_with(|| {
+        json!("The exact outcome, Goal alternatives, and selecting authority or authority gap were evaluated for this fixture.")
+    });
     for required in contract["required_fields"]
         .as_array()
         .expect("required judgment fields")
@@ -622,7 +625,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
                 "choice_id":"failure-mode",
                 "disposition":"unresolved_user_owned_outcome",
                 "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]},
-                "basis_summary":"No accepted authority selects the outcome"
+                "basis_summary":"No accepted authority selects the outcome",
+                "authority_counterfactual":"Failure behavior varies materially, the Goal permits multiple outcomes, and no exact authority selects among them."
             }]
         }),
     );
@@ -771,7 +775,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         json!({
             "resolution_decision_id":decision_id,
             "learning_value":revised_learning,
-            "basis_summary":"The current explicit Decision resolves this dimension"
+            "basis_summary":"The current explicit Decision resolves this dimension",
+            "authority_counterfactual":"The Decision now selects the exact failure outcome that the broad Goal did not select."
         }),
     );
     let revised_participation = draft_learning_participation(
@@ -909,35 +914,36 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         draft["current_goal"]["current_host_user_turn_source_ids"],
         json!([goal_source_id])
     );
-    let delegation_candidate = draft["delegation_evidence_candidates"]
+    let authority_input = draft["current_goal_authority_inputs"]
         .as_array()
-        .expect("delegation evidence candidates")
+        .expect("current Goal authority inputs")
         .iter()
         .find(|candidate| candidate["dimension_id"] == "signed-link-replay-policy")
-        .expect("signed-link delegation candidate");
-    assert_eq!(delegation_candidate["goal_context_id"], goal_context_id);
-    assert_eq!(delegation_candidate["user_turn_source_id"], goal_source_id);
-    assert_eq!(delegation_candidate["exact_goal_text"], goal_turn);
+        .expect("signed-link authority input");
+    assert_eq!(authority_input["goal_context_id"], goal_context_id);
+    assert_eq!(authority_input["user_turn_source_id"], goal_source_id);
+    assert_eq!(authority_input["exact_goal_text"], goal_turn);
+    assert_eq!(authority_input["affected_scope"], json!(["public links"]));
     assert_eq!(
-        delegation_candidate["affected_scope"],
-        json!(["public links"])
-    );
-    assert_eq!(
-        delegation_candidate["effect_categories"],
+        authority_input["effect_categories"],
         json!(["public_api_shape_or_semantics", "security"])
     );
+    assert!(authority_input["authority_boundary"]
+        .as_str()
+        .is_some_and(|notice| notice.contains("not delegation evidence")));
     assert!(draft["current_goal"]["ownership_notice"]
         .as_str()
         .is_some_and(|notice| notice.contains("do not downgrade")));
     assert!(
-        draft["authority_decision_checklist"]["counterfactual_question"]
-            .as_str()
-            .is_some_and(|question| question.contains("privacy/security posture"))
+        draft["authority_decision_checklist"]["counterfactual_questions"]
+            .as_array()
+            .is_some_and(|questions| questions.len() == 5)
     );
     assert_eq!(
         draft["authority_decision_checklist"]["not_authority"],
         json!([
-            "overall feature request",
+            "authority to perform the overall feature request",
+            "imperative wording in the overall Goal",
             "implementation preference",
             "agent recommendation",
             "library or repository convention"
@@ -949,7 +955,7 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
             .is_some_and(|guidance| guidance.contains("no exact authority"))
     );
     assert!(
-        draft["authority_decision_checklist"]["hidden_boundary_instruction"]
+        draft["authority_decision_checklist"]["subordinate_boundary_instruction"]
             .as_str()
             .is_some_and(|guidance| guidance.contains("overall Goal is not blanket authority"))
     );
@@ -983,6 +989,11 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
     assert!(unresolved["forbidden_fields"]
         .as_array()
         .is_some_and(|fields| fields.iter().any(|field| field == "contract_basis")));
+    assert!(unresolved["caller_must_semantically_provide"]
+        .as_array()
+        .is_some_and(|fields| fields
+            .iter()
+            .any(|field| field == "authority_counterfactual")));
     assert_eq!(
         draft["learning_value_input_alternatives"][1]["required_fields"],
         json!([
@@ -1007,7 +1018,8 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "repository-fact",
             "repository_or_environment_fact",
             json!({
-                "basis_summary":"The repository fixes the only viable value."
+                "basis_summary":"The repository fixes the only viable value.",
+                "authority_counterfactual":"Repository evidence establishes one outcome, so the Goal is not used as delegation."
             }),
             "ready_for_work",
         ),
@@ -1016,6 +1028,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "settled_authority_by_contract",
             json!({
                 "basis_summary":"The active owner settles this exact dimension.",
+                "authority_counterfactual":"The accepted owner contract selects the exact outcome independently of the Goal.",
                 "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"]
             }),
             "ready_for_work",
@@ -1024,7 +1037,8 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "agent-owned",
             "agent_owned_implementation_choice",
             json!({
-                "basis_summary":"No user-facing policy varies across the alternatives."
+                "basis_summary":"No user-facing policy varies across the alternatives.",
+                "authority_counterfactual":"Only mechanically equivalent internal implementation details vary, so no material user outcome needs authority."
             }),
             "ready_for_work",
         ),
@@ -1033,6 +1047,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "delegated_implementation_choice_current_task",
             json!({
                 "basis_summary":"The exact current Goal delegates this bounded implementation choice.",
+                "authority_counterfactual":"The verbatim Goal statement explicitly delegates this exact bounded internal choice, not merely the encompassing work.",
                 "delegation_statement":"I delegate the bounded-choice implementation to you",
                 "delegated_scope":["src/lib.rs"]
             }),
@@ -1043,6 +1058,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "exploratory_uncertainty_research_required",
             json!({
                 "basis_summary":"Repository evidence is still required.",
+                "authority_counterfactual":"Empirical repository evidence is needed before the reality or consequence of the alternatives is known.",
                 "research_basis":["Inspect the current adapter behavior"]
             }),
             "research_or_prototype",
@@ -1052,6 +1068,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "exploratory_uncertainty_prototype_required",
             json!({
                 "basis_summary":"A bounded prototype is still required.",
+                "authority_counterfactual":"A prototype must establish the materially relevant behavior before any authority choice remains.",
                 "research_basis":["Prototype both observable behaviors"]
             }),
             "research_or_prototype",
@@ -1061,6 +1078,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "exploratory_uncertainty_deferred_with_revisit",
             json!({
                 "basis_summary":"The choice is intentionally deferred with an inspectable trigger.",
+                "authority_counterfactual":"The exact outcome remains open under an explicit bounded defer-and-revisit basis.",
                 "research_basis":["Revisit when the bounded collection exceeds 16 entries"]
             }),
             "ready_for_work",
@@ -1070,6 +1088,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "exploratory_uncertainty_resolved_by_research",
             json!({
                 "basis_summary":"Repository research removed the uncertainty.",
+                "authority_counterfactual":"Research establishes the supported outcome, so no user preference is inferred from the Goal.",
                 "research_basis":["The retained snapshot proves only one supported behavior"]
             }),
             "ready_for_work",
@@ -1078,7 +1097,8 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "unresolved-user-owned",
             "unresolved_user_owned_outcome",
             json!({
-                "basis_summary":"No exact authority settles the materially different outcomes."
+                "basis_summary":"No exact authority settles the materially different outcomes.",
+                "authority_counterfactual":"The Goal permits multiple materially different outcomes and no fact, contract, Decision, or exact delegation selects one."
             }),
             "question_candidate",
         ),
@@ -1163,6 +1183,129 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
 }
 
 #[test]
+fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
+    for (goal_turn, choice_id, scope, effect_category) in [
+        (
+            "Add automatic expiry and cleanup.",
+            "expiry-trigger-lifetime-recovery",
+            "automatic cleanup policy",
+            EngineeringEffectCategory::PersistenceOrLifetime,
+        ),
+        (
+            "Add npm update availability.",
+            "npm-activation-network-default-support",
+            "npm update policy",
+            EngineeringEffectCategory::UserVisibleBehaviorOrDefault,
+        ),
+    ] {
+        let (_temporary, mut adapter, project) = setup();
+        let goal = structured(&call(
+            &mut adapter,
+            "context_record",
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        ))
+        .clone();
+        let analyzed = structured(&call(
+            &mut adapter,
+            "repository_analyze",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        let discovery_id = record_fixture_discovery(
+            &adapter,
+            &project,
+            goal["context_item_id"].as_str().expect("Goal identity"),
+            analyzed["analysis_snapshot_id"]
+                .as_str()
+                .expect("baseline identity"),
+            analyzed["repository_source_id"]
+                .as_str()
+                .expect("repository Source identity"),
+            FixtureEngineeringChoice {
+                id: choice_id,
+                affected_scope: scope,
+                effect_category,
+            },
+        );
+        let draft = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"draft",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+            }),
+        ))
+        .clone();
+
+        assert!(draft.get("delegation_evidence_candidates").is_none());
+        assert!(
+            draft["current_goal_authority_inputs"][0]["authority_boundary"]
+                .as_str()
+                .is_some_and(|notice| notice.contains("not delegation evidence"))
+        );
+        assert!(draft["current_goal"]["ownership_notice"]
+            .as_str()
+            .is_some_and(
+                |notice| notice.contains("not every subordinate material product outcome")
+            ));
+
+        let unexamined_delegation = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"record",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+                "rationale":"The broad request is incorrectly claimed as blanket delegation.",
+                "learning_participation":{"state":"inactive"},
+                "judgments":[{
+                    "choice_id":choice_id,
+                    "disposition":"delegated_implementation_choice",
+                    "basis_summary":"The broad Goal requested the feature.",
+                    "delegation_statement":goal_turn,
+                    "delegated_scope":[scope],
+                    "learning_value":{"state":"routine","rationale":"Authority and learning are independent."}
+                }]
+            }),
+        ))
+        .clone();
+        assert!(unexamined_delegation["details"]["problems"]
+            .as_array()
+            .is_some_and(|problems| problems
+                .iter()
+                .any(|problem| problem
+                    == "arguments.judgments[0].authority_counterfactual is required")));
+
+        let unresolved = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"record",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+                "rationale":"Credible alternatives change a material product policy that the broad Goal does not select.",
+                "learning_participation":{"state":"inactive"},
+                "judgments":[{
+                    "choice_id":choice_id,
+                    "disposition":"unresolved_user_owned_outcome",
+                    "basis_summary":"No exact authority selects among the materially different outcomes.",
+                    "authority_counterfactual":"The Goal can be satisfied by multiple materially different outcomes; no repository fact, accepted contract, applicable Decision, or exact explicit delegation selects among them, so this remains user-owned.",
+                    "learning_value":{"state":"routine","rationale":"Authority routing is independent of learning participation."}
+                }]
+            }),
+        ))
+        .clone();
+        assert_eq!(unresolved["workflow"]["stage"], "question_candidate");
+        assert_eq!(
+            unresolved["workflow"]["required_next_action"]["action"],
+            "submit_question_from_materiality"
+        );
+        assert_eq!(unresolved["workflow"]["blocks_ordinary_work"], true);
+    }
+}
+
+#[test]
 fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants() {
     let (_temporary, mut adapter, project) = setup();
     let goal_turn = "Implement the bounded choice and preserve explicit authority";
@@ -1218,6 +1361,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         "settled_authority_by_decision",
         json!({
             "basis_summary":"The current applicable Decision settles this exact scope.",
+            "authority_counterfactual":"The applicable Decision selects the outcome independently of the encompassing Goal.",
             "decision_ids":[settled_decision_id],
             "learning_value":settled_learning,
         }),
@@ -1281,6 +1425,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         "unresolved_user_owned_outcome",
         json!({
             "basis_summary":"No exact authority currently settles this bounded outcome.",
+            "authority_counterfactual":"The Goal can be fulfilled through different outcomes and no exact authority selects one yet.",
             "learning_value":draft_learning_value(
                 &initial_draft,
                 "routine",
@@ -1329,6 +1474,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         "delegated_implementation_choice_inquiry_time",
         json!({
             "basis_summary":"The exact current Question response delegates this dimension.",
+            "authority_counterfactual":"The current Question response explicitly delegates this exact dimension rather than merely requesting the broader work.",
             "decision_ids":[delegation_decision_id],
             "learning_value":draft_learning_value(
                 &revision_draft,
@@ -1400,6 +1546,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "choice_id":"bounded-choice",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"implementation discretion",
+                "authority_counterfactual":"No material product outcome varies in this invalid-field fixture.",
                 "contract_basis":["must be forbidden here"],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
@@ -1431,6 +1578,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "choice_id":"bounded-choice",
                 "disposition":"repository_or_environment_fact",
                 "basis_summary":"repository fact",
+                "authority_counterfactual":"The repository would select the exact outcome in this invalid-field fixture.",
                 "research_basis":["not legal for this disposition"],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }),
@@ -1442,6 +1590,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "choice_id":"bounded-choice",
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"invalid mixed authority",
+                "authority_counterfactual":"The statement would need to delegate the exact outcome; this payload intentionally mixes forbidden authority.",
                 "delegation_statement":"Implement the bounded choice",
                 "delegated_scope":["src/lib.rs"],
                 "contract_basis":["not delegation"],
@@ -1456,6 +1605,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"exploratory_uncertainty",
                 "exploratory_disposition":"research_required",
                 "basis_summary":"research remains",
+                "authority_counterfactual":"Empirical evidence is required before an authority choice can be identified.",
                 "research_basis":["inspect the repository"],
                 "resolution_decision_id":"00000000000000000000000000000000",
                 "learning_value":{"state":"routine","rationale":"routine"}
@@ -1496,6 +1646,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "choice_id":"not-in-discovery",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"invalid choice",
+                "authority_counterfactual":"This invalid identity cannot be evaluated against the discovered material outcome.",
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
         }),
@@ -1528,6 +1679,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "choice_id":"bounded-choice",
                 "disposition":"settled_authority",
                 "basis_summary":"The claimed Decision does not exist in the current Project.",
+                "authority_counterfactual":"The claimed exact authority is invalid and therefore cannot select the outcome.",
                 "decision_ids":["00000000000000000000000000000000"],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
@@ -1666,6 +1818,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "choice_id":"cache-invalidation-boundary",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"No user-owned outcome changes; implementation authority remains with the agent.",
+                "authority_counterfactual":"The alternatives vary an internal consistency mechanism, not a user-owned material policy.",
                 "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"]}
             }]
         }),
@@ -1704,6 +1857,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "choice_id":"cache-invalidation-boundary",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"The implementation authority remains agent-owned.",
+                "authority_counterfactual":"The internal mechanism remains materially equivalent from the user's product-policy perspective.",
                 "learning_value":{"state":"routine","rationale":"Unsupported downgrade without repository or prototype evidence."}
             }],
             "learning_value_revision_bases":[{
@@ -1958,6 +2112,7 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
                 "choice_id":"bounded-private-lookup",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"This is internal agent-owned discretion.",
+                "authority_counterfactual":"A capped private lookup changes no material product outcome, so the choice remains agent-owned.",
                 "learning_value":{"state":"routine","rationale":"The repository contract fixes a tiny bound, making the trade-off straightforward and not worth interruption."}
             }]
         }),
@@ -2024,6 +2179,7 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
                 "choice_id":"retry-schedule",
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Exact current-task delegation covers the bounded internal retry schedule.",
+                "authority_counterfactual":"The Goal explicitly says to choose this exact internal schedule; it does not rely on the broader feature request.",
                 "delegation_statement":"choose the internal retry schedule",
                 "delegated_scope":["retry-jitter"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"]}
@@ -2117,6 +2273,65 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
 }
 
 #[test]
+fn exact_current_task_delegation_can_cover_one_material_outcome() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal_turn =
+        "Add npm update availability; choose whether update checks are automatic or opt-in.";
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let discovery_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().expect("Goal identity"),
+        analyzed["analysis_snapshot_id"]
+            .as_str()
+            .expect("baseline identity"),
+        analyzed["repository_source_id"]
+            .as_str()
+            .expect("repository Source identity"),
+        FixtureEngineeringChoice {
+            id: "npm-update-activation",
+            affected_scope: "npm update activation policy",
+            effect_category: EngineeringEffectCategory::UserVisibleBehaviorOrDefault,
+        },
+    );
+    let review = structured(&call(
+        &mut adapter,
+        "materiality_review",
+        json!({
+            "action":"record",
+            "project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery_id,
+            "rationale":"The current Goal explicitly delegates this one material activation outcome.",
+            "learning_participation":{"state":"inactive"},
+            "judgments":[{
+                "choice_id":"npm-update-activation",
+                "disposition":"delegated_implementation_choice",
+                "basis_summary":"Exact current-task delegation covers this material activation policy.",
+                "authority_counterfactual":"Automatic and opt-in checks are materially different, but the current-host statement explicitly delegates the exact choice between those outcomes.",
+                "delegation_statement":"choose whether update checks are automatic or opt-in",
+                "delegated_scope":["npm update activation policy"],
+                "learning_value":{"state":"routine","rationale":"Learning participation is inactive and does not alter authority."}
+            }]
+        }),
+    ))
+    .clone();
+
+    assert_eq!(review["workflow"]["stage"], "ready_for_work");
+    assert_eq!(review["workflow"]["blocks_ordinary_work"], false);
+}
+
+#[test]
 fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
     let (_temporary, mut adapter, project) = setup();
     let goal_turn = "Teach me while you investigate the bounded retry behavior.";
@@ -2162,6 +2377,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
                 "disposition":"exploratory_uncertainty",
                 "exploratory_disposition":"research_required",
                 "basis_summary":"Measure current runtime behavior before choosing an approach.",
+                "authority_counterfactual":"Empirical retry behavior must be established before any remaining material authority choice is known.",
                 "research_basis":["Inspect retained runtime observations for retry correlation"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"]}
             }]
@@ -2245,6 +2461,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "choice_id":"internal-module-name",
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Exact bounded current-task delegation",
+                "authority_counterfactual":"The Goal explicitly delegates the exact internal module name, not merely the encompassing change.",
                 "learning_value":{"state":"routine","rationale":"An internal module name is routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -2281,6 +2498,9 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         evidence["authority_kind"],
         "explicit_current_task_delegation"
     );
+    assert!(evidence["semantic_rationale"]
+        .as_str()
+        .is_some_and(|rationale| rationale.contains("exact internal module name")));
     assert_eq!(evidence["effect_categories"][0], "implementation_internal");
     assert!(evidence["material_consequences"]
         .as_array()
@@ -2340,9 +2560,9 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         }),
     ))
     .clone();
-    let reusable = resumed_draft["delegation_evidence_candidates"]
+    let reusable = resumed_draft["current_goal_authority_inputs"]
         .as_array()
-        .expect("resume delegation candidates")
+        .expect("resume current Goal authority inputs")
         .first()
         .expect("resume delegation candidate");
     assert_eq!(reusable["goal_context_id"], goal_context_id);
@@ -2362,6 +2582,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "choice_id":"internal-module-name",
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Re-evaluated exact bounded current-task delegation",
+                "authority_counterfactual":"The retained verbatim statement still explicitly delegates this exact internal module-name dimension.",
                 "learning_value":{"state":"routine","rationale":"The retained internal module choice remains routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -2614,6 +2835,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("Project-scoped repository work starts with project_resolve"));
     assert!(instructions.contains("workflow.required_next_action"));
     assert!(instructions.contains("do not bypass a blocking workflow transition"));
+    assert!(instructions.contains("Authority to perform requested work does not delegate"));
+    assert!(instructions.contains("exact dimension or a bounded containing scope"));
     assert!(instructions.contains("explicit response from the current host"));
     assert!(instructions.contains("separate exact authorization"));
     assert!(instructions.contains("actually observed command outcomes"));
@@ -2656,6 +2879,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     );
     assert!(descriptions["decision_record"].contains("explicit current-host user response"));
     assert!(descriptions["decision_record"].contains("current Question revision"));
+    assert!(descriptions["materiality_review"].contains("broad Goal alone is not delegation"));
+    assert!(descriptions["materiality_review"].contains("semantic rationale"));
     assert!(descriptions["context_record"].contains("caller-reported"));
     assert!(descriptions["context_record"].contains("does not authenticate"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
@@ -3970,6 +4195,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 basis: WorkAuthorityBasis {
                     kinds: vec![WorkAuthorityBasisKind::AcceptedContract],
                     summary: "accepted source-grounded Checkpoint contract".into(),
+                    authority_counterfactual:
+                        "The accepted contract selects the exact Checkpoint behavior.".into(),
                     source_basis: vec![repository_source_id],
                     contract_basis: vec!["rebuild/docs/design/inquiry-and-decision.md".into()],
                     decision_basis: Vec::new(),

@@ -4214,6 +4214,7 @@ def current_goal_delegation_evidence_valid(
             "user_turn_source_id",
             "verbatim_statement",
             "affected_scope",
+            "semantic_rationale",
         }
         and nonempty_string(goal_context_id)
         and evidence.get("goal_context_id") == goal_context_id
@@ -4222,6 +4223,7 @@ def current_goal_delegation_evidence_valid(
         and goal_source_id in basis["source_ids"]
         and discovery_source_valid
         and nonempty_string(statement)
+        and nonempty_string(evidence.get("semantic_rationale"))
         and nonempty_string(goal_statement)
         and statement in goal_statement
         and nonempty_string(frozen_task)
@@ -4292,6 +4294,7 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             or not basis["kinds"]
             or len(set(basis["kinds"])) != len(basis["kinds"])
             or not nonempty_string(basis.get("summary"))
+            or not nonempty_string(basis.get("authority_counterfactual"))
             or not isinstance(source_ids, list)
             or not source_ids
             or not all(nonempty_string(source_id) for source_id in source_ids)
@@ -4393,6 +4396,7 @@ def materiality_dimensions_from_judgments(
         "choice_id",
         "disposition",
         "basis_summary",
+        "authority_counterfactual",
         "additional_source_ids",
         "learning_value",
     }
@@ -4427,6 +4431,7 @@ def materiality_dimensions_from_judgments(
             or disposition not in variants
             or supplied_variant not in variants[disposition]
             or not nonempty_string(judgment.get("basis_summary"))
+            or not nonempty_string(judgment.get("authority_counterfactual"))
             or not isinstance(judgment.get("learning_value"), dict)
         ):
             return None
@@ -4460,6 +4465,7 @@ def materiality_dimensions_from_judgments(
                     "user_turn_source_id": goal_source_id,
                     "verbatim_statement": judgment["delegation_statement"],
                     "affected_scope": judgment["delegated_scope"],
+                    "semantic_rationale": judgment["authority_counterfactual"],
                 }
             kinds = ["explicit_delegation"]
         elif disposition == "exploratory_uncertainty":
@@ -4486,6 +4492,7 @@ def materiality_dimensions_from_judgments(
             "basis": {
                 "kinds": kinds,
                 "summary": judgment["basis_summary"],
+                "authority_counterfactual": judgment["authority_counterfactual"],
                 "source_ids": source_ids,
                 "contract_basis": contract_basis,
                 "decision_ids": decision_ids,
@@ -8598,6 +8605,7 @@ def real_session_fixture(
                 }
             ),
             "basis_summary": "Bounded repository and owner-authority evidence",
+            "authority_counterfactual": "The exact outcome, Goal alternatives, and selecting authority or authority gap were evaluated before this disposition.",
         }
         if behavior_class == "delegated_implementation_choice" and not resolved:
             judgment["delegation_statement"] = delegation_statement
@@ -8616,6 +8624,7 @@ def real_session_fixture(
                 "disposition": "unresolved_user_owned_outcome",
                 "learning_value": {"state": "routine", "rationale": "User-owned authority stays on the Inquiry path."},
                 "basis_summary": "A coupled independently material diagnostic consequence",
+                "authority_counterfactual": "The coupled material consequence is not selected by the broad Goal and shares the exact authority basis of the disclosed outcome.",
             }
             if resolved:
                 judgment["resolution_decision_id"] = decision
@@ -8625,6 +8634,7 @@ def real_session_fixture(
             "disposition": "repository_or_environment_fact",
             "learning_value": {"state": "routine", "rationale": "A repository-established fact needs no learning interruption."},
             "basis_summary": "The retained Analysis Snapshot establishes this fact.",
+            "authority_counterfactual": "Repository evidence establishes the exact fact, so no user preference or broad-Goal delegation is inferred.",
         }
 
     def materiality_judgments(*, resolved: bool = False) -> list[dict[str, Any]]:

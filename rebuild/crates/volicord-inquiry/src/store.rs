@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 9;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 10;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1390,6 +1390,10 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         validate_text("materiality dimension identity", &dimension.dimension_id)?;
         validate_text("materiality dimension summary", &dimension.summary)?;
         validate_text("work-authority basis summary", &dimension.basis.summary)?;
+        validate_text(
+            "exact-authority counterfactual",
+            &dimension.basis.authority_counterfactual,
+        )?;
         validate_list(&dimension.affected_scope)?;
         validate_list(&dimension.material_consequences)?;
         validate_list(&dimension.basis.contract_basis)?;
@@ -1431,6 +1435,10 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 "explicit delegation dimension identity",
                 &delegation.dimension_id,
             )?;
+            validate_text(
+                "explicit delegation semantic rationale",
+                &delegation.semantic_rationale,
+            )?;
             validate_list(&delegation.discovered_choice_ids)?;
             validate_list(&delegation.affected_scope)?;
             validate_list(&delegation.material_consequences)?;
@@ -1438,10 +1446,11 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 || delegation.affected_scope.is_empty()
                 || delegation.material_consequences.is_empty()
                 || delegation.effect_categories.is_empty()
+                || delegation.semantic_rationale != dimension.basis.authority_counterfactual
             {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    "explicit delegation evidence requires exact dimension, discovered-choice, scope, consequence, and effect-category boundaries",
+                    "explicit delegation evidence requires exact dimension, discovered-choice, scope, consequence, effect-category, and semantic-rationale boundaries",
                 ));
             }
         }
@@ -2092,6 +2101,7 @@ fn explicit_delegation_changed(
                         .iter()
                         .copied()
                         .collect::<BTreeSet<_>>()
+                || previous.semantic_rationale != revised.semantic_rationale
         }
         _ => true,
     }

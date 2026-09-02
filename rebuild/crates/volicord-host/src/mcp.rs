@@ -71,7 +71,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. At Materiality Review, learning participation or an implementation selection does not establish user-owned authority. Active deliberation-worthy learning on agent-owned or delegated choices uses learning_deliberation, not Question/decision_record. Genuine user-owned material outcomes require Question/Decision and an explicit response from the current host. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
+    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. Authority to perform requested work does not delegate subordinate material outcomes. A broad Goal delegates one only through an explicit current-host statement covering that exact dimension or a bounded containing scope. Learning participation does not establish authority. Agent-owned or delegated learning uses learning_deliberation; user-owned material outcomes require Question/Decision and an explicit response from the current host. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -1798,7 +1798,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the material-outcome counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2455,6 +2455,14 @@ fn materiality_judgment_schema(
             text_schema("Why the exact authority disposition applies", 1, 4096),
         ),
         (
+            "authority_counterfactual",
+            text_schema(
+                "State the exact outcome that varies, whether the Goal can be satisfied by materially different outcomes, the exact fact/contract/Decision/delegation that selects among them (or that none exists), and why this authority disposition follows; a request for the encompassing feature is not delegation by itself",
+                1,
+                4096,
+            ),
+        ),
+        (
             "additional_source_ids",
             identity_array_schema(
                 "Additional current canonical Source identities beyond discovery-owned Sources",
@@ -2468,6 +2476,7 @@ fn materiality_judgment_schema(
         "choice_id",
         "disposition",
         "basis_summary",
+        "authority_counterfactual",
         "learning_value",
     ];
     required.extend_from_slice(required_fields);
@@ -2488,7 +2497,7 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
         || nonempty_string_array_schema("Bounded research, prototype, defer, or revisit basis");
     let delegation_statement = || {
         text_schema(
-            "Bounded verbatim statement from the draft's exact current Goal/user-turn claimed as delegation; semantic judgment remains explicit",
+            "Bounded verbatim statement from the draft's exact current Goal/user-turn that explicitly delegates this material outcome or a bounded scope containing it; the encompassing feature request alone is not delegation",
             1,
             4096,
         )
@@ -3823,6 +3832,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
                 "affected_scope":inspection.evidence.affected_scope,
                 "material_consequences":inspection.evidence.material_consequences,
                 "effect_categories":inspection.evidence.effect_categories.into_iter().map(engineering_effect_category_name).collect::<Vec<_>>(),
+                "semantic_rationale":inspection.evidence.semantic_rationale,
                 "authority_kind":"explicit_current_task_delegation",
             })
         })
@@ -3861,6 +3871,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "summary":dimension.summary,
             "affected_scope":dimension.affected_scope,
             "authority_disposition":materiality_disposition_json(&dimension.disposition),
+            "authority_counterfactual":dimension.basis.authority_counterfactual,
             "learning_value":learning_value_json(&dimension.learning_value),
         })).collect::<Vec<_>>(),
     }));
@@ -4434,6 +4445,7 @@ fn materiality_dimension_from_judgment(
                     affected_scope: string_array(value, "delegated_scope")?,
                     material_consequences: choice.technical_consequences.clone(),
                     effect_categories: choice.effect_categories.clone(),
+                    semantic_rationale: required_str(value, "authority_counterfactual")?.to_owned(),
                 });
             }
             MaterialityDisposition::DelegatedImplementationChoice
@@ -4524,6 +4536,7 @@ fn materiality_dimension_from_judgment(
         basis: WorkAuthorityBasis {
             kinds,
             summary: required_str(value, "basis_summary")?.to_owned(),
+            authority_counterfactual: required_str(value, "authority_counterfactual")?.to_owned(),
             source_basis,
             contract_basis,
             decision_basis,
@@ -4987,7 +5000,7 @@ fn materiality_draft_json(
                 .map(|basis| basis.source.id.to_string())
         })
         .collect::<Vec<_>>();
-    let delegation_evidence_candidates = discovery
+    let current_goal_authority_inputs = discovery
         .choices
         .iter()
         .flat_map(|choice| {
@@ -5003,7 +5016,8 @@ fn materiality_draft_json(
                         "affected_scope":choice.affected_scope,
                         "material_consequences":choice.technical_consequences,
                         "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
-                        "caller_semantic_responsibility":"Quote the exact bounded verbatim delegation excerpt and confirm that it delegates this dimension; production does not infer that meaning from Goal prose.",
+                        "authority_boundary":"This is provenance input, not delegation evidence. Authority to perform the encompassing work does not delegate this subordinate material outcome.",
+                        "caller_semantic_responsibility":"Use current-task delegation only when a bounded verbatim excerpt explicitly delegates this exact material dimension or a scope that semantically contains it, and explain that relation in authority_counterfactual. Production validates presence, provenance, and scope but does not infer delegation from Goal prose.",
                     })
                 })
                 .collect::<Vec<_>>()
@@ -5093,11 +5107,17 @@ fn materiality_draft_json(
             "goal_context_id":discovery.goal_context_id.to_string(),
             "statement":goal.map(|goal| goal.statement.clone()),
             "current_host_user_turn_source_ids":current_host_user_turn_source_ids,
-            "ownership_notice":"If this current Goal reserves an outcome for user control or asks the user to retain the choice, do not downgrade that exact dimension to implementation preference because an older contract or repository convention exists.",
+            "ownership_notice":"This Goal authorizes the requested work, not every subordinate material product outcome. If it reserves an outcome for user control, asks the user to retain the choice, or merely requests the encompassing feature without exact delegation, do not downgrade that dimension to implementation preference or delegation.",
         },
-        "delegation_evidence_candidates":delegation_evidence_candidates,
+        "current_goal_authority_inputs":current_goal_authority_inputs,
         "authority_decision_checklist":{
-            "counterfactual_question":"Would credible alternatives change an externally observable contract, durable effect, compatibility/support commitment, privacy/security posture, user-visible default, observable failure policy, or another material product outcome?",
+            "counterfactual_questions":[
+                "What exact material outcome or dimension varies across the credible alternatives?",
+                "Can the original Goal be satisfied by more than one of those materially different outcomes?",
+                "What exact repository fact, accepted contract, applicable Decision, or explicit delegation selects among them?",
+                "Does the current-host statement explicitly delegate choice of that outcome, rather than merely request the encompassing feature?",
+                "If no exact authority selects the outcome, why is this not an unresolved user-owned material decision?"
+            ],
             "material_outcome_categories":[
                 "externally_observable_contract",
                 "durable_effect",
@@ -5114,7 +5134,8 @@ fn materiality_draft_json(
                 "explicit delegation covering this exact dimension"
             ],
             "not_authority":[
-                "overall feature request",
+                "authority to perform the overall feature request",
+                "imperative wording in the overall Goal",
                 "implementation preference",
                 "agent recommendation",
                 "library or repository convention"
@@ -5124,7 +5145,7 @@ fn materiality_draft_json(
                 "exploratory_uncertainty":"Use when evidence is still required to establish whether the alternatives or material consequences are real.",
                 "agent_owned_implementation_choice":"Use only for bounded implementation discretion remaining after material user-facing policy is settled or credible alternatives do not vary that policy."
             },
-            "hidden_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics.",
+            "subordinate_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics. Absence of explicit delegation does not make mechanically equivalent private details user-owned, but materially different outcomes with no exact authority require Question/current-host Decision.",
             "authority_revision_chronology":"If disposition, authority basis, blocking readiness, or affected-scope applicability changes after affected work, the revision is prospective and does not certify that earlier work. Production records this only when maintained baseline/current path evidence proves the chronology; otherwise rollout validation remains responsible for the ordering judgment.",
         },
         "authority_learning_routing":authority_learning_routing_json(),
@@ -5144,7 +5165,7 @@ fn materiality_draft_json(
         },
         "field_ownership":{
             "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
-            "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","additional authority evidence allowed for that disposition","learning_value"],
+            "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","authority_counterfactual","additional authority evidence allowed for that disposition","learning_value"],
         },
         "work_authority_basis_kind_contract":{
             "repository_or_environment_fact":"derived only for repository_or_environment_fact",
@@ -5179,7 +5200,7 @@ fn materiality_draft_json(
                 "steps":[
                     "For each judgment_template, choose one legal_judgment_variant_id without changing the semantic choice.",
                     "Merge caller_owned_judgment.prefilled_fields with the selected judgment_contract bounded_allowed_values.",
-                    "Provide every caller_must_semantically_provide field, including one learning_value_input_alternative, and only desired caller_may_provide fields.",
+                    "Provide every caller_must_semantically_provide field, including authority_counterfactual and one learning_value_input_alternative, and only desired caller_may_provide fields.",
                     "Place the assembled judgments in choice_order and merge them with record_request.prefilled_fields plus rationale and learning_participation."
                 ]
             },
