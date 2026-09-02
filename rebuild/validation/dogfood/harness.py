@@ -14876,11 +14876,17 @@ def self_test() -> int:
         repository_revision=revision,
     )
     if (
-        transport_result["status"] != "passed"
+        transport_result["status"] != "failed"
         or transport_result["checks"]["naturalistic_prompt_integrity"] != "passed"
-        or transport_result["checks"]["plain_task_goal_linkage"] != "passed"
+        or transport_result["checks"]["plain_task_goal_linkage"] != "failed"
+        or transport_result["task_goal_basis"][
+            "context_record_user_turn_matches_raw_first_turn"
+        ]
+        is not False
     ):
-        raise AssertionError("single Codex transport line endings did not qualify full work/resume identity")
+        raise AssertionError(
+            "task transport allowance concealed reconstructed work-Goal provenance"
+        )
     if (
         transport_descriptor_tasks
         != (
@@ -14910,11 +14916,15 @@ def self_test() -> int:
             cycle=1,
             repository_revision=revision,
         )
+        expected_goal_linkage = "failed" if capture == "work" else "passed"
         if (
             accepted_result["checks"]["naturalistic_prompt_integrity"] != "passed"
-            or accepted_result["checks"]["plain_task_goal_linkage"] != "passed"
+            or accepted_result["checks"]["plain_task_goal_linkage"]
+            != expected_goal_linkage
         ):
-            raise AssertionError(f"{label} did not qualify full prompt identity")
+            raise AssertionError(
+                f"{label} did not preserve task mapping and raw-Goal separation"
+            )
 
     for label, capture, suffix in (
         ("work trailing space", "work", " "),
