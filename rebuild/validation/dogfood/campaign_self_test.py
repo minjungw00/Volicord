@@ -1867,7 +1867,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     captures = [compacted_work if path == compacted_work_source else path for path in captures]
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert len(mapped) == campaign.BATCH_CAPTURE_COUNT
-    assert len({capture.session_id for _path, capture in mapped.values()}) == campaign.BATCH_CAPTURE_COUNT
+    assert len({item.capture.session_id for item in mapped.values()}) == campaign.BATCH_CAPTURE_COUNT
     compacted_mapped_capture = mapped[("volicord", 1, "work")].capture
     assert compacted_mapped_capture.fresh_user_thread is True
     assert len(compacted_mapped_capture.compacted_sequences) == 1
