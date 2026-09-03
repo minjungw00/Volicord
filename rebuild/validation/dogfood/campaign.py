@@ -2211,27 +2211,102 @@ def generate_document(
     format_name: str,
     destination: Path,
     language: str,
+    locale: str,
 ) -> dict[str, Any]:
-    completed = subprocess.run(
+    recorder = harness.load_v11().Recorder(
+        destination.parents[1] / "document-export-processes" / destination.name
+    )
+    process = recorder.run(
+        f"{kind}-{format_name}",
         [
-            str(binary), "--runtime", str(runtime), "--repository", str(repository),
+            str(binary), "--json", "--locale", locale,
+            "--runtime", str(runtime), "--repository", str(repository),
             "document", "export", kind, "--format", format_name,
             "--output", str(destination), "--language", language,
         ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
+        os.environ.copy(),
+        cwd=repository,
     )
-    if completed.returncode == 0 and destination.is_file():
-        return {"status": "passed"}
-    return {
-        "status": "failed",
-        "basis": (
-            f"supported document export exited {completed.returncode}; "
-            f"destination_present={destination.is_file()}"
-        ),
+    result: dict[str, Any] = {"status": "failed", "_process_result": process}
+    if process.get("spawn_error") is not None:
+        result["basis"] = "supported document export could not be spawned"
+        return result
+    if process.get("termination") is not None:
+        result["basis"] = "supported document export terminated before completion"
+        return result
+    if process.get("exit_code") != 0:
+        result["basis"] = f"supported document export exited {process.get('exit_code')}"
+        return result
+    try:
+        product = json.loads(Path(process["stdout"]).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, KeyError):
+        result["basis"] = "supported document export returned invalid structured output"
+        return result
+    if not isinstance(product, dict):
+        result["basis"] = "supported document export returned invalid structured output"
+        return result
+    result["product_result"] = {
+        key: product.get(key)
+        for key in (
+            "operation", "outcome", "project_id", "kind", "format",
+            "destination", "published", "reason",
+        )
+        if key in product
     }
+    if product.get("outcome") == "unavailable":
+        reason = product.get("reason")
+        result["basis"] = (
+            f"requested-language document unavailable: {reason[:384]}"
+            if isinstance(reason, str) and reason.strip()
+            else "requested-language document unavailable"
+        )
+        return result
+    destination_value = product.get("destination")
+    destination_matches = (
+        isinstance(destination_value, str)
+        and Path(destination_value).resolve(strict=False)
+        == destination.resolve(strict=False)
+    )
+    if (
+        product.get("operation") == "document_export"
+        and product.get("kind") == kind
+        and product.get("format") == format_name
+        and destination_matches
+        and destination.is_file()
+    ):
+        result["status"] = "passed"
+        return result
+    result["basis"] = (
+        "supported document export returned mismatched evidence or did not publish "
+        "the requested destination"
+    )
+    return result
+
+
+def bounded_document_process_evidence(
+    root: Path, process: dict[str, Any]
+) -> dict[str, Any]:
+    evidence = harness.bounded_process_result(process)
+    for name in ("stdout", "stderr"):
+        path = Path(process[name])
+        evidence[name] = {
+            "relative_evidence_path": relative(root, path),
+            "bytes": path.stat().st_size,
+            "sha256": harness.sha256(path),
+        }
+    result_path = Path(process["stdout"]).with_name("result.json")
+    command_path = Path(process["stdout"]).with_name("command.json")
+    evidence["result"] = {
+        "relative_evidence_path": relative(root, result_path),
+        "bytes": result_path.stat().st_size,
+        "sha256": harness.sha256(result_path),
+    }
+    evidence["command"] = {
+        "relative_evidence_path": relative(root, command_path),
+        "bytes": command_path.stat().st_size,
+        "sha256": harness.sha256(command_path),
+    }
+    return evidence
 
 
 def generate_viewer_snapshot(
@@ -2336,8 +2411,11 @@ def collect_document_evidence(
     binary: Path,
     runtime: Path,
     repository: Path,
+    project_id: str,
+    candidate_head: str,
+    locale: str,
     language: str,
-    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]],
+    documenter: Callable[[Path, Path, Path, str, str, Path, str, str], dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Path]]:
     directory = cycle_root(root, kind, cycle) / "evidence/generated-documents"
     directory.mkdir(parents=True, exist_ok=True)
@@ -2356,11 +2434,39 @@ def collect_document_evidence(
                     format_name,
                     destination,
                     language,
+                    locale,
                 )
             except (OSError, ValueError, CampaignError) as error:
                 result = {
                     "status": "failed",
                     "basis": f"document evidence adapter failed: {type(error).__name__}",
+                }
+            process = result.pop("_process_result", None)
+            process_evidence = (
+                bounded_document_process_evidence(root, process)
+                if isinstance(process, dict)
+                else None
+            )
+            if isinstance(process, dict):
+                stdout_path = Path(process["stdout"])
+                produced.extend(
+                    (
+                        stdout_path,
+                        Path(process["stderr"]),
+                        stdout_path.with_name("command.json"),
+                        stdout_path.with_name("result.json"),
+                    )
+                )
+            product_result = result.get("product_result")
+            if (
+                result.get("status") == "passed"
+                and isinstance(product_result, dict)
+                and product_result.get("project_id") != project_id
+            ):
+                result = {
+                    **result,
+                    "status": "failed",
+                    "basis": "document export result is associated with a different Project",
                 }
             if result.get("status") == "passed" and destination.is_file():
                 formats[format_name] = {
@@ -2378,6 +2484,8 @@ def collect_document_evidence(
                     "status": "failed",
                     "basis": basis[:512],
                 }
+            if process_evidence is not None:
+                formats[format_name]["process_evidence"] = process_evidence
         document_status = (
             "passed"
             if all(formats[name]["status"] == "passed" for name, _suffix in DOCUMENT_FORMATS)
@@ -2387,6 +2495,11 @@ def collect_document_evidence(
     summary = {
         "kind": "phase8_generated_document_evidence_summary",
         "schema_version": 1,
+        "project_id": project_id,
+        "candidate_head": candidate_head,
+        "repository_class": kind,
+        "cycle": cycle,
+        "locale": locale,
         "language": language,
         "status": "passed" if all(item["status"] == "passed" for item in documents.values()) else "failed",
         "required_document_kinds": list(DOCUMENT_KINDS),
@@ -2434,7 +2547,7 @@ def extract_resume_evidence(
     destination: Path,
     *,
     exporter: Callable[[Path, Path, Path, Path], None] = default_export,
-    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
+    documenter: Callable[[Path, Path, Path, str, str, Path, str, str], dict[str, Any]] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
     final_state: str = "resume_collected",
 ) -> dict[str, Any]:
@@ -2485,6 +2598,9 @@ def extract_resume_evidence(
         binary,
         runtime,
         repository,
+        project_id,
+        campaign["candidate_head"],
+        campaign.get("viewer_locale", "en"),
         campaign.get("document_language", "en"),
         documenter,
     )
@@ -2567,7 +2683,9 @@ def collect_resume(
     raw_capture: Path,
     *,
     exporter: Callable[[Path, Path, Path, Path], None] = default_export,
-    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
+    documenter: Callable[
+        [Path, Path, Path, str, str, Path, str, str], dict[str, Any]
+    ] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
@@ -2855,7 +2973,9 @@ def collect_batch(
     raw_paths: list[Path],
     *,
     exporter: Callable[[Path, Path, Path, Path], None] = default_export,
-    documenter: Callable[[Path, Path, Path, str, str, Path, str], dict[str, Any]] = generate_document,
+    documenter: Callable[
+        [Path, Path, Path, str, str, Path, str, str], dict[str, Any]
+    ] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
@@ -3280,7 +3400,17 @@ def safe_archive_artifact(name: str, *, include_raw: bool) -> bool:
         return include_raw
     if any(lowered.endswith(suffix) for suffix in PROHIBITED_ARCHIVE_SUFFIXES):
         return False
-    if any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in path.parts):
+    if any(
+        part
+        in {
+            "runtime",
+            "install",
+            "bootstrap-runtime",
+            "derived",
+            "document-export-processes",
+        }
+        for part in path.parts
+    ):
         return False
     return True
 

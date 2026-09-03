@@ -97,13 +97,25 @@ def parse(arguments: list[str]) -> tuple[dict[str, object], str, dict[str, str]]
 
 def main() -> int:
     try:
-        _options, command, details = parse(sys.argv[1:])
+        options, command, details = parse(sys.argv[1:])
     except ValueError as error:
         return usage(str(error))
     if command == "codex":
         print(json.dumps({"project_trust": "user_controlled", "changed": True}))
     elif command == "document":
         destination = Path(details["output"])
+        if details["language"] == "zz":
+            print(json.dumps({
+                "operation": "document_export",
+                "project_id": options.get("--project", "01" * 16),
+                "kind": details["kind"],
+                "format": details["format"],
+                "outcome": "unavailable",
+                "requested_language": details["language"],
+                "reason": "fixture active-host realization unavailable",
+                "published": False,
+            }))
+            return 0
         try:
             with destination.open("xb") as output:
                 output.write(b"fixed no-replace document\n")
@@ -111,7 +123,13 @@ def main() -> int:
             return 17
         if os.environ.get("PHASE8_FAKE_DOCUMENT_FAIL_AFTER_CREATE") == "1":
             return 19
-        print(json.dumps({"operation": "document_export"}))
+        print(json.dumps({
+            "operation": "document_export",
+            "project_id": options.get("--project", "01" * 16),
+            "kind": details["kind"],
+            "format": details["format"],
+            "destination": str(destination),
+        }))
     else:
         print("{}")
     return 0

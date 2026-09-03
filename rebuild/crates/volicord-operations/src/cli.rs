@@ -653,7 +653,15 @@ fn dispatch_document(
     }
     values.push(required(args, "language")?.to_owned());
     let mut cursor = Cursor::from_strings(values);
-    documents(operations, &mut cursor)
+    let fixed_locale = if matches
+        .get_one::<String>("locale")
+        .is_some_and(|value| value == "ko")
+    {
+        FixedLocale::Korean
+    } else {
+        FixedLocale::English
+    };
+    documents(operations, &mut cursor, fixed_locale)
 }
 
 fn dispatch_context(
@@ -1758,7 +1766,11 @@ fn recall(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Er
     )
 }
 
-fn documents(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
+fn documents(
+    operations: &LocalOperations,
+    cursor: &mut Cursor,
+    fixed_locale: FixedLocale,
+) -> Result<Value, Error> {
     let action = cursor.next("documents command")?;
     let project = project_id(&cursor.next("Project ID")?)?;
     let kind = document_kind(&cursor.next("document kind")?)?;
@@ -1782,7 +1794,7 @@ fn documents(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
         .collect();
     let request = DocumentRequest {
         requested_language: language,
-        fixed_locale: FixedLocale::English,
+        fixed_locale,
         generated_at: now()?,
         generator: GeneratorIdentity {
             generator: "volicord-local-operations".into(),

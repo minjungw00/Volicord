@@ -168,6 +168,33 @@ fn task_groups_keep_portable_privacy_doctor_document_viewer_and_guarded_paths_re
     assert_eq!(preview["requested_language"], "es");
     assert!(preview.get("content").is_none());
 
+    let korean_handoff = temporary.path().join("handoff-ko.md");
+    let (exit, output, error) = project_cli(
+        &runtime,
+        &repository,
+        vec![
+            "--json",
+            "--locale",
+            "ko",
+            "document",
+            "export",
+            "handoff-resume",
+            "--format",
+            "markdown",
+            "--output",
+            text(&korean_handoff)?,
+            "--language",
+            "ko",
+        ],
+    );
+    assert_eq!(exit, CliExit::SUCCESS, "{error}");
+    let exported: Value = serde_json::from_str(&output)?;
+    assert_eq!(exported["operation"], "document_export");
+    assert_eq!(exported["kind"], "handoff-resume");
+    assert_eq!(exported["format"], "markdown");
+    assert_eq!(exported["destination"], text(&korean_handoff)?);
+    assert!(std::fs::read_to_string(&korean_handoff)?.contains("인계 / 재개 문서"));
+
     let expiration = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_micros()

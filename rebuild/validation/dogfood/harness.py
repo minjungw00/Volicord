@@ -1984,6 +1984,64 @@ def verified_json_evidence(
     return path, value if isinstance(value, dict) else None
 
 
+def generated_document_summary_valid(
+    documents: Any,
+    evidence_directory: Path | None,
+    *,
+    project_id: str | None,
+    candidate_revision: str | None,
+    kind: str,
+    cycle: int,
+) -> bool:
+    required_kinds = (
+        "project-architecture-guide",
+        "decision-report",
+        "implementation-plan",
+        "handoff-resume",
+    )
+    required_formats = {"markdown", "html"}
+    if (
+        not isinstance(documents, dict)
+        or documents.get("kind") != "phase8_generated_document_evidence_summary"
+        or documents.get("schema_version") != 1
+        or documents.get("status") != "passed"
+        or documents.get("project_id") != project_id
+        or documents.get("candidate_head") != candidate_revision
+        or documents.get("repository_class") != kind
+        or documents.get("cycle") != cycle
+        or documents.get("locale") not in {"en", "ko"}
+        or not nonempty_string(documents.get("language"))
+        or documents.get("required_document_kinds") != list(required_kinds)
+    ):
+        return False
+    document_values = documents.get("documents")
+    if not isinstance(document_values, dict) or set(document_values) != set(required_kinds):
+        return False
+    for document in document_values.values():
+        if not isinstance(document, dict) or document.get("status") != "passed":
+            return False
+        formats = document.get("formats")
+        if not isinstance(formats, dict) or set(formats) != required_formats:
+            return False
+        for format_value in formats.values():
+            if not isinstance(format_value, dict) or format_value.get("status") != "passed":
+                return False
+            path = verified_evidence_path(
+                {
+                    "file": format_value.get("relative_evidence_path"),
+                    "sha256": format_value.get("sha256"),
+                },
+                evidence_directory,
+            )
+            if (
+                path is None
+                or not isinstance(format_value.get("bytes"), int)
+                or format_value["bytes"] != path.stat().st_size
+            ):
+                return False
+    return True
+
+
 def campaign_support_evidence(
     evidence: dict[str, Any],
     evidence_directory: Path | None,
@@ -2006,35 +2064,14 @@ def campaign_support_evidence(
     _snapshot_path, snapshot = verified_json_evidence(
         evidence.get("viewer_snapshot"), evidence_directory
     )
-    document_files_valid = False
-    if (
-        isinstance(documents, dict)
-        and documents.get("kind") == "phase8_generated_document_evidence_summary"
-        and documents.get("status") == "passed"
-    ):
-        document_values = documents.get("documents")
-        document_files_valid = (
-            isinstance(document_values, dict)
-            and len(document_values) == 4
-            and all(isinstance(item, dict) for item in document_values.values())
-            and all(
-                item.get("status") == "passed"
-                and all(
-                    format_value.get("status") == "passed"
-                    and verified_evidence_path(
-                        {
-                            "file": format_value.get("relative_evidence_path"),
-                            "sha256": format_value.get("sha256"),
-                        },
-                        evidence_directory,
-                    )
-                    is not None
-                    for format_value in item.get("formats", {}).values()
-                )
-                and len(item.get("formats", {})) == 2
-                for item in document_values.values()
-            )
-        )
+    document_files_valid = generated_document_summary_valid(
+        documents,
+        evidence_directory,
+        project_id=project_id,
+        candidate_revision=candidate_revision,
+        kind=kind,
+        cycle=cycle,
+    )
     snapshot_file = (
         verified_evidence_path(
             {
@@ -10698,6 +10735,11 @@ def real_session_fixture(
     write_json(documents_summary_path, {
         "kind": "phase8_generated_document_evidence_summary",
         "schema_version": 1,
+        "project_id": project,
+        "candidate_head": git_head(ROOT),
+        "repository_class": kind,
+        "cycle": cycle,
+        "locale": "en",
         "language": "en",
         "status": "passed",
         "required_document_kinds": list(generated_documents),

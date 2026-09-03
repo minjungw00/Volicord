@@ -286,11 +286,13 @@ def documenter(
     format_name: str,
     destination: Path,
     language: str,
+    locale: str,
 ) -> dict[str, object]:
     assert repository.name == "repository"
     assert kind in campaign.DOCUMENT_KINDS
     assert format_name in {name for name, _suffix in campaign.DOCUMENT_FORMATS}
     assert language == "en"
+    assert locale == "en"
     destination.write_text(f"{kind} {format_name} {language}\n", encoding="utf-8")
     return {"status": "passed"}
 
@@ -303,10 +305,73 @@ def failed_documenter(
     format_name: str,
     destination: Path,
     language: str,
+    locale: str,
 ) -> dict[str, object]:
     if kind == "implementation-plan":
         return {"status": "failed", "basis": "fixture document kind unavailable"}
-    return documenter(binary, runtime, repository, kind, format_name, destination, language)
+    return documenter(
+        binary,
+        runtime,
+        repository,
+        kind,
+        format_name,
+        destination,
+        language,
+        locale,
+    )
+
+
+def assert_default_document_process_evidence(parent: Path, binary: Path) -> None:
+    repository = parent / "document-process-repository"
+    runtime = parent / "document-process-runtime"
+    repository.mkdir()
+    runtime.mkdir()
+    destination = parent / "document-process/evidence/generated-documents/handoff.md"
+    destination.parent.mkdir(parents=True)
+    result = campaign.generate_document(
+        binary,
+        runtime,
+        repository,
+        "handoff-resume",
+        "markdown",
+        destination,
+        "en",
+        "en",
+    )
+    assert result["status"] == "passed"
+    process = result["_process_result"]
+    evidence = campaign.bounded_document_process_evidence(parent, process)
+    assert evidence["outcome"] == "succeeded"
+    assert evidence["exit_code"] == 0
+    assert evidence["termination"] is None
+    assert evidence["spawn_failed"] is False
+    assert evidence["stdout"]["bytes"] > 0
+    assert evidence["stderr"]["bytes"] == 0
+    assert Path(process["stdout"]).is_file()
+    assert Path(process["stderr"]).is_file()
+    assert Path(process["stdout"]).with_name("command.json").is_file()
+    assert Path(process["stdout"]).with_name("result.json").is_file()
+
+    unavailable_destination = destination.with_name("unavailable.md")
+    unavailable = campaign.generate_document(
+        binary,
+        runtime,
+        repository,
+        "handoff-resume",
+        "markdown",
+        unavailable_destination,
+        "zz",
+        "en",
+    )
+    assert unavailable["status"] == "failed"
+    assert unavailable["product_result"]["outcome"] == "unavailable"
+    assert "active-host realization unavailable" in unavailable["basis"]
+    assert not unavailable_destination.exists()
+    unavailable_process = unavailable["_process_result"]
+    assert unavailable_process["exit_code"] == 0
+    assert unavailable_process["termination"] is None
+    assert Path(unavailable_process["stdout"]).is_file()
+    assert Path(unavailable_process["stderr"]).is_file()
 
 
 def snapshotter(
@@ -2559,6 +2624,16 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
             assert resume_result["viewer_snapshot_evidence"]["status"] == "passed"
             document_evidence = resume_result["document_evidence"]
             assert document_evidence["status"] == "passed"
+            assert harness.generated_document_summary_valid(
+                document_evidence,
+                root,
+                project_id="01" * 16,
+                candidate_revision=campaign.read_json(root / "campaign.json")[
+                    "candidate_head"
+                ],
+                kind=kind,
+                cycle=cycle,
+            )
             assert set(document_evidence["documents"]) == set(campaign.DOCUMENT_KINDS)
             for document_kind in campaign.DOCUMENT_KINDS:
                 formats = document_evidence["documents"][document_kind]["formats"]
@@ -2572,6 +2647,45 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
             assert b"canonical.sqlite3" in summary_bytes
             assert b"PRIVATE-STORE-CONTENT" not in summary_bytes
             assert b"PRIVATE-DERIVED-CONTENT" not in summary_bytes
+
+    control = campaign.read_json(
+        campaign.cycle_root(root, "volicord", 1) / "documents-summary.json"
+    )
+    candidate = campaign.read_json(root / "campaign.json")["candidate_head"]
+
+    def accepted(value: dict[str, object]) -> bool:
+        return harness.generated_document_summary_valid(
+            value,
+            root,
+            project_id="01" * 16,
+            candidate_revision=candidate,
+            kind="volicord",
+            cycle=1,
+        )
+
+    assert accepted(control)
+    wrong_project = copy.deepcopy(control)
+    wrong_project["project_id"] = "02" * 16
+    assert not accepted(wrong_project)
+    wrong_candidate = copy.deepcopy(control)
+    wrong_candidate["candidate_head"] = "cd" * 20
+    assert not accepted(wrong_candidate)
+    wrong_cycle = copy.deepcopy(control)
+    wrong_cycle["cycle"] = 2
+    assert not accepted(wrong_cycle)
+    wrong_format = copy.deepcopy(control)
+    formats = wrong_format["documents"]["handoff-resume"]["formats"]
+    formats["pdf"] = formats.pop("html")
+    assert not accepted(wrong_format)
+    missing = copy.deepcopy(control)
+    missing_format = missing["documents"]["handoff-resume"]["formats"]["markdown"]
+    missing_format["relative_evidence_path"] = "missing-document.md"
+    assert not accepted(missing)
+    corrupt = copy.deepcopy(control)
+    corrupt["documents"]["handoff-resume"]["formats"]["markdown"]["sha256"] = (
+        "00" * 32
+    )
+    assert not accepted(corrupt)
 
     manifest = campaign.finalize_manifest(root)
     first = manifest.read_bytes()
@@ -2638,6 +2752,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         assert "qualified-result.json" in names
         assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
         assert not any(any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts) for name in names)
+        assert not any("document-export-processes" in Path(name).parts for name in names)
         assert not any(name.casefold().endswith(campaign.PROHIBITED_ARCHIVE_SUFFIXES) for name in names)
         body = b"".join(
             file.read()
@@ -2977,6 +3092,7 @@ def main() -> int:
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
             assert_strict_cli_contract(parent, binary)
+            assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
             assert_blind_recording_non_oracle(parent, binary)
             assert_sealing_and_provenance(parent, binary)
@@ -3073,6 +3189,10 @@ def main() -> int:
             "read_only_resume_requires_post_inspection_numeric_verification",
             "unfinished_read_only_resume_rejected",
             "four_kind_markdown_html_document_evidence",
+            "document_export_process_streams_exit_and_termination_retained",
+            "typed_document_unavailability_preserved",
+            "document_evidence_project_candidate_cycle_binding",
+            "missing_corrupt_and_wrong_format_document_evidence_rejected",
             "static_viewer_snapshot_evidence",
             "failed_document_kind_is_machine_failure",
             "bounded_runtime_summary",
