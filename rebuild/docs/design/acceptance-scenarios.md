@@ -452,6 +452,10 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   coupling과 every-choice-to-one-authority-dimension binding
 - hidden public API/failure와 persistence/reload semantics가 broad Goal의 settled authority로
   흡수되지 않는 sanitized regression
+- sanitized candidate-expiry cleanup trigger와 project-local token-file contract에서 related
+  owner/architecture/convention evidence가 outcome을 constrain하더라도 materially different
+  credible alternative가 남으면 fact/settled authority로 통과하지 않고, Question/Decision이
+  affected work 전에 완료된 경우에만 ready가 되는 regression
 - behavior class별 expected outcome: explicit user-owned Decision, hidden user-owned Decision
   discovery, no-question, resolved-by-research, delegated-choice reuse와
   prototype/research/defer
@@ -604,6 +608,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
 - already-changed path를 late executable-scope expansion으로 retroactively authorize
 - broad Goal 또는 feature label을 subordinate discovered choice의 authority로 사용
+- related owner, architecture constraint, repository pattern 또는 convention이 relevant하다는
+  이유만으로 candidate cleanup trigger나 token-file contract의 exact outcome을 uniquely settled로 표시
 - independent choice를 coupling evidence 없이 한 Materiality dimension으로 collapse
 - learning participation을 추론하거나 routine detail을 learning blocker로 만들기
 - user-owned authority를 learning-only select/delegate/skip으로 해결하기

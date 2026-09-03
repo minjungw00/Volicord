@@ -15,16 +15,16 @@ use volicord_inquiry::{
 use volicord_operations::{
     CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
     EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
-    EngineeringEffectCategory, ExplicitDelegationEvidence, ExploratoryDisposition,
-    GroundedCheckpointDraft, LearningAlternativeSelection, LearningDeliberationDraft,
-    LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
-    LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
-    LearningResponseDraft, LearningValueAssessment, LearningValueRevisionBasis,
-    LearningValueRevisionRequest, LocalOperations, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
-    MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis,
-    WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition,
-    WorkflowStage,
+    EngineeringEffectCategory, ExactAuthoritySufficiency, ExplicitDelegationEvidence,
+    ExploratoryDisposition, GroundedCheckpointDraft, LearningAlternativeSelection,
+    LearningDeliberationDraft, LearningDeliberationState, LearningFeedbackDraft,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningReconsiderationDraft, LearningResponseDraft, LearningValueAssessment,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, LocalOperations,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition, WorkflowStage,
 };
 
 fn dimension(
@@ -33,6 +33,18 @@ fn dimension(
     kinds: Vec<WorkAuthorityBasisKind>,
     source: volicord_context::SourceId,
 ) -> MaterialityDimension {
+    let exact_authority = matches!(
+        &disposition,
+        MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority
+    )
+    .then(|| ExactAuthoritySufficiency {
+        covered_outcome: format!("the complete {id} material dimension"),
+        remaining_credible_alternatives: Vec::new(),
+        unique_outcome_rationale:
+            "the cited fixture authority leaves one mechanically or normatively selected outcome"
+                .into(),
+    });
     MaterialityDimension {
         dimension_id: id.to_owned(),
         discovered_choice_ids: vec![id.to_owned()],
@@ -46,6 +58,7 @@ fn dimension(
             summary: "bounded repository and owner-contract evidence".to_owned(),
             authority_counterfactual: "The fixture names the exact outcome and authority basis."
                 .to_owned(),
+            exact_authority,
             source_basis: vec![source],
             contract_basis: Vec::new(),
             decision_basis: Vec::new(),
@@ -982,7 +995,7 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
     );
     let recorded = review(&fixture, vec![settled, fact])?;
     let result = readiness(&fixture, &recorded)?;
-    assert_eq!(result.stage, WorkAuthorityStage::ReadyForWork);
+    assert_eq!(result.stage, WorkAuthorityStage::ReadyForWork, "{result:?}");
     assert_eq!(result.disposition, WorkAuthorityDisposition::ReadyForWork);
     assert!(!result.blocking);
     assert_eq!(result.satisfied_requirements.len(), 2);
@@ -1024,6 +1037,101 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
     )?;
     let checkpoint = reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[test]
+fn relevant_evidence_cannot_claim_exact_authority_while_credible_alternatives_remain(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (label, disposition, kinds, alternatives) in [
+        (
+            "candidate-expiry-cleanup-trigger",
+            MaterialityDisposition::SettledAuthority,
+            vec![WorkAuthorityBasisKind::AcceptedContract],
+            vec![
+                "clean expired candidates synchronously during access".to_owned(),
+                "clean them in a periodic project-local pass".to_owned(),
+            ],
+        ),
+        (
+            "project-local-token-file-contract",
+            MaterialityDisposition::RepositoryOrEnvironmentFact,
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+            vec![
+                "require one strict plaintext token shape".to_owned(),
+                "accept a structured recoverable token shape".to_owned(),
+            ],
+        ),
+    ] {
+        let fixture = fixture()?;
+        let mut overclaimed = dimension(
+            label,
+            disposition,
+            kinds,
+            fixture.baseline.repository_source.identity(),
+        );
+        if matches!(
+            overclaimed.disposition,
+            MaterialityDisposition::SettledAuthority
+        ) {
+            overclaimed.basis.contract_basis =
+                vec!["a related subsystem owner constrains the design".to_owned()];
+        }
+        overclaimed
+            .basis
+            .exact_authority
+            .as_mut()
+            .expect("settling fixture has exact-authority evidence")
+            .remaining_credible_alternatives = alternatives;
+
+        let error = review(&fixture, vec![overclaimed])
+            .expect_err("constraining evidence cannot uniquely select a material outcome");
+        assert!(
+            error.message().contains("credible alternatives remain"),
+            "{label}: {}",
+            error.message()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn settling_dispositions_require_explicit_exact_authority_sufficiency(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (label, disposition, kinds) in [
+        (
+            "settled-without-coverage",
+            MaterialityDisposition::SettledAuthority,
+            vec![WorkAuthorityBasisKind::AcceptedContract],
+        ),
+        (
+            "fact-without-coverage",
+            MaterialityDisposition::RepositoryOrEnvironmentFact,
+            vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        ),
+    ] {
+        let fixture = fixture()?;
+        let mut dimension = dimension(
+            label,
+            disposition,
+            kinds,
+            fixture.baseline.repository_source.identity(),
+        );
+        if matches!(
+            dimension.disposition,
+            MaterialityDisposition::SettledAuthority
+        ) {
+            dimension.basis.contract_basis = vec!["an accepted exact contract".to_owned()];
+        }
+        dimension.basis.exact_authority = None;
+
+        let error = review(&fixture, vec![dimension])
+            .expect_err("a settling label without exact coverage must be rejected");
+        assert!(
+            error.message().contains("requires exact coverage"),
+            "{label}"
+        );
+    }
     Ok(())
 }
 
@@ -1961,6 +2069,11 @@ fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after
     repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.summary = "current repository evidence fixes the value".into();
+    repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
+        covered_outcome: "the complete implementation-boundary dimension".into(),
+        remaining_credible_alternatives: Vec::new(),
+        unique_outcome_rationale: "current repository evidence mechanically fixes one value".into(),
+    });
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
@@ -2097,6 +2210,12 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
     repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
     repository_fact.basis.explicit_delegation = None;
+    repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
+        covered_outcome: "the complete implementation-boundary dimension".into(),
+        remaining_credible_alternatives: Vec::new(),
+        unique_outcome_rationale: "pre-work repository evidence mechanically fixes one value"
+            .into(),
+    });
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
@@ -2115,6 +2234,7 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     let mut agent_owned = repository_fact;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
     agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
+    agent_owned.basis.exact_authority = None;
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {

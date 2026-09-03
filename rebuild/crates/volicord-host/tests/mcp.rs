@@ -1025,7 +1025,7 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
     assert!(
         draft["authority_decision_checklist"]["counterfactual_questions"]
             .as_array()
-            .is_some_and(|questions| questions.len() == 5)
+            .is_some_and(|questions| questions.len() == 6)
     );
     assert_eq!(
         draft["authority_decision_checklist"]["not_authority"],
@@ -1138,7 +1138,10 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             "repository_or_environment_fact",
             json!({
                 "basis_summary":"The repository fixes the only viable value.",
-                "authority_counterfactual":"Repository evidence establishes one outcome, so the Goal is not used as delegation."
+                "authority_counterfactual":"Repository evidence establishes one outcome, so the Goal is not used as delegation.",
+                "authority_coverage":"The observed repository representation fixes the complete bounded choice.",
+                "remaining_credible_alternatives":[],
+                "unique_outcome_rationale":"Only the observed representation is mechanically valid for this repository."
             }),
             "ready_for_work",
         ),
@@ -1148,6 +1151,9 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
             json!({
                 "basis_summary":"The active owner settles this exact dimension.",
                 "authority_counterfactual":"The accepted owner contract selects the exact outcome independently of the Goal.",
+                "authority_coverage":"The accepted contract specifies the complete bounded choice.",
+                "remaining_credible_alternatives":[],
+                "unique_outcome_rationale":"The contract normatively requires one exact outcome.",
                 "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"]
             }),
             "ready_for_work",
@@ -1438,6 +1444,153 @@ fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
 }
 
 #[test]
+fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
+    let cases = [
+        (
+            "Add automatic Candidate expiry cleanup without mutating read-only projections.",
+            "candidate-expiry-cleanup-trigger",
+            "Candidate lifecycle mutation boundary",
+            EngineeringEffectCategory::PersistenceOrLifetime,
+            "settled_authority_by_contract",
+            json!({
+                "basis_summary":"Architecture assigns cleanup mutation to Inquiry and excludes read-only projection mutation.",
+                "authority_counterfactual":"The architecture is relevant but does not choose among materially different Inquiry-owned cleanup triggers.",
+                "authority_coverage":"Ownership of Candidate cleanup and the prohibition on projection-side mutation.",
+                "remaining_credible_alternatives":["synchronous cleanup during an Inquiry mutation","periodic Inquiry-owned retention cleanup"],
+                "unique_outcome_rationale":"No unique trigger is selected because both alternatives satisfy the cited architecture constraints.",
+                "contract_basis":["rebuild/docs/design/architecture.md","rebuild/docs/design/inquiry-and-decision.md"]
+            }),
+        ),
+        (
+            "Add a Project-local token-file contract for the local client.",
+            "project-local-token-file-contract",
+            "public credential file contract",
+            EngineeringEffectCategory::Security,
+            "repository_or_environment_fact",
+            json!({
+                "basis_summary":"Existing libraries and repository conventions provide a strong token-file precedent.",
+                "authority_counterfactual":"The convention is relevant but has not been adopted as the exact public filename, representation, and failure policy.",
+                "authority_coverage":"Existing library and repository convention for local credential files.",
+                "remaining_credible_alternatives":["a fixed plaintext token filename with strict failure","a structured credential file with recoverable missing-file behavior"],
+                "unique_outcome_rationale":"No unique public contract is selected because both policies remain compatible with the observed repository.",
+            }),
+        ),
+    ];
+
+    for (goal_turn, choice_id, scope, effect_category, variant_id, settling_fields) in cases {
+        let (_temporary, mut adapter, project) = setup();
+        let goal = structured(&call(
+            &mut adapter,
+            "context_record",
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        ))
+        .clone();
+        let analyzed = structured(&call(
+            &mut adapter,
+            "repository_analyze",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        let discovery_id = record_fixture_discovery(
+            &adapter,
+            &project,
+            goal["context_item_id"].as_str().expect("Goal identity"),
+            analyzed["analysis_snapshot_id"]
+                .as_str()
+                .expect("baseline identity"),
+            analyzed["repository_source_id"]
+                .as_str()
+                .expect("repository Source identity"),
+            FixtureEngineeringChoice {
+                id: choice_id,
+                affected_scope: scope,
+                effect_category,
+            },
+        );
+        let draft = structured(&call(
+            &mut adapter,
+            "materiality_review",
+            json!({
+                "action":"draft",
+                "project_id":project,
+                "engineering_choice_discovery_candidate_id":discovery_id,
+            }),
+        ))
+        .clone();
+        assert!(
+            draft["authority_decision_checklist"]["remaining_alternatives_rule"]
+                .as_str()
+                .is_some_and(|rule| rule.contains("constrained rather than settled"))
+        );
+        assert_eq!(
+            draft["exact_authority_sufficiency_contract"]["semantic_owner"],
+            "active_agent"
+        );
+
+        let mut settling_fields = settling_fields
+            .as_object()
+            .expect("settling fields")
+            .clone();
+        settling_fields.insert(
+            "learning_value".into(),
+            draft_learning_value(
+                &draft,
+                "routine",
+                json!({"rationale":"Authority routing is independent of learning."}),
+            ),
+        );
+        let rejected = call(
+            &mut adapter,
+            "materiality_review",
+            draft_request(
+                &draft,
+                "Test whether constraining evidence uniquely settles the exact dimension.",
+                draft_learning_participation(&draft, "inactive", json!({})),
+                vec![draft_judgment(
+                    &draft,
+                    choice_id,
+                    variant_id,
+                    Value::Object(settling_fields),
+                )],
+            ),
+        );
+        assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+        assert!(structured(&rejected)["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("credible alternatives remain")));
+
+        let unresolved = call(
+            &mut adapter,
+            "materiality_review",
+            draft_request(
+                &draft,
+                "No exact authority uniquely selects the material outcome.",
+                draft_learning_participation(&draft, "inactive", json!({})),
+                vec![draft_judgment(
+                    &draft,
+                    choice_id,
+                    "unresolved_user_owned_outcome",
+                    json!({
+                        "basis_summary":"Multiple materially different credible outcomes remain after all valid constraints are applied.",
+                        "authority_counterfactual":"The cited evidence constrains the alternatives but no exact repository fact, contract, Decision, or delegation selects one.",
+                        "learning_value":{"state":"routine","rationale":"User-owned authority stays on the Question path."}
+                    }),
+                )],
+            ),
+        );
+        assert_eq!(unresolved["result"]["isError"], false, "{unresolved}");
+        assert_eq!(
+            structured(&unresolved)["workflow"]["stage"],
+            "question_candidate"
+        );
+        assert_eq!(
+            structured(&unresolved)["workflow"]["required_next_action"]["action"],
+            "submit_question_from_materiality"
+        );
+    }
+}
+
+#[test]
 fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants() {
     let (_temporary, mut adapter, project) = setup();
     let goal_turn = "Implement the bounded choice and preserve explicit authority";
@@ -1494,6 +1647,9 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
         json!({
             "basis_summary":"The current applicable Decision settles this exact scope.",
             "authority_counterfactual":"The applicable Decision selects the outcome independently of the encompassing Goal.",
+            "authority_coverage":"The Decision applies to the complete discovered dimension.",
+            "remaining_credible_alternatives":[],
+            "unique_outcome_rationale":"The applicable user Decision selects one exact outcome.",
             "decision_ids":[settled_decision_id],
             "learning_value":settled_learning,
         }),
@@ -1713,6 +1869,9 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"repository_or_environment_fact",
                 "basis_summary":"repository fact",
                 "authority_counterfactual":"The repository would select the exact outcome in this invalid-field fixture.",
+                "authority_coverage":"The complete bounded choice.",
+                "remaining_credible_alternatives":[],
+                "unique_outcome_rationale":"The fixture claims one mechanically valid outcome.",
                 "research_basis":["not legal for this disposition"],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }),
@@ -1814,6 +1973,9 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"settled_authority",
                 "basis_summary":"The claimed Decision does not exist in the current Project.",
                 "authority_counterfactual":"The claimed exact authority is invalid and therefore cannot select the outcome.",
+                "authority_coverage":"The complete bounded choice.",
+                "remaining_credible_alternatives":[],
+                "unique_outcome_rationale":"The claimed Decision would select one outcome if it were applicable.",
                 "decision_ids":["00000000000000000000000000000000"],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
@@ -3048,7 +3210,7 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("Project-scoped repository work starts with project_resolve"));
     assert!(instructions.contains("workflow.required_next_action"));
     assert!(instructions.contains("do not bypass a blocking workflow transition"));
-    assert!(instructions.contains("Authority to perform requested work does not delegate"));
+    assert!(instructions.contains("Relevant evidence is not exact settling authority"));
     assert!(instructions.contains("exact dimension or a bounded containing scope"));
     assert!(instructions.contains("explicit response from the current host"));
     assert!(instructions.contains("separate exact authorization"));
@@ -3094,6 +3256,12 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["decision_record"].contains("current Question revision"));
     assert!(descriptions["materiality_review"].contains("broad Goal alone is not delegation"));
     assert!(descriptions["materiality_review"].contains("semantic rationale"));
+    assert!(
+        descriptions["materiality_review"].contains("may constrain alternatives without settling")
+    );
+    assert!(
+        descriptions["materiality_review"].contains("remaining after that authority is applied")
+    );
     assert!(descriptions["context_record"].contains("caller-reported"));
     assert!(descriptions["context_record"].contains("does not authenticate"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
@@ -4429,6 +4597,12 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     summary: "accepted source-grounded Checkpoint contract".into(),
                     authority_counterfactual:
                         "The accepted contract selects the exact Checkpoint behavior.".into(),
+                    exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
+                        covered_outcome: "the complete grounded Checkpoint behavior".into(),
+                        remaining_credible_alternatives: Vec::new(),
+                        unique_outcome_rationale:
+                            "the accepted contract explicitly requires this exact behavior".into(),
+                    }),
                     source_basis: vec![repository_source_id],
                     contract_basis: vec!["rebuild/docs/design/inquiry-and-decision.md".into()],
                     decision_basis: Vec::new(),

@@ -762,6 +762,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - work/verification/review state separation
 - Candidate promotion authorization/disposition과 inspection attribute completeness
 - fact/settled/delegated/exploratory/user-owned work-authority behavior와 false-authority rejection
+- fact/settled exact-authority coverage, non-empty remaining-alternative rejection과 related
+  architecture/convention evidence의 constrain-without-settle behavior
 - hidden API/failure와 persistence/reload choice non-collapse, legitimate coupling과 trivial internal
   detail non-discovery
 - normal-mode autonomy, active pending blocker/Checkpoint refusal, response-before-feedback ordering,
@@ -1015,7 +1017,13 @@ raw Source로 인정하지 않는다. 별도 semantic Goal statement가 필요�
 
 Machine evaluator는 Materiality Review에 하나 이상의 bounded unique `dimension_id`를 요구하고
 array position이 아니라 그 identity로 initial/revision authority를 correlate한다. Fact, settled,
-delegated, exploratory와 user-owned disposition은 같은 review에서 공존할 수 있다. Maintained
+delegated, exploratory와 user-owned disposition은 같은 review에서 공존할 수 있다. Fact/settled
+dimension의 exact covered outcome, authority 적용 뒤 remaining credible alternatives와
+unique-outcome rationale를 검사한다. Remaining material alternative가 하나라도 있으면 관련
+owner/architecture/convention evidence는 constraining evidence일 뿐 settling authority가 아니며,
+다른 exact authority가 없다면 pre-work Question/Decision lifecycle 없이는 ready가 될 수 없다.
+Candidate-expiry cleanup trigger와 project-local token-file contract를 sanitized regression으로
+유지한다. Maintained
 delegated positive control은 `settled_authority`가 아니라 실제
 `delegated_implementation_choice` disposition과 exact frozen Goal current-host Source의 bounded
 delegation을 요구한다. 이 current-task 경로는 exact Goal ID, current-host user-turn Source ID,

@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 13;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 14;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1513,6 +1513,46 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             "exact-authority counterfactual",
             &dimension.basis.authority_counterfactual,
         )?;
+        match (&dimension.disposition, &dimension.basis.exact_authority) {
+            (
+                MaterialityDisposition::RepositoryOrEnvironmentFact
+                | MaterialityDisposition::SettledAuthority,
+                Some(authority),
+            ) => {
+                validate_text(
+                    "exact-authority covered outcome",
+                    &authority.covered_outcome,
+                )?;
+                validate_list(&authority.remaining_credible_alternatives)?;
+                validate_text(
+                    "exact-authority unique-outcome rationale",
+                    &authority.unique_outcome_rationale,
+                )?;
+                if !authority.remaining_credible_alternatives.is_empty() {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "a repository fact or settled authority cannot claim unique authority while materially different credible alternatives remain",
+                    ));
+                }
+            }
+            (
+                MaterialityDisposition::RepositoryOrEnvironmentFact
+                | MaterialityDisposition::SettledAuthority,
+                None,
+            ) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "a repository fact or settled authority requires exact coverage and a unique-outcome rationale",
+                ));
+            }
+            (_, Some(_)) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "exact-authority sufficiency is only valid for repository fact or settled-authority dispositions",
+                ));
+            }
+            (_, None) => {}
+        }
         validate_list(&dimension.affected_scope)?;
         validate_list(&dimension.material_consequences)?;
         validate_list(&dimension.basis.contract_basis)?;

@@ -327,10 +327,18 @@ pub struct ExplicitDelegationEvidence {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExactAuthoritySufficiency {
+    pub covered_outcome: String,
+    pub remaining_credible_alternatives: Vec<String>,
+    pub unique_outcome_rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkAuthorityBasis {
     pub kinds: Vec<WorkAuthorityBasisKind>,
     pub summary: String,
     pub authority_counterfactual: String,
+    pub exact_authority: Option<ExactAuthoritySufficiency>,
     pub source_basis: Vec<SourceId>,
     pub contract_basis: Vec<String>,
     pub decision_basis: Vec<DecisionId>,

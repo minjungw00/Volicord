@@ -189,9 +189,13 @@ Materiality screen은 구현 방법의 개수가 아니라 outcome의 consequenc
 판정한다. 관련 current owner, applicable Decision/contract와 repository/environment
 fact를 먼저 확인한 뒤 다음 순서로 분류한다.
 
-- inspectable authority가 이미 outcome을 정하면 적용한다. Repository/environment
-  fact는 조사하며 user Question으로 바꾸지 않고, accepted contract 또는 applicable
-  Decision은 재질문 없이 적용한다.
+- inspectable authority가 exact material outcome을 유일하게 정하면 적용한다.
+  Repository/environment fact는 조사하며 user Question으로 바꾸지 않고, accepted contract 또는
+  applicable Decision은 재질문 없이 적용한다. 관련 owner 문서, architecture constraint,
+  library/convention 또는 repository evidence가 가능한 outcome을 좁히는 것과 그중 하나를
+  유일하게 정하는 것은 다르다. Evidence를 모두 적용한 뒤에도 materially different credible
+  alternative가 둘 이상 남으면 fact/settled disposition을 주장할 수 없고, 다른 exact authority가
+  없다면 unresolved user-owned Question path를 사용한다.
 - 명시적으로 위임된 implementation choice는 위임 범위 안에서 agent가 질문 없이
   선택한다. 이 authority에는 두 경로만 있다. 현재 user-stated Goal 자체의 위임은
   typed explicit-delegation evidence가 exact Goal identity와 그 Goal을 만든 exact
@@ -259,8 +263,13 @@ meaning을 다시 파생한다. 따라서 old full-dimension echo와 simplified 
 지원하지 않는다.
 
 각 disposition schema는 closed variant이며 required/forbidden field를 machine-readable하게
-노출한다. Repository fact와 agent-owned choice는 다른 authority field를 받지 않는다. Settled
-authority는 accepted contract basis, applicable Decision identity 또는 둘 다를 요구한다. Current-task
+노출한다. Repository fact와 settled authority는 exact covered outcome, authority 적용 뒤 남은
+credible alternative 목록과 unique-outcome rationale를 요구한다. 남은 목록은 비어 있어야 하며
+관련성이나 제약만 보이는 source를 unique selection으로 승격할 수 없다. Repository fact는
+mechanically observed fact basis만 허용하고 contract, Decision, delegation, recommendation,
+convention 또는 preference를 fact로 relabel하지 않는다. Settled authority는 accepted contract
+basis, applicable Decision identity 또는 둘 다를 요구한다. Agent-owned choice는 exact-authority
+field를 받지 않는다. Current-task
 delegation은 bounded verbatim delegation statement와 delegated scope를 caller에게 요구하고,
 Goal/Source identity와 exact dimension/choice/consequence/effect boundary는 현재 bound Goal과
 discovery에서 server가 정확히 파생한다. Inquiry-time delegation은 Decision identity만
@@ -317,7 +326,10 @@ durable effect, compatibility/support commitment, privacy/security posture 또�
 product outcome을 바꾸는지 확인한다. 바뀐다면 exact discovered choice에 적용되는 repository
 fact, accepted contract, applicable Decision 또는 explicit delegation을 식별해야 한다. Overall
 feature request 자체나 implementation preference는 subordinate difference를 settled로 만들지
-않는다. Multiple implementations라는 사실만으로 user ownership을 만들지도 않는다.
+않는다. Authority 후보를 적용한 뒤에도 materially different credible alternative가 남는지를 별도로
+기록한다. 남으면 그 후보는 outcome을 constrain할 뿐 settle하지 않는다. Multiple implementations라는
+사실만으로 user ownership을 만들지는 않지만, 다른 exact authority가 없는 material outcome은
+unresolved user-owned lifecycle로 보낸다.
 
 첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic

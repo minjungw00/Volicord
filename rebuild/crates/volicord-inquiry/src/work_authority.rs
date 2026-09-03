@@ -719,6 +719,52 @@ fn evaluate_dimension(
             "explicit delegation evidence cannot authorize a non-delegated disposition".to_owned(),
         ));
     }
+    match (&dimension.disposition, &dimension.basis.exact_authority) {
+        (
+            MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority,
+            Some(authority),
+        ) if authority.covered_outcome.trim().is_empty()
+            || authority.unique_outcome_rationale.trim().is_empty() =>
+        {
+            return Err(DimensionIssue::Invalid(
+                "exact authority requires bounded coverage and a unique-outcome rationale"
+                    .to_owned(),
+            ));
+        }
+        (
+            MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority,
+            Some(authority),
+        ) if !authority.remaining_credible_alternatives.is_empty() => {
+            return Err(DimensionIssue::Invalid(
+                "claimed authority leaves materially different credible alternatives unresolved; use the user-owned Question path when no other exact authority settles them"
+                    .to_owned(),
+            ));
+        }
+        (
+            MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority,
+            None,
+        ) => {
+            return Err(DimensionIssue::Invalid(
+                "repository fact and settled-authority dispositions require an exact-authority sufficiency basis"
+                    .to_owned(),
+            ));
+        }
+        (
+            MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority,
+            Some(_),
+        ) => {}
+        (_, Some(_)) => {
+            return Err(DimensionIssue::Invalid(
+                "exact-authority sufficiency cannot be attached to a non-settling disposition"
+                    .to_owned(),
+            ));
+        }
+        _ => {}
+    }
     if matches!(
         dimension.disposition,
         MaterialityDisposition::DelegatedImplementationChoice
@@ -742,6 +788,26 @@ fn evaluate_dimension(
                 dimension,
                 WorkAuthorityBasisKind::RepositoryOrEnvironmentFact,
             )?;
+            if !dimension.basis.contract_basis.is_empty()
+                || !dimension.basis.decision_basis.is_empty()
+                || dimension.basis.kinds.iter().any(|kind| {
+                    matches!(
+                        kind,
+                        WorkAuthorityBasisKind::AcceptedContract
+                            | WorkAuthorityBasisKind::ApplicableDecision
+                            | WorkAuthorityBasisKind::ExplicitDelegation
+                            | WorkAuthorityBasisKind::AgentRecommendation
+                            | WorkAuthorityBasisKind::LibraryOrConvention
+                            | WorkAuthorityBasisKind::ImplementationPreference
+                            | WorkAuthorityBasisKind::NoSettlingAuthority
+                    )
+                })
+            {
+                return Err(DimensionIssue::Invalid(
+                    "repository-or-environment fact authority must be grounded as a mechanical fact, not inferred from a contract, Decision, delegation, recommendation, convention, or preference"
+                        .to_owned(),
+                ));
+            }
             Ok(Vec::new())
         }
         MaterialityDisposition::SettledAuthority => {
@@ -754,6 +820,16 @@ fn evaluate_dimension(
             if !contract && decisions.is_empty() {
                 return Err(DimensionIssue::Invalid(
                     "settled authority requires a source-grounded accepted contract or applicable Decision"
+                        .to_owned(),
+                ));
+            }
+            if dimension
+                .basis
+                .kinds
+                .contains(&WorkAuthorityBasisKind::NoSettlingAuthority)
+            {
+                return Err(DimensionIssue::Invalid(
+                    "settled authority cannot also claim that no settling authority exists"
                         .to_owned(),
                 ));
             }

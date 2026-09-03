@@ -70,7 +70,12 @@ Question, possible Checkpoint와 promotion proposal을 포함할 수 있다.
 `Materiality Review`도 Session Candidate다. 현재 user-stated Goal, exact retained
 pre-work Analysis Snapshot과 independently material한 outcome dimension을 묶어 각
 dimension의 fact/settled authority/delegation/exploration/user-owned disposition과 bounded
-evidence basis를 보존한다. Current-task delegation basis는 exact Goal identity, 그 Goal의
+evidence basis를 보존한다. Fact/settled dimension의 `exact_authority`는 exact covered outcome,
+모든 cited authority를 적용한 뒤 남은 credible alternatives와 unique-outcome rationale를
+보존한다. Settling disposition에서는 remaining alternatives가 비어 있어야 한다. Related evidence,
+architecture constraint 또는 convention이 outcome space를 좁혀도 material alternative가 남으면
+settling authority가 아니며, repository fact는 contract나 convention을 mechanical observation으로
+relabel할 수 없다. Current-task delegation basis는 exact Goal identity, 그 Goal의
 exact current-host user-turn Source identity, Goal에 포함된 bounded verbatim statement와 각
 dimension의 identity, discovered choice identity, affected scope, material consequence와 effect
 category를 별도 typed evidence로 보존한다. 같은 statement가 여러 dimension을 실제로 cover해도

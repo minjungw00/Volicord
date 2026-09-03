@@ -30,15 +30,15 @@ use volicord_operations::{
     bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
     CandidateRepositoryResearchDraft, CommandVerificationDraft, ConfirmationDecision,
     ConfirmationRejection, ConfirmationRequestId, EngineeringChoiceDiscoveryDraft,
-    ExploratoryDisposition, FilterOutcome, GroundedCheckpointDraft, GuardedOperationId,
-    GuardedOperationOutcome, GuardedProviderInspection, GuardedProviderPreparation,
-    GuardedProviderPreparationOutcome, HealthState, LearningDeliberationDraft,
-    LearningFeedbackDraft, LearningReconsiderationDraft, LearningResponseDraft, LocalOperations,
-    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    MaterialityReviewRevisionDraft, ProjectResolution, ProviderRequestId, ProviderRequestOutcome,
-    ProviderRequestRecord, RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome,
-    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition,
-    WorkflowStage,
+    ExactAuthoritySufficiency, ExploratoryDisposition, FilterOutcome, GroundedCheckpointDraft,
+    GuardedOperationId, GuardedOperationOutcome, GuardedProviderInspection,
+    GuardedProviderPreparation, GuardedProviderPreparationOutcome, HealthState,
+    LearningDeliberationDraft, LearningFeedbackDraft, LearningReconsiderationDraft,
+    LearningResponseDraft, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft,
+    ProjectResolution, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
+    RequestingProvenance, ScopeOutcome, SourceClass, TransmissionOutcome, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition, WorkflowStage,
 };
 use volicord_projections::{
     CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
@@ -71,7 +71,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. Authority to perform requested work does not delegate subordinate material outcomes. A broad Goal delegates one only through an explicit current-host statement covering that exact dimension or a bounded containing scope. Learning participation does not establish authority. Agent-owned or delegated learning uses learning_deliberation; user-owned material outcomes require Question/Decision and an explicit response from the current host. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
+    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. Relevant evidence is not exact settling authority: after applying it, materially different credible outcomes require Question/Decision unless a Decision or delegation resolves them. A broad Goal delegates only through an explicit current-host statement covering that exact dimension or a bounded containing scope. A Decision needs an explicit response from the current host. Learning participation does not establish authority. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -1861,7 +1861,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. After authority and any required learning are resolved, inspect binds the explicit typed executable paths, components, and work contexts to the current review before ready_for_work; descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one Goal and exact baseline Analysis Snapshot. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, list any materially different credible alternatives remaining after that authority is applied, and explain why one exact outcome is uniquely selected; if two remain and no exact Decision or delegation resolves them, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect binds the explicit typed executable paths, components, and work contexts to the current review before ready_for_work; descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2614,37 +2614,96 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
             "Bounded scope delegated by the verbatim current-task statement",
         )
     };
+    let exact_authority_fields = || {
+        vec![
+            (
+                "authority_coverage",
+                text_schema(
+                    "Exact portion of this discovery-owned material dimension selected by the cited fact, contract, or Decision",
+                    1,
+                    4096,
+                ),
+            ),
+            (
+                "remaining_credible_alternatives",
+                string_array_schema(
+                    "Materially different credible alternatives still compatible after applying the claimed authority; settling dispositions require this to be empty",
+                ),
+            ),
+            (
+                "unique_outcome_rationale",
+                text_schema(
+                    "Why the cited authority leaves one uniquely selected material outcome rather than only constraining the alternatives",
+                    1,
+                    4096,
+                ),
+            ),
+        ]
+    };
     let contract = |variant_id, schema| MaterialityJudgmentContract { variant_id, schema };
     vec![
         contract(
             "repository_or_environment_fact",
-            materiality_judgment_schema("repository_or_environment_fact", vec![], &[]),
+            materiality_judgment_schema(
+                "repository_or_environment_fact",
+                exact_authority_fields(),
+                &[
+                    "authority_coverage",
+                    "remaining_credible_alternatives",
+                    "unique_outcome_rationale",
+                ],
+            ),
         ),
         contract(
             "settled_authority_by_contract",
             materiality_judgment_schema(
                 "settled_authority",
-                vec![("contract_basis", contract_basis())],
-                &["contract_basis"],
+                exact_authority_fields()
+                    .into_iter()
+                    .chain([("contract_basis", contract_basis())])
+                    .collect(),
+                &[
+                    "authority_coverage",
+                    "remaining_credible_alternatives",
+                    "unique_outcome_rationale",
+                    "contract_basis",
+                ],
             ),
         ),
         contract(
             "settled_authority_by_decision",
             materiality_judgment_schema(
                 "settled_authority",
-                vec![("decision_ids", decision_ids())],
-                &["decision_ids"],
+                exact_authority_fields()
+                    .into_iter()
+                    .chain([("decision_ids", decision_ids())])
+                    .collect(),
+                &[
+                    "authority_coverage",
+                    "remaining_credible_alternatives",
+                    "unique_outcome_rationale",
+                    "decision_ids",
+                ],
             ),
         ),
         contract(
             "settled_authority_by_contract_and_decision",
             materiality_judgment_schema(
                 "settled_authority",
-                vec![
-                    ("contract_basis", contract_basis()),
-                    ("decision_ids", decision_ids()),
+                exact_authority_fields()
+                    .into_iter()
+                    .chain([
+                        ("contract_basis", contract_basis()),
+                        ("decision_ids", decision_ids()),
+                    ])
+                    .collect(),
+                &[
+                    "authority_coverage",
+                    "remaining_credible_alternatives",
+                    "unique_outcome_rationale",
+                    "contract_basis",
+                    "decision_ids",
                 ],
-                &["contract_basis", "decision_ids"],
             ),
         ),
         contract(
@@ -3992,6 +4051,11 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "affected_scope":dimension.affected_scope,
             "authority_disposition":materiality_disposition_json(&dimension.disposition),
             "authority_counterfactual":dimension.basis.authority_counterfactual,
+            "exact_authority":dimension.basis.exact_authority.as_ref().map(|authority| json!({
+                "covered_outcome":authority.covered_outcome,
+                "remaining_credible_alternatives":authority.remaining_credible_alternatives,
+                "unique_outcome_rationale":authority.unique_outcome_rationale,
+            })),
             "learning_value":learning_value_json(&dimension.learning_value),
         })).collect::<Vec<_>>(),
     }));
@@ -4595,6 +4659,22 @@ fn materiality_dimension_from_judgment(
         }
         _ => return Err(HostError::new("unknown Materiality Review disposition")),
     };
+    let exact_authority = if matches!(
+        disposition,
+        MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority
+    ) {
+        Some(ExactAuthoritySufficiency {
+            covered_outcome: required_str(value, "authority_coverage")?.to_owned(),
+            remaining_credible_alternatives: string_array(
+                value,
+                "remaining_credible_alternatives",
+            )?,
+            unique_outcome_rationale: required_str(value, "unique_outcome_rationale")?.to_owned(),
+        })
+    } else {
+        None
+    };
     let mut kinds = match &disposition {
         MaterialityDisposition::RepositoryOrEnvironmentFact => {
             vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact]
@@ -4673,6 +4753,7 @@ fn materiality_dimension_from_judgment(
             kinds,
             summary: required_str(value, "basis_summary")?.to_owned(),
             authority_counterfactual: required_str(value, "authority_counterfactual")?.to_owned(),
+            exact_authority,
             source_basis,
             contract_basis,
             decision_basis,
@@ -5289,6 +5370,7 @@ fn materiality_draft_json(
                 "What exact material outcome or dimension varies across the credible alternatives?",
                 "Can the original Goal be satisfied by more than one of those materially different outcomes?",
                 "What exact repository fact, accepted contract, applicable Decision, or explicit delegation selects among them?",
+                "After applying that claimed authority, can two or more credible alternatives still satisfy every settled constraint while producing materially different outcomes?",
                 "Does the current-host statement explicitly delegate choice of that outcome, rather than merely request the encompassing feature?",
                 "If no exact authority selects the outcome, why is this not an unresolved user-owned material decision?"
             ],
@@ -5320,7 +5402,17 @@ fn materiality_draft_json(
                 "agent_owned_implementation_choice":"Use only for bounded implementation discretion remaining after material user-facing policy is settled or credible alternatives do not vary that policy."
             },
             "subordinate_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics. Absence of explicit delegation does not make mechanically equivalent private details user-owned, but materially different outcomes with no exact authority require Question/current-host Decision.",
+            "remaining_alternatives_rule":"Apply every valid authority, then ask whether two or more credible alternatives still satisfy all settled repository and contract constraints while changing a material outcome. If so, related evidence has constrained rather than settled the dimension; find another exact authority or use unresolved_user_owned_outcome.",
             "authority_revision_chronology":"If disposition, authority basis, blocking readiness, or affected-scope applicability changes after affected work, the revision is prospective and does not certify that earlier work. Production records this only when maintained baseline/current path evidence proves the chronology; otherwise rollout validation remains responsible for the ordering judgment.",
+        },
+        "exact_authority_sufficiency_contract":{
+            "applies_to":["repository_or_environment_fact","settled_authority"],
+            "required_semantic_fields":["authority_coverage","remaining_credible_alternatives","unique_outcome_rationale"],
+            "coverage_rule":"Cited authority must cover this exact discovery-owned dimension, not merely a related subsystem or a subset of alternatives.",
+            "remaining_alternatives_rule":"Settling dispositions require an empty post-authority list. A non-empty list is incompatible with exact authority and must remain on the unresolved user-owned path unless other exact authority resolves it.",
+            "source_rule":"Repository facts must be mechanically grounded in current repository/environment Sources. Settled authority requires an exact accepted contract or applicable Decision; recommendations, research, prototypes, libraries, and conventions can inform reasoning but do not independently settle an outcome.",
+            "semantic_owner":"active_agent",
+            "production_validation":"typed presence, closed disposition compatibility, current provenance, and empty post-authority remaining-alternative set; production does not classify natural-language semantic truth",
         },
         "authority_learning_routing":authority_learning_routing_json(),
         "evidence_state_precedence":{
@@ -5352,11 +5444,11 @@ fn materiality_draft_json(
         },
         "field_ownership":{
             "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
-            "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","authority_counterfactual","additional authority evidence allowed for that disposition","learning_value"],
+            "caller_owned_semantic_judgments":["rationale","learning_participation","choice_id","disposition","basis_summary","authority_counterfactual","exact authority coverage when the disposition claims settlement","additional authority evidence allowed for that disposition","learning_value"],
         },
         "work_authority_basis_kind_contract":{
-            "repository_or_environment_fact":"derived only for repository_or_environment_fact",
-            "accepted_contract":"derived only from non-empty contract_basis for settled_authority",
+            "repository_or_environment_fact":"derived only for repository_or_environment_fact with current mechanical fact grounding and exact unique-outcome coverage",
+            "accepted_contract":"derived only from non-empty contract_basis plus exact unique-outcome coverage for settled_authority",
             "applicable_decision":"derived only from Decision identities for settled authority or a resolved user-owned outcome",
             "explicit_delegation":"derived only for current-task verbatim delegation or Inquiry-time delegation Decision",
             "research_evidence":"derived only for research-required/resolved exploratory treatment",
@@ -5387,7 +5479,7 @@ fn materiality_draft_json(
                 "steps":[
                     "For each judgment_template, choose one legal_judgment_variant_id without changing the semantic choice.",
                     "Merge caller_owned_judgment.prefilled_fields with the selected judgment_contract bounded_allowed_values.",
-                    "Provide every caller_must_semantically_provide field, including authority_counterfactual and one learning_value_input_alternative, and only desired caller_may_provide fields.",
+                    "Provide every caller_must_semantically_provide field, including authority_counterfactual, the exact-authority coverage fields required by any settling variant, and one learning_value_input_alternative; provide only desired caller_may_provide fields.",
                     "Place the assembled judgments in choice_order and merge them with record_request.prefilled_fields plus rationale and learning_participation."
                 ]
             },

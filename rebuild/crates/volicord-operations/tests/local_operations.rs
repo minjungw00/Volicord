@@ -407,6 +407,13 @@ fn record_ready_review(
                 summary: "retained pre-work repository observation".into(),
                 authority_counterfactual:
                     "The repository fact selects the only supported bounded outcome.".into(),
+                exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
+                    covered_outcome: "the complete bounded repository outcome".into(),
+                    remaining_credible_alternatives: Vec::new(),
+                    unique_outcome_rationale:
+                        "the observed repository shape makes only this outcome mechanically valid"
+                            .into(),
+                }),
                 source_basis: vec![baseline.repository_source.identity()],
                 contract_basis: Vec::new(),
                 decision_basis: Vec::new(),
