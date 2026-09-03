@@ -301,7 +301,6 @@ def provisional_review_contract() -> dict[str, Any]:
         ),
     }
 
-
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")
 
@@ -1265,8 +1264,8 @@ def load_definition() -> dict[str, Any]:
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-            "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
-            "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
+            "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions and record each explicit current-host user Decision",
+            "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
             "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
@@ -3356,6 +3355,8 @@ def work_evidence_transport_attribution(
         "materiality_review_operation",
         "source_grounded_checkpoint_operation",
     }
+
+
     malformed_path_evidence = any(
         issue.reason == "malformed_file_change"
         for issue in capture.evidence_transport_issues
@@ -3403,6 +3404,206 @@ def work_evidence_transport_attribution(
             for issue in unique_issues.values()
         ],
     }
+
+
+def work_blocker_material_question_lifecycles(
+    capture: CodexCapture,
+    behavior_class: str,
+    baseline_call: ToolCall,
+    record: ToolCall,
+    revision: ToolCall | None,
+    first_work_change: int,
+) -> tuple[bool, bool]:
+    """Observe every dimension-linked material lifecycle without bundle semantics."""
+
+    if revision is None:
+        return False, False
+    initial_judgments = {
+        judgment.get("choice_id"): judgment
+        for judgment in record.arguments.get("judgments", [])
+        if isinstance(judgment, dict) and nonempty_string(judgment.get("choice_id"))
+    }
+    revised_judgments = {
+        judgment.get("choice_id"): judgment
+        for judgment in revision.arguments.get("judgments", [])
+        if isinstance(judgment, dict) and nonempty_string(judgment.get("choice_id"))
+    }
+    user_dimensions = {
+        str(dimension_id)
+        for dimension_id, judgment in initial_judgments.items()
+        if judgment.get("disposition") == "unresolved_user_owned_outcome"
+    }
+    if not user_dimensions or set(initial_judgments) != set(revised_judgments):
+        return False, False
+    dimensions_by_decision: dict[str, set[str]] = {}
+    for dimension_id in user_dimensions:
+        decision_id = revised_judgments[dimension_id].get("resolution_decision_id")
+        if not nonempty_string(decision_id):
+            return False, False
+        dimensions_by_decision.setdefault(str(decision_id), set()).add(dimension_id)
+    review_id = record.result.get("review_candidate_id")
+    submit_calls = [
+        call
+        for call in capture.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "submit_question_from_materiality"
+        and call.result.get("action") == "submit_question_from_materiality"
+        and call.arguments.get("review_candidate_id") == review_id
+    ]
+    discovery_id = record.arguments.get("engineering_choice_discovery_candidate_id")
+    discovery = next(
+        (
+            call
+            for call in capture.successful_calls("engineering_choice_discovery")
+            if call.result.get("discovery_candidate_id") == discovery_id
+        ),
+        None,
+    )
+    choices = indexed_engineering_choices(
+        discovery.arguments.get("choices") if discovery is not None else None
+    )
+    used_submit_sequences: set[int] = set()
+    used_question_ids: set[str] = set()
+    decisions_valid = True
+    lifecycles_valid = bool(choices)
+    for group_dimensions in dimensions_by_decision.values():
+        group_submits = [
+            call
+            for call in submit_calls
+            if call.arguments.get("dimension_id") in group_dimensions
+        ]
+        submit = group_submits[0] if len(group_submits) == 1 else None
+        coupled = len(group_dimensions) == 1 or bool(
+            choices
+            and all(
+                choices[dimension_id]["relationship"].get("state") == "coupled"
+                and group_dimensions - {dimension_id}
+                <= set(choices[dimension_id]["relationship"].get("choice_ids", []))
+                for dimension_id in group_dimensions
+            )
+        )
+        candidate_id = submit.result.get("candidate_id") if submit else None
+        promote_calls = [
+            call
+            for call in capture.successful_calls("candidate_manage")
+            if call.arguments.get("action") == "promote_question"
+            and call.result.get("action") == "promote_question"
+            and call.arguments.get("candidate_id") == candidate_id
+            and call.result.get("candidate_id") == candidate_id
+        ]
+        promote = promote_calls[0] if len(promote_calls) == 1 else None
+        question_id = promote.result.get("question_id") if promote else None
+        frontier_calls = [
+            call
+            for call in capture.successful_calls("inquiry_frontier")
+            if any(
+                isinstance(question, dict)
+                and question.get("identity") == question_id
+                and isinstance(question.get("revision"), int)
+                for question in call.result.get("questions", [])
+            )
+        ]
+        frontier = frontier_calls[0] if len(frontier_calls) == 1 else None
+        question_revision = next(
+            (
+                question["revision"]
+                for question in frontier.result.get("questions", [])
+                if question.get("identity") == question_id
+            ),
+            None,
+        ) if frontier else None
+        decision_calls = [
+            call
+            for call in capture.successful_calls("decision_record")
+            if call.arguments.get("question_id") == question_id
+            and call.arguments.get("question_revision") == question_revision
+        ]
+        decision = decision_calls[0] if len(decision_calls) == 1 else None
+        response_turns = [
+            turn
+            for turn in capture.user_turns
+            if decision is not None
+            and turn.text == decision.arguments.get("user_turn")
+            and turn.sequence < decision.sequence
+            and turn.turn_id == decision.turn_id
+        ]
+        research_calls = [
+            call
+            for call in capture.successful_calls("candidate_manage")
+            if call.arguments.get("action") == "attach_repository_research"
+            and call.arguments.get("candidate_id") == candidate_id
+        ]
+        ready_calls = [
+            call
+            for call in capture.successful_calls("candidate_manage")
+            if call.arguments.get("action") == "mark_research_ready"
+            and call.arguments.get("candidate_id") == candidate_id
+        ]
+        researched_path = bool(
+            submit
+            and submit.arguments.get("research_state") == "research_required"
+            and submit.result.get("research_state") == "research_required"
+            and len(research_calls) == 1
+            and len(ready_calls) == 1
+            and submit.sequence < research_calls[0].sequence
+            < ready_calls[0].sequence
+            < (promote.sequence if promote is not None else -1)
+            and ready_calls[0].result.get("research_state") == "ready_to_ask"
+        )
+        explicit_path = bool(
+            behavior_class == "explicit_user_owned_decision"
+            and submit
+            and (
+                (
+                    submit.arguments.get("research_state") == "ready_to_ask"
+                    and submit.result.get("research_state") == "ready_to_ask"
+                    and not research_calls
+                    and not ready_calls
+                )
+                or researched_path
+            )
+        )
+        hidden_path = behavior_class == "hidden_user_owned_decision" and researched_path
+        lifecycle_valid = bool(
+            submit
+            and promote
+            and frontier
+            and decision
+            and coupled
+            and nonempty_string(question_id)
+            and question_id not in used_question_ids
+            and record.sequence < submit.sequence < promote.sequence < frontier.sequence
+            < decision.sequence < revision.sequence
+            and (explicit_path or hidden_path)
+        )
+        decision_valid = bool(
+            decision
+            and response_turns
+            and decision.result.get("all_succeeded") is True
+            and nonempty_string(decision.result.get("user_response_source_id"))
+        )
+        lifecycles_valid &= lifecycle_valid
+        decisions_valid &= decision_valid
+        if submit is not None:
+            used_submit_sequences.add(submit.sequence)
+        if nonempty_string(question_id):
+            used_question_ids.add(str(question_id))
+    hidden_investigation = (
+        behavior_class != "hidden_user_owned_decision"
+        or discovery is not None
+        and bool(repository_investigation_sequences(
+            capture,
+            after_sequence=baseline_call.completion_sequence,
+            before_sequence=discovery.sequence,
+        ))
+    )
+    lifecycles_valid &= (
+        hidden_investigation
+        and len(used_submit_sequences) == len(submit_calls)
+        and len(capture.successful_calls("decision_record"))
+        == len(dimensions_by_decision)
+        and revision.completion_sequence < first_work_change
+    )
+    return bool(lifecycles_valid), bool(decisions_valid)
 
 
 def work_blocker_behavior_observations(
@@ -3541,155 +3742,19 @@ def work_blocker_behavior_observations(
             )
         return behavior_ok, False, False
 
-    submit_calls = [
-        call
-        for call in capture.successful_calls("candidate_manage")
-        if call.arguments.get("action") == "submit_question_from_materiality"
-        and call.result.get("action") == "submit_question_from_materiality"
-        and call.arguments.get("review_candidate_id") == review_id
-    ]
-    submit = submit_calls[0] if len(submit_calls) == 1 else None
-    candidate_id = submit.result.get("candidate_id") if submit is not None else None
-    promote_calls = [
-        call
-        for call in capture.successful_calls("candidate_manage")
-        if call.arguments.get("action") == "promote_question"
-        and call.result.get("action") == "promote_question"
-        and call.arguments.get("candidate_id") == candidate_id
-        and call.result.get("candidate_id") == candidate_id
-    ]
-    promote = promote_calls[0] if len(promote_calls) == 1 else None
-    question_id = promote.result.get("question_id") if promote is not None else None
-    frontier_calls = [
-        call
-        for call in capture.successful_calls("inquiry_frontier")
-        if any(
-            isinstance(question, dict)
-            and question.get("identity") == question_id
-            and isinstance(question.get("revision"), int)
-            for question in call.result.get("questions", [])
-        )
-    ]
-    frontier = frontier_calls[0] if len(frontier_calls) == 1 else None
-    question_revision = (
-        next(
-            question["revision"]
-            for question in frontier.result["questions"]
-            if question.get("identity") == question_id
-        )
-        if frontier is not None
-        else None
+    lifecycle_ok, decision_ok = work_blocker_material_question_lifecycles(
+        capture,
+        behavior_class,
+        baseline_call,
+        record,
+        final_review if final_review is not record else None,
+        first_work_change,
     )
-    decision_calls = [
-        call
-        for call in capture.successful_calls("decision_record")
-        if call.arguments.get("question_id") == question_id
-        and call.arguments.get("question_revision") == question_revision
-    ]
-    decision = decision_calls[0] if len(decision_calls) == 1 else None
-    response_turns = [
-        turn
-        for turn in capture.user_turns
-        if decision is not None
-        and turn.text == decision.arguments.get("user_turn")
-        and turn.sequence < decision.sequence
-        and turn.turn_id == decision.turn_id
-    ]
-    decision_ok = bool(
-        decision
-        and response_turns
-        and decision.result.get("all_succeeded") is True
-        and nonempty_string(decision.result.get("user_response_source_id"))
+    return (
+        lifecycle_ok and decision_ok and ready_before_work,
+        lifecycle_ok,
+        decision_ok,
     )
-    revisions = [
-        call
-        for call in capture.successful_calls("materiality_review")
-        if call.arguments.get("action") == "revise"
-        and call.arguments.get("review_candidate_id") == review_id
-        and call.result.get("review_candidate_id") == review_id
-    ]
-    revision = revisions[-1] if revisions else None
-    user_ready_before_work, readiness_call, _readiness_basis = (
-        pre_work_readiness_observation(
-            capture,
-            review_candidate_id=review_id,
-            goal_context_id=record.result.get("goal_context_id"),
-            baseline_analysis_snapshot_id=baseline_id,
-            predecessor_call=revision,
-            first_write_sequence=first_work_change,
-            required_paths=required_paths,
-        )
-    )
-    research_calls = [
-        call
-        for call in capture.successful_calls("candidate_manage")
-        if call.arguments.get("action") == "attach_repository_research"
-        and call.arguments.get("candidate_id") == candidate_id
-    ]
-    ready_calls = [
-        call
-        for call in capture.successful_calls("candidate_manage")
-        if call.arguments.get("action") == "mark_research_ready"
-        and call.arguments.get("candidate_id") == candidate_id
-    ]
-    explicit_question_path = bool(
-        behavior_class == "explicit_user_owned_decision"
-        and submit
-        and (
-            (
-                submit.arguments.get("research_state") == "ready_to_ask"
-                and submit.result.get("research_state") == "ready_to_ask"
-                and not research_calls
-                and not ready_calls
-            )
-            or (
-                submit.arguments.get("research_state") == "research_required"
-                and submit.result.get("research_state") == "research_required"
-                and len(research_calls) == 1
-                and len(ready_calls) == 1
-                and submit.sequence < research_calls[0].sequence
-                < ready_calls[0].sequence
-                and ready_calls[0].result.get("research_state") == "ready_to_ask"
-            )
-        )
-    )
-    hidden_research = bool(
-        behavior_class == "hidden_user_owned_decision"
-        and submit
-        and submit.arguments.get("research_state") == "research_required"
-        and submit.result.get("research_state") == "research_required"
-        and len(research_calls) == 1
-        and len(ready_calls) == 1
-        and research_calls[0].sequence < ready_calls[0].sequence
-        and ready_calls[0].result.get("research_state") == "ready_to_ask"
-    )
-    discovery_calls = capture.successful_calls("engineering_choice_discovery")
-    discovery = discovery_calls[0] if len(discovery_calls) == 1 else None
-    hidden_investigation = bool(
-        behavior_class == "hidden_user_owned_decision"
-        and discovery is not None
-        and repository_investigation_sequences(
-            capture,
-            after_sequence=baseline_call.completion_sequence,
-            before_sequence=discovery.sequence,
-        )
-    )
-    lifecycle_ok = bool(
-        submit
-        and promote
-        and frontier
-        and decision
-        and revision
-        and record.result.get("workflow", {}).get("stage") == "question_candidate"
-        and record.result.get("workflow", {}).get("blocks_ordinary_work") is True
-        and record.sequence < submit.sequence < promote.sequence < frontier.sequence
-        < decision.sequence < revision.sequence
-        and revision.completion_sequence
-        < (readiness_call.sequence if readiness_call is not None else -1)
-        and user_ready_before_work
-        and (explicit_question_path or (hidden_research and hidden_investigation))
-    )
-    return lifecycle_ok and decision_ok, lifecycle_ok, decision_ok
 
 
 def build_work_blocker_result(
@@ -4749,6 +4814,10 @@ def engineering_choice_discovery_facts(
             choice.get("relationship", {}).get("state")
             for choice in (choices or {}).values()
         }),
+        "relationships_by_choice": {
+            choice_id: choice.get("relationship")
+            for choice_id, choice in sorted((choices or {}).items())
+        },
     }, dimensions, choices
 
 
@@ -5248,6 +5317,12 @@ def materiality_review_facts(
         "dimension_ids": sorted(dimension_ids),
         "relevant_dimension_ids": relevant_ids,
         "user_owned_dimension_ids": sorted(user_owned_ids),
+        "resolution_decision_ids_by_dimension": {
+            dimension_id: (final_dimensions or dimensions or {})
+            .get(dimension_id, {})
+            .get("resolution_decision_id")
+            for dimension_id in sorted(user_owned_ids)
+        },
         "dimension_correlation": "dimension_id",
         "disposition": (
             dimensions[primary_dimension_id].get("disposition")
@@ -5727,6 +5802,143 @@ def question_review_facts(
     return valid, basis
 
 
+def material_question_lifecycle_facts(
+    work: CodexCapture | None,
+    bundle: CanonicalBundle | None,
+    behavior_class: Any,
+    evaluation_basis: Any,
+    baseline_call: ToolCall | None,
+    review_candidate_id: str | None,
+    materiality_basis: dict[str, Any],
+    decision_evidence: dict[str, dict[str, Any]],
+) -> tuple[bool, dict[str, Any], str | None, int | None, str | None]:
+    """Validate every Decision-linked material dimension lifecycle."""
+
+    dimension_ids = materiality_basis.get("user_owned_dimension_ids")
+    resolution_by_dimension = materiality_basis.get(
+        "resolution_decision_ids_by_dimension"
+    )
+    relationships = materiality_basis.get("engineering_choice_discovery", {}).get(
+        "relationships_by_choice"
+    )
+    if (
+        work is None
+        or bundle is None
+        or not is_user_owned_behavior(behavior_class)
+        or not isinstance(dimension_ids, list)
+        or not dimension_ids
+        or not isinstance(resolution_by_dimension, dict)
+        or set(resolution_by_dimension) != set(dimension_ids)
+        or not all(
+            nonempty_string(resolution_by_dimension.get(dimension_id))
+            for dimension_id in dimension_ids
+        )
+        or not isinstance(relationships, dict)
+    ):
+        return False, {}, None, None, None
+
+    dimensions_by_decision: dict[str, set[str]] = {}
+    for dimension_id in dimension_ids:
+        decision_id = str(resolution_by_dimension[dimension_id])
+        dimensions_by_decision.setdefault(decision_id, set()).add(dimension_id)
+    expected_decisions = set(dimensions_by_decision)
+    submit_calls = [
+        call
+        for call in work.successful_calls("candidate_manage")
+        if call.arguments.get("action") == "submit_question_from_materiality"
+        and call.result.get("action") == "submit_question_from_materiality"
+        and call.arguments.get("review_candidate_id") == review_candidate_id
+    ]
+    groups: list[dict[str, Any]] = []
+    primary_lifecycle_basis: dict[str, Any] = {}
+    valid = set(decision_evidence) == expected_decisions
+    used_submit_sequences: set[int] = set()
+    question_ids: set[str] = set()
+    primary: tuple[str | None, int | None, str | None] = (None, None, None)
+    for decision_id, group_dimensions in sorted(dimensions_by_decision.items()):
+        evidence = decision_evidence.get(decision_id)
+        group_submit_calls = [
+            call
+            for call in submit_calls
+            if call.arguments.get("dimension_id") in group_dimensions
+        ]
+        submit_call = group_submit_calls[0] if len(group_submit_calls) == 1 else None
+        anchor_dimension_id = (
+            str(submit_call.arguments.get("dimension_id"))
+            if submit_call is not None
+            else None
+        )
+        question_id = evidence.get("question_id") if evidence is not None else None
+        question_revision = (
+            evidence.get("question_revision") if evidence is not None else None
+        )
+        material_scope = evidence.get("material_scope") if evidence is not None else None
+        coupled = len(group_dimensions) == 1 or all(
+            isinstance(relationships.get(dimension_id), dict)
+            and relationships[dimension_id].get("state") == "coupled"
+            and group_dimensions - {dimension_id}
+            <= set(relationships[dimension_id].get("choice_ids", []))
+            for dimension_id in group_dimensions
+        )
+        scope_complete = isinstance(material_scope, list) and all(
+            f"work-authority:{dimension_id}" in material_scope
+            for dimension_id in group_dimensions
+        )
+        lifecycle_ok, lifecycle_basis = question_review_facts(
+            work,
+            bundle,
+            behavior_class,
+            str(question_id) if nonempty_string(question_id) else None,
+            question_revision if isinstance(question_revision, int) else None,
+            evaluation_basis,
+            baseline_call,
+            review_candidate_id,
+            anchor_dimension_id,
+        )
+        group_ok = bool(
+            evidence is not None
+            and submit_call is not None
+            and coupled
+            and scope_complete
+            and lifecycle_ok
+            and nonempty_string(question_id)
+            and question_id not in question_ids
+        )
+        valid &= group_ok
+        if submit_call is not None:
+            used_submit_sequences.add(submit_call.sequence)
+        if nonempty_string(question_id):
+            question_ids.add(str(question_id))
+        if primary == (None, None, None) and group_ok:
+            primary = (str(question_id), question_revision, decision_id)
+            primary_lifecycle_basis = lifecycle_basis
+        groups.append({
+            "decision_id": decision_id,
+            "dimension_ids": sorted(group_dimensions),
+            "anchor_dimension_id": anchor_dimension_id,
+            "question_id": question_id,
+            "question_revision": question_revision,
+            "coupled_scope_complete": coupled and scope_complete,
+            "lifecycle": lifecycle_basis,
+            "qualified": group_ok,
+        })
+    valid &= len(used_submit_sequences) == len(submit_calls)
+    return bool(valid), {
+        **primary_lifecycle_basis,
+        "dimension_correlation": "materiality_dimension_to_resolution_decision_to_question_revision",
+        "required_dimension_ids": sorted(dimension_ids),
+        "expected_decision_ids": sorted(expected_decisions),
+        "observed_submit_count": len(submit_calls),
+        "all_submits_consumed": len(used_submit_sequences) == len(submit_calls),
+        "repository_research_lifecycle_observed": bool(groups)
+        and all(
+            group["lifecycle"].get("repository_research_lifecycle_observed")
+            for group in groups
+        ),
+        "groups": groups,
+    }, primary[0], primary[1], primary[2]
+
+
 def checkpoint_verification_facts(
     work: CodexCapture,
     bundle: CanonicalBundle,
@@ -6127,10 +6339,10 @@ def real_session_evidence(
 
     (
         decision_ok,
-        decision_id,
-        question_id,
-        question_revision,
-        user_source_id,
+        primary_decision_id,
+        primary_question_id,
+        primary_question_revision,
+        primary_user_source_id,
         decision_evidence,
     ) = decision_facts(work_capture, bundle)
     (
@@ -6196,16 +6408,29 @@ def real_session_evidence(
         str(baseline_analysis_id) if nonempty_string(baseline_analysis_id) else None,
         goal_statement,
     )
-    question_ok, question_review_basis = question_review_facts(
+    (
+        question_ok,
+        question_review_basis,
+        lifecycle_question_id,
+        lifecycle_question_revision,
+        lifecycle_decision_id,
+    ) = material_question_lifecycle_facts(
         work_capture,
         bundle,
         behavior_class,
-        question_id,
-        question_revision,
         evaluation_basis,
         baseline_call,
         review_candidate_id,
-        materiality_dimension_id,
+        materiality_basis,
+        decision_evidence,
+    )
+    decision_id = lifecycle_decision_id or primary_decision_id
+    question_id = lifecycle_question_id or primary_question_id
+    question_revision = lifecycle_question_revision or primary_question_revision
+    user_source_id = (
+        decision_evidence.get(decision_id, {}).get("source_id")
+        if nonempty_string(decision_id)
+        else primary_user_source_id
     )
     frontier_interrupted = bool(
         work_capture
@@ -8775,7 +9000,15 @@ def real_session_fixture(
                 "technical_consequences": ["The representation changes invariant placement and maintenance cost"],
                 "source_ids": [source_id],
                 "effect_categories": ["maintenance_or_support", "implementation_internal"],
-                "relationship": {"state": "independent"},
+                "relationship": (
+                    {
+                        "state": "coupled",
+                        "choice_ids": [secondary_materiality_dimension_id],
+                        "rationale": "The observable diagnostic boundary and stable shape share one user-owned outcome.",
+                    }
+                    if is_user_owned_behavior(behavior_class)
+                    else {"state": "independent"}
+                ),
                 "evidence_state": "sufficient",
             },
             {
@@ -13572,6 +13805,319 @@ def self_test() -> int:
         events[insertion_index:insertion_index] = inserted
         store_capture(fixture, "work", path, events)
 
+    def independent_two_question_fixture() -> dict[str, Any]:
+        fixture = real_session_fixture(
+            "volicord", 1, revision, evidence_directory
+        )
+        project_id = "01" * 16
+        response_source_id = "02" * 16
+        second_candidate_id = "21" * 16
+        second_question_id = "22" * 16
+        second_decision_id = "23" * 16
+        primary_dimension_id = "operator-error-boundary"
+        second_dimension_id = "repository-shape-boundary"
+        second_prompt = "Which repository-shape boundary should this change preserve?"
+        response_text = (
+            "Keep concise diagnostics and preserve the bounded repository shape."
+        )
+
+        def make_choices_independent(arguments: dict[str, Any]) -> None:
+            for choice in arguments["choices"]:
+                choice["relationship"] = {"state": "independent"}
+
+        def make_result_choices_independent(output: dict[str, Any]) -> None:
+            for choice in output["choices"]:
+                choice["relationship"] = {"state": "independent"}
+
+        for capture_name, call_marker in (
+            ("work", "discovery-call"),
+            ("resume", "resume-discovery-call"),
+        ):
+            mutate_mcp_call(
+                fixture,
+                capture_name,
+                "engineering_choice_discovery",
+                make_choices_independent,
+            )
+            mutate_custom_output(
+                fixture,
+                capture_name,
+                call_marker,
+                make_result_choices_independent,
+            )
+
+        insert_successful_mcp_completion_before(
+            fixture,
+            before_call_marker="inquiry-call",
+            call_id="second-candidate-submit",
+            operation="candidate_manage",
+            arguments={
+                "action": "submit_question_from_materiality",
+                "project_id": project_id,
+                "review_candidate_id": "18" * 16,
+                "dimension_id": second_dimension_id,
+                "research_state": "ready_to_ask",
+                "research_state_basis": "Repository facts cannot choose the user-owned shape policy.",
+                "retention_basis": "current work session",
+                "bounded_summary": "Choose the repository-shape boundary",
+                "prompt": second_prompt,
+                "why_now": "The boundary changes the maintained repository surface.",
+                "established_facts": ["Both bounded and expanded shapes are viable."],
+                "assumptions": [],
+                "uncertainty": ["The preferred maintained scope is user-owned."],
+                "alternatives": [
+                    {"key": "bounded", "label": "Bounded shape", "consequence": "Limits the maintained surface"},
+                    {"key": "expanded", "label": "Expanded shape", "consequence": "Broadens the maintained surface"},
+                ],
+                "recommendation_key": "bounded",
+                "recommendation_rationale": "The bounded shape minimizes unrelated surface.",
+                "trade_offs": ["A narrower shape preserves fewer extension points."],
+                "known_limits": [],
+                "what_unlocks": ["ordinary implementation work"],
+                "duplicate_basis": "canonical inspection found no matching Question",
+                "presentation_order": 2,
+            },
+            structured={
+                "action": "submit_question_from_materiality",
+                "state": "stored",
+                "review_candidate_id": "18" * 16,
+                "dimension_id": second_dimension_id,
+                "candidate_id": second_candidate_id,
+                "candidate_revision": 1,
+                "research_state": "ready_to_ask",
+                "canonical_mutation": False,
+            },
+        )
+        insert_successful_mcp_completion_before(
+            fixture,
+            before_call_marker="inquiry-call",
+            call_id="second-candidate-promote",
+            operation="candidate_manage",
+            arguments={
+                "action": "promote_question",
+                "project_id": project_id,
+                "candidate_id": second_candidate_id,
+            },
+            structured={
+                "action": "promote_question",
+                "candidate_id": second_candidate_id,
+                "question_id": second_question_id,
+                "canonical_replayed": False,
+                "candidate_reconciled": True,
+            },
+        )
+        mutate_custom_output(
+            fixture,
+            "work",
+            "inquiry-call",
+            lambda output: output["questions"].append({
+                "identity": second_question_id,
+                "revision": 1,
+                "prompt": second_prompt,
+            }),
+        )
+        insert_successful_mcp_completion_before(
+            fixture,
+            before_call_marker="materiality-revision-call",
+            call_id="second-decision",
+            operation="decision_record",
+            arguments={
+                "project_id": project_id,
+                "question_id": second_question_id,
+                "question_revision": 1,
+                "alternative_key": "bounded",
+                "user_turn": response_text,
+            },
+            structured={
+                "project_id": project_id,
+                "user_response_source_id": response_source_id,
+                "all_succeeded": True,
+                "outcomes": [{
+                    "question_id": second_question_id,
+                    "revision": 1,
+                    "outcome": "recorded",
+                }],
+            },
+        )
+        path, events = capture_events(fixture, "work")
+        decision_user_turns = [
+            value
+            for value in events
+            if value.get("payload", {}).get("type") == "user_message"
+            and "decision-user-turn" in str(
+                value.get("payload", {}).get("client_id", "")
+            )
+        ]
+        if len(decision_user_turns) != 1:
+            raise AssertionError("fixture Decision response turn is not unique")
+        decision_user_turns[0]["payload"]["message"] = response_text
+        for value in events:
+            payload = value.get("payload", {})
+            invocation = payload.get("invocation", {})
+            if (
+                payload.get("type") == "mcp_tool_call_end"
+                and invocation.get("tool") == "decision_record"
+            ):
+                invocation["arguments"]["user_turn"] = response_text
+            if payload.get("type") == "custom_tool_call" and "decision-call" in str(
+                payload.get("call_id", "")
+            ):
+                wrapper = parse_mcp_wrapper(payload.get("input"))
+                if wrapper is not None:
+                    old = json.dumps(wrapper.arguments, separators=(",", ":"))
+                    arguments = json.loads(json.dumps(wrapper.arguments))
+                    arguments["user_turn"] = response_text
+                    payload["input"] = payload["input"].replace(
+                        old, json.dumps(arguments, separators=(",", ":")), 1
+                    )
+        store_capture(fixture, "work", path, events)
+
+        def resolve_second_dimension(arguments: dict[str, Any]) -> None:
+            for judgment in arguments["judgments"]:
+                if judgment["choice_id"] == second_dimension_id:
+                    judgment["resolution_decision_id"] = second_decision_id
+
+        mutate_mcp_call_action(
+            fixture,
+            "work",
+            "materiality_review",
+            "revise",
+            resolve_second_dimension,
+        )
+        mutate_mcp_call_action(
+            fixture,
+            "resume",
+            "materiality_review",
+            "record",
+            resolve_second_dimension,
+        )
+        for capture_name in ("work", "resume"):
+            mutate_mcp_call(
+                fixture,
+                capture_name,
+                "checkpoint_record",
+                lambda arguments: arguments["applied_decision_ids"].append(
+                    second_decision_id
+                ),
+            )
+            mutate_custom_output(
+                fixture,
+                capture_name,
+                "checkpoint-call",
+                lambda output: output["applied_decision_ids"].append(
+                    second_decision_id
+                ),
+            )
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
+            lambda output: (
+                output["decisions"].append({
+                    "identity": second_decision_id,
+                    "revision": 1,
+                    "state": "active",
+                    "choice": "bounded",
+                    "rationale": None,
+                }),
+                output["checkpoint"]["applied_decisions"].append(
+                    second_decision_id
+                ),
+            ),
+        )
+
+        def encode_strings(values: list[str]) -> str:
+            raw = len(values).to_bytes(8, "big")
+            for value in values:
+                encoded = value.encode("utf-8")
+                raw += len(encoded).to_bytes(8, "big") + encoded
+            return raw.hex()
+
+        def add_second_lifecycle(bundle: dict[str, Any]) -> None:
+            tables = {
+                table["name"]: table for table in bundle["payload"]["tables"]
+            }
+            for table_name in (
+                "questions",
+                "question_revisions",
+                "question_response_sources",
+                "question_decision_history_witnesses",
+                "decisions",
+            ):
+                table = tables[table_name]
+                row = json.loads(json.dumps(table["rows"][0]))
+                columns = table["columns"]
+                if "question_id" in columns:
+                    row[columns.index("question_id")] = {
+                        "type": "bytes",
+                        "value": second_question_id,
+                    }
+                if "id" in columns and table_name == "questions":
+                    row[columns.index("id")] = {
+                        "type": "bytes",
+                        "value": second_question_id,
+                    }
+                if "id" in columns and table_name == "decisions":
+                    row[columns.index("id")] = {
+                        "type": "bytes",
+                        "value": second_decision_id,
+                    }
+                if "root_decision_id" in columns:
+                    row[columns.index("root_decision_id")] = {
+                        "type": "bytes",
+                        "value": second_decision_id,
+                    }
+                if "prompt_basis" in columns:
+                    row[columns.index("prompt_basis")] = {
+                        "type": "text",
+                        "value": second_prompt,
+                    }
+                if "presentation_order" in columns:
+                    row[columns.index("presentation_order")] = {
+                        "type": "integer",
+                        "value": 2,
+                    }
+                if "material_scope" in columns:
+                    row[columns.index("material_scope")] = {
+                        "type": "bytes",
+                        "value": encode_strings([
+                            "repository shape policy",
+                            f"work-authority:{second_dimension_id}",
+                        ]),
+                    }
+                table["rows"].append(row)
+            primary_revision = tables["question_revisions"]["rows"][0]
+            material_scope_index = tables["question_revisions"]["columns"].index(
+                "material_scope"
+            )
+            primary_revision[material_scope_index] = {
+                "type": "bytes",
+                "value": encode_strings([
+                    "operator diagnostic policy",
+                    f"work-authority:{primary_dimension_id}",
+                ]),
+            }
+            checkpoint_decisions = tables["checkpoint_decisions"]
+            checkpoint_row = json.loads(
+                json.dumps(checkpoint_decisions["rows"][0])
+            )
+            decision_index = checkpoint_decisions["columns"].index("decision_id")
+            position_index = checkpoint_decisions["columns"].index("position")
+            checkpoint_row[decision_index] = {
+                "type": "bytes",
+                "value": second_decision_id,
+            }
+            checkpoint_row[position_index] = {"type": "integer", "value": 1}
+            checkpoint_decisions["rows"].append(checkpoint_row)
+            sources = tables["sources"]
+            locator_index = sources["columns"].index("locator")
+            for row in sources["rows"]:
+                if row[sources["columns"].index("id")].get("value") == response_source_id:
+                    row[locator_index] = {"type": "text", "value": response_text}
+
+        mutate_bundle(fixture, add_second_lifecycle)
+        return fixture
+
     def replace_initial_task_text(
         fixture: dict[str, Any], replacement: Callable[[str], str]
     ) -> None:
@@ -13693,6 +14239,142 @@ def self_test() -> int:
         user_events[0]["payload"]["message"] = task_text
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
+
+    independent_questions = independent_two_question_fixture()
+    independent_question_result = real_session_evidence(
+        independent_questions,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        independent_question_result["status"] != "passed"
+        or len(independent_question_result["decision_ids"]) != 2
+        or len(
+            independent_question_result["inquiry_behavior_basis"]
+            ["ask_user_question_basis"]["groups"]
+        )
+        != 2
+    ):
+        raise AssertionError(
+            "two independent material Question/Decision lifecycles were rejected"
+        )
+
+    independent_capture_path = (
+        evidence_directory
+        / independent_questions["evidence"]["captures"]["work"]["file"]
+    )
+    independent_descriptor_identity = hashlib.sha256(
+        json.dumps(independent_questions, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    try:
+        build_work_blocker_result(
+            candidate_revision,
+            independent_questions,
+            independent_descriptor_identity,
+            load_codex_capture(independent_capture_path),
+        )
+    except ValueError as error:
+        if "no machine-observable terminal work blocker" not in str(error):
+            raise
+    else:
+        raise AssertionError(
+            "valid independent material lifecycles were treated as an early blocker"
+        )
+
+    missing_independent_promotion = independent_two_question_fixture()
+    remove_mcp_completion(
+        missing_independent_promotion, "work", "second-candidate-promote"
+    )
+    if real_session_evidence(
+        missing_independent_promotion,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["appropriate_inquiry_outcome"] != "failed":
+        raise AssertionError(
+            "independent dimension without a promoted Question qualified"
+        )
+
+    stale_independent_revision = independent_two_question_fixture()
+    stale_path, stale_events = capture_events(stale_independent_revision, "work")
+    for value in stale_events:
+        payload = value.get("payload", {})
+        if "second-decision" not in str(payload.get("call_id", "")):
+            continue
+        if payload.get("type") == "mcp_tool_call_end":
+            payload["invocation"]["arguments"]["question_revision"] = 2
+        if payload.get("type") == "custom_tool_call":
+            wrapper = parse_mcp_wrapper(payload.get("input"))
+            if wrapper is not None:
+                old = json.dumps(wrapper.arguments, separators=(",", ":"))
+                arguments = json.loads(json.dumps(wrapper.arguments))
+                arguments["question_revision"] = 2
+                payload["input"] = payload["input"].replace(
+                    old, json.dumps(arguments, separators=(",", ":")), 1
+                )
+    store_capture(stale_independent_revision, "work", stale_path, stale_events)
+    if real_session_evidence(
+        stale_independent_revision,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["appropriate_inquiry_outcome"] != "failed":
+        raise AssertionError("a stale independent Question revision qualified")
+
+    spurious_independent_submission = independent_two_question_fixture()
+    insert_successful_mcp_completion_before(
+        spurious_independent_submission,
+        before_call_marker="inquiry-call",
+        call_id="spurious-third-candidate-submit",
+        operation="candidate_manage",
+        arguments={
+            "action": "submit_question_from_materiality",
+            "project_id": "01" * 16,
+            "review_candidate_id": "18" * 16,
+            "dimension_id": "repository-shape-boundary",
+            "research_state": "ready_to_ask",
+            "research_state_basis": "Duplicate submission must not qualify.",
+            "retention_basis": "current work session",
+            "bounded_summary": "Duplicate repository-shape question",
+            "prompt": "Should the repository-shape boundary be selected again?",
+            "why_now": "This intentionally duplicates an already represented dimension.",
+            "established_facts": [],
+            "assumptions": [],
+            "uncertainty": ["No new material uncertainty exists."],
+            "alternatives": [
+                {
+                    "key": "duplicate",
+                    "label": "Duplicate",
+                    "consequence": "Manufactures another interruption",
+                }
+            ],
+            "recommendation_key": "duplicate",
+            "recommendation_rationale": "Regression fixture only.",
+            "trade_offs": [],
+            "known_limits": [],
+            "what_unlocks": [],
+            "duplicate_basis": "Intentionally false duplicate basis.",
+            "presentation_order": 3,
+        },
+        structured={
+            "action": "submit_question_from_materiality",
+            "state": "stored",
+            "review_candidate_id": "18" * 16,
+            "dimension_id": "repository-shape-boundary",
+            "candidate_id": "24" * 16,
+            "candidate_revision": 1,
+            "research_state": "ready_to_ask",
+            "canonical_mutation": False,
+        },
+    )
+    if real_session_evidence(
+        spurious_independent_submission,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["appropriate_inquiry_outcome"] != "failed":
+        raise AssertionError("a spurious independent Question submission qualified")
 
     missing_scope_binding = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -16605,6 +17287,9 @@ def self_test() -> int:
         "dimension_disappearance_from_revision_rejected": "passed",
         "stale_materiality_review_revision_rejected": "passed",
         "independent_user_owned_dimensions_use_separate_decisions": "passed",
+        "two_independent_material_question_lifecycles": "passed",
+        "missing_stale_and_spurious_material_lifecycles_rejected": "passed",
+        "multi_question_early_blocker_classification": "passed",
         "coupled_dimensions_require_complete_decision_scope": "passed",
         "current_mcp_completion_envelope": "passed",
         "json_stringify_wrapper_completion_authority": "passed",
