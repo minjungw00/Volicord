@@ -463,7 +463,18 @@
       "resolved_user_owned_decision_correlation": "per_dimension_id",
       "coupled_decision_requires_each_dimension_scope": true,
       "dimension_disappearance_across_revision_allowed": false,
-      "review_revision_must_advance": true
+      "review_revision_must_advance": true,
+      "pre_work_readiness_sequence": [
+        "record_or_revise_returns_executable_scope_required",
+        "inspect_binds_typed_executable_scope",
+        "inspect_returns_ready_for_work"
+      ],
+      "executable_scope_fields": [
+        "paths",
+        "components",
+        "work_contexts"
+      ],
+      "late_scope_binding_can_certify_earlier_work": false
     },
     "cycle_descriptor_contract": {
       "work_user_task_field": "work_user_task",
@@ -529,11 +540,11 @@
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
       "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
-      "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
+      "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
       "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
       "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
       "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
-      "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, ready-for-work, and no manufactured Decision",
+      "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
       "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
       "perform real repository work after the baseline",
       "commands used only for incidental inspection need not become Checkpoint verification facts",
@@ -547,18 +558,18 @@
         "pre-work unresolved user-owned Materiality Review",
         "ready-to-ask or fully researched material Question Candidate and presented Question",
         "exact current-host response linked to the current Question revision",
-        "canonical Decision and ready-for-work Materiality revision before affected work"
+        "canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
       ],
       "hidden_user_owned_decision_additional": [
         "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
         "repository research attachment and ready-to-ask transition before Question promotion",
-        "Decision and ready-for-work Materiality revision before affected work"
+        "Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
       ],
       "non_user_owned_classes": {
         "research_or_no_question": "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision",
         "delegated_implementation_choice": "current Goal delegation with no manufactured Candidate, Question, or Decision",
-        "exploratory_uncertainty": "evidence-backed exploratory disposition that is ready at record or is resolved through a same-review revision before affected work, with no manufactured Candidate, Question, or Decision",
-        "learning_deliberation": "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, to terminal ready-for-work before affected work with no canonical Decision",
+        "exploratory_uncertainty": "evidence-backed exploratory disposition that reaches executable-scope-required at record or through a same-review revision, then typed inspect readiness before affected work, with no manufactured Candidate, Question, or Decision",
+        "learning_deliberation": "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision",
         "learning_routine_control": "active participation, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
       },
       "materiality_correlation": "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, review_candidate_id, dimension_id, and ordered review_revision",

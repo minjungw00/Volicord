@@ -1266,11 +1266,11 @@ def load_definition() -> dict[str, Any]:
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote a genuinely material Question and record an explicit current-host user Decision",
-            "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, and revise the same review to ready-for-work before the affected write",
+            "for explicit or hidden user-owned decision classes, reuse the unresolved review dimension in the Question Candidate, obtain the explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
             "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
-            "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, ready-for-work, and no manufactured Decision",
+            "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
             "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
@@ -1345,12 +1345,12 @@ def load_definition() -> dict[str, Any]:
             "pre-work unresolved user-owned Materiality Review",
             "ready-to-ask or fully researched material Question Candidate and presented Question",
             "exact current-host response linked to the current Question revision",
-            "canonical Decision and ready-for-work Materiality revision before affected work",
+            "canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
         ],
         "hidden_user_owned_decision_additional": [
             "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
             "repository research attachment and ready-to-ask transition before Question promotion",
-            "Decision and ready-for-work Materiality revision before affected work",
+            "Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
         ],
         "non_user_owned_classes": {
             "research_or_no_question": (
@@ -1360,10 +1360,10 @@ def load_definition() -> dict[str, Any]:
                 "current Goal delegation with no manufactured Candidate, Question, or Decision"
             ),
             "exploratory_uncertainty": (
-                "evidence-backed exploratory disposition that is ready at record or is resolved through a same-review revision before affected work, with no manufactured Candidate, Question, or Decision"
+                "evidence-backed exploratory disposition that reaches executable-scope-required at record or through a same-review revision, then typed inspect readiness before affected work, with no manufactured Candidate, Question, or Decision"
             ),
             "learning_deliberation": (
-                "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, to terminal ready-for-work before affected work with no canonical Decision"
+                "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision"
             ),
             "learning_routine_control": (
                 "active participation, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
@@ -2922,6 +2922,136 @@ def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: i
     )
 
 
+def pre_work_readiness_observation(
+    capture: CodexCapture | None,
+    *,
+    review_candidate_id: Any,
+    goal_context_id: Any,
+    baseline_analysis_snapshot_id: Any,
+    predecessor_call: ToolCall | None,
+    first_write_sequence: int | None,
+    required_paths: list[str] | None = None,
+) -> tuple[bool, ToolCall | None, dict[str, Any]]:
+    """Observe the production executable-scope transition before ordinary work."""
+
+    predecessor_workflow = (
+        predecessor_call.result.get("workflow")
+        if predecessor_call is not None
+        and isinstance(predecessor_call.result.get("workflow"), dict)
+        else None
+    )
+    predecessor_ready_for_scope = bool(
+        predecessor_call is not None
+        and isinstance(predecessor_workflow, dict)
+        and predecessor_workflow.get("stage") == "materiality_review"
+        and predecessor_workflow.get("disposition") == "executable_scope_required"
+        and predecessor_workflow.get("required_next_action")
+        == {"tool": "materiality_review", "action": "inspect"}
+        and predecessor_workflow.get("blocks_ordinary_work") is True
+    )
+    matching: list[ToolCall] = []
+    if (
+        capture is not None
+        and predecessor_call is not None
+        and first_write_sequence is not None
+        and nonempty_string(review_candidate_id)
+        and nonempty_string(goal_context_id)
+        and nonempty_string(baseline_analysis_snapshot_id)
+    ):
+        matching = [
+            call
+            for call in capture.successful_calls("materiality_review")
+            if call.arguments.get("action") == "inspect"
+            and call.result.get("action") == "inspect"
+            and call.arguments.get("review_candidate_id") == review_candidate_id
+            and call.result.get("review_candidate_id") == review_candidate_id
+            and call.arguments.get("goal_context_id") == goal_context_id
+            and call.result.get("goal_context_id") == goal_context_id
+            and call.arguments.get("baseline_analysis_snapshot_id")
+            == baseline_analysis_snapshot_id
+            and call.result.get("baseline_analysis_snapshot_id")
+            == baseline_analysis_snapshot_id
+            and predecessor_call.completion_sequence < call.sequence
+            and call.completion_sequence < first_write_sequence
+        ]
+    inspect_call = max(matching, key=lambda call: call.sequence) if matching else None
+    arguments_scope = {
+        key: sorted(set(inspect_call.arguments.get(key, [])))
+        for key in ("paths", "components", "work_contexts")
+    } if inspect_call is not None else None
+    result_scope = (
+        inspect_call.result.get("executable_work_scope")
+        if inspect_call is not None
+        and isinstance(inspect_call.result.get("executable_work_scope"), dict)
+        else None
+    )
+    workflow = (
+        inspect_call.result.get("workflow")
+        if inspect_call is not None
+        and isinstance(inspect_call.result.get("workflow"), dict)
+        else None
+    )
+    scope_shape_ok = bool(
+        inspect_call is not None
+        and set(inspect_call.arguments)
+        == {
+            "action",
+            "project_id",
+            "goal_context_id",
+            "baseline_analysis_snapshot_id",
+            "review_candidate_id",
+            "paths",
+            "components",
+            "work_contexts",
+            "met_revisit_triggers",
+        }
+        and isinstance(inspect_call.arguments.get("met_revisit_triggers"), list)
+        and arguments_scope is not None
+        and any(arguments_scope.values())
+        and all(
+            isinstance(inspect_call.arguments.get(key), list)
+            and all(nonempty_string(value) for value in inspect_call.arguments[key])
+            for key in ("paths", "components", "work_contexts")
+        )
+        and result_scope == arguments_scope
+        and inspect_call.result.get("project_id") == inspect_call.arguments.get("project_id")
+        and inspect_call.result.get("read_only") is False
+        and isinstance(inspect_call.result.get("review_revision"), int)
+        and inspect_call.result["review_revision"] >= 1
+    )
+    required_scope_ok = bool(
+        arguments_scope is not None
+        and (
+            required_paths is None
+            or scope_covers(arguments_scope["paths"], required_paths)
+        )
+    )
+    ready = bool(
+        predecessor_ready_for_scope
+        and scope_shape_ok
+        and required_scope_ok
+        and isinstance(workflow, dict)
+        and workflow.get("stage") == "ready_for_work"
+        and workflow.get("disposition") == "ready_for_work"
+        and workflow.get("blocks_ordinary_work") is False
+        and workflow.get("unresolved_requirements") == []
+    )
+    return ready, inspect_call, {
+        "predecessor_sequence": (
+            predecessor_call.sequence if predecessor_call is not None else None
+        ),
+        "predecessor_executable_scope_required": predecessor_ready_for_scope,
+        "matching_inspect_count": len(matching),
+        "inspect_sequence": inspect_call.sequence if inspect_call is not None else None,
+        "review_candidate_id": review_candidate_id,
+        "goal_context_id": goal_context_id,
+        "baseline_analysis_snapshot_id": baseline_analysis_snapshot_id,
+        "executable_work_scope": result_scope,
+        "required_paths_covered": required_scope_ok,
+        "ready_for_work": ready,
+    }
+
+
 def resume_continuation_facts(
     capture: CodexCapture | None,
     recall_call: ToolCall | None,
@@ -3341,12 +3471,36 @@ def work_blocker_behavior_observations(
         key=lambda call: call.sequence,
     )
     final_review = revisions[-1] if revisions else record
-    final_workflow = final_review.result.get("workflow")
-    ready_before_work = (
-        isinstance(final_workflow, dict)
-        and final_workflow.get("stage") == "ready_for_work"
-        and final_workflow.get("blocks_ordinary_work") is False
-        and final_review.completion_sequence < first_work_change
+    readiness_predecessor = final_review
+    if behavior_class == "learning_deliberation":
+        learning_completions = [
+            call
+            for call in capture.successful_calls("learning_deliberation")
+            if call.arguments.get("action") == "complete"
+            and call.completion_sequence < first_work_change
+        ]
+        if learning_completions:
+            readiness_predecessor = max(
+                learning_completions, key=lambda call: call.sequence
+            )
+    required_paths = sorted({
+        path
+        for observation in meaningful_work_path_observations(capture)
+        for path in observation.paths
+        if not looks_like_synthetic_marker(path)
+        and Path(path).suffix.lower() not in {".txt", ".marker"}
+        and not generated_repository_path(path)
+    })
+    ready_before_work, readiness_call, _readiness_basis = (
+        pre_work_readiness_observation(
+            capture,
+            review_candidate_id=review_id,
+            goal_context_id=record.result.get("goal_context_id"),
+            baseline_analysis_snapshot_id=baseline_id,
+            predecessor_call=readiness_predecessor,
+            first_write_sequence=first_work_change,
+            required_paths=required_paths,
+        )
     )
 
     if behavior_class not in USER_OWNED_BEHAVIOR_CLASSES:
@@ -3453,11 +3607,19 @@ def work_blocker_behavior_observations(
         if call.arguments.get("action") == "revise"
         and call.arguments.get("review_candidate_id") == review_id
         and call.result.get("review_candidate_id") == review_id
-        and isinstance(call.result.get("workflow"), dict)
-        and call.result["workflow"].get("stage") == "ready_for_work"
-        and call.result["workflow"].get("blocks_ordinary_work") is False
     ]
     revision = revisions[-1] if revisions else None
+    user_ready_before_work, readiness_call, _readiness_basis = (
+        pre_work_readiness_observation(
+            capture,
+            review_candidate_id=review_id,
+            goal_context_id=record.result.get("goal_context_id"),
+            baseline_analysis_snapshot_id=baseline_id,
+            predecessor_call=revision,
+            first_write_sequence=first_work_change,
+            required_paths=required_paths,
+        )
+    )
     research_calls = [
         call
         for call in capture.successful_calls("candidate_manage")
@@ -3522,7 +3684,9 @@ def work_blocker_behavior_observations(
         and record.result.get("workflow", {}).get("blocks_ordinary_work") is True
         and record.sequence < submit.sequence < promote.sequence < frontier.sequence
         < decision.sequence < revision.sequence
-        and revision.completion_sequence < first_work_change
+        and revision.completion_sequence
+        < (readiness_call.sequence if readiness_call is not None else -1)
+        and user_ready_before_work
         and (explicit_question_path or (hidden_research and hidden_investigation))
     )
     return lifecycle_ok and decision_ok, lifecycle_ok, decision_ok
@@ -4948,6 +5112,34 @@ def materiality_review_facts(
     revised_workflow = (
         final_revision.result.get("workflow") if final_revision is not None else None
     )
+    readiness_predecessor = final_revision if final_revision is not None else record
+    if behavior_class == "learning_deliberation":
+        learning_completions = [
+            call
+            for call in work.successful_calls("learning_deliberation")
+            if call.arguments.get("action") == "complete"
+            and call.completion_sequence < first_write_sequence
+        ]
+        if learning_completions:
+            readiness_predecessor = max(
+                learning_completions, key=lambda call: call.sequence
+            )
+    readiness_ok, readiness_call, readiness_basis = pre_work_readiness_observation(
+        work,
+        review_candidate_id=review_id,
+        goal_context_id=goal_context_id,
+        baseline_analysis_snapshot_id=baseline_id,
+        predecessor_call=readiness_predecessor,
+        first_write_sequence=first_write_sequence,
+        required_paths=sorted({
+            path
+            for observation in meaningful_work_path_observations(work)
+            for path in observation.paths
+            if not looks_like_synthetic_marker(path)
+            and Path(path).suffix.lower() not in {".txt", ".marker"}
+            and not generated_repository_path(path)
+        }),
+    )
 
     if resumed:
         resolved = (
@@ -4961,9 +5153,7 @@ def materiality_review_facts(
             common
             and resolved
             and (is_user_owned_behavior(behavior_class) or not user_owned_ids)
-            and workflow.get("stage") == "ready_for_work"
-            and workflow.get("disposition") == "ready_for_work"
-            and workflow.get("blocks_ordinary_work") is False
+            and readiness_ok
         )
     elif is_user_owned_behavior(behavior_class):
         resolved = bool(final_dimensions) and final_revision is not None and (
@@ -4995,17 +5185,22 @@ def materiality_review_facts(
             and chain_preserves_review_identity
             and resolved
             and final_revision is not None
-            and final_revision.completion_sequence < first_write_sequence
+            and final_revision.completion_sequence
+            < (readiness_call.sequence if readiness_call is not None else -1)
             and isinstance(revised_workflow, dict)
-            and revised_workflow.get("stage") == "ready_for_work"
-            and revised_workflow.get("blocks_ordinary_work") is False
+            and revised_workflow.get("stage") == "materiality_review"
+            and revised_workflow.get("disposition") == "executable_scope_required"
+            and revised_workflow.get("blocks_ordinary_work") is True
+            and readiness_ok
         )
     elif behavior_class == "exploratory_uncertainty":
         initially_ready = (
             not pending_exploratory_ids
             and all(dimension_authority_valid(value) for value in (dimensions or {}).values())
-            and workflow.get("stage") == "ready_for_work"
-            and workflow.get("blocks_ordinary_work") is False
+            and workflow.get("stage") == "materiality_review"
+            and workflow.get("disposition") == "executable_scope_required"
+            and workflow.get("blocks_ordinary_work") is True
+            and readiness_ok
         )
         resolved_after_evidence = bool(
             pending_exploratory_ids
@@ -5015,10 +5210,13 @@ def materiality_review_facts(
             and chain_preserves_dimensions
             and chain_preserves_review_identity
             and all(dimension_authority_valid(value) for value in final_dimensions.values())
-            and final_revision.completion_sequence < first_write_sequence
+            and final_revision.completion_sequence
+            < (readiness_call.sequence if readiness_call is not None else -1)
             and isinstance(revised_workflow, dict)
-            and revised_workflow.get("stage") == "ready_for_work"
-            and revised_workflow.get("blocks_ordinary_work") is False
+            and revised_workflow.get("stage") == "materiality_review"
+            and revised_workflow.get("disposition") == "executable_scope_required"
+            and revised_workflow.get("blocks_ordinary_work") is True
+            and readiness_ok
         )
         valid = common and (initially_ready or resolved_after_evidence) and not work.calls(
             "candidate_manage"
@@ -5029,8 +5227,17 @@ def materiality_review_facts(
             common
             and not user_owned_ids
             and workflow.get("stage")
-            == ("learning_deliberation" if learning_deliberation_expected else "ready_for_work")
-            and workflow.get("blocks_ordinary_work") is learning_deliberation_expected
+            == (
+                "learning_deliberation"
+                if learning_deliberation_expected
+                else "materiality_review"
+            )
+            and workflow.get("blocks_ordinary_work") is True
+            and (
+                learning_deliberation_expected
+                or workflow.get("disposition") == "executable_scope_required"
+            )
+            and readiness_ok
             and not work.calls("candidate_manage")
             and not work.calls("inquiry_frontier")
             and not work.calls("decision_record")
@@ -5059,6 +5266,7 @@ def materiality_review_facts(
             final_revision.sequence if final_revision is not None else None
         ),
         "resumed": resumed,
+        "pre_work_readiness": readiness_basis,
         "learning_participation": learning_participation,
         "engineering_choice_discovery": discovery_basis,
     }
@@ -5183,8 +5391,10 @@ def learning_deliberation_trace(
             valid &= (
                 state == "feedback_provided"
                 and call.result.get("state", {}).get("state") == "completed"
-                and call.result.get("workflow", {}).get("stage") == "ready_for_work"
-                and call.result.get("workflow", {}).get("blocks_ordinary_work") is False
+                and call.result.get("workflow", {}).get("stage") == "materiality_review"
+                and call.result.get("workflow", {}).get("disposition")
+                == "executable_scope_required"
+                and call.result.get("workflow", {}).get("blocks_ordinary_work") is True
             )
             state = "completed"
             terminal_call = call
@@ -5210,9 +5420,12 @@ def learning_deliberation_trace(
         if begin is not None
         else False,
         "terminal_state": state,
-        "ready_for_work_after_terminal": bool(
+        "executable_scope_required_after_terminal": bool(
             terminal_call
-            and terminal_call.result.get("workflow", {}).get("stage") == "ready_for_work"
+            and terminal_call.result.get("workflow", {}).get("stage")
+            == "materiality_review"
+            and terminal_call.result.get("workflow", {}).get("disposition")
+            == "executable_scope_required"
         )
         if state == "completed"
         else state in {"delegated", "skipped"},
@@ -5805,7 +6018,9 @@ def interaction_cost_diagnostics(capture: CodexCapture | None) -> dict[str, Any]
     ready_calls = [
         call
         for call in capture.successful_calls("materiality_review")
-        if isinstance(call.result.get("workflow"), dict)
+        if call.arguments.get("action") == "inspect"
+        and call.result.get("action") == "inspect"
+        and isinstance(call.result.get("workflow"), dict)
         and call.result["workflow"].get("stage") == "ready_for_work"
         and call.result["workflow"].get("blocks_ordinary_work") is False
     ]
@@ -8506,6 +8721,7 @@ def real_session_fixture(
     hidden_inspection_call = f"{kind}-hidden-inspection-call-{cycle}"
     decision_call = f"{kind}-decision-call-{cycle}"
     materiality_revision_call = f"{kind}-materiality-revision-call-{cycle}"
+    materiality_inspect_call = f"{kind}-materiality-scope-binding-{cycle}"
     patch_call = f"{kind}-patch-call-{cycle}"
     current_analysis_call = f"{kind}-current-analysis-call-{cycle}"
     verification_call = f"{kind}-verification-call-{cycle}"
@@ -8656,6 +8872,18 @@ def real_session_fixture(
                 {"kind": "materiality_review_candidate", "identity": review_id},
             ],
             "unresolved_requirements": [],
+        }
+
+    def executable_scope_required_workflow(
+        review_id: str, baseline_id: str
+    ) -> dict[str, Any]:
+        return {
+            **ready_workflow(review_id, baseline_id),
+            "stage": "materiality_review",
+            "disposition": "executable_scope_required",
+            "required_next_action": {"tool": "materiality_review", "action": "inspect"},
+            "blocks_ordinary_work": True,
+            "reason": "bind the complete bounded executable scope before ordinary work",
         }
 
     def learning_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
@@ -8815,7 +9043,9 @@ def real_session_fixture(
                     if is_user_owned_behavior(behavior_class)
                     else learning_workflow(review_candidate, baseline_analysis)
                     if behavior_class == "learning_deliberation"
-                    else ready_workflow(review_candidate, baseline_analysis)
+                    else executable_scope_required_workflow(
+                        review_candidate, baseline_analysis
+                    )
                 ),
             },
         ),
@@ -9006,6 +9236,43 @@ def real_session_fixture(
                 "baseline_analysis_snapshot_id": baseline_analysis,
                 "review_analysis_snapshot_id": current_analysis,
                 "canonical_mutation": False,
+                "workflow": executable_scope_required_workflow(
+                    review_candidate, baseline_analysis
+                ),
+            },
+        ),
+        mcp_call(
+            decision_turn,
+            materiality_inspect_call,
+            "materiality_review",
+            {
+                "action": "inspect",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "review_candidate_id": review_candidate,
+                "paths": work_paths,
+                "components": [],
+                "work_contexts": [],
+                "met_revisit_triggers": [],
+            },
+        ),
+        custom_output(
+            decision_turn,
+            materiality_inspect_call,
+            {
+                "action": "inspect",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": baseline_analysis,
+                "review_candidate_id": review_candidate,
+                "review_revision": 2 if is_user_owned_behavior(behavior_class) else 1,
+                "executable_work_scope": {
+                    "paths": work_paths,
+                    "components": [],
+                    "work_contexts": [],
+                },
+                "read_only": False,
                 "workflow": ready_workflow(review_candidate, baseline_analysis),
             },
         ),
@@ -9135,7 +9402,7 @@ def real_session_fixture(
         patch_index = next(
             index
             for index, value in enumerate(work_events)
-            if value.get("payload", {}).get("call_id") == patch_call
+            if value.get("payload", {}).get("call_id") == materiality_inspect_call
         )
         work_events[patch_index:patch_index] = [
             user(
@@ -9239,7 +9506,9 @@ def real_session_fixture(
                     "canonical_decision": False,
                     "deliberation_candidate_id": learning_candidate,
                     "state": {"state": "completed"},
-                    "workflow": ready_workflow(review_candidate, baseline_analysis),
+                    "workflow": executable_scope_required_workflow(
+                        review_candidate, baseline_analysis
+                    ),
                 },
             ),
         ]
@@ -9251,6 +9520,7 @@ def real_session_fixture(
     resume_baseline_call = f"{kind}-resume-baseline-call-{cycle}"
     resume_discovery_call = f"{kind}-resume-discovery-call-{cycle}"
     resume_materiality_call = f"{kind}-resume-materiality-call-{cycle}"
+    resume_materiality_inspect_call = f"{kind}-resume-materiality-scope-binding-{cycle}"
     resume_patch_call = f"{kind}-resume-patch-call-{cycle}"
     resume_current_analysis_call = f"{kind}-resume-current-analysis-call-{cycle}"
     resume_verification_call = f"{kind}-resume-verification-call-{cycle}"
@@ -9459,6 +9729,44 @@ def real_session_fixture(
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
                 "review_analysis_snapshot_id": resume_review_analysis,
                 "canonical_mutation": False,
+                "workflow": executable_scope_required_workflow(
+                    resume_review_candidate, resume_baseline_analysis
+                ),
+            },
+        ),
+        mcp_call(
+            resume_turn,
+            resume_materiality_inspect_call,
+            "materiality_review",
+            {
+                "action": "inspect",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "review_candidate_id": resume_review_candidate,
+                "paths": ["src/resume.rs"],
+                "components": [],
+                "work_contexts": [],
+                "met_revisit_triggers": [],
+            },
+            fallback="??",
+        ),
+        custom_output(
+            resume_turn,
+            resume_materiality_inspect_call,
+            {
+                "action": "inspect",
+                "project_id": project,
+                "goal_context_id": context,
+                "baseline_analysis_snapshot_id": resume_baseline_analysis,
+                "review_candidate_id": resume_review_candidate,
+                "review_revision": 1,
+                "executable_work_scope": {
+                    "paths": ["src/resume.rs"],
+                    "components": [],
+                    "work_contexts": [],
+                },
+                "read_only": False,
                 "workflow": ready_workflow(
                     resume_review_candidate, resume_baseline_analysis
                 ),
@@ -13386,6 +13694,51 @@ def self_test() -> int:
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
 
+    missing_scope_binding = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(
+        missing_scope_binding, "work", "materiality-scope-binding"
+    )
+    if real_session_evidence(
+        missing_scope_binding,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("ordinary work without executable-scope readiness qualified")
+
+    late_scope_binding = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    late_path, late_events = capture_events(late_scope_binding, "work")
+    late_values = [
+        value
+        for value in late_events
+        if "materiality-scope-binding"
+        in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    late_events = [
+        value
+        for value in late_events
+        if "materiality-scope-binding"
+        not in str(value.get("payload", {}).get("call_id", ""))
+    ]
+    late_write_index = next(
+        index
+        for index, value in enumerate(late_events)
+        if value.get("payload", {}).get("type") == "patch_apply_end"
+    )
+    late_events[late_write_index + 1:late_write_index + 1] = late_values
+    store_capture(late_scope_binding, "work", late_path, late_events)
+    if real_session_evidence(
+        late_scope_binding,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("late executable-scope readiness certified earlier work")
+
     missing_discovery = real_session_fixture(
         "volicord", 1, revision, evidence_directory
     )
@@ -13966,16 +14319,19 @@ def self_test() -> int:
         ]
         resolved_workflow = json.loads(json.dumps(record.result["workflow"]))
         resolved_workflow.update({
-            "stage": "ready_for_work",
-            "disposition": "ready_for_work",
-            "required_next_action": {"tool": "checkpoint_record", "action": None},
-            "blocks_ordinary_work": False,
+            "stage": "materiality_review",
+            "disposition": "executable_scope_required",
+            "required_next_action": {
+                "tool": "materiality_review",
+                "action": "inspect",
+            },
+            "blocks_ordinary_work": True,
             "unresolved_requirements": [],
         })
         resolution_call_id = "exploratory-research-resolution"
         insert_successful_mcp_completion_before(
             fixture,
-            before_call_marker="patch-call",
+            before_call_marker="materiality-scope-binding",
             call_id=resolution_call_id,
             operation="materiality_review",
             arguments={
@@ -16217,6 +16573,8 @@ def self_test() -> int:
         "user_turn_deduplication_and_conflict_rejection": "passed",
         "malformed_current_user_turn_rejected": "passed",
         "engineering_choice_discovery_required": "passed",
+        "executable_scope_readiness_chronology": "passed",
+        "missing_and_late_executable_scope_rejected": "passed",
         "hidden_pre_discovery_investigation_required": "passed",
         "explicit_researched_question_and_identity_correlated_revisions": "passed",
         "explicit_decision_before_affected_write_required": "passed",
