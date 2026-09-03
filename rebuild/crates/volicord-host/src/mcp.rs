@@ -2531,6 +2531,12 @@ fn materiality_judgment_schema(
                 0,
             ),
         ),
+        (
+            "evidence_completion_basis",
+            nonempty_string_array_schema(
+                "Current bounded research or prototype findings that satisfy a discovery-owned evidence requirement before the selected authority disposition applies",
+            ),
+        ),
         ("learning_value", learning_value_schema()),
     ];
     common.append(&mut fields);
@@ -4488,6 +4494,7 @@ fn materiality_dimension_from_judgment(
     let mut contract_basis = string_array(value, "contract_basis")?;
     let mut decision_basis = decision_ids(value, "decision_ids")?;
     let mut research_basis = string_array(value, "research_basis")?;
+    research_basis.extend(string_array(value, "evidence_completion_basis")?);
     let mut explicit_delegation = None;
     let disposition = match required_str(value, "disposition")? {
         "repository_or_environment_fact" => MaterialityDisposition::RepositoryOrEnvironmentFact,
@@ -4541,7 +4548,7 @@ fn materiality_dimension_from_judgment(
         }
         _ => return Err(HostError::new("unknown Materiality Review disposition")),
     };
-    let kinds = match &disposition {
+    let mut kinds = match &disposition {
         MaterialityDisposition::RepositoryOrEnvironmentFact => {
             vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact]
         }
@@ -4581,6 +4588,21 @@ fn materiality_dimension_from_judgment(
             }
         }
     };
+    if value.get("evidence_completion_basis").is_some() {
+        match choice.evidence_state {
+            EngineeringChoiceEvidenceState::Sufficient => {
+                return Err(HostError::new(
+                    "evidence_completion_basis is only valid for a discovery-owned research/prototype requirement",
+                ));
+            }
+            EngineeringChoiceEvidenceState::ResearchRequired => {
+                kinds.push(WorkAuthorityBasisKind::ResearchEvidence);
+            }
+            EngineeringChoiceEvidenceState::PrototypeRequired => {
+                kinds.push(WorkAuthorityBasisKind::PrototypeEvidence);
+            }
+        }
+    }
     if matches!(
         disposition,
         MaterialityDisposition::UnresolvedUserOwnedOutcome {
@@ -5216,6 +5238,12 @@ fn materiality_draft_json(
             "authority_revision_chronology":"If disposition, authority basis, blocking readiness, or affected-scope applicability changes after affected work, the revision is prospective and does not certify that earlier work. Production records this only when maintained baseline/current path evidence proves the chronology; otherwise rollout validation remains responsible for the ordering judgment.",
         },
         "authority_learning_routing":authority_learning_routing_json(),
+        "evidence_state_precedence":{
+            "rule":"A discovery-owned research_required or prototype_required state blocks ordinary work before agent-owned or delegated implementation authority can apply.",
+            "prospective_authority":"A valid agent-owned or exact delegated disposition may be retained while evidence is incomplete; it becomes actionable only after a Materiality revision supplies current bounded evidence_completion_basis.",
+            "post_evidence_routes":["retain the prospective agent-owned or delegated disposition","classify a repository-settled fact without a Question","route a newly revealed user-owned material outcome to the Question lifecycle"],
+            "field":"judgments[].evidence_completion_basis",
+        },
         "learning_participation":{
             "input_alternatives":schema_alternatives(learning_participation_schema()),
             "derived_identity_options":{"current_goal_user_turn_source_ids":current_host_user_turn_source_ids},

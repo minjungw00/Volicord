@@ -195,6 +195,13 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
 - exploratory uncertainty는 필요에 따라 research, bounded prototype, deferment 또는
   inspectable revisit basis로 전환할 수 있으며 user Question이나 Decision을 강제하지
   않는다.
+- Engineering Choice Discovery의 current `evidence_state`가 `research_required` 또는
+  `prototype_required`이면 implementation authority보다 evidence insufficiency가 먼저 적용된다.
+  Agent-owned 또는 exact delegated disposition을 미리 보존할 수는 있지만 ordinary work는 해당
+  research/prototype requirement가 계속 block한다. Existing Materiality Review revision에 current
+  bounded research/prototype Source와 evidence-completion basis가 들어온 뒤에만 그 prospective
+  authority를 적용한다. Evidence가 user-owned material policy를 드러내면 같은 revision에서
+  unresolved user-owned outcome으로 분류해 Question lifecycle로 보낸다.
 - material하게 다른 consequence가 남은 unresolved user-owned outcome은 선택하거나
   구현하기 전에 explicit user authority를 얻는다.
 

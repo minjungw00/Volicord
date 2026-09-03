@@ -995,6 +995,22 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         .is_some_and(|fields| fields
             .iter()
             .any(|field| field == "authority_counterfactual")));
+    assert!(unresolved["caller_may_provide"]
+        .as_array()
+        .is_some_and(|fields| fields
+            .iter()
+            .any(|field| field == "evidence_completion_basis")));
+    assert!(draft["evidence_state_precedence"]["rule"]
+        .as_str()
+        .is_some_and(|rule| rule.contains("blocks ordinary work")));
+    assert!(unresolved["caller_may_provide"]
+        .as_array()
+        .is_some_and(|fields| fields
+            .iter()
+            .any(|field| field == "evidence_completion_basis")));
+    assert!(draft["evidence_state_precedence"]["rule"]
+        .as_str()
+        .is_some_and(|rule| rule.contains("blocks ordinary work")));
     assert_eq!(
         draft["learning_value_input_alternatives"][1]["required_fields"],
         json!([

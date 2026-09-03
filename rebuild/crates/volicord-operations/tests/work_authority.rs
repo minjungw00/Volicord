@@ -2165,6 +2165,157 @@ fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision
 }
 
 #[test]
+fn discovery_evidence_precedes_delegated_or_agent_owned_implementation_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let delegated_fixture = fixture_with_goal(
+        "Investigate the behavior, then choose the bounded implementation for me.",
+    )?;
+    let source = delegated_fixture.baseline.repository_source.identity();
+    let mut prototype_choice = engineering_choice(
+        "parser-shape",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    );
+    prototype_choice.evidence_state = EngineeringChoiceEvidenceState::PrototypeRequired;
+    let delegated = delegated_dimension(&delegated_fixture, "parser-shape");
+    let recorded =
+        review_with_choices(&delegated_fixture, vec![prototype_choice], vec![delegated])?;
+    let blocked = readiness(&delegated_fixture, &recorded)?;
+    assert_eq!(blocked.stage, WorkAuthorityStage::ResearchOrPrototype);
+    assert_eq!(
+        blocked.disposition,
+        WorkAuthorityDisposition::ResearchRequired
+    );
+    assert!(blocked.reason.contains("research or prototype evidence"));
+    let persisted = delegated_fixture
+        .operations
+        .inspect_workflow_candidate(delegated_fixture.project_id, recorded.review_candidate_id)?
+        .content
+        .and_then(|content| content.materiality_review)
+        .ok_or("Materiality Review content missing")?;
+    assert!(matches!(
+        persisted.dimensions[0].disposition,
+        MaterialityDisposition::DelegatedImplementationChoice
+    ));
+
+    let agent_fixture = fixture()?;
+    let source = agent_fixture.baseline.repository_source.identity();
+    let mut research_choice = engineering_choice(
+        "internal-cache",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    );
+    research_choice.evidence_state = EngineeringChoiceEvidenceState::ResearchRequired;
+    let agent_owned = agent_owned_dimension(
+        "internal-cache",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "routine implementation choice".into(),
+        },
+    );
+    let recorded = review_with_choices(&agent_fixture, vec![research_choice], vec![agent_owned])?;
+    assert_eq!(
+        readiness(&agent_fixture, &recorded)?.stage,
+        WorkAuthorityStage::ResearchOrPrototype
+    );
+    Ok(())
+}
+
+#[test]
+fn completed_discovery_evidence_restores_prospective_authority_or_reveals_a_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let delegated_fixture = fixture_with_goal(
+        "Investigate the behavior, then choose the bounded implementation for me.",
+    )?;
+    let source = delegated_fixture.baseline.repository_source.identity();
+    let mut prototype_choice = engineering_choice(
+        "parser-shape",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    );
+    prototype_choice.evidence_state = EngineeringChoiceEvidenceState::PrototypeRequired;
+    let mut delegated = delegated_dimension(&delegated_fixture, "parser-shape");
+    let recorded = review_with_choices(
+        &delegated_fixture,
+        vec![prototype_choice],
+        vec![delegated.clone()],
+    )?;
+    delegated
+        .basis
+        .kinds
+        .push(WorkAuthorityBasisKind::PrototypeEvidence);
+    delegated.basis.research_basis =
+        vec!["the bounded prototype establishes both viable parser result shapes".into()];
+    let revised =
+        delegated_fixture
+            .operations
+            .revise_materiality_review(MaterialityReviewRevisionDraft {
+                project_id: delegated_fixture.project_id,
+                review_candidate_id: recorded.review_candidate_id,
+                rationale: "prototype evidence now makes the delegated selection actionable".into(),
+                learning_participation: LearningParticipation::Inactive,
+                dimensions: vec![delegated],
+                learning_value_revision_bases: Vec::new(),
+            })?;
+    assert_eq!(
+        readiness(&delegated_fixture, &revised)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+
+    let user_fixture = fixture()?;
+    let source = user_fixture.baseline.repository_source.identity();
+    let mut research_choice = engineering_choice(
+        "public-result-contract",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    );
+    research_choice.evidence_state = EngineeringChoiceEvidenceState::ResearchRequired;
+    let mut exploratory = dimension(
+        "public-result-contract",
+        MaterialityDisposition::ExploratoryUncertainty {
+            disposition: ExploratoryDisposition::ResearchRequired,
+        },
+        vec![WorkAuthorityBasisKind::ResearchEvidence],
+        source,
+    );
+    exploratory.basis.research_basis = vec!["inspect current public callers".into()];
+    let recorded = review_with_choices(
+        &user_fixture,
+        vec![research_choice],
+        vec![exploratory.clone()],
+    )?;
+    assert_eq!(
+        readiness(&user_fixture, &recorded)?.stage,
+        WorkAuthorityStage::ResearchOrPrototype
+    );
+    exploratory.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
+        resolution_decision_id: None,
+    };
+    exploratory.basis.kinds = vec![
+        WorkAuthorityBasisKind::NoSettlingAuthority,
+        WorkAuthorityBasisKind::ResearchEvidence,
+    ];
+    exploratory.basis.research_basis =
+        vec!["repository research confirms two public result contracts remain viable".into()];
+    let revised =
+        user_fixture
+            .operations
+            .revise_materiality_review(MaterialityReviewRevisionDraft {
+                project_id: user_fixture.project_id,
+                review_candidate_id: recorded.review_candidate_id,
+                rationale: "research reveals an unresolved public contract policy".into(),
+                learning_participation: LearningParticipation::Inactive,
+                dimensions: vec![exploratory],
+                learning_value_revision_bases: Vec::new(),
+            })?;
+    assert_eq!(
+        readiness(&user_fixture, &revised)?.stage,
+        WorkAuthorityStage::QuestionRequired
+    );
+    Ok(())
+}
+
+#[test]
 fn user_owned_and_hidden_material_signals_require_question_lifecycle(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture()?;

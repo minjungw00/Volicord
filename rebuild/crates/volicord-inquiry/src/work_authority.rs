@@ -277,13 +277,23 @@ pub fn evaluate_work_authority(
             "the review omitted owner classification for every outcome dimension",
         );
     }
-    if let Err(reason) = validate_discovery_boundary(review, candidate_basis.discovery) {
-        return invalid(result, None, reason);
-    }
+    let discovery = match validate_discovery_boundary(review, candidate_basis.discovery) {
+        Ok(discovery) => discovery,
+        Err(reason) => return invalid(result, None, reason),
+    };
 
     let mut research_required = false;
     let mut question_required = false;
     for dimension in &review.dimensions {
+        if let Some(reason) = unresolved_discovery_evidence(discovery, dimension) {
+            research_required = true;
+            result.unresolved_requirements.push(requirement(
+                Some(dimension.dimension_id.clone()),
+                reason,
+                Vec::new(),
+            ));
+            continue;
+        }
         match evaluate_dimension(canonical, goal, dimension, applicability) {
             Ok(decisions) => result.satisfied_requirements.push(requirement(
                 Some(dimension.dimension_id.clone()),
@@ -392,10 +402,10 @@ pub fn evaluate_work_authority(
     result
 }
 
-fn validate_discovery_boundary(
+fn validate_discovery_boundary<'a>(
     review: &crate::MaterialityReview,
-    discovery_candidate: Option<&CandidateRecord>,
-) -> Result<(), String> {
+    discovery_candidate: Option<&'a CandidateRecord>,
+) -> Result<&'a crate::EngineeringChoiceDiscovery, String> {
     let candidate = discovery_candidate.ok_or_else(|| {
         "the referenced Engineering Choice Discovery Candidate is missing".to_owned()
     })?;
@@ -432,7 +442,76 @@ fn validate_discovery_boundary(
                 .into(),
         );
     }
-    Ok(())
+    Ok(discovery)
+}
+
+fn unresolved_discovery_evidence(
+    discovery: &crate::EngineeringChoiceDiscovery,
+    dimension: &MaterialityDimension,
+) -> Option<String> {
+    let mut research_required = false;
+    let mut prototype_required = false;
+    for choice_id in &dimension.discovered_choice_ids {
+        let choice = discovery
+            .choices
+            .iter()
+            .find(|choice| &choice.choice_id == choice_id)?;
+        match choice.evidence_state {
+            crate::EngineeringChoiceEvidenceState::Sufficient => {}
+            crate::EngineeringChoiceEvidenceState::ResearchRequired => {
+                research_required = true;
+            }
+            crate::EngineeringChoiceEvidenceState::PrototypeRequired => {
+                prototype_required = true;
+            }
+        }
+    }
+    if !research_required && !prototype_required {
+        return None;
+    }
+
+    let has_bounded_evidence = !dimension.basis.research_basis.is_empty();
+    let research_complete = !research_required
+        || (has_bounded_evidence
+            && dimension
+                .basis
+                .kinds
+                .contains(&WorkAuthorityBasisKind::ResearchEvidence)
+            && !matches!(
+                dimension.disposition,
+                MaterialityDisposition::ExploratoryUncertainty {
+                    disposition: ExploratoryDisposition::ResearchRequired
+                }
+            ));
+    let prototype_complete = !prototype_required
+        || (has_bounded_evidence
+            && dimension
+                .basis
+                .kinds
+                .contains(&WorkAuthorityBasisKind::PrototypeEvidence)
+            && !matches!(
+                dimension.disposition,
+                MaterialityDisposition::ExploratoryUncertainty {
+                    disposition: ExploratoryDisposition::PrototypeRequired
+                }
+            ));
+    if research_complete && prototype_complete {
+        return None;
+    }
+
+    Some(match (research_required, prototype_required) {
+        (true, true) => {
+            "the discovered choices still require bounded research and prototype evidence before implementation authority can apply"
+        }
+        (true, false) => {
+            "the discovered choice still requires bounded research evidence before implementation authority can apply"
+        }
+        (false, true) => {
+            "the discovered choice still requires bounded prototype evidence before implementation authority can apply"
+        }
+        (false, false) => return None,
+    }
+    .to_owned())
 }
 
 enum LearningIssue {
