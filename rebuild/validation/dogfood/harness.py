@@ -3091,6 +3091,52 @@ def pre_work_readiness_observation(
     }
 
 
+def resume_executable_work_scope_observation(
+    capture: CodexCapture,
+    recall_call: ToolCall,
+    first_write_sequence: int | None,
+) -> dict[str, Any] | None:
+    """Return one production-qualified typed scope for resumed ordinary work."""
+
+    if first_write_sequence is None:
+        return None
+    required_paths = sorted({
+        path
+        for observation in meaningful_work_path_observations(capture)
+        if recall_call.completion_sequence < observation.sequence
+        for path in observation.paths
+        if not looks_like_synthetic_marker(path)
+        and Path(path).suffix.lower() not in {".txt", ".marker"}
+        and not generated_repository_path(path)
+    })
+    qualified: list[dict[str, Any]] = []
+    for predecessor in capture.successful_calls("materiality_review"):
+        if (
+            predecessor.arguments.get("action") not in {"record", "revise"}
+            or predecessor.sequence <= recall_call.completion_sequence
+            or predecessor.completion_sequence >= first_write_sequence
+        ):
+            continue
+        ready, _inspect, basis = pre_work_readiness_observation(
+            capture,
+            review_candidate_id=predecessor.result.get("review_candidate_id"),
+            goal_context_id=predecessor.result.get("goal_context_id"),
+            baseline_analysis_snapshot_id=predecessor.result.get(
+                "baseline_analysis_snapshot_id"
+            ),
+            predecessor_call=predecessor,
+            first_write_sequence=first_write_sequence,
+            required_paths=required_paths,
+        )
+        if ready and isinstance(basis.get("executable_work_scope"), dict):
+            qualified.append(basis["executable_work_scope"])
+    unique_scopes = {
+        json.dumps(scope, sort_keys=True, separators=(",", ":")): scope
+        for scope in qualified
+    }
+    return next(iter(unique_scopes.values())) if len(unique_scopes) == 1 else None
+
+
 def resume_continuation_facts(
     capture: CodexCapture | None,
     recall_call: ToolCall | None,

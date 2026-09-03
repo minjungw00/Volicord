@@ -2130,14 +2130,14 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         for checkpoint in checkpoints
     )
     recalled_checkpoint = recall.result.get("checkpoint")
+    executable_work_scope = harness.resume_executable_work_scope_observation(
+        capture,
+        recall,
+        first_write,
+    )
     continuation = harness.resume_continuation_facts(
         capture,
         recall,
-        next_step=(
-            recalled_checkpoint.get("next_step")
-            if isinstance(recalled_checkpoint, dict)
-            else recall.result.get("next_step")
-        ),
         checkpoint_work_state=(
             recalled_checkpoint.get("work_state")
             if isinstance(recalled_checkpoint, dict)
@@ -2150,6 +2150,10 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         ),
         common_identity_and_freshness_ok=(not checkpoints or change_baseline_ok),
         change_baseline_ok=change_baseline_ok,
+        executable_work_scope=executable_work_scope,
+        descriptor_scope_paths=descriptor.get("work_scope", {}).get(
+            "affected_paths"
+        ),
     )
     if continuation["mode"] is None:
         raise ResumeContractError(
