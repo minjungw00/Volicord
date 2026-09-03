@@ -441,7 +441,7 @@
       "discovery_identity_field": "engineering_choice_discovery_candidate_id",
       "choice_effect_and_relationship_evidence_required": true,
       "agent_owned_learning_disposition": "agent_owned_implementation_choice",
-      "learning_participation_source": "explicit_current_host_goal_turn",
+      "learning_participation_source": "bounded_verbatim_statement_in_explicit_current_host_first_task_turn",
       "learning_value_states": ["routine", "deliberation_worthy"],
       "learning_deliberation_is_canonical_decision": false,
       "learning_response_precedes_feedback": true,
@@ -533,12 +533,15 @@
       "mcp_raw_host_turn_authentication": "unavailable",
       "context_record_user_turn_content": "caller_supplied_not_host_authenticated",
       "dogfood_raw_consistency": "byte_exact_context_record_user_turn_to_captured_first_user_turn",
-      "semantic_statement_relation": "verbatim_containment_without_raw_source_rewrite"
+      "semantic_statement_relation": "verbatim_containment_without_raw_source_rewrite",
+      "bounded_decomposition_supported": true,
+      "required_goal_count": 1,
+      "non_goal_context_roles_may_share_first_turn": true
     },
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
       "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-      "after Project initialization source canonical goal Context from the byte-exact raw first host turn while checking the verbatim Goal statement against descriptor transport identity",
+      "after Project initialization source exactly one canonical Goal and any bounded non-Goal Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",

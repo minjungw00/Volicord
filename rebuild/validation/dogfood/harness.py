@@ -1259,7 +1259,7 @@ def load_definition() -> dict[str, Any]:
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
             "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-            "after Project initialization source canonical goal Context from the byte-exact raw first host turn while checking the verbatim Goal statement against descriptor transport identity",
+            "after Project initialization source exactly one canonical Goal and any bounded non-Goal Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
@@ -1326,6 +1326,9 @@ def load_definition() -> dict[str, Any]:
             "semantic_statement_relation": (
                 "verbatim_containment_without_raw_source_rewrite"
             ),
+            "bounded_decomposition_supported": True,
+            "required_goal_count": 1,
+            "non_goal_context_roles_may_share_first_turn": True,
         }
         or evidence.get("command_forwarding_contract")
         != {
@@ -4290,56 +4293,100 @@ def goal_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
     descriptor_task: Any,
-) -> tuple[bool, str | None, str | None, str | None, bool]:
-    call = unique_call(work, "context_record")
-    if call is None or work is None or bundle is None or not work.user_turns:
-        return False, None, None, None, False
+) -> tuple[bool, str | None, str | None, str | None, bool, dict[str, Any]]:
+    if work is None or bundle is None or not work.user_turns:
+        return False, None, None, None, False, {}
+    calls = work.successful_calls("context_record")
+    goal_calls = [call for call in calls if call.arguments.get("role") == "goal"]
+    call = goal_calls[0] if len(goal_calls) == 1 else None
     first_turn = work.user_turns[0]
-    turn = work.turn_for_call(call)
-    context_id = call.result.get("context_item_id")
-    source_id = call.result.get("source_id")
-    item = bundle.one("context_items", id=context_id, project_id=bundle.project_id)
-    source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
-    relation = bundle.one(
-        "context_item_sources",
-        project_id=bundle.project_id,
-        context_item_id=context_id,
-        source_id=source_id,
-        position=0,
-    )
-    statement = call.arguments.get("statement")
-    goal_task_identity = (
-        codex_user_turn_transport_identity_matches(statement, descriptor_task)
-        and codex_user_turn_transport_identity_matches(
-            call.arguments.get("user_turn"), descriptor_task
+    allowed_roles = {
+        "goal",
+        "assumption",
+        "constraint",
+        "preference",
+        "risk",
+        "learning",
+        "known_limit",
+    }
+    context_records: list[dict[str, Any]] = []
+    context_ids: set[str] = set()
+    calls_valid = bool(calls) and len(calls) <= 32
+    for candidate in calls:
+        turn = work.turn_for_call(candidate)
+        context_id = candidate.result.get("context_item_id")
+        source_id = candidate.result.get("source_id")
+        role = candidate.arguments.get("role")
+        statement = candidate.arguments.get("statement")
+        item = bundle.one(
+            "context_items", id=context_id, project_id=bundle.project_id
         )
+        source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
+        relation = bundle.one(
+            "context_item_sources",
+            project_id=bundle.project_id,
+            context_item_id=context_id,
+            source_id=source_id,
+            position=0,
+        )
+        record_valid = bool(
+            turn == first_turn
+            and candidate.arguments.get("project_id") == bundle.project_id
+            and candidate.arguments.get("user_turn") == first_turn.text
+            and role in allowed_roles
+            and nonempty_string(statement)
+            and statement in first_turn.text
+            and candidate.result.get("project_id") == bundle.project_id
+            and candidate.result.get("role") == role
+            and nonempty_string(context_id)
+            and context_id not in context_ids
+            and nonempty_string(source_id)
+            and item is not None
+            and item.get("role") == role
+            and item.get("statement") == statement
+            and item.get("provenance_role") == "user_statement"
+            and item.get("author_kind") == "user"
+            and source is not None
+            and source.get("source_kind") == "current_host_user_turn"
+            and source.get("locator") == first_turn.text
+            and source.get("detail_one") == "codex"
+            and source.get("detail_two") == work.session_id
+            and source.get("actor_kind") == "user"
+            and relation is not None
+        )
+        calls_valid &= record_valid
+        if nonempty_string(context_id):
+            context_ids.add(str(context_id))
+        context_records.append({
+            "context_id": context_id,
+            "source_id": source_id,
+            "role": role,
+            "statement_sha256": hashlib.sha256(statement.encode("utf-8")).hexdigest()
+            if nonempty_string(statement)
+            else None,
+            "statement_utf8_length": len(statement.encode("utf-8"))
+            if nonempty_string(statement)
+            else None,
+            "statement_is_bounded_verbatim": bool(
+                nonempty_string(statement) and statement in first_turn.text
+            ),
+            "qualified": record_valid,
+        })
+    context_id = call.result.get("context_item_id") if call is not None else None
+    source_id = call.result.get("source_id") if call is not None else None
+    statement = call.arguments.get("statement") if call is not None else None
+    goal_task_identity = codex_user_turn_transport_identity_matches(
+        first_turn.text, descriptor_task
     )
-    caller_turn_matches_raw_host_turn = (
-        call.arguments.get("user_turn") == first_turn.text
+    caller_turn_matches_raw_host_turn = bool(calls) and all(
+        candidate.arguments.get("user_turn") == first_turn.text for candidate in calls
     )
     valid = (
         nonempty_string(descriptor_task)
         and goal_task_identity
         and caller_turn_matches_raw_host_turn
-        and turn == first_turn
-        and call.arguments.get("project_id") == bundle.project_id
-        and call.arguments.get("role") == "goal"
-        and call.result.get("project_id") == bundle.project_id
-        and call.result.get("role") == "goal"
-        and nonempty_string(context_id)
-        and nonempty_string(source_id)
-        and item is not None
-        and item.get("role") == "goal"
-        and item.get("statement") == statement
-        and item.get("provenance_role") == "user_statement"
-        and item.get("author_kind") == "user"
-        and source is not None
-        and source.get("source_kind") == "current_host_user_turn"
-        and source.get("locator") == call.arguments.get("user_turn")
-        and source.get("detail_one") == "codex"
-        and source.get("detail_two") == work.session_id
-        and source.get("actor_kind") == "user"
-        and relation is not None
+        and call is not None
+        and calls_valid
     )
     return (
         bool(valid),
@@ -4347,6 +4394,22 @@ def goal_facts(
         str(source_id) if nonempty_string(source_id) else None,
         str(statement) if nonempty_string(statement) else None,
         caller_turn_matches_raw_host_turn,
+        {
+            "raw_first_turn_matches_descriptor_transport_identity": goal_task_identity,
+            "recorded_context_count": len(context_records),
+            "recorded_context_ids": sorted(context_ids),
+            "recorded_roles": sorted(
+                record["role"]
+                for record in context_records
+                if nonempty_string(record.get("role"))
+            ),
+            "all_statements_bounded_verbatim": bool(context_records)
+            and all(
+                record["statement_is_bounded_verbatim"]
+                for record in context_records
+            ),
+            "records": context_records,
+        },
     )
 
 
@@ -5015,7 +5078,6 @@ def materiality_review_facts(
             else learning_participation.get("state") == "active"
             and learning_participation.get("user_turn_source_id") == goal_source_id
             and nonempty_string(learning_participation.get("verbatim_statement"))
-            and learning_participation["verbatim_statement"] in (goal_statement or "")
             and learning_participation["verbatim_statement"] in (frozen_task or "")
         )
     )
@@ -6351,6 +6413,7 @@ def real_session_evidence(
         goal_source_id,
         goal_statement,
         caller_turn_matches_raw_host_turn,
+        context_record_basis,
     ) = goal_facts(work_capture, bundle, work_user_task)
     checkpoint_call = terminal_checkpoint_call(work_capture)
     baseline_call = selected_checkpoint_baseline_call(work_capture, checkpoint_call)
@@ -6561,7 +6624,18 @@ def real_session_evidence(
         and task_turns_ok
     )
     initialize_call = unique_call(work_capture, "project_initialize")
-    goal_call = unique_call(work_capture, "context_record")
+    context_calls = (
+        work_capture.successful_calls("context_record")
+        if work_capture is not None
+        else []
+    )
+    goal_calls = [
+        call for call in context_calls if call.arguments.get("role") == "goal"
+    ]
+    goal_call = goal_calls[0] if len(goal_calls) == 1 else None
+    context_completion_sequence = max(
+        (call.completion_sequence for call in context_calls), default=-1
+    )
     pre_existing_dirty_paths = checkpoint_pre_existing_dirty_paths(checkpoint_call)
     baseline_ok = (
         bundle is not None
@@ -6580,7 +6654,7 @@ def real_session_evidence(
             work_capture,
             checkpoint_call,
             project_id=bundle.project_id,
-            boundary_completion_sequence=goal_call.completion_sequence,
+            boundary_completion_sequence=context_completion_sequence,
             first_write_sequence=first_work_change,
         )
         and pre_existing_dirty_paths is not None
@@ -6722,6 +6796,37 @@ def real_session_evidence(
     recalled_checkpoint_row = recalled_checkpoint(bundle, recall_call.result) if bundle and recall_call else None
     recalled_decisions = recalled_decision_ids(recall_call.result) if recall_call else None
     recalled_context = relevant_context_ids(bundle, recall_call.result) if bundle and recall_call else None
+    recorded_context_ids = set(context_record_basis.get("recorded_context_ids", []))
+    recorded_context_sources = {
+        record.get("source_id")
+        for record in context_record_basis.get("records", [])
+        if nonempty_string(record.get("source_id"))
+    }
+    durable_context_source_ok = (
+        bool(recorded_context_ids)
+        and bool(recorded_context_sources)
+        and all(
+            bundle.one("sources", id=source_id, project_id=bundle.project_id)
+            is not None
+            for source_id in recorded_context_sources
+        )
+        if bundle is not None
+        else False
+    )
+    recalled_goal_retains_full_turn_source = bool(
+        bundle is not None
+        and work_capture is not None
+        and recalled_context is not None
+        and goal_context_id in recalled_context
+        and nonempty_string(goal_source_id)
+        and (
+            goal_source := bundle.one(
+                "sources", id=goal_source_id, project_id=bundle.project_id
+            )
+        )
+        is not None
+        and goal_source.get("locator") == work_capture.user_turns[0].text
+    )
     checkpoint_decisions = {
         row.get("decision_id")
         for row in bundle.rows("checkpoint_decisions")
@@ -6772,6 +6877,8 @@ def real_session_evidence(
         and checkpoint_decisions <= set(recalled_decisions)
         and recalled_context is not None
         and goal_context_id in recalled_context
+        and durable_context_source_ok
+        and recalled_goal_retains_full_turn_source
     )
     recall_goals = recall_call.result.get("goals") if recall_call is not None else None
     recalled_goal_ok = (
@@ -6998,8 +7105,13 @@ def real_session_evidence(
             "repository_revision_matches": task_revision_ok,
             "checkpoint_call_and_canonical_goal_match": checkpoint_goal_ok,
             "goal_context_matches_descriptor_task": goal_ok,
+            "canonical_context_decomposition": context_record_basis,
             "context_record_user_turn_matches_raw_first_turn": (
                 caller_turn_matches_raw_host_turn
+            ),
+            "canonical_context_sources_are_durable": durable_context_source_ok,
+            "recalled_bounded_goal_retains_full_first_turn_source": (
+                recalled_goal_retains_full_turn_source
             ),
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
@@ -14240,6 +14352,219 @@ def self_test() -> int:
         store_capture(fixture, "resume", path, events)
         fixture["fresh_resume_user_task"] = task_text
 
+    def decomposed_learning_context_fixture() -> dict[str, Any]:
+        fixture = real_session_fixture(
+            "volicord",
+            3,
+            revision,
+            evidence_directory,
+            behavior_class="learning_deliberation",
+        )
+        raw_task = fixture["work_user_task"]
+        goal_statement = "Improve the adapter state model and add focused tests."
+        preference_statement = (
+            "I want to learn through one meaningful agent-owned technical fork before implementation."
+        )
+        constraint_statement = "Keep the change bounded and do not add dependencies."
+        for statement in (goal_statement, preference_statement, constraint_statement):
+            if statement not in raw_task:
+                raise AssertionError("decomposed fixture statement is not verbatim")
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "context_record",
+            lambda arguments: arguments.update({"statement": goal_statement}),
+        )
+        for call_id, role, statement, context_id, source_id in (
+            (
+                "preference-context",
+                "preference",
+                preference_statement,
+                "25" * 16,
+                "27" * 16,
+            ),
+            (
+                "constraint-context",
+                "constraint",
+                constraint_statement,
+                "26" * 16,
+                "28" * 16,
+            ),
+        ):
+            insert_successful_mcp_completion_before(
+                fixture,
+                before_call_marker="status-call",
+                call_id=call_id,
+                operation="context_record",
+                arguments={
+                    "project_id": "01" * 16,
+                    "user_turn": raw_task,
+                    "role": role,
+                    "statement": statement,
+                },
+                structured={
+                    "project_id": "01" * 16,
+                    "source_id": source_id,
+                    "context_item_id": context_id,
+                    "revision": 1,
+                    "role": role,
+                    "user_turn_content_provenance": (
+                        "caller_supplied_not_host_authenticated"
+                    ),
+                },
+            )
+
+        def decompose_canonical_context(bundle: dict[str, Any]) -> None:
+            tables = {
+                table["name"]: table for table in bundle["payload"]["tables"]
+            }
+            context_items = tables["context_items"]
+            goal_row = context_items["rows"][0]
+            context_id_index = context_items["columns"].index("id")
+            role_index = context_items["columns"].index("role")
+            statement_index = context_items["columns"].index("statement")
+            goal_row[statement_index] = {"type": "text", "value": goal_statement}
+            sources = tables["sources"]
+            source_id_index = sources["columns"].index("id")
+            goal_source_row = next(
+                row
+                for row in sources["rows"]
+                if row[source_id_index].get("value") == "03" * 16
+            )
+            relations = tables["context_item_sources"]
+            relation_context_index = relations["columns"].index("context_item_id")
+            relation_source_index = relations["columns"].index("source_id")
+            goal_relation_row = relations["rows"][0]
+            for role, statement, context_id, source_id in (
+                ("preference", preference_statement, "25" * 16, "27" * 16),
+                ("constraint", constraint_statement, "26" * 16, "28" * 16),
+            ):
+                source_row = json.loads(json.dumps(goal_source_row))
+                source_row[source_id_index] = {"type": "bytes", "value": source_id}
+                sources["rows"].append(source_row)
+                context_row = json.loads(json.dumps(goal_row))
+                context_row[context_id_index] = {
+                    "type": "bytes",
+                    "value": context_id,
+                }
+                context_row[role_index] = {"type": "text", "value": role}
+                context_row[statement_index] = {
+                    "type": "text",
+                    "value": statement,
+                }
+                context_items["rows"].append(context_row)
+                relation_row = json.loads(json.dumps(goal_relation_row))
+                relation_row[relation_context_index] = {
+                    "type": "bytes",
+                    "value": context_id,
+                }
+                relation_row[relation_source_index] = {
+                    "type": "bytes",
+                    "value": source_id,
+                }
+                relations["rows"].append(relation_row)
+            checkpoints = tables["checkpoints"]
+            checkpoint_goal_index = checkpoints["columns"].index("goal")
+            checkpoints["rows"][0][checkpoint_goal_index] = {
+                "type": "text",
+                "value": goal_statement,
+            }
+
+        mutate_bundle(fixture, decompose_canonical_context)
+        replace_recall_goals(fixture, [goal_statement])
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
+            lambda output: output["checkpoint"].update({"goal": goal_statement}),
+        )
+        return fixture
+
+    decomposed_context = decomposed_learning_context_fixture()
+    decomposed_context_result = real_session_evidence(
+        decomposed_context,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )
+    decomposed_basis = decomposed_context_result["task_goal_basis"][
+        "canonical_context_decomposition"
+    ]
+    if (
+        decomposed_context_result["status"] != "passed"
+        or decomposed_basis.get("recorded_context_count") != 3
+        or decomposed_basis.get("recorded_roles")
+        != ["constraint", "goal", "preference"]
+        or decomposed_basis.get("all_statements_bounded_verbatim") is not True
+    ):
+        raise AssertionError(
+            "bounded Goal/preference/constraint decomposition was rejected: "
+            + json.dumps({
+                "status": decomposed_context_result["status"],
+                "failed": [
+                    name
+                    for name, value in decomposed_context_result["checks"].items()
+                    if value != "passed"
+                ],
+                "basis": decomposed_basis,
+            }, sort_keys=True)
+        )
+
+    ungrounded_decomposed_context = decomposed_learning_context_fixture()
+
+    def replace_preference_with_ungrounded_statement(bundle: dict[str, Any]) -> None:
+        for table in bundle["payload"]["tables"]:
+            if table["name"] != "context_items":
+                continue
+            role_index = table["columns"].index("role")
+            statement_index = table["columns"].index("statement")
+            for row in table["rows"]:
+                if row[role_index].get("value") == "preference":
+                    row[statement_index] = {
+                        "type": "text",
+                        "value": "This statement was not in the first task turn.",
+                    }
+
+    mutate_bundle(
+        ungrounded_decomposed_context,
+        replace_preference_with_ungrounded_statement,
+    )
+    ungrounded_path, ungrounded_events = capture_events(
+        ungrounded_decomposed_context, "work"
+    )
+    for value in ungrounded_events:
+        payload = value.get("payload", {})
+        if "preference-context" not in str(payload.get("call_id", "")):
+            continue
+        if payload.get("type") == "mcp_tool_call_end":
+            payload["invocation"]["arguments"]["statement"] = (
+                "This statement was not in the first task turn."
+            )
+        if payload.get("type") == "custom_tool_call":
+            wrapper = parse_mcp_wrapper(payload.get("input"))
+            if wrapper is not None:
+                old = json.dumps(wrapper.arguments, separators=(",", ":"))
+                arguments = json.loads(json.dumps(wrapper.arguments))
+                arguments["statement"] = (
+                    "This statement was not in the first task turn."
+                )
+                payload["input"] = payload["input"].replace(
+                    old, json.dumps(arguments, separators=(",", ":")), 1
+                )
+    store_capture(
+        ungrounded_decomposed_context,
+        "work",
+        ungrounded_path,
+        ungrounded_events,
+    )
+    if real_session_evidence(
+        ungrounded_decomposed_context,
+        kind="volicord",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["plain_task_goal_linkage"] != "failed":
+        raise AssertionError("an ungrounded decomposed Context statement qualified")
+
     independent_questions = independent_two_question_fixture()
     independent_question_result = real_session_evidence(
         independent_questions,
@@ -17250,6 +17575,8 @@ def self_test() -> int:
         "real_session_positive_path": "passed",
         "legacy_and_current_user_turn_normalization": "passed",
         "current_user_turn_order_and_text_segments": "passed",
+        "bounded_goal_context_decomposition": "passed",
+        "ungrounded_decomposed_context_rejected": "passed",
         "historical_rollout_corrected_interpretation": historical_rollout_interpretation,
         "host_user_role_material_excluded": "passed",
         "user_turn_deduplication_and_conflict_rejection": "passed",
