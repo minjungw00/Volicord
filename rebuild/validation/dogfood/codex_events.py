@@ -367,6 +367,8 @@ class CommandObservation:
     termination: str | None
     output: str
     output_was_empty: bool
+    execution_identity: str | None = None
+    evidence_state: str = "indeterminate"
 
 
 @dataclass(frozen=True)
@@ -647,7 +649,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         return None
     variable = re.escape(match.group("variable"))
     tool_name = match.group("tool")
-    if tool_name != "exec_command":
+    if tool_name not in {"exec_command", "write_stdin"}:
         return None
     forward = match.group("forward").strip()
     result_forward = re.fullmatch(
@@ -677,6 +679,8 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         forward,
         re.DOTALL,
     )
+    if tool_name == "write_stdin" and result_forward is None:
+        return None
     if all(
         item is None
         for item in (
@@ -1083,8 +1087,9 @@ class CodexCapture:
     def first_inspection_after(self, sequence: int) -> int | None:
         candidates = [
             call.sequence
-            for call in self.successful_calls("repository_understanding")
+            for call in self.tool_calls
             if call.sequence > sequence
+            and repository_operation_is_inspection(call)
         ]
         candidates.extend(
             command.sequence
@@ -1217,6 +1222,31 @@ def command_is_repository_inspection(value: Any) -> bool:
         )
         for argv in argvs
     )
+
+
+def repository_operation_is_inspection(call: ToolCall) -> bool:
+    """Recognize a successful Repository Intelligence evidence acquisition."""
+
+    if call.outcome != "succeeded":
+        return False
+    if call.operation == "repository_analyze":
+        project_id = call.arguments.get("project_id")
+        return bool(
+            nonempty(project_id)
+            and call.result.get("project_id") == project_id
+            and nonempty(call.result.get("analysis_snapshot_id"))
+            and nonempty(call.result.get("repository_snapshot_id"))
+            and nonempty(call.result.get("repository_source_id"))
+        )
+    if call.operation == "repository_understanding":
+        return bool(
+            nonempty(call.arguments.get("project_id"))
+            and nonempty(call.result.get("health"))
+            and isinstance(call.result.get("overview"), dict)
+            and isinstance(call.result.get("repository_map"), dict)
+            and call.result.get("read_only") is True
+        )
+    return False
 
 
 def load_codex_capture(path: Path) -> CodexCapture:
@@ -1463,11 +1493,60 @@ def load_codex_capture(path: Path) -> CodexCapture:
 
     tool_call_evidence: list[_ToolCallEvidence] = []
     commands: list[CommandObservation] = []
-    for call_id, (sequence, turn_id, parsed) in calls.items():
+    pending_commands: dict[int, dict[str, Any]] = {}
+    for call_id, (sequence, turn_id, parsed) in sorted(
+        calls.items(), key=lambda item: item[1][0]
+    ):
         completion = completions.get(call_id)
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
             continue
         completion_sequence, _, raw_output = completion
+        if parsed.tool_name == "write_stdin":
+            result = custom_output_object(raw_output)
+            session_id_value = (
+                parsed.arguments.get("session_id")
+                if isinstance(parsed.arguments, dict)
+                else None
+            )
+            if (
+                isinstance(session_id_value, bool)
+                or not isinstance(session_id_value, int)
+                or not isinstance(result, dict)
+            ):
+                continue
+            pending = pending_commands.get(session_id_value)
+            if pending is None:
+                continue
+            result_session_id = result.get("session_id")
+            if result_session_id is not None and result_session_id != session_id_value:
+                raise EvidenceError("Codex command continuation identity conflicts")
+            output = result.get("output")
+            exit_code = result.get("exit_code")
+            if not isinstance(output, str) or (
+                exit_code is not None
+                and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
+            ):
+                continue
+            pending["output"] += output
+            pending["completion_sequence"] = completion_sequence
+            if isinstance(exit_code, int):
+                commands.append(
+                    CommandObservation(
+                        pending["sequence"],
+                        completion_sequence,
+                        pending["turn_id"],
+                        0,
+                        pending["arguments"],
+                        exit_code,
+                        "exited",
+                        pending["output"],
+                        not pending["output"].strip(),
+                        f"process_session:{session_id_value}",
+                        "completed",
+                    )
+                )
+                del pending_commands[session_id_value]
+            continue
         if parsed.tool_name == "exec_command":
             arguments = (
                 list(parsed.arguments)
@@ -1475,6 +1554,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 else [parsed.arguments]
             )
             normalized_results: list[tuple[str, int | None]] | None = None
+            execution_session_id: int | None = None
             if parsed.output_mode.startswith("indexed_"):
                 indexed = custom_indexed_command_results(
                     raw_output, parsed.output_mode, len(arguments)
@@ -1499,6 +1579,13 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     if parsed.output_mode == "result"
                     else None
                 )
+                raw_session_id = (
+                    result.get("session_id") if isinstance(result, dict) else None
+                )
+                if isinstance(raw_session_id, int) and not isinstance(
+                    raw_session_id, bool
+                ):
+                    execution_session_id = raw_session_id
                 output = (
                     correlated[0]
                     if correlated is not None
@@ -1527,6 +1614,19 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 normalized_results = [(output, exit_code)]
             if normalized_results is None or len(normalized_results) != len(arguments):
                 continue
+            if execution_session_id is not None:
+                if len(arguments) != 1 or normalized_results[0][1] is not None:
+                    raise EvidenceError("Codex command launch identity is malformed")
+                if execution_session_id in pending_commands:
+                    raise EvidenceError("Codex command process identity is reused")
+                pending_commands[execution_session_id] = {
+                    "sequence": sequence,
+                    "completion_sequence": completion_sequence,
+                    "turn_id": turn_id,
+                    "arguments": arguments[0],
+                    "output": normalized_results[0][0],
+                }
+                continue
             for group_index, (arguments_value, normalized) in enumerate(
                 zip(arguments, normalized_results, strict=True)
             ):
@@ -1542,8 +1642,27 @@ def load_codex_capture(path: Path) -> CodexCapture:
                         "exited" if isinstance(exit_code, int) else None,
                         output,
                         not output.strip(),
+                        f"custom_call:{call_id}:{group_index}",
+                        "completed" if isinstance(exit_code, int) else "indeterminate",
                     )
                 )
+
+    for session_id_value, pending in pending_commands.items():
+        commands.append(
+            CommandObservation(
+                pending["sequence"],
+                pending["completion_sequence"],
+                pending["turn_id"],
+                0,
+                pending["arguments"],
+                None,
+                None,
+                pending["output"],
+                not pending["output"].strip(),
+                f"process_session:{session_id_value}",
+                "indeterminate",
+            )
+        )
 
     seen_mcp_call_ids: set[str] = set()
     correlated_wrapper_ids: set[str] = set()

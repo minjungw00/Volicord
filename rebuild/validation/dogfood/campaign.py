@@ -2110,8 +2110,9 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         for command in capture.commands
     ) or any(
         call.sequence < recall.sequence
-        for operation in ("repository_analyze", "inquiry_frontier", "checkpoint_record")
-        for call in capture.calls(operation)
+        for call in capture.tool_calls
+        if harness.repository_operation_is_inspection(call)
+        or call.operation in {"inquiry_frontier", "checkpoint_record"}
     ) or any(item.sequence < recall.sequence for item in capture.path_observations):
         raise ResumeContractError("resume inspected or changed the repository before Recall")
     meaningful_changes = harness.meaningful_work_path_observations(capture)

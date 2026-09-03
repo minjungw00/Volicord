@@ -42,6 +42,7 @@ from codex_events import (
     recalled_checkpoint,
     recalled_decision_ids,
     relevant_context_ids,
+    repository_operation_is_inspection,
 )
 
 
@@ -3007,9 +3008,12 @@ def meaningful_resume_validation(
             "terminal_sequence": None,
             "terminal_exit_code": None,
             "terminal_termination": None,
+            "terminal_evidence_state": None,
             "intermediate_failure_count": 0,
+            "indeterminate_execution_count": 0,
             "recovered_intermediate_failure": False,
             "unresolved_terminal_failure": False,
+            "incomplete_evidence": True,
         }
     commands = [
         command
@@ -3025,6 +3029,7 @@ def meaningful_resume_validation(
     )
     qualified = bool(
         terminal is not None
+        and terminal.evidence_state == "completed"
         and terminal.termination == "exited"
         and terminal.exit_code == 0
     )
@@ -3034,16 +3039,29 @@ def meaningful_resume_validation(
         if terminal is not None
         and (command.sequence, command.group_index)
         < (terminal.sequence, terminal.group_index)
+        and command.evidence_state == "completed"
         and not (command.termination == "exited" and command.exit_code == 0)
+    ]
+    indeterminate = [
+        command for command in commands if command.evidence_state != "completed"
     ]
     return {
         "qualified": qualified,
         "terminal_sequence": terminal.sequence if terminal is not None else None,
         "terminal_exit_code": terminal.exit_code if terminal is not None else None,
         "terminal_termination": terminal.termination if terminal is not None else None,
+        "terminal_evidence_state": (
+            terminal.evidence_state if terminal is not None else None
+        ),
         "intermediate_failure_count": len(intermediate_failures),
+        "indeterminate_execution_count": len(indeterminate),
         "recovered_intermediate_failure": bool(intermediate_failures) and qualified,
-        "unresolved_terminal_failure": terminal is not None and not qualified,
+        "unresolved_terminal_failure": bool(
+            terminal is not None
+            and terminal.evidence_state == "completed"
+            and not qualified
+        ),
+        "incomplete_evidence": terminal is None or bool(indeterminate),
     }
 
 
@@ -3230,8 +3248,11 @@ def resume_continuation_facts(
         prior_inspections = [
             sequence
             for sequence in [
-                *(call.sequence for call in capture.calls("repository_understanding")),
-                *(call.sequence for call in capture.calls("repository_analyze")),
+                *(
+                    call.sequence
+                    for call in capture.tool_calls
+                    if repository_operation_is_inspection(call)
+                ),
                 *(
                     command.sequence
                     for command in capture.commands
@@ -3240,11 +3261,28 @@ def resume_continuation_facts(
             ]
             if sequence < recall_call.sequence
         ]
+    first_change_sequence = (
+        min(
+            (
+                observation.sequence
+                for observation in capture.path_observations
+                if recall_call is not None
+                and observation.sequence > recall_call.completion_sequence
+            ),
+            default=None,
+        )
+        if capture is not None
+        else None
+    )
     ordering_ok = bool(
         recall_call is not None
         and first_inspection is not None
         and not prior_inspections
         and recall_call.completion_sequence < first_inspection
+        and (
+            first_change_sequence is None
+            or first_inspection < first_change_sequence
+        )
     )
     continuation_paths = (
         capture.paths_after(first_inspection)
@@ -3330,6 +3368,7 @@ def resume_continuation_facts(
     return {
         "first_inspection_sequence": first_inspection,
         "prior_inspection_sequences": prior_inspections,
+        "first_change_sequence": first_change_sequence,
         "ordering_ok": ordering_ok,
         "continuation_paths": continuation_paths,
         "relevant_paths": relevant_paths,
@@ -12689,7 +12728,7 @@ def self_test() -> int:
     ):
         raise AssertionError("current JSON.stringify wrapper fixture did not normalize from MCP completion")
     execution_capture = load_codex_capture(CURRENT_EXECUTION_FIXTURE)
-    if len(execution_capture.commands) != 5:
+    if len(execution_capture.commands) != 6:
         raise AssertionError("current execution fixture did not produce one observation per command")
     expected_execution = [
         ("python3 -m unittest tests.test_template", 0, "template output\n", False, 0),
@@ -12697,6 +12736,13 @@ def self_test() -> int:
         ("python3 -m unittest tests.test_json_result", 0, "json result output\n", False, 0),
         ("rg --files src && git status --short", 0, "src/lib.rs\n", False, 0),
         ("python3 -m unittest tests.test_empty", 3, "", True, 1),
+        (
+            "python3 -m unittest tests.test_long_running",
+            0,
+            "starting\nstill running\ncomplete\n",
+            False,
+            0,
+        ),
     ]
     observed_execution = [
         (
@@ -12713,6 +12759,75 @@ def self_test() -> int:
         command.termination != "exited" for command in execution_capture.commands
     ):
         raise AssertionError("current execution fixture lost command order, outcome, or output state")
+    long_running = execution_capture.commands[-1]
+    if (
+        long_running.execution_identity != "process_session:77"
+        or long_running.evidence_state != "completed"
+        or long_running.sequence >= long_running.completion_sequence
+    ):
+        raise AssertionError(
+            "launch and later completion did not fold by process identity"
+        )
+    execution_events = [
+        json.loads(line)
+        for line in CURRENT_EXECUTION_FIXTURE.read_text(encoding="utf-8").splitlines()
+    ]
+    incomplete_execution_path = evidence_directory / "incomplete-long-execution.jsonl"
+    incomplete_execution_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in execution_events
+            if "call-long-complete"
+            not in str(value.get("payload", {}).get("call_id", ""))
+        ),
+        encoding="utf-8",
+    )
+    incomplete_execution = load_codex_capture(incomplete_execution_path)
+    incomplete_long = next(
+        command
+        for command in incomplete_execution.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_long_running"
+    )
+    if (
+        incomplete_long.evidence_state != "indeterminate"
+        or incomplete_long.exit_code is not None
+        or incomplete_long.termination is not None
+    ):
+        raise AssertionError("incomplete long execution became terminal success")
+
+    uncorrelated_events = json.loads(json.dumps(execution_events))
+    final_poll = next(
+        value
+        for value in uncorrelated_events
+        if value.get("payload", {}).get("call_id") == "call-long-complete"
+        and value.get("payload", {}).get("type") == "custom_tool_call"
+    )
+    final_poll["payload"]["input"] = final_poll["payload"]["input"].replace(
+        '"session_id":77', '"session_id":78'
+    )
+    uncorrelated_path = evidence_directory / "uncorrelated-long-execution.jsonl"
+    uncorrelated_path.write_text(
+        "".join(
+            json.dumps(value, separators=(",", ":")) + "\n"
+            for value in uncorrelated_events
+        ),
+        encoding="utf-8",
+    )
+    uncorrelated_execution = load_codex_capture(uncorrelated_path)
+    uncorrelated_long = next(
+        command
+        for command in uncorrelated_execution.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_long_running"
+    )
+    if (
+        uncorrelated_long.evidence_state != "indeterminate"
+        or uncorrelated_long.exit_code is not None
+    ):
+        raise AssertionError("uncorrelated command completion became success")
     if [item.paths for item in execution_capture.path_observations] != [
         ("src/lib.rs", "tests/lib.rs")
     ]:
@@ -17606,6 +17721,55 @@ def self_test() -> int:
     ):
         raise AssertionError("same-result split command could not establish post-Recall inspection")
 
+    analysis_inspection = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(analysis_inspection, "resume", "inspect-call")
+    analysis_inspection_result = real_session_evidence(
+        analysis_inspection,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        analysis_inspection_result["checks"][
+            "recall_precedes_inspection_and_continuation"
+        ]
+        != "passed"
+        or analysis_inspection_result["checks"][
+            "meaningful_recalled_continuation"
+        ]
+        != "passed"
+    ):
+        raise AssertionError(
+            "evidence-bearing repository_analyze did not count as inspection"
+        )
+
+    unsupported_analysis_inspection = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    remove_mcp_completion(
+        unsupported_analysis_inspection, "resume", "inspect-call"
+    )
+    mutate_custom_output(
+        unsupported_analysis_inspection,
+        "resume",
+        "resume-baseline-call",
+        lambda output: output.pop("repository_source_id", None),
+    )
+    unsupported_analysis_result = real_session_evidence(
+        unsupported_analysis_inspection,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if unsupported_analysis_result["checks"][
+        "recall_precedes_inspection_and_continuation"
+    ] != "failed":
+        raise AssertionError(
+            "repository_analyze without supported repository evidence became inspection"
+        )
+
     product_grounded_baseline = real_session_fixture(
         "volicord", 1, revision, evidence_directory
     )
@@ -18422,6 +18586,136 @@ def self_test() -> int:
     ):
         raise AssertionError("unresolved terminal resume verification failure qualified")
 
+    def use_long_running_resume_verification(
+        fixture: dict[str, Any], exit_code: int | None
+    ) -> None:
+        path, events = capture_events(fixture, "resume")
+        call_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "custom_tool_call"
+            and "resume-verification-call"
+            in str(value.get("payload", {}).get("call_id", ""))
+        )
+        output_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type")
+            == "custom_tool_call_output"
+            and "resume-verification-call"
+            in str(value.get("payload", {}).get("call_id", ""))
+        )
+        launch = events[call_index]
+        launch_output = events[output_index]
+        launch["payload"]["input"] = (
+            'const r=await tools.exec_command({"cmd":"python3 -m unittest '
+            'tests.test_resume","workdir":"/phase8/repository",'
+            '"yield_time_ms":1000});\ntext(JSON.stringify(r));\n'
+        )
+        launch_output["payload"]["output"][1]["text"] = json.dumps(
+            {"output": "started\n", "session_id": 501},
+            separators=(",", ":"),
+        )
+        wait_call = json.loads(json.dumps(launch))
+        wait_call["payload"].update(
+            {
+                "id": "ctc-resume-verification-wait",
+                "call_id": "resume-verification-wait",
+                "input": (
+                    'const r=await tools.write_stdin({"session_id":501,'
+                    '"chars":"","yield_time_ms":30000});\n'
+                    'text(JSON.stringify(r));\n'
+                ),
+            }
+        )
+        wait_output = json.loads(json.dumps(launch_output))
+        wait_output["payload"].update(
+            {
+                "id": "ctco-resume-verification-wait",
+                "call_id": "resume-verification-wait",
+            }
+        )
+        final_result: dict[str, Any] = {"output": "finished\n"}
+        if exit_code is not None:
+            final_result["exit_code"] = exit_code
+        wait_output["payload"]["output"][1]["text"] = json.dumps(
+            final_result, separators=(",", ":")
+        )
+        events[output_index + 1 : output_index + 1] = [wait_call, wait_output]
+        store_capture(fixture, "resume", path, events)
+
+    long_running_resume = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    use_long_running_resume_verification(long_running_resume, 0)
+    long_running_result = real_session_evidence(
+        long_running_resume,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    long_running_capture = load_codex_capture(
+        evidence_directory
+        / long_running_resume["evidence"]["captures"]["resume"]["file"]
+    )
+    long_running_command = next(
+        command
+        for command in long_running_capture.commands
+        if isinstance(command.parsed_command, dict)
+        and command.parsed_command.get("cmd")
+        == "python3 -m unittest tests.test_resume"
+    )
+    if (
+        long_running_result["checks"]["meaningful_recalled_continuation"]
+        != "passed"
+        or long_running_command.execution_identity != "process_session:501"
+        or long_running_command.evidence_state != "completed"
+        or long_running_command.exit_code != 0
+    ):
+        raise AssertionError(
+            "resume launch and later completion did not qualify by execution identity"
+        )
+
+    incomplete_long_resume = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    use_long_running_resume_verification(incomplete_long_resume, None)
+    incomplete_long_result = real_session_evidence(
+        incomplete_long_resume,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        incomplete_long_result["checks"]["meaningful_recalled_continuation"]
+        != "failed"
+        or incomplete_long_result["continuation_basis"]["terminal_validation"][
+            "incomplete_evidence"
+        ]
+        is not True
+    ):
+        raise AssertionError("indeterminate resume execution qualified")
+
+    failed_long_resume = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    use_long_running_resume_verification(failed_long_resume, 1)
+    failed_long_result = real_session_evidence(
+        failed_long_resume,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        failed_long_result["checks"]["meaningful_recalled_continuation"]
+        != "failed"
+        or failed_long_result["continuation_basis"]["terminal_validation"][
+            "unresolved_terminal_failure"
+        ]
+        is not True
+    ):
+        raise AssertionError("terminal long-running resume failure qualified")
+
     recall_and_stop = real_session_fixture("volicord", 1, revision, evidence_directory)
     stop_path, stop_events = capture_events(recall_and_stop, "resume")
     stop_events = [
@@ -18737,6 +19031,9 @@ def self_test() -> int:
         "resume_change_continuation": "passed",
         "resume_verified_completed_state_continuation": "passed",
         "recovered_intermediate_resume_failure": "passed",
+        "repository_intelligence_inspection_evidence": "passed",
+        "long_running_execution_identity_correlation": "passed",
+        "indeterminate_execution_not_success": "passed",
         "unresolved_terminal_resume_failure_rejected": "passed",
         "typed_scope_resume_change_correlation": "passed",
         "paused_state_no_change_continuation_rejected": "passed",
