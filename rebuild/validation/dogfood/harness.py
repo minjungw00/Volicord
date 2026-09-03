@@ -1287,8 +1287,8 @@ def load_definition() -> dict[str, Any]:
             "Recall preserves completed learning context as learning participation rather than a canonical Decision",
             "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
             "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
-            "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
-            "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
+            "change continuation produces a repository change correlated to the strongest available typed executable or descriptor scope after the retained pre-write baseline plus separate terminal numeric-exit validation after that change; next_step remains descriptive handoff text",
+            "verified-state continuation requires a recalled completed Checkpoint, repository inspection, successful terminal post-inspection verification, and no unresolved terminal behavior contradicting the completed state; recovered intermediate diagnostics do not contradict it",
             "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
             "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify",
         )
@@ -2873,11 +2873,15 @@ def evidence_reference_shape(value: Any) -> bool:
     )
 
 
-def relevant_continuation_paths(paths: list[str], next_step: Any) -> list[str]:
-    if not nonempty_string(next_step):
+def relevant_continuation_paths(
+    paths: list[str], declared_scope_paths: Any
+) -> list[str]:
+    if (
+        not isinstance(declared_scope_paths, list)
+        or not declared_scope_paths
+        or not all(nonempty_string(path) for path in declared_scope_paths)
+    ):
         return []
-    lowered = normalized_prompt_text(next_step)
-    generic = {"src", "source", "test", "tests", "lib", "crates", "file", "code"}
     result: list[str] = []
     for path in paths:
         if (
@@ -2886,10 +2890,7 @@ def relevant_continuation_paths(paths: list[str], next_step: Any) -> list[str]:
             or generated_repository_path(path)
         ):
             continue
-        candidate = Path(path)
-        terms = {path.casefold(), candidate.name.casefold(), candidate.stem.casefold()}
-        terms.update(part.casefold() for part in candidate.parts if len(part) >= 4)
-        if any(term not in generic and term in lowered for term in terms):
+        if scope_covers(declared_scope_paths, [path]):
             result.append(path)
     return sorted(set(result))
 
@@ -2911,17 +2912,53 @@ def generated_repository_path(path: str) -> bool:
     )
 
 
-def meaningful_resume_validation(capture: CodexCapture | None, after_sequence: int | None) -> bool:
+def meaningful_resume_validation(
+    capture: CodexCapture | None, after_sequence: int | None
+) -> dict[str, Any]:
     if capture is None or after_sequence is None:
-        return False
-    return any(
-        command.sequence > after_sequence
-        and command.termination == "exited"
-        and command.exit_code == 0
+        return {
+            "qualified": False,
+            "terminal_sequence": None,
+            "terminal_exit_code": None,
+            "terminal_termination": None,
+            "intermediate_failure_count": 0,
+            "recovered_intermediate_failure": False,
+            "unresolved_terminal_failure": False,
+        }
+    commands = [
+        command
+        for command in capture.commands
+        if command.sequence > after_sequence
         and not command_is_clean_git_status(command.parsed_command)
         and not command_is_repository_inspection(command.parsed_command)
-        for command in capture.commands
+    ]
+    terminal = (
+        max(commands, key=lambda command: (command.sequence, command.group_index))
+        if commands
+        else None
     )
+    qualified = bool(
+        terminal is not None
+        and terminal.termination == "exited"
+        and terminal.exit_code == 0
+    )
+    intermediate_failures = [
+        command
+        for command in commands
+        if terminal is not None
+        and (command.sequence, command.group_index)
+        < (terminal.sequence, terminal.group_index)
+        and not (command.termination == "exited" and command.exit_code == 0)
+    ]
+    return {
+        "qualified": qualified,
+        "terminal_sequence": terminal.sequence if terminal is not None else None,
+        "terminal_exit_code": terminal.exit_code if terminal is not None else None,
+        "terminal_termination": terminal.termination if terminal is not None else None,
+        "intermediate_failure_count": len(intermediate_failures),
+        "recovered_intermediate_failure": bool(intermediate_failures) and qualified,
+        "unresolved_terminal_failure": terminal is not None and not qualified,
+    }
 
 
 def pre_work_readiness_observation(
@@ -3058,11 +3095,12 @@ def resume_continuation_facts(
     capture: CodexCapture | None,
     recall_call: ToolCall | None,
     *,
-    next_step: Any,
     checkpoint_work_state: Any,
     recalled_work_state: Any,
     common_identity_and_freshness_ok: bool,
     change_baseline_ok: bool,
+    executable_work_scope: Any,
+    descriptor_scope_paths: Any,
 ) -> dict[str, Any]:
     """Evaluate the two maintained resume modes from observed session facts."""
 
@@ -3097,7 +3135,26 @@ def resume_continuation_facts(
         if capture is not None and first_inspection is not None
         else []
     )
-    relevant_paths = relevant_continuation_paths(continuation_paths, next_step)
+    executable_scope_paths = (
+        executable_work_scope.get("paths")
+        if isinstance(executable_work_scope, dict)
+        else None
+    )
+    declared_scope_paths = (
+        executable_scope_paths
+        if isinstance(executable_scope_paths, list) and executable_scope_paths
+        else descriptor_scope_paths
+    )
+    path_correlation_basis = (
+        "materiality_executable_work_scope"
+        if isinstance(executable_scope_paths, list) and executable_scope_paths
+        else "cycle_descriptor_affected_paths"
+        if isinstance(descriptor_scope_paths, list) and descriptor_scope_paths
+        else "unavailable"
+    )
+    relevant_paths = relevant_continuation_paths(
+        continuation_paths, declared_scope_paths
+    )
     last_change_sequence = max(
         (
             item.sequence
@@ -3106,36 +3163,45 @@ def resume_continuation_facts(
         ),
         default=None,
     ) if capture is not None else None
-    change_validation_ok = meaningful_resume_validation(
+    change_validation = meaningful_resume_validation(
         capture,
         last_change_sequence if last_change_sequence is not None else first_inspection,
     )
-    inspection_validation_ok = meaningful_resume_validation(capture, first_inspection)
-    contradictory_behavior = False
+    inspection_validation = meaningful_resume_validation(capture, first_inspection)
+    terminal_checkpoint_contradiction = False
     if capture is not None and first_inspection is not None:
-        contradictory_behavior = any(
-            command.sequence > first_inspection
-            and isinstance(command.exit_code, int)
-            and command.exit_code != 0
-            for command in capture.commands
-        ) or any(
-            call.sequence > first_inspection
-            and call.arguments.get("work_state") not in {None, "completed"}
+        later_checkpoints = [
+            call
             for call in capture.successful_calls("checkpoint_record")
+            if call.sequence > first_inspection
+        ]
+        terminal_checkpoint = (
+            max(later_checkpoints, key=lambda call: call.sequence)
+            if later_checkpoints
+            else None
         )
+        terminal_checkpoint_contradiction = bool(
+            terminal_checkpoint is not None
+            and terminal_checkpoint.arguments.get("work_state")
+            not in {None, "completed"}
+        )
+    contradictory_behavior = bool(
+        inspection_validation["unresolved_terminal_failure"]
+        or terminal_checkpoint_contradiction
+    )
     common = common_identity_and_freshness_ok and ordering_ok
     change_ok = bool(
         common
         and change_baseline_ok
         and relevant_paths
-        and change_validation_ok
+        and change_validation["qualified"]
     )
     verified_ok = bool(
         common
         and checkpoint_work_state == "completed"
         and recalled_work_state == "completed"
         and not continuation_paths
-        and inspection_validation_ok
+        and inspection_validation["qualified"]
         and not contradictory_behavior
     )
     mode = (
@@ -3151,9 +3217,13 @@ def resume_continuation_facts(
         "ordering_ok": ordering_ok,
         "continuation_paths": continuation_paths,
         "relevant_paths": relevant_paths,
+        "declared_scope_paths": declared_scope_paths or [],
+        "path_correlation_basis": path_correlation_basis,
         "last_change_sequence": last_change_sequence,
-        "change_numeric_exit_validation": change_validation_ok,
-        "post_inspection_numeric_exit_validation": inspection_validation_ok,
+        "change_numeric_exit_validation": change_validation["qualified"],
+        "post_inspection_numeric_exit_validation": inspection_validation["qualified"],
+        "change_validation": change_validation,
+        "post_inspection_validation": inspection_validation,
         "contradictory_behavior": contradictory_behavior,
         "change_continuation_qualified": change_ok,
         "verified_state_continuation_qualified": verified_ok,
@@ -6919,7 +6989,6 @@ def real_session_evidence(
     continuation_facts = resume_continuation_facts(
         resume_capture,
         recall_call,
-        next_step=next_step,
         checkpoint_work_state=checkpoint_work_state,
         recalled_work_state=recalled_work_state,
         common_identity_and_freshness_ok=(
@@ -6929,6 +6998,14 @@ def real_session_evidence(
             and (not resume_checkpoint_calls or resume_baseline_ok)
         ),
         change_baseline_ok=resume_baseline_ok and resume_materiality_ok,
+        executable_work_scope=resume_materiality_basis.get(
+            "pre_work_readiness", {}
+        ).get("executable_work_scope"),
+        descriptor_scope_paths=(
+            raw.get("work_scope", {}).get("affected_paths")
+            if isinstance(raw.get("work_scope"), dict)
+            else None
+        ),
     )
     first_inspection = continuation_facts["first_inspection_sequence"]
     continuation_paths = continuation_facts["continuation_paths"]
@@ -7044,7 +7121,11 @@ def real_session_evidence(
             "pre_work_analysis_snapshot_id": resume_baseline_analysis_id,
             "materiality_work_authority": resume_materiality_basis,
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
-            "observed_change_relevant_to_checkpoint_next_step": bool(relevant_resume_paths),
+            "continuation_scope_paths": continuation_facts["declared_scope_paths"],
+            "continuation_path_correlation_basis": continuation_facts[
+                "path_correlation_basis"
+            ],
+            "observed_change_within_typed_scope": bool(relevant_resume_paths),
             "resume_numeric_exit_validation": resume_validation_ok,
             "post_inspection_numeric_exit_validation": continuation_facts[
                 "post_inspection_numeric_exit_validation"
@@ -7054,6 +7135,9 @@ def real_session_evidence(
             "change_continuation_qualified": change_continuation_ok,
             "verified_state_continuation_qualified": verified_state_continuation_ok,
             "final_behavior_contradicts_completed_state": contradictory_resume_behavior,
+            "terminal_validation": continuation_facts[
+                "post_inspection_validation"
+            ],
         },
         "learning_basis": {
             **learning_basis,
@@ -17416,7 +17500,7 @@ def self_test() -> int:
     )
     if (
         not no_continuation_result["continuation_basis"]["resume_numeric_exit_validation"]
-        or no_continuation_result["continuation_basis"]["observed_change_relevant_to_checkpoint_next_step"]
+        or no_continuation_result["continuation_basis"]["observed_change_within_typed_scope"]
         or no_continuation_result["continuation_basis"]["verified_state_continuation_qualified"]
     ):
         raise AssertionError("validation and source-change evidence were not kept separate")
@@ -17457,6 +17541,81 @@ def self_test() -> int:
         "recall-call",
         lambda output: output["checkpoint"].update({"work_state": "completed"}),
     )
+
+    def insert_recovered_resume_diagnostic(fixture: dict[str, Any]) -> None:
+        path, events = capture_events(fixture, "resume")
+        insertion_index = next(
+            index
+            for index, value in enumerate(events)
+            if value.get("payload", {}).get("type") == "custom_tool_call"
+            and "resume-verification-call"
+            in str(value.get("payload", {}).get("call_id", ""))
+        )
+        turn_id = (
+            events[insertion_index]
+            .get("payload", {})
+            .get("internal_chat_message_metadata_passthrough", {})
+            .get("turn_id")
+        )
+        call_id = "recovered-environment-diagnostic"
+        arguments = json.dumps(
+            {
+                "cmd": "python3 -m unittest tests.restricted_environment",
+                "workdir": "/phase8/repository",
+                "yield_time_ms": 30000,
+            },
+            separators=(",", ":"),
+        )
+        events[insertion_index:insertion_index] = [
+            {
+                "timestamp": "2026-08-15T00:00:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "id": f"ctc-{call_id}",
+                    "call_id": call_id,
+                    "name": "exec",
+                    "status": "completed",
+                    "input": (
+                        f"const r=await tools.exec_command({arguments});\ntext(r);\n"
+                    ),
+                    "internal_chat_message_metadata_passthrough": {
+                        "turn_id": turn_id
+                    },
+                },
+            },
+            {
+                "timestamp": "2026-08-15T00:00:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call_output",
+                    "id": f"ctco-{call_id}",
+                    "call_id": call_id,
+                    "output": [
+                        {
+                            "type": "input_text",
+                            "text": "Script completed\nWall time 0.1 seconds\nOutput:\n",
+                        },
+                        {
+                            "type": "input_text",
+                            "text": json.dumps(
+                                {
+                                    "output": "Operation not permitted\n",
+                                    "exit_code": 1,
+                                },
+                                separators=(",", ":"),
+                            ),
+                        },
+                    ],
+                    "internal_chat_message_metadata_passthrough": {
+                        "turn_id": turn_id
+                    },
+                },
+            },
+        ]
+        store_capture(fixture, "resume", path, events)
+
+    insert_recovered_resume_diagnostic(verified_completed_state)
     verified_completed_result = real_session_evidence(
         verified_completed_state,
         kind="volicord",
@@ -17473,10 +17632,54 @@ def self_test() -> int:
             "pre_work_repository_baseline_required"
         ]
         or load_codex_capture(verified_path).successful_calls("checkpoint_record")
+        or verified_completed_result["continuation_basis"]["terminal_validation"][
+            "recovered_intermediate_failure"
+        ]
+        is not True
     ):
         raise AssertionError(
-            "completed recalled state could not qualify through read-only inspection and verification"
+            "completed recalled state could not qualify through read-only inspection and verification: "
+            + json.dumps({
+                "check": verified_completed_result["checks"][
+                    "meaningful_recalled_continuation"
+                ],
+                "basis": verified_completed_result["continuation_basis"],
+                "commands": [
+                    {
+                        "sequence": command.sequence,
+                        "exit_code": command.exit_code,
+                        "termination": command.termination,
+                    }
+                    for command in load_codex_capture(verified_path).commands
+                ],
+            }, sort_keys=True)
         )
+
+    mutate_custom_output(
+        verified_completed_state,
+        "resume",
+        "resume-verification-call",
+        lambda output: output.update({"exit_code": 1}),
+    )
+    terminal_failure_result = real_session_evidence(
+        verified_completed_state,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        terminal_failure_result["checks"]["meaningful_recalled_continuation"]
+        != "failed"
+        or terminal_failure_result["continuation_basis"]["terminal_validation"][
+            "unresolved_terminal_failure"
+        ]
+        is not True
+        or terminal_failure_result["continuation_basis"][
+            "final_behavior_contradicts_completed_state"
+        ]
+        is not True
+    ):
+        raise AssertionError("unresolved terminal resume verification failure qualified")
 
     recall_and_stop = real_session_fixture("volicord", 1, revision, evidence_directory)
     stop_path, stop_events = capture_events(recall_and_stop, "resume")
@@ -17502,14 +17705,158 @@ def self_test() -> int:
     )["checks"]["meaningful_recalled_continuation"] != "failed":
         raise AssertionError("Recall and inspection without post-inspection verification qualified")
 
-    irrelevant_continuation = real_session_fixture("volicord", 1, revision, evidence_directory)
-    replace_checkpoint_next_step(
-        irrelevant_continuation, "Update tests/reserved.rs for a different component"
+    descriptive_next_step_mismatch = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
     )
-    if real_session_evidence(
-        irrelevant_continuation, kind="volicord", cycle=1, repository_revision=revision
-    )["checks"]["meaningful_recalled_continuation"] != "failed":
-        raise AssertionError("resume change unrelated to the recalled Checkpoint qualified")
+    replace_checkpoint_next_step(
+        descriptive_next_step_mismatch,
+        "Update tests/reserved.rs for a different component",
+    )
+    descriptive_next_step_result = real_session_evidence(
+        descriptive_next_step_mismatch,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        descriptive_next_step_result["checks"]["meaningful_recalled_continuation"]
+        != "passed"
+        or descriptive_next_step_result["continuation_basis"][
+            "continuation_path_correlation_basis"
+        ]
+        != "materiality_executable_work_scope"
+    ):
+        raise AssertionError("descriptive next_step overrode typed continuation scope")
+
+    typed_regression_continuation = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    regression_path = "tests/continuation_regression.rs"
+    mutate_mcp_call_action(
+        typed_regression_continuation,
+        "resume",
+        "materiality_review",
+        "inspect",
+        lambda arguments: arguments.update({"paths": [regression_path]}),
+    )
+    mutate_custom_output(
+        typed_regression_continuation,
+        "resume",
+        "resume-materiality-scope-binding",
+        lambda output: output["executable_work_scope"].update(
+            {"paths": [regression_path]}
+        ),
+    )
+    regression_capture_path, regression_events = capture_events(
+        typed_regression_continuation, "resume"
+    )
+    for value in regression_events:
+        payload = value.get("payload", {})
+        if (
+            payload.get("type") == "custom_tool_call"
+            and "resume-patch-call" in str(payload.get("call_id", ""))
+        ):
+            payload["input"] = payload["input"].replace(
+                "src/resume.rs", regression_path
+            )
+        if payload.get("type") == "patch_apply_end":
+            payload["changes"] = {
+                f"/phase8/repository/{regression_path}": {
+                    "type": "update",
+                    "unified_diff": "@@ -0,0 +1 @@\n+continued\n",
+                    "move_path": None,
+                }
+            }
+    store_capture(
+        typed_regression_continuation,
+        "resume",
+        regression_capture_path,
+        regression_events,
+    )
+    mutate_custom_output(
+        typed_regression_continuation,
+        "resume",
+        "resume-checkpoint-call",
+        lambda output: output.update({"changed_paths": [regression_path]}),
+    )
+    typed_regression_result = real_session_evidence(
+        typed_regression_continuation,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        typed_regression_result["checks"]["meaningful_recalled_continuation"]
+        != "passed"
+        or typed_regression_result["relevant_resume_paths"] != [regression_path]
+        or typed_regression_result["continuation_basis"][
+            "continuation_path_correlation_basis"
+        ]
+        != "materiality_executable_work_scope"
+    ):
+        raise AssertionError(
+            "new regression test inside typed continuation scope was rejected: "
+            + json.dumps({
+                "failed": [
+                    name
+                    for name, value in typed_regression_result["checks"].items()
+                    if value != "passed"
+                ],
+                "paths": typed_regression_result["continuation_paths"],
+                "relevant": typed_regression_result["relevant_resume_paths"],
+                "basis": typed_regression_result["continuation_basis"],
+            }, sort_keys=True)
+        )
+
+    outside_typed_scope = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    outside_path = "tests/outside_scope.rs"
+    outside_capture_path, outside_events = capture_events(
+        outside_typed_scope, "resume"
+    )
+    for value in outside_events:
+        payload = value.get("payload", {})
+        if (
+            payload.get("type") == "custom_tool_call"
+            and "resume-patch-call" in str(payload.get("call_id", ""))
+        ):
+            payload["input"] = payload["input"].replace(
+                "src/resume.rs", outside_path
+            )
+        if payload.get("type") == "patch_apply_end":
+            payload["changes"] = {
+                f"/phase8/repository/{outside_path}": {
+                    "type": "update",
+                    "unified_diff": "@@ -0,0 +1 @@\n+outside\n",
+                    "move_path": None,
+                }
+            }
+    store_capture(
+        outside_typed_scope,
+        "resume",
+        outside_capture_path,
+        outside_events,
+    )
+    mutate_custom_output(
+        outside_typed_scope,
+        "resume",
+        "resume-checkpoint-call",
+        lambda output: output.update({"changed_paths": [outside_path]}),
+    )
+    outside_scope_result = real_session_evidence(
+        outside_typed_scope,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )
+    if (
+        outside_scope_result["checks"]["resume_materiality_work_authority"]
+        != "failed"
+        or outside_scope_result["checks"]["meaningful_recalled_continuation"]
+        != "failed"
+    ):
+        raise AssertionError("resume change outside typed executable scope qualified")
 
     generated_only = real_session_fixture("volicord", 1, revision, evidence_directory)
     generated_path, generated_events = capture_events(generated_only, "resume")
@@ -17645,6 +17992,9 @@ def self_test() -> int:
         "unrelated_goal_and_unverified_terminal_checkpoint_rejected": "passed",
         "resume_change_continuation": "passed",
         "resume_verified_completed_state_continuation": "passed",
+        "recovered_intermediate_resume_failure": "passed",
+        "unresolved_terminal_resume_failure_rejected": "passed",
+        "typed_scope_resume_change_correlation": "passed",
         "paused_state_no_change_continuation_rejected": "passed",
         "recall_without_post_inspection_verification_rejected": "passed",
         "repository_scoped_activation_required": "passed",
@@ -17684,7 +18034,7 @@ def self_test() -> int:
         "mismatched_recall_state_rejected": "passed",
         "continuation_before_recall_rejected": "passed",
         "missing_continuation_rejected": "passed",
-        "irrelevant_and_generated_resume_change_rejected": "passed",
+        "out_of_scope_and_generated_resume_change_rejected": "passed",
         "resume_change_and_validation_separated": "passed",
         "checkpoint_owned_continuation_relevance": "passed",
         "user_decision_provenance_rejected": "passed",

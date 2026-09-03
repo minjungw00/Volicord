@@ -591,8 +591,8 @@
       "Recall preserves completed learning context as learning participation rather than a canonical Decision",
       "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
       "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
-      "change continuation produces a relevant repository change after the retained pre-write baseline plus separate numeric-exit validation after that change",
-      "verified-state continuation requires a recalled completed Checkpoint, repository inspection, post-inspection numeric-exit verification, and no behavior contradicting the completed state",
+      "change continuation produces a repository change correlated to the strongest available typed executable or descriptor scope after the retained pre-write baseline plus separate terminal numeric-exit validation after that change; next_step remains descriptive handoff text",
+      "verified-state continuation requires a recalled completed Checkpoint, repository inspection, successful terminal post-inspection verification, and no unresolved terminal behavior contradicting the completed state; recovered intermediate diagnostics do not contradict it",
       "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
       "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify"
     ],
