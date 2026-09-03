@@ -1273,7 +1273,7 @@ def load_definition() -> dict[str, Any]:
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
             "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-            "after Project initialization source exactly one canonical Goal and any bounded non-Goal Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
+            "after Project initialization source exactly one canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
@@ -1297,7 +1297,7 @@ def load_definition() -> dict[str, Any]:
             "repository-scoped SessionStart activation is observed before continuation behavior is judged",
             "the first captured user turn matches the descriptor plain fresh_resume_user_task under the directional fail-closed transport-equivalence contract, and does not disclose Recall",
             "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
-            "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
+            "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work, and Recall exposes every recorded behaviorally relevant Learning, Preference, or Constraint item with canonical identity, role, statement, and Source basis",
             "Recall preserves completed learning context as learning participation rather than a canonical Decision",
             "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
             "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
@@ -1343,6 +1343,17 @@ def load_definition() -> dict[str, Any]:
             "bounded_decomposition_supported": True,
             "required_goal_count": 1,
             "non_goal_context_roles_may_share_first_turn": True,
+            "behaviorally_relevant_roles": [
+                "learning",
+                "preference",
+                "constraint",
+            ],
+            "durability_counterfactual": (
+                "loss after fresh Recall could change authority, Question behavior, "
+                "learning interruption, or bounded work"
+            ),
+            "fresh_recall_requires_recorded_behaviorally_relevant_context": True,
+            "goal_only_requires_additional_context": False,
         }
         or evidence.get("command_forwarding_contract")
         != {
@@ -4771,6 +4782,15 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
         explicit_delegation = (
             basis.get("explicit_delegation") if isinstance(basis, dict) else None
         )
+        exact_authority = (
+            basis.get("exact_authority") if isinstance(basis, dict) else None
+        )
+        settling_disposition = (
+            dimension.get("disposition")
+            in {"repository_or_environment_fact", "settled_authority"}
+            if isinstance(dimension, dict)
+            else False
+        )
         discovered_choice_ids = (
             dimension.get("discovered_choice_ids") if isinstance(dimension, dict) else None
         )
@@ -4822,6 +4842,30 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             or not isinstance(basis.get("contract_basis"), list)
             or not isinstance(basis.get("decision_ids"), list)
             or not isinstance(basis.get("research_basis"), list)
+            or (
+                settling_disposition
+                and (
+                    not isinstance(exact_authority, dict)
+                    or set(exact_authority)
+                    != {
+                        "covered_outcome",
+                        "remaining_credible_alternatives",
+                        "unique_outcome_rationale",
+                    }
+                    or not nonempty_string(exact_authority.get("covered_outcome"))
+                    or not isinstance(
+                        exact_authority.get("remaining_credible_alternatives"), list
+                    )
+                    or not all(
+                        nonempty_string(item)
+                        for item in exact_authority["remaining_credible_alternatives"]
+                    )
+                    or not nonempty_string(
+                        exact_authority.get("unique_outcome_rationale")
+                    )
+                )
+            )
+            or (not settling_disposition and exact_authority is not None)
             or (
                 explicit_delegation is not None
                 and (
@@ -4989,12 +5033,17 @@ def materiality_dimensions_from_judgments(
         "learning_value",
         "evidence_completion_basis",
     }
+    exact_authority_fields = {
+        "authority_coverage",
+        "remaining_credible_alternatives",
+        "unique_outcome_rationale",
+    }
     variants = {
-        "repository_or_environment_fact": [set()],
+        "repository_or_environment_fact": [exact_authority_fields],
         "settled_authority": [
-            {"contract_basis"},
-            {"decision_ids"},
-            {"contract_basis", "decision_ids"},
+            exact_authority_fields | {"contract_basis"},
+            exact_authority_fields | {"decision_ids"},
+            exact_authority_fields | {"contract_basis", "decision_ids"},
         ],
         "agent_owned_implementation_choice": [set()],
         "delegated_implementation_choice": [
@@ -5088,6 +5137,24 @@ def materiality_dimensions_from_judgments(
             return None
         research_basis = declared_research_basis + evidence_completion_basis
         explicit_delegation = None
+        exact_authority = None
+        if disposition in {
+            "repository_or_environment_fact",
+            "settled_authority",
+        }:
+            remaining_alternatives = judgment.get("remaining_credible_alternatives")
+            if (
+                not nonempty_string(judgment.get("authority_coverage"))
+                or not isinstance(remaining_alternatives, list)
+                or not all(nonempty_string(item) for item in remaining_alternatives)
+                or not nonempty_string(judgment.get("unique_outcome_rationale"))
+            ):
+                return None
+            exact_authority = {
+                "covered_outcome": judgment["authority_coverage"],
+                "remaining_credible_alternatives": remaining_alternatives,
+                "unique_outcome_rationale": judgment["unique_outcome_rationale"],
+            }
         resolution_decision_id = judgment.get("resolution_decision_id")
         if disposition == "repository_or_environment_fact":
             kinds = ["repository_or_environment_fact"]
@@ -5138,6 +5205,7 @@ def materiality_dimensions_from_judgments(
                 "kinds": kinds,
                 "summary": judgment["basis_summary"],
                 "authority_counterfactual": judgment["authority_counterfactual"],
+                "exact_authority": exact_authority,
                 "source_ids": source_ids,
                 "contract_basis": contract_basis,
                 "decision_ids": decision_ids,
@@ -5265,6 +5333,21 @@ def materiality_dimension_authority_valid(
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
     decision_ids = basis["decision_ids"]
+    exact_authority = basis.get("exact_authority")
+    settling_disposition = disposition in {
+        "repository_or_environment_fact",
+        "settled_authority",
+    }
+    if settling_disposition:
+        if (
+            not isinstance(exact_authority, dict)
+            or not nonempty_string(exact_authority.get("covered_outcome"))
+            or exact_authority.get("remaining_credible_alternatives") != []
+            or not nonempty_string(exact_authority.get("unique_outcome_rationale"))
+        ):
+            return False
+    elif exact_authority is not None:
+        return False
     if (
         dimension.get("discovery_evidence_state")
         in {"research_required", "prototype_required"}
@@ -5277,13 +5360,24 @@ def materiality_dimension_authority_valid(
         return False
     if disposition == "repository_or_environment_fact":
         return (
-            "repository_or_environment_fact" in kinds
+            kinds == {"repository_or_environment_fact"}
             and nonempty_string(repository_source_id)
             and repository_source_id in source_ids
+            and not basis["contract_basis"]
+            and not decision_ids
         )
     if disposition == "settled_authority":
         accepted = "accepted_contract" in kinds and bool(basis["contract_basis"])
-        decided = "applicable_decision" in kinds and bool(decision_ids)
+        decided = (
+            "applicable_decision" in kinds
+            and bool(decision_ids)
+            and all(
+                decision_id in decision_evidence
+                and f"work-authority:{dimension['dimension_id']}"
+                in decision_evidence[decision_id]["material_scope"]
+                for decision_id in decision_ids
+            )
+        )
         return accepted or decided
     if disposition == "delegated_implementation_choice":
         if "explicit_delegation" not in kinds:
@@ -7257,6 +7351,7 @@ def real_session_evidence(
         and checkpoint_decisions <= set(recalled_decisions)
         and recalled_context is not None
         and goal_context_id in recalled_context
+        and recorded_context_ids <= set(recalled_context)
         and durable_context_source_ok
         and recalled_goal_retains_full_turn_source
     )
@@ -9600,6 +9695,12 @@ def real_session_fixture(
         if behavior_class == "exploratory_uncertainty":
             judgment["exploratory_disposition"] = "resolved_by_research"
             judgment["research_basis"] = evaluation_basis.get("repository_facts", [])
+        if materiality_disposition == "repository_or_environment_fact":
+            judgment.update({
+                "authority_coverage": "The retained repository Source covers the complete adapter-state outcome.",
+                "remaining_credible_alternatives": [],
+                "unique_outcome_rationale": "The observed repository invariant makes only this exact state representation mechanically valid.",
+            })
         if resolved:
             judgment["resolution_decision_id"] = decision
         return judgment
@@ -9622,6 +9723,9 @@ def real_session_fixture(
             "learning_value": {"state": "routine", "rationale": "A repository-established fact needs no learning interruption."},
             "basis_summary": "The retained Analysis Snapshot establishes this fact.",
             "authority_counterfactual": "Repository evidence establishes the exact fact, so no user preference or broad-Goal delegation is inferred.",
+            "authority_coverage": "The retained repository Source covers the complete repository-shape outcome.",
+            "remaining_credible_alternatives": [],
+            "unique_outcome_rationale": "The observed repository shape makes only this bounded outcome mechanically valid.",
         }
 
     def materiality_judgments(*, resolved: bool = False) -> list[dict[str, Any]]:
@@ -10352,6 +10456,7 @@ def real_session_fixture(
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
                 "goals": [work_user_task],
+                "behaviorally_relevant_context": [],
                 "decisions": (
                     [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}]
                     if is_user_owned_behavior(behavior_class)
@@ -13943,7 +14048,10 @@ def self_test() -> int:
 
     def capture_events(fixture: dict[str, Any], name: str) -> tuple[Path, list[dict[str, Any]]]:
         reference = fixture["evidence"]["captures"][name]
-        path = evidence_directory / reference["file"]
+        fixture_evidence_directory = Path(
+            fixture.get("_evidence_directory", evidence_directory)
+        )
+        path = fixture_evidence_directory / reference["file"]
         return path, [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
     def store_capture(
@@ -13971,7 +14079,10 @@ def self_test() -> int:
 
     def mutate_bundle(fixture: dict[str, Any], mutation: Callable[[dict[str, Any]], None]) -> None:
         reference = fixture["evidence"]["canonical_bundle"]
-        path = evidence_directory / reference["file"]
+        fixture_evidence_directory = Path(
+            fixture.get("_evidence_directory", evidence_directory)
+        )
+        path = fixture_evidence_directory / reference["file"]
         value = json.loads(path.read_text(encoding="utf-8"))
         mutation(value)
         semantic_state = {
@@ -14371,6 +14482,163 @@ def self_test() -> int:
                 f"sanitized {repository_class} hidden no-question miss qualified"
             )
         sanitized_hidden_miss_results.append(hidden_miss_result)
+
+    authority_scenarios = (
+        (
+            "candidate-expiry-cleanup-trigger",
+            "Choose the candidate expiry cleanup trigger",
+            (
+                "Clean expired candidates synchronously at an Inquiry-owned mutation boundary",
+                "Clean expired candidates during a periodic Inquiry-owned maintenance pass",
+            ),
+        ),
+        (
+            "project-local-token-file-contract",
+            "Choose the project-local token-file representation and failure contract",
+            (
+                "Use one strict plaintext token representation and fail closed",
+                "Use a structured recoverable representation with bounded diagnostics",
+            ),
+        ),
+    )
+
+    def apply_sanitized_authority_scenario(
+        fixture: dict[str, Any],
+        scenario_id: str,
+        summary: str,
+        alternatives: tuple[str, str],
+    ) -> None:
+        def revise_choices(arguments: dict[str, Any]) -> None:
+            primary = arguments["choices"][0]
+            primary["summary"] = summary
+            primary["alternatives"] = [
+                {
+                    "alternative_id": f"{scenario_id}-a",
+                    "summary": alternatives[0],
+                    "technical_consequences": [
+                        "This alternative produces one durable product outcome."
+                    ],
+                },
+                {
+                    "alternative_id": f"{scenario_id}-b",
+                    "summary": alternatives[1],
+                    "technical_consequences": [
+                        "This alternative produces a materially different durable product outcome."
+                    ],
+                },
+            ]
+            primary["technical_consequences"] = [
+                "Both alternatives satisfy the cited constraints but differ materially."
+            ]
+
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "engineering_choice_discovery",
+            revise_choices,
+        )
+        mutate_custom_output(
+            fixture,
+            "work",
+            "discovery-call",
+            lambda output: revise_choices(output),
+        )
+
+    sanitized_authority_question_results: list[dict[str, Any]] = []
+    sanitized_authority_overreach_results: list[dict[str, Any]] = []
+    for scenario_id, summary, alternatives in authority_scenarios:
+        question_directory = evidence_directory / f"exact-authority-question-{scenario_id}"
+        question_directory.mkdir()
+        question_fixture = real_session_fixture(
+            "volicord",
+            1,
+            revision,
+            question_directory,
+            behavior_class="hidden_user_owned_decision",
+        )
+        apply_sanitized_authority_scenario(
+            question_fixture, scenario_id, summary, alternatives
+        )
+        question_result = real_session_evidence(
+            question_fixture,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )
+        if (
+            question_result["status"] != "passed"
+            or question_result["checks"]["engineering_choice_discovery"] != "passed"
+            or question_result["checks"]["appropriate_inquiry_outcome"] != "passed"
+            or question_result["checks"]["decision_provenance_when_required"] != "passed"
+            or question_result["checks"]["pre_write_materiality_work_authority"] != "passed"
+        ):
+            raise AssertionError(
+                f"sanitized {scenario_id} Question/Decision chronology did not qualify: "
+                + json.dumps({
+                    "status": question_result["status"],
+                    "failed": [
+                        name
+                        for name, value in question_result["checks"].items()
+                        if value != "passed"
+                    ],
+                }, sort_keys=True)
+            )
+        sanitized_authority_question_results.append(question_result)
+
+        overreach_directory = evidence_directory / f"exact-authority-overreach-{scenario_id}"
+        overreach_directory.mkdir()
+        overreach_fixture = real_session_fixture(
+            "volicord",
+            1,
+            revision,
+            overreach_directory,
+            behavior_class="research_or_no_question",
+        )
+        apply_sanitized_authority_scenario(
+            overreach_fixture, scenario_id, summary, alternatives
+        )
+
+        def leave_material_alternatives(arguments: dict[str, Any]) -> None:
+            judgment = arguments["judgments"][0]
+            judgment["basis_summary"] = (
+                "Related architecture or convention evidence constrains this choice."
+            )
+            judgment["authority_coverage"] = (
+                "The evidence covers subsystem ownership and excludes some implementations."
+            )
+            judgment["remaining_credible_alternatives"] = list(alternatives)
+            judgment["unique_outcome_rationale"] = (
+                "No unique outcome exists because both material alternatives remain compatible."
+            )
+
+        mutate_mcp_call_action(
+            overreach_fixture,
+            "work",
+            "materiality_review",
+            "record",
+            leave_material_alternatives,
+        )
+        overreach_result = real_session_evidence(
+            overreach_fixture,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )
+        overreach_capture = load_codex_capture(
+            overreach_directory
+            / overreach_fixture["evidence"]["captures"]["work"]["file"]
+        )
+        if (
+            overreach_result["status"] == "passed"
+            or overreach_result["checks"]["pre_write_materiality_work_authority"]
+            == "passed"
+            or overreach_capture.successful_calls("candidate_manage")
+            or overreach_capture.successful_calls("decision_record")
+        ):
+            raise AssertionError(
+                f"sanitized {scenario_id} constraining evidence qualified as exact authority"
+            )
+        sanitized_authority_overreach_results.append(overreach_result)
 
     def move_review_completion_after_first_write(fixture: dict[str, Any]) -> None:
         path, events = capture_events(fixture, "work")
@@ -15071,6 +15339,27 @@ def self_test() -> int:
             fixture,
             "resume",
             "recall-call",
+            lambda output: output.update({
+                "behaviorally_relevant_context": [
+                    {
+                        "identity": "25" * 16,
+                        "role": "learning",
+                        "statement": learning_statement,
+                        "source_ids": ["27" * 16],
+                    },
+                    {
+                        "identity": "26" * 16,
+                        "role": "constraint",
+                        "statement": constraint_statement,
+                        "source_ids": ["28" * 16],
+                    },
+                ]
+            }),
+        )
+        mutate_custom_output(
+            fixture,
+            "resume",
+            "recall-call",
             lambda output: output["checkpoint"].update({"goal": goal_statement}),
         )
         return fixture
@@ -15091,6 +15380,8 @@ def self_test() -> int:
         or decomposed_basis.get("recorded_roles")
         != ["constraint", "goal", "learning"]
         or decomposed_basis.get("all_statements_bounded_verbatim") is not True
+        or set(decomposed_context_result.get("recalled_context_ids", []))
+        != {"08" * 16, "25" * 16, "26" * 16}
     ):
         raise AssertionError(
             "bounded Goal/preference/constraint decomposition was rejected: "
@@ -16748,6 +17039,12 @@ def self_test() -> int:
         second["disposition"] = "delegated_implementation_choice"
         second["delegation_statement"] = primary["delegation_statement"]
         second["delegated_scope"] = ["repository file shape"]
+        for field in (
+            "authority_coverage",
+            "remaining_credible_alternatives",
+            "unique_outcome_rationale",
+        ):
+            second.pop(field, None)
 
     mutate_mcp_call_action(
         each_dimension_delegated,
@@ -16778,6 +17075,12 @@ def self_test() -> int:
         second["disposition"] = "delegated_implementation_choice"
         second["delegation_statement"] = primary["delegation_statement"]
         second["delegated_scope"] = shared_scope
+        for field in (
+            "authority_coverage",
+            "remaining_credible_alternatives",
+            "unique_outcome_rationale",
+        ):
+            second.pop(field, None)
 
     mutate_mcp_call_action(
         shared_scope_delegation,
@@ -16872,6 +17175,12 @@ def self_test() -> int:
         second["disposition"] = "exploratory_uncertainty"
         second["exploratory_disposition"] = "resolved_by_research"
         second["research_basis"] = ["inspected implementation evidence"]
+        for field in (
+            "authority_coverage",
+            "remaining_credible_alternatives",
+            "unique_outcome_rationale",
+        ):
+            second.pop(field, None)
 
     mutate_mcp_call_action(
         coexistence,
@@ -16920,6 +17229,30 @@ def self_test() -> int:
             "research/no-question behavior was coupled to one exact disposition label"
         )
 
+    missing_exact_authority = real_session_fixture(
+        "small-python",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="research_or_no_question",
+    )
+    mutate_mcp_call_action(
+        missing_exact_authority,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["judgments"][0].pop(
+            "unique_outcome_rationale"
+        ),
+    )
+    if real_session_evidence(
+        missing_exact_authority,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("fact authority without exact sufficiency fields qualified")
+
     factual_learning_control = real_session_fixture(
         "small-python",
         3,
@@ -16927,14 +17260,21 @@ def self_test() -> int:
         evidence_directory,
         behavior_class="learning_routine_control",
     )
+    def make_learning_control_factual(arguments: dict[str, Any]) -> None:
+        judgment = arguments["judgments"][0]
+        judgment.update({
+            "disposition": "repository_or_environment_fact",
+            "authority_coverage": "The repository Source covers the complete routine detail.",
+            "remaining_credible_alternatives": [],
+            "unique_outcome_rationale": "Only one mechanically valid routine outcome remains.",
+        })
+
     mutate_mcp_call_action(
         factual_learning_control,
         "work",
         "materiality_review",
         "record",
-        lambda arguments: arguments["judgments"][0].update(
-            {"disposition": "repository_or_environment_fact"}
-        ),
+        make_learning_control_factual,
     )
     factual_learning_result = real_session_evidence(
         factual_learning_control,
@@ -16993,6 +17333,12 @@ def self_test() -> int:
     def make_extra_dimension_unresolved(arguments: dict[str, Any]) -> None:
         judgment = arguments["judgments"][1]
         judgment["disposition"] = "unresolved_user_owned_outcome"
+        for field in (
+            "authority_coverage",
+            "remaining_credible_alternatives",
+            "unique_outcome_rationale",
+        ):
+            judgment.pop(field, None)
 
     mutate_mcp_call_action(
         unresolved_extra,
@@ -17145,6 +17491,60 @@ def self_test() -> int:
         require_current_goal_delegation=True,
     ):
         raise AssertionError("Inquiry-time delegation was confused with current-task evidence")
+
+    exact_decision_dimension = {
+        "dimension_id": "exact-selected-policy",
+        "disposition": "settled_authority",
+        "discovery_evidence_state": "sufficient",
+        "evidence_completion_basis": [],
+        "basis": {
+            "kinds": ["applicable_decision"],
+            "summary": "An applicable Decision selects the exact policy.",
+            "authority_counterfactual": "The Decision covers this complete dimension.",
+            "exact_authority": {
+                "covered_outcome": "the complete exact-selected-policy dimension",
+                "remaining_credible_alternatives": [],
+                "unique_outcome_rationale": "The applicable Decision selects one exact policy.",
+            },
+            "source_ids": ["02" * 16],
+            "contract_basis": [],
+            "decision_ids": ["decision-exact-policy"],
+            "research_basis": [],
+        },
+    }
+    exact_decision_evidence = {
+        "decision-exact-policy": {
+            "material_scope": ["work-authority:exact-selected-policy"],
+            "completion_sequence": 10,
+        }
+    }
+    if not materiality_dimension_authority_valid(
+        exact_decision_dimension,
+        goal_context_id=None,
+        goal_source_id=None,
+        goal_statement=None,
+        frozen_task=None,
+        repository_source_id=None,
+        decision_evidence=exact_decision_evidence,
+        require_current_goal_delegation=False,
+    ):
+        raise AssertionError("applicable exact Decision authority was rejected")
+    exact_decision_dimension["basis"]["exact_authority"][
+        "remaining_credible_alternatives"
+    ] = ["another materially different policy"]
+    if materiality_dimension_authority_valid(
+        exact_decision_dimension,
+        goal_context_id=None,
+        goal_source_id=None,
+        goal_statement=None,
+        frozen_task=None,
+        repository_source_id=None,
+        decision_evidence=exact_decision_evidence,
+        require_current_goal_delegation=False,
+    ):
+        raise AssertionError(
+            "Decision authority with a remaining material alternative qualified"
+        )
 
     two_checkpoint_fixture = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -19041,6 +19441,14 @@ def self_test() -> int:
             and len(sanitized_hidden_miss_results) == 2
             else "failed"
         ),
+        "sanitized_exact_authority_two_question_paths_and_two_overreach_rejections": (
+            "passed"
+            if len(sanitized_authority_question_results) == 2
+            and len(sanitized_authority_overreach_results) == 2
+            else "failed"
+        ),
+        "exact_decision_and_unique_fact_no_question_controls": "passed",
+        "exact_authority_sufficiency_fields_required": "passed",
         "malformed_current_user_turn_rejected": "passed",
         "engineering_choice_discovery_required": "passed",
         "executable_scope_readiness_chronology": "passed",

@@ -1992,7 +1992,7 @@ def relevant_context_ids(bundle: CanonicalBundle, recall_result: dict[str, Any])
     goals = recall_result.get("goals")
     if not isinstance(goals, list) or not goals or not all(nonempty(value) for value in goals):
         return None
-    identities = []
+    identities: list[str] = []
     for goal in goals:
         matches = [
             row.get("id")
@@ -2002,6 +2002,46 @@ def relevant_context_ids(bundle: CanonicalBundle, recall_result: dict[str, Any])
         if len(matches) != 1:
             return None
         identities.append(str(matches[0]))
+    behavioral = recall_result.get("behaviorally_relevant_context")
+    if not isinstance(behavioral, list):
+        return None
+    for projected in behavioral:
+        if not isinstance(projected, dict):
+            return None
+        identity = projected.get("identity")
+        role = projected.get("role")
+        statement = projected.get("statement")
+        source_ids = projected.get("source_ids")
+        item = bundle.one(
+            "context_items",
+            id=identity,
+            project_id=bundle.project_id,
+        )
+        canonical_source_ids = [
+            row.get("source_id")
+            for row in sorted(
+                bundle.rows("context_item_sources"),
+                key=lambda row: row.get("position")
+                if isinstance(row.get("position"), int)
+                else -1,
+            )
+            if row.get("project_id") == bundle.project_id
+            and row.get("context_item_id") == identity
+        ]
+        if (
+            item is None
+            or role not in {"constraint", "preference", "learning"}
+            or item.get("role") != role
+            or item.get("statement") != statement
+            or not isinstance(source_ids, list)
+            or not source_ids
+            or not all(nonempty(source_id) for source_id in source_ids)
+            or source_ids != canonical_source_ids
+        ):
+            return None
+        identities.append(str(identity))
+    if len(identities) != len(set(identities)):
+        return None
     return sorted(set(identities))
 
 

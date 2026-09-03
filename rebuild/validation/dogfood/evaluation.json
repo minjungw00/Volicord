@@ -437,6 +437,21 @@
       "mixed_dispositions_allowed": true,
       "discovery_owned_fields_are_server_derived": true,
       "closed_disposition_variants": true,
+      "exact_authority_sufficiency": {
+        "applies_to": [
+          "repository_or_environment_fact",
+          "settled_authority"
+        ],
+        "required_judgment_fields": [
+          "authority_coverage",
+          "remaining_credible_alternatives",
+          "unique_outcome_rationale"
+        ],
+        "remaining_materially_credible_alternatives_for_ready_work": 0,
+        "relevance_or_constraint_is_automatically_settling_authority": false,
+        "semantic_assessment_owner": "active_agent",
+        "production_validation": "typed provenance, disposition compatibility, explicit coverage, remaining-alternative shape, and unique-outcome assertion"
+      },
       "engineering_choice_discovery_required": true,
       "discovery_identity_field": "engineering_choice_discovery_candidate_id",
       "choice_effect_and_relationship_evidence_required": true,
@@ -556,12 +571,20 @@
       "semantic_statement_relation": "verbatim_containment_without_raw_source_rewrite",
       "bounded_decomposition_supported": true,
       "required_goal_count": 1,
-      "non_goal_context_roles_may_share_first_turn": true
+      "non_goal_context_roles_may_share_first_turn": true,
+      "behaviorally_relevant_roles": [
+        "learning",
+        "preference",
+        "constraint"
+      ],
+      "durability_counterfactual": "loss after fresh Recall could change authority, Question behavior, learning interruption, or bounded work",
+      "fresh_recall_requires_recorded_behaviorally_relevant_context": true,
+      "goal_only_requires_additional_context": false
     },
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
       "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-      "after Project initialization source exactly one canonical Goal and any bounded non-Goal Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
+      "after Project initialization source exactly one canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
@@ -607,7 +630,7 @@
       "repository-scoped SessionStart activation is observed before continuation behavior is judged",
       "the first captured user turn matches the descriptor plain fresh_resume_user_task under the directional fail-closed transport-equivalence contract, and does not disclose Recall",
       "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
-      "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work",
+      "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work, and Recall exposes every recorded behaviorally relevant Learning, Preference, or Constraint item with canonical identity, role, statement, and Source basis",
       "Recall preserves completed learning context as learning participation rather than a canonical Decision",
       "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
       "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
