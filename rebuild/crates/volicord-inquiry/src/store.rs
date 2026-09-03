@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 12;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 13;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1529,11 +1529,21 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 consequence_significance,
                 transferable_principles,
                 non_obvious_trade_offs,
+                interruption_counterfactual,
+                participation_scope_alignment,
             } => {
                 validate_text("learning deliberation rationale", rationale)?;
                 validate_list(consequence_significance)?;
                 validate_list(transferable_principles)?;
                 validate_list(non_obvious_trade_offs)?;
+                validate_text(
+                    "learning interruption counterfactual",
+                    interruption_counterfactual,
+                )?;
+                validate_text(
+                    "learning participation-scope alignment",
+                    participation_scope_alignment,
+                )?;
                 if consequence_significance.is_empty()
                     || transferable_principles.is_empty()
                     || non_obvious_trade_offs.is_empty()

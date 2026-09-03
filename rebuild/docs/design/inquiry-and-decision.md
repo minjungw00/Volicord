@@ -371,8 +371,14 @@ preference로 승격하지 않는다.
 
 각 discovered dimension은 authority와 별도로 `routine` 또는 `deliberation-worthy` learning value를
 가진다. Deliberation-worthy는 consequence significance, future engineering problem에 대한
-transferability와 non-obvious trade-off의 bounded evidence를 모두 요구한다. Credible alternatives는
-Engineering Choice Discovery에서 온다. User-owned dimension은 learning value와 무관하게 기존
+transferability와 non-obvious trade-off의 bounded evidence를 모두 요구한다. 또한 active agent는
+"user가 이 choice에 참여하지 않으면 user가 요청한 어떤 meaningful transferable understanding을
+잃는가?"라는 interruption counterfactual과 full current Goal/Source에 있는 bounded learning 및
+non-interruption scope와의 일치를 명시한다. 두 credible alternatives가 존재하거나 설명할 수 있다는
+사실만으로 deliberation-worthy가 되지 않는다. Small wording, test fixture/synchronization, private
+naming/helper detail은 requested learning scope 안에서 consequence와 transferable/non-obvious trade-off를
+실제로 만족하지 않으면 routine이다. Credible alternatives는 Engineering Choice Discovery에서 온다.
+User-owned dimension은 learning value와 무관하게 기존
 Question/Decision path를 사용한다. Settled fact/contract와 routine detail은 learning blocker를 만들지
 않는다.
 

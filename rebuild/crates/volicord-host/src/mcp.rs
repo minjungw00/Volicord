@@ -2300,8 +2300,10 @@ fn learning_value_schema() -> Value {
                 ("consequence_significance", nonempty_string_array_schema("Significant consequences worth understanding")),
                 ("transferable_principles", nonempty_string_array_schema("Principles transferable to future engineering work")),
                 ("non_obvious_trade_offs", nonempty_string_array_schema("Non-obvious trade-offs between credible alternatives")),
+                ("interruption_counterfactual", text_schema("What meaningful transferable understanding requested by the user would be lost if the user did not participate in this exact choice", 1, 4096)),
+                ("participation_scope_alignment", text_schema("Why interrupting for this exact choice is consistent with the user's full bounded learning and non-interruption scope in the current Goal/Source", 1, 4096)),
             ],
-            &["state", "rationale", "consequence_significance", "transferable_principles", "non_obvious_trade_offs"],
+            &["state", "rationale", "consequence_significance", "transferable_principles", "non_obvious_trade_offs", "interruption_counterfactual", "participation_scope_alignment"],
         ),
     ]})
 }
@@ -4962,6 +4964,13 @@ fn learning_value_assessment(value: &Value) -> Result<LearningValueAssessment, H
             consequence_significance: string_array(assessment, "consequence_significance")?,
             transferable_principles: string_array(assessment, "transferable_principles")?,
             non_obvious_trade_offs: string_array(assessment, "non_obvious_trade_offs")?,
+            interruption_counterfactual: required_str(assessment, "interruption_counterfactual")?
+                .to_owned(),
+            participation_scope_alignment: required_str(
+                assessment,
+                "participation_scope_alignment",
+            )?
+            .to_owned(),
         }),
         _ => Err(HostError::new("unknown learning-value assessment")),
     }
@@ -5323,9 +5332,16 @@ fn materiality_draft_json(
         "learning_participation":{
             "input_alternatives":schema_alternatives(learning_participation_schema()),
             "derived_identity_options":{"current_goal_user_turn_source_ids":current_host_user_turn_source_ids},
-            "assembly":"Choose inactive, or choose active and provide a verbatim explicit opt-in from one returned current Goal user-turn Source. Learning participation is independent of authority.",
+            "assembly":"Choose inactive, or choose active and provide the complete relevant verbatim learning scope, including any narrowing or non-interruption clause, from one returned current Goal user-turn Source. Evaluate that scope against current_goal.statement. Learning participation is independent of authority.",
         },
         "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
+        "learning_value_interruption_contract":{
+            "counterfactual":"If the user does not participate in this choice, what meaningful transferable understanding requested by the user would be lost?",
+            "deliberation_worthy_requires":["real consequence significance","a transferable principle","a non-obvious trade-off","consistency with the user's full bounded learning and interruption scope"],
+            "not_sufficient":["two credible alternatives exist","the detail needs wording or test synchronization","the agent can explain either implementation","learning participation is active"],
+            "routine_examples":["small wording choices","test fixture selection","test synchronization details","private naming or helper structure without a meaningful transferable trade-off"],
+            "source_to_consider":"current_goal.statement and the exact current-host user-turn Source; do not discard a narrowing clause when selecting the verbatim participation statement",
+        },
         "learning_value_revision_contract":{
             "rule":"A prior deliberation_worthy assessment cannot become routine merely because an implementation was selected.",
             "supported_downgrade_bases":["current non-user Source-backed research evidence","current non-user Source-backed prototype evidence","exact current-host user withdrawal or narrowing of learning participation"],
@@ -5387,6 +5403,8 @@ fn authority_learning_routing_json() -> Value {
     json!({
         "assessment_owner":"active_agent",
         "independence_rule":"Learning participation and learning value are independent of authority ownership.",
+        "interruption_counterfactual":"If the user does not participate in this choice, what meaningful transferable understanding requested by the user would be lost?",
+        "scope_rule":"A deliberation-worthy assessment must be consistent with the user's full bounded learning and non-interruption scope from the current Goal/Source; generic alternative count is not enough.",
         "learning_requests_not_user_ownership":[
             "ask_to_learn",
             "ask_to_compare_alternatives",
@@ -5579,12 +5597,16 @@ fn learning_value_json(assessment: &LearningValueAssessment) -> Value {
             consequence_significance,
             transferable_principles,
             non_obvious_trade_offs,
+            interruption_counterfactual,
+            participation_scope_alignment,
         } => json!({
             "state":"deliberation_worthy",
             "rationale":rationale,
             "consequence_significance":consequence_significance,
             "transferable_principles":transferable_principles,
             "non_obvious_trade_offs":non_obvious_trade_offs,
+            "interruption_counterfactual":interruption_counterfactual,
+            "participation_scope_alignment":participation_scope_alignment,
         }),
     }
 }

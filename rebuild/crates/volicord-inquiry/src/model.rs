@@ -379,6 +379,8 @@ pub enum LearningValueAssessment {
         consequence_significance: Vec<String>,
         transferable_principles: Vec<String>,
         non_obvious_trade_offs: Vec<String>,
+        interruption_counterfactual: String,
+        participation_scope_alignment: String,
     },
 }
 

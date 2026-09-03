@@ -701,7 +701,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "judgments":[{
                 "choice_id":"failure-mode",
                 "disposition":"unresolved_user_owned_outcome",
-                "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]},
+                "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"],"interruption_counterfactual":"Without participation, the requested understanding of public error contracts would be lost.","participation_scope_alignment":"The Goal asks to learn through meaningful public behavior choices."},
                 "basis_summary":"No accepted authority selects the outcome",
                 "authority_counterfactual":"Failure behavior varies materially, the Goal permits multiple outcomes, and no exact authority selects among them."
             }]
@@ -842,7 +842,9 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "rationale":"The learning value remains meaningful while the canonical Decision resolves user authority.",
             "consequence_significance":["Callers observe different failures"],
             "transferable_principles":["Error contracts are API contracts"],
-            "non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"]
+            "non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"],
+            "interruption_counterfactual":"Without participation, the requested understanding of public error contracts would be lost.",
+            "participation_scope_alignment":"The Goal asks to learn through meaningful public behavior choices."
         }),
     );
     let revised_judgment = draft_judgment(
@@ -1103,13 +1105,28 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
             "rationale",
             "consequence_significance",
             "transferable_principles",
-            "non_obvious_trade_offs"
+            "non_obvious_trade_offs",
+            "interruption_counterfactual",
+            "participation_scope_alignment"
         ])
     );
     assert_eq!(
         draft["learning_participation"]["input_alternatives"][1]["required_fields"],
         json!(["state", "user_turn_source_id", "verbatim_statement"])
     );
+    assert!(
+        draft["learning_value_interruption_contract"]["counterfactual"]
+            .as_str()
+            .is_some_and(|value| value.contains("what meaningful transferable understanding"))
+    );
+    assert!(
+        draft["learning_value_interruption_contract"]["source_to_consider"]
+            .as_str()
+            .is_some_and(|value| value.contains("narrowing clause"))
+    );
+    assert!(draft["authority_learning_routing"]["scope_rule"]
+        .as_str()
+        .is_some_and(|value| value.contains("generic alternative count is not enough")));
     assert!(draft["record_request"]["input_schema"].is_object());
 }
 
@@ -1949,7 +1966,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"No user-owned outcome changes; implementation authority remains with the agent.",
                 "authority_counterfactual":"The alternatives vary an internal consistency mechanism, not a user-owned material policy.",
-                "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"]}
+                "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"],"interruption_counterfactual":"Without participation, the requested understanding of consistency ownership would be lost.","participation_scope_alignment":"The Goal explicitly requests learning through meaningful technical boundaries."}
             }]
         }),
     ))
@@ -2192,10 +2209,9 @@ fn aggregate_schema_diagnostic_reports_independent_discovery_problems() {
 }
 
 #[test]
-fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
+fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
     let (_temporary, mut adapter, project) = setup();
-    let user_turn =
-        "Use learning participation, but do not interrupt me for routine implementation details";
+    let user_turn = "Teach me meaningful architecture and flow choices, but do not interrupt me for routine wording or test synchronization details";
     let goal = structured(&call(
         &mut adapter,
         "context_record",
@@ -2215,17 +2231,17 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
             "project_id":project,
             "goal_context_id":goal["context_item_id"],
             "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
-            "source_operation":"routine active-learning control",
-            "summary":"Choose lookup storage for a bounded private collection",
+            "source_operation":"routine wording and test synchronization control",
+            "summary":"Synchronize a maintenance diagnostic and its exact test assertion",
             "choices":[{
-                "choice_id":"bounded-private-lookup",
-                "summary":"Use a linear vector scan or a map for a collection capped at 16 entries",
-                "affected_scope":["bounded private lookup"],
+                "choice_id":"diagnostic-test-wording",
+                "summary":"Update the diagnostic first or update the fixture assertion first",
+                "affected_scope":["private diagnostic wording","test fixture assertion"],
                 "alternatives":[
-                    {"alternative_id":"vector","summary":"Scan a bounded vector","technical_consequences":["Simpler storage with at most 16 comparisons"]},
-                    {"alternative_id":"map","summary":"Index entries in a map","technical_consequences":["Additional allocation and ordering machinery for bounded lookup"]}
+                    {"alternative_id":"wording-first","summary":"Change wording before synchronizing the assertion","technical_consequences":["The test is briefly stale during the edit"]},
+                    {"alternative_id":"test-first","summary":"Change the assertion before synchronizing the wording","technical_consequences":["The test briefly anticipates the maintenance wording"]}
                 ],
-                "technical_consequences":["The bounded internal lookup cost and storage complexity differ"],
+                "technical_consequences":["Only the order of a small synchronized maintenance edit differs"],
                 "source_ids":[analyzed["repository_source_id"]],
                 "effect_categories":["implementation_internal"],
                 "relationship":{"state":"independent"},
@@ -2233,7 +2249,7 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
             }],
             "material_boundary_review":complete_material_boundary_review_json(
                 analyzed["repository_source_id"].as_str().expect("repository Source"),
-                &[("implementation_internal", &["bounded-private-lookup"])],
+                &[("implementation_internal", &["diagnostic-test-wording"])],
             )
         }),
     ))
@@ -2245,14 +2261,14 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
             "action":"record",
             "project_id":project,
             "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
-            "rationale":"The bounded private lookup is agent-owned and routine.",
-            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":"Use learning participation"},
+            "rationale":"The wording and test synchronization detail is agent-owned and routine within the user's explicit non-interruption boundary.",
+            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":user_turn},
             "judgments":[{
-                "choice_id":"bounded-private-lookup",
+                "choice_id":"diagnostic-test-wording",
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"This is internal agent-owned discretion.",
-                "authority_counterfactual":"A capped private lookup changes no material product outcome, so the choice remains agent-owned.",
-                "learning_value":{"state":"routine","rationale":"The repository contract fixes a tiny bound, making the trade-off straightforward and not worth interruption."}
+                "authority_counterfactual":"The synchronized edit order changes no material product outcome, so the detail remains agent-owned.",
+                "learning_value":{"state":"routine","rationale":"No meaningful transferable understanding would be lost, and the user explicitly excluded routine wording and test synchronization from interruptions."}
             }]
         }),
     ))
@@ -2323,7 +2339,7 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
                 "authority_counterfactual":"The Goal explicitly says to choose this exact internal schedule; it does not rely on the broader feature request.",
                 "delegation_statement":"choose the internal retry schedule",
                 "delegated_scope":["retry-jitter"],
-                "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"]}
+                "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"],"interruption_counterfactual":"Without participation, the requested understanding of retry load shaping would be lost.","participation_scope_alignment":"The active learning scope includes meaningful distributed-operability choices."}
             }]
         }),
     ))
@@ -2570,7 +2586,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
                 "basis_summary":"Measure current runtime behavior before choosing an approach.",
                 "authority_counterfactual":"Empirical retry behavior must be established before any remaining material authority choice is known.",
                 "research_basis":["Inspect retained runtime observations for retry correlation"],
-                "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"]}
+                "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"],"interruption_counterfactual":"Without participation, the requested understanding of evidence-first retry design would be lost.","participation_scope_alignment":"The active learning scope includes meaningful operability evidence choices."}
             }]
         }),
     ))

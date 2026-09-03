@@ -118,6 +118,12 @@ Feedback 뒤 selected alternative를 bounded implementation basis로 완료하�
 다시 열 수 있다. Revision과 current state는 restart 뒤 유지되지만 canonical Decision이나 영구
 proficiency profile은 아니다.
 
+Deliberation-worthy learning value는 consequence significance, transferable principle,
+non-obvious trade-off에 더해 user가 참여하지 않을 때 잃는 requested understanding의 interruption
+counterfactual과 current Goal/Source의 bounded participation/non-interruption scope alignment를
+보존한다. 이 caller-owned semantic basis는 generic alternative count를 learning authority로 만들지
+않으며 production은 non-empty typed shape와 provenance/lifecycle만 검증한다.
+
 Materiality Review가 이미 `deliberation-worthy`로 보존한 dimension을 `routine`으로 revise하려면
 exact dimension과 prior/current assessment, revision Analysis Snapshot, supported basis를 inspectable하게
 보존한다. Supported basis는 current Source가 뒷받침하는 repository/research evidence, prototype

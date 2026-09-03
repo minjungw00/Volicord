@@ -846,6 +846,12 @@ fn deliberation_worthy() -> LearningValueAssessment {
         consequence_significance: vec!["changes failure containment and maintenance cost".into()],
         transferable_principles: vec!["separate policy from mechanism".into()],
         non_obvious_trade_offs: vec!["simpler code can reduce later observability".into()],
+        interruption_counterfactual:
+            "without participation, the requested understanding of boundary ownership would be lost"
+                .into(),
+        participation_scope_alignment:
+            "the Goal requests reasoning about meaningful architecture choices, including this boundary"
+                .into(),
     }
 }
 
