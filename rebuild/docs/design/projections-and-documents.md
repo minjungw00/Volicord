@@ -119,6 +119,9 @@ Bounded는 content budget 안에서 중요한 basis를 선택하고 omission을 
 Resume Brief는 최소 다음을 포함한다.
 
 - **goal and why:** current goal, user value와 관련 Source/Context
+- **behaviorally relevant user context:** authority, Question behavior, learning interruption 또는
+  bounded work를 바꿀 수 있는 canonical Learning, Preference와 Constraint의 statement role,
+  identity와 Source basis
 - **active Decisions and rationale:** applicability가 맞는 Decision, user rationale,
   alternatives와 supersession state
 - **current state and recent Checkpoint:** meaningful work state, recent change,

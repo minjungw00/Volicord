@@ -3264,6 +3264,10 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     );
     assert!(descriptions["context_record"].contains("caller-reported"));
     assert!(descriptions["context_record"].contains("does not authenticate"));
+    assert!(descriptions["context_record"].contains("One turn may require repeated calls"));
+    assert!(descriptions["context_record"].contains("could change authority"));
+    assert!(descriptions["context_record"].contains("do not collapse the whole turn"));
+    assert!(descriptions["recall"].contains("Learning, Preference, and Constraint"));
     assert!(descriptions["repository_analyze"].contains("authorized local repository"));
     assert!(descriptions["repository_analyze"].contains("source-semantic analysis"));
     assert!(descriptions["repository_analyze"].contains("source-semantic analyzer is local"));
@@ -5075,6 +5079,11 @@ fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
 
     let recall = structured(&call(&mut adapter, "recall", json!({"project_id":project}))).clone();
     assert_eq!(recall["goals"], json!([statement]), "{recall}");
+    assert_eq!(
+        recall["behaviorally_relevant_context"],
+        json!([]),
+        "{recall}"
+    );
 
     let rejected = call(
         &mut adapter,
@@ -5090,6 +5099,68 @@ fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
     assert!(structured(&rejected)["error"]
         .as_str()
         .is_some_and(|error| error.contains("occur verbatim")));
+}
+
+#[test]
+fn fresh_recall_recovers_separate_goal_learning_preference_and_constraint_context() {
+    let (temporary, mut adapter, project) = setup();
+    let user_turn = "Implement the bounded parser change. I want to learn the consequential trade-offs. Prefer concise explanations. Do not interrupt me for routine wording or test details.";
+    for (role, statement) in [
+        ("goal", "Implement the bounded parser change"),
+        ("learning", "I want to learn the consequential trade-offs"),
+        ("preference", "Prefer concise explanations"),
+        (
+            "constraint",
+            "Do not interrupt me for routine wording or test details",
+        ),
+    ] {
+        let recorded = call(
+            &mut adapter,
+            "context_record",
+            json!({
+                "project_id":project,
+                "user_turn":user_turn,
+                "role":role,
+                "statement":statement,
+            }),
+        );
+        assert_eq!(recorded["result"]["isError"], false, "{recorded}");
+    }
+
+    drop(adapter);
+    let mut fresh = HostAdapter::new(LocalOperations::new(
+        RuntimeLayout::new(temporary.path().join("runtime")).expect("restart runtime"),
+    ));
+    let recalled = structured(&call(&mut fresh, "recall", json!({"project_id":project}))).clone();
+    assert_eq!(
+        recalled["goals"],
+        json!(["Implement the bounded parser change"]),
+        "{recalled}"
+    );
+    let behavioral = recalled["behaviorally_relevant_context"]
+        .as_array()
+        .expect("behaviorally relevant Context array");
+    assert_eq!(behavioral.len(), 3, "{recalled}");
+    for (role, statement) in [
+        ("learning", "I want to learn the consequential trade-offs"),
+        ("preference", "Prefer concise explanations"),
+        (
+            "constraint",
+            "Do not interrupt me for routine wording or test details",
+        ),
+    ] {
+        let item = behavioral
+            .iter()
+            .find(|item| item["role"] == role)
+            .unwrap_or_else(|| panic!("missing {role}: {recalled}"));
+        assert_eq!(item["statement"], statement, "{item}");
+        assert_eq!(item["identity"].as_str().map(str::len), Some(32), "{item}");
+        assert_eq!(
+            item["source_ids"][0].as_str().map(str::len),
+            Some(32),
+            "{item}"
+        );
+    }
 }
 
 #[test]

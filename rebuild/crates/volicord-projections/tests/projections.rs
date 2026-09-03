@@ -380,6 +380,37 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
             },
         )?;
     }
+    for (operation_id, role, statement) in [
+        (
+            121,
+            ContextItemRole::Learning,
+            "teach the consequential trade-offs",
+        ),
+        (
+            122,
+            ContextItemRole::Preference,
+            "prefer concise explanations for routine details",
+        ),
+        (
+            123,
+            ContextItemRole::Constraint,
+            "do not interrupt for routine wording or tests",
+        ),
+    ] {
+        store.record_context_item(
+            operation(operation_id),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role,
+                statement: statement.to_owned(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal(PrincipalKind::User, "owner"),
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope::default(),
+            },
+        )?;
+    }
     let current_question = store
         .create_question(
             operation(109),
@@ -556,6 +587,22 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     assert_eq!(first, build());
     assert_eq!(first.project_id, project.id);
     assert!(!first.goals_and_why.is_empty());
+    assert_eq!(first.behaviorally_relevant_context.len(), 3);
+    assert!(first
+        .behaviorally_relevant_context
+        .iter()
+        .any(|item| item.role == ContextItemRole::Learning
+            && item.statement == "teach the consequential trade-offs"));
+    assert!(first
+        .behaviorally_relevant_context
+        .iter()
+        .any(|item| item.role == ContextItemRole::Preference
+            && item.statement == "prefer concise explanations for routine details"));
+    assert!(first
+        .behaviorally_relevant_context
+        .iter()
+        .any(|item| item.role == ContextItemRole::Constraint
+            && item.statement == "do not interrupt for routine wording or tests"));
     assert!(first.latest_meaningful_checkpoint.is_some());
     assert_eq!(
         first.next_meaningful_step.as_deref(),

@@ -665,6 +665,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 첫 project-scoped 요청에서 bounded read-only Recall을 자동 수행한다.
 - 단순 인사나 unrelated request에는 Recall하지 않는다.
 - 목표, why, active Decisions와 rationale, current state, open Questions, risks와 next step을 복구한다.
+- authority, Question, learning interruption 또는 bounded work를 바꾸는 canonical Learning,
+  Preference와 Constraint를 role/Source basis와 함께 복구한다.
 - 어떤 records와 Sources를 사용했는지 사용자에게 표시하거나 펼쳐볼 수 있게 한다.
 - stale, unavailable, contradicted, superseded와 omitted 상태를 표시한다.
 - 이미 해결된 Question을 다시 묻지 않는다.
@@ -683,11 +685,14 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - user-visible record와 다른 비밀 memory를 근거로 행동
 - unrelated history를 반복 주입
 - omission을 숨김
+- behaviorally consequential Learning/Preference/Constraint를 Goal 하나에 합치거나 fresh Recall에서 누락
 
 ### 자동 검증
 
 - fresh session trigger
 - no-mutation property
+- 한 current-host turn의 Goal + Learning + Constraint bounded decomposition, fresh-session Recall과
+  Goal-only non-ceremony
 - deterministic tie-breaking
 - budget/truncation metadata
 - stale/superseded filtering

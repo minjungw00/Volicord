@@ -216,6 +216,9 @@ caller가 전달한 user-turn text를 authenticated 또는 byte-exact host captu
 turn text만 가지므로 그 content provenance를 inspectable하게 `not host authenticated`로
 보고한다. 별도 raw rollout을 가진 qualification은 caller-supplied turn과 raw host turn의
 byte identity를 검증하며, semantic Context statement는 raw Source content를 대체하지 않는다.
+한 turn의 Goal, Learning, Preference와 Constraint가 각각 behavior를 바꾸면 adapter는 기존
+Context role을 사용한 여러 bounded verbatim record로 전달하며, Resume Brief는 이 canonical
+identity/role/Source basis를 fresh session에 노출한다.
 
 Codex adapter activation은 user-global registration이 아니라 explicit repository
 authorization으로 시작한다. 설치된 CLI가 trusted project의 `.codex/config.toml`에서

@@ -753,6 +753,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 ### 측정 항목
 
 - Recall selection precision/recall
+- current-host turn의 behavior-changing Goal/Learning/Preference/Constraint decomposition과 fresh
+  Recall recovery precision
 - no-mutation property
 - omitted count와 reason
 - repeated Decision/Question rate
@@ -780,6 +782,8 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
   Snapshot을 Checkpoint baseline으로 사용하며 first post-work analysis는 이를 대신하지 않는다.
 - 단순 조회나 변경 없는 설명에 canonical Checkpoint를 만들지 않는다.
 - new session이 goal, rationale, current state, open Questions와 next step을 복구한다.
+- new session이 separately recorded canonical Learning, Preference와 Constraint를 role/Source basis와
+  함께 복구하며 Goal-only turn에는 behavior context를 제조하지 않는다.
 - Candidate Inspection이 existence, kind, provenance, collection scope, retention/expiry,
   promotion disposition과 opt-out state를 노출하고 read/failure가 Candidate를 mutate하지
   않는다.

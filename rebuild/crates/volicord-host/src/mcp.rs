@@ -354,6 +354,7 @@ impl HostAdapter {
             json!({
                 "project_id":brief.project_id.to_string(),"project_name":brief.project_name,
                 "goals":brief.goals_and_why.into_iter().map(|value| value.statement).collect::<Vec<_>>(),
+                "behaviorally_relevant_context":brief.behaviorally_relevant_context.into_iter().map(|value| json!({"identity":value.identity.to_string(),"role":context_item_role_name(value.role),"statement":value.statement,"source_ids":value.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),
                 "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
                 "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
                 "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
@@ -1835,7 +1836,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "recall" => (
-            "Read a bounded source-grounded Project resume brief. In every fresh session with a successfully resolved Project, Recall must succeed before repository inspection, edits, or continued work.",
+            "Read a bounded source-grounded Project resume brief, including canonical Learning, Preference, and Constraint items that can change work behavior. In every fresh session with a successfully resolved Project, Recall must succeed before repository inspection, edits, or continued work.",
             project_schema(),
             ToolBehavior::ReadOnlyClosed,
         ),
@@ -1897,7 +1898,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "context_record" => (
-            "Record one verbatim statement from the caller-reported current-host user turn as canonical Project Context. This MCP boundary does not authenticate raw host message content; callers must preserve the host text without reconstructing it.",
+            "Record one bounded verbatim statement from the caller-reported current-host user turn as canonical Project Context before affected work. Apply this counterfactual to the whole turn: if losing a statement after fresh Recall could change authority, Question behavior, learning interruption, or bounded work, preserve it under its existing role. One turn may require repeated calls for separate Goal, Learning, Preference, or Constraint statements; do not collapse the whole turn into one Goal or record incidental wording. This MCP boundary does not authenticate raw host message content; callers must preserve the host text without reconstructing it.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

@@ -121,6 +121,7 @@ pub struct ResumeBrief {
     pub project_id: ProjectId,
     pub project_name: String,
     pub goals_and_why: Vec<BriefContextItem>,
+    pub behaviorally_relevant_context: Vec<BriefContextItem>,
     pub decisions: Vec<BriefDecision>,
     pub latest_meaningful_checkpoint: Option<Checkpoint>,
     pub open_questions: Vec<BriefQuestion>,
@@ -158,6 +159,33 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
         &mut goals,
         limit,
         "context_goal",
+        |item| item.identity.to_string(),
+        &mut omissions,
+    );
+
+    let mut behaviorally_relevant_context = canonical
+        .context_items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.role,
+                ContextItemRole::Constraint
+                    | ContextItemRole::Preference
+                    | ContextItemRole::Learning
+            )
+        })
+        .map(|item| BriefContextItem {
+            identity: item.id,
+            role: item.role,
+            statement: item.statement.clone(),
+            source_basis: item.source_basis.clone(),
+        })
+        .collect::<Vec<_>>();
+    behaviorally_relevant_context.sort_by_key(|item| item.identity);
+    bound_items(
+        &mut behaviorally_relevant_context,
+        limit,
+        "behaviorally_relevant_context",
         |item| item.identity.to_string(),
         &mut omissions,
     );
@@ -334,6 +362,11 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
         .flat_map(|item| item.source_basis.iter())
         .chain(decisions.iter().flat_map(|item| item.source_basis.iter()))
         .chain(questions.iter().flat_map(|item| item.source_basis.iter()))
+        .chain(
+            behaviorally_relevant_context
+                .iter()
+                .flat_map(|item| item.source_basis.iter()),
+        )
         .chain(risks.iter().flat_map(|item| item.source_basis.iter()))
     {
         used_source_ids.insert(*source);
@@ -450,6 +483,7 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
         project_id: canonical.project.id,
         project_name: canonical.project.display_name.clone(),
         goals_and_why: goals,
+        behaviorally_relevant_context,
         decisions,
         latest_meaningful_checkpoint: canonical.latest_checkpoint.clone(),
         open_questions: questions,

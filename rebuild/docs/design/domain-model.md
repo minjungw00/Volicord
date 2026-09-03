@@ -278,6 +278,12 @@ risk, learning과 known limit를 보존한다. 각 Context Item은 statement rol
 provenance를 유지하므로 user-stated constraint, observed fact와 generated
 interpretation을 같은 종류의 truth로 합치지 않는다.
 
+하나의 current-host turn은 role이 다른 여러 bounded verbatim Context Item을 만들 수 있다.
+Fresh Recall에서 statement가 사라졌을 때 authority, Question behavior, learning interruption 또는
+bounded work가 달라질 수 있다면 해당 의미는 behaviorally relevant하며 Goal에 합치지 않고
+Learning, Preference 또는 Constraint role로 별도 보존한다. Courtesy, 임시 표현과 consequence 없는
+implementation wording은 이 기준만으로 canonical Context가 되지 않는다.
+
 Context Item은 Decision의 rationale나 applicability basis가 될 수 있지만
 Decision을 대신하지 않는다. Source와 충돌한 fact 또는 assumption은 조용히
 rewrite하지 않고 contradiction/review semantics를 따른다.
