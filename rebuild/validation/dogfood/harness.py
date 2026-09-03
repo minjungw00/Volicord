@@ -3011,7 +3011,7 @@ def meaningful_resume_validation(
     }
 
 
-def pre_work_readiness_observation(
+def executable_scope_readiness_observation(
     capture: CodexCapture | None,
     *,
     review_candidate_id: Any,
@@ -3064,10 +3064,6 @@ def pre_work_readiness_observation(
             and call.completion_sequence < first_write_sequence
         ]
     inspect_call = max(matching, key=lambda call: call.sequence) if matching else None
-    arguments_scope = {
-        key: sorted(set(inspect_call.arguments.get(key, [])))
-        for key in ("paths", "components", "work_contexts")
-    } if inspect_call is not None else None
     result_scope = (
         inspect_call.result.get("executable_work_scope")
         if inspect_call is not None
@@ -3080,44 +3076,31 @@ def pre_work_readiness_observation(
         and isinstance(inspect_call.result.get("workflow"), dict)
         else None
     )
-    scope_shape_ok = bool(
+    project_id = (
+        predecessor_call.arguments.get("project_id")
+        if predecessor_call is not None
+        else None
+    )
+    scope_identity_ok = bool(
         inspect_call is not None
-        and set(inspect_call.arguments)
-        == {
-            "action",
-            "project_id",
-            "goal_context_id",
-            "baseline_analysis_snapshot_id",
-            "review_candidate_id",
-            "paths",
-            "components",
-            "work_contexts",
-            "met_revisit_triggers",
-        }
-        and isinstance(inspect_call.arguments.get("met_revisit_triggers"), list)
-        and arguments_scope is not None
-        and any(arguments_scope.values())
-        and all(
-            isinstance(inspect_call.arguments.get(key), list)
-            and all(nonempty_string(value) for value in inspect_call.arguments[key])
-            for key in ("paths", "components", "work_contexts")
-        )
-        and result_scope == arguments_scope
-        and inspect_call.result.get("project_id") == inspect_call.arguments.get("project_id")
-        and inspect_call.result.get("read_only") is False
-        and isinstance(inspect_call.result.get("review_revision"), int)
-        and inspect_call.result["review_revision"] >= 1
+        and nonempty_string(project_id)
+        and inspect_call.arguments.get("project_id") == project_id
+        and inspect_call.result.get("project_id") == project_id
+        and isinstance(result_scope, dict)
+    )
+    result_scope_paths = (
+        result_scope.get("paths") if isinstance(result_scope, dict) else None
     )
     required_scope_ok = bool(
-        arguments_scope is not None
+        isinstance(result_scope_paths, list)
         and (
             required_paths is None
-            or scope_covers(arguments_scope["paths"], required_paths)
+            or scope_covers(result_scope_paths, required_paths)
         )
     )
     ready = bool(
         predecessor_ready_for_scope
-        and scope_shape_ok
+        and scope_identity_ok
         and required_scope_ok
         and isinstance(workflow, dict)
         and workflow.get("stage") == "ready_for_work"
@@ -3136,6 +3119,7 @@ def pre_work_readiness_observation(
         "goal_context_id": goal_context_id,
         "baseline_analysis_snapshot_id": baseline_analysis_snapshot_id,
         "executable_work_scope": result_scope,
+        "scope_identity_ok": scope_identity_ok,
         "required_paths_covered": required_scope_ok,
         "ready_for_work": ready,
     }
@@ -3167,7 +3151,7 @@ def resume_executable_work_scope_observation(
             or predecessor.completion_sequence >= first_write_sequence
         ):
             continue
-        ready, _inspect, basis = pre_work_readiness_observation(
+        ready, _inspect, basis = executable_scope_readiness_observation(
             capture,
             review_candidate_id=predecessor.result.get("review_candidate_id"),
             goal_context_id=predecessor.result.get("goal_context_id"),
@@ -3862,7 +3846,7 @@ def work_blocker_behavior_observations(
         and not generated_repository_path(path)
     })
     ready_before_work, readiness_call, _readiness_basis = (
-        pre_work_readiness_observation(
+        executable_scope_readiness_observation(
             capture,
             review_candidate_id=review_id,
             goal_context_id=record.result.get("goal_context_id"),
@@ -5565,21 +5549,23 @@ def materiality_review_facts(
             readiness_predecessor = max(
                 learning_completions, key=lambda call: call.sequence
             )
-    readiness_ok, readiness_call, readiness_basis = pre_work_readiness_observation(
-        work,
-        review_candidate_id=review_id,
-        goal_context_id=goal_context_id,
-        baseline_analysis_snapshot_id=baseline_id,
-        predecessor_call=readiness_predecessor,
-        first_write_sequence=first_write_sequence,
-        required_paths=sorted({
-            path
-            for observation in meaningful_work_path_observations(work)
-            for path in observation.paths
-            if not looks_like_synthetic_marker(path)
-            and Path(path).suffix.lower() not in {".txt", ".marker"}
-            and not generated_repository_path(path)
-        }),
+    readiness_ok, readiness_call, readiness_basis = (
+        executable_scope_readiness_observation(
+            work,
+            review_candidate_id=review_id,
+            goal_context_id=goal_context_id,
+            baseline_analysis_snapshot_id=baseline_id,
+            predecessor_call=readiness_predecessor,
+            first_write_sequence=first_write_sequence,
+            required_paths=sorted({
+                path
+                for observation in meaningful_work_path_observations(work)
+                for path in observation.paths
+                if not looks_like_synthetic_marker(path)
+                and Path(path).suffix.lower() not in {".txt", ".marker"}
+                and not generated_repository_path(path)
+            }),
+        )
     )
 
     if resumed:
@@ -15089,6 +15075,118 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["pre_write_materiality_work_authority"] != "failed":
         raise AssertionError("ordinary work without executable-scope readiness qualified")
+
+    readiness_shapes: dict[str, tuple[str, str]] = {}
+    for label, omit_optional in (
+        ("present-empty-optional", False),
+        ("omitted-optional", True),
+    ):
+        readiness_fixture = real_session_fixture(
+            "volicord", 1, revision, evidence_directory
+        )
+        if omit_optional:
+            for role in ("work", "resume"):
+                mutate_mcp_call_action(
+                    readiness_fixture,
+                    role,
+                    "materiality_review",
+                    "inspect",
+                    lambda arguments: arguments.pop(
+                        "met_revisit_triggers", None
+                    ),
+                )
+        readiness_result = real_session_evidence(
+            readiness_fixture,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )
+        readiness_shapes[label] = (
+            readiness_result["checks"]["pre_write_materiality_work_authority"],
+            readiness_result["checks"]["resume_materiality_work_authority"],
+        )
+    if set(readiness_shapes.values()) != {("passed", "passed")}:
+        raise AssertionError(
+            "production-valid optional Materiality inspect shapes diverged: "
+            + json.dumps(readiness_shapes, sort_keys=True)
+        )
+
+    for field, wrong_value in (
+        ("project_id", "fe" * 16),
+        ("goal_context_id", "fd" * 16),
+        ("baseline_analysis_snapshot_id", "fc" * 32),
+        ("review_candidate_id", "fb" * 16),
+    ):
+        wrong_scope_identity = real_session_fixture(
+            "volicord", 1, revision, evidence_directory
+        )
+        mutate_mcp_call_action(
+            wrong_scope_identity,
+            "work",
+            "materiality_review",
+            "inspect",
+            lambda arguments, field=field, wrong_value=wrong_value: arguments.update(
+                {field: wrong_value}
+            ),
+        )
+        mutate_custom_output(
+            wrong_scope_identity,
+            "work",
+            "materiality-scope-binding",
+            lambda output, field=field, wrong_value=wrong_value: output.update(
+                {field: wrong_value}
+            ),
+        )
+        if real_session_evidence(
+            wrong_scope_identity,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )["checks"]["pre_write_materiality_work_authority"] != "failed":
+            raise AssertionError(f"wrong executable-scope {field} qualified")
+
+    blocked_scope = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_custom_output(
+        blocked_scope,
+        "work",
+        "materiality-scope-binding",
+        lambda output: output["workflow"].update(
+            {
+                "blocks_ordinary_work": True,
+                "unresolved_requirements": [
+                    {"reason": "materiality remains unresolved"}
+                ],
+            }
+        ),
+    )
+    if real_session_evidence(
+        blocked_scope,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("blocked or unresolved executable scope qualified")
+
+    uncovered_scope = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_custom_output(
+        uncovered_scope,
+        "work",
+        "materiality-scope-binding",
+        lambda output: output["executable_work_scope"].update(
+            {"paths": ["unrelated/path.rs"]}
+        ),
+    )
+    if real_session_evidence(
+        uncovered_scope,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("uncovered executable work paths qualified")
 
     late_scope_binding = real_session_fixture(
         "volicord", 1, revision, evidence_directory
