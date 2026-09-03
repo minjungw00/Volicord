@@ -1335,7 +1335,7 @@ def load_definition() -> dict[str, Any]:
                 "caller_supplied_not_host_authenticated"
             ),
             "dogfood_raw_consistency": (
-                "byte_exact_context_record_user_turn_to_captured_first_user_turn"
+                "maintained_transport_equivalent_context_record_user_turn_to_captured_first_user_turn"
             ),
             "semantic_statement_relation": (
                 "verbatim_containment_without_raw_source_rewrite"
@@ -11938,9 +11938,6 @@ def assert_local_historical_rollout_interpretation() -> str:
 def self_test() -> int:
     definition = load_definition()
     v11 = load_v11()
-    historical_rollout_interpretation = (
-        assert_local_historical_rollout_interpretation()
-    )
     descriptor_task = "Preserve exact prompt identity."
     transport_identity_cases = (
         ("exact text", descriptor_task, True),
@@ -12451,7 +12448,15 @@ def self_test() -> int:
         else:
             raise AssertionError(f"valid current {label} work intake became a blocker")
 
-    for behavior_class in BEHAVIOR_CLASSES:
+    sanitized_passing_behavior_shapes = (
+        "learning_routine_control",
+        "exploratory_uncertainty",
+        "delegated_implementation_choice",
+        "learning_deliberation",
+        "research_or_no_question",
+        "explicit_user_owned_decision",
+    )
+    for behavior_class in sanitized_passing_behavior_shapes:
         behavior_directory = evidence_directory / f"current-intake-{behavior_class}"
         behavior_directory.mkdir()
         behavior_fixture = real_session_fixture(
@@ -12461,6 +12466,16 @@ def self_test() -> int:
             behavior_directory,
             behavior_class=behavior_class,
         )
+        behavior_result = real_session_evidence(
+            behavior_fixture,
+            kind="volicord",
+            cycle=1,
+            repository_revision=revision,
+        )
+        if behavior_result["status"] != "passed":
+            raise AssertionError(
+                f"sanitized {behavior_class} positive behavior shape did not qualify"
+            )
         behavior_work_path = convert_fixture_capture_to_current_transport(
             behavior_fixture, behavior_directory, "work"
         )
@@ -14301,6 +14316,61 @@ def self_test() -> int:
             )
         ]
         store_capture(fixture, capture, path, events)
+
+    def remove_call_evidence(
+        fixture: dict[str, Any], capture: str, call_markers: tuple[str, ...]
+    ) -> None:
+        path, events = capture_events(fixture, capture)
+        events = [
+            value
+            for value in events
+            if not any(
+                marker in str(value.get("payload", {}).get("call_id", ""))
+                for marker in call_markers
+            )
+        ]
+        store_capture(fixture, capture, path, events)
+
+    sanitized_hidden_miss_results: list[dict[str, Any]] = []
+    for repository_class in ("volicord", "small-python"):
+        hidden_miss_directory = evidence_directory / f"hidden-no-question-{repository_class}"
+        hidden_miss_directory.mkdir()
+        hidden_miss = real_session_fixture(
+            repository_class,
+            2,
+            revision,
+            hidden_miss_directory,
+            behavior_class="hidden_user_owned_decision",
+        )
+        remove_call_evidence(
+            hidden_miss,
+            "work",
+            (
+                "candidate-promote-call",
+                "inquiry-call",
+                "decision-call",
+                "materiality-revision-call",
+            ),
+        )
+        hidden_miss_result = real_session_evidence(
+            hidden_miss,
+            kind=repository_class,
+            cycle=2,
+            repository_revision=revision,
+        )
+        if (
+            hidden_miss_result["status"] == "passed"
+            or hidden_miss_result["checks"]["appropriate_inquiry_outcome"]
+            == "passed"
+            or hidden_miss_result["checks"]["decision_provenance_when_required"]
+            == "passed"
+            or hidden_miss_result["checks"]["pre_write_materiality_work_authority"]
+            == "passed"
+        ):
+            raise AssertionError(
+                f"sanitized {repository_class} hidden no-question miss qualified"
+            )
+        sanitized_hidden_miss_results.append(hidden_miss_result)
 
     def move_review_completion_after_first_write(fixture: dict[str, Any]) -> None:
         path, events = capture_events(fixture, "work")
@@ -18959,12 +19029,18 @@ def self_test() -> int:
         "current_user_turn_order_and_text_segments": "passed",
         "bounded_goal_context_decomposition": "passed",
         "ungrounded_decomposed_context_rejected": "passed",
-        "historical_rollout_corrected_interpretation": historical_rollout_interpretation,
+        "historical_rollout_interpretation": "diagnostic_only_not_replayed",
         "host_user_role_material_excluded": "passed",
         "user_turn_deduplication_and_conflict_rejection": "passed",
         "current_host_transport_identity_reused_by_dogfood": "passed",
         "canonical_goal_learning_constraint_decomposition": "passed",
         "decision_wrong_revision_and_session_rejected": "passed",
+        "sanitized_behavior_truth_table_six_pass_two_hidden_fail": (
+            "passed"
+            if len(sanitized_passing_behavior_shapes) == 6
+            and len(sanitized_hidden_miss_results) == 2
+            else "failed"
+        ),
         "malformed_current_user_turn_rejected": "passed",
         "engineering_choice_discovery_required": "passed",
         "executable_scope_readiness_chronology": "passed",

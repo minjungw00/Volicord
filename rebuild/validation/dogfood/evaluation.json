@@ -552,7 +552,7 @@
     "current_host_goal_provenance": {
       "mcp_raw_host_turn_authentication": "unavailable",
       "context_record_user_turn_content": "caller_supplied_not_host_authenticated",
-      "dogfood_raw_consistency": "byte_exact_context_record_user_turn_to_captured_first_user_turn",
+      "dogfood_raw_consistency": "maintained_transport_equivalent_context_record_user_turn_to_captured_first_user_turn",
       "semantic_statement_relation": "verbatim_containment_without_raw_source_rewrite",
       "bounded_decomposition_supported": true,
       "required_goal_count": 1,

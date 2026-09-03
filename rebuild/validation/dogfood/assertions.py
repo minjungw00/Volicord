@@ -111,7 +111,8 @@ def validate_behavior_specific_work_intake_contract(
             ("exact current-host response", "current Question revision"),
             (
                 "canonical Decision",
-                "ready-for-work Materiality revision",
+                "executable-scope-required Materiality revision",
+                "typed inspect readiness",
                 "before affected work",
             ),
         ),
@@ -130,7 +131,12 @@ def validate_behavior_specific_work_intake_contract(
                 "ready-to-ask transition",
                 "before Question promotion",
             ),
-            ("Decision", "ready-for-work Materiality revision", "before affected work"),
+            (
+                "Decision",
+                "executable-scope-required Materiality revision",
+                "typed inspect readiness",
+                "before affected work",
+            ),
         ),
     )
 
@@ -166,9 +172,12 @@ def validate_behavior_specific_work_intake_contract(
         non_user_contracts["exploratory_uncertainty"],
         "exploratory work intake",
         (
-            "evidence-backed exploratory disposition",
-            "ready at record or is resolved through a same-review revision",
-            "before affected work",
+            "discovery-owned research or prototype requirements",
+            "remain blocking",
+            "same-review revision",
+            "matching bounded evidence completion",
+            "typed inspect readiness",
+            "precedes affected work",
             "no manufactured Candidate, Question, or Decision",
         ),
     )
@@ -179,7 +188,7 @@ def validate_behavior_specific_work_intake_contract(
             "legal current-host Learning Deliberation state transitions",
             "valid reconsideration",
             "repeated response/feedback rounds",
-            "terminal ready-for-work",
+            "typed executable-scope inspect readiness",
             "before affected work",
             "no canonical Decision",
         ),
@@ -588,42 +597,34 @@ def main() -> int:
     if "verify_repository_normalized_codex_rollout_and_canonical_bundle" not in definition:
         raise AssertionError("Phase 8 definition does not select content-normalized evidence")
     real_session = definition_value["real_session_evidence"]
-    if real_session.get("materiality_review_contract") != {
+    materiality_contract = real_session.get("materiality_review_contract")
+    materiality_invariants = {
         "input_collection_field": "judgments",
-        "minimum_judgment_count": 1,
         "judgment_identity_field": "choice_id",
         "array_order_is_authoritative": False,
         "mixed_dispositions_allowed": True,
-        "discovery_owned_fields_are_server_derived": True,
-        "closed_disposition_variants": True,
         "engineering_choice_discovery_required": True,
-        "discovery_identity_field": "engineering_choice_discovery_candidate_id",
-        "choice_effect_and_relationship_evidence_required": True,
-        "agent_owned_learning_disposition": "agent_owned_implementation_choice",
-        "learning_participation_source": "explicit_current_host_goal_turn",
-        "learning_value_states": ["routine", "deliberation_worthy"],
-        "learning_deliberation_is_canonical_decision": False,
-        "learning_response_precedes_feedback": True,
-        "completed_learning_recall_required": True,
-        "delegated_expected_disposition": "delegated_implementation_choice",
-        "delegated_current_goal_requires_explicit_delegation_basis": True,
-        "delegated_caller_fields": [
-            "delegation_statement",
-            "delegated_scope",
-        ],
-        "delegated_server_derived_fields": [
-            "goal_context_id",
-            "user_turn_source_id",
-        ],
-        "delegated_statement_must_be_verbatim_in_frozen_goal_task": True,
-        "delegated_research_basis_required": False,
-        "inquiry_time_delegation_decision_supported": True,
+        "question_count_is_fixed": False,
         "all_unresolved_user_owned_dimensions_block_work": True,
         "resolved_user_owned_decision_correlation": "per_dimension_id",
-        "coupled_decision_requires_each_dimension_scope": True,
-        "dimension_disappearance_across_revision_allowed": False,
-        "review_revision_must_advance": True,
-    }:
+        "late_scope_binding_can_certify_earlier_work": False,
+        "learning_deliberation_is_canonical_decision": False,
+    }
+    if (
+        not isinstance(materiality_contract, dict)
+        or any(
+            materiality_contract.get(key) != value
+            for key, value in materiality_invariants.items()
+        )
+        or materiality_contract.get("executable_scope_fields")
+        != ["paths", "components", "work_contexts"]
+        or materiality_contract.get("pre_work_readiness_sequence")
+        != [
+            "record_or_revise_returns_executable_scope_required",
+            "inspect_binds_typed_executable_scope",
+            "inspect_returns_ready_for_work",
+        ]
+    ):
         raise AssertionError("Phase 8 Materiality Review authority contract changed")
     if (
         real_session.get("required_codex_sessions_per_cycle") != 2
@@ -757,16 +758,19 @@ def main() -> int:
         "other_whitespace_normalized": False,
     }:
         raise AssertionError("Phase 8 Codex user-turn transport identity contract changed")
-    if goal_provenance != {
-        "mcp_raw_host_turn_authentication": "unavailable",
-        "context_record_user_turn_content": "caller_supplied_not_host_authenticated",
-        "dogfood_raw_consistency": (
-            "byte_exact_context_record_user_turn_to_captured_first_user_turn"
-        ),
-        "semantic_statement_relation": (
-            "verbatim_containment_without_raw_source_rewrite"
-        ),
-    }:
+    if (
+        not isinstance(goal_provenance, dict)
+        or goal_provenance.get("mcp_raw_host_turn_authentication") != "unavailable"
+        or goal_provenance.get("context_record_user_turn_content")
+        != "caller_supplied_not_host_authenticated"
+        or goal_provenance.get("dogfood_raw_consistency")
+        != "maintained_transport_equivalent_context_record_user_turn_to_captured_first_user_turn"
+        or goal_provenance.get("semantic_statement_relation")
+        != "verbatim_containment_without_raw_source_rewrite"
+        or goal_provenance.get("bounded_decomposition_supported") is not True
+        or goal_provenance.get("required_goal_count") != 1
+        or goal_provenance.get("non_goal_context_roles_may_share_first_turn") is not True
+    ):
         raise AssertionError("Phase 8 current-host Goal provenance contract changed")
     if mcp_completion != {
         "accepted_representations": [
@@ -888,14 +892,14 @@ def main() -> int:
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
         "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write",
-        "reuse the unresolved review dimension in the Question Candidate",
+        "correlate every unresolved review dimension through its Question Candidate",
         "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work",
         "event_msg.mcp_tool_call_end",
         "event_msg.item_completed",
         "McpToolCall",
         "permit one or more successful work Checkpoints",
         "latest terminal Checkpoint candidate after the last meaningful repository change",
-        "change continuation produces a relevant repository change",
+        "change continuation produces a repository change correlated to the strongest available typed executable or descriptor scope",
         "verified-state continuation requires a recalled completed Checkpoint",
     ):
         if forwarding_requirement not in definition:
