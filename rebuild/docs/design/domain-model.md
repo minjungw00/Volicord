@@ -99,6 +99,10 @@ basis, bounded effect category, independent/coupled relation과 additional evide
 보존한다. Choice identity는 authority나 canonical Decision identity가 아니며 effect category는
 ownership classifier가 아니다. Independent choice는 별도 identity로 유지하고, coupled relation은
 actual outcome 하나가 반드시 함께 해결하는 peer identity와 rationale를 symmetric하게 보존한다.
+Discovery의 bounded `material_boundary_review`는 모든 closed effect category를 한 번씩 검토했다는
+active-agent assertion을 보존한다. 각 conclusion은 해당 category의 real discovered choice identity를
+연결하거나 bounded Source와 함께 `no_independent_fork` rationale를 명시한다. 이는 materiality나
+authority를 production이 자동 추론한 fact가 아니며, 누락 방지를 위한 inspectable semantic review다.
 
 Materiality Review의 각 dimension은 discovered choice identity를 정확히 한 번 consume한다.
 Independent choice 여러 개를 broad Goal이나 feature label만으로 한 dimension에 넣지 않으며,

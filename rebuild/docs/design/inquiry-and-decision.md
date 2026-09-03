@@ -59,6 +59,17 @@ Effect category는 completeness/discovery metadata이며 authority를 자동 결
 아니다. Syntax, local naming, private helper split와 mechanically equivalent refactor를 inventory하지
 않는다.
 
+Discovery를 complete로 기록하기 전에 active agent는 다음 counterfactual을 수행한다. "Goal을
+만족하면서도 아직 choice 또는 settled authority로 표현되지 않은 materially different subordinate
+product outcome이 가능한가?" Public API/observable semantics, compatibility/support, failure policy,
+persistence/lifetime, privacy/security, user-visible default, concurrency/resource/operability와 other
+material outcome을 현재 repository scope에 맞게 검토한다. Retained `material_boundary_review`는 각
+closed effect category에 대해 real `choice_id`를 연결하거나 Source-grounded
+`no_independent_fork` semantic judgment를 명시한다. 이 completeness assertion은 active-agent
+판단의 audit trail이며 production은 category coverage, real choice linkage, Source provenance와 closed
+shape만 검증하고 hidden semantic truth를 추론하지 않는다. Repository-settled behavior, private helper
+naming/split와 test fixture selection에는 fake choice를 만들지 않는다.
+
 Independent choice는 별도 identity로 유지한다. "result retry behavior", "custom parser reload"
 같은 broad Goal label은 API, failure, persistence, network, instrumentation 또는 compatibility
 semantics를 coupled로 만드는 evidence가 아니다. 하나의 authority dimension은 independent choice를

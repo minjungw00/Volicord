@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 11;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 12;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1242,6 +1242,10 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                                 .choices
                                 .iter()
                                 .any(|choice| choice.source_basis.contains(&source_id))
+                                || discovery
+                                    .material_boundary_review
+                                    .iter()
+                                    .any(|review| review.source_basis.contains(&source_id))
                         })
                         || content.materiality_review.as_ref().is_some_and(|review| {
                             matches!(
@@ -1807,6 +1811,71 @@ fn validate_engineering_choice_discovery(
             }
         }
     }
+    let required_categories = crate::EngineeringEffectCategory::ALL
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let reviewed_categories = discovery
+        .material_boundary_review
+        .iter()
+        .map(|review| review.effect_category)
+        .collect::<BTreeSet<_>>();
+    if reviewed_categories != required_categories
+        || discovery.material_boundary_review.len() != required_categories.len()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "material-boundary review must explicitly cover each bounded effect category exactly once",
+        ));
+    }
+    for review in &discovery.material_boundary_review {
+        validate_id_list(&review.source_basis)?;
+        if review.source_basis.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "each material-boundary conclusion requires a bounded Source basis",
+            ));
+        }
+        match &review.conclusion {
+            crate::MaterialBoundaryConclusion::RepresentedByChoices { choice_ids } => {
+                validate_list(choice_ids)?;
+                if choice_ids.is_empty()
+                    || choice_ids.iter().collect::<BTreeSet<_>>().len() != choice_ids.len()
+                    || choice_ids.iter().any(|choice_id| {
+                        !discovery.choices.iter().any(|choice| {
+                            &choice.choice_id == choice_id
+                                && choice.effect_categories.contains(&review.effect_category)
+                        })
+                    })
+                {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "represented material boundaries require unique real choice identities carrying that effect category",
+                    ));
+                }
+            }
+            crate::MaterialBoundaryConclusion::NoIndependentFork { rationale } => {
+                validate_text("no-independent-fork rationale", rationale)?;
+            }
+        }
+    }
+    for choice in &discovery.choices {
+        for effect_category in &choice.effect_categories {
+            let represented = discovery.material_boundary_review.iter().any(|review| {
+                review.effect_category == *effect_category
+                    && matches!(
+                        &review.conclusion,
+                        crate::MaterialBoundaryConclusion::RepresentedByChoices { choice_ids }
+                            if choice_ids.contains(&choice.choice_id)
+                    )
+            });
+            if !represented {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "every discovered choice must be linked from each declared material-boundary category",
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1983,6 +2052,11 @@ fn validate_discovery_against_canonical(
         .collect::<BTreeSet<_>>();
     if discovery.choices.iter().any(|choice| {
         choice
+            .source_basis
+            .iter()
+            .any(|source| !current_sources.contains(source))
+    }) || discovery.material_boundary_review.iter().any(|review| {
+        review
             .source_basis
             .iter()
             .any(|source| !current_sources.contains(source))

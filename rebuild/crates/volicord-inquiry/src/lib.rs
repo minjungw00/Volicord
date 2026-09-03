@@ -41,11 +41,11 @@ pub use model::{
     LateWorkAuthorityRevision, LearningAlternativeSelection, LearningDeliberation,
     LearningDeliberationRound, LearningDeliberationState, LearningInitialResponse,
     LearningParticipation, LearningRecommendation, LearningValueAssessment, LearningValueRevision,
-    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialOutcomeSignal,
-    MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
-    MaterialityReviewRevision, MaterialityStatus, PromotionResult, QuestionCandidate,
-    QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis,
-    WorkAuthorityBasisKind,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension,
+    MaterialityDisposition, MaterialityReview, MaterialityReviewRevision, MaterialityStatus,
+    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
+    SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

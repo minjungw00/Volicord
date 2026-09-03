@@ -20,10 +20,11 @@ use volicord_operations::{
     LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
     LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
     LearningResponseDraft, LearningValueAssessment, LearningValueRevisionBasis,
-    LearningValueRevisionRequest, LocalOperations, MaterialOutcomeSignal, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout,
-    WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage,
-    WorkflowDisposition, WorkflowStage,
+    LearningValueRevisionRequest, LocalOperations, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
+    MaterialityReviewDraft, MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition,
+    WorkflowStage,
 };
 
 fn dimension(
@@ -763,6 +764,8 @@ fn record_review_with_learning(
     dimensions: Vec<MaterialityDimension>,
     learning_participation: LearningParticipation,
 ) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    let material_boundary_review =
+        complete_material_boundary_review(&choices, fixture.baseline.repository_source.identity());
     let discovery = fixture.operations.record_engineering_choice_discovery(
         EngineeringChoiceDiscoveryDraft {
             project_id: fixture.project_id,
@@ -772,6 +775,7 @@ fn record_review_with_learning(
             source_operation: "engineering-choice-discovery".to_owned(),
             summary: "discover meaningful technical forks before authority assessment".to_owned(),
             choices,
+            material_boundary_review,
         },
     )?;
     fixture
@@ -788,6 +792,35 @@ fn record_review_with_learning(
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions,
         })
+}
+
+fn complete_material_boundary_review(
+    choices: &[EngineeringChoice],
+    source: volicord_context::SourceId,
+) -> Vec<MaterialBoundaryReview> {
+    EngineeringEffectCategory::ALL
+        .into_iter()
+        .map(|effect_category| {
+            let choice_ids = choices
+                .iter()
+                .filter(|choice| choice.effect_categories.contains(&effect_category))
+                .map(|choice| choice.choice_id.clone())
+                .collect::<Vec<_>>();
+            MaterialBoundaryReview {
+                effect_category,
+                conclusion: if choice_ids.is_empty() {
+                    MaterialBoundaryConclusion::NoIndependentFork {
+                        rationale:
+                            "the fixture review found no separate material outcome in this category"
+                                .into(),
+                    }
+                } else {
+                    MaterialBoundaryConclusion::RepresentedByChoices { choice_ids }
+                },
+                source_basis: vec![source],
+            }
+        })
+        .collect()
 }
 
 fn agent_owned_dimension(
@@ -1018,6 +1051,99 @@ fn hidden_public_api_and_failure_choices_cannot_be_swallowed_by_one_feature_dime
     assert!(error
         .message()
         .contains("independent discovered choices cannot be collapsed"));
+    Ok(())
+}
+
+#[test]
+fn discovery_requires_explicit_complete_material_boundary_review_with_real_choice_links(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![engineering_choice(
+        "structured-result-shape",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    )];
+    let mut incomplete = complete_material_boundary_review(&choices, source);
+    incomplete.retain(|review| {
+        review.effect_category != EngineeringEffectCategory::PublicApiShapeOrSemantics
+    });
+    let rejected = fixture
+        .operations
+        .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "material-boundary-review".into(),
+            source_operation: "structured-result discovery".into(),
+            summary: "review public result shape independently from settled failures".into(),
+            choices: choices.clone(),
+            material_boundary_review: incomplete,
+        })
+        .expect_err("omitted public API review cannot declare discovery complete");
+    assert!(rejected
+        .message()
+        .contains("Engineering Choice Discovery failed"));
+
+    let mut false_negative = complete_material_boundary_review(&choices, source);
+    let public = false_negative
+        .iter_mut()
+        .find(|review| {
+            review.effect_category == EngineeringEffectCategory::PublicApiShapeOrSemantics
+        })
+        .ok_or("public API boundary review missing")?;
+    public.conclusion = MaterialBoundaryConclusion::NoIndependentFork {
+        rationale: "incorrectly collapse the open result shape into settled failure behavior"
+            .into(),
+    };
+    let rejected = fixture
+        .operations
+        .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "material-boundary-review".into(),
+            source_operation: "structured-result discovery".into(),
+            summary: "review public result shape independently from settled failures".into(),
+            choices: choices.clone(),
+            material_boundary_review: false_negative,
+        })
+        .expect_err("a discovered public choice must be linked by the public boundary review");
+    assert!(rejected
+        .message()
+        .contains("Engineering Choice Discovery failed"));
+
+    let mut valid = complete_material_boundary_review(&choices, source);
+    let internal = valid
+        .iter_mut()
+        .find(|review| review.effect_category == EngineeringEffectCategory::ImplementationInternal)
+        .ok_or("implementation-internal boundary review missing")?;
+    internal.conclusion = MaterialBoundaryConclusion::NoIndependentFork {
+        rationale:
+            "private helper naming and test fixture selection do not create independent product outcomes"
+                .into(),
+    };
+    let accepted = fixture.operations.record_engineering_choice_discovery(
+        EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "material-boundary-review".into(),
+            source_operation: "structured-result discovery".into(),
+            summary: "surface the public result contract without fake private choices".into(),
+            choices,
+            material_boundary_review: valid,
+        },
+    )?;
+    let persisted = fixture
+        .operations
+        .inspect_workflow_candidate(fixture.project_id, accepted.discovery_candidate_id)?;
+    let discovery = persisted
+        .content
+        .and_then(|content| content.engineering_choice_discovery)
+        .ok_or("Engineering Choice Discovery content missing")?;
+    assert_eq!(discovery.choices.len(), 1);
+    assert_eq!(discovery.choices[0].choice_id, "structured-result-shape");
     Ok(())
 }
 

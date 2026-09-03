@@ -20,8 +20,9 @@ use volicord_inquiry::{
 use volicord_operations::{
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    LocalOperations, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    LocalOperations, MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, RuntimeLayout, WorkAuthorityBasis,
+    WorkAuthorityBasisKind,
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
@@ -222,6 +223,30 @@ fn record_fixture_discovery(
     source_id: &str,
     choice: FixtureEngineeringChoice<'_>,
 ) -> String {
+    let source_id = parse_source_identity(source_id);
+    let choices = vec![EngineeringChoice {
+        choice_id: choice.id.into(),
+        summary: choice.id.into(),
+        affected_scope: vec![choice.affected_scope.into()],
+        alternatives: vec![
+            EngineeringAlternative {
+                alternative_id: "first".into(),
+                summary: "first credible approach".into(),
+                technical_consequences: vec!["first bounded consequence".into()],
+            },
+            EngineeringAlternative {
+                alternative_id: "second".into(),
+                summary: "second credible approach".into(),
+                technical_consequences: vec!["second bounded consequence".into()],
+            },
+        ],
+        technical_consequences: vec!["the selected approach changes the work".into()],
+        source_basis: vec![source_id],
+        effect_categories: vec![choice.effect_category],
+        relationship: EngineeringChoiceRelationship::Independent,
+        evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+    }];
+    let material_boundary_review = complete_material_boundary_review(&choices, source_id);
     let discovery = adapter
         .operations()
         .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
@@ -235,31 +260,83 @@ fn record_fixture_discovery(
             session: "mcp-mechanical-discovery-fixture".into(),
             source_operation: "engineering-choice-discovery-fixture".into(),
             summary: format!("discover {}", choice.id),
-            choices: vec![EngineeringChoice {
-                choice_id: choice.id.into(),
-                summary: choice.id.into(),
-                affected_scope: vec![choice.affected_scope.into()],
-                alternatives: vec![
-                    EngineeringAlternative {
-                        alternative_id: "first".into(),
-                        summary: "first credible approach".into(),
-                        technical_consequences: vec!["first bounded consequence".into()],
-                    },
-                    EngineeringAlternative {
-                        alternative_id: "second".into(),
-                        summary: "second credible approach".into(),
-                        technical_consequences: vec!["second bounded consequence".into()],
-                    },
-                ],
-                technical_consequences: vec!["the selected approach changes the work".into()],
-                source_basis: vec![parse_source_identity(source_id)],
-                effect_categories: vec![choice.effect_category],
-                relationship: EngineeringChoiceRelationship::Independent,
-                evidence_state: EngineeringChoiceEvidenceState::Sufficient,
-            }],
+            choices,
+            material_boundary_review,
         })
         .expect("mechanical host discovery fixture");
     discovery.discovery_candidate_id.to_string()
+}
+
+fn complete_material_boundary_review(
+    choices: &[EngineeringChoice],
+    source_id: volicord_context::SourceId,
+) -> Vec<MaterialBoundaryReview> {
+    EngineeringEffectCategory::ALL
+        .into_iter()
+        .map(|effect_category| {
+            let choice_ids = choices
+                .iter()
+                .filter(|choice| choice.effect_categories.contains(&effect_category))
+                .map(|choice| choice.choice_id.clone())
+                .collect::<Vec<_>>();
+            MaterialBoundaryReview {
+                effect_category,
+                conclusion: if choice_ids.is_empty() {
+                    MaterialBoundaryConclusion::NoIndependentFork {
+                        rationale: "the fixture has no independent outcome in this category".into(),
+                    }
+                } else {
+                    MaterialBoundaryConclusion::RepresentedByChoices { choice_ids }
+                },
+                source_basis: vec![source_id],
+            }
+        })
+        .collect()
+}
+
+fn complete_material_boundary_review_json(
+    source_id: &str,
+    represented: &[(&str, &[&str])],
+) -> Value {
+    let categories = [
+        "public_api_shape_or_semantics",
+        "compatibility",
+        "failure_or_error_semantics",
+        "persistence_or_lifetime",
+        "privacy_or_disclosure",
+        "security",
+        "user_visible_behavior_or_default",
+        "performance_or_resource_behavior",
+        "concurrency_or_operability",
+        "maintenance_or_support",
+        "implementation_internal",
+    ];
+    Value::Array(
+        categories
+            .into_iter()
+            .map(|effect_category| {
+                let conclusion = represented
+                    .iter()
+                    .find(|(category, _)| *category == effect_category)
+                    .map_or_else(
+                        || {
+                            json!({
+                                "state":"no_independent_fork",
+                                "rationale":"The bounded fixture has no separate material outcome in this category."
+                            })
+                        },
+                        |(_, choice_ids)| {
+                            json!({"state":"represented_by_choices","choice_ids":choice_ids})
+                        },
+                    );
+                json!({
+                    "effect_category":effect_category,
+                    "conclusion":conclusion,
+                    "source_ids":[source_id],
+                })
+            })
+            .collect(),
+    )
 }
 
 fn fill_draft_variant(
@@ -894,7 +971,15 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
                     "relationship":{"state":"independent"},
                     "evidence_state":"sufficient"
                 }
-            ]
+            ],
+            "material_boundary_review":complete_material_boundary_review_json(repository_source, &[
+                ("public_api_shape_or_semantics", &["signed-link-replay-policy"]),
+                ("persistence_or_lifetime", &["persistent-default-scope"]),
+                ("security", &["signed-link-replay-policy"]),
+                ("user_visible_behavior_or_default", &["persistent-default-scope", "exit-background-policy"]),
+                ("concurrency_or_operability", &["exit-background-policy"]),
+                ("maintenance_or_support", &["persistent-default-scope"]),
+            ])
         }),
     ))
     .clone();
@@ -1766,6 +1851,15 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         analyzed["workflow"]["input_guidance"]["available_identities"]["goal_context_id"],
         goal_context_id
     );
+    assert!(
+        analyzed["workflow"]["input_guidance"]["discovery_completion_counterfactual"]
+            .as_str()
+            .is_some_and(|value| value.contains("subordinate product outcomes"))
+    );
+    assert_eq!(
+        analyzed["workflow"]["input_guidance"]["material_boundary_review"]["semantic_owner"],
+        "active_agent"
+    );
 
     let discovery = structured(&call(
         &mut adapter,
@@ -1789,7 +1883,11 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "effect_categories":["maintenance_or_support","implementation_internal"],
                 "relationship":{"state":"independent"},
                 "evidence_state":"sufficient"
-            }]
+            }],
+            "material_boundary_review":complete_material_boundary_review_json(repository_source, &[
+                ("maintenance_or_support", &["cache-invalidation-boundary"]),
+                ("implementation_internal", &["cache-invalidation-boundary"]),
+            ])
         }),
     ))
     .clone();
@@ -2087,6 +2185,9 @@ fn aggregate_schema_diagnostic_reports_independent_discovery_problems() {
         .any(|problem| problem == "arguments.choices is required"));
     assert!(problems
         .iter()
+        .any(|problem| problem == "arguments.material_boundary_review is required"));
+    assert!(problems
+        .iter()
         .any(|problem| problem == "arguments.unexpected is not allowed"));
 }
 
@@ -2129,7 +2230,11 @@ fn active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp() {
                 "effect_categories":["implementation_internal"],
                 "relationship":{"state":"independent"},
                 "evidence_state":"sufficient"
-            }]
+            }],
+            "material_boundary_review":complete_material_boundary_review_json(
+                analyzed["repository_source_id"].as_str().expect("repository Source"),
+                &[("implementation_internal", &["bounded-private-lookup"])],
+            )
         }),
     ))
     .clone();
@@ -4263,6 +4368,25 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 relationship: EngineeringChoiceRelationship::Independent,
                 evidence_state: EngineeringChoiceEvidenceState::Sufficient,
             }],
+            material_boundary_review: EngineeringEffectCategory::ALL
+                .into_iter()
+                .map(|effect_category| MaterialBoundaryReview {
+                    effect_category,
+                    conclusion: if effect_category
+                        == EngineeringEffectCategory::MaintenanceOrSupport
+                    {
+                        MaterialBoundaryConclusion::RepresentedByChoices {
+                            choice_ids: vec!["grounded-checkpoint-contract".into()],
+                        }
+                    } else {
+                        MaterialBoundaryConclusion::NoIndependentFork {
+                            rationale: "the fixture has no separate outcome in this category"
+                                .into(),
+                        }
+                    },
+                    source_basis: vec![repository_source_id],
+                })
+                .collect(),
         })
         .expect("pre-work Engineering Choice Discovery");
     let review = adapter
@@ -5462,6 +5586,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "source_operation",
                 "summary",
                 "choices",
+                "material_boundary_review",
             ],
             &[
                 "project_id",
@@ -5470,6 +5595,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "source_operation",
                 "summary",
                 "choices",
+                "material_boundary_review",
             ],
         )],
         "materiality_review" => vec![

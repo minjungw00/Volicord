@@ -271,6 +271,7 @@ pub struct EngineeringChoiceDiscoveryDraft {
     pub source_operation: String,
     pub summary: String,
     pub choices: Vec<EngineeringChoice>,
+    pub material_boundary_review: Vec<volicord_inquiry::MaterialBoundaryReview>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

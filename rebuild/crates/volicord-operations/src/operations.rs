@@ -899,6 +899,9 @@ impl LocalOperations {
         for choice in &draft.choices {
             source_basis.extend(choice.source_basis.iter().copied());
         }
+        for review in &draft.material_boundary_review {
+            source_basis.extend(review.source_basis.iter().copied());
+        }
         source_basis.sort_unstable();
         source_basis.dedup();
         let observed_at = SystemClock.now().map_err(|error| {
@@ -943,6 +946,7 @@ impl LocalOperations {
                     goal_context_id: draft.goal_context_id,
                     baseline_analysis_snapshot_id: baseline.identity,
                     choices: draft.choices,
+                    material_boundary_review: draft.material_boundary_review,
                 }),
                 materiality_review: None,
                 learning_deliberation: None,

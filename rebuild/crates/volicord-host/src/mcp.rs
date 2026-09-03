@@ -23,8 +23,8 @@ use volicord_inquiry::{
     LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
     LearningValueAssessment, LearningValueRevisionBasis, LearningValueRevisionRequest,
-    MaterialityAssessment, MaterialityStatus, QuestionCandidate, ResponseMapping,
-    SubmissionOutcome,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityAssessment, MaterialityStatus,
+    QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
@@ -448,6 +448,7 @@ impl HostAdapter {
                 source_operation: required_str(args, "source_operation")?.to_owned(),
                 summary: required_str(args, "summary")?.to_owned(),
                 choices: engineering_choices(args)?,
+                material_boundary_review: material_boundary_review(args)?,
             })
             .map_err(operation_error)?;
         let workflow = self
@@ -2201,6 +2202,40 @@ fn engineering_choice_discovery_schema() -> Value {
             &["choice_id", "summary", "affected_scope", "alternatives", "technical_consequences", "source_ids", "effect_categories", "relationship", "evidence_state"],
         ),
     });
+    let material_boundary_review = json!({
+        "type":"array",
+        "description":"Active-agent completeness assertion for every bounded effect category. Link a real discovered choice or explicitly conclude that repository-relevant review found no independent fork; this is semantic evidence, not an automatic classifier.",
+        "minItems":11,
+        "maxItems":11,
+        "items":object_schema(
+            vec![
+                ("effect_category", enum_schema("Material boundary category reviewed", &[
+                    "public_api_shape_or_semantics", "compatibility", "failure_or_error_semantics",
+                    "persistence_or_lifetime", "privacy_or_disclosure", "security",
+                    "user_visible_behavior_or_default", "performance_or_resource_behavior",
+                    "concurrency_or_operability", "maintenance_or_support", "implementation_internal"
+                ])),
+                ("conclusion", json!({"description":"Explicit semantic conclusion for this category","oneOf":[
+                    object_schema(
+                        vec![
+                            ("state", enum_schema("Boundary-review conclusion", &["represented_by_choices"])),
+                            ("choice_ids", nonempty_string_array_schema("Real discovered choice identities representing every independent fork found in this category")),
+                        ],
+                        &["state", "choice_ids"],
+                    ),
+                    object_schema(
+                        vec![
+                            ("state", enum_schema("Boundary-review conclusion", &["no_independent_fork"])),
+                            ("rationale", text_schema("Why no separate material fork remains after reviewing this category", 1, 4096)),
+                        ],
+                        &["state", "rationale"],
+                    ),
+                ]})),
+                ("source_ids", identity_array_schema("Current Sources grounding this bounded semantic review", 1)),
+            ],
+            &["effect_category", "conclusion", "source_ids"],
+        ),
+    });
     object_schema(
         vec![
             ("project_id", identity_schema("Current Project identity")),
@@ -2218,6 +2253,7 @@ fn engineering_choice_discovery_schema() -> Value {
             ),
             ("summary", text_schema("Bounded discovery summary", 1, 4096)),
             ("choices", choices),
+            ("material_boundary_review", material_boundary_review),
         ],
         &[
             "project_id",
@@ -2226,6 +2262,7 @@ fn engineering_choice_discovery_schema() -> Value {
             "source_operation",
             "summary",
             "choices",
+            "material_boundary_review",
         ],
     )
 }
@@ -3915,6 +3952,14 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "goal_context_id":discovery.goal_context_id.to_string(),
             "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
             "choices":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
+            "material_boundary_review":discovery.material_boundary_review.iter().map(|review| json!({
+                "effect_category":engineering_effect_category_name(review.effect_category),
+                "conclusion":match &review.conclusion {
+                    MaterialBoundaryConclusion::RepresentedByChoices { choice_ids } => json!({"state":"represented_by_choices","choice_ids":choice_ids}),
+                    MaterialBoundaryConclusion::NoIndependentFork { rationale } => json!({"state":"no_independent_fork","rationale":rationale}),
+                },
+                "source_ids":review.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
         })
     });
     let materiality_review = candidate.materiality_review.map(|review| json!({
@@ -4811,6 +4856,37 @@ fn engineering_choices(value: &Value) -> Result<Vec<EngineeringChoice>, HostErro
         .collect()
 }
 
+fn material_boundary_review(value: &Value) -> Result<Vec<MaterialBoundaryReview>, HostError> {
+    value
+        .get("material_boundary_review")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("material_boundary_review must be an array"))?
+        .iter()
+        .map(|review| {
+            let conclusion = review
+                .get("conclusion")
+                .ok_or_else(|| HostError::new("material-boundary conclusion is required"))?;
+            let conclusion = match required_str(conclusion, "state")? {
+                "represented_by_choices" => MaterialBoundaryConclusion::RepresentedByChoices {
+                    choice_ids: string_array(conclusion, "choice_ids")?,
+                },
+                "no_independent_fork" => MaterialBoundaryConclusion::NoIndependentFork {
+                    rationale: required_str(conclusion, "rationale")?.to_owned(),
+                },
+                _ => return Err(HostError::new("unknown material-boundary conclusion")),
+            };
+            Ok(MaterialBoundaryReview {
+                effect_category: engineering_effect_category(required_str(
+                    review,
+                    "effect_category",
+                )?)?,
+                conclusion,
+                source_basis: source_ids(review, "source_ids")?,
+            })
+        })
+        .collect()
+}
+
 fn engineering_effect_category(value: &str) -> Result<EngineeringEffectCategory, HostError> {
     match value {
         "public_api_shape_or_semantics" => Ok(EngineeringEffectCategory::PublicApiShapeOrSemantics),
@@ -5674,13 +5750,21 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "goal_context_id":identity("goal_context"),
                 "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
             },
-            "required_fields":["source_operation","summary","choices"],
+            "required_fields":["source_operation","summary","choices","material_boundary_review"],
             "choice_required_fields":["choice_id","summary","affected_scope","alternatives","technical_consequences","source_ids","effect_categories","relationship","evidence_state"],
             "allowable_values":{
                 "evidence_state":["sufficient","research_required","prototype_required"],
                 "relationship_state":["independent","coupled"],
             },
-            "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, and private helper splits.",
+            "discovery_completion_counterfactual":"Can the Goal be satisfied through materially different subordinate product outcomes that are not yet represented by a discovered choice or settled authority?",
+            "material_boundary_review":{
+                "required_categories":["public_api_shape_or_semantics","compatibility","failure_or_error_semantics","persistence_or_lifetime","privacy_or_disclosure","security","user_visible_behavior_or_default","performance_or_resource_behavior","concurrency_or_operability","maintenance_or_support","implementation_internal"],
+                "conclusions":["represented_by_choices with real choice_ids","no_independent_fork with a source-grounded rationale"],
+                "review_instruction":"Before declaring discovery complete, examine repository-relevant public API and observable semantics, compatibility/support, failure policy, persistence/lifetime, privacy/security, user-visible defaults, concurrency/resource/operability, and other material outcomes introduced by the requested change. Do not invent a choice for a category whose outcomes are repository-settled, mechanically equivalent, private naming/helper structure, or test-fixture detail.",
+                "semantic_owner":"active_agent",
+                "production_validation":"category coverage, real choice links, Source provenance, and closed shape only; production does not infer semantic truth",
+            },
+            "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, private helper splits, and test-fixture selection.",
             "when_no_new_material_choice":{
                 "empty_discovery_submission":{"valid":false,"reason":"An empty Candidate would falsely claim that Engineering Choice Discovery occurred."},
                 "inspect_previous":{"tool":"candidate_inspect","purpose":"Read the retained prior Engineering Choice Discovery and its exact choice identities before deciding whether bounded work continues."},

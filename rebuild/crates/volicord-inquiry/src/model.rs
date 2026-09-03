@@ -213,6 +213,22 @@ pub enum EngineeringEffectCategory {
     ImplementationInternal,
 }
 
+impl EngineeringEffectCategory {
+    pub const ALL: [Self; 11] = [
+        Self::PublicApiShapeOrSemantics,
+        Self::Compatibility,
+        Self::FailureOrErrorSemantics,
+        Self::PersistenceOrLifetime,
+        Self::PrivacyOrDisclosure,
+        Self::Security,
+        Self::UserVisibleBehaviorOrDefault,
+        Self::PerformanceOrResourceBehavior,
+        Self::ConcurrencyOrOperability,
+        Self::MaintenanceOrSupport,
+        Self::ImplementationInternal,
+    ];
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum EngineeringChoiceEvidenceState {
     Sufficient,
@@ -250,10 +266,24 @@ pub struct EngineeringChoice {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum MaterialBoundaryConclusion {
+    RepresentedByChoices { choice_ids: Vec<String> },
+    NoIndependentFork { rationale: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaterialBoundaryReview {
+    pub effect_category: EngineeringEffectCategory,
+    pub conclusion: MaterialBoundaryConclusion,
+    pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EngineeringChoiceDiscovery {
     pub goal_context_id: ContextItemId,
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
     pub choices: Vec<EngineeringChoice>,
+    pub material_boundary_review: Vec<MaterialBoundaryReview>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]

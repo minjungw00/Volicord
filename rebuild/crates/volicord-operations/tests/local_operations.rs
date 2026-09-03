@@ -10,8 +10,9 @@ use volicord_operations::{
     CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
     EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
     EngineeringEffectCategory, GroundedCheckpointDraft, HealthState, LocalOperations,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
-    ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, OperationState, ProjectResolution,
+    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
 use volicord_repository_intelligence::{
@@ -335,6 +336,44 @@ fn record_ready_review(
     goal_context_id: ContextItemId,
     baseline: &AnalysisSnapshot,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let choices = vec![EngineeringChoice {
+        choice_id: "bounded-repository-outcome".into(),
+        summary: "bounded repository behavior".into(),
+        affected_scope: vec!["repository".into()],
+        alternatives: vec![
+            EngineeringAlternative {
+                alternative_id: "record".into(),
+                summary: "record the bounded delta".into(),
+                technical_consequences: vec!["preserves changed-path basis".into()],
+            },
+            EngineeringAlternative {
+                alternative_id: "omit".into(),
+                summary: "omit the bounded delta".into(),
+                technical_consequences: vec!["loses changed-path basis".into()],
+            },
+        ],
+        technical_consequences: vec!["records the attributed repository delta".into()],
+        source_basis: vec![baseline.repository_source.identity()],
+        effect_categories: vec![EngineeringEffectCategory::ImplementationInternal],
+        relationship: EngineeringChoiceRelationship::Independent,
+        evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+    }];
+    let material_boundary_review = EngineeringEffectCategory::ALL
+        .into_iter()
+        .map(|effect_category| MaterialBoundaryReview {
+            effect_category,
+            conclusion: if effect_category == EngineeringEffectCategory::ImplementationInternal {
+                MaterialBoundaryConclusion::RepresentedByChoices {
+                    choice_ids: vec!["bounded-repository-outcome".into()],
+                }
+            } else {
+                MaterialBoundaryConclusion::NoIndependentFork {
+                    rationale: "the fixture has no separate outcome in this category".into(),
+                }
+            },
+            source_basis: vec![baseline.repository_source.identity()],
+        })
+        .collect();
     let discovery =
         operations.record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
             project_id,
@@ -343,28 +382,8 @@ fn record_ready_review(
             session: "grounded-checkpoint-fixture".into(),
             source_operation: "engineering-choice-discovery".into(),
             summary: "one bounded repository choice".into(),
-            choices: vec![EngineeringChoice {
-                choice_id: "bounded-repository-outcome".into(),
-                summary: "bounded repository behavior".into(),
-                affected_scope: vec!["repository".into()],
-                alternatives: vec![
-                    EngineeringAlternative {
-                        alternative_id: "record".into(),
-                        summary: "record the bounded delta".into(),
-                        technical_consequences: vec!["preserves changed-path basis".into()],
-                    },
-                    EngineeringAlternative {
-                        alternative_id: "omit".into(),
-                        summary: "omit the bounded delta".into(),
-                        technical_consequences: vec!["loses changed-path basis".into()],
-                    },
-                ],
-                technical_consequences: vec!["records the attributed repository delta".into()],
-                source_basis: vec![baseline.repository_source.identity()],
-                effect_categories: vec![EngineeringEffectCategory::ImplementationInternal],
-                relationship: EngineeringChoiceRelationship::Independent,
-                evidence_state: EngineeringChoiceEvidenceState::Sufficient,
-            }],
+            choices,
+            material_boundary_review,
         })?;
     let review = operations.record_materiality_review(MaterialityReviewDraft {
         project_id,
