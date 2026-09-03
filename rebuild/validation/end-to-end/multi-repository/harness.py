@@ -72,6 +72,46 @@ PROVIDER_SOURCE_PATHS = {
 }
 OFFICIAL_REVISIT_ASSESSMENT = "reported_by_official_v11"
 FAILED_REVISIT_ASSESSMENT = "official_v11_assessment_failed"
+ENGINEERING_EFFECT_CATEGORIES = (
+    "public_api_shape_or_semantics",
+    "compatibility",
+    "failure_or_error_semantics",
+    "persistence_or_lifetime",
+    "privacy_or_disclosure",
+    "security",
+    "user_visible_behavior_or_default",
+    "performance_or_resource_behavior",
+    "concurrency_or_operability",
+    "maintenance_or_support",
+    "implementation_internal",
+)
+
+
+def material_boundary_review(
+    choices: list[dict[str, Any]], source_ids: list[str]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "effect_category": category,
+            "conclusion": (
+                {
+                    "state": "represented_by_choices",
+                    "choice_ids": [
+                        choice["choice_id"]
+                        for choice in choices
+                        if category in choice["effect_categories"]
+                    ],
+                }
+                if any(category in choice["effect_categories"] for choice in choices)
+                else {
+                    "state": "no_independent_fork",
+                    "rationale": f"The V11 source basis exposes no independent {category} fork.",
+                }
+            ),
+            "source_ids": source_ids,
+        }
+        for category in ENGINEERING_EFFECT_CATEGORIES
+    ]
 DECISION_HEADING = re.compile(r"^## \d+\. (Q[0-9]+(?:-[A-Z])?) —", re.MULTILINE)
 DECISION_ID = re.compile(r"Q[0-9]+(?:-[A-Z])?")
 
@@ -1061,15 +1101,7 @@ def rehearse_target(
             source_id = source_ids[0] if source_ids else None
             materiality_dimension_id = "project-context-boundary"
             technical_dimension_id = "technical-state-representation"
-            discovery, discovery_ok = host.tool("engineering_choice_discovery", {
-                "project_id": project_id,
-                "goal_context_id": (goal or {}).get("context_item_id"),
-                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
-                    "analysis_snapshot_id"
-                ),
-                "source_operation": "V11 installed MCP engineering-choice discovery",
-                "summary": "Discover durable context authority and an independent technical representation fork",
-                "choices": [
+            discovery_choices = [
                     {
                         "choice_id": materiality_dimension_id,
                         "summary": "Choose how this Project preserves its durable context boundary",
@@ -1098,14 +1130,26 @@ def rehearse_target(
                         "relationship": {"state": "independent"},
                         "evidence_state": "sufficient",
                     },
-                ],
+                ]
+            discovery, discovery_ok = host.tool("engineering_choice_discovery", {
+                "project_id": project_id,
+                "goal_context_id": (goal or {}).get("context_item_id"),
+                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(
+                    "analysis_snapshot_id"
+                ),
+                "source_operation": "V11 installed MCP engineering-choice discovery",
+                "summary": "Discover durable context authority and an independent technical representation fork",
+                "choices": discovery_choices,
+                "material_boundary_review": material_boundary_review(
+                    discovery_choices, [source_id] if source_id else []
+                ),
             })
             discovery_id = discovery.get("discovery_candidate_id") if discovery_ok and discovery else None
             learning_participation = (
                 {
                     "state": "active",
                     "user_turn_source_id": (goal or {}).get("source_id"),
-                    "verbatim_statement": "Teach me through the meaningful technical fork",
+                    "verbatim_statement": goal_text,
                 }
                 if learning_active
                 else {"state": "inactive"}
@@ -1117,6 +1161,8 @@ def rehearse_target(
                     "consequence_significance": ["The representation determines where consistency invariants live"],
                     "transferable_principles": ["Choose representations that make invariants explicit"],
                     "non_obvious_trade_offs": ["Faster direct lookup adds ordering and synchronization obligations"],
+                    "interruption_counterfactual": "Without discussion now, implementation would fix a meaningful invariant-placement strategy before the learner can compare it.",
+                    "participation_scope_alignment": "The technical representation is the meaningful fork requested by the complete V11 Goal.",
                 }
                 if learning_active
                 else {
@@ -2597,6 +2643,34 @@ def self_check() -> int:
     suffixes = {path.suffix for path in POLYGLOT_FIXTURE.rglob("*") if path.is_file()}
     if not {".java", ".py", ".ts", ".md"} <= suffixes:
         raise AssertionError("polyglot fixture lost three languages or documentation")
+    boundary_fixture = material_boundary_review(
+        [{
+            "choice_id": "api-boundary",
+            "effect_categories": [
+                "public_api_shape_or_semantics",
+                "failure_or_error_semantics",
+            ],
+        }],
+        ["current-source"],
+    )
+    if (
+        len(boundary_fixture) != len(ENGINEERING_EFFECT_CATEGORIES)
+        or len({review["effect_category"] for review in boundary_fixture})
+        != len(ENGINEERING_EFFECT_CATEGORIES)
+        or next(
+            review
+            for review in boundary_fixture
+            if review["effect_category"] == "public_api_shape_or_semantics"
+        )["conclusion"]
+        != {"state": "represented_by_choices", "choice_ids": ["api-boundary"]}
+        or next(
+            review
+            for review in boundary_fixture
+            if review["effect_category"] == "security"
+        )["conclusion"].get("state")
+        != "no_independent_fork"
+    ):
+        raise AssertionError("V11 material-boundary review fixture is incomplete")
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
     if parser_degradation_status(
@@ -2648,6 +2722,9 @@ def self_check() -> int:
         '"local_canonical": local_canonical',
         '"action": "submit_question_from_materiality"',
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
+        '"material_boundary_review": material_boundary_review(',
+        '"interruption_counterfactual":',
+        '"participation_scope_alignment":',
         '"delegated_implementation_choice"',
         '"affected_scope": ["internal-state", "v11-ordinary-work.txt"]',
         '"v11-ordinary-work.txt",\n                                ],',

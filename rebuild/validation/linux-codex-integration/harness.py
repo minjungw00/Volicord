@@ -43,6 +43,44 @@ EXPECTED_TOOLS = [
     "document_preview",
     "guarded_interaction",
 ]
+ENGINEERING_EFFECT_CATEGORIES = (
+    "public_api_shape_or_semantics",
+    "compatibility",
+    "failure_or_error_semantics",
+    "persistence_or_lifetime",
+    "privacy_or_disclosure",
+    "security",
+    "user_visible_behavior_or_default",
+    "performance_or_resource_behavior",
+    "concurrency_or_operability",
+    "maintenance_or_support",
+    "implementation_internal",
+)
+
+
+def material_boundary_review(
+    choices: list[dict[str, Any]], source_id: str
+) -> list[dict[str, Any]]:
+    reviews = []
+    for category in ENGINEERING_EFFECT_CATEGORIES:
+        choice_ids = [
+            choice["choice_id"]
+            for choice in choices
+            if category in choice["effect_categories"]
+        ]
+        reviews.append({
+            "effect_category": category,
+            "conclusion": (
+                {"state": "represented_by_choices", "choice_ids": choice_ids}
+                if choice_ids
+                else {
+                    "state": "no_independent_fork",
+                    "rationale": f"The installed-path source exposes no independent {category} fork.",
+                }
+            ),
+            "source_ids": [source_id],
+        })
+    return reviews
 
 
 def require(condition: bool, message: str) -> None:
@@ -622,6 +660,22 @@ def exercise_analysis_recovery(
         "repository_analyze",
         {"project_id": first},
     )
+    recovery_choices = [
+        {
+            "choice_id": "derived-analysis-recovery",
+            "summary": "Rebuild derived analysis while preserving canonical meaning",
+            "affected_scope": ["derived-analysis"],
+            "alternatives": [
+                {"alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
+                {"alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
+            ],
+            "technical_consequences": ["The treatment changes only rebuildable derived state"],
+            "source_ids": [recovery_baseline["repository_source_id"]],
+            "effect_categories": ["maintenance_or_support"],
+            "relationship": {"state": "independent"},
+            "evidence_state": "sufficient",
+        }
+    ]
     recovery_discovery = tool(
         recovery_host,
         304,
@@ -632,22 +686,10 @@ def exercise_analysis_recovery(
             "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
             "source_operation": "V08 recovery engineering-choice discovery",
             "summary": "Discover the derived-analysis recovery treatment",
-            "choices": [
-                {
-                    "choice_id": "derived-analysis-recovery",
-                    "summary": "Rebuild derived analysis while preserving canonical meaning",
-                    "affected_scope": ["derived-analysis"],
-                    "alternatives": [
-                        {"alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
-                        {"alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
-                    ],
-                    "technical_consequences": ["The treatment changes only rebuildable derived state"],
-                    "source_ids": [recovery_baseline["repository_source_id"]],
-                    "effect_categories": ["maintenance_or_support"],
-                    "relationship": {"state": "independent"},
-                    "evidence_state": "sufficient",
-                }
-            ],
+            "choices": recovery_choices,
+            "material_boundary_review": material_boundary_review(
+                recovery_choices, recovery_baseline["repository_source_id"]
+            ),
         },
     )
     recovery_review = tool(
@@ -1073,6 +1115,22 @@ def main() -> int:
             == {"tool": "engineering_choice_discovery", "action": "record"},
             "pre-work analysis did not expose Engineering Choice Discovery",
         )
+        checkpoint_choices = [
+            {
+                "choice_id": "checkpoint-fixture-path",
+                "summary": "Apply the maintained fixture filename and content",
+                "affected_scope": ["grounded-checkpoint.txt"],
+                "alternatives": [
+                    {"alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
+                    {"alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
+                ],
+                "technical_consequences": ["The choice controls deterministic Checkpoint evidence"],
+                "source_ids": [baseline["repository_source_id"]],
+                "effect_categories": ["maintenance_or_support"],
+                "relationship": {"state": "independent"},
+                "evidence_state": "sufficient",
+            }
+        ]
         discovery = tool(
             host,
             7,
@@ -1083,22 +1141,10 @@ def main() -> int:
                 "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
                 "source_operation": "V08 installed MCP choice discovery",
                 "summary": "Discover the maintained fixture output choice",
-                "choices": [
-                    {
-                        "choice_id": "checkpoint-fixture-path",
-                        "summary": "Apply the maintained fixture filename and content",
-                        "affected_scope": ["grounded-checkpoint.txt"],
-                        "alternatives": [
-                            {"alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
-                            {"alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
-                        ],
-                        "technical_consequences": ["The choice controls deterministic Checkpoint evidence"],
-                        "source_ids": [baseline["repository_source_id"]],
-                        "effect_categories": ["maintenance_or_support"],
-                        "relationship": {"state": "independent"},
-                        "evidence_state": "sufficient",
-                    }
-                ],
+                "choices": checkpoint_choices,
+                "material_boundary_review": material_boundary_review(
+                    checkpoint_choices, baseline["repository_source_id"]
+                ),
             },
         )
         require(

@@ -69,6 +69,19 @@ BEHAVIOR_CLASSES = (
     "learning_deliberation",
     "learning_routine_control",
 )
+ENGINEERING_EFFECT_CATEGORIES = (
+    "public_api_shape_or_semantics",
+    "compatibility",
+    "failure_or_error_semantics",
+    "persistence_or_lifetime",
+    "privacy_or_disclosure",
+    "security",
+    "user_visible_behavior_or_default",
+    "performance_or_resource_behavior",
+    "concurrency_or_operability",
+    "maintenance_or_support",
+    "implementation_internal",
+)
 CYCLE_COUNT_BY_REPOSITORY = {
     "volicord": 3,
     "small-python": 3,
@@ -1261,16 +1274,16 @@ def load_definition() -> dict[str, Any]:
             "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
             "after Project initialization source exactly one canonical Goal and any bounded non-Goal Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn",
             "establish the repository baseline through repository_analyze before ordinary work",
-            "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, and independent or coupled relationships before Materiality Review",
+            "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, and follow its production-derived workflow directive",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions and record each explicit current-host user Decision",
             "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
             "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
-            "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision",
-            "for learning_deliberation, prove explicit participation, agent-owned authority, deliberation-worthy value, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
-            "for learning_routine_control, prove explicit participation and routine value without a Learning Deliberation, Candidate, Question, or Decision",
+            "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision, but discovery-owned research or prototype requirements remain blocking until matching bounded evidence completion is recorded",
+            "for learning_deliberation, prove complete explicit participation scope, agent-owned authority, deliberation-worthy value with a meaningful interruption counterfactual, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
+            "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
@@ -1362,13 +1375,13 @@ def load_definition() -> dict[str, Any]:
                 "current Goal delegation with no manufactured Candidate, Question, or Decision"
             ),
             "exploratory_uncertainty": (
-                "evidence-backed exploratory disposition that reaches executable-scope-required at record or through a same-review revision, then typed inspect readiness before affected work, with no manufactured Candidate, Question, or Decision"
+                "discovery-owned research or prototype requirements remain blocking until a same-review revision supplies matching bounded evidence completion, then typed inspect readiness precedes affected work, with no manufactured Candidate, Question, or Decision"
             ),
             "learning_deliberation": (
                 "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision"
             ),
             "learning_routine_control": (
-                "active participation, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
+                "complete active participation scope including explicit non-interruption limits, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
             ),
         },
         "materiality_correlation": (
@@ -4775,7 +4788,8 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
             or not choice["effect_categories"]
             or not isinstance(relationship, dict)
             or relationship.get("state") not in {"independent", "coupled"}
-            or choice.get("evidence_state") != "sufficient"
+            or choice.get("evidence_state")
+            not in {"sufficient", "research_required", "prototype_required"}
         ):
             return None
         indexed[str(choice_id)] = choice
@@ -4789,6 +4803,73 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
         ):
             return None
     return indexed
+
+
+def material_boundary_review_facts(
+    value: Any,
+    choices: dict[str, dict[str, Any]] | None,
+    repository_source_id: Any,
+) -> tuple[bool, dict[str, Any]]:
+    if not isinstance(value, list) or choices is None:
+        return False, {}
+    indexed: dict[str, dict[str, Any]] = {}
+    represented: dict[str, set[str]] = {}
+    for review in value:
+        category = review.get("effect_category") if isinstance(review, dict) else None
+        conclusion = review.get("conclusion") if isinstance(review, dict) else None
+        if (
+            category not in ENGINEERING_EFFECT_CATEGORIES
+            or category in indexed
+            or not isinstance(conclusion, dict)
+            or set(review) != {"effect_category", "conclusion", "source_ids"}
+            or review.get("source_ids") != [repository_source_id]
+        ):
+            return False, {}
+        state = conclusion.get("state")
+        if state == "represented_by_choices":
+            choice_ids = conclusion.get("choice_ids")
+            if (
+                set(conclusion) != {"state", "choice_ids"}
+                or not isinstance(choice_ids, list)
+                or not choice_ids
+                or not all(nonempty_string(choice_id) for choice_id in choice_ids)
+                or not set(choice_ids) <= set(choices)
+                or any(category not in choices[choice_id]["effect_categories"] for choice_id in choice_ids)
+            ):
+                return False, {}
+            represented[category] = set(choice_ids)
+        elif state == "no_independent_fork":
+            if (
+                set(conclusion) != {"state", "rationale"}
+                or not nonempty_string(conclusion.get("rationale"))
+            ):
+                return False, {}
+            represented[category] = set()
+        else:
+            return False, {}
+        indexed[category] = review
+    declared = {
+        category: {
+            choice_id
+            for choice_id, choice in choices.items()
+            if category in choice["effect_categories"]
+        }
+        for category in ENGINEERING_EFFECT_CATEGORIES
+    }
+    valid = (
+        set(indexed) == set(ENGINEERING_EFFECT_CATEGORIES)
+        and represented == declared
+    )
+    return valid, {
+        "reviewed_effect_categories": sorted(indexed),
+        "represented_choice_ids_by_category": {
+            category: sorted(choice_ids)
+            for category, choice_ids in sorted(represented.items())
+        },
+        "all_effect_categories_reviewed_once": set(indexed)
+        == set(ENGINEERING_EFFECT_CATEGORIES),
+        "declared_choice_categories_backlinked": represented == declared,
+    }
 
 
 def materiality_dimensions_from_judgments(
@@ -4807,6 +4888,7 @@ def materiality_dimensions_from_judgments(
         "authority_counterfactual",
         "additional_source_ids",
         "learning_value",
+        "evidence_completion_basis",
     }
     variants = {
         "repository_or_environment_fact": [set()],
@@ -4843,6 +4925,48 @@ def materiality_dimensions_from_judgments(
             or not isinstance(judgment.get("learning_value"), dict)
         ):
             return None
+        learning_value = judgment["learning_value"]
+        learning_state = learning_value.get("state")
+        if learning_state == "routine":
+            if (
+                set(learning_value) != {"state", "rationale"}
+                or not nonempty_string(learning_value.get("rationale"))
+            ):
+                return None
+        elif learning_state == "deliberation_worthy":
+            if (
+                set(learning_value)
+                != {
+                    "state",
+                    "rationale",
+                    "consequence_significance",
+                    "transferable_principles",
+                    "non_obvious_trade_offs",
+                    "interruption_counterfactual",
+                    "participation_scope_alignment",
+                }
+                or not all(
+                    nonempty_string(learning_value.get(field))
+                    for field in (
+                        "rationale",
+                        "interruption_counterfactual",
+                        "participation_scope_alignment",
+                    )
+                )
+                or any(
+                    not isinstance(learning_value.get(field), list)
+                    or not learning_value[field]
+                    or not all(nonempty_string(item) for item in learning_value[field])
+                    for field in (
+                        "consequence_significance",
+                        "transferable_principles",
+                        "non_obvious_trade_offs",
+                    )
+                )
+            ):
+                return None
+        else:
+            return None
         additional_sources = judgment.get("additional_source_ids", [])
         if not isinstance(additional_sources, list) or not all(
             nonempty_string(source_id) for source_id in additional_sources
@@ -4851,7 +4975,19 @@ def materiality_dimensions_from_judgments(
         source_ids = list(dict.fromkeys(choice["source_ids"] + additional_sources))
         contract_basis = judgment.get("contract_basis", [])
         decision_ids = judgment.get("decision_ids", [])
-        research_basis = judgment.get("research_basis", [])
+        evidence_completion_basis = judgment.get("evidence_completion_basis", [])
+        if not isinstance(evidence_completion_basis, list) or not all(
+            nonempty_string(item) for item in evidence_completion_basis
+        ):
+            return None
+        if choice["evidence_state"] == "sufficient" and evidence_completion_basis:
+            return None
+        declared_research_basis = judgment.get("research_basis", [])
+        if not isinstance(declared_research_basis, list) or not all(
+            nonempty_string(item) for item in declared_research_basis
+        ):
+            return None
+        research_basis = declared_research_basis + evidence_completion_basis
         explicit_delegation = None
         resolution_decision_id = judgment.get("resolution_decision_id")
         if disposition == "repository_or_environment_fact":
@@ -4897,6 +5033,8 @@ def materiality_dimensions_from_judgments(
             "observable_signals": ["other_material_outcome"],
             "disposition": disposition,
             "learning_value": judgment["learning_value"],
+            "discovery_evidence_state": choice["evidence_state"],
+            "evidence_completion_basis": evidence_completion_basis,
             "basis": {
                 "kinds": kinds,
                 "summary": judgment["basis_summary"],
@@ -4951,6 +5089,12 @@ def engineering_choice_discovery_facts(
         goal_source_id=goal_source_id,
     )
     discovered_id = discovery.result.get("discovery_candidate_id") if discovery else None
+    repository_source_id = baseline_call.result.get("repository_source_id")
+    boundary_ok, boundary_basis = material_boundary_review_facts(
+        discovery.arguments.get("material_boundary_review") if discovery else None,
+        choices,
+        repository_source_id,
+    )
     referenced_ids = {
         choice_id
         for dimension in (dimensions or {}).values()
@@ -4960,6 +5104,7 @@ def engineering_choice_discovery_facts(
         discovery
         and choices
         and dimensions
+        and boundary_ok
         and baseline_call.completion_sequence < discovery.sequence
         and discovery.completion_sequence < review_call.sequence
         and nonempty_string(discovered_id)
@@ -4968,7 +5113,7 @@ def engineering_choice_discovery_facts(
         and discovery.result.get("goal_context_id") == goal_context_id
         and discovery.result.get("baseline_analysis_snapshot_id") == baseline_id
         and set(choices) == referenced_ids
-        and nonempty_string(baseline_call.result.get("repository_source_id"))
+        and nonempty_string(repository_source_id)
         and all(
             choice.get("source_ids")
             == [baseline_call.result.get("repository_source_id")]
@@ -4997,6 +5142,11 @@ def engineering_choice_discovery_facts(
             choice_id: choice.get("relationship")
             for choice_id, choice in sorted((choices or {}).items())
         },
+        "material_boundary_review": boundary_basis,
+        "evidence_states_by_choice": {
+            choice_id: choice.get("evidence_state")
+            for choice_id, choice in sorted((choices or {}).items())
+        },
     }, dimensions, choices
 
 
@@ -5016,6 +5166,12 @@ def materiality_dimension_authority_valid(
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
     decision_ids = basis["decision_ids"]
+    if (
+        dimension.get("discovery_evidence_state")
+        in {"research_required", "prototype_required"}
+        and not dimension.get("evidence_completion_basis")
+    ):
+        return False
     if disposition != "delegated_implementation_choice" and basis.get(
         "explicit_delegation"
     ) is not None:
@@ -5195,6 +5351,7 @@ def materiality_review_facts(
             and learning_participation.get("user_turn_source_id") == goal_source_id
             and nonempty_string(learning_participation.get("verbatim_statement"))
             and learning_participation["verbatim_statement"] in (frozen_task or "")
+            and learning_participation["verbatim_statement"] == frozen_task
         )
     )
     repository_source_id = baseline_call.result.get("repository_source_id")
@@ -8759,6 +8916,35 @@ def fixture_question_content() -> dict[str, Any]:
     }
 
 
+def fixture_material_boundary_review(
+    choices: list[dict[str, Any]], source_id: str
+) -> list[dict[str, Any]]:
+    reviews = []
+    for category in ENGINEERING_EFFECT_CATEGORIES:
+        choice_ids = [
+            choice["choice_id"]
+            for choice in choices
+            if category in choice["effect_categories"]
+        ]
+        conclusion = (
+            {"state": "represented_by_choices", "choice_ids": choice_ids}
+            if choice_ids
+            else {
+                "state": "no_independent_fork",
+                "rationale": (
+                    f"Current repository evidence shows no independent {category} "
+                    "outcome beyond the represented choices."
+                ),
+            }
+        )
+        reviews.append({
+            "effect_category": category,
+            "conclusion": conclusion,
+            "source_ids": [source_id],
+        })
+    return reviews
+
+
 def fixture_evaluation_basis(behavior_class: str) -> dict[str, Any]:
     return {
         "behavior_class": behavior_class,
@@ -9212,6 +9398,7 @@ def real_session_fixture(
         "learning_deliberation",
         "learning_routine_control",
     }
+    learning_participation_statement = work_user_task if learning_active else None
 
     def engineering_choices(source_id: str) -> list[dict[str, Any]]:
         return [
@@ -9288,6 +9475,8 @@ def real_session_fixture(
                     "consequence_significance": ["The representation determines where consistency invariants live."],
                     "transferable_principles": ["Choose representations that make invariants explicit."],
                     "non_obvious_trade_offs": ["Direct lookup adds synchronization and ordering obligations."],
+                    "interruption_counterfactual": "Without discussing this representation now, the user would lose a meaningful chance to reason about invariant placement before implementation fixes it.",
+                    "participation_scope_alignment": "The fork is the one meaningful agent-owned technical choice requested by the complete current Goal, and it excludes routine naming and formatting.",
                 }
                 if behavior_class == "learning_deliberation"
                 else {
@@ -9438,6 +9627,9 @@ def real_session_fixture(
                 "source_operation": "naturalistic engineering-choice discovery",
                 "summary": "Discover independently meaningful technical choices before authority review.",
                 "choices": engineering_choices(repository_source),
+                "material_boundary_review": fixture_material_boundary_review(
+                    engineering_choices(repository_source), repository_source
+                ),
             },
         ),
         custom_output(
@@ -9450,6 +9642,9 @@ def real_session_fixture(
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": baseline_analysis,
                 "choices": engineering_choices(repository_source),
+                "material_boundary_review": fixture_material_boundary_review(
+                    engineering_choices(repository_source), repository_source
+                ),
                 "canonical_mutation": False,
                 "workflow": {"stage": "materiality_review", "blocks_ordinary_work": True},
             },
@@ -9467,7 +9662,7 @@ def real_session_fixture(
                     {
                         "state": "active",
                         "user_turn_source_id": goal_source,
-                        "verbatim_statement": "I want to learn",
+                        "verbatim_statement": learning_participation_statement,
                     }
                     if learning_active
                     else {"state": "inactive"}
@@ -10152,6 +10347,10 @@ def real_session_fixture(
                 "source_operation": "fresh-session engineering-choice rediscovery",
                 "summary": "Re-establish current technical choices after Recall.",
                 "choices": engineering_choices(resume_repository_source),
+                "material_boundary_review": fixture_material_boundary_review(
+                    engineering_choices(resume_repository_source),
+                    resume_repository_source,
+                ),
             },
             fallback="??",
         ),
@@ -10165,6 +10364,10 @@ def real_session_fixture(
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
                 "choices": engineering_choices(resume_repository_source),
+                "material_boundary_review": fixture_material_boundary_review(
+                    engineering_choices(resume_repository_source),
+                    resume_repository_source,
+                ),
                 "canonical_mutation": False,
                 "workflow": {"stage": "materiality_review", "blocks_ordinary_work": True},
             },
@@ -10182,7 +10385,7 @@ def real_session_fixture(
                     {
                         "state": "active",
                         "user_turn_source_id": goal_source,
-                        "verbatim_statement": "I want to learn",
+                        "verbatim_statement": learning_participation_statement,
                     }
                     if learning_active
                     else {"state": "inactive"}
@@ -15415,6 +15618,27 @@ def self_test() -> int:
             require_research,
         )
 
+        def mark_discovery_research_required(value: dict[str, Any]) -> None:
+            primary = next(
+                choice
+                for choice in value["choices"]
+                if choice["choice_id"] == "operator-error-boundary"
+            )
+            primary["evidence_state"] = "research_required"
+
+        mutate_mcp_call(
+            fixture,
+            "work",
+            "engineering_choice_discovery",
+            mark_discovery_research_required,
+        )
+        mutate_custom_output(
+            fixture,
+            "work",
+            "discovery-call",
+            mark_discovery_research_required,
+        )
+
         def block_for_research(output: dict[str, Any]) -> None:
             output["workflow"].update({
                 "stage": "evidence_required",
@@ -15453,6 +15677,9 @@ def self_test() -> int:
         resolved_primary["exploratory_disposition"] = "resolved_by_research"
         resolved_primary["research_basis"] = [
             "targeted repository research established the bounded path"
+        ]
+        resolved_primary["evidence_completion_basis"] = [
+            "the refreshed current repository snapshot resolves the discovery-owned research requirement"
         ]
         resolved_workflow = json.loads(json.dumps(record.result["workflow"]))
         resolved_workflow.update({
@@ -15533,6 +15760,132 @@ def self_test() -> int:
     )["checks"]["pre_write_materiality_work_authority"] != "failed":
         raise AssertionError(
             "exploratory ordinary work before its ready revision qualified"
+        )
+
+    exploratory_without_completion = exploratory_research_fixture(
+        resolve_before_work=True
+    )
+
+    def remove_exploratory_completion(arguments: dict[str, Any]) -> None:
+        primary = next(
+            judgment
+            for judgment in arguments["judgments"]
+            if judgment["choice_id"] == "operator-error-boundary"
+        )
+        primary.pop("evidence_completion_basis")
+
+    mutate_mcp_call_action(
+        exploratory_without_completion,
+        "work",
+        "materiality_review",
+        "revise",
+        remove_exploratory_completion,
+    )
+    if real_session_evidence(
+        exploratory_without_completion,
+        kind="polyglot-medium",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError(
+            "discovery-owned research requirement qualified without evidence completion"
+        )
+
+    incomplete_boundary = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    mutate_mcp_call(
+        incomplete_boundary,
+        "work",
+        "engineering_choice_discovery",
+        lambda arguments: arguments["material_boundary_review"].pop(),
+    )
+    if real_session_evidence(
+        incomplete_boundary,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["engineering_choice_discovery"] != "failed":
+        raise AssertionError("an omitted material effect-category review qualified")
+
+    hidden_public_api_fork = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+
+    def add_unreviewed_public_api_fork(arguments: dict[str, Any]) -> None:
+        arguments["choices"][0]["effect_categories"].append(
+            "public_api_shape_or_semantics"
+        )
+
+    mutate_mcp_call(
+        hidden_public_api_fork,
+        "work",
+        "engineering_choice_discovery",
+        add_unreviewed_public_api_fork,
+    )
+    if real_session_evidence(
+        hidden_public_api_fork,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["engineering_choice_discovery"] != "failed":
+        raise AssertionError("a public API fork hidden behind a no-fork conclusion qualified")
+
+    narrowed_learning_scope = real_session_fixture(
+        "small-python",
+        3,
+        revision,
+        evidence_directory,
+        behavior_class="learning_routine_control",
+    )
+    mutate_mcp_call_action(
+        narrowed_learning_scope,
+        "work",
+        "materiality_review",
+        "record",
+        lambda arguments: arguments["learning_participation"].update(
+            {"verbatim_statement": "I want to learn"}
+        ),
+    )
+    if real_session_evidence(
+        narrowed_learning_scope,
+        kind="small-python",
+        cycle=3,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError("learning participation dropped an explicit non-interruption limit")
+
+    unbounded_learning_interruption = real_session_fixture(
+        "small-python",
+        2,
+        revision,
+        evidence_directory,
+        behavior_class="learning_deliberation",
+    )
+
+    def remove_interruption_counterfactual(arguments: dict[str, Any]) -> None:
+        primary = next(
+            judgment
+            for judgment in arguments["judgments"]
+            if judgment["choice_id"] == "operator-error-boundary"
+        )
+        primary["learning_value"].pop("interruption_counterfactual")
+
+    mutate_mcp_call_action(
+        unbounded_learning_interruption,
+        "work",
+        "materiality_review",
+        "record",
+        remove_interruption_counterfactual,
+    )
+    if real_session_evidence(
+        unbounded_learning_interruption,
+        kind="small-python",
+        cycle=2,
+        repository_revision=revision,
+    )["checks"]["pre_write_materiality_work_authority"] != "failed":
+        raise AssertionError(
+            "deliberation-worthy learning qualified without an interruption counterfactual"
         )
 
     explicit_write_before_decision = real_session_fixture(
