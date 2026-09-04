@@ -10217,12 +10217,12 @@ def real_session_fixture(
                     else "adapter state representation"
                 ],
                 "alternatives": [
-                    {
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
                         "alternative_id": "ordered-records",
                         "summary": "Use ordered records",
                         "technical_consequences": ["Deterministic inspection with bounded linear lookup"],
                     },
-                    {
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
                         "alternative_id": "keyed-index",
                         "summary": "Use a keyed index",
                         "technical_consequences": ["Direct lookup with ordering synchronization obligations"],
@@ -10247,8 +10247,8 @@ def real_session_fixture(
                 "summary": "Choose the coupled repository-shape boundary",
                 "affected_scope": ["repository file shape"],
                 "alternatives": [
-                    {"alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
-                    {"alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
                 ],
                 "technical_consequences": ["The shape affects the scope of implementation changes"],
                 "source_ids": [source_id],
@@ -15274,14 +15274,14 @@ def self_test() -> int:
             primary = arguments["choices"][0]
             primary["summary"] = summary
             primary["alternatives"] = [
-                {
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
                     "alternative_id": f"{scenario_id}-a",
                     "summary": alternatives[0],
                     "technical_consequences": [
                         "This alternative produces one durable product outcome."
                     ],
                 },
-                {
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
                     "alternative_id": f"{scenario_id}-b",
                     "summary": alternatives[1],
                     "technical_consequences": [

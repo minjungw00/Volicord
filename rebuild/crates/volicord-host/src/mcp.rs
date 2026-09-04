@@ -2191,8 +2191,26 @@ fn engineering_choice_discovery_schema() -> Value {
                 "technical_consequences",
                 nonempty_string_array_schema("Consequences specific to this alternative"),
             ),
+            (
+                "material_decomposition",
+                json!({"oneOf":[
+                    object_schema(vec![
+                        ("state", enum_schema("Closure", &["materially_atomic"])),
+                        ("rationale", text_schema("Active-agent rationale grounded in this choice's Sources: selecting this alternative leaves no further materially distinct product outcome. Private equivalent details may terminate here.", 1, 4096)),
+                    ], &["state", "rationale"]),
+                    object_schema(vec![
+                        ("state", enum_schema("Closure", &["decomposed"])),
+                        ("choice_ids", nonempty_string_array_schema("Subordinate material choices in this discovery; recursively close each alternative")),
+                    ], &["state", "choice_ids"]),
+                ]}),
+            ),
         ],
-        &["alternative_id", "summary", "technical_consequences"],
+        &[
+            "alternative_id",
+            "summary",
+            "technical_consequences",
+            "material_decomposition",
+        ],
     );
     let relationship = json!({"description":"Whether this choice is independent or necessarily coupled to exact peer choices","oneOf":[
         object_schema(
@@ -5235,6 +5253,17 @@ fn engineering_choices(value: &Value) -> Result<Vec<EngineeringChoice>, HostErro
                 .iter()
                 .map(|alternative| {
                     Ok(EngineeringAlternative {
+                        material_decomposition: serde_json::from_value(
+                            alternative
+                                .get("material_decomposition")
+                                .cloned()
+                                .ok_or_else(|| {
+                                    HostError::new("alternative material_decomposition is required")
+                                })?,
+                        )
+                        .map_err(|error| {
+                            HostError::new(format!("invalid material_decomposition: {error}"))
+                        })?,
                         alternative_id: required_str(alternative, "alternative_id")?.to_owned(),
                         summary: required_str(alternative, "summary")?.to_owned(),
                         technical_consequences: string_array(
@@ -6064,6 +6093,7 @@ fn engineering_choice_json(choice: &EngineeringChoice) -> Value {
             "alternative_id":alternative.alternative_id,
             "summary":alternative.summary,
             "technical_consequences":alternative.technical_consequences,
+            "material_decomposition":alternative.material_decomposition,
         })).collect::<Vec<_>>(),
         "technical_consequences":choice.technical_consequences,
         "source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -6351,6 +6381,7 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
             "material_boundary_review":{
                 "required_categories":["public_api_shape_or_semantics","compatibility","failure_or_error_semantics","persistence_or_lifetime","privacy_or_disclosure","security","user_visible_behavior_or_default","performance_or_resource_behavior","concurrency_or_operability","maintenance_or_support","implementation_internal"],
                 "conclusions":["represented_by_choices with real choice_ids","no_independent_fork with a source-grounded rationale"],
+                "material_decomposition_instruction":"For every alternative, inspect whether selecting it still leaves a materially distinct subordinate public/product outcome. Supply material_decomposition as materially_atomic with a Source-grounded rationale, or decomposed with subordinate choice_ids in this same graph. Recursively close subordinate alternatives; private equivalent details may terminate without Question. Broad control semantics or compatible existing results do not by themselves settle public status/error metadata representation.",
                 "review_instruction":"Before declaring discovery complete, examine repository-relevant public API and observable semantics, compatibility/support, failure policy, persistence/lifetime, privacy/security, user-visible defaults, concurrency/resource/operability, and other material outcomes introduced by the requested change. Do not invent a choice for a category whose outcomes are repository-settled, mechanically equivalent, private naming/helper structure, or test-fixture detail.",
                 "semantic_owner":"active_agent",
                 "production_validation":"category coverage, real choice links, Source provenance, and closed shape only; production does not infer semantic truth",

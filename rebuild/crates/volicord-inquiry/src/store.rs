@@ -2104,6 +2104,7 @@ fn validate_engineering_choice_discovery(
             }
         }
     }
+    validate_material_decomposition(discovery)?;
     let required_categories = crate::EngineeringEffectCategory::ALL
         .into_iter()
         .collect::<BTreeSet<_>>();
@@ -2168,6 +2169,66 @@ fn validate_engineering_choice_discovery(
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_material_decomposition(
+    discovery: &EngineeringChoiceDiscovery,
+) -> Result<(), Error> {
+    fn visit<'a>(
+        id: &'a str,
+        discovery: &'a EngineeringChoiceDiscovery,
+        active: &mut BTreeSet<&'a str>,
+        complete: &mut BTreeSet<&'a str>,
+    ) -> Result<(), Error> {
+        if complete.contains(id) {
+            return Ok(());
+        }
+        if !active.insert(id) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "material decomposition cycle",
+            ));
+        }
+        let choice = discovery
+            .choices
+            .iter()
+            .find(|choice| choice.choice_id == id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "material decomposition references a missing choice",
+                )
+            })?;
+        for alternative in &choice.alternatives {
+            match &alternative.material_decomposition {
+                crate::MaterialDecomposition::MateriallyAtomic { rationale } => {
+                    validate_text("source-grounded material atomicity rationale", rationale)?;
+                }
+                crate::MaterialDecomposition::Decomposed { choice_ids } => {
+                    validate_list(choice_ids)?;
+                    if choice_ids.is_empty()
+                        || choice_ids.iter().collect::<BTreeSet<_>>().len() != choice_ids.len()
+                        || choice_ids.iter().any(|child| child == id)
+                    {
+                        return Err(Error::new(ErrorKind::InvalidInput,
+                            "material decomposition requires non-empty unique subordinate choice identities without self-reference"));
+                    }
+                    for child in choice_ids {
+                        visit(child, discovery, active, complete)?;
+                    }
+                }
+            }
+        }
+        active.remove(id);
+        complete.insert(id);
+        Ok(())
+    }
+    let mut active = BTreeSet::new();
+    let mut complete = BTreeSet::new();
+    for choice in &discovery.choices {
+        visit(&choice.choice_id, discovery, &mut active, &mut complete)?;
     }
     Ok(())
 }

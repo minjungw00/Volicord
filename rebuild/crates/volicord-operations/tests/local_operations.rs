@@ -373,11 +373,13 @@ fn record_ready_review(
         affected_scope: vec!["repository".into()],
         alternatives: vec![
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "record".into(),
                 summary: "record the bounded delta".into(),
                 technical_consequences: vec!["preserves changed-path basis".into()],
             },
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "omit".into(),
                 summary: "omit the bounded delta".into(),
                 technical_consequences: vec!["loses changed-path basis".into()],

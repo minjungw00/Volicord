@@ -424,6 +424,7 @@ fn validate_discovery_boundary<'a>(
     {
         return Err("Engineering Choice Discovery Goal or baseline is stale".into());
     }
+    crate::store::validate_material_decomposition(discovery).map_err(|error| error.to_string())?;
     let discovered = discovery
         .choices
         .iter()

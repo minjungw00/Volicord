@@ -896,11 +896,13 @@ fn review(
             affected_scope: dimension.affected_scope.clone(),
             alternatives: vec![
                 EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                     alternative_id: "approach-a".into(),
                     summary: "first credible approach".into(),
                     technical_consequences: vec!["first bounded consequence".into()],
                 },
                 EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                     alternative_id: "approach-b".into(),
                     summary: "second credible approach".into(),
                     technical_consequences: vec!["second bounded consequence".into()],
@@ -1120,11 +1122,13 @@ fn engineering_choice(
         affected_scope: vec!["src/lib.rs".into()],
         alternatives: vec![
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "approach-a".into(),
                 summary: "first credible approach".into(),
                 technical_consequences: vec!["first observable consequence".into()],
             },
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "approach-b".into(),
                 summary: "second credible approach".into(),
                 technical_consequences: vec!["second observable consequence".into()],
@@ -1781,11 +1785,13 @@ fn binds_predictable_coupled_changelog_before_first_write() -> Result<(), Box<dy
         affected_scope: delegated.affected_scope.clone(),
         alternatives: vec![
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "one".into(),
                 summary: "one layout".into(),
                 technical_consequences: delegated.material_consequences.clone(),
             },
             EngineeringAlternative {
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
                 alternative_id: "two".into(),
                 summary: "another layout".into(),
                 technical_consequences: delegated.material_consequences.clone(),
@@ -3461,5 +3467,178 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
         reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![decision_id]))?;
     assert_eq!(checkpoint.applied_decisions, [decision_id]);
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[test]
+fn material_decomposition_closes_hidden_public_contracts_before_materiality(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::MaterialDecomposition;
+    for (parent_id, child_id, alternative_summary) in [
+        (
+            "control-semantics",
+            "public-status-contract",
+            "Expose control and status",
+        ),
+        (
+            "compatible-existing-result",
+            "public-error-metadata",
+            "Keep compatible results with error metadata",
+        ),
+    ] {
+        let fixture = fixture()?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut parent = engineering_choice(
+            parent_id,
+            EngineeringEffectCategory::PublicApiShapeOrSemantics,
+            source,
+        );
+        parent.alternatives[0].summary = alternative_summary.into();
+        parent.alternatives[0].material_decomposition = MaterialDecomposition::Decomposed {
+            choice_ids: vec![child_id.into()],
+        };
+        let parent_dimension = agent_owned_dimension(
+            parent_id,
+            source,
+            LearningValueAssessment::Routine {
+                rationale: "bounded parent implementation".into(),
+            },
+        );
+        let error = review_with_choices(
+            &fixture,
+            vec![parent.clone()],
+            vec![parent_dimension.clone()],
+        )
+        .expect_err("hidden public subchoice must be explicit");
+        assert!(error.message().contains("missing choice"));
+        let child = engineering_choice(
+            child_id,
+            EngineeringEffectCategory::PublicApiShapeOrSemantics,
+            source,
+        );
+        let child_dimension = dimension(
+            child_id,
+            MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                resolution_decision_id: None,
+            },
+            vec![WorkAuthorityBasisKind::AgentRecommendation],
+            source,
+        );
+        let recorded = review_with_choices(
+            &fixture,
+            vec![parent, child],
+            vec![parent_dimension, child_dimension],
+        )?;
+        let result = readiness(&fixture, &recorded)?;
+        assert_eq!(result.stage, WorkAuthorityStage::QuestionRequired);
+        assert!(result.blocking);
+    }
+    Ok(())
+}
+
+#[test]
+fn material_decomposition_rejects_open_cyclic_and_duplicate_graphs(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::MaterialDecomposition;
+    for invalid in [
+        "empty",
+        "self",
+        "cycle",
+        "duplicate-child",
+        "duplicate-choice",
+        "duplicate-alternative",
+        "empty-rationale",
+    ] {
+        let fixture = fixture()?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut parent = engineering_choice(
+            "parent",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        );
+        let mut child = engineering_choice(
+            "child",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        );
+        parent.alternatives[0].material_decomposition = MaterialDecomposition::Decomposed {
+            choice_ids: match invalid {
+                "empty" => vec![],
+                "self" => vec!["parent".into()],
+                "duplicate-child" => vec!["child".into(), "child".into()],
+                _ => vec!["child".into()],
+            },
+        };
+        match invalid {
+            "cycle" => {
+                child.alternatives[0].material_decomposition = MaterialDecomposition::Decomposed {
+                    choice_ids: vec!["parent".into()],
+                }
+            }
+            "duplicate-choice" => child.choice_id = "parent".into(),
+            "duplicate-alternative" => {
+                parent.alternatives[1].alternative_id =
+                    parent.alternatives[0].alternative_id.clone()
+            }
+            "empty-rationale" => {
+                child.alternatives[0].material_decomposition =
+                    MaterialDecomposition::MateriallyAtomic {
+                        rationale: String::new(),
+                    }
+            }
+            _ => {}
+        }
+        let choices = vec![parent, child];
+        let result = fixture.operations.record_engineering_choice_discovery(
+            EngineeringChoiceDiscoveryDraft {
+                project_id: fixture.project_id,
+                goal_context_id: fixture.goal_id,
+                baseline_analysis_snapshot_id: fixture.baseline.identity,
+                session: "work-authority-session".into(),
+                source_operation: "decomposition".into(),
+                summary: "review subordinate choices".into(),
+                material_boundary_review: complete_material_boundary_review(&choices, source),
+                choices,
+            },
+        );
+        assert!(result.is_err(), "invalid graph accepted: {invalid}");
+    }
+    Ok(())
+}
+
+#[test]
+fn materially_atomic_private_details_terminate_without_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for detail in [
+        "helper-naming",
+        "private-function-extraction",
+        "equivalent-internal-structure",
+        "local-test-helper",
+    ] {
+        let fixture = fixture()?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut choice = engineering_choice(
+            detail,
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        );
+        for alternative in &mut choice.alternatives {
+            alternative.material_decomposition = volicord_inquiry::MaterialDecomposition::MateriallyAtomic {
+                rationale: "Inspection of src/lib.rs establishes that this local representation preserves the public value contract and introduces no additional observable outcome.".into(),
+            };
+        }
+        let bounded = agent_owned_dimension(
+            detail,
+            source,
+            LearningValueAssessment::Routine {
+                rationale: "private mechanically equivalent detail".into(),
+            },
+        );
+        let recorded = review_with_choices(&fixture, vec![choice], vec![bounded])?;
+        assert_eq!(
+            readiness(&fixture, &recorded)?.stage,
+            WorkAuthorityStage::ReadyForWork
+        );
+    }
     Ok(())
 }

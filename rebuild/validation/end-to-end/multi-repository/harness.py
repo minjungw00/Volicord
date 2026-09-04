@@ -1194,8 +1194,8 @@ def rehearse_target(
                         "summary": "Choose how this Project preserves its durable context boundary",
                         "affected_scope": ["project-context"],
                         "alternatives": [
-                            {"alternative_id": "local", "summary": "Keep canonical context local", "technical_consequences": ["Canonical context remains locally controlled"]},
-                            {"alternative_id": "remote", "summary": "Use provider-backed canonical context", "technical_consequences": ["Canonical behavior would depend on a separately authorized provider boundary"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "local", "summary": "Keep canonical context local", "technical_consequences": ["Canonical context remains locally controlled"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "remote", "summary": "Use provider-backed canonical context", "technical_consequences": ["Canonical behavior would depend on a separately authorized provider boundary"]},
                         ],
                         "technical_consequences": ["The outcome changes durable local versus provider-backed behavior"],
                         "source_ids": [source_id] if source_id else [],
@@ -1208,8 +1208,8 @@ def rehearse_target(
                         "summary": "Represent bounded state as ordered records or a keyed index",
                         "affected_scope": ["internal-state", "v11-ordinary-work.txt"],
                         "alternatives": [
-                            {"alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
-                            {"alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
                         ],
                         "technical_consequences": ["The representation changes invariant placement and maintenance cost"],
                         "source_ids": [source_id] if source_id else [],

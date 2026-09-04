@@ -668,8 +668,8 @@ def exercise_analysis_recovery(
             "summary": "Rebuild derived analysis while preserving canonical meaning",
             "affected_scope": ["derived-analysis"],
             "alternatives": [
-                {"alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
-                {"alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
             ],
             "technical_consequences": ["The treatment changes only rebuildable derived state"],
             "source_ids": [recovery_baseline["repository_source_id"]],
@@ -1123,8 +1123,8 @@ def main() -> int:
                 "summary": "Apply the maintained fixture filename and content",
                 "affected_scope": ["grounded-checkpoint.txt"],
                 "alternatives": [
-                    {"alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
-                    {"alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
                 ],
                 "technical_consequences": ["The choice controls deterministic Checkpoint evidence"],
                 "source_ids": [baseline["repository_source_id"]],

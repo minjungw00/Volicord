@@ -70,6 +70,17 @@ closed effect category에 대해 real `choice_id`를 연결하거나 Source-grou
 shape만 검증하고 hidden semantic truth를 추론하지 않는다. Repository-settled behavior, private helper
 naming/split와 test fixture selection에는 fake choice를 만들지 않는다.
 
+각 alternative의 `material_decomposition`은 `materially_atomic` rationale 또는
+`decomposed` subordinate `choice_ids`를 명시한다. Atomic rationale는 choice의 current Source에
+근거하여 그 alternative를 선택해도 별도의 materially distinct product outcome이 남지 않는
+이유를 설명한다. Non-atomic alternative는 같은 Discovery 안의 non-empty subordinate choice를
+참조하고 그 choice의 alternatives도 같은 closure를 만족한다. Missing identity, self-reference,
+cycle, duplicate choice/alternative accounting은 거부하며 open decomposition은 Materiality
+readiness가 될 수 없다. Decomposition은 coupling이나 authority가 아니므로 subordinate user-owned
+outcome은 독립적인 기존 Question 경로를 따른다. Private naming, local extraction, mechanically
+equivalent representation은 source-grounded atomic rationale로 종료하며 추가 Question을 만들지 않는다.
+Production은 graph와 typed closure를 검사하고 semantic atomicity 판단은 active agent가 소유한다.
+
 Independent choice는 별도 identity로 유지한다. "result retry behavior", "custom parser reload"
 같은 broad Goal label은 API, failure, persistence, network, instrumentation 또는 compatibility
 semantics를 coupled로 만드는 evidence가 아니다. 하나의 authority dimension은 independent choice를

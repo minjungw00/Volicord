@@ -246,10 +246,18 @@ pub enum EngineeringChoiceRelationship {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MaterialDecomposition {
+    MateriallyAtomic { rationale: String },
+    Decomposed { choice_ids: Vec<String> },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EngineeringAlternative {
     pub alternative_id: String,
     pub summary: String,
     pub technical_consequences: Vec<String>,
+    pub material_decomposition: MaterialDecomposition,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
