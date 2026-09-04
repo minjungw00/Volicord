@@ -14670,6 +14670,31 @@ def self_test() -> int:
         or failed_qualification["replacement_qualification"]["status"] != "failed"
     ):
         raise AssertionError("failed human review incorrectly destroyed automated truth")
+
+    compatibility_review = json.loads(json.dumps(passed_review))
+    delegated_work_review = next(
+        review for review in compatibility_review["interaction_reviews"]
+        if review["sample"]["behavior_class"] == "delegated_implementation_choice"
+    )
+    delegated_work_review["source_grounding"] = {
+        "status": "failed",
+        "basis": (
+            "Sanitized fixture: work claimed completion after focused tests, but fresh resume "
+            "proved that the adapter rejected an existing supported input. Resume added the "
+            "missing compatibility test and repaired the implementation. That later repair "
+            "does not make the original work completion source-grounded."
+        ),
+    }
+    compatibility_qualification = combine_human_review(
+        result, compatibility_review, automated_result_sha256
+    )
+    if (
+        compatibility_qualification["automated_qualification"]["passed"] is not True
+        or compatibility_qualification["human_review"]["state"] != "failed"
+        or compatibility_qualification["replacement_pass_candidate"] is not False
+        or compatibility_qualification["replacement_qualification"]["status"] != "failed"
+    ):
+        raise AssertionError("later compatibility repair erased a reviewed work failure")
     machine_failed = json.loads(json.dumps(result))
     machine_failed["automated_qualification"] = {
         "status": "failed",
@@ -16691,6 +16716,99 @@ def self_test() -> int:
         )):
             raise AssertionError(f"invalid canonical coupled artifacts qualified: {label}")
 
+    def canonical_result_fixture(
+        kind: str, cycle: int, behavior_class: str
+    ) -> dict[str, Any]:
+        fixture = real_session_fixture(
+            kind, cycle, revision, evidence_directory, behavior_class=behavior_class
+        )
+        for role in ("work", "resume"):
+            def noncanonical_scope(arguments: dict[str, Any]) -> None:
+                arguments["paths"] = list(reversed(arguments["paths"]))
+                arguments["components"] = ["worker", "parser", "worker"]
+                arguments["work_contexts"] = ["verify", "implement"]
+                reorder_artifact_request(arguments)
+
+            mutate_mcp_call_action(
+                fixture, role, "materiality_review", "inspect", noncanonical_scope
+            )
+
+            def canonical_scope(output: dict[str, Any]) -> None:
+                output["review_revision"] = 7
+                output["executable_work_scope"].update({
+                    "components": ["parser", "worker"],
+                    "work_contexts": ["implement", "verify"],
+                })
+
+            mutate_custom_output(fixture, role, "materiality-scope-binding", canonical_scope)
+        return fixture
+
+    # Expected behavior is specified by the maintained scenario, independently
+    # of normalization. These are fabricated captures, never campaign imports.
+    canonical_result_truth_table: dict[str, str] = {}
+    for kind, cycle, behavior_class in (
+        ("small-python", 3, "learning_routine_control"),
+        ("small-python", 1, "research_or_no_question"),
+        ("volicord", 1, "explicit_user_owned_decision"),
+        ("volicord", 3, "learning_deliberation"),
+        ("polyglot-medium", 1, "delegated_implementation_choice"),
+    ):
+        fixture = canonical_result_fixture(kind, cycle, behavior_class)
+        observed = real_session_evidence(
+            fixture, kind=kind, cycle=cycle, repository_revision=revision
+        )
+        if observed["status"] != "passed":
+            raise AssertionError(f"canonical result behavior control failed: {behavior_class}")
+        # The current-host transport and work-blocker consumer see the same result.
+        current_path = convert_fixture_capture_to_current_transport(
+            fixture, evidence_directory, "work"
+        )
+        assert_current_work_intake_passes(
+            fixture, load_codex_capture(current_path), behavior_class
+        )
+        canonical_result_truth_table[behavior_class] = observed["status"]
+
+    for kind in ("volicord", "small-python"):
+        fixture = canonical_result_fixture(kind, 2, "hidden_user_owned_decision")
+        for marker in ("candidate-submit-call", "inquiry-call", "decision-call"):
+            remove_mcp_completion(fixture, "work", marker)
+        observed = real_session_evidence(
+            fixture, kind=kind, cycle=2, repository_revision=revision
+        )
+        if (
+            observed["status"] != "failed"
+            or observed["checks"]["appropriate_inquiry_outcome"] != "failed"
+        ):
+            raise AssertionError("canonical readiness hid the required hidden-user-owned Question")
+        canonical_result_truth_table[f"{kind}_hidden_missing_question"] = observed["status"]
+
+    # Semantic compatibility needs retained review evidence; readiness alone
+    # cannot establish implementation correctness, even when resume passes.
+    canonical_result_truth_table["compatibility_regression_repaired_in_resume"] = (
+        compatibility_qualification["replacement_qualification"]["status"]
+    )
+
+    terminal_work_failure = canonical_result_fixture(
+        "polyglot-medium", 1, "delegated_implementation_choice"
+    )
+    mutate_custom_output(
+        terminal_work_failure, "work", "verification-call",
+        lambda output: output.update({"exit_code": 1}),
+    )
+    failed_work_result = real_session_evidence(
+        terminal_work_failure, kind="polyglot-medium", cycle=1, repository_revision=revision
+    )
+    if (
+        failed_work_result["status"] != "failed"
+        or failed_work_result["checks"]["pre_write_materiality_work_authority"] != "passed"
+        or failed_work_result["checks"]["source_grounded_checkpoint"] != "failed"
+        or failed_work_result["checks"]["meaningful_recalled_continuation"] != "passed"
+    ):
+        raise AssertionError("canonical readiness or successful resume erased terminal work failure")
+    canonical_result_truth_table["terminal_work_failure_with_successful_resume"] = (
+        failed_work_result["status"]
+    )
+
     for field, wrong_value in (
         ("project_id", "fe" * 16),
         ("goal_context_id", "fd" * 16),
@@ -17859,6 +17977,79 @@ def self_test() -> int:
         raise AssertionError(
             "exploratory research followed by a ready revision before work was rejected"
         )
+
+    blocked_prototype = exploratory_research_fixture(resolve_before_work=True)
+    prototype_path, prototype_events = capture_events(blocked_prototype, "work")
+    prototype_capture = load_codex_capture(prototype_path)
+    blocked_record = next(
+        call for call in prototype_capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+    )
+    if blocked_record.result["workflow"]["blocks_ordinary_work"] is not True:
+        raise AssertionError("prototype regression fixture did not start blocked")
+    prototype_event = json.loads(json.dumps(next(
+        event for event in prototype_events
+        if event.get("payload", {}).get("type") == "patch_apply_end"
+    )))
+    prototype_event["payload"]["call_id"] = "tracked-prototype-write"
+    prototype_event["payload"]["turn_id"] = blocked_record.turn_id
+    prototype_event["payload"]["changes"] = {
+        "/phase8/repository/tests/prototype_fixture.rs": {
+            "type": "update",
+            "unified_diff": "@@ -1 +1 @@\n-fn fixture() {}\n+fn tracked_prototype() {}\n",
+            "move_path": None,
+        }
+    }
+    resolution_index = next(
+        index for index, event in enumerate(prototype_events)
+        if "exploratory-research-resolution" in str(event.get("payload", {}).get("call_id", ""))
+    )
+    prototype_events.insert(resolution_index, prototype_event)
+    store_capture(blocked_prototype, "work", prototype_path, prototype_events)
+    baseline_result = next(
+        call.result for call in prototype_capture.successful_calls("repository_analyze")
+        if call.result.get("analysis_snapshot_id") == "0b" * 32
+    )
+    later_baseline_id = "ce" * 32
+    insert_successful_mcp_completion_before(
+        blocked_prototype, before_call_marker="materiality-scope-binding",
+        call_id="post-prototype-baseline", operation="repository_analyze",
+        arguments={"project_id": "01" * 16},
+        structured={**baseline_result, "analysis_snapshot_id": later_baseline_id},
+    )
+    mutate_mcp_call(
+        blocked_prototype, "work", "checkpoint_record",
+        lambda arguments: arguments.update({"baseline_analysis_snapshot_id": later_baseline_id}),
+    )
+    mutate_custom_output(
+        blocked_prototype, "work", "materiality-scope-binding",
+        lambda output: output.update({"review_revision": 7}),
+    )
+    prototype_chronology = executable_scope_chronology(
+        load_codex_capture(prototype_path), project_id="01" * 16,
+        review_candidate_id="18" * 16, goal_context_id="08" * 16,
+        baseline_analysis_snapshot_id="0b" * 32,
+    )
+    prototype_result = real_session_evidence(
+        blocked_prototype, kind="polyglot-medium", cycle=2, repository_revision=revision
+    )
+    if (
+        prototype_result["status"] != "failed"
+        or prototype_result["checks"]["grounded_pre_work_repository_baseline"] != "failed"
+        or prototype_result["checks"]["pre_write_materiality_work_authority"] != "failed"
+        or prototype_chronology["write_events"][0]["paths"] != ["tests/prototype_fixture.rs"]
+        or prototype_chronology["write_events"][0]["binding_failure"] != "missing"
+    ):
+        raise AssertionError(
+            "a later baseline/readiness hid a blocked tracked prototype write: "
+            + json.dumps({
+                "checks": prototype_result["checks"],
+                "writes": prototype_chronology["write_events"],
+            })
+        )
+    canonical_result_truth_table["blocked_tracked_prototype_then_later_baseline"] = (
+        prototype_result["status"]
+    )
 
     exploratory_write_before_ready = exploratory_research_fixture(
         resolve_before_work=False
@@ -20858,6 +21049,7 @@ def self_test() -> int:
         "staged_prospective_scope_expansion": "passed",
         "late_scope_expansion_rejected": "passed",
         "canonical_materiality_result_work_and_resume": "passed",
+        "canonical_result_behavior_truth_table": canonical_result_truth_table,
         "canonical_coupled_artifacts_without_caller_sorting": "passed",
         "malformed_or_missing_canonical_artifact_evidence_rejected": "passed",
         "canonical_expansion_revision_accepted": "passed",
