@@ -3133,6 +3133,7 @@ class MeaningfulWriteEvent:
 class ExecutableScopeBinding:
     sequence: int
     call_id: str
+    review_call_id: str | None
     review_revision: int
     paths: tuple[str, ...]
     components: tuple[str, ...]
@@ -3275,7 +3276,12 @@ def executable_scope_binding_observation(
     goal_context_id: str,
     baseline_analysis_snapshot_id: str,
 ) -> ExecutableScopeBinding:
-    """Validate one production scope binding without assigning it to a write."""
+    """Observe canonical readiness; production owns request normalization.
+
+    Correlate the preceding review by identity and event, since inspect itself
+    can revise the Candidate. The returned scope, not the caller's arrays, is
+    the coverage authority shared by work and resume.
+    """
 
     scope = inspect_call.result.get("executable_work_scope")
     workflow = inspect_call.result.get("workflow")
@@ -3287,7 +3293,6 @@ def executable_scope_binding_observation(
         if (
             not isinstance(values, list)
             or not all(nonempty_string(value) for value in values)
-            or values != sorted(set(values))
         ):
             reason = f"invalid_{field}"
             break
@@ -3297,7 +3302,8 @@ def executable_scope_binding_observation(
         scope.get("coupled_artifact_review") if isinstance(scope, dict) else None
     )
     if reason is None and any(
-        Path(path).is_absolute()
+        path == "."
+        or Path(path).is_absolute()
         or ".." in Path(path).parts
         or path != Path(path).as_posix()
         for path in paths
@@ -3327,17 +3333,15 @@ def executable_scope_binding_observation(
         or review_revision < 1
     ):
         reason = "invalid_review_revision"
-    if reason is None and any(
-        inspect_call.arguments.get(field) != list(values)
-        for field, values in scope_fields.items()
-    ):
-        reason = "scope_argument_result_mismatch"
+    if reason is None and not any(scope_fields.values()):
+        reason = "empty_executable_scope"
     if reason is None and (
         not isinstance(workflow, dict)
         or workflow.get("stage") != "ready_for_work"
         or workflow.get("disposition") != "ready_for_work"
         or workflow.get("blocks_ordinary_work") is not False
         or workflow.get("unresolved_requirements") != []
+        or not isinstance(workflow.get("satisfied_basis_identities"), list)
         or not workflow_has_identity(workflow, "project", project_id)
         or not workflow_has_identity(workflow, "goal_context", goal_context_id)
         or not workflow_has_identity(
@@ -3366,52 +3370,12 @@ def executable_scope_binding_observation(
         or current_review.result.get("goal_context_id") != goal_context_id
         or current_review.result.get("baseline_analysis_snapshot_id")
         != baseline_analysis_snapshot_id
-        or current_review.result.get("review_revision") != review_revision
     ):
         reason = "missing_current_materiality_authority"
-    authority_workflow = (
-        current_review.result.get("workflow") if current_review is not None else None
-    )
-    authority_ready = bool(
-        isinstance(authority_workflow, dict)
-        and authority_workflow.get("stage") == "materiality_review"
-        and authority_workflow.get("disposition") == "executable_scope_required"
-        and authority_workflow.get("required_next_action")
-        == {"tool": "materiality_review", "action": "inspect"}
-        and authority_workflow.get("blocks_ordinary_work") is True
-    )
-    if reason is None and not authority_ready:
-        learning_completions = [
-            call
-            for call in capture.successful_calls("learning_deliberation")
-            if call.arguments.get("action") == "complete"
-            and current_review is not None
-            and current_review.completion_sequence < call.sequence
-            and call.completion_sequence < inspect_call.sequence
-            and call.result.get("workflow", {}).get("stage") == "materiality_review"
-            and call.result.get("workflow", {}).get("disposition")
-            == "executable_scope_required"
-            and call.result.get("workflow", {}).get("blocks_ordinary_work") is True
-            and workflow_has_identity(call.result.get("workflow"), "project", project_id)
-            and workflow_has_identity(
-                call.result.get("workflow"), "goal_context", goal_context_id
-            )
-            and workflow_has_identity(
-                call.result.get("workflow"),
-                "baseline_analysis_snapshot",
-                baseline_analysis_snapshot_id,
-            )
-            and workflow_has_identity(
-                call.result.get("workflow"),
-                "materiality_review_candidate",
-                review_candidate_id,
-            )
-        ]
-        if not learning_completions:
-            reason = "missing_executable_scope_authority_transition"
     return ExecutableScopeBinding(
         inspect_call.completion_sequence,
         inspect_call.call_id,
+        current_review.call_id if current_review is not None else None,
         review_revision if isinstance(review_revision, int) else 0,
         paths,
         scope_fields.get("components", ()),
@@ -3497,8 +3461,7 @@ def executable_scope_chronology(
             and current_review.result.get("goal_context_id") == goal_context_id
             and current_review.result.get("baseline_analysis_snapshot_id")
             == baseline_analysis_snapshot_id
-            and current_review.result.get("review_revision")
-            == binding.review_revision
+            and current_review.call_id == binding.review_call_id
             and current_review.completion_sequence < binding.sequence
         )
         if binding is None or not binding.valid or not binding_is_current:
@@ -16609,6 +16572,72 @@ def self_test() -> int:
             + json.dumps(readiness_shapes, sort_keys=True)
         )
 
+    canonical_readiness_shapes: dict[str, tuple[str, str]] = {}
+    for shape in ("later_inspect_revision", "reordered_scope_arguments"):
+        fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
+        for role in ("work", "resume"):
+            if shape == "later_inspect_revision":
+                mutate_custom_output(
+                    fixture, role, "materiality-scope-binding",
+                    lambda output: output.update({"review_revision": 7}),
+                )
+            else:
+                def reorder_scope(arguments: dict[str, Any]) -> None:
+                    arguments["paths"] = list(reversed(arguments["paths"]))
+                    arguments["components"] = ["worker", "parser", "worker"]
+                    arguments["work_contexts"] = ["verify", "implement"]
+
+                mutate_mcp_call_action(
+                    fixture, role, "materiality_review", "inspect", reorder_scope
+                )
+                mutate_custom_output(
+                    fixture, role, "materiality-scope-binding",
+                    lambda output: output["executable_work_scope"].update({
+                        "components": ["parser", "worker"],
+                        "work_contexts": ["implement", "verify"],
+                    }),
+                )
+        observed = real_session_evidence(
+            fixture, kind="volicord", cycle=1, repository_revision=revision
+        )
+        canonical_readiness_shapes[shape] = (
+            observed["checks"]["pre_write_materiality_work_authority"],
+            observed["checks"]["resume_materiality_work_authority"],
+        )
+    if set(canonical_readiness_shapes.values()) != {("passed", "passed")}:
+        raise AssertionError(
+            "canonical Materiality work/resume results were rejected: "
+            + json.dumps(canonical_readiness_shapes, sort_keys=True)
+        )
+
+    malformed_canonical_results: dict[str, Callable[[dict[str, Any]], None]] = {
+        "missing_scope": lambda output: output.pop("executable_work_scope"),
+        "malformed_components": lambda output: output["executable_work_scope"].update(
+            {"components": [None]}
+        ),
+        "missing_goal": lambda output: output.pop("goal_context_id"),
+        "missing_workflow_identity": lambda output: output["workflow"].update(
+            {"satisfied_basis_identities": None}
+        ),
+        "invalid_revision": lambda output: output.update({"review_revision": True}),
+        "blocked": lambda output: output["workflow"].update({"blocks_ordinary_work": True}),
+        "uncovered": lambda output: output["executable_work_scope"].update({
+            "paths": ["unrelated/path.rs"],
+            "coupled_artifact_review": fixture_coupled_artifact_review(["unrelated/path.rs"]),
+        }),
+    }
+    for label, mutation in malformed_canonical_results.items():
+        fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
+        for role in ("work", "resume"):
+            mutate_custom_output(fixture, role, "materiality-scope-binding", mutation)
+        observed = real_session_evidence(
+            fixture, kind="volicord", cycle=1, repository_revision=revision
+        )
+        if any(observed["checks"][check] != "failed" for check in (
+            "pre_write_materiality_work_authority", "resume_materiality_work_authority"
+        )):
+            raise AssertionError(f"invalid canonical work/resume result qualified: {label}")
+
     for field, wrong_value in (
         ("project_id", "fe" * 16),
         ("goal_context_id", "fd" * 16),
@@ -16876,29 +16905,56 @@ def self_test() -> int:
     ):
         raise AssertionError("scope expansion after the second write qualified")
 
-    unsupported_material_revision = staged_scope_expansion_fixture(
+    canonical_expansion_revision = staged_scope_expansion_fixture(
         expansion_before_second_write=True,
-        expansion_review_revision=2,
+        expansion_review_revision=4,
     )
-    unsupported_material_result = real_session_evidence(
-        unsupported_material_revision,
+    canonical_expansion_result = real_session_evidence(
+        canonical_expansion_revision,
         kind="small-python",
         cycle=1,
         repository_revision=revision,
     )
-    unsupported_chronology = unsupported_material_result["inquiry_behavior_basis"][
+    canonical_expansion_chronology = canonical_expansion_result["inquiry_behavior_basis"][
         "materiality_review_basis"
     ]["pre_work_readiness"]
     if (
-        unsupported_material_result["checks"][
+        canonical_expansion_result["checks"][
             "pre_write_materiality_work_authority"
         ]
-        != "failed"
-        or not unsupported_chronology["indeterminate_paths"]
+        != "passed"
+        or [event["state"] for event in canonical_expansion_chronology["write_events"]]
+        != ["covered", "covered"]
     ):
         raise AssertionError(
-            "a new Materiality revision was inferred from mechanical path expansion"
+            "production's later canonical scope expansion revision was rejected"
         )
+
+    superseded_binding = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    superseded_path, _ = capture_events(superseded_binding, "work")
+    prior_revision = next(
+        call for call in load_codex_capture(superseded_path).successful_calls("materiality_review")
+        if call.arguments.get("action") == "revise"
+    )
+    insert_successful_mcp_completion_before_first_write(
+        superseded_binding,
+        operation="materiality_review",
+        arguments=prior_revision.arguments,
+        structured={**prior_revision.result, "review_revision": 3},
+    )
+    superseded_chronology = executable_scope_chronology(
+        load_codex_capture(superseded_path), project_id="01" * 16,
+        review_candidate_id="18" * 16, goal_context_id="08" * 16,
+        baseline_analysis_snapshot_id="0b" * 32,
+    )
+    if (
+        superseded_chronology["qualified"]
+        or superseded_chronology["write_events"][0]["binding_failure"]
+        != "superseded_before_write"
+    ):
+        raise AssertionError("a later review without a new binding authorized work")
 
     root_artifact_first_write = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -20748,7 +20804,9 @@ def self_test() -> int:
         "write_by_write_executable_scope_chronology": "passed",
         "staged_prospective_scope_expansion": "passed",
         "late_scope_expansion_rejected": "passed",
-        "material_scope_revision_authority_required": "passed",
+        "canonical_materiality_result_work_and_resume": "passed",
+        "canonical_expansion_revision_accepted": "passed",
+        "scope_binding_superseded_by_later_review_rejected": "passed",
         "root_artifact_first_write_rejected": "passed",
         "missing_and_late_executable_scope_rejected": "passed",
         "authoritative_goal_chain_with_unused_duplicate": "passed",

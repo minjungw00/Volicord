@@ -2782,6 +2782,39 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     assert len(capture.successful_calls("repository_analyze")) == 2
     assert campaign.inspect_resume(capture, descriptor, state) == "01" * 16
 
+    # Exercise the campaign's shared canonical observer through resume intake.
+    canonical_events = [json.loads(line) for line in resume.read_text().splitlines()]
+    for value in canonical_events:
+        payload = value.get("payload", {})
+        if "resume-materiality-scope-binding" not in str(payload.get("call_id", "")):
+            continue
+        if payload.get("type") == "custom_tool_call_output":
+            result = json.loads(payload["output"][1]["text"])
+            result["review_revision"] = 7
+            result["executable_work_scope"]["components"] = ["parser", "worker"]
+            payload["output"][1]["text"] = json.dumps(result)
+        elif payload.get("type") == "mcp_tool_call_end":
+            payload["invocation"]["arguments"]["components"] = ["worker", "parser"]
+            result = payload["result"]["Ok"]["structuredContent"]
+            result["review_revision"] = 7
+            result["executable_work_scope"]["components"] = ["parser", "worker"]
+        elif payload.get("type") == "custom_tool_call":
+            wrapper = harness.parse_mcp_wrapper(payload["input"])
+            assert wrapper is not None
+            arguments = copy.deepcopy(wrapper.arguments)
+            arguments["components"] = ["worker", "parser"]
+            payload["input"] = payload["input"].replace(
+                json.dumps(wrapper.arguments, separators=(",", ":")),
+                json.dumps(arguments, separators=(",", ":")),
+            )
+    canonical_resume = parent / "canonical-result-resume.jsonl"
+    canonical_resume.write_text(
+        "".join(json.dumps(value) + "\n" for value in canonical_events), encoding="utf-8"
+    )
+    assert campaign.inspect_resume(
+        harness.load_codex_capture(canonical_resume), descriptor, state
+    ) == "01" * 16
+
     def rewritten(name: str, marker: str, old: str, new: str) -> Path:
         destination = parent / name
         lines = []
