@@ -361,6 +361,6 @@ fn candidate_store_accepts_only_the_current_material_boundary_format(
         error.kind(),
         volicord_inquiry::ErrorKind::UnsupportedVersion
     );
-    assert!(error.to_string().contains("current version is 15"));
+    assert!(error.to_string().contains("current version is 16"));
     Ok(())
 }

@@ -13,16 +13,17 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
-    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
-    EngineeringEffectCategory, ExactAuthoritySufficiency, ExplicitDelegationEvidence,
-    ExploratoryDisposition, GroundedCheckpointDraft, LearningAlternativeSelection,
-    LearningDeliberationDraft, LearningDeliberationState, LearningFeedbackDraft,
-    LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningReconsiderationDraft, LearningResponseDraft, LearningValueAssessment,
-    LearningValueRevisionBasis, LearningValueRevisionRequest, LocalOperations,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
-    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    CommandVerificationDraft, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
+    ExactAuthoritySufficiency, ExplicitDelegationEvidence, ExploratoryDisposition,
+    GroundedCheckpointDraft, LearningAlternativeSelection, LearningDeliberationDraft,
+    LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
+    LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
+    LearningResponseDraft, LearningValueAssessment, LearningValueRevisionBasis,
+    LearningValueRevisionRequest, LocalOperations, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
     MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
     WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition, WorkflowStage,
 };
@@ -40,17 +41,68 @@ fn dimension(
     )
     .then(|| ExactAuthoritySufficiency {
         covered_outcome: format!("the complete {id} material dimension"),
-        remaining_credible_alternatives: Vec::new(),
         unique_outcome_rationale:
             "the cited fixture authority leaves one mechanically or normatively selected outcome"
                 .into(),
     });
+    let alternative_accounting = match &disposition {
+        MaterialityDisposition::RepositoryOrEnvironmentFact => vec![
+            alternative_account(
+                id,
+                "approach-a",
+                DiscoveredAlternativeResolution::Selected,
+                source,
+            ),
+            alternative_account(
+                id,
+                "approach-b",
+                DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact,
+                source,
+            ),
+        ],
+        MaterialityDisposition::SettledAuthority
+            if kinds.contains(&WorkAuthorityBasisKind::AcceptedContract) =>
+        {
+            vec![
+                alternative_account(
+                    id,
+                    "approach-a",
+                    DiscoveredAlternativeResolution::Selected,
+                    source,
+                ),
+                alternative_account(
+                    id,
+                    "approach-b",
+                    DiscoveredAlternativeResolution::EliminatedByAcceptedContract {
+                        contract_reference: "fixture accepted contract".into(),
+                    },
+                    source,
+                ),
+            ]
+        }
+        _ => ["approach-a", "approach-b"]
+            .into_iter()
+            .map(|alternative_id| {
+                alternative_account(
+                    id,
+                    alternative_id,
+                    DiscoveredAlternativeResolution::Unresolved,
+                    source,
+                )
+            })
+            .collect(),
+    };
     let contains_user_owned_outcome = matches!(
         disposition,
         MaterialityDisposition::SettledAuthority
             | MaterialityDisposition::DelegatedImplementationChoice
             | MaterialityDisposition::UnresolvedUserOwnedOutcome { .. }
     );
+    let contract_basis = kinds
+        .contains(&WorkAuthorityBasisKind::AcceptedContract)
+        .then(|| "fixture accepted contract".into())
+        .into_iter()
+        .collect();
     MaterialityDimension {
         dimension_id: id.to_owned(),
         discovered_choice_ids: vec![id.to_owned()],
@@ -80,6 +132,7 @@ fn dimension(
             ),
             source_basis: vec![source],
         },
+        alternative_accounting,
         disposition,
         basis: WorkAuthorityBasis {
             kinds,
@@ -88,7 +141,7 @@ fn dimension(
                 .to_owned(),
             exact_authority,
             source_basis: vec![source],
-            contract_basis: Vec::new(),
+            contract_basis,
             decision_basis: Vec::new(),
             research_basis: Vec::new(),
             explicit_delegation: None,
@@ -97,6 +150,70 @@ fn dimension(
             rationale: "normal-mode authority regression fixture".into(),
         },
     }
+}
+
+fn alternative_account(
+    choice_id: &str,
+    alternative_id: &str,
+    resolution: DiscoveredAlternativeResolution,
+    source: volicord_context::SourceId,
+) -> DiscoveredAlternativeAccounting {
+    DiscoveredAlternativeAccounting {
+        choice_id: choice_id.into(),
+        alternative_id: alternative_id.into(),
+        resolution,
+        rationale: "the fixture accounts for this exact discovered alternative".into(),
+        source_basis: vec![source],
+    }
+}
+
+fn unresolved_accounts_for_choices(
+    choices: &[EngineeringChoice],
+    source: volicord_context::SourceId,
+) -> Vec<DiscoveredAlternativeAccounting> {
+    choices
+        .iter()
+        .flat_map(|choice| {
+            choice.alternatives.iter().map(move |alternative| {
+                alternative_account(
+                    &choice.choice_id,
+                    &alternative.alternative_id,
+                    DiscoveredAlternativeResolution::Unresolved,
+                    source,
+                )
+            })
+        })
+        .collect()
+}
+
+fn settled_contract_accounts_for_choices(
+    choices: &[EngineeringChoice],
+    contract_reference: &str,
+    source: volicord_context::SourceId,
+) -> Vec<DiscoveredAlternativeAccounting> {
+    choices
+        .iter()
+        .flat_map(|choice| {
+            choice
+                .alternatives
+                .iter()
+                .enumerate()
+                .map(move |(index, alternative)| {
+                    alternative_account(
+                        &choice.choice_id,
+                        &alternative.alternative_id,
+                        if index == 0 {
+                            DiscoveredAlternativeResolution::Selected
+                        } else {
+                            DiscoveredAlternativeResolution::EliminatedByAcceptedContract {
+                                contract_reference: contract_reference.into(),
+                            }
+                        },
+                        source,
+                    )
+                })
+        })
+        .collect()
 }
 
 #[test]
@@ -1014,7 +1131,10 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
         vec![WorkAuthorityBasisKind::AcceptedContract],
         source,
     );
-    settled.basis.contract_basis = vec!["rebuild/docs/design/inquiry-and-decision.md".to_owned()];
+    settled
+        .basis
+        .contract_basis
+        .push("rebuild/docs/design/inquiry-and-decision.md".to_owned());
     let fact = dimension(
         "repository-fact",
         MaterialityDisposition::RepositoryOrEnvironmentFact,
@@ -1071,24 +1191,16 @@ fn settled_contract_and_repository_fact_are_ready_without_question_and_survive_r
 #[test]
 fn relevant_evidence_cannot_claim_exact_authority_while_credible_alternatives_remain(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for (label, disposition, kinds, alternatives) in [
+    for (label, disposition, kinds) in [
         (
             "candidate-expiry-cleanup-trigger",
             MaterialityDisposition::SettledAuthority,
             vec![WorkAuthorityBasisKind::AcceptedContract],
-            vec![
-                "clean expired candidates synchronously during access".to_owned(),
-                "clean them in a periodic project-local pass".to_owned(),
-            ],
         ),
         (
             "project-local-token-file-contract",
             MaterialityDisposition::RepositoryOrEnvironmentFact,
             vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
-            vec![
-                "require one strict plaintext token shape".to_owned(),
-                "accept a structured recoverable token shape".to_owned(),
-            ],
         ),
     ] {
         let fixture = fixture()?;
@@ -1105,17 +1217,13 @@ fn relevant_evidence_cannot_claim_exact_authority_while_credible_alternatives_re
             overclaimed.basis.contract_basis =
                 vec!["a related subsystem owner constrains the design".to_owned()];
         }
-        overclaimed
-            .basis
-            .exact_authority
-            .as_mut()
-            .expect("settling fixture has exact-authority evidence")
-            .remaining_credible_alternatives = alternatives;
+        overclaimed.alternative_accounting[1].resolution =
+            DiscoveredAlternativeResolution::Unresolved;
 
         let error = review(&fixture, vec![overclaimed])
             .expect_err("constraining evidence cannot uniquely select a material outcome");
         assert!(
-            error.message().contains("credible alternatives remain"),
+            error.message().contains("credible alternative unresolved"),
             "{label}: {}",
             error.message()
         );
@@ -1188,6 +1296,8 @@ fn hidden_public_api_and_failure_choices_cannot_be_swallowed_by_one_feature_dime
     );
     coarse.discovered_choice_ids = vec!["public-api-shape".into(), "failure-semantics".into()];
     coarse.basis.contract_basis = vec!["the requested feature Goal".into()];
+    coarse.alternative_accounting =
+        settled_contract_accounts_for_choices(&choices, "the requested feature Goal", source);
     let error = review_with_choices(&fixture, choices, vec![coarse])
         .expect_err("independent API and failure choices must remain separate");
     assert!(error
@@ -1317,6 +1427,8 @@ fn hidden_persistence_and_reload_choices_cannot_be_swallowed_by_one_feature_dime
         "reload-failure-semantics".into(),
     ];
     coarse.basis.contract_basis = vec!["the custom parser reload Goal".into()];
+    coarse.alternative_accounting =
+        settled_contract_accounts_for_choices(&choices, "the custom parser reload Goal", source);
     let error = review_with_choices(&fixture, choices, vec![coarse])
         .expect_err("independent persistence and reload semantics must remain separate");
     assert!(error
@@ -1356,7 +1468,13 @@ fn necessarily_coupled_choices_may_share_one_authority_dimension(
     );
     coupled.discovered_choice_ids = vec!["response-shape".into(), "status-code".into()];
     coupled.basis.contract_basis = vec!["accepted protocol response contract".into()];
-    let recorded = review_with_choices(&fixture, vec![response, status], vec![coupled])?;
+    let choices = vec![response, status];
+    coupled.alternative_accounting = settled_contract_accounts_for_choices(
+        &choices,
+        "accepted protocol response contract",
+        source,
+    );
+    let recorded = review_with_choices(&fixture, choices, vec![coupled])?;
     assert_eq!(
         readiness(&fixture, &recorded)?.disposition,
         WorkAuthorityDisposition::ReadyForWork
@@ -1614,6 +1732,8 @@ fn binds_parent_roots_before_work_and_accepts_a_multi_file_checkpoint(
         relationship: EngineeringChoiceRelationship::Independent,
         evidence_state: EngineeringChoiceEvidenceState::Sufficient,
     }];
+    delegated.alternative_accounting =
+        unresolved_accounts_for_choices(&choices, fixture.goal_source_id);
     let recorded = record_review_with_learning(
         &fixture,
         choices,
@@ -1964,6 +2084,9 @@ fn current_task_delegation_is_per_dimension_and_independent_of_research(
     let mut error_type = naming.clone();
     error_type.dimension_id = "internal-error-type".to_owned();
     error_type.discovered_choice_ids = vec!["internal-error-type".to_owned()];
+    for account in &mut error_type.alternative_accounting {
+        account.choice_id = "internal-error-type".into();
+    }
     error_type.basis.explicit_delegation = Some(delegation_evidence(
         &fixture,
         "internal-error-type",
@@ -2111,9 +2234,12 @@ fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after
     repository_fact.basis.summary = "current repository evidence fixes the value".into();
     repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
         covered_outcome: "the complete implementation-boundary dimension".into(),
-        remaining_credible_alternatives: Vec::new(),
         unique_outcome_rationale: "current repository evidence mechanically fixes one value".into(),
     });
+    repository_fact.alternative_accounting[0].resolution =
+        DiscoveredAlternativeResolution::Selected;
+    repository_fact.alternative_accounting[1].resolution =
+        DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact;
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
@@ -2265,10 +2391,13 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
         covered_outcome: "the complete implementation-boundary dimension".into(),
-        remaining_credible_alternatives: Vec::new(),
         unique_outcome_rationale: "pre-work repository evidence mechanically fixes one value"
             .into(),
     });
+    repository_fact.alternative_accounting[0].resolution =
+        DiscoveredAlternativeResolution::Selected;
+    repository_fact.alternative_accounting[1].resolution =
+        DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact;
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
@@ -2294,6 +2423,9 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
         Some("all remaining alternatives preserve the settled product behavior".into());
     agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
     agent_owned.basis.exact_authority = None;
+    for account in &mut agent_owned.alternative_accounting {
+        account.resolution = DiscoveredAlternativeResolution::Unresolved;
+    }
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
@@ -2748,12 +2880,21 @@ fn recommendation_library_convention_and_fake_delegation_never_establish_authori
         let recorded = review(
             &fixture,
             vec![dimension(label, disposition, vec![kind], source)],
-        )?;
-        assert_eq!(
-            readiness(&fixture, &recorded)?.disposition,
-            WorkAuthorityDisposition::ReviewInvalid,
-            "{label}"
         );
+        match recorded {
+            Ok(recorded) => assert_eq!(
+                readiness(&fixture, &recorded)?.disposition,
+                WorkAuthorityDisposition::ReviewInvalid,
+                "{label}"
+            ),
+            Err(error) => assert!(
+                error.message().contains("settling authority")
+                    || error.message().contains("exact fact")
+                    || error.message().contains("explicit delegation"),
+                "{label}: {}",
+                error.message()
+            ),
+        }
     }
     for kind in [
         WorkAuthorityBasisKind::AcceptedContract,

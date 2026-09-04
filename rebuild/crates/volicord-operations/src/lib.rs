@@ -45,16 +45,17 @@ pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };
 pub use volicord_inquiry::{
-    EngineeringAlternative, EngineeringChoice, EngineeringChoiceEvidenceState,
-    EngineeringChoiceRelationship, EngineeringEffectCategory, ExactAuthoritySufficiency,
-    ExplicitDelegationEvidence, ExploratoryDisposition, LearningAlternativeSelection,
-    LearningDeliberationState, LearningInitialResponse, LearningParticipation,
-    LearningRecommendation, LearningValueAssessment, LearningValueRevision,
-    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis,
-    WorkAuthorityBasisKind, WorkAuthorityCandidateBasis, WorkAuthorityDisposition,
-    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution, EngineeringAlternative,
+    EngineeringChoice, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
+    EngineeringEffectCategory, ExactAuthoritySufficiency, ExplicitDelegationEvidence,
+    ExploratoryDisposition, LearningAlternativeSelection, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueAssessment, LearningValueRevision, LearningValueRevisionBasis,
+    LearningValueRevisionRequest, MaterialBoundaryConclusion, MaterialBoundaryReview,
+    MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal, MaterialityDimension,
+    MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    WorkAuthorityCandidateBasis, WorkAuthorityDisposition, WorkAuthorityRequirement,
+    WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

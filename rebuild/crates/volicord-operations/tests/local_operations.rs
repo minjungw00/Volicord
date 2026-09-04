@@ -7,12 +7,13 @@ use volicord_context::{
 };
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
-    CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
-    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
-    EngineeringEffectCategory, GroundedCheckpointDraft, HealthState, LocalOperations,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
-    ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    CommandVerificationDraft, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
+    GroundedCheckpointDraft, HealthState, LocalOperations, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialityDimension,
+    MaterialityDisposition, MaterialityReviewDraft, OperationState, ProjectResolution,
+    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
 use volicord_repository_intelligence::{
@@ -411,6 +412,23 @@ fn record_ready_review(
                 ),
                 source_basis: vec![baseline.repository_source.identity()],
             },
+            alternative_accounting: vec![
+                DiscoveredAlternativeAccounting {
+                    choice_id: "bounded-repository-outcome".into(),
+                    alternative_id: "record".into(),
+                    resolution: DiscoveredAlternativeResolution::Selected,
+                    rationale: "repository evidence requires recording the attributed delta".into(),
+                    source_basis: vec![baseline.repository_source.identity()],
+                },
+                DiscoveredAlternativeAccounting {
+                    choice_id: "bounded-repository-outcome".into(),
+                    alternative_id: "omit".into(),
+                    resolution:
+                        DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact,
+                    rationale: "the observed delta makes omission mechanically incorrect".into(),
+                    source_basis: vec![baseline.repository_source.identity()],
+                },
+            ],
             disposition: MaterialityDisposition::RepositoryOrEnvironmentFact,
             basis: WorkAuthorityBasis {
                 kinds: vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
@@ -419,7 +437,6 @@ fn record_ready_review(
                     "The repository fact selects the only supported bounded outcome.".into(),
                 exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
                     covered_outcome: "the complete bounded repository outcome".into(),
-                    remaining_credible_alternatives: Vec::new(),
                     unique_outcome_rationale:
                         "the observed repository shape makes only this outcome mechanically valid"
                             .into(),

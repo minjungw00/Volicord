@@ -444,13 +444,13 @@
         ],
         "required_judgment_fields": [
           "authority_coverage",
-          "remaining_credible_alternatives",
-          "unique_outcome_rationale"
+          "unique_outcome_rationale",
+          "alternative_accounting"
         ],
-        "remaining_materially_credible_alternatives_for_ready_work": 0,
+        "unresolved_discovered_alternatives_for_ready_work": 0,
         "relevance_or_constraint_is_automatically_settling_authority": false,
         "semantic_assessment_owner": "active_agent",
-        "production_validation": "typed provenance, disposition compatibility, explicit coverage, remaining-alternative shape, and unique-outcome assertion"
+        "production_validation": "typed provenance, disposition compatibility, explicit coverage, identity-linked alternative accounting, and unique-outcome assertion"
       },
       "engineering_choice_discovery_required": true,
       "discovery_identity_field": "engineering_choice_discovery_candidate_id",

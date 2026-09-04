@@ -337,10 +337,14 @@ durable effect, compatibility/support commitment, privacy/security posture 또�
 product outcome을 바꾸는지 확인한다. 바뀐다면 exact discovered choice에 적용되는 repository
 fact, accepted contract, applicable Decision 또는 explicit delegation을 식별해야 한다. Overall
 feature request 자체나 implementation preference는 subordinate difference를 settled로 만들지
-않는다. Authority 후보를 적용한 뒤에도 materially different credible alternative가 남는지를 별도로
-기록한다. 남으면 그 후보는 outcome을 constrain할 뿐 settle하지 않는다. Multiple implementations라는
-사실만으로 user ownership을 만들지는 않지만, 다른 exact authority가 없는 material outcome은
-unresolved user-owned lifecycle로 보낸다.
+않는다. Review는 discovery의 모든 `(choice_id, alternative_id)`를 exactly once accounting하고 각
+alternative를 `selected`, `eliminated by repository/environment fact`, `eliminated by accepted
+contract`, `eliminated by applicable Decision`, `unresolved` 중 하나로 기록한다. Elimination은 그
+status가 요구하는 exact fact, contract reference 또는 Decision identity와 Source provenance를
+가져야 한다. Settling disposition은 choice마다 하나만 selected이고 unresolved가 없어야 하며,
+별도 free-text remaining-alternative count/list는 authoritative truth가 아니다. Multiple
+implementations라는 사실만으로 user ownership을 만들지는 않지만, 다른 exact authority가 없는
+material outcome은 unresolved user-owned lifecycle로 보낸다.
 
 첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic

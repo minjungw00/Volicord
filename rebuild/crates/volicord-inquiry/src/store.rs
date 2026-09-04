@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 15;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 16;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1523,17 +1523,10 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                     "exact-authority covered outcome",
                     &authority.covered_outcome,
                 )?;
-                validate_list(&authority.remaining_credible_alternatives)?;
                 validate_text(
                     "exact-authority unique-outcome rationale",
                     &authority.unique_outcome_rationale,
                 )?;
-                if !authority.remaining_credible_alternatives.is_empty() {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "a repository fact or settled authority cannot claim unique authority while materially different credible alternatives remain",
-                    ));
-                }
             }
             (
                 MaterialityDisposition::RepositoryOrEnvironmentFact
@@ -1613,6 +1606,87 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "the user-owned disposition requires an ownership assessment naming the user-owned outcome",
+                ));
+            }
+            _ => {}
+        }
+        if dimension.alternative_accounting.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "every material dimension requires identity-linked discovered-alternative accounting",
+            ));
+        }
+        let mut accounted = BTreeSet::new();
+        for account in &dimension.alternative_accounting {
+            validate_text("accounted choice identity", &account.choice_id)?;
+            validate_text("accounted alternative identity", &account.alternative_id)?;
+            validate_text("alternative-accounting rationale", &account.rationale)?;
+            validate_id_list(&account.source_basis)?;
+            if account.source_basis.is_empty()
+                || account
+                    .source_basis
+                    .iter()
+                    .any(|source| !dimension.basis.source_basis.contains(source))
+                || !accounted.insert((&account.choice_id, &account.alternative_id))
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "alternative accounting requires unique identities and Source evidence included in the dimension authority basis",
+                ));
+            }
+            validate_alternative_resolution_authority(dimension, account)?;
+        }
+        let unresolved_alternatives = dimension
+            .alternative_accounting
+            .iter()
+            .filter(|account| {
+                matches!(
+                    account.resolution,
+                    crate::DiscoveredAlternativeResolution::Unresolved
+                )
+            })
+            .count();
+        let eliminated_alternatives = dimension.alternative_accounting.iter().any(|account| {
+            !matches!(
+                account.resolution,
+                crate::DiscoveredAlternativeResolution::Selected
+                    | crate::DiscoveredAlternativeResolution::Unresolved
+            )
+        });
+        match dimension.disposition {
+            MaterialityDisposition::RepositoryOrEnvironmentFact
+            | MaterialityDisposition::SettledAuthority
+                if unresolved_alternatives != 0 =>
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "settling authority cannot leave a discovered credible alternative unresolved",
+                ));
+            }
+            MaterialityDisposition::AgentOwnedImplementationChoice
+            | MaterialityDisposition::DelegatedImplementationChoice
+            | MaterialityDisposition::ExploratoryUncertainty { .. }
+                if eliminated_alternatives =>
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "an alternative may be eliminated only by exact fact, contract, or Decision authority",
+                ));
+            }
+            MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                resolution_decision_id: None,
+            } if unresolved_alternatives == 0 => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "an unresolved user-owned outcome must retain at least one unresolved discovered alternative",
+                ));
+            }
+            MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                resolution_decision_id: Some(_),
+            } if unresolved_alternatives != 0 => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "a Decision-resolved user-owned outcome cannot retain unresolved alternatives",
                 ));
             }
             _ => {}
@@ -2028,6 +2102,12 @@ fn validate_review_against_canonical(
             .source_basis
             .iter()
             .chain(dimension.ownership.source_basis.iter())
+            .chain(
+                dimension
+                    .alternative_accounting
+                    .iter()
+                    .flat_map(|account| account.source_basis.iter()),
+            )
             .any(|source| !available.contains(source))
     }) {
         return Err(Error::new(
@@ -2219,6 +2299,65 @@ fn validate_review_against_discovery(
         .collect::<BTreeSet<_>>();
     let mut reviewed = BTreeSet::new();
     for dimension in &review.dimensions {
+        let expected_alternatives = dimension
+            .discovered_choice_ids
+            .iter()
+            .filter_map(|choice_id| {
+                discovery
+                    .choices
+                    .iter()
+                    .find(|choice| &choice.choice_id == choice_id)
+            })
+            .flat_map(|choice| {
+                choice
+                    .alternatives
+                    .iter()
+                    .map(move |alternative| (&choice.choice_id, &alternative.alternative_id))
+            })
+            .collect::<BTreeSet<_>>();
+        let accounted_alternatives = dimension
+            .alternative_accounting
+            .iter()
+            .map(|account| (&account.choice_id, &account.alternative_id))
+            .collect::<BTreeSet<_>>();
+        if expected_alternatives != accounted_alternatives
+            || accounted_alternatives.len() != dimension.alternative_accounting.len()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Materiality authority must account exactly once for every alternative of each referenced discovered choice",
+            ));
+        }
+        for choice_id in &dimension.discovered_choice_ids {
+            let accounts = dimension
+                .alternative_accounting
+                .iter()
+                .filter(|account| &account.choice_id == choice_id)
+                .collect::<Vec<_>>();
+            let selected = accounts
+                .iter()
+                .filter(|account| {
+                    matches!(
+                        account.resolution,
+                        crate::DiscoveredAlternativeResolution::Selected
+                    )
+                })
+                .count();
+            if matches!(
+                dimension.disposition,
+                MaterialityDisposition::RepositoryOrEnvironmentFact
+                    | MaterialityDisposition::SettledAuthority
+                    | MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                        resolution_decision_id: Some(_)
+                    }
+            ) && selected != 1
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "each settling authority must select exactly one discovered alternative per choice",
+                ));
+            }
+        }
         for choice_id in &dimension.discovered_choice_ids {
             if !discovered.contains(choice_id.as_str()) || !reviewed.insert(choice_id.as_str()) {
                 return Err(Error::new(
@@ -2316,6 +2455,58 @@ fn validate_review_against_discovery(
         ));
     }
     Ok(())
+}
+
+fn validate_alternative_resolution_authority(
+    dimension: &crate::MaterialityDimension,
+    account: &crate::DiscoveredAlternativeAccounting,
+) -> Result<(), Error> {
+    use crate::DiscoveredAlternativeResolution as Resolution;
+
+    let valid = match &account.resolution {
+        Resolution::Selected | Resolution::Unresolved => true,
+        Resolution::EliminatedByRepositoryOrEnvironmentFact => {
+            matches!(
+                dimension.disposition,
+                MaterialityDisposition::RepositoryOrEnvironmentFact
+            ) && dimension
+                .basis
+                .kinds
+                .contains(&crate::WorkAuthorityBasisKind::RepositoryOrEnvironmentFact)
+        }
+        Resolution::EliminatedByAcceptedContract { contract_reference } => {
+            matches!(
+                dimension.disposition,
+                MaterialityDisposition::SettledAuthority
+            ) && dimension
+                .basis
+                .kinds
+                .contains(&crate::WorkAuthorityBasisKind::AcceptedContract)
+                && dimension.basis.contract_basis.contains(contract_reference)
+        }
+        Resolution::EliminatedByApplicableDecision { decision_id } => {
+            dimension
+                .basis
+                .kinds
+                .contains(&crate::WorkAuthorityBasisKind::ApplicableDecision)
+                && dimension.basis.decision_basis.contains(decision_id)
+                && match dimension.disposition {
+                    MaterialityDisposition::SettledAuthority => true,
+                    MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                        resolution_decision_id: Some(expected),
+                    } => expected == *decision_id,
+                    _ => false,
+                }
+        }
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::new(
+            ErrorKind::InvalidInput,
+            "an eliminated alternative must cite the exact fact, accepted contract, or applicable Decision that excludes it",
+        ))
+    }
 }
 
 fn detect_late_work_authority_revisions(

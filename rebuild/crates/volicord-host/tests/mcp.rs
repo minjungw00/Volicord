@@ -18,11 +18,12 @@ use volicord_inquiry::{
     CandidateStore, CurrentHostResponse, DisplayedQuestion, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
-    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    LocalOperations, MaterialBoundaryConclusion, MaterialBoundaryReview,
-    MaterialOutcomeOwnershipAssessment, MaterialityDimension, MaterialityDisposition,
-    MaterialityReviewDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution, EngineeringAlternative,
+    EngineeringChoice, EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState,
+    EngineeringChoiceRelationship, EngineeringEffectCategory, LocalOperations,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, RuntimeLayout,
+    WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
@@ -339,6 +340,27 @@ fn complete_material_boundary_review_json(
     )
 }
 
+fn unresolved_alternative_accounting(
+    choice_id: &str,
+    alternative_ids: &[&str],
+    source_id: &Value,
+) -> Value {
+    Value::Array(
+        alternative_ids
+            .iter()
+            .map(|alternative_id| {
+                json!({
+                    "choice_id":choice_id,
+                    "alternative_id":alternative_id,
+                    "status":"unresolved",
+                    "rationale":"this exact discovered alternative remains credible within the current authority boundary",
+                    "source_ids":[source_id],
+                })
+            })
+            .collect(),
+    )
+}
+
 fn fill_draft_variant(
     variants: &[Value],
     discriminator_field: &str,
@@ -484,6 +506,60 @@ fn draft_judgment(
     result.entry("ownership_source_ids").or_insert_with(|| {
         json!(contract["server_derived_identities"]["current_goal_user_turn_source_ids"])
     });
+    if !result.contains_key("alternative_accounting") {
+        let contract_reference = result
+            .get("contract_basis")
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_str);
+        let decision_id = result
+            .get("decision_ids")
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_str)
+            .or_else(|| result.get("resolution_decision_id").and_then(Value::as_str));
+        let source_ids = template["discovery_owned"]["available_source_ids"].clone();
+        let alternatives = template["discovery_owned"]["alternatives"]
+            .as_array()
+            .expect("discovered alternatives");
+        let accounting = Value::Array(
+            alternatives
+                .iter()
+                .enumerate()
+                .map(|(index, alternative)| {
+                    let alternative_id = alternative["alternative_id"].clone();
+                    if index == 0
+                        && matches!(
+                            variant_id,
+                            "repository_or_environment_fact"
+                                | "settled_authority_by_contract"
+                                | "settled_authority_by_decision"
+                                | "settled_authority_by_contract_and_decision"
+                                | "resolved_user_owned_outcome"
+                        )
+                    {
+                        json!({"choice_id":choice_id,"alternative_id":alternative_id,"status":"selected","rationale":"the exact fixture authority selects this alternative","source_ids":source_ids})
+                    } else if variant_id == "repository_or_environment_fact" {
+                        json!({"choice_id":choice_id,"alternative_id":alternative_id,"status":"eliminated_by_repository_or_environment_fact","rationale":"the exact repository fact excludes this alternative","source_ids":source_ids})
+                    } else if variant_id.starts_with("settled_authority")
+                        && contract_reference.is_some()
+                    {
+                        let reference = contract_reference.unwrap_or_default();
+                        json!({"choice_id":choice_id,"alternative_id":alternative_id,"status":"eliminated_by_accepted_contract","contract_reference":reference,"rationale":"the exact accepted contract excludes this alternative","source_ids":source_ids})
+                    } else if (variant_id.starts_with("settled_authority")
+                        || variant_id == "resolved_user_owned_outcome")
+                        && decision_id.is_some()
+                    {
+                        let identity = decision_id.unwrap_or_default();
+                        json!({"choice_id":choice_id,"alternative_id":alternative_id,"status":"eliminated_by_applicable_decision","decision_id":identity,"rationale":"the exact applicable Decision excludes this alternative","source_ids":source_ids})
+                    } else {
+                        json!({"choice_id":choice_id,"alternative_id":alternative_id,"status":"unresolved","rationale":"this discovered alternative remains credible on the current authority basis","source_ids":source_ids})
+                    }
+                })
+                .collect(),
+        );
+        result.insert("alternative_accounting".into(), accounting);
+    }
     for required in contract["required_fields"]
         .as_array()
         .expect("required judgment fields")
@@ -743,7 +819,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
                 "contains_user_owned_outcome":true,
                 "user_owned_outcomes":["the public failure policy"],
                 "ownership_rationale":"callers observe materially different product behavior",
-                "ownership_source_ids":[repository_source_id]
+                "ownership_source_ids":[repository_source_id],
+                "alternative_accounting":unresolved_alternative_accounting("failure-mode", &["first","second"], &json!(repository_source_id))
             }]
         }),
     );
@@ -1180,7 +1257,6 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
                 "basis_summary":"The repository fixes the only viable value.",
                 "authority_counterfactual":"Repository evidence establishes one outcome, so the Goal is not used as delegation.",
                 "authority_coverage":"The observed repository representation fixes the complete bounded choice.",
-                "remaining_credible_alternatives":[],
                 "unique_outcome_rationale":"Only the observed representation is mechanically valid for this repository."
             }),
             "ready_for_work",
@@ -1192,7 +1268,6 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
                 "basis_summary":"The active owner settles this exact dimension.",
                 "authority_counterfactual":"The accepted owner contract selects the exact outcome independently of the Goal.",
                 "authority_coverage":"The accepted contract specifies the complete bounded choice.",
-                "remaining_credible_alternatives":[],
                 "unique_outcome_rationale":"The contract normatively requires one exact outcome.",
                 "contract_basis":["rebuild/docs/design/inquiry-and-decision.md"]
             }),
@@ -1474,6 +1549,7 @@ fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
                     "user_owned_outcomes":["the public product policy and its compatibility lifetime"],
                     "ownership_rationale":"the credible alternatives change behavior owned by the user rather than private implementation mechanics",
                     "ownership_source_ids":[analyzed["repository_source_id"]],
+                    "alternative_accounting":unresolved_alternative_accounting(choice_id, &["first","second"], &analyzed["repository_source_id"]),
                     "learning_value":{"state":"routine","rationale":"Authority routing is independent of learning participation."}
                 }]
             }),
@@ -1501,7 +1577,6 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
                 "basis_summary":"Architecture assigns cleanup mutation to Inquiry and excludes read-only projection mutation.",
                 "authority_counterfactual":"The architecture is relevant but does not choose among materially different Inquiry-owned cleanup triggers.",
                 "authority_coverage":"Ownership of Candidate cleanup and the prohibition on projection-side mutation.",
-                "remaining_credible_alternatives":["synchronous cleanup during an Inquiry mutation","periodic Inquiry-owned retention cleanup"],
                 "unique_outcome_rationale":"No unique trigger is selected because both alternatives satisfy the cited architecture constraints.",
                 "contract_basis":["rebuild/docs/design/architecture.md","rebuild/docs/design/inquiry-and-decision.md"]
             }),
@@ -1516,7 +1591,6 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
                 "basis_summary":"Existing libraries and repository conventions provide a strong token-file precedent.",
                 "authority_counterfactual":"The convention is relevant but has not been adopted as the exact public filename, representation, and failure policy.",
                 "authority_coverage":"Existing library and repository convention for local credential files.",
-                "remaining_credible_alternatives":["a fixed plaintext token filename with strict failure","a structured credential file with recoverable missing-file behavior"],
                 "unique_outcome_rationale":"No unique public contract is selected because both policies remain compatible with the observed repository.",
             }),
         ),
@@ -1584,6 +1658,14 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
                 json!({"rationale":"Authority routing is independent of learning."}),
             ),
         );
+        settling_fields.insert(
+            "alternative_accounting".into(),
+            unresolved_alternative_accounting(
+                choice_id,
+                &["first", "second"],
+                &analyzed["repository_source_id"],
+            ),
+        );
         let rejected = call(
             &mut adapter,
             "materiality_review",
@@ -1600,9 +1682,15 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
             ),
         );
         assert_eq!(rejected["result"]["isError"], true, "{rejected}");
-        assert!(structured(&rejected)["error"]
-            .as_str()
-            .is_some_and(|error| error.contains("credible alternatives remain")));
+        assert!(
+            structured(&rejected)["error"]
+                .as_str()
+                .is_some_and(|error| {
+                    error.contains("credible alternative unresolved")
+                        || error.contains("must select exactly one discovered alternative")
+                }),
+            "{rejected}"
+        );
 
         let unresolved = call(
             &mut adapter,
@@ -1693,7 +1781,6 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
             "basis_summary":"The current applicable Decision settles this exact scope.",
             "authority_counterfactual":"The applicable Decision selects the outcome independently of the encompassing Goal.",
             "authority_coverage":"The Decision applies to the complete discovered dimension.",
-            "remaining_credible_alternatives":[],
             "unique_outcome_rationale":"The applicable user Decision selects one exact outcome.",
             "decision_ids":[settled_decision_id],
             "learning_value":settled_learning,
@@ -1916,7 +2003,6 @@ fn materiality_validation_reports_exact_correction_context() {
                 "basis_summary":"repository fact",
                 "authority_counterfactual":"The repository would select the exact outcome in this invalid-field fixture.",
                 "authority_coverage":"The complete bounded choice.",
-                "remaining_credible_alternatives":[],
                 "unique_outcome_rationale":"The fixture claims one mechanically valid outcome.",
                 "research_basis":["not legal for this disposition"],
                 "learning_value":{"state":"routine","rationale":"routine"}
@@ -1992,6 +2078,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "ownership_rationale":"the invalid fixture claims bounded implementation ownership",
                 "bounded_implementation_discretion_rationale":"all alternatives preserve settled behavior",
                 "ownership_source_ids":[current_source_id],
+                "alternative_accounting":unresolved_alternative_accounting("not-in-discovery", &["first","second"], &current_source_id),
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
         }),
@@ -2030,8 +2117,11 @@ fn materiality_validation_reports_exact_correction_context() {
                 "user_owned_outcomes":["the bounded fixture policy"],
                 "ownership_rationale":"the alternatives change user-owned product policy",
                 "ownership_source_ids":[current_source_id],
+                "alternative_accounting":[
+                    {"choice_id":"bounded-choice","alternative_id":"first","status":"selected","rationale":"the claimed Decision selects this alternative","source_ids":[current_source_id]},
+                    {"choice_id":"bounded-choice","alternative_id":"second","status":"eliminated_by_applicable_decision","decision_id":"00000000000000000000000000000000","rationale":"the claimed Decision excludes this alternative","source_ids":[current_source_id]}
+                ],
                 "authority_coverage":"The complete bounded choice.",
-                "remaining_credible_alternatives":[],
                 "unique_outcome_rationale":"The claimed Decision would select one outcome if it were applicable.",
                 "decision_ids":["00000000000000000000000000000000"],
                 "learning_value":{"state":"routine","rationale":"routine"}
@@ -2191,6 +2281,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "ownership_rationale":"all alternatives preserve the settled observable cache behavior",
                 "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"],"interruption_counterfactual":"Without participation, the requested understanding of consistency ownership would be lost.","participation_scope_alignment":"The Goal explicitly requests learning through meaningful technical boundaries."}
             }]
         }),
@@ -2236,6 +2327,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "ownership_rationale":"all alternatives preserve the settled observable cache behavior",
                 "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"Unsupported downgrade without repository or prototype evidence."}
             }],
             "learning_value_revision_bases":[{
@@ -2505,6 +2597,7 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
                 "ownership_rationale":"the alternatives are mechanically equivalent to users",
                 "bounded_implementation_discretion_rationale":"both orders produce the same public wording and passing test",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("diagnostic-test-wording", &["wording-first","test-first"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"No meaningful transferable understanding would be lost, and the user explicitly excluded routine wording and test synchronization from interruptions."}
             }]
         }),
@@ -2579,6 +2672,7 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
                 "user_owned_outcomes":["selection of the explicitly delegated retry schedule"],
                 "ownership_rationale":"the current user owns and explicitly delegates this bounded selection",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("retry-schedule", &["first","second"], &analyzed["repository_source_id"]),
                 "delegation_statement":"choose the internal retry schedule",
                 "delegated_scope":["retry-jitter"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"],"interruption_counterfactual":"Without participation, the requested understanding of retry load shaping would be lost.","participation_scope_alignment":"The active learning scope includes meaningful distributed-operability choices."}
@@ -2725,6 +2819,7 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
                 "user_owned_outcomes":["the update-check activation policy"],
                 "ownership_rationale":"the alternatives change a user-visible default delegated by the user",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("npm-update-activation", &["first","second"], &analyzed["repository_source_id"]),
                 "delegation_statement":"choose whether update checks are automatic or opt-in",
                 "delegated_scope":["npm update activation policy"],
                 "learning_value":{"state":"routine","rationale":"Learning participation is inactive and does not alter authority."}
@@ -2838,6 +2933,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
                 "ownership_rationale":"current evidence identifies an implementation uncertainty, not a product-policy selection",
                 "bounded_implementation_discretion_rationale":"the research precedes any selection and all observed mechanisms remain inside settled behavior",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("retry-observation", &["first","second"], &analyzed["repository_source_id"]),
                 "research_basis":["Inspect retained runtime observations for retry correlation"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"],"interruption_counterfactual":"Without participation, the requested understanding of evidence-first retry design would be lost.","participation_scope_alignment":"The active learning scope includes meaningful operability evidence choices."}
             }]
@@ -2927,6 +3023,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "user_owned_outcomes":["selection of the delegated internal name"],
                 "ownership_rationale":"the user explicitly retained and delegated this bounded choice",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("internal-module-name", &["first","second"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"An internal module name is routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -3053,6 +3150,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "user_owned_outcomes":["selection of the delegated internal name"],
                 "ownership_rationale":"the user explicitly retained and delegated this bounded choice",
                 "ownership_source_ids":[resumed["repository_source_id"]],
+                "alternative_accounting":unresolved_alternative_accounting("internal-module-name", &["first","second"], &resumed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"The retained internal module choice remains routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -4706,6 +4804,25 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     bounded_implementation_discretion_rationale: None,
                     source_basis: vec![repository_source_id],
                 },
+                alternative_accounting: vec![
+                    DiscoveredAlternativeAccounting {
+                        choice_id: "grounded-checkpoint-contract".into(),
+                        alternative_id: "grounded".into(),
+                        resolution: DiscoveredAlternativeResolution::Selected,
+                        rationale: "the accepted contract selects grounded Checkpoints".into(),
+                        source_basis: vec![repository_source_id],
+                    },
+                    DiscoveredAlternativeAccounting {
+                        choice_id: "grounded-checkpoint-contract".into(),
+                        alternative_id: "ungrounded".into(),
+                        resolution: DiscoveredAlternativeResolution::EliminatedByAcceptedContract {
+                            contract_reference: "rebuild/docs/design/inquiry-and-decision.md"
+                                .into(),
+                        },
+                        rationale: "the accepted contract excludes ungrounded Checkpoints".into(),
+                        source_basis: vec![repository_source_id],
+                    },
+                ],
                 disposition: MaterialityDisposition::SettledAuthority,
                 basis: WorkAuthorityBasis {
                     kinds: vec![WorkAuthorityBasisKind::AcceptedContract],
@@ -4714,7 +4831,6 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                         "The accepted contract selects the exact Checkpoint behavior.".into(),
                     exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
                         covered_outcome: "the complete grounded Checkpoint behavior".into(),
-                        remaining_credible_alternatives: Vec::new(),
                         unique_outcome_rationale:
                             "the accepted contract explicitly requires this exact behavior".into(),
                     }),

@@ -5011,6 +5011,10 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
         discovered_choice_ids = (
             dimension.get("discovered_choice_ids") if isinstance(dimension, dict) else None
         )
+        ownership = dimension.get("ownership") if isinstance(dimension, dict) else None
+        alternative_accounting = (
+            dimension.get("alternative_accounting") if isinstance(dimension, dict) else None
+        )
         learning_value = dimension.get("learning_value") if isinstance(dimension, dict) else None
         if (
             not isinstance(dimension, dict)
@@ -5030,6 +5034,54 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
             or not discovered_choice_ids
             or not all(nonempty_string(choice_id) for choice_id in discovered_choice_ids)
             or len(set(discovered_choice_ids)) != len(discovered_choice_ids)
+            or not isinstance(ownership, dict)
+            or not isinstance(ownership.get("materially_varying_outcomes"), list)
+            or not ownership["materially_varying_outcomes"]
+            or not all(nonempty_string(item) for item in ownership["materially_varying_outcomes"])
+            or not isinstance(ownership.get("contains_user_owned_outcome"), bool)
+            or not isinstance(ownership.get("user_owned_outcomes"), list)
+            or not nonempty_string(ownership.get("rationale"))
+            or not isinstance(ownership.get("source_ids"), list)
+            or not ownership["source_ids"]
+            or (
+                ownership["contains_user_owned_outcome"]
+                and (
+                    not ownership["user_owned_outcomes"]
+                    or ownership.get("bounded_implementation_discretion_rationale") is not None
+                )
+            )
+            or (
+                not ownership["contains_user_owned_outcome"]
+                and (
+                    ownership["user_owned_outcomes"]
+                    or not nonempty_string(
+                        ownership.get("bounded_implementation_discretion_rationale")
+                    )
+                )
+            )
+            or (
+                dimension.get("disposition") == "agent_owned_implementation_choice"
+                and ownership["contains_user_owned_outcome"]
+            )
+            or not isinstance(alternative_accounting, list)
+            or not alternative_accounting
+            or any(
+                not isinstance(account, dict)
+                or not nonempty_string(account.get("choice_id"))
+                or not nonempty_string(account.get("alternative_id"))
+                or account.get("status")
+                not in {
+                    "selected",
+                    "unresolved",
+                    "eliminated_by_repository_or_environment_fact",
+                    "eliminated_by_accepted_contract",
+                    "eliminated_by_applicable_decision",
+                }
+                or not nonempty_string(account.get("rationale"))
+                or not isinstance(account.get("source_ids"), list)
+                or not account["source_ids"]
+                for account in alternative_accounting
+            )
             or not isinstance(learning_value, dict)
             or learning_value.get("state") not in {"routine", "deliberation_worthy"}
             or not nonempty_string(learning_value.get("rationale"))
@@ -5066,17 +5118,9 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
                     or set(exact_authority)
                     != {
                         "covered_outcome",
-                        "remaining_credible_alternatives",
                         "unique_outcome_rationale",
                     }
                     or not nonempty_string(exact_authority.get("covered_outcome"))
-                    or not isinstance(
-                        exact_authority.get("remaining_credible_alternatives"), list
-                    )
-                    or not all(
-                        nonempty_string(item)
-                        for item in exact_authority["remaining_credible_alternatives"]
-                    )
                     or not nonempty_string(
                         exact_authority.get("unique_outcome_rationale")
                     )
@@ -5246,13 +5290,19 @@ def materiality_dimensions_from_judgments(
         "disposition",
         "basis_summary",
         "authority_counterfactual",
+        "materially_varying_outcomes",
+        "contains_user_owned_outcome",
+        "user_owned_outcomes",
+        "ownership_rationale",
+        "bounded_implementation_discretion_rationale",
+        "ownership_source_ids",
+        "alternative_accounting",
         "additional_source_ids",
         "learning_value",
         "evidence_completion_basis",
     }
     exact_authority_fields = {
         "authority_coverage",
-        "remaining_credible_alternatives",
         "unique_outcome_rationale",
     }
     variants = {
@@ -5287,6 +5337,35 @@ def materiality_dimensions_from_judgments(
             or supplied_variant not in variants[disposition]
             or not nonempty_string(judgment.get("basis_summary"))
             or not nonempty_string(judgment.get("authority_counterfactual"))
+            or not isinstance(judgment.get("materially_varying_outcomes"), list)
+            or not judgment["materially_varying_outcomes"]
+            or not all(nonempty_string(item) for item in judgment["materially_varying_outcomes"])
+            or not isinstance(judgment.get("contains_user_owned_outcome"), bool)
+            or not isinstance(judgment.get("user_owned_outcomes"), list)
+            or not nonempty_string(judgment.get("ownership_rationale"))
+            or not isinstance(judgment.get("ownership_source_ids"), list)
+            or not judgment["ownership_source_ids"]
+            or not all(nonempty_string(item) for item in judgment["ownership_source_ids"])
+            or (
+                judgment["contains_user_owned_outcome"]
+                and (
+                    not judgment["user_owned_outcomes"]
+                    or "bounded_implementation_discretion_rationale" in judgment
+                )
+            )
+            or (
+                not judgment["contains_user_owned_outcome"]
+                and (
+                    judgment["user_owned_outcomes"]
+                    or not nonempty_string(
+                        judgment.get("bounded_implementation_discretion_rationale")
+                    )
+                )
+            )
+            or (
+                disposition == "agent_owned_implementation_choice"
+                and judgment["contains_user_owned_outcome"]
+            )
             or not isinstance(judgment.get("learning_value"), dict)
         ):
             return None
@@ -5355,21 +5434,101 @@ def materiality_dimensions_from_judgments(
         research_basis = declared_research_basis + evidence_completion_basis
         explicit_delegation = None
         exact_authority = None
+        alternative_accounting = judgment.get("alternative_accounting")
+        expected_alternatives = {
+            (choice_id, alternative["alternative_id"])
+            for alternative in choice["alternatives"]
+        }
+        if (
+            not isinstance(alternative_accounting, list)
+            or not alternative_accounting
+            or any(
+                not isinstance(account, dict)
+                or not nonempty_string(account.get("choice_id"))
+                or not nonempty_string(account.get("alternative_id"))
+                or account.get("status")
+                not in {
+                    "selected",
+                    "unresolved",
+                    "eliminated_by_repository_or_environment_fact",
+                    "eliminated_by_accepted_contract",
+                    "eliminated_by_applicable_decision",
+                }
+                or not nonempty_string(account.get("rationale"))
+                or not isinstance(account.get("source_ids"), list)
+                or not account["source_ids"]
+                or not all(nonempty_string(source_id) for source_id in account["source_ids"])
+                for account in alternative_accounting
+            )
+            or {
+                (account["choice_id"], account["alternative_id"])
+                for account in alternative_accounting
+            }
+            != expected_alternatives
+            or len(alternative_accounting) != len(expected_alternatives)
+        ):
+            return None
+        statuses = [account["status"] for account in alternative_accounting]
+        if disposition in {"repository_or_environment_fact", "settled_authority"} and (
+            "unresolved" in statuses or statuses.count("selected") != 1
+        ):
+            return None
+        if disposition in {
+            "agent_owned_implementation_choice",
+            "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        } and any(status.startswith("eliminated_by_") for status in statuses):
+            return None
+        if disposition == "unresolved_user_owned_outcome":
+            resolved = nonempty_string(judgment.get("resolution_decision_id"))
+            if (resolved and ("unresolved" in statuses or statuses.count("selected") != 1)) or (
+                not resolved and "unresolved" not in statuses
+            ):
+                return None
+        for account in alternative_accounting:
+            status = account["status"]
+            if status == "eliminated_by_repository_or_environment_fact":
+                if disposition != "repository_or_environment_fact" or set(account) != {
+                    "choice_id", "alternative_id", "status", "rationale", "source_ids"
+                }:
+                    return None
+            elif status == "eliminated_by_accepted_contract":
+                if (
+                    disposition != "settled_authority"
+                    or account.get("contract_reference") not in contract_basis
+                ):
+                    return None
+            elif status == "eliminated_by_applicable_decision":
+                account_decision = account.get("decision_id")
+                applicable_ids = set(decision_ids)
+                if nonempty_string(judgment.get("resolution_decision_id")):
+                    applicable_ids.add(judgment["resolution_decision_id"])
+                if account_decision not in applicable_ids:
+                    return None
+            elif status in {"selected", "unresolved"} and set(account) != {
+                "choice_id", "alternative_id", "status", "rationale", "source_ids"
+            }:
+                return None
+        source_ids = list(dict.fromkeys(
+            source_ids
+            + judgment["ownership_source_ids"]
+            + [
+                source_id
+                for account in alternative_accounting
+                for source_id in account["source_ids"]
+            ]
+        ))
         if disposition in {
             "repository_or_environment_fact",
             "settled_authority",
         }:
-            remaining_alternatives = judgment.get("remaining_credible_alternatives")
             if (
                 not nonempty_string(judgment.get("authority_coverage"))
-                or not isinstance(remaining_alternatives, list)
-                or not all(nonempty_string(item) for item in remaining_alternatives)
                 or not nonempty_string(judgment.get("unique_outcome_rationale"))
             ):
                 return None
             exact_authority = {
                 "covered_outcome": judgment["authority_coverage"],
-                "remaining_credible_alternatives": remaining_alternatives,
                 "unique_outcome_rationale": judgment["unique_outcome_rationale"],
             }
         resolution_decision_id = judgment.get("resolution_decision_id")
@@ -5414,6 +5573,17 @@ def materiality_dimensions_from_judgments(
             "affected_scope": choice["affected_scope"],
             "material_consequences": choice["technical_consequences"],
             "observable_signals": ["other_material_outcome"],
+            "ownership": {
+                "materially_varying_outcomes": judgment["materially_varying_outcomes"],
+                "contains_user_owned_outcome": judgment["contains_user_owned_outcome"],
+                "user_owned_outcomes": judgment["user_owned_outcomes"],
+                "rationale": judgment["ownership_rationale"],
+                "bounded_implementation_discretion_rationale": judgment.get(
+                    "bounded_implementation_discretion_rationale"
+                ),
+                "source_ids": judgment["ownership_source_ids"],
+            },
+            "alternative_accounting": alternative_accounting,
             "disposition": disposition,
             "learning_value": judgment["learning_value"],
             "discovery_evidence_state": choice["evidence_state"],
@@ -5551,6 +5721,7 @@ def materiality_dimension_authority_valid(
     source_ids = set(basis["source_ids"])
     decision_ids = basis["decision_ids"]
     exact_authority = basis.get("exact_authority")
+    alternative_accounting = dimension.get("alternative_accounting")
     settling_disposition = disposition in {
         "repository_or_environment_fact",
         "settled_authority",
@@ -5559,8 +5730,13 @@ def materiality_dimension_authority_valid(
         if (
             not isinstance(exact_authority, dict)
             or not nonempty_string(exact_authority.get("covered_outcome"))
-            or exact_authority.get("remaining_credible_alternatives") != []
             or not nonempty_string(exact_authority.get("unique_outcome_rationale"))
+            or not isinstance(alternative_accounting, list)
+            or any(
+                account.get("status") == "unresolved"
+                for account in alternative_accounting
+                if isinstance(account, dict)
+            )
         ):
             return False
     elif exact_authority is not None:
@@ -9962,10 +10138,89 @@ def real_session_fixture(
             },
         ]
 
-    def materiality_judgment(*, resolved: bool = False) -> dict[str, Any]:
+    def alternative_accounting(
+        choice_id: str,
+        alternative_ids: list[str],
+        *,
+        source_id: str = repository_source,
+        fact_settled: bool = False,
+        resolved: bool = False,
+    ) -> list[dict[str, Any]]:
+        accounts: list[dict[str, Any]] = []
+        for index, alternative_id in enumerate(alternative_ids):
+            account = {
+                "choice_id": choice_id,
+                "alternative_id": alternative_id,
+                "status": "unresolved",
+                "rationale": "This discovered alternative remains available under the current authority basis.",
+                "source_ids": [source_id],
+            }
+            if fact_settled:
+                account["status"] = (
+                    "selected"
+                    if index == 0
+                    else "eliminated_by_repository_or_environment_fact"
+                )
+                account["rationale"] = (
+                    "The retained repository fact selects this exact outcome."
+                    if index == 0
+                    else "The retained repository fact excludes this alternative."
+                )
+            elif resolved:
+                account["status"] = (
+                    "selected"
+                    if index == 0
+                    else "eliminated_by_applicable_decision"
+                )
+                account["rationale"] = (
+                    "The current-host Decision selects this alternative."
+                    if index == 0
+                    else "The current-host Decision excludes this alternative."
+                )
+                if index != 0:
+                    account["decision_id"] = decision
+            accounts.append(account)
+        return accounts
+
+    def ownership_fields(
+        *, user_owned: bool, outcome: str, source_id: str = repository_source
+    ) -> dict[str, Any]:
+        fields = {
+            "materially_varying_outcomes": [outcome],
+            "contains_user_owned_outcome": user_owned,
+            "user_owned_outcomes": [outcome] if user_owned else [],
+            "ownership_rationale": (
+                "The alternatives change an externally meaningful outcome reserved to the user."
+                if user_owned
+                else "The alternatives vary only bounded implementation mechanics under the accepted product outcome."
+            ),
+            "ownership_source_ids": [source_id],
+        }
+        if not user_owned:
+            fields["bounded_implementation_discretion_rationale"] = (
+                "The repository and accepted scope leave this implementation detail to the agent."
+            )
+        return fields
+
+    def materiality_judgment(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> dict[str, Any]:
         judgment = {
             "choice_id": materiality_dimension_id,
             "disposition": materiality_disposition,
+            **ownership_fields(
+                user_owned=is_user_owned_behavior(behavior_class),
+                outcome="adapter behavior and state semantics",
+                source_id=source_id,
+            ),
+            "alternative_accounting": alternative_accounting(
+                materiality_dimension_id,
+                ["ordered-records", "keyed-index"],
+                source_id=source_id,
+                fact_settled=materiality_disposition
+                == "repository_or_environment_fact",
+                resolved=resolved and is_user_owned_behavior(behavior_class),
+            ),
             "learning_value": (
                 {
                     "state": "deliberation_worthy",
@@ -9994,18 +10249,30 @@ def real_session_fixture(
         if materiality_disposition == "repository_or_environment_fact":
             judgment.update({
                 "authority_coverage": "The retained repository Source covers the complete adapter-state outcome.",
-                "remaining_credible_alternatives": [],
                 "unique_outcome_rationale": "The observed repository invariant makes only this exact state representation mechanically valid.",
             })
-        if resolved:
+        if resolved and is_user_owned_behavior(behavior_class):
             judgment["resolution_decision_id"] = decision
         return judgment
 
-    def secondary_materiality_judgment(*, resolved: bool = False) -> dict[str, Any]:
+    def secondary_materiality_judgment(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> dict[str, Any]:
         if is_user_owned_behavior(behavior_class):
             judgment = {
                 "choice_id": secondary_materiality_dimension_id,
                 "disposition": "unresolved_user_owned_outcome",
+                **ownership_fields(
+                    user_owned=True,
+                    outcome="observable repository-shape boundary",
+                    source_id=source_id,
+                ),
+                "alternative_accounting": alternative_accounting(
+                    secondary_materiality_dimension_id,
+                    ["bounded", "expanded"],
+                    source_id=source_id,
+                    resolved=resolved,
+                ),
                 "learning_value": {"state": "routine", "rationale": "User-owned authority stays on the Inquiry path."},
                 "basis_summary": "A coupled independently material diagnostic consequence",
                 "authority_counterfactual": "The coupled material consequence is not selected by the broad Goal and shares the exact authority basis of the disclosed outcome.",
@@ -10016,17 +10283,31 @@ def real_session_fixture(
         return {
             "choice_id": secondary_materiality_dimension_id,
             "disposition": "repository_or_environment_fact",
+            **ownership_fields(
+                user_owned=False,
+                outcome="bounded repository file shape",
+                source_id=source_id,
+            ),
+            "alternative_accounting": alternative_accounting(
+                secondary_materiality_dimension_id,
+                ["bounded", "expanded"],
+                source_id=source_id,
+                fact_settled=True,
+            ),
             "learning_value": {"state": "routine", "rationale": "A repository-established fact needs no learning interruption."},
             "basis_summary": "The retained Analysis Snapshot establishes this fact.",
             "authority_counterfactual": "Repository evidence establishes the exact fact, so no user preference or broad-Goal delegation is inferred.",
             "authority_coverage": "The retained repository Source covers the complete repository-shape outcome.",
-            "remaining_credible_alternatives": [],
             "unique_outcome_rationale": "The observed repository shape makes only this bounded outcome mechanically valid.",
         }
 
-    def materiality_judgments(*, resolved: bool = False) -> list[dict[str, Any]]:
-        primary = materiality_judgment(resolved=resolved)
-        secondary = secondary_materiality_judgment(resolved=resolved)
+    def materiality_judgments(
+        *, resolved: bool = False, source_id: str = repository_source
+    ) -> list[dict[str, Any]]:
+        primary = materiality_judgment(resolved=resolved, source_id=source_id)
+        secondary = secondary_materiality_judgment(
+            resolved=resolved, source_id=source_id
+        )
         return [secondary, primary] if resolved else [primary, secondary]
 
     def ready_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:
@@ -10899,7 +11180,8 @@ def real_session_fixture(
                     else {"state": "inactive"}
                 ),
                 "judgments": materiality_judgments(
-                    resolved=is_user_owned_behavior(behavior_class)
+                    resolved=is_user_owned_behavior(behavior_class),
+                    source_id=resume_repository_source,
                 ),
             },
             fallback="??",
@@ -14854,6 +15136,34 @@ def self_test() -> int:
             lambda output: revise_choices(output),
         )
 
+        def revise_accounting(arguments: dict[str, Any]) -> None:
+            primary = next(
+                judgment
+                for judgment in arguments["judgments"]
+                if judgment["choice_id"] == "operator-error-boundary"
+            )
+            for account, suffix in zip(
+                primary["alternative_accounting"], ("a", "b"), strict=True
+            ):
+                account["choice_id"] = primary["choice_id"]
+                account["alternative_id"] = f"{scenario_id}-{suffix}"
+
+        mutate_mcp_call_action(
+            fixture,
+            "work",
+            "materiality_review",
+            "record",
+            revise_accounting,
+        )
+        if is_user_owned_behavior(fixture.get("behavior_class")):
+            mutate_mcp_call_action(
+                fixture,
+                "work",
+                "materiality_review",
+                "revise",
+                revise_accounting,
+            )
+
     sanitized_authority_question_results: list[dict[str, Any]] = []
     sanitized_authority_overreach_results: list[dict[str, Any]] = []
     for scenario_id, summary, alternatives in authority_scenarios:
@@ -14916,10 +15226,16 @@ def self_test() -> int:
             judgment["authority_coverage"] = (
                 "The evidence covers subsystem ownership and excludes some implementations."
             )
-            judgment["remaining_credible_alternatives"] = list(alternatives)
             judgment["unique_outcome_rationale"] = (
                 "No unique outcome exists because both material alternatives remain compatible."
             )
+            for account in judgment["alternative_accounting"]:
+                account["status"] = "unresolved"
+                account["rationale"] = (
+                    "This material alternative remains compatible with the cited evidence."
+                )
+                account.pop("decision_id", None)
+                account.pop("contract_reference", None)
 
         mutate_mcp_call_action(
             overreach_fixture,
@@ -15257,6 +15573,9 @@ def self_test() -> int:
             for judgment in arguments["judgments"]:
                 if judgment["choice_id"] == second_dimension_id:
                     judgment["resolution_decision_id"] = second_decision_id
+                    for account in judgment["alternative_accounting"]:
+                        if account["status"] == "eliminated_by_applicable_decision":
+                            account["decision_id"] = second_decision_id
 
         mutate_mcp_call_action(
             fixture,
@@ -17700,10 +18019,12 @@ def self_test() -> int:
         second["delegated_scope"] = ["repository file shape"]
         for field in (
             "authority_coverage",
-            "remaining_credible_alternatives",
             "unique_outcome_rationale",
         ):
             second.pop(field, None)
+        for account in second["alternative_accounting"]:
+            account["status"] = "unresolved"
+            account["rationale"] = "The explicitly delegated implementation alternative remains available."
 
     mutate_mcp_call_action(
         each_dimension_delegated,
@@ -17736,10 +18057,12 @@ def self_test() -> int:
         second["delegated_scope"] = shared_scope
         for field in (
             "authority_coverage",
-            "remaining_credible_alternatives",
             "unique_outcome_rationale",
         ):
             second.pop(field, None)
+        for account in second["alternative_accounting"]:
+            account["status"] = "unresolved"
+            account["rationale"] = "The explicitly delegated implementation alternative remains available."
 
     mutate_mcp_call_action(
         shared_scope_delegation,
@@ -17836,10 +18159,12 @@ def self_test() -> int:
         second["research_basis"] = ["inspected implementation evidence"]
         for field in (
             "authority_coverage",
-            "remaining_credible_alternatives",
             "unique_outcome_rationale",
         ):
             second.pop(field, None)
+        for account in second["alternative_accounting"]:
+            account["status"] = "unresolved"
+            account["rationale"] = "Research has not yet eliminated this alternative."
 
     mutate_mcp_call_action(
         coexistence,
@@ -17870,6 +18195,11 @@ def self_test() -> int:
         primary["contract_basis"] = [
             "the accepted repository contract already settles this choice"
         ]
+        for account in primary["alternative_accounting"]:
+            if account["status"] != "selected":
+                account["status"] = "eliminated_by_accepted_contract"
+                account["contract_reference"] = primary["contract_basis"][0]
+                account["rationale"] = "The accepted repository contract excludes this alternative."
 
     mutate_mcp_call_action(
         settled_research_control,
@@ -17924,9 +18254,19 @@ def self_test() -> int:
         judgment.update({
             "disposition": "repository_or_environment_fact",
             "authority_coverage": "The repository Source covers the complete routine detail.",
-            "remaining_credible_alternatives": [],
             "unique_outcome_rationale": "Only one mechanically valid routine outcome remains.",
         })
+        for index, account in enumerate(judgment["alternative_accounting"]):
+            account["status"] = (
+                "selected"
+                if index == 0
+                else "eliminated_by_repository_or_environment_fact"
+            )
+            account["rationale"] = (
+                "The repository fact selects this exact routine outcome."
+                if index == 0
+                else "The repository fact excludes this routine alternative."
+            )
 
     mutate_mcp_call_action(
         factual_learning_control,
@@ -17994,10 +18334,18 @@ def self_test() -> int:
         judgment["disposition"] = "unresolved_user_owned_outcome"
         for field in (
             "authority_coverage",
-            "remaining_credible_alternatives",
             "unique_outcome_rationale",
         ):
             judgment.pop(field, None)
+        judgment.pop("bounded_implementation_discretion_rationale", None)
+        judgment["contains_user_owned_outcome"] = True
+        judgment["user_owned_outcomes"] = ["observable repository-shape boundary"]
+        judgment["ownership_rationale"] = (
+            "The alternatives now expose an unresolved user-owned outcome."
+        )
+        for account in judgment["alternative_accounting"]:
+            account["status"] = "unresolved"
+            account["rationale"] = "No authority has selected or eliminated this alternative."
 
     mutate_mcp_call_action(
         unresolved_extra,
@@ -18153,6 +18501,23 @@ def self_test() -> int:
 
     exact_decision_dimension = {
         "dimension_id": "exact-selected-policy",
+        "alternative_accounting": [
+            {
+                "choice_id": "exact-selected-policy",
+                "alternative_id": "selected-policy",
+                "status": "selected",
+                "rationale": "The applicable Decision selects this policy.",
+                "source_ids": ["02" * 16],
+            },
+            {
+                "choice_id": "exact-selected-policy",
+                "alternative_id": "other-policy",
+                "status": "eliminated_by_applicable_decision",
+                "decision_id": "decision-exact-policy",
+                "rationale": "The applicable Decision excludes this policy.",
+                "source_ids": ["02" * 16],
+            },
+        ],
         "disposition": "settled_authority",
         "discovery_evidence_state": "sufficient",
         "evidence_completion_basis": [],
@@ -18162,7 +18527,6 @@ def self_test() -> int:
             "authority_counterfactual": "The Decision covers this complete dimension.",
             "exact_authority": {
                 "covered_outcome": "the complete exact-selected-policy dimension",
-                "remaining_credible_alternatives": [],
                 "unique_outcome_rationale": "The applicable Decision selects one exact policy.",
             },
             "source_ids": ["02" * 16],
@@ -18188,9 +18552,9 @@ def self_test() -> int:
         require_current_goal_delegation=False,
     ):
         raise AssertionError("applicable exact Decision authority was rejected")
-    exact_decision_dimension["basis"]["exact_authority"][
-        "remaining_credible_alternatives"
-    ] = ["another materially different policy"]
+    unresolved_account = exact_decision_dimension["alternative_accounting"][1]
+    unresolved_account["status"] = "unresolved"
+    unresolved_account.pop("decision_id")
     if materiality_dimension_authority_valid(
         exact_decision_dimension,
         goal_context_id=None,

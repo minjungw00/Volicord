@@ -329,8 +329,25 @@ pub struct ExplicitDelegationEvidence {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ExactAuthoritySufficiency {
     pub covered_outcome: String,
-    pub remaining_credible_alternatives: Vec<String>,
     pub unique_outcome_rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DiscoveredAlternativeResolution {
+    Selected,
+    EliminatedByRepositoryOrEnvironmentFact,
+    EliminatedByAcceptedContract { contract_reference: String },
+    EliminatedByApplicableDecision { decision_id: DecisionId },
+    Unresolved,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DiscoveredAlternativeAccounting {
+    pub choice_id: String,
+    pub alternative_id: String,
+    pub resolution: DiscoveredAlternativeResolution,
+    pub rationale: String,
+    pub source_basis: Vec<SourceId>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -445,6 +462,7 @@ pub struct MaterialityDimension {
     pub material_consequences: Vec<String>,
     pub observable_signals: Vec<MaterialOutcomeSignal>,
     pub ownership: MaterialOutcomeOwnershipAssessment,
+    pub alternative_accounting: Vec<DiscoveredAlternativeAccounting>,
     pub disposition: MaterialityDisposition,
     pub basis: WorkAuthorityBasis,
     pub learning_value: LearningValueAssessment,

@@ -736,16 +736,6 @@ fn evaluate_dimension(
         (
             MaterialityDisposition::RepositoryOrEnvironmentFact
             | MaterialityDisposition::SettledAuthority,
-            Some(authority),
-        ) if !authority.remaining_credible_alternatives.is_empty() => {
-            return Err(DimensionIssue::Invalid(
-                "claimed authority leaves materially different credible alternatives unresolved; use the user-owned Question path when no other exact authority settles them"
-                    .to_owned(),
-            ));
-        }
-        (
-            MaterialityDisposition::RepositoryOrEnvironmentFact
-            | MaterialityDisposition::SettledAuthority,
             None,
         ) => {
             return Err(DimensionIssue::Invalid(
@@ -766,6 +756,7 @@ fn evaluate_dimension(
         }
         _ => {}
     }
+    validate_alternative_resolution_compatibility(dimension)?;
     if matches!(
         dimension.disposition,
         MaterialityDisposition::DelegatedImplementationChoice
@@ -1005,6 +996,68 @@ fn validate_ownership_assessment(
             "an agent-owned ownership assessment must explain why every materially differing alternative remains bounded implementation discretion"
                 .to_owned(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_alternative_resolution_compatibility(
+    dimension: &MaterialityDimension,
+) -> Result<(), DimensionIssue> {
+    use crate::DiscoveredAlternativeResolution as Resolution;
+
+    if dimension.alternative_accounting.is_empty() {
+        return Err(DimensionIssue::Invalid(
+            "every discovered alternative requires identity-linked authority accounting".into(),
+        ));
+    }
+    let unresolved = dimension
+        .alternative_accounting
+        .iter()
+        .filter(|account| matches!(account.resolution, Resolution::Unresolved))
+        .count();
+    let eliminated = dimension.alternative_accounting.iter().any(|account| {
+        !matches!(
+            account.resolution,
+            Resolution::Selected | Resolution::Unresolved
+        )
+    });
+    match dimension.disposition {
+        MaterialityDisposition::RepositoryOrEnvironmentFact
+        | MaterialityDisposition::SettledAuthority => {
+            if unresolved != 0 {
+                return Err(DimensionIssue::Invalid(
+                    "settling authority cannot leave a discovered credible alternative unresolved"
+                        .into(),
+                ));
+            }
+        }
+        MaterialityDisposition::AgentOwnedImplementationChoice
+        | MaterialityDisposition::DelegatedImplementationChoice
+        | MaterialityDisposition::ExploratoryUncertainty { .. } => {
+            if eliminated {
+                return Err(DimensionIssue::Invalid(
+                    "an alternative may be eliminated only by exact fact, contract, or Decision authority"
+                        .into(),
+                ));
+            }
+        }
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        } if unresolved == 0 => {
+            return Err(DimensionIssue::Invalid(
+                "an unresolved user-owned outcome must retain at least one unresolved discovered alternative"
+                    .into(),
+            ));
+        }
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: Some(_),
+        } if unresolved != 0 => {
+            return Err(DimensionIssue::Invalid(
+                "a Decision-resolved user-owned outcome cannot retain unresolved alternatives"
+                    .into(),
+            ));
+        }
+        MaterialityDisposition::UnresolvedUserOwnedOutcome { .. } => {}
     }
     Ok(())
 }

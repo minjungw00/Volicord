@@ -18,14 +18,14 @@ use volicord_inquiry::{
     BatchResponseItem, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
     CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateId, CandidateKind,
     CandidateObservationBasis, CandidateOrigin, CandidateRetention, CurrentHostResponse,
-    DisplayedQuestion, DuplicateAssessment, EngineeringAlternative, EngineeringChoice,
-    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
-    LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningValueAssessment, LearningValueRevisionBasis, LearningValueRevisionRequest,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
-    MaterialityAssessment, MaterialityStatus, QuestionCandidate, ResponseMapping,
-    SubmissionOutcome,
+    DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution, DisplayedQuestion,
+    DuplicateAssessment, EngineeringAlternative, EngineeringChoice, EngineeringChoiceEvidenceState,
+    EngineeringChoiceRelationship, EngineeringEffectCategory, LearningAlternativeSelection,
+    LearningDeliberation, LearningDeliberationState, LearningInitialResponse,
+    LearningParticipation, LearningRecommendation, LearningValueAssessment,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialityAssessment,
+    MaterialityStatus, QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
@@ -2601,6 +2601,7 @@ fn materiality_judgment_schema(
             "ownership_source_ids",
             identity_array_schema("Current Sources supporting the ownership judgment", 1),
         ),
+        ("alternative_accounting", alternative_accounting_schema()),
         (
             "additional_source_ids",
             identity_array_schema(
@@ -2627,10 +2628,72 @@ fn materiality_judgment_schema(
         "user_owned_outcomes",
         "ownership_rationale",
         "ownership_source_ids",
+        "alternative_accounting",
         "learning_value",
     ];
     required.extend_from_slice(required_fields);
     object_schema(common, &required)
+}
+
+fn alternative_accounting_schema() -> Value {
+    let common = || {
+        vec![
+            (
+                "choice_id",
+                text_schema("Discovered choice identity", 1, 256),
+            ),
+            (
+                "alternative_id",
+                text_schema("Discovered alternative identity", 1, 256),
+            ),
+            (
+                "rationale",
+                text_schema("Source-grounded status rationale", 1, 4096),
+            ),
+            (
+                "source_ids",
+                identity_array_schema("Current Sources supporting this accounting entry", 1),
+            ),
+        ]
+    };
+    let variant =
+        |status: &'static str, mut extra: Vec<(&'static str, Value)>, required: &[&'static str]| {
+            let mut fields = common();
+            fields.push((
+                "status",
+                enum_schema("Alternative authority status", &[status]),
+            ));
+            fields.append(&mut extra);
+            let mut required_fields = vec![
+                "choice_id",
+                "alternative_id",
+                "status",
+                "rationale",
+                "source_ids",
+            ];
+            required_fields.extend_from_slice(required);
+            object_schema(fields, &required_fields)
+        };
+    json!({
+        "type":"array",
+        "minItems":1,
+        "description":"Exactly one identity-linked authority account for every alternative of every referenced discovered choice",
+        "items":{"oneOf":[
+            variant("selected", Vec::new(), &[]),
+            variant("unresolved", Vec::new(), &[]),
+            variant("eliminated_by_repository_or_environment_fact", Vec::new(), &[]),
+            variant(
+                "eliminated_by_accepted_contract",
+                vec![("contract_reference", text_schema("Exact accepted contract reference eliminating this alternative", 1, 4096))],
+                &["contract_reference"],
+            ),
+            variant(
+                "eliminated_by_applicable_decision",
+                vec![("decision_id", identity_schema("Exact applicable Decision eliminating this alternative"))],
+                &["decision_id"],
+            ),
+        ]}
+    })
 }
 
 #[derive(Clone)]
@@ -2668,12 +2731,6 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
                 ),
             ),
             (
-                "remaining_credible_alternatives",
-                string_array_schema(
-                    "Materially different credible alternatives still compatible after applying the claimed authority; settling dispositions require this to be empty",
-                ),
-            ),
-            (
                 "unique_outcome_rationale",
                 text_schema(
                     "Why the cited authority leaves one uniquely selected material outcome rather than only constraining the alternatives",
@@ -2690,11 +2747,7 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
             materiality_judgment_schema(
                 "repository_or_environment_fact",
                 exact_authority_fields(),
-                &[
-                    "authority_coverage",
-                    "remaining_credible_alternatives",
-                    "unique_outcome_rationale",
-                ],
+                &["authority_coverage", "unique_outcome_rationale"],
             ),
         ),
         contract(
@@ -2707,7 +2760,6 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
                     .collect(),
                 &[
                     "authority_coverage",
-                    "remaining_credible_alternatives",
                     "unique_outcome_rationale",
                     "contract_basis",
                 ],
@@ -2723,7 +2775,6 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
                     .collect(),
                 &[
                     "authority_coverage",
-                    "remaining_credible_alternatives",
                     "unique_outcome_rationale",
                     "decision_ids",
                 ],
@@ -2742,7 +2793,6 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
                     .collect(),
                 &[
                     "authority_coverage",
-                    "remaining_credible_alternatives",
                     "unique_outcome_rationale",
                     "contract_basis",
                     "decision_ids",
@@ -4094,13 +4144,21 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "discovered_choice_ids":dimension.discovered_choice_ids,
             "summary":dimension.summary,
             "affected_scope":dimension.affected_scope,
+            "ownership":{
+                "materially_varying_outcomes":dimension.ownership.materially_varying_outcomes,
+                "contains_user_owned_outcome":dimension.ownership.contains_user_owned_outcome,
+                "user_owned_outcomes":dimension.ownership.user_owned_outcomes,
+                "rationale":dimension.ownership.rationale,
+                "bounded_implementation_discretion_rationale":dimension.ownership.bounded_implementation_discretion_rationale,
+                "source_ids":dimension.ownership.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            },
             "authority_disposition":materiality_disposition_json(&dimension.disposition),
             "authority_counterfactual":dimension.basis.authority_counterfactual,
             "exact_authority":dimension.basis.exact_authority.as_ref().map(|authority| json!({
                 "covered_outcome":authority.covered_outcome,
-                "remaining_credible_alternatives":authority.remaining_credible_alternatives,
                 "unique_outcome_rationale":authority.unique_outcome_rationale,
             })),
+            "alternative_accounting":dimension.alternative_accounting.iter().map(alternative_accounting_json).collect::<Vec<_>>(),
             "learning_value":learning_value_json(&dimension.learning_value),
         })).collect::<Vec<_>>(),
     }));
@@ -4711,10 +4769,6 @@ fn materiality_dimension_from_judgment(
     ) {
         Some(ExactAuthoritySufficiency {
             covered_outcome: required_str(value, "authority_coverage")?.to_owned(),
-            remaining_credible_alternatives: string_array(
-                value,
-                "remaining_credible_alternatives",
-            )?,
             unique_outcome_rationale: required_str(value, "unique_outcome_rationale")?.to_owned(),
         })
     } else {
@@ -4793,6 +4847,14 @@ fn materiality_dimension_from_judgment(
     let mut ownership_source_basis = source_ids(value, "ownership_source_ids")?;
     ownership_source_basis.sort_unstable();
     ownership_source_basis.dedup();
+    let alternative_accounting = discovered_alternative_accounting(value)?;
+    source_basis.extend(
+        alternative_accounting
+            .iter()
+            .flat_map(|account| account.source_basis.iter().copied()),
+    );
+    source_basis.sort_unstable();
+    source_basis.dedup();
     Ok(MaterialityDimension {
         dimension_id: choice.choice_id.clone(),
         discovered_choice_ids: vec![choice.choice_id.clone()],
@@ -4811,6 +4873,7 @@ fn materiality_dimension_from_judgment(
             )?,
             source_basis: ownership_source_basis,
         },
+        alternative_accounting,
         disposition,
         basis: WorkAuthorityBasis {
             kinds,
@@ -4825,6 +4888,47 @@ fn materiality_dimension_from_judgment(
         },
         learning_value: learning_value_assessment(value)?,
     })
+}
+
+fn discovered_alternative_accounting(
+    value: &Value,
+) -> Result<Vec<DiscoveredAlternativeAccounting>, HostError> {
+    value
+        .get("alternative_accounting")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("alternative_accounting must be an array"))?
+        .iter()
+        .map(|account| {
+            let resolution = match required_str(account, "status")? {
+                "selected" => DiscoveredAlternativeResolution::Selected,
+                "unresolved" => DiscoveredAlternativeResolution::Unresolved,
+                "eliminated_by_repository_or_environment_fact" => {
+                    DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact
+                }
+                "eliminated_by_accepted_contract" => {
+                    DiscoveredAlternativeResolution::EliminatedByAcceptedContract {
+                        contract_reference: required_str(account, "contract_reference")?.to_owned(),
+                    }
+                }
+                "eliminated_by_applicable_decision" => {
+                    DiscoveredAlternativeResolution::EliminatedByApplicableDecision {
+                        decision_id: DecisionId::from_bytes(parse_identity(required_str(
+                            account,
+                            "decision_id",
+                        )?)?),
+                    }
+                }
+                _ => return Err(HostError::new("unknown alternative-accounting status")),
+            };
+            Ok(DiscoveredAlternativeAccounting {
+                choice_id: required_str(account, "choice_id")?.to_owned(),
+                alternative_id: required_str(account, "alternative_id")?.to_owned(),
+                resolution,
+                rationale: required_str(account, "rationale")?.to_owned(),
+                source_basis: source_ids(account, "source_ids")?,
+            })
+        })
+        .collect()
 }
 
 fn exact_current_goal_user_source<'a>(
@@ -5482,12 +5586,12 @@ fn materiality_draft_json(
         },
         "exact_authority_sufficiency_contract":{
             "applies_to":["repository_or_environment_fact","settled_authority"],
-            "required_semantic_fields":["authority_coverage","remaining_credible_alternatives","unique_outcome_rationale"],
+            "required_semantic_fields":["authority_coverage","unique_outcome_rationale","alternative_accounting"],
             "coverage_rule":"Cited authority must cover this exact discovery-owned dimension, not merely a related subsystem or a subset of alternatives.",
-            "remaining_alternatives_rule":"Settling dispositions require an empty post-authority list. A non-empty list is incompatible with exact authority and must remain on the unresolved user-owned path unless other exact authority resolves it.",
+            "alternative_accounting_rule":"Every alternative_id from every referenced choice_id must appear exactly once. Settling dispositions select exactly one alternative per choice and eliminate every other alternative with its exact fact, accepted-contract reference, or applicable Decision identity. Unresolved alternatives drive the Question path unless the ownership assessment proves bounded agent discretion or exact delegation applies.",
             "source_rule":"Repository facts must be mechanically grounded in current repository/environment Sources. Settled authority requires an exact accepted contract or applicable Decision; recommendations, research, prototypes, libraries, and conventions can inform reasoning but do not independently settle an outcome.",
             "semantic_owner":"active_agent",
-            "production_validation":"typed presence, closed disposition compatibility, current provenance, and empty post-authority remaining-alternative set; production does not classify natural-language semantic truth",
+            "production_validation":"typed discovered identities, complete per-choice coverage, closed disposition compatibility, current provenance, and exact eliminating-authority linkage; production does not classify natural-language semantic truth",
         },
         "authority_learning_routing":authority_learning_routing_json(),
         "evidence_state_precedence":{
@@ -5707,6 +5811,40 @@ fn engineering_choice_json(choice: &EngineeringChoice) -> Value {
 
 fn learning_selection_json(selection: &LearningAlternativeSelection) -> Value {
     json!({"choice_id":selection.choice_id,"alternative_id":selection.alternative_id})
+}
+
+fn alternative_accounting_json(account: &DiscoveredAlternativeAccounting) -> Value {
+    let source_ids = account
+        .source_basis
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    match &account.resolution {
+        DiscoveredAlternativeResolution::Selected => json!({
+            "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+            "status":"selected","rationale":account.rationale,"source_ids":source_ids,
+        }),
+        DiscoveredAlternativeResolution::Unresolved => json!({
+            "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+            "status":"unresolved","rationale":account.rationale,"source_ids":source_ids,
+        }),
+        DiscoveredAlternativeResolution::EliminatedByRepositoryOrEnvironmentFact => json!({
+            "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+            "status":"eliminated_by_repository_or_environment_fact","rationale":account.rationale,"source_ids":source_ids,
+        }),
+        DiscoveredAlternativeResolution::EliminatedByAcceptedContract { contract_reference } => {
+            json!({
+                "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+                "status":"eliminated_by_accepted_contract","contract_reference":contract_reference,
+                "rationale":account.rationale,"source_ids":source_ids,
+            })
+        }
+        DiscoveredAlternativeResolution::EliminatedByApplicableDecision { decision_id } => json!({
+            "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+            "status":"eliminated_by_applicable_decision","decision_id":decision_id.to_string(),
+            "rationale":account.rationale,"source_ids":source_ids,
+        }),
+    }
 }
 
 fn learning_initial_response_json(response: &LearningInitialResponse) -> Value {
