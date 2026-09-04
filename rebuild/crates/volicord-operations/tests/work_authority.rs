@@ -1163,6 +1163,7 @@ fn checkpoint_draft(
     applied_decisions: Vec<volicord_context::DecisionId>,
 ) -> GroundedCheckpointDraft {
     GroundedCheckpointDraft {
+        verification_basis: volicord_inquiry::CheckpointVerificationBasis::OrdinaryChange,
         project_id: fixture.project_id,
         goal_context_id: fixture.goal_id,
         baseline_analysis_snapshot_id: fixture.baseline.identity,
@@ -3777,5 +3778,140 @@ fn blocked_prototype_cannot_rebase_tracked_fixture_mutation(
             WorkAuthorityStage::ReadyForWork
         );
     }
+    Ok(())
+}
+
+#[test]
+fn preserving_refactor_requires_override_and_default_propagation_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::{CheckpointVerificationBasis, CompatibilitySurfaceReview};
+    let mut fixture = fixture()?;
+    fs::create_dir_all(fixture.repository.join("tests"))?;
+    fs::write(
+        fixture.repository.join("src/signer.py"),
+        include_str!("../../../validation/inquiry/compatibility-preservation/signer.py"),
+    )?;
+    fixture.baseline = fixture
+        .operations
+        .analyze(fixture.project_id, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis;
+    let source = fixture.baseline.repository_source.identity();
+    let mut choice = engineering_choice(
+        "preserving-signer",
+        EngineeringEffectCategory::Compatibility,
+        source,
+    );
+    let mut bounded = agent_owned_dimension(
+        "preserving-signer",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "preserve the established signer contract".into(),
+        },
+    );
+    choice.affected_scope = vec!["src/signer.py".into()];
+    bounded.affected_scope = choice.affected_scope.clone();
+    let _review = review_with_choices(&fixture, vec![choice], vec![bounded])?;
+    let original_signer = fs::read_to_string(fixture.repository.join("src/signer.py"))?;
+    fs::write(
+        fixture.repository.join("src/signer.py"),
+        original_signer.replace(
+            "class ActiveExtension(Extension, Signer):",
+            "class ActiveExtension(Extension, RefactoredSigner):",
+        ),
+    )?;
+    let run = |case: &str| -> Result<CommandVerificationDraft, Box<dyn std::error::Error>> {
+        let result = std::process::Command::new("python3")
+            .args(["src/signer.py", case])
+            .current_dir(&fixture.repository)
+            .output()?;
+        Ok(CommandVerificationDraft {
+            state: if result.status.success() {
+                VerificationState::Passed
+            } else {
+                VerificationState::Failed
+            },
+            command_label: Some(format!("signer {case}")),
+            command_invocation: Some(format!("python3 src/signer.py {case}")),
+            exit_code: result.status.code(),
+            termination: Some(volicord_context::CommandTermination::Exited),
+            outcome: Some(format!("{case}: {}", result.status)),
+        })
+    };
+    let base = run("BaseContract")?;
+    let broken = run("ExtensionContract")?;
+    assert_eq!(base.state, VerificationState::Passed);
+    assert_eq!(broken.state, VerificationState::Failed);
+    let mut draft = checkpoint_draft(&fixture, vec![]);
+    draft.kind = CheckpointKind::Completion;
+    draft.work_state = WorkState::Completed;
+    draft.handoff_to = None;
+    draft.verification = vec![base];
+    assert!(
+        fixture
+            .operations
+            .record_grounded_checkpoint(draft.clone())
+            .is_err(),
+        "compatibility impact cannot omit the review"
+    );
+    let mut surfaces = vec![
+        CompatibilitySurfaceReview {
+            surface_id: "base-signer".into(),
+            inspected_paths: vec!["src/signer.py".into()],
+            preserved_contract: "base default and explicit salt behavior".into(),
+            verification_indices: vec![0],
+            coverage_rationale: "BaseContract exercises direct calls".into(),
+        },
+        CompatibilitySurfaceReview {
+            surface_id: "override-default".into(),
+            inspected_paths: vec!["src/signer.py".into()],
+            preserved_contract:
+                "make_signer override receives None unchanged and retains explicit salt".into(),
+            verification_indices: vec![],
+            coverage_rationale: "ExtensionContract exercises dispatch and default propagation"
+                .into(),
+        },
+    ];
+    let basis = |surfaces| {
+        CheckpointVerificationBasis::BehaviorPreserving { surfaces, preservation_rationale: "The affected extension hook and default propagation are exercised alongside direct calls.".into() }
+    };
+    draft.verification_basis = basis(surfaces.clone());
+    assert!(
+        fixture
+            .operations
+            .record_grounded_checkpoint(draft.clone())
+            .is_err(),
+        "base tests alone do not cover the known override"
+    );
+    surfaces[1].verification_indices = vec![1];
+    draft.verification_basis = basis(surfaces);
+    draft.verification.push(broken);
+    assert!(
+        fixture
+            .operations
+            .record_grounded_checkpoint(draft.clone())
+            .is_err(),
+        "broken extension test blocks completion despite passing base tests"
+    );
+    fs::write(
+        fixture.repository.join("src/signer.py"),
+        format!("{original_signer}\n# Preserve virtual dispatch and default propagation.\n"),
+    )?;
+    draft.verification[0] = run("BaseContract")?;
+    draft.verification[1] = run("ExtensionContract")?;
+    let outcome = fixture.operations.record_grounded_checkpoint(draft)?;
+    let fresh = LocalOperations::new(fixture.operations.layout().clone());
+    let canonical = fresh.canonical_basis(fixture.project_id)?;
+    assert!(canonical
+        .latest_checkpoint
+        .iter()
+        .any(|checkpoint| checkpoint.id == outcome.checkpoint_id
+            && checkpoint
+                .verification
+                .iter()
+                .any(|fact| fact.outcome.as_deref().is_some_and(|text| text
+                    .contains("override-default")
+                    && text.contains("make_signer")))));
     Ok(())
 }

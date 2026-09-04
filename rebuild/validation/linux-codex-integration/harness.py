@@ -481,7 +481,7 @@ def exercise_discovered_tool_contracts(
     request_id += 1
     require(recall["project_id"] == project_id and recall["read_only"] is True, "schema-built Recall failed")
 
-    checkpoint_args = {
+    checkpoint_args = {"verification_basis": {"state": "ordinary_change"},
         "project_id": project_id,
         "goal_context_id": goal_context_id,
         "baseline_analysis_snapshot_id": baseline_analysis_snapshot_id,
@@ -735,7 +735,7 @@ def exercise_analysis_recovery(
         recovery_host,
         306,
         "checkpoint_record",
-        {
+        {"verification_basis": {"state": "ordinary_change"},
             "project_id": first,
             "goal_context_id": recovery_goal["context_item_id"],
             "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
@@ -1215,7 +1215,7 @@ def main() -> int:
             host,
             10,
             "checkpoint_record",
-            {
+            {"verification_basis": {"state": "ordinary_change"},
                 "project_id": project_id,
                 "goal_context_id": goal["context_item_id"],
                 "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],

@@ -77,6 +77,15 @@ independent and are not inferred by this operation. Recall exposes the complete
 latest Checkpoint so a restarted host can recover work state, repository
 changes, Decisions, verification, limits, and next step.
 
+`checkpoint_record.verification_basis` distinguishes ordinary changes from explicit
+behavior preservation. A completed preservation claim or discovered compatibility
+effect requires the relevant inspected repository surfaces, their preserved
+contracts, focused verification indices, coverage rationale and preservation
+rationale. Every completion surface must reference a passed command; base tests
+that omit a known override/default-propagation hook are insufficient. The existing
+source-linked verification outcomes retain this review for fresh Recall. Select
+surfaces from repository evidence, without imposing irrelevant categories.
+
 `candidate_manage` requires `submit_question` to declare `research_required` or
 `ready_to_ask` with an explicit `research_state_basis`.
 `attach_repository_research` binds evidence to the current Project Analysis

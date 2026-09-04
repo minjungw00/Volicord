@@ -968,6 +968,12 @@ impl HostAdapter {
         let result = self
             .operations
             .record_grounded_checkpoint(GroundedCheckpointDraft {
+                verification_basis: serde_json::from_value(
+                    args.get("verification_basis")
+                        .cloned()
+                        .ok_or_else(|| HostError::new("verification_basis is required"))?,
+                )
+                .map_err(|error| HostError::new(format!("invalid verification_basis: {error}")))?,
                 project_id,
                 goal_context_id,
                 baseline_analysis_snapshot_id,
@@ -1941,7 +1947,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "checkpoint_record" => (
-            "Record a grounded Checkpoint from a canonical Goal, the exact pre-work Analysis Snapshot retained for this bounded session, current analysis, applicable Decisions, and truthful verification evidence. The baseline_analysis_snapshot_id must identify an analysis captured after initialization or successful Recall and before the first ordinary repository write; a snapshot first captured after the bounded work is conceptually invalid even when snapshot provenance cannot prove edit ordering. Every executed verification requires the exact transient command_invocation separately from the presentation-only command_label so Volicord can derive a durable fingerprint without retaining raw arguments. A passed or failed verification also requires the numeric exit status from that same actually observed execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts.",
+            "Record a grounded Checkpoint from a canonical Goal, the exact pre-work Analysis Snapshot retained for this bounded session, current analysis, applicable Decisions, and truthful verification evidence. The baseline_analysis_snapshot_id must identify an analysis captured after initialization or successful Recall and before the first ordinary repository write; a snapshot first captured after the bounded work is conceptually invalid even when snapshot provenance cannot prove edit ordering. Every executed verification requires the exact transient command_invocation separately from the presentation-only command_label so Volicord can derive a durable fingerprint without retaining raw arguments. A passed or failed verification also requires the numeric exit status from that same actually observed execution; output-only text is insufficient. Incidental inspection commands need not be Checkpoint verification facts. Explicitly classify verification_basis: behavior-preserving/refactor completion and Compatibility effects require a source-grounded surface review linked to focused passed commands; inspect affected override hooks and default propagation when repository evidence makes them relevant.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1954,13 +1960,14 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     ("decision_components", string_array_schema("Current components used to evaluate Decision applicability")),
                     ("work_contexts", string_array_schema("Current work contexts used to evaluate Decision applicability")),
                     ("met_revisit_triggers", string_array_schema("Decision revisit triggers known to be met")),
+                    ("verification_basis", checkpoint_verification_basis_schema()),
                     ("verification", checkpoint_verification_schema()),
                     ("next_step", text_schema("Next meaningful step", 1, 16_384)),
                     ("known_limits", string_array_schema("Known limits")),
                     ("non_goals", string_array_schema("Explicit non-goals")),
                     ("handoff_to", text_schema("Required target for handoff checkpoints", 1, 4096)),
                 ],
-                &["project_id", "goal_context_id", "baseline_analysis_snapshot_id", "kind", "work_state", "applied_decision_ids", "verification", "next_step"],
+                &["project_id", "goal_context_id", "baseline_analysis_snapshot_id", "kind", "work_state", "applied_decision_ids", "verification_basis", "verification", "next_step"],
             ),
             ToolBehavior::AdditiveClosed,
         ),
@@ -3766,6 +3773,23 @@ fn identity_array_schema(description: &str, minimum: usize) -> Value {
         "minItems": minimum,
         "items": identity_schema(description),
     })
+}
+
+fn checkpoint_verification_basis_schema() -> Value {
+    json!({"description":"Active-agent review of the change contract. For a behavior-preserving task/refactor or compatibility effect, identify repository-relevant direct callers, public return/error contracts, override hooks, default propagation, persistence/serialization or existing compatibility tests where evidence shows relevance. Do not claim preservation from generic tests that omit a known affected extension point.", "oneOf":[
+        object_schema(vec![("state", enum_schema("Change contract", &["ordinary_change"]))], &["state"]),
+        object_schema(vec![
+            ("state", enum_schema("Change contract", &["behavior_preserving"])),
+            ("preservation_rationale", text_schema("Why the inspected contracts and focused evidence support preservation", 1, 2048)),
+            ("surfaces", json!({"type":"array", "minItems":1, "maxItems":32, "items":object_schema(vec![
+                ("surface_id", text_schema("Unique relevant compatibility surface identity", 1, 2048)),
+                ("inspected_paths", nonempty_string_array_schema("Exact baseline/current Included repository files inspected for this contract")),
+                ("preserved_contract", text_schema("Repository-grounded extension or compatibility behavior to preserve", 1, 2048)),
+                ("verification_indices", json!({"type":"array","minItems":1,"maxItems":32,"items":{"type":"integer","minimum":0},"description":"Zero-based indices into this Checkpoint's verification array; each completion reference must be passed"})),
+                ("coverage_rationale", text_schema("How the linked focused commands exercise this exact surface, including affected overrides/defaults", 1, 2048)),
+            ], &["surface_id","inspected_paths","preserved_contract","verification_indices","coverage_rationale"])})),
+        ], &["state","preservation_rationale","surfaces"]),
+    ]})
 }
 
 fn checkpoint_verification_schema() -> Value {

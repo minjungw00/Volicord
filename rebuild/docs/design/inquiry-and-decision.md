@@ -749,6 +749,25 @@ label을 execution correlation key로 사용하지 않으며 raw invocation을 c
 Candidate 또는 resume state로 보존하지 않는다. `not_run`은 이 execution input이나 Source를
 가질 수 없고, `passed`는 같은 Source의 `exited`/numeric `0` outcome을 요구한다.
 
+Behavior-preserving/refactor completion은 `verification_basis.behavior_preserving`으로 exact
+compatibility surface review를 제출한다. Discovery가 `compatibility` effect를 표시한 completed
+Checkpoint도 이 review를 요구한다. Active agent는 repository evidence에 실제로 관련된 direct
+caller, public return/error contract, subclass/override hook, default propagation,
+serialization/persistence 또는 기존 compatibility tests를 식별한다. 모든 category를 기계적으로
+요구하거나 Goal prose를 keyword/classifier로 분류하지 않는다.
+
+각 surface는 stable local identity, baseline/current Included inspected file paths, 보존할 exact
+contract, 이를 실제로 exercise한 Checkpoint verification index와 coverage rationale를 갖는다.
+Terminal preservation은 모든 surface가 같은 request의 `passed` command evidence에 연결되고
+전체 preservation rationale가 있을 때만 가능하다. Known override/default surface를 exercise하지
+않는 generic base test만으로 해당 surface를 covered라고 주장하지 않는다. Failed/partial evidence는
+completion을 통과시키지 않으며 명시적인 pause는 실제 상태를 유지한다. Operations는 typed review를
+검증한 뒤 기존 Command Source-linked verification outcome에 surface, inspected paths, coverage와
+preservation rationale를 보존한다. Transient array index는 durable identity가 아니고 기존 Source ID와
+invocation fingerprint가 execution identity다. 새 canonical schema나 QA subsystem을 만들지 않는다.
+Semantic relevance와 test coverage truth는 active agent가 판단하고 maintained compatibility fixture가
+그 판단 실패를 검증한다. Raw command와 provider output retention 경계는 그대로다.
+
 ## 14. Later-validation hooks
 
 ### V09 — Recall과 Checkpoint 정확성

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
     Availability, CanonicalReadBasis, Checkpoint, CheckpointDraft, CheckpointKind, DecisionId,
@@ -16,6 +17,111 @@ pub struct RepositoryWorkBasis<'a> {
     /// Paths known dirty before this bounded work from an existing canonical
     /// Source/observation. They are evidence, not inferred ownership.
     pub pre_existing_dirty_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CheckpointVerificationBasis {
+    OrdinaryChange,
+    BehaviorPreserving {
+        surfaces: Vec<CompatibilitySurfaceReview>,
+        preservation_rationale: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompatibilitySurfaceReview {
+    pub surface_id: String,
+    pub inspected_paths: Vec<String>,
+    pub preserved_contract: String,
+    pub verification_indices: Vec<usize>,
+    pub coverage_rationale: String,
+}
+
+/// Checks typed coverage, not the semantic truth of the host's surface review.
+/// Returned notes are retained in the existing source-linked verification outcome.
+pub fn compatibility_verification_notes(
+    basis: &CheckpointVerificationBasis,
+    states: &[VerificationState],
+    repository: &RepositoryWorkBasis<'_>,
+    compatibility_required: bool,
+    terminal: bool,
+) -> Result<Vec<Vec<String>>, String> {
+    let mut notes = vec![Vec::new(); states.len()];
+    let CheckpointVerificationBasis::BehaviorPreserving {
+        surfaces,
+        preservation_rationale,
+    } = basis
+    else {
+        return if compatibility_required && terminal {
+            Err("compatibility impact requires a behavior-preserving surface review before completion".into())
+        } else {
+            Ok(notes)
+        };
+    };
+    let bounded = |text: &str| !text.trim().is_empty() && text.len() <= 2048;
+    if surfaces.is_empty() || surfaces.len() > 32 || !bounded(preservation_rationale) {
+        return Err("behavior-preserving verification requires bounded relevant surfaces and preservation rationale".into());
+    }
+    let paths = repository
+        .baseline
+        .inventory
+        .entries
+        .iter()
+        .chain(&repository.current.inventory.entries)
+        .filter(|entry| {
+            entry.entry_kind == EntryKind::File
+                && entry
+                    .classifications
+                    .contains(&InventoryClassification::Included)
+        })
+        .map(|entry| entry.area.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut identities = BTreeSet::new();
+    for surface in surfaces {
+        if !bounded(&surface.surface_id)
+            || !identities.insert(&surface.surface_id)
+            || !bounded(&surface.preserved_contract)
+            || !bounded(&surface.coverage_rationale)
+            || surface.inspected_paths.is_empty()
+            || surface.inspected_paths.len() > 32
+            || surface
+                .inspected_paths
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != surface.inspected_paths.len()
+            || surface
+                .inspected_paths
+                .iter()
+                .any(|path| !paths.contains(path.as_str()))
+        {
+            return Err("compatibility surfaces require unique identities, inspected repository paths, exact contracts and coverage rationale".into());
+        }
+        if surface.verification_indices.is_empty()
+            || surface
+                .verification_indices
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != surface.verification_indices.len()
+            || surface.verification_indices.iter().any(|index| {
+                states.get(*index).is_none_or(|state| {
+                    *state == VerificationState::NotRun
+                        || (terminal && *state != VerificationState::Passed)
+                })
+            })
+        {
+            return Err(format!("compatibility surface {} lacks adequate focused verification; every completion surface must link passed command evidence", surface.surface_id));
+        }
+        let note = format!("Compatibility surface {}: {}; inspected paths: {}; coverage: {}; preservation basis: {}",
+            surface.surface_id, surface.preserved_contract, surface.inspected_paths.join(", "), surface.coverage_rationale, preservation_rationale);
+        for index in &surface.verification_indices {
+            notes[*index].push(note.clone());
+        }
+    }
+    Ok(notes)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

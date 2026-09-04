@@ -527,6 +527,7 @@ pub struct CommandVerificationDraft {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GroundedCheckpointDraft {
+    pub verification_basis: volicord_inquiry::CheckpointVerificationBasis,
     pub project_id: volicord_context::ProjectId,
     pub goal_context_id: ContextItemId,
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,

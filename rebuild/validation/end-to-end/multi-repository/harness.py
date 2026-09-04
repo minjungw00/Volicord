@@ -1639,7 +1639,7 @@ def rehearse_target(
                 "resolved_materiality_review_readiness": resolved_review_readiness,
                 "learning_deliberation": learning_evidence,
             }
-            checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {
+            checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {"verification_basis": {"state": "ordinary_change"},
                 "project_id": project_id,
                 "goal_context_id": (goal or {}).get("context_item_id"),
                 "baseline_analysis_snapshot_id": (candidate_analysis or {}).get(

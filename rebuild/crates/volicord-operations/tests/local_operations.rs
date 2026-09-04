@@ -315,6 +315,7 @@ fn grounded_draft(
     baseline_analysis_snapshot_id: AnalysisSnapshotId,
 ) -> GroundedCheckpointDraft {
     GroundedCheckpointDraft {
+        verification_basis: volicord_inquiry::CheckpointVerificationBasis::OrdinaryChange,
         project_id,
         goal_context_id,
         baseline_analysis_snapshot_id,
@@ -953,6 +954,7 @@ fn grounded_checkpoint_rejects_passed_verification_without_exact_invocation_befo
     let before = operations.canonical_basis(project.id)?;
     let error = operations
         .record_grounded_checkpoint(GroundedCheckpointDraft {
+            verification_basis: volicord_inquiry::CheckpointVerificationBasis::OrdinaryChange,
             project_id: project.id,
             goal_context_id: ContextItemId::from_bytes([91; 16]),
             baseline_analysis_snapshot_id: AnalysisSnapshotId::from_hex(&"00".repeat(32))?,

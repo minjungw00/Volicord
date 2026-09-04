@@ -3152,9 +3152,52 @@ impl LocalOperations {
                     .collect::<Vec<_>>()
             )));
         }
+        let compatibility_required = discovery_candidate
+            .and_then(|candidate| candidate.content.as_ref())
+            .and_then(|content| content.engineering_choice_discovery.as_ref())
+            .is_some_and(|discovery| {
+                discovery.choices.iter().any(|choice| {
+                    choice
+                        .effect_categories
+                        .contains(&volicord_inquiry::EngineeringEffectCategory::Compatibility)
+                })
+            });
+        let compatibility_notes = volicord_inquiry::compatibility_verification_notes(
+            &draft.verification_basis,
+            &draft
+                .verification
+                .iter()
+                .map(|fact| fact.state)
+                .collect::<Vec<_>>(),
+            &repository_work,
+            compatibility_required,
+            draft.work_state == volicord_context::WorkState::Completed,
+        )
+        .map_err(Error::new)?;
+        let verification_outcomes = draft
+            .verification
+            .iter()
+            .zip(compatibility_notes)
+            .map(|(fact, notes)| {
+                if notes.is_empty() {
+                    return Ok(fact.outcome.clone());
+                }
+                let outcome = format!(
+                    "{}\n{}",
+                    fact.outcome.as_deref().unwrap_or_default(),
+                    notes.join("\n")
+                );
+                if outcome.len() > 16_384 {
+                    return Err(Error::new(
+                        "compatibility verification outcome exceeds the bounded evidence limit",
+                    ));
+                }
+                Ok(Some(outcome))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
         let mut verification = Vec::with_capacity(draft.verification.len());
         let mut verification_source_ids = Vec::new();
-        for fact in &draft.verification {
+        for (fact, outcome) in draft.verification.iter().zip(verification_outcomes) {
             if fact.state == VerificationState::NotRun {
                 verification.push(VerificationFact {
                     state: VerificationState::NotRun,
@@ -3168,7 +3211,7 @@ impl LocalOperations {
             verification.push(VerificationFact {
                 state: fact.state,
                 source_id: Some(source.id),
-                outcome: fact.outcome.clone(),
+                outcome,
             });
         }
 

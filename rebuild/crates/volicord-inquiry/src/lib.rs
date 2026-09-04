@@ -20,8 +20,9 @@ pub use applicability::{
     RequestioningProposal, ReviewDueIntent,
 };
 pub use checkpoint::{
-    attribute_repository_changes, evaluate_checkpoint_candidate, record_checkpoint,
-    ChangeAttribution, CheckpointCandidate, CheckpointEvaluation, CheckpointRejection,
+    attribute_repository_changes, compatibility_verification_notes, evaluate_checkpoint_candidate,
+    record_checkpoint, ChangeAttribution, CheckpointCandidate, CheckpointEvaluation,
+    CheckpointRejection, CheckpointVerificationBasis, CompatibilitySurfaceReview,
     RepositoryWorkBasis,
 };
 pub use error::{Error, ErrorKind};

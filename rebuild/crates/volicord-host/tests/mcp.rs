@@ -2893,6 +2893,7 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
             "applied_decision_ids":[],
             "decision_components":["transport-core","release-core"],
             "work_contexts":["transport","release"],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{"state":"not_run"}],
             "next_step":"Correct the bounded executable scope",
             "handoff_to":"next session"
@@ -3245,6 +3246,7 @@ fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
             "kind":"pause",
             "work_state":"paused",
             "applied_decision_ids":[],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{"state":"not_run"}],
             "next_step":"Record the required Materiality Review",
         }),
@@ -4951,7 +4953,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 "kind":"handoff",
                 "work_state":"paused",
                 "applied_decision_ids":decisions,
-                "verification":[{"state":"not_run"}],
+                "verification_basis":{"state":"ordinary_change"},
+            "verification":[{"state":"not_run"}],
                 "next_step":"Continue",
                 "handoff_to":"next Codex session"
             })
@@ -5035,6 +5038,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "kind":"handoff",
             "work_state":"paused",
             "applied_decision_ids":[],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{"state":"passed"}],
             "next_step":"Continue",
             "handoff_to":"next Codex session"
@@ -5054,6 +5058,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "kind":"handoff",
             "work_state":"paused",
             "applied_decision_ids":[],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{
                 "state":"passed",
                 "command_label":"caller asserted digest",
@@ -5084,6 +5089,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "kind":"handoff",
             "work_state":"paused",
             "applied_decision_ids":[],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{
                 "state":"not_run",
                 "command_invocation":"cargo test -p never-ran"
@@ -5106,6 +5112,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "kind":"handoff",
             "work_state":"paused",
             "applied_decision_ids":[],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[{
                 "state":"failed",
                 "command_label":"focused test suite",
@@ -5140,6 +5147,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "work_state":"paused",
             "state_change":"Implemented the grounded handoff path",
             "applied_decision_ids":[decision_id],
+            "verification_basis":{"state":"ordinary_change"},
             "verification":[
                 {"state":"passed","command_label":"focused test suite","command_invocation":"cargo test -p focused -- --exact privacy_secret_7f9d","exit_code":0,"termination":"exited","outcome":"focused test passed"},
                 {"state":"failed","command_label":"known failure reproduction","command_invocation":"cargo test -p known-failure -- --exact fixture","exit_code":1,"termination":"exited","outcome":"known failure reproduced"},
@@ -6569,6 +6577,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "decision_components",
                 "work_contexts",
                 "met_revisit_triggers",
+                "verification_basis",
                 "verification",
                 "next_step",
                 "known_limits",
@@ -6582,6 +6591,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "kind",
                 "work_state",
                 "applied_decision_ids",
+                "verification_basis",
                 "verification",
                 "next_step",
             ],

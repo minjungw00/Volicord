@@ -10924,7 +10924,7 @@ def real_session_fixture(
             decision_turn,
             checkpoint_call,
             "checkpoint_record",
-            {
+            {"verification_basis": {"state": "ordinary_change"},
                 "project_id": project,
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": baseline_analysis,
@@ -11437,7 +11437,7 @@ def real_session_fixture(
             resume_turn,
             resume_checkpoint_call,
             "checkpoint_record",
-            {
+            {"verification_basis": {"state": "ordinary_change"},
                 "project_id": project,
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
