@@ -196,7 +196,7 @@ def assert_concrete_schema_node(
         return
     kind = schema.get("type")
     require(
-        kind in {"string", "integer", "array", "object"},
+        kind in {"string", "integer", "boolean", "array", "object"},
         f"{name} uses an unsupported client-visible type",
     )
     if kind == "array":
@@ -269,6 +269,12 @@ def schema_error(schema: dict[str, Any], value: Any, path: str = "arguments") ->
         if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
             return f"{path} does not match its pattern"
         return None
+    if kind == "boolean":
+        if not isinstance(value, bool):
+            return f"{path} must be a boolean"
+        if "enum" in schema and value not in schema["enum"]:
+            return f"{path} is not an allowed boolean"
+        return None
     if kind == "integer":
         if not isinstance(value, int) or isinstance(value, bool):
             return f"{path} must be an integer"
@@ -314,6 +320,8 @@ def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
             return "Continue Phase 7 validation"
         minimum = int(schema.get("minLength", 1))
         return "schema-client".ljust(minimum, "x")
+    if kind == "boolean":
+        return schema.get("enum", [False])[0]
     if kind == "integer":
         if "request revision" in description:
             return context["request_revision"]
@@ -594,6 +602,63 @@ def assert_only_repository_observation_added(
     require(before_lineage != after_lineage, "portable lineage did not record canonical provenance change")
 
 
+def record_settled_fixture_review(
+    host: subprocess.Popen[str], request_id: int, project_id: str,
+    discovery_id: str, choice: dict[str, Any], paths: list[str], contract: str,
+) -> dict[str, Any]:
+    accounts = []
+    for index, alternative in enumerate(choice["alternatives"]):
+        account = {
+            "choice_id": choice["choice_id"], "alternative_id": alternative["alternative_id"],
+            "status": "selected" if index == 0 else "eliminated_by_accepted_contract",
+            "rationale": "The maintained fixture contract selects the deterministic first treatment.",
+            "source_ids": choice["source_ids"],
+        }
+        if index:
+            account["contract_reference"] = contract
+        accounts.append(account)
+    review = tool(host, request_id, "materiality_review", {
+        "action": "record", "project_id": project_id,
+        "engineering_choice_discovery_candidate_id": discovery_id,
+        "rationale": "The maintained fixture settles its exact bounded treatment.",
+        "behavioral_context_basis": {
+            "context_item_ids": [],
+            "completeness_rationale": "No non-Goal behavioral Context changes this deterministic fixture.",
+        },
+        "learning_participation": {"state": "inactive"},
+        "judgments": [{
+            "choice_id": choice["choice_id"], "disposition": "settled_authority",
+            "basis_summary": contract,
+            "authority_counterfactual": "The fixture contract selects this exact treatment independently of a broad Goal.",
+            "materially_varying_outcomes": choice["technical_consequences"],
+            "contains_user_owned_outcome": False, "user_owned_outcomes": [],
+            "ownership_rationale": "This is deterministic fixture machinery within settled product behavior.",
+            "bounded_implementation_discretion_rationale": "No user-owned product policy varies within this maintained fixture.",
+            "ownership_source_ids": choice["source_ids"],
+            "alternative_accounting": accounts,
+            "authority_coverage": choice["summary"],
+            "unique_outcome_rationale": "The maintained test contract requires the first deterministic treatment.",
+            "contract_basis": [contract],
+            "learning_value": {"state": "routine", "rationale": "The deterministic fixture introduces no meaningful learning fork."},
+        }],
+    })
+    categories = ("implementation", "focused_tests", "public_or_internal_documentation", "changelog_or_release_notes", "schema_snapshot_or_generated_artifact", "other_repository_owned_artifact")
+    return tool(host, request_id + 1000, "materiality_review", {
+        "action": "inspect", "project_id": project_id,
+        "review_candidate_id": review["review_candidate_id"], "paths": paths,
+        "goal_context_id": review["goal_context_id"],
+        "baseline_analysis_snapshot_id": review["baseline_analysis_snapshot_id"],
+        "coupled_artifact_review": {
+            "assessments": [{
+                "category": category,
+                "disposition": {"state": "included", "repository_paths": paths} if category == "focused_tests" else {"state": "no_coupled_artifact"},
+                "basis_summary": "Inspection bounds this installed integration fixture to its test artifacts.",
+            } for category in categories],
+            "materiality_reassessment": "The bounded fixture artifacts introduce no additional product outcome.",
+        },
+    })
+
+
 def exercise_analysis_recovery(
     cli: Path, env: dict[str, str], temporary: Path, runtime: Path
 ) -> dict[str, Any]:
@@ -694,38 +759,9 @@ def exercise_analysis_recovery(
             ),
         },
     )
-    recovery_review = tool(
-        recovery_host,
-        305,
-        "materiality_review",
-        {
-            "action": "record",
-            "project_id": first,
-            "goal_context_id": recovery_goal["context_item_id"],
-            "baseline_analysis_snapshot_id": recovery_baseline["analysis_snapshot_id"],
-            "engineering_choice_discovery_candidate_id": recovery_discovery["discovery_candidate_id"],
-            "source_operation": "V08 recovery work-authority fixture",
-            "rationale": "The maintained recovery fixture settles its recovery treatment.",
-            "learning_participation": {"state": "inactive"},
-            "dimensions": [
-                {
-                    "dimension_id": "derived-analysis-recovery",
-                    "discovered_choice_ids": ["derived-analysis-recovery"],
-                    "summary": "Apply the maintained derived-analysis recovery treatment",
-                    "affected_scope": ["derived-analysis"],
-                    "material_consequences": ["Preserves canonical meaning while rebuilding derived state"],
-                    "observable_signals": ["maintenance_or_support_policy"],
-                    "disposition": "settled_authority",
-                    "basis": {
-                        "kinds": ["accepted_contract"],
-                        "summary": "The V08 recovery fixture owns this exact treatment",
-                        "source_ids": [recovery_baseline["repository_source_id"]],
-                        "contract_basis": ["V08 derived-analysis recovery contract"],
-                    },
-                    "learning_value": {"state": "routine", "rationale": "The maintained recovery contract already settles this bounded fixture."},
-                }
-            ],
-        },
+    recovery_review = record_settled_fixture_review(
+        recovery_host, 305, first, recovery_discovery["discovery_candidate_id"],
+        recovery_choices[0], ["src/main.py"], "V08 derived-analysis recovery contract",
     )
     require(
         recovery_review["workflow"]["stage"] == "ready_for_work",
@@ -743,6 +779,7 @@ def exercise_analysis_recovery(
             "work_state": "paused",
             "applied_decision_ids": [],
             "verification": [{"state": "not_run"}],
+            "state_change": "Established canonical recovery control before testing derived-state corruption",
             "next_step": "Repair and reindex from fresh repository observations",
         },
     )
@@ -1165,42 +1202,13 @@ def main() -> int:
             },
         )
         require(
-            review_draft["dimension_templates"][0]["prefilled"]["discovered_choice_ids"]
+            review_draft["record_request"]["judgments_assembly"]["choice_order"]
             == ["checkpoint-fixture-path"],
             "Materiality draft did not prefill the discovered choice identity",
         )
-        review = tool(
-            host,
-            9,
-            "materiality_review",
-            {
-                "action": "record",
-                "project_id": project_id,
-                "goal_context_id": goal["context_item_id"],
-                "baseline_analysis_snapshot_id": baseline["analysis_snapshot_id"],
-                "engineering_choice_discovery_candidate_id": discovery["discovery_candidate_id"],
-                "source_operation": "V08 installed MCP no-question workflow",
-                "rationale": "The maintained fixture already settles its bounded output.",
-                "learning_participation": {"state": "inactive"},
-                "dimensions": [
-                    {
-                        "dimension_id": "checkpoint-fixture-path",
-                        "discovered_choice_ids": ["checkpoint-fixture-path"],
-                        "summary": "Apply the maintained fixture filename and content",
-                        "affected_scope": ["grounded-checkpoint.txt"],
-                        "material_consequences": ["Changes only the delegated fixture implementation"],
-                        "observable_signals": ["other_material_outcome"],
-                        "disposition": "settled_authority",
-                        "basis": {
-                            "kinds": ["accepted_contract"],
-                            "summary": "The accepted V08 fixture settles this exact output",
-                            "source_ids": [baseline["repository_source_id"]],
-                            "contract_basis": ["V08 deterministic installed-MCP fixture"],
-                        },
-                        "learning_value": {"state": "routine", "rationale": "Normal mode preserves non-interrupting execution."},
-                    }
-                ],
-            },
+        review = record_settled_fixture_review(
+            host, 9, project_id, discovery["discovery_candidate_id"],
+            checkpoint_choices[0], ["grounded-checkpoint.txt"], "V08 deterministic installed-MCP fixture",
         )
         require(
             review["workflow"]["stage"] == "ready_for_work"

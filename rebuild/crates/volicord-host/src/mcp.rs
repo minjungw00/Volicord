@@ -2200,7 +2200,7 @@ fn engineering_choice_discovery_schema() -> Value {
             ),
             (
                 "material_decomposition",
-                json!({"oneOf":[
+                json!({"description":"Material decomposition closure for this exact alternative", "oneOf":[
                     object_schema(vec![
                         ("state", enum_schema("Closure", &["materially_atomic"])),
                         ("rationale", text_schema("Active-agent rationale grounded in this choice's Sources: selecting this alternative leaves no further materially distinct product outcome. Private equivalent details may terminate here.", 1, 4096)),
@@ -3781,7 +3781,7 @@ fn checkpoint_verification_basis_schema() -> Value {
         object_schema(vec![
             ("state", enum_schema("Change contract", &["behavior_preserving"])),
             ("preservation_rationale", text_schema("Why the inspected contracts and focused evidence support preservation", 1, 2048)),
-            ("surfaces", json!({"type":"array", "minItems":1, "maxItems":32, "items":object_schema(vec![
+            ("surfaces", json!({"description":"Repository-relevant compatibility and extension surfaces inspected by the active agent", "type":"array", "minItems":1, "maxItems":32, "items":object_schema(vec![
                 ("surface_id", text_schema("Unique relevant compatibility surface identity", 1, 2048)),
                 ("inspected_paths", nonempty_string_array_schema("Exact baseline/current Included repository files inspected for this contract")),
                 ("preserved_contract", text_schema("Repository-grounded extension or compatibility behavior to preserve", 1, 2048)),

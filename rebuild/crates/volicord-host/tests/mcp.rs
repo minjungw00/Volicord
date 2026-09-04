@@ -6209,12 +6209,19 @@ fn assert_schema_is_closed_and_described(schema: &Value) {
         }
         return;
     }
-    assert_eq!(schema["type"], "object");
-    assert_eq!(schema["additionalProperties"], false);
-    let properties = schema["properties"].as_object().expect("properties");
-    assert!(!properties.is_empty());
-    for property in properties.values() {
-        assert!(property["description"].as_str().is_some());
+    match schema["type"].as_str() {
+        Some("object") => {
+            assert_eq!(schema["additionalProperties"], false);
+            let properties = schema["properties"].as_object().expect("properties");
+            assert!(!properties.is_empty());
+            for property in properties.values() {
+                assert!(property["description"].as_str().is_some());
+                assert_schema_is_closed_and_described(property);
+            }
+        }
+        Some("array") => assert_schema_is_closed_and_described(&schema["items"]),
+        Some("string" | "integer" | "boolean") => {}
+        other => panic!("unsupported client-visible schema type: {other:?}"),
     }
 }
 
