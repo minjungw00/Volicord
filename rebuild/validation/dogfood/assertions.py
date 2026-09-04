@@ -608,6 +608,15 @@ def main() -> int:
         "all_unresolved_user_owned_dimensions_block_work": True,
         "resolved_user_owned_decision_correlation": "per_dimension_id",
         "late_scope_binding_can_certify_earlier_work": False,
+        "write_chronology_basis": (
+            "each repository path's first supported meaningful Codex file-change event"
+        ),
+        "event_authority_selection": (
+            "latest valid matching production Materiality scope binding completed "
+            "before the write event"
+        ),
+        "prospective_scope_expansion_supported": True,
+        "unsupported_write_chronology": "indeterminate_non_passing",
         "learning_deliberation_is_canonical_decision": False,
     }
     if (
@@ -768,7 +777,13 @@ def main() -> int:
         or goal_provenance.get("semantic_statement_relation")
         != "verbatim_containment_without_raw_source_rewrite"
         or goal_provenance.get("bounded_decomposition_supported") is not True
-        or goal_provenance.get("required_goal_count") != 1
+        or goal_provenance.get("authoritative_goal_resolution")
+        != (
+            "Checkpoint and applicable Materiality identities through baseline to the "
+            "exact canonical Goal Context and current-host Source"
+        )
+        or goal_provenance.get("unused_or_superseded_goal_records")
+        != "bounded diagnostic only"
         or goal_provenance.get("non_goal_context_roles_may_share_first_turn") is not True
     ):
         raise AssertionError("Phase 8 current-host Goal provenance contract changed")
@@ -828,6 +843,37 @@ def main() -> int:
         "numeric_cli_version_dispatch": False,
     }:
         raise AssertionError("Phase 8 Codex FileChange normalization contract changed")
+    if definition_value["real_session_evidence"].get(
+        "question_lifecycle_stages"
+    ) != [
+        "candidate_created_from_materiality",
+        "required_research_complete",
+        "candidate_ready",
+        "promoted",
+        "current_revision_available",
+        "inquiry_frontier_presented",
+        "current_host_response_matched",
+        "decision_recorded",
+        "post_decision_materiality_resolved_before_affected_work",
+    ] or definition_value["real_session_evidence"].get(
+        "question_stage_failure_attribution"
+    ) != (
+        "a missing required stage fails the overall lifecycle without erasing "
+        "independently supported later response or Decision authenticity"
+    ):
+        raise AssertionError("Phase 8 Question lifecycle stage contract changed")
+    command_forwarding = definition_value["real_session_evidence"].get(
+        "command_forwarding_contract", {}
+    )
+    if (
+        command_forwarding.get("additional_structured_metadata")
+        != (
+            "allowed when required fields remain valid and projected fields come "
+            "from the same statically bound result"
+        )
+        or command_forwarding.get("execution_identity_conflict") != "rejected"
+    ):
+        raise AssertionError("Phase 8 terminal command evidence contract changed")
     behavior_classes = definition_value.get("behavior_classes")
     validate_behavior_specific_work_intake_contract(
         behavior_specific_work_intake, behavior_classes
@@ -891,7 +937,7 @@ def main() -> int:
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
-        "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write",
+        "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
         "correlate every unresolved review dimension through its Question Candidate",
         "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work",
         "event_msg.mcp_tool_call_end",
