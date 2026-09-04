@@ -1218,6 +1218,22 @@ def rehearse_target(
                         "evidence_state": "sufficient",
                     },
                 ]
+            decomposition_rejections = {}
+            for shape in ("control-status-contract", "compatible-existing-result"):
+                coarse_choices = json.loads(json.dumps(discovery_choices))
+                coarse_choices[0]["alternatives"][0]["material_decomposition"] = {
+                    "state": "decomposed", "choice_ids": [f"{shape}-public-representation"]
+                }
+                rejected, accepted = host.tool("engineering_choice_discovery", {
+                    "project_id": project_id,
+                    "goal_context_id": (goal or {}).get("context_item_id"),
+                    "baseline_analysis_snapshot_id": (candidate_analysis or {}).get("analysis_snapshot_id"),
+                    "source_operation": "bounded decomposition closure probe",
+                    "summary": "A broad alternative leaves a subordinate public representation open",
+                    "choices": coarse_choices,
+                    "material_boundary_review": material_boundary_review(coarse_choices, [source_id] if source_id else []),
+                })
+                decomposition_rejections[shape] = not accepted and "missing choice" in str((rejected or {}).get("error", ""))
             discovery, discovery_ok = host.tool("engineering_choice_discovery", {
                 "project_id": project_id,
                 "goal_context_id": (goal or {}).get("context_item_id"),
@@ -1639,6 +1655,28 @@ def rehearse_target(
                 "resolved_materiality_review_readiness": resolved_review_readiness,
                 "learning_deliberation": learning_evidence,
             }
+            preservation_rejected, preservation_accepted = host.tool("checkpoint_record", {
+                "project_id": project_id,
+                "goal_context_id": (goal or {}).get("context_item_id"),
+                "baseline_analysis_snapshot_id": (candidate_analysis or {}).get("analysis_snapshot_id"),
+                "kind": "completion", "work_state": "completed",
+                "applied_decision_ids": [decision_id] if decision_id else [],
+                "work_contexts": ["internal-state"] if technical_delegated else [],
+                "verification": [{"state": "not_run"}],
+                "verification_basis": {
+                    "state": "behavior_preserving",
+                    "preservation_rationale": "Completion must exercise the repository-relevant contract",
+                    "surfaces": [{
+                        "surface_id": "ordinary-work-contract",
+                        "inspected_paths": [str(ordinary.relative_to(repository))],
+                        "preserved_contract": "The existing ordinary-work file contract is preserved",
+                        "verification_indices": [0],
+                        "coverage_rationale": "This deliberate negative probe has no executed coverage",
+                    }],
+                },
+                "next_step": checkpoint_next_step,
+            }) if ordinary_status == "passed" else (None, False)
+            preservation_rejection_ok = not preservation_accepted and "adequate focused verification" in str((preservation_rejected or {}).get("error", ""))
             checkpoint_value, checkpoint_ok = host.tool("checkpoint_record", {"verification_basis": {"state": "ordinary_change"},
                 "project_id": project_id,
                 "goal_context_id": (goal or {}).get("context_item_id"),
@@ -1659,6 +1697,7 @@ def rehearse_target(
             checkpoint_status = (
                 "passed"
                 if checkpoint_ok
+                and preservation_rejection_ok
                 and checkpoint_value
                 and checkpoint_value.get("workflow", {}).get("disposition")
                 == "checkpoint_recorded"
@@ -1677,6 +1716,7 @@ def rehearse_target(
                 "handoff_target": checkpoint_target,
                 "checkpoint": checkpoint_value,
                 "mcp_call_succeeded": checkpoint_ok,
+                "untested_preservation_rejected": preservation_rejection_ok,
             }
             submitted_candidate = next(
                 (item for item in (after_submission or {}).get("candidates", []) if item.get("identity") == candidate_id),
@@ -1701,6 +1741,7 @@ def rehearse_target(
                 == "repository_baseline",
                 candidate_analysis_ok,
                 source_id,
+                all(decomposition_rejections.values()),
                 discovery_ok,
                 discovery_id,
                 discovery
@@ -1759,6 +1800,7 @@ def rehearse_target(
                 "repository_analysis": candidate_analysis,
                 "repository_source_id": source_id,
                 "engineering_choice_discovery": discovery,
+                "material_decomposition_rejections": decomposition_rejections,
                 "candidate_research_analysis": candidate_research_analysis,
                 "candidate_research_source_id": research_source_id,
                 "goal": goal,

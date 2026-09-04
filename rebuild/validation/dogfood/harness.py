@@ -5237,7 +5237,7 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
 
 
 def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list) or not value or len(value) > 64:
         return None
     indexed: dict[str, dict[str, Any]] = {}
     for choice in value:
@@ -5286,7 +5286,39 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
             or not nonempty_string(relationship.get("rationale"))
         ):
             return None
-    return indexed
+    active: set[str] = set()
+    complete: set[str] = set()
+
+    def closed(choice_id: str) -> bool:
+        if choice_id in complete:
+            return True
+        if choice_id in active or choice_id not in indexed:
+            return False
+        active.add(choice_id)
+        for alternative in indexed[choice_id]["alternatives"]:
+            closure = alternative.get("material_decomposition")
+            if not isinstance(closure, dict):
+                return False
+            if closure.get("state") == "materially_atomic":
+                if set(closure) != {"state", "rationale"} or not nonempty_string(closure.get("rationale")):
+                    return False
+            elif closure.get("state") == "decomposed":
+                children = closure.get("choice_ids")
+                if (
+                    set(closure) != {"state", "choice_ids"}
+                    or not isinstance(children, list) or not children
+                    or not all(nonempty_string(child) for child in children)
+                    or len(set(children)) != len(children)
+                    or not all(closed(child) for child in children)
+                ):
+                    return False
+            else:
+                return False
+        active.remove(choice_id)
+        complete.add(choice_id)
+        return True
+
+    return indexed if all(closed(choice_id) for choice_id in indexed) else None
 
 
 def material_boundary_review_facts(
@@ -15245,6 +15277,20 @@ def self_test() -> int:
             )
         sanitized_hidden_miss_results.append(hidden_miss_result)
 
+    decomposition_qualification = {}
+    for shape in ("control-status-contract", "compatible-existing-result"):
+        (evidence_directory / shape).mkdir()
+        fixture = real_session_fixture("small-python", 2, revision, evidence_directory / shape, behavior_class="hidden_user_owned_decision")
+        def open_subchoice(arguments: dict[str, Any]) -> None:
+            arguments["choices"][0]["alternatives"][0]["material_decomposition"] = {
+                "state": "decomposed", "choice_ids": [f"{shape}-public-representation"]
+            }
+        mutate_mcp_call(fixture, "work", "engineering_choice_discovery", open_subchoice)
+        observed = real_session_evidence(fixture, kind="small-python", cycle=2, repository_revision=revision)
+        if observed["checks"]["pre_write_materiality_work_authority"] != "failed":
+            raise AssertionError(f"open subordinate material choice qualified: {shape}")
+        decomposition_qualification[shape] = "rejected_open_subchoice"
+
     authority_scenarios = (
         (
             "candidate-expiry-cleanup-trigger",
@@ -21079,6 +21125,7 @@ def self_test() -> int:
         "late_scope_expansion_rejected": "passed",
         "canonical_materiality_result_work_and_resume": "passed",
         "canonical_result_behavior_truth_table": canonical_result_truth_table,
+        "material_decomposition_qualification": decomposition_qualification,
         "canonical_coupled_artifacts_without_caller_sorting": "passed",
         "malformed_or_missing_canonical_artifact_evidence_rejected": "passed",
         "malformed_inspect_cannot_fall_back_to_earlier_scope": "passed",
