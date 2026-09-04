@@ -8,9 +8,9 @@ use volicord_context::{
     LocalBinding, OperationId, Project, SourceId, VerificationState, WorkState,
 };
 use volicord_inquiry::{
-    CandidateFreshness, CandidateId, EngineeringChoice, LearningDeliberationState,
-    LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningValueRevisionRequest, MaterialityDimension,
+    BehavioralContextBasis, CandidateFreshness, CandidateId, EngineeringChoice,
+    LearningDeliberationState, LearningInitialResponse, LearningParticipation,
+    LearningRecommendation, LearningValueRevisionRequest, MaterialityDimension,
 };
 use volicord_local_platform::{
     ProcessCompletion, ProcessStopTrigger, ProcessStreamArtifact, ProcessTermination,
@@ -257,6 +257,7 @@ pub struct MaterialityReviewDraft {
     pub session: String,
     pub source_operation: String,
     pub rationale: String,
+    pub behavioral_context_basis: BehavioralContextBasis,
     pub learning_participation: LearningParticipation,
     pub engineering_choice_discovery_candidate_id: CandidateId,
     pub dimensions: Vec<MaterialityDimension>,

@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 16;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 17;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1492,6 +1492,24 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
 
 fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> {
     validate_text("Materiality Review rationale", &review.rationale)?;
+    validate_text(
+        "behavioral Context completeness rationale",
+        &review.behavioral_context_basis.completeness_rationale,
+    )?;
+    if review.behavioral_context_basis.context_item_ids.len() > MAX_LIST_ITEMS
+        || review
+            .behavioral_context_basis
+            .context_item_ids
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != review.behavioral_context_basis.context_item_ids.len()
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "behavioral Context basis must contain a bounded unique set of Context identities",
+        ));
+    }
     if let crate::LearningParticipation::Active {
         verbatim_statement, ..
     } = &review.learning_participation
@@ -2096,6 +2114,37 @@ fn validate_review_against_canonical(
         .filter(|basis| basis.freshness == volicord_context::SourceFreshness::Current)
         .map(|basis| basis.source.id)
         .collect::<BTreeSet<_>>();
+    let mut behavior_context = Vec::new();
+    for context_id in &review.behavioral_context_basis.context_item_ids {
+        let item = canonical
+            .context_items
+            .iter()
+            .find(|item| item.id == *context_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "behavioral Context basis contains an unknown Context identity",
+                )
+            })?;
+        if !matches!(
+            item.role,
+            volicord_context::ContextItemRole::Learning
+                | volicord_context::ContextItemRole::Preference
+                | volicord_context::ContextItemRole::Constraint
+        ) || item.provenance_role != volicord_context::StatementProvenanceRole::UserStatement
+            || item.author.kind != volicord_context::PrincipalKind::User
+            || item.source_basis.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "behavioral Context basis accepts only user-stated Learning, Preference, or Constraint Context",
+            ));
+        }
+        for source_id in &item.source_basis {
+            validate_current_host_user_source(canonical, *source_id)?;
+        }
+        behavior_context.push(item);
+    }
     if review.dimensions.iter().any(|dimension| {
         dimension
             .basis
@@ -2161,6 +2210,18 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "learning participation must preserve the explicit user statement verbatim",
+            ));
+        }
+        if !behavior_context.iter().any(|item| {
+            matches!(
+                item.role,
+                volicord_context::ContextItemRole::Learning
+                    | volicord_context::ContextItemRole::Preference
+            ) && item.statement == verbatim_statement.as_str()
+        }) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "active learning participation must bind its exact durable Learning or Preference Context",
             ));
         }
     }

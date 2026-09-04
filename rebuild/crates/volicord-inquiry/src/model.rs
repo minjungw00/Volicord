@@ -405,6 +405,12 @@ pub enum LearningParticipation {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BehavioralContextBasis {
+    pub context_item_ids: Vec<ContextItemId>,
+    pub completeness_rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum LearningValueAssessment {
     Routine {
         rationale: String,
@@ -477,6 +483,7 @@ pub struct MaterialityReview {
     pub current_review_analysis_snapshot_id: AnalysisSnapshotId,
     pub first_review_preceded_meaningful_mutation: bool,
     pub rationale: String,
+    pub behavioral_context_basis: BehavioralContextBasis,
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
     pub executable_work_scope: Option<ExecutableWorkScopeBinding>,

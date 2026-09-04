@@ -1273,12 +1273,12 @@ def load_definition() -> dict[str, Any]:
         != (
             "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
             "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-            "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; unused Goal records remain bounded diagnostics",
+            "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; bind every behaviorally consequential non-Goal item used by Materiality to its canonical Context identity, and keep unused Goal records as bounded diagnostics",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-            "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions and record each explicit current-host user Decision",
+            "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
             "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
             "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
@@ -1381,6 +1381,7 @@ def load_definition() -> dict[str, Any]:
             "promoted",
             "current_revision_available",
             "inquiry_frontier_presented",
+            "exact_presentation_receipt_bound",
             "current_host_response_matched",
             "decision_recorded",
             "post_decision_materiality_resolved_before_affected_work",
@@ -4680,6 +4681,7 @@ def decision_facts(
             and nonempty_string(question_id)
             and isinstance(revision, int)
             and revision >= 1
+            and nonempty_string(call.arguments.get("presentation_receipt_id"))
             and nonempty_string(user_text)
             and codex_user_turn_transport_identity_matches(turn.text, user_text)
             and nonempty_string(source_id)
@@ -6020,6 +6022,7 @@ def materiality_review_facts(
             "project_id",
             "engineering_choice_discovery_candidate_id",
             "rationale",
+            "behavioral_context_basis",
             "learning_participation",
             "judgments",
         }
@@ -6035,6 +6038,16 @@ def materiality_review_facts(
         and bool(relevant_ids)
         and discovery_ok
         and participation_ok
+        and isinstance(record.arguments.get("behavioral_context_basis"), dict)
+        and isinstance(
+            record.arguments["behavioral_context_basis"].get("context_item_ids"),
+            list,
+        )
+        and nonempty_string(
+            record.arguments["behavioral_context_basis"].get(
+                "completeness_rationale"
+            )
+        )
         and all(
             dimension["learning_value"]["state"] == "routine"
             or (
@@ -6251,6 +6264,9 @@ def materiality_review_facts(
         ),
         "resumed": resumed,
         "pre_work_readiness": readiness_basis,
+        "behavioral_context_basis": record.arguments.get(
+            "behavioral_context_basis"
+        ),
         "learning_participation": learning_participation,
         "engineering_choice_discovery": discovery_basis,
     }
@@ -6570,6 +6586,25 @@ def question_review_facts(
         )
     ]
     frontier_call = frontier_calls[0] if len(frontier_calls) == 1 else None
+    presented_question = (
+        next(
+            (
+                presented
+                for presented in frontier_call.result.get("questions", [])
+                if isinstance(presented, dict)
+                and presented.get("identity") == question_id
+                and presented.get("revision") == question_revision
+            ),
+            None,
+        )
+        if frontier_call is not None
+        else None
+    )
+    presentation_receipt_id = (
+        presented_question.get("presentation_receipt_id")
+        if isinstance(presented_question, dict)
+        else None
+    )
     candidate_calls = work.successful_calls("candidate_manage")
     submit_calls = [
         call
@@ -6675,11 +6710,24 @@ def question_review_facts(
         and promote_call is not None
         and promote_call.completion_sequence < frontier_call.sequence
     )
-    current_host_response_matched = bool(
+    exact_presentation_receipt_bound = bool(
         decision_call is not None
+        and nonempty_string(decision_call.arguments.get("presentation_receipt_id"))
         and decision_evidence is not None
         and decision_evidence.get("question_id") == question_id
         and decision_evidence.get("question_revision") == question_revision
+    )
+    current_host_response_matched = bool(
+        exact_presentation_receipt_bound
+        and (
+            frontier_call is None
+            or (
+                frontier_call.completion_sequence < decision_call.sequence
+                and nonempty_string(presentation_receipt_id)
+                and decision_call.arguments.get("presentation_receipt_id")
+                == presentation_receipt_id
+            )
+        )
         and promote_call is not None
         and promote_call.completion_sequence < decision_call.sequence
     )
@@ -6720,6 +6768,7 @@ def question_review_facts(
             "promoted": promoted,
             "current_revision_available": current_revision_available,
             "inquiry_frontier_presented": frontier_presented,
+            "exact_presentation_receipt_bound": exact_presentation_receipt_bound,
             "current_host_response_matched": current_host_response_matched,
             "decision_recorded": decision_recorded,
         },
@@ -9821,6 +9870,7 @@ def real_session_fixture(
     resume_discovery_candidate = "1d" * 16
     learning_candidate = "1e" * 16
     learning_response_source = "1f" * 16
+    presentation_receipt = "20" * 16
     materiality_dimension_id = "operator-error-boundary"
     secondary_materiality_dimension_id = "repository-shape-boundary"
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
@@ -10446,6 +10496,10 @@ def real_session_fixture(
                 "project_id": project,
                 "engineering_choice_discovery_candidate_id": discovery_candidate,
                 "rationale": "Classify independently material outcomes before affected work.",
+                "behavioral_context_basis": {
+                    "context_item_ids": [],
+                    "completeness_rationale": "No separate behaviorally consequential non-Goal Context is used by this fixture.",
+                },
                 "learning_participation": (
                     {
                         "state": "active",
@@ -10639,6 +10693,7 @@ def real_session_fixture(
                     {
                         "identity": question,
                         "revision": 1,
+                        "presentation_receipt_id": presentation_receipt,
                         "prompt": question_prompt,
                     }
                 ],
@@ -10656,6 +10711,7 @@ def real_session_fixture(
                 "project_id": project,
                 "question_id": question,
                 "question_revision": 1,
+                "presentation_receipt_id": presentation_receipt,
                 "alternative_key": "concise",
                 "user_turn": decision_turn_text,
             },
@@ -11170,6 +11226,10 @@ def real_session_fixture(
                 "project_id": project,
                 "engineering_choice_discovery_candidate_id": resume_discovery_candidate,
                 "rationale": "Recompute current work authority after Recall and a fresh baseline.",
+                "behavioral_context_basis": {
+                    "context_item_ids": [],
+                    "completeness_rationale": "No separate behaviorally consequential non-Goal Context is used by this fixture.",
+                },
                 "learning_participation": (
                     {
                         "state": "active",
@@ -15411,6 +15471,7 @@ def self_test() -> int:
         second_candidate_id = "21" * 16
         second_question_id = "22" * 16
         second_decision_id = "23" * 16
+        second_presentation_receipt_id = "24" * 16
         primary_dimension_id = "operator-error-boundary"
         second_dimension_id = "repository-shape-boundary"
         second_prompt = "Which repository-shape boundary should this change preserve?"
@@ -15510,6 +15571,7 @@ def self_test() -> int:
             lambda output: output["questions"].append({
                 "identity": second_question_id,
                 "revision": 1,
+                "presentation_receipt_id": second_presentation_receipt_id,
                 "prompt": second_prompt,
             }),
         )
@@ -15522,6 +15584,7 @@ def self_test() -> int:
                 "project_id": project_id,
                 "question_id": second_question_id,
                 "question_revision": 1,
+                "presentation_receipt_id": second_presentation_receipt_id,
                 "alternative_key": "bounded",
                 "user_turn": response_text,
             },
@@ -15991,6 +16054,22 @@ def self_test() -> int:
             "recall-call",
             lambda output: output["checkpoint"].update({"goal": goal_statement}),
         )
+        for capture_name in ("work", "resume"):
+            mutate_mcp_call_action(
+                fixture,
+                capture_name,
+                "materiality_review",
+                "record",
+                lambda arguments: arguments.update({
+                    "behavioral_context_basis": {
+                        "context_item_ids": ["25" * 16, "26" * 16],
+                        "completeness_rationale": (
+                            "The bounded Learning and Constraint Context completely cover "
+                            "the non-Goal behavior used by this review."
+                        ),
+                    }
+                }),
+            )
         return fixture
 
     decomposed_context = decomposed_learning_context_fixture()
@@ -16011,6 +16090,11 @@ def self_test() -> int:
         or decomposed_basis.get("all_statements_bounded_verbatim") is not True
         or set(decomposed_context_result.get("recalled_context_ids", []))
         != {"08" * 16, "25" * 16, "26" * 16}
+        or decomposed_context_result["inquiry_behavior_basis"]
+        ["materiality_review_basis"]
+        .get("behavioral_context_basis", {})
+        .get("context_item_ids")
+        != ["25" * 16, "26" * 16]
     ):
         raise AssertionError(
             "bounded Goal/preference/constraint decomposition was rejected: "
@@ -16843,6 +16927,7 @@ def self_test() -> int:
             "promoted": True,
             "current_revision_available": True,
             "inquiry_frontier_presented": False,
+            "exact_presentation_receipt_bound": True,
             "current_host_response_matched": True,
             "decision_recorded": True,
             "post_decision_materiality_resolved_before_affected_work": True,

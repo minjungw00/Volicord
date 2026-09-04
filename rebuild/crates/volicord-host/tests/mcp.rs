@@ -593,6 +593,15 @@ fn draft_request(
         .expect("prefilled request fields")
         .clone();
     request.insert("rationale".into(), json!(rationale));
+    if request.get("action").and_then(Value::as_str) == Some("record") {
+        request.insert(
+            "behavioral_context_basis".into(),
+            json!({
+                "context_item_ids":[],
+                "completeness_rationale":"this fixture has no consequential non-Goal Context"
+            }),
+        );
+    }
     request.insert("learning_participation".into(), learning_participation);
     request.insert("judgments".into(), Value::Array(judgments));
     Value::Object(request)
@@ -673,6 +682,9 @@ fn record_host_question_decision(
         .find(|question| question["identity"] == question_id)
         .expect("displayed Question");
     let revision = displayed["revision"].as_u64().expect("Question revision");
+    let presentation_receipt_id = displayed["presentation_receipt_id"]
+        .as_str()
+        .expect("presentation receipt");
     if delegation {
         let turn = "I delegate this displayed bounded choice to the implementation owner";
         let source = adapter
@@ -726,6 +738,7 @@ fn record_host_question_decision(
                 "project_id":project,
                 "question_id":question_id,
                 "question_revision":revision,
+                "presentation_receipt_id":presentation_receipt_id,
                 "alternative_key":"first",
                 "user_turn":"Use the first displayed bounded approach"
             }),
@@ -907,6 +920,9 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let revision = frontier["questions"][0]["revision"]
         .as_u64()
         .expect("Question revision");
+    let presentation_receipt_id = frontier["questions"][0]["presentation_receipt_id"]
+        .as_str()
+        .expect("presentation receipt");
 
     let decision = call(
         &mut adapter,
@@ -915,6 +931,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "project_id":project,
             "question_id":question_id,
             "question_revision":revision,
+            "presentation_receipt_id":presentation_receipt_id,
             "alternative_key":"structured",
             "user_turn":"Use the structured error",
         }),
@@ -1637,7 +1654,7 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
         ))
         .clone();
         assert!(
-            draft["authority_decision_checklist"]["remaining_alternatives_rule"]
+            draft["authority_decision_checklist"]["alternative_accounting_rule"]
                 .as_str()
                 .is_some_and(|rule| rule.contains("constrained rather than settled"))
         );
@@ -2534,11 +2551,23 @@ fn aggregate_schema_diagnostic_reports_independent_discovery_problems() {
 #[test]
 fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
     let (_temporary, mut adapter, project) = setup();
-    let user_turn = "Teach me meaningful architecture and flow choices, but do not interrupt me for routine wording or test synchronization details";
+    let user_turn = "Improve the parser. Teach me meaningful architecture and flow choices, but do not interrupt me for routine wording or test synchronization details";
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":user_turn,"role":"goal","statement":user_turn}),
+        json!({"project_id":project,"user_turn":user_turn,"role":"goal","statement":"Improve the parser"}),
+    ))
+    .clone();
+    let learning = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":user_turn,"role":"learning","statement":"Teach me meaningful architecture and flow choices"}),
+    ))
+    .clone();
+    let constraint = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,"user_turn":user_turn,"role":"constraint","statement":"do not interrupt me for routine wording or test synchronization details"}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -2585,7 +2614,8 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
             "project_id":project,
             "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
             "rationale":"The wording and test synchronization detail is agent-owned and routine within the user's explicit non-interruption boundary.",
-            "learning_participation":{"state":"active","user_turn_source_id":goal["source_id"],"verbatim_statement":user_turn},
+            "behavioral_context_basis":{"context_item_ids":[learning["context_item_id"],constraint["context_item_id"]],"completeness_rationale":"The bounded Learning and non-interruption Constraint are the only non-Goal statements that affect this review."},
+            "learning_participation":{"state":"active","user_turn_source_id":learning["source_id"],"verbatim_statement":"Teach me meaningful architecture and flow choices"},
             "judgments":[{
                 "choice_id":"diagnostic-test-wording",
                 "disposition":"agent_owned_implementation_choice",
@@ -2613,6 +2643,16 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
         json!({"project_id":project}),
     ))
     .clone();
+    let materiality = inspected["candidates"]
+        .as_array()
+        .expect("Candidate array")
+        .iter()
+        .find_map(|candidate| candidate["materiality_review"].as_object())
+        .expect("Materiality Review inspection");
+    assert_eq!(
+        materiality["behavioral_context_basis"]["context_item_ids"],
+        json!([learning["context_item_id"], constraint["context_item_id"]])
+    );
     assert!(!inspected["candidates"]
         .as_array()
         .expect("Candidate array")
@@ -3443,8 +3483,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["project_initialize"].contains("preserve it exactly"));
     assert!(descriptions["recall"].contains("Recall must succeed before repository inspection"));
     assert!(descriptions["inquiry_frontier"].contains("candidate_manage"));
-    assert!(descriptions["inquiry_frontier"].contains("present each actual alternative"));
-    assert!(descriptions["decision_record"].contains("not a user Decision"));
+    assert!(descriptions["inquiry_frontier"].contains("presentation_receipt_id"));
+    assert!(descriptions["decision_record"].contains("not presentation evidence"));
     assert!(descriptions["candidate_manage"].contains("submit a Candidate"));
     assert!(descriptions["candidate_manage"].contains("attach source-grounded repository research"));
     assert!(descriptions["candidate_manage"].contains("mark sufficient research ready"));
@@ -3458,9 +3498,8 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(
         descriptions["materiality_review"].contains("may constrain alternatives without settling")
     );
-    assert!(
-        descriptions["materiality_review"].contains("remaining after that authority is applied")
-    );
+    assert!(descriptions["materiality_review"]
+        .contains("account exactly once for every discovered alternative"));
     assert!(descriptions["context_record"].contains("caller-reported"));
     assert!(descriptions["context_record"].contains("does not authenticate"));
     assert!(descriptions["context_record"].contains("One turn may require repeated calls"));
@@ -4653,6 +4692,16 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         .value;
     drop(store);
 
+    let frontier = structured(&call(
+        &mut adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let presentation_receipt_id = frontier["questions"][0]["presentation_receipt_id"]
+        .as_str()
+        .expect("presentation receipt");
+
     let decision = structured(&call(
         &mut adapter,
         "decision_record",
@@ -4660,6 +4709,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "project_id": project,
             "question_id": question.id.to_string(),
             "question_revision": question.revision,
+            "presentation_receipt_id": presentation_receipt_id,
             "alternative_key": "local",
             "user_turn": "Use the local storage boundary",
             "user_rationale": "Canonical project memory remains local"
@@ -4785,6 +4835,11 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             session: "mcp-checkpoint-fixture".into(),
             source_operation: "pre-work-review".into(),
             rationale: "the host fixture follows its accepted grounded-checkpoint contract".into(),
+            behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+                context_item_ids: Vec::new(),
+                completeness_rationale: "this fixture uses no consequential non-Goal Context"
+                    .into(),
+            },
             learning_participation: volicord_operations::LearningParticipation::Inactive,
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions: vec![MaterialityDimension {
@@ -5602,6 +5657,7 @@ fn supported_candidate_research_is_source_grounded_and_separate_from_promotion_a
             "project_id":project,
             "question_id":promoted["question_id"],
             "question_revision":frontier["questions"][0]["revision"],
+            "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
             "user_turn":"Choose the local repository policy",
             "user_rationale":"Keep this Project local-first"
@@ -5722,6 +5778,22 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
         .as_str()
         .expect("promoted Question identity")
         .to_owned();
+    let fabricated = call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project,
+            "question_id":question_id,
+            "question_revision":1,
+            "presentation_receipt_id":"00000000000000000000000000000000",
+            "alternative_key":"local",
+            "user_turn":"Choose the local Candidate alternative"
+        }),
+    );
+    assert_eq!(fabricated["result"]["isError"], true, "{fabricated}");
+    assert!(structured(&fabricated)["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("did not present")));
     let frontier = structured(&call(
         &mut adapter,
         "inquiry_frontier",
@@ -5745,6 +5817,7 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
             "question_revision":frontier["questions"][0]["revision"]
                 .as_u64()
                 .expect("Question revision") + 1,
+            "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
             "user_turn":"Choose the local Candidate alternative"
         }),
@@ -5770,6 +5843,7 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
             "project_id":project,
             "question_id":question_id,
             "question_revision":frontier["questions"][0]["revision"],
+            "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
             "user_turn":"Choose the local Candidate alternative",
             "user_rationale":"Keep canonical state local"
@@ -5932,7 +6006,55 @@ fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt:
     })
 }
 
-fn call(adapter: &mut HostAdapter, name: &str, arguments: Value) -> Value {
+fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
+    if name == "materiality_review"
+        && arguments.get("action").and_then(Value::as_str) == Some("record")
+        && arguments.get("behavioral_context_basis").is_none()
+    {
+        let participation = arguments.get("learning_participation");
+        let context_item_ids = if participation
+            .and_then(|value| value.get("state"))
+            .and_then(Value::as_str)
+            == Some("active")
+        {
+            let statement = participation
+                .and_then(|value| value.get("verbatim_statement"))
+                .and_then(Value::as_str)
+                .expect("active test learning statement")
+                .to_owned();
+            let project_id = parse_project(
+                arguments
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .expect("Materiality Review test Project"),
+            );
+            vec![adapter
+                .operations()
+                .record_current_host_user_context(
+                    project_id,
+                    "codex".into(),
+                    "mcp-test-behavior-context".into(),
+                    statement.clone(),
+                    volicord_context::ContextItemRole::Learning,
+                    statement,
+                )
+                .expect("record test Learning Context")
+                .context_item_id
+                .to_string()]
+        } else {
+            Vec::new()
+        };
+        arguments
+            .as_object_mut()
+            .expect("tool arguments object")
+            .insert(
+                "behavioral_context_basis".into(),
+                json!({
+                    "context_item_ids":context_item_ids,
+                    "completeness_rationale":"all behaviorally consequential non-Goal Context is bound for this test"
+                }),
+            );
+    }
     adapter.handle(json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":name,"arguments":arguments}})).expect("tool response")
 }
 
@@ -6105,6 +6227,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "engineering_choice_discovery_candidate_id",
                     "rationale",
+                    "behavioral_context_basis",
                     "learning_participation",
                     "judgments",
                 ],
@@ -6113,6 +6236,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "project_id",
                     "engineering_choice_discovery_candidate_id",
                     "rationale",
+                    "behavioral_context_basis",
                     "learning_participation",
                     "judgments",
                 ],
@@ -6343,6 +6467,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "project_id",
                 "question_id",
                 "question_revision",
+                "presentation_receipt_id",
                 "alternative_key",
                 "user_turn",
                 "user_rationale",
@@ -6351,6 +6476,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "project_id",
                 "question_id",
                 "question_revision",
+                "presentation_receipt_id",
                 "alternative_key",
                 "user_turn",
             ],

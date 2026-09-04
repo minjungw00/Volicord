@@ -936,6 +936,24 @@ fn record_review_with_learning(
             material_boundary_review,
         },
     )?;
+    let behavioral_context_ids = match &learning_participation {
+        LearningParticipation::Active {
+            verbatim_statement, ..
+        } => vec![
+            fixture
+                .operations
+                .record_current_host_user_context(
+                    fixture.project_id,
+                    "codex".into(),
+                    "work-authority-session".into(),
+                    verbatim_statement.clone(),
+                    volicord_context::ContextItemRole::Learning,
+                    verbatim_statement.clone(),
+                )?
+                .context_item_id,
+        ],
+        LearningParticipation::Inactive => Vec::new(),
+    };
     fixture
         .operations
         .record_materiality_review(MaterialityReviewDraft {
@@ -946,6 +964,11 @@ fn record_review_with_learning(
             source_operation: "pre-work-review".to_owned(),
             rationale: "review every independently material outcome before ordinary work"
                 .to_owned(),
+            behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+                context_item_ids: behavioral_context_ids,
+                completeness_rationale:
+                    "all behaviorally relevant non-Goal Context is bound for this fixture".into(),
+            },
             learning_participation,
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions,

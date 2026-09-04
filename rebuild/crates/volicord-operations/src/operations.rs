@@ -1012,6 +1012,15 @@ impl LocalOperations {
             .find(|item| item.id == draft.goal_context_id)
             .ok_or_else(|| Error::new("Materiality Review Goal Context was not found"))?;
         let mut source_basis = goal.source_basis.clone();
+        for context_id in &draft.behavioral_context_basis.context_item_ids {
+            if let Some(item) = canonical
+                .context_items
+                .iter()
+                .find(|item| item.id == *context_id)
+            {
+                source_basis.extend(item.source_basis.iter().copied());
+            }
+        }
         source_basis.push(baseline.repository_source.identity());
         source_basis.push(current.repository_source.identity());
         for dimension in &draft.dimensions {
@@ -1073,6 +1082,7 @@ impl LocalOperations {
                     current_review_analysis_snapshot_id: current.identity,
                     first_review_preceded_meaningful_mutation: false,
                     rationale: draft.rationale,
+                    behavioral_context_basis: draft.behavioral_context_basis,
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
                     executable_work_scope: None,

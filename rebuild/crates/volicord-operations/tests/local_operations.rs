@@ -393,6 +393,10 @@ fn record_ready_review(
         session: "grounded-checkpoint-fixture".into(),
         source_operation: "pre-work-review".into(),
         rationale: "repository-scoped fixture has no unresolved user-owned outcome".into(),
+        behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+            context_item_ids: Vec::new(),
+            completeness_rationale: "this fixture uses no consequential non-Goal Context".into(),
+        },
         learning_participation: volicord_operations::LearningParticipation::Inactive,
         engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
         dimensions: vec![MaterialityDimension {

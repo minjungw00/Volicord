@@ -478,6 +478,14 @@
         "participation_scope_alignment"
       ],
       "learning_participation_preserves_complete_current_goal_scope": true,
+      "behavioral_context_basis": {
+        "identity_type": "canonical_context_item_id",
+        "allowed_roles": ["learning", "preference", "constraint"],
+        "active_learning_requires_matching_durable_context": true,
+        "current_host_source_required": true,
+        "completeness_rationale_required": true,
+        "goal_is_not_a_behavioral_context_substitute": true
+      },
       "learning_deliberation_is_canonical_decision": false,
       "learning_response_precedes_feedback": true,
       "completed_learning_recall_required": true,
@@ -589,12 +597,12 @@
     "work_session_contract": [
       "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
       "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-      "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; unused Goal records remain bounded diagnostics",
+      "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; bind every behaviorally consequential non-Goal item used by Materiality to its canonical Context identity, and keep unused Goal records as bounded diagnostics",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-      "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions and record each explicit current-host user Decision",
+      "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
       "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
       "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
       "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
@@ -638,6 +646,7 @@
       "promoted",
       "current_revision_available",
       "inquiry_frontier_presented",
+      "exact_presentation_receipt_bound",
       "current_host_response_matched",
       "decision_recorded",
       "post_decision_materiality_resolved_before_affected_work"

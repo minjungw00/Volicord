@@ -263,9 +263,11 @@ meaning을 다시 파생한다. 따라서 old full-dimension echo와 simplified 
 지원하지 않는다.
 
 각 disposition schema는 closed variant이며 required/forbidden field를 machine-readable하게
-노출한다. Repository fact와 settled authority는 exact covered outcome, authority 적용 뒤 남은
-credible alternative 목록과 unique-outcome rationale를 요구한다. 남은 목록은 비어 있어야 하며
-관련성이나 제약만 보이는 source를 unique selection으로 승격할 수 없다. Repository fact는
+노출한다. Repository fact와 settled authority는 exact covered outcome, discovery identity에 연결된
+complete alternative accounting과 unique-outcome rationale를 요구한다. Choice마다 하나의 selected
+alternative와 exact fact/contract/Decision에 의해 제거된 나머지를 기록해야 하며 unresolved가
+남으면 settling authority가 아니다. 관련성이나 제약만 보이는 source를 unique selection으로
+승격할 수 없다. Repository fact는
 mechanically observed fact basis만 허용하고 contract, Decision, delegation, recommendation,
 convention 또는 preference를 fact로 relabel하지 않는다. Settled authority는 accepted contract
 basis, applicable Decision identity 또는 둘 다를 요구한다. Agent-owned choice는 exact-authority
@@ -392,9 +394,13 @@ inspection/verification할 뿐 bounded work가 계속되지 않으면 Discovery�
 
 Materiality Review는 bounded work/session에 `inactive` 또는 `active` learning participation을
 보존한다. Active는 exact current-host user-turn Source와 그 turn에 포함된 non-empty verbatim
-statement가 필요하다. Proficiency, behavior, conversation style, prior choice나 explanation depth로
-추론하지 않는다. Review revision은 state를 바꿀 수 있지만 Project/Goal/baseline 밖의 영구
-preference로 승격하지 않는다.
+statement가 필요하고, 그 statement와 일치하는 canonical Learning 또는 Preference Context identity를
+Review의 behavioral Context basis에 함께 bind한다. Authority, Question behavior, learning interruption
+또는 bounded work를 바꾸는 Constraint도 같은 basis에 포함한다. Basis는 exact Context identity들과
+completeness rationale를 보존하며 Goal role은 받을 수 없다. 따라서 한 turn의 전체 text를 두 번째
+broad Goal로 복제해 Learning/Preference/Constraint 의미를 보존하는 것은 supported decomposition이
+아니다. Proficiency, behavior, conversation style, prior choice나 explanation depth로 추론하지 않는다.
+Review revision은 state를 바꿀 수 있지만 Project/Goal/baseline 밖의 영구 preference로 승격하지 않는다.
 
 각 discovered dimension은 authority와 별도로 `routine` 또는 `deliberation-worthy` learning value를
 가진다. Deliberation-worthy는 consequence significance, future engineering problem에 대한
@@ -493,6 +499,14 @@ Frontier의 각 Question은 최소 다음을 함께 표시한다.
 - 선택 외의 가능한 disposition: delegation, research, prototype, deferment 또는
   out-of-scope
 
+Current host adapter는 실제 Frontier 결과를 표시할 때 Question identity/revision, exact alternative
+keys와 recommendation, Project와 host session을 묶은 opaque session-local presentation receipt를
+만든다. 이 receipt는 canonical Question/Decision state가 아니며 Frontier의 read semantics를 바꾸지
+않는다. Current-host response path는 caller가 다시 조립한 displayed basis가 아니라 이 receipt를
+요구한다. Receipt가 없거나 다른 Question/Project/revision에 쓰였거나 canonical Question이 그 뒤
+stale, superseded 또는 terminal이 되면 Decision transition은 실패한다. Frontier batch의 각 Question은
+독립 receipt를 가지며 한 user turn이 여러 Question에 답하는 기존 batch semantics는 유지한다.
+
 `Agent Recommendation`은 Question revision에 연결된 agent-authored basis이며 user
 choice와 별개다. Displayed alternative와 recommendation이 바뀌면 response가 참조할
 revision도 바뀐다. Recommendation batch adoption은 각 Question identity/revision과
@@ -525,6 +539,8 @@ terminal disposition에 mapping하는 bounded inquiry meaning이다. 새 core en
 User response가 canonical `Decision`을 만들려면 다음을 모두 만족한다.
 
 - exact current-host User Response Source가 존재함
+- 같은 host session의 maintained Inquiry presentation receipt가 exact Question revision과 displayed
+  alternative/recommendation basis를 증명함
 - Source가 exact current Question identity와 displayed revision을 가리킴
 - Question이 아직 response를 받을 수 있고 Project/scope가 일치함
 - explicit choice 또는 explicit delegation을 모호하지 않게 mapping할 수 있음

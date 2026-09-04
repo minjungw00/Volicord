@@ -1320,6 +1320,7 @@ def rehearse_target(
                 "project_id": project_id,
                 "question_id": question_id,
                 "question_revision": displayed.get("revision") if displayed else 0,
+                "presentation_receipt_id": displayed.get("presentation_receipt_id") if displayed else "",
                 "alternative_key": "local",
                 "user_turn": "Choose the local Project context boundary",
                 "user_rationale": "Keep canonical Project context local and authorize providers separately",
