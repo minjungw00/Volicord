@@ -1458,14 +1458,6 @@ def rehearse_target(
                 "project_id": project_id,
                 "review_candidate_id": review_candidate_id,
                 "rationale": "The explicit current-host Decision resolves the Project context boundary.",
-                "behavioral_context_basis": {
-                    "context_item_ids": behavioral_context_ids,
-                    "completeness_rationale": (
-                        "The separate Learning Context is the only behaviorally consequential non-Goal statement used by this review."
-                        if learning_active
-                        else "No behaviorally consequential non-Goal Context is used by this review."
-                    ),
-                },
                 "learning_participation": learning_participation,
                 "judgments": [
                     {
@@ -2734,7 +2726,6 @@ def assert_current_materiality_review_contract(source: str) -> None:
             "project_id",
             "review_candidate_id",
             "rationale",
-            "behavioral_context_basis",
             "learning_participation",
             "judgments",
         },
