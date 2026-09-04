@@ -2131,10 +2131,38 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         for checkpoint in checkpoints
     )
     recalled_checkpoint = recall.result.get("checkpoint")
-    executable_work_scope = harness.resume_executable_work_scope_observation(
-        capture,
-        recall,
-        first_write,
+    terminal_checkpoint = (
+        max(checkpoints, key=lambda call: call.sequence) if checkpoints else None
+    )
+    baseline_id = (
+        terminal_checkpoint.arguments.get("baseline_analysis_snapshot_id")
+        if terminal_checkpoint is not None
+        else None
+    )
+    goal_context_id = (
+        terminal_checkpoint.arguments.get("goal_context_id")
+        if terminal_checkpoint is not None
+        else None
+    )
+    review_ids = {
+        call.arguments.get("review_candidate_id")
+        for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "inspect"
+        and call.arguments.get("project_id") == project_id
+        and call.arguments.get("goal_context_id") == goal_context_id
+        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
+        and harness.nonempty_string(call.arguments.get("review_candidate_id"))
+    }
+    scope_chronology = (
+        harness.executable_scope_chronology(
+            capture,
+            project_id=project_id,
+            review_candidate_id=next(iter(review_ids)),
+            goal_context_id=goal_context_id,
+            baseline_analysis_snapshot_id=baseline_id,
+        )
+        if len(review_ids) == 1
+        else {"qualified": False, "executable_work_scope": None}
     )
     continuation = harness.resume_continuation_facts(
         capture,
@@ -2150,8 +2178,8 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
             else None
         ),
         common_identity_and_freshness_ok=(not checkpoints or change_baseline_ok),
-        change_baseline_ok=change_baseline_ok,
-        executable_work_scope=executable_work_scope,
+        change_baseline_ok=change_baseline_ok and scope_chronology["qualified"],
+        executable_work_scope=scope_chronology["executable_work_scope"],
         descriptor_scope_paths=descriptor.get("work_scope", {}).get(
             "affected_paths"
         ),
