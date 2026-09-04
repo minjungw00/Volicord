@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 14;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 15;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1555,6 +1555,68 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         }
         validate_list(&dimension.affected_scope)?;
         validate_list(&dimension.material_consequences)?;
+        validate_list(&dimension.ownership.materially_varying_outcomes)?;
+        validate_list(&dimension.ownership.user_owned_outcomes)?;
+        validate_text(
+            "material-outcome ownership rationale",
+            &dimension.ownership.rationale,
+        )?;
+        validate_id_list(&dimension.ownership.source_basis)?;
+        if dimension.ownership.materially_varying_outcomes.is_empty()
+            || dimension.ownership.source_basis.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "material-outcome ownership requires varying outcomes and Source evidence",
+            ));
+        }
+        if dimension.ownership.contains_user_owned_outcome {
+            if dimension.ownership.user_owned_outcomes.is_empty()
+                || dimension
+                    .ownership
+                    .bounded_implementation_discretion_rationale
+                    .is_some()
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "user-owned material outcomes must be named without claiming bounded implementation discretion",
+                ));
+            }
+        } else {
+            if !dimension.ownership.user_owned_outcomes.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "an agent-owned ownership assessment cannot list user-owned outcomes",
+                ));
+            }
+            validate_text(
+                "bounded implementation-discretion rationale",
+                dimension
+                    .ownership
+                    .bounded_implementation_discretion_rationale
+                    .as_deref()
+                    .unwrap_or_default(),
+            )?;
+        }
+        match dimension.disposition {
+            MaterialityDisposition::AgentOwnedImplementationChoice
+                if dimension.ownership.contains_user_owned_outcome =>
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "AgentOwnedImplementationChoice requires an explicitly agent-owned material-outcome assessment",
+                ));
+            }
+            MaterialityDisposition::UnresolvedUserOwnedOutcome { .. }
+                if !dimension.ownership.contains_user_owned_outcome =>
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "the user-owned disposition requires an ownership assessment naming the user-owned outcome",
+                ));
+            }
+            _ => {}
+        }
         validate_list(&dimension.basis.contract_basis)?;
         validate_list(&dimension.basis.research_basis)?;
         validate_id_list(&dimension.basis.source_basis)?;
@@ -1965,6 +2027,7 @@ fn validate_review_against_canonical(
             .basis
             .source_basis
             .iter()
+            .chain(dimension.ownership.source_basis.iter())
             .any(|source| !available.contains(source))
     }) {
         return Err(Error::new(

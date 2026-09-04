@@ -43,10 +43,10 @@ pub use model::{
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
     LearningValueAssessment, LearningValueRevision, LearningValueRevisionBasis,
     LearningValueRevisionRequest, MaterialBoundaryConclusion, MaterialBoundaryReview,
-    MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension, MaterialityDisposition,
-    MaterialityReview, MaterialityReviewRevision, MaterialityStatus, PromotionResult,
-    QuestionCandidate, QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome,
-    WorkAuthorityBasis, WorkAuthorityBasisKind,
+    MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal, MaterialityAssessment,
+    MaterialityDimension, MaterialityDisposition, MaterialityReview, MaterialityReviewRevision,
+    MaterialityStatus, PromotionResult, QuestionCandidate, QuestionPresentation,
+    RepositoryResearchBasis, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

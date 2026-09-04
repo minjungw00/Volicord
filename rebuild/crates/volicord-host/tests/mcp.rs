@@ -20,9 +20,9 @@ use volicord_inquiry::{
 use volicord_operations::{
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    LocalOperations, MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, RuntimeLayout, WorkAuthorityBasis,
-    WorkAuthorityBasisKind,
+    LocalOperations, MaterialBoundaryConclusion, MaterialBoundaryReview,
+    MaterialOutcomeOwnershipAssessment, MaterialityDimension, MaterialityDisposition,
+    MaterialityReviewDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
@@ -449,6 +449,41 @@ fn draft_judgment(
     result.entry("authority_counterfactual").or_insert_with(|| {
         json!("The exact outcome, Goal alternatives, and selecting authority or authority gap were evaluated for this fixture.")
     });
+    result
+        .entry("materially_varying_outcomes")
+        .or_insert_with(|| json!(["the bounded fixture outcome selected by the alternatives"]));
+    let contains_user_owned_outcome = !matches!(
+        variant_id,
+        "repository_or_environment_fact"
+            | "agent_owned_implementation_choice"
+            | "exploratory_uncertainty_research_required"
+            | "exploratory_uncertainty_prototype_required"
+            | "exploratory_uncertainty_deferred"
+            | "exploratory_uncertainty_resolved"
+    );
+    result
+        .entry("contains_user_owned_outcome")
+        .or_insert_with(|| json!(contains_user_owned_outcome));
+    result.entry("user_owned_outcomes").or_insert_with(|| {
+        if contains_user_owned_outcome {
+            json!(["the bounded user-owned fixture policy"])
+        } else {
+            json!([])
+        }
+    });
+    result
+        .entry("ownership_rationale")
+        .or_insert_with(|| json!("The fixture explicitly assesses who owns the varying outcome."));
+    if !contains_user_owned_outcome {
+        result
+            .entry("bounded_implementation_discretion_rationale")
+            .or_insert_with(|| {
+                json!("Every remaining alternative stays inside the settled fixture behavior.")
+            });
+    }
+    result.entry("ownership_source_ids").or_insert_with(|| {
+        json!(contract["server_derived_identities"]["current_goal_user_turn_source_ids"])
+    });
     for required in contract["required_fields"]
         .as_array()
         .expect("required judgment fields")
@@ -703,7 +738,12 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
                 "disposition":"unresolved_user_owned_outcome",
                 "learning_value":{"state":"deliberation_worthy","rationale":"Failure semantics are worth learning, but user authority takes priority.","consequence_significance":["Callers observe different failures"],"transferable_principles":["Error contracts are API contracts"],"non_obvious_trade_offs":["More diagnostic detail can expose implementation structure"],"interruption_counterfactual":"Without participation, the requested understanding of public error contracts would be lost.","participation_scope_alignment":"The Goal asks to learn through meaningful public behavior choices."},
                 "basis_summary":"No accepted authority selects the outcome",
-                "authority_counterfactual":"Failure behavior varies materially, the Goal permits multiple outcomes, and no exact authority selects among them."
+                "authority_counterfactual":"Failure behavior varies materially, the Goal permits multiple outcomes, and no exact authority selects among them.",
+                "materially_varying_outcomes":["the public failure contract and disclosure behavior"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["the public failure policy"],
+                "ownership_rationale":"callers observe materially different product behavior",
+                "ownership_source_ids":[repository_source_id]
             }]
         }),
     );
@@ -1429,6 +1469,11 @@ fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
                     "disposition":"unresolved_user_owned_outcome",
                     "basis_summary":"No exact authority selects among the materially different outcomes.",
                     "authority_counterfactual":"The Goal can be satisfied by multiple materially different outcomes; no repository fact, accepted contract, applicable Decision, or exact explicit delegation selects among them, so this remains user-owned.",
+                    "materially_varying_outcomes":["the public behavior selected by the credible alternatives"],
+                    "contains_user_owned_outcome":true,
+                    "user_owned_outcomes":["the public product policy and its compatibility lifetime"],
+                    "ownership_rationale":"the credible alternatives change behavior owned by the user rather than private implementation mechanics",
+                    "ownership_source_ids":[analyzed["repository_source_id"]],
                     "learning_value":{"state":"routine","rationale":"Authority routing is independent of learning participation."}
                 }]
             }),
@@ -1806,6 +1851,7 @@ fn materiality_validation_reports_exact_correction_context() {
         json!({"project_id":project}),
     ))
     .clone();
+    let current_source_id = analyzed["repository_source_id"].clone();
     let discovery_id = record_fixture_discovery(
         &adapter,
         &project,
@@ -1940,6 +1986,12 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"invalid choice",
                 "authority_counterfactual":"This invalid identity cannot be evaluated against the discovered material outcome.",
+                "materially_varying_outcomes":["the bounded fixture outcome"],
+                "contains_user_owned_outcome":false,
+                "user_owned_outcomes":[],
+                "ownership_rationale":"the invalid fixture claims bounded implementation ownership",
+                "bounded_implementation_discretion_rationale":"all alternatives preserve settled behavior",
+                "ownership_source_ids":[current_source_id],
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
         }),
@@ -1973,6 +2025,11 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"settled_authority",
                 "basis_summary":"The claimed Decision does not exist in the current Project.",
                 "authority_counterfactual":"The claimed exact authority is invalid and therefore cannot select the outcome.",
+                "materially_varying_outcomes":["the bounded fixture outcome"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["the bounded fixture policy"],
+                "ownership_rationale":"the alternatives change user-owned product policy",
+                "ownership_source_ids":[current_source_id],
                 "authority_coverage":"The complete bounded choice.",
                 "remaining_credible_alternatives":[],
                 "unique_outcome_rationale":"The claimed Decision would select one outcome if it were applicable.",
@@ -2128,6 +2185,12 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"No user-owned outcome changes; implementation authority remains with the agent.",
                 "authority_counterfactual":"The alternatives vary an internal consistency mechanism, not a user-owned material policy.",
+                "materially_varying_outcomes":["the private cache invalidation mechanism"],
+                "contains_user_owned_outcome":false,
+                "user_owned_outcomes":[],
+                "ownership_rationale":"all alternatives preserve the settled observable cache behavior",
+                "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"],"interruption_counterfactual":"Without participation, the requested understanding of consistency ownership would be lost.","participation_scope_alignment":"The Goal explicitly requests learning through meaningful technical boundaries."}
             }]
         }),
@@ -2167,6 +2230,12 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"The implementation authority remains agent-owned.",
                 "authority_counterfactual":"The internal mechanism remains materially equivalent from the user's product-policy perspective.",
+                "materially_varying_outcomes":["the private cache invalidation mechanism"],
+                "contains_user_owned_outcome":false,
+                "user_owned_outcomes":[],
+                "ownership_rationale":"all alternatives preserve the settled observable cache behavior",
+                "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "learning_value":{"state":"routine","rationale":"Unsupported downgrade without repository or prototype evidence."}
             }],
             "learning_value_revision_bases":[{
@@ -2430,6 +2499,12 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
                 "disposition":"agent_owned_implementation_choice",
                 "basis_summary":"This is internal agent-owned discretion.",
                 "authority_counterfactual":"The synchronized edit order changes no material product outcome, so the detail remains agent-owned.",
+                "materially_varying_outcomes":["the order of a private synchronized maintenance edit"],
+                "contains_user_owned_outcome":false,
+                "user_owned_outcomes":[],
+                "ownership_rationale":"the alternatives are mechanically equivalent to users",
+                "bounded_implementation_discretion_rationale":"both orders produce the same public wording and passing test",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "learning_value":{"state":"routine","rationale":"No meaningful transferable understanding would be lost, and the user explicitly excluded routine wording and test synchronization from interruptions."}
             }]
         }),
@@ -2499,6 +2574,11 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Exact current-task delegation covers the bounded internal retry schedule.",
                 "authority_counterfactual":"The Goal explicitly says to choose this exact internal schedule; it does not rely on the broader feature request.",
+                "materially_varying_outcomes":["the delegated retry scheduling behavior"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["selection of the explicitly delegated retry schedule"],
+                "ownership_rationale":"the current user owns and explicitly delegates this bounded selection",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "delegation_statement":"choose the internal retry schedule",
                 "delegated_scope":["retry-jitter"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"Retry scheduling exposes reusable load-shaping trade-offs.","consequence_significance":["Synchronized retries can amplify transient load"],"transferable_principles":["Randomization can decorrelate distributed work"],"non_obvious_trade_offs":["More jitter reduces synchronization but broadens completion latency"],"interruption_counterfactual":"Without participation, the requested understanding of retry load shaping would be lost.","participation_scope_alignment":"The active learning scope includes meaningful distributed-operability choices."}
@@ -2640,6 +2720,11 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Exact current-task delegation covers this material activation policy.",
                 "authority_counterfactual":"Automatic and opt-in checks are materially different, but the current-host statement explicitly delegates the exact choice between those outcomes.",
+                "materially_varying_outcomes":["whether update checks activate automatically or only by opt-in"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["the update-check activation policy"],
+                "ownership_rationale":"the alternatives change a user-visible default delegated by the user",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "delegation_statement":"choose whether update checks are automatic or opt-in",
                 "delegated_scope":["npm update activation policy"],
                 "learning_value":{"state":"routine","rationale":"Learning participation is inactive and does not alter authority."}
@@ -2747,6 +2832,12 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
                 "exploratory_disposition":"research_required",
                 "basis_summary":"Measure current runtime behavior before choosing an approach.",
                 "authority_counterfactual":"Empirical retry behavior must be established before any remaining material authority choice is known.",
+                "materially_varying_outcomes":["the private retry observation mechanism under investigation"],
+                "contains_user_owned_outcome":false,
+                "user_owned_outcomes":[],
+                "ownership_rationale":"current evidence identifies an implementation uncertainty, not a product-policy selection",
+                "bounded_implementation_discretion_rationale":"the research precedes any selection and all observed mechanisms remain inside settled behavior",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "research_basis":["Inspect retained runtime observations for retry correlation"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"],"interruption_counterfactual":"Without participation, the requested understanding of evidence-first retry design would be lost.","participation_scope_alignment":"The active learning scope includes meaningful operability evidence choices."}
             }]
@@ -2831,6 +2922,11 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Exact bounded current-task delegation",
                 "authority_counterfactual":"The Goal explicitly delegates the exact internal module name, not merely the encompassing change.",
+                "materially_varying_outcomes":["the explicitly delegated internal module name"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["selection of the delegated internal name"],
+                "ownership_rationale":"the user explicitly retained and delegated this bounded choice",
+                "ownership_source_ids":[analyzed["repository_source_id"]],
                 "learning_value":{"state":"routine","rationale":"An internal module name is routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -2952,6 +3048,11 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
                 "disposition":"delegated_implementation_choice",
                 "basis_summary":"Re-evaluated exact bounded current-task delegation",
                 "authority_counterfactual":"The retained verbatim statement still explicitly delegates this exact internal module-name dimension.",
+                "materially_varying_outcomes":["the explicitly delegated internal module name"],
+                "contains_user_owned_outcome":true,
+                "user_owned_outcomes":["selection of the delegated internal name"],
+                "ownership_rationale":"the user explicitly retained and delegated this bounded choice",
+                "ownership_source_ids":[resumed["repository_source_id"]],
                 "learning_value":{"state":"routine","rationale":"The retained internal module choice remains routine."},
                 "delegation_statement":"choose the internal module name",
                 "delegated_scope":["src/lib.rs"]
@@ -4595,6 +4696,16 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 affected_scope: vec!["host-checkpoint".into()],
                 material_consequences: vec!["records bounded work and truthful evidence".into()],
                 observable_signals: Vec::new(),
+                ownership: MaterialOutcomeOwnershipAssessment {
+                    materially_varying_outcomes: vec![
+                        "whether Checkpoint evidence is bounded and truthful".into(),
+                    ],
+                    contains_user_owned_outcome: true,
+                    user_owned_outcomes: vec!["the accepted Checkpoint product contract".into()],
+                    rationale: "the alternatives change the accepted user-visible contract".into(),
+                    bounded_implementation_discretion_rationale: None,
+                    source_basis: vec![repository_source_id],
+                },
                 disposition: MaterialityDisposition::SettledAuthority,
                 basis: WorkAuthorityBasis {
                     kinds: vec![WorkAuthorityBasisKind::AcceptedContract],

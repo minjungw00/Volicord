@@ -698,6 +698,7 @@ fn evaluate_dimension(
             "dimension and bounded Source/consequence basis must be complete".to_owned(),
         ));
     }
+    validate_ownership_assessment(canonical, dimension)?;
     if dimension
         .basis
         .source_basis
@@ -836,6 +837,12 @@ fn evaluate_dimension(
             Ok(decisions)
         }
         MaterialityDisposition::AgentOwnedImplementationChoice => {
+            if dimension.ownership.contains_user_owned_outcome {
+                return Err(DimensionIssue::Question(
+                    "an unresolved user-owned material outcome cannot be classified as agent-owned implementation discretion"
+                        .to_owned(),
+                ));
+            }
             require_kind(dimension, WorkAuthorityBasisKind::ImplementationPreference)?;
             if dimension.basis.explicit_delegation.is_some()
                 || !dimension.basis.contract_basis.is_empty()
@@ -898,6 +905,12 @@ fn evaluate_dimension(
         MaterialityDisposition::UnresolvedUserOwnedOutcome {
             resolution_decision_id,
         } => {
+            if !dimension.ownership.contains_user_owned_outcome {
+                return Err(DimensionIssue::Invalid(
+                    "the user-owned disposition requires an ownership assessment identifying the user-owned outcome"
+                        .to_owned(),
+                ));
+            }
             let Some(decision_id) = resolution_decision_id else {
                 return Err(DimensionIssue::Question(
                     "material user-owned outcome must enter the existing Question and Decision lifecycle"
@@ -951,6 +964,49 @@ fn evaluate_dimension(
             Ok(vec![*decision_id])
         }
     }
+}
+
+fn validate_ownership_assessment(
+    canonical: &CanonicalReadBasis,
+    dimension: &MaterialityDimension,
+) -> Result<(), DimensionIssue> {
+    let ownership = &dimension.ownership;
+    if ownership.materially_varying_outcomes.is_empty()
+        || ownership.rationale.trim().is_empty()
+        || ownership.source_basis.is_empty()
+        || ownership
+            .source_basis
+            .iter()
+            .any(|source_id| !source_is_current(canonical, *source_id))
+    {
+        return Err(DimensionIssue::Invalid(
+            "material-outcome ownership requires varying outcomes, rationale, and current Source evidence"
+                .to_owned(),
+        ));
+    }
+    if ownership.contains_user_owned_outcome {
+        if ownership.user_owned_outcomes.is_empty()
+            || ownership
+                .bounded_implementation_discretion_rationale
+                .is_some()
+        {
+            return Err(DimensionIssue::Invalid(
+                "a user-owned ownership assessment must identify the user-owned outcomes and cannot claim bounded agent discretion"
+                    .to_owned(),
+            ));
+        }
+    } else if !ownership.user_owned_outcomes.is_empty()
+        || ownership
+            .bounded_implementation_discretion_rationale
+            .as_ref()
+            .is_none_or(|rationale| rationale.trim().is_empty())
+    {
+        return Err(DimensionIssue::Invalid(
+            "an agent-owned ownership assessment must explain why every materially differing alternative remains bounded implementation discretion"
+                .to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_current_goal_delegation(

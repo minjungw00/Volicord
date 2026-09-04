@@ -21,8 +21,8 @@ use volicord_operations::{
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
     LearningReconsiderationDraft, LearningResponseDraft, LearningValueAssessment,
     LearningValueRevisionBasis, LearningValueRevisionRequest, LocalOperations,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
     MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
     WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition, WorkflowStage,
 };
@@ -45,6 +45,12 @@ fn dimension(
             "the cited fixture authority leaves one mechanically or normatively selected outcome"
                 .into(),
     });
+    let contains_user_owned_outcome = matches!(
+        disposition,
+        MaterialityDisposition::SettledAuthority
+            | MaterialityDisposition::DelegatedImplementationChoice
+            | MaterialityDisposition::UnresolvedUserOwnedOutcome { .. }
+    );
     MaterialityDimension {
         dimension_id: id.to_owned(),
         discovered_choice_ids: vec![id.to_owned()],
@@ -52,6 +58,28 @@ fn dimension(
         affected_scope: vec!["src/lib.rs".to_owned()],
         material_consequences: vec!["changes externally observable behavior".to_owned()],
         observable_signals: vec![MaterialOutcomeSignal::PublicApiSemantics],
+        ownership: MaterialOutcomeOwnershipAssessment {
+            materially_varying_outcomes: vec![
+                "the exact externally observable behavior selected by the alternatives".into(),
+            ],
+            contains_user_owned_outcome,
+            user_owned_outcomes: contains_user_owned_outcome
+                .then(|| "the externally observable product policy".into())
+                .into_iter()
+                .collect(),
+            rationale: if contains_user_owned_outcome {
+                "the alternatives select externally observable product policy".into()
+            } else {
+                "the alternatives do not alter settled user-observable behavior".into()
+            },
+            bounded_implementation_discretion_rationale: (!contains_user_owned_outcome).then(
+                || {
+                    "every alternative remains inside the fixture's settled observable boundary"
+                        .into()
+                },
+            ),
+            source_basis: vec![source],
+        },
         disposition,
         basis: WorkAuthorityBasis {
             kinds,
@@ -2021,6 +2049,11 @@ fn late_user_authority_correction_preserves_prospective_only_work_state(
     corrected.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
         resolution_decision_id: None,
     };
+    corrected.ownership.contains_user_owned_outcome = true;
+    corrected.ownership.user_owned_outcomes = vec!["the public network exposure default".into()];
+    corrected
+        .ownership
+        .bounded_implementation_discretion_rationale = None;
     corrected.basis.kinds = vec![WorkAuthorityBasisKind::NoSettlingAuthority];
     corrected.basis.summary =
         "credible exposure alternatives change an external security outcome and no exact authority settles it"
@@ -2066,6 +2099,13 @@ fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after
 
     let mut repository_fact = delegated;
     repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
+    repository_fact.ownership.contains_user_owned_outcome = false;
+    repository_fact.ownership.user_owned_outcomes.clear();
+    repository_fact
+        .ownership
+        .bounded_implementation_discretion_rationale = Some(
+        "repository evidence mechanically fixes the outcome without a product-policy choice".into(),
+    );
     repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.summary = "current repository evidence fixes the value".into();
@@ -2129,6 +2169,12 @@ fn late_delegated_to_agent_owned_revision_cannot_certify_affected_work(
 
     let mut agent_owned = delegated;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.user_owned_outcomes.clear();
+    agent_owned
+        .ownership
+        .bounded_implementation_discretion_rationale =
+        Some("all remaining alternatives preserve the settled product behavior".into());
     agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
     agent_owned.basis.explicit_delegation = None;
     let revised = fixture
@@ -2208,6 +2254,13 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
 
     let mut repository_fact = delegated;
     repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
+    repository_fact.ownership.contains_user_owned_outcome = false;
+    repository_fact.ownership.user_owned_outcomes.clear();
+    repository_fact
+        .ownership
+        .bounded_implementation_discretion_rationale = Some(
+        "repository evidence mechanically fixes the outcome without a product-policy choice".into(),
+    );
     repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
@@ -2233,6 +2286,12 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
 
     let mut agent_owned = repository_fact;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.user_owned_outcomes.clear();
+    agent_owned
+        .ownership
+        .bounded_implementation_discretion_rationale =
+        Some("all remaining alternatives preserve the settled product behavior".into());
     agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
     agent_owned.basis.exact_authority = None;
     let revised = fixture
@@ -2311,6 +2370,12 @@ fn unrelated_paths_and_metadata_only_revisions_do_not_create_late_blockers(
     )?;
     let mut agent_owned = delegated;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
+    agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.user_owned_outcomes.clear();
+    agent_owned
+        .ownership
+        .bounded_implementation_discretion_rationale =
+        Some("all remaining alternatives preserve the settled product behavior".into());
     agent_owned.basis.kinds = vec![WorkAuthorityBasisKind::ImplementationPreference];
     agent_owned.basis.explicit_delegation = None;
     let revised =
@@ -2543,6 +2608,11 @@ fn completed_discovery_evidence_restores_prospective_authority_or_reveals_a_ques
     exploratory.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
         resolution_decision_id: None,
     };
+    exploratory.ownership.contains_user_owned_outcome = true;
+    exploratory.ownership.user_owned_outcomes = vec!["the public result contract".into()];
+    exploratory
+        .ownership
+        .bounded_implementation_discretion_rationale = None;
     exploratory.basis.kinds = vec![
         WorkAuthorityBasisKind::NoSettlingAuthority,
         WorkAuthorityBasisKind::ResearchEvidence,
@@ -2598,6 +2668,53 @@ fn user_owned_and_hidden_material_signals_require_question_lifecycle(
     );
     assert!(result.blocking);
     assert_eq!(result.unresolved_requirements.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn public_path_exclusion_policy_cannot_escape_through_agent_owned_disposition(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut path_policy = agent_owned_dimension(
+        "public-path-exclusion-policy",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "normal mode does not add a learning interruption".into(),
+        },
+    );
+    path_policy.observable_signals = vec![
+        MaterialOutcomeSignal::PublicApiSemantics,
+        MaterialOutcomeSignal::UserVisibleDefault,
+        MaterialOutcomeSignal::MaintenanceOrSupportPolicy,
+    ];
+    path_policy.material_consequences = vec![
+        "prefix semantics exclude descendants".into(),
+        "glob semantics expose a public pattern language".into(),
+        "exact-path semantics retain descendants by default".into(),
+    ];
+    path_policy.ownership = MaterialOutcomeOwnershipAssessment {
+        materially_varying_outcomes: vec![
+            "which repository paths callers can include or exclude".into(),
+            "the compatibility lifetime of the public matching syntax".into(),
+        ],
+        contains_user_owned_outcome: true,
+        user_owned_outcomes: vec!["the public path-exclusion contract and default".into()],
+        rationale: "each credible alternative changes caller-observable product policy".into(),
+        bounded_implementation_discretion_rationale: None,
+        source_basis: vec![source],
+    };
+    assert!(review(&fixture, vec![path_policy.clone()]).is_err());
+
+    path_policy.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
+        resolution_decision_id: None,
+    };
+    path_policy.basis.kinds = vec![WorkAuthorityBasisKind::NoSettlingAuthority];
+    let recorded = review(&fixture, vec![path_policy])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::QuestionRequired
+    );
     Ok(())
 }
 

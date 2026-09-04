@@ -10,9 +10,9 @@ use volicord_operations::{
     CommandVerificationDraft, EngineeringAlternative, EngineeringChoice,
     EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
     EngineeringEffectCategory, GroundedCheckpointDraft, HealthState, LocalOperations,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, OperationState, ProjectResolution,
-    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
+    ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
 use volicord_repository_intelligence::{
@@ -401,6 +401,16 @@ fn record_ready_review(
             affected_scope: vec!["repository".into()],
             material_consequences: vec!["records the attributed repository delta".into()],
             observable_signals: Vec::new(),
+            ownership: MaterialOutcomeOwnershipAssessment {
+                materially_varying_outcomes: vec!["the repository-observed bounded delta".into()],
+                contains_user_owned_outcome: false,
+                user_owned_outcomes: Vec::new(),
+                rationale: "the outcome is mechanically established by repository evidence".into(),
+                bounded_implementation_discretion_rationale: Some(
+                    "no product-policy selection remains after the repository fact".into(),
+                ),
+                source_basis: vec![baseline.repository_source.identity()],
+            },
             disposition: MaterialityDisposition::RepositoryOrEnvironmentFact,
             basis: WorkAuthorityBasis {
                 kinds: vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],

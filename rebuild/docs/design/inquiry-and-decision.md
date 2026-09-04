@@ -306,6 +306,17 @@ implementation preference로 낮추지 않는다. Goal/source identity와 checkl
 ownership을 자동 판정하지 않는다. Semantic assessment의 품질은 active agent와 naturalistic
 evaluation에 남고 production은 typed provenance, scope와 lifecycle invariant만 검증한다.
 
+각 Materiality dimension은 final disposition보다 먼저 exact discovered choice에 대한
+material-outcome ownership assessment를 가진다. Assessment는 alternatives 사이에서 달라지는
+materially observable outcome, 그중 user-owned product outcome의 존재와 exact outcome, ownership
+rationale와 current Source basis를 보존한다. User-owned outcome이 없다는 판단은 모든 materially
+different alternative가 settled product behavior 안의 bounded implementation discretion에 남는 이유를
+별도로 설명해야 한다. `AgentOwnedImplementationChoice`는 이 explicit agent-owned assessment와만
+호환되며 `ImplementationPreference` 자체는 ownership evidence가 아니다. User-owned outcome이 있으면
+exact fact/contract/Decision/delegation/exploration 또는 unresolved Question에 해당하는 기존 disposition을
+사용한다. Effect category는 이 semantic review를 빠뜨리지 않게 하는 prompt일 뿐 자동 ownership
+classifier가 아니다.
+
 - repository/environment fact
 - already settled authority
 - agent-owned implementation choice

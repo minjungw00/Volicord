@@ -51,9 +51,10 @@ pub use volicord_inquiry::{
     LearningDeliberationState, LearningInitialResponse, LearningParticipation,
     LearningRecommendation, LearningValueAssessment, LearningValueRevision,
     LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition,
-    WorkAuthorityAction, WorkAuthorityBasis, WorkAuthorityBasisKind, WorkAuthorityCandidateBasis,
-    WorkAuthorityDisposition, WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
+    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
+    MaterialityDimension, MaterialityDisposition, WorkAuthorityAction, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkAuthorityCandidateBasis, WorkAuthorityDisposition,
+    WorkAuthorityRequirement, WorkAuthorityResult, WorkAuthorityStage,
 };
 pub use volicord_privacy::{
     FilterOutcome, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ScopeOutcome,

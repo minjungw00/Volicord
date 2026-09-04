@@ -346,6 +346,16 @@ pub struct WorkAuthorityBasis {
     pub explicit_delegation: Option<ExplicitDelegationEvidence>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaterialOutcomeOwnershipAssessment {
+    pub materially_varying_outcomes: Vec<String>,
+    pub contains_user_owned_outcome: bool,
+    pub user_owned_outcomes: Vec<String>,
+    pub rationale: String,
+    pub bounded_implementation_discretion_rationale: Option<String>,
+    pub source_basis: Vec<SourceId>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ExploratoryDisposition {
     ResearchRequired,
@@ -434,6 +444,7 @@ pub struct MaterialityDimension {
     pub affected_scope: Vec<String>,
     pub material_consequences: Vec<String>,
     pub observable_signals: Vec<MaterialOutcomeSignal>,
+    pub ownership: MaterialOutcomeOwnershipAssessment,
     pub disposition: MaterialityDisposition,
     pub basis: WorkAuthorityBasis,
     pub learning_value: LearningValueAssessment,

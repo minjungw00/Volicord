@@ -23,8 +23,9 @@ use volicord_inquiry::{
     LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
     LearningValueAssessment, LearningValueRevisionBasis, LearningValueRevisionRequest,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialityAssessment, MaterialityStatus,
-    QuestionCandidate, ResponseMapping, SubmissionOutcome,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialityAssessment, MaterialityStatus, QuestionCandidate, ResponseMapping,
+    SubmissionOutcome,
 };
 use volicord_operations::{
     bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
@@ -2565,6 +2566,42 @@ fn materiality_judgment_schema(
             ),
         ),
         (
+            "materially_varying_outcomes",
+            nonempty_string_array_schema(
+                "Materially observable outcomes that differ across this choice's alternatives",
+            ),
+        ),
+        (
+            "contains_user_owned_outcome",
+            json!({"type":"boolean","description":"Whether any materially varying outcome is a user-owned product outcome"}),
+        ),
+        (
+            "user_owned_outcomes",
+            string_array_schema(
+                "Exact materially varying outcomes owned by the user; empty only when every difference is bounded implementation discretion",
+            ),
+        ),
+        (
+            "ownership_rationale",
+            text_schema(
+                "Why the materially varying outcomes are user-owned product policy or bounded agent-owned implementation discretion",
+                1,
+                4096,
+            ),
+        ),
+        (
+            "bounded_implementation_discretion_rationale",
+            text_schema(
+                "Required only for agent-owned classification: why every materially differing alternative stays within settled product behavior",
+                1,
+                4096,
+            ),
+        ),
+        (
+            "ownership_source_ids",
+            identity_array_schema("Current Sources supporting the ownership judgment", 1),
+        ),
+        (
             "additional_source_ids",
             identity_array_schema(
                 "Additional current canonical Source identities beyond discovery-owned Sources",
@@ -2585,6 +2622,11 @@ fn materiality_judgment_schema(
         "disposition",
         "basis_summary",
         "authority_counterfactual",
+        "materially_varying_outcomes",
+        "contains_user_owned_outcome",
+        "user_owned_outcomes",
+        "ownership_rationale",
+        "ownership_source_ids",
         "learning_value",
     ];
     required.extend_from_slice(required_fields);
@@ -3619,6 +3661,8 @@ fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<
         Some("string") => validate_string(schema, value, path),
         Some("array") => validate_array(schema, value, path),
         Some("integer") => validate_integer(schema, value, path),
+        Some("boolean") if value.is_boolean() => Ok(()),
+        Some("boolean") => Err(vec![format!("{path} must be a boolean")]),
         Some(kind) => Err(vec![format!("{path} uses unsupported schema type {kind}")]),
         None => Err(vec![format!("{path} schema has no type")]),
     }
@@ -4742,6 +4786,13 @@ fn materiality_dimension_from_judgment(
     }
     source_basis.sort_unstable();
     source_basis.dedup();
+    let contains_user_owned_outcome = value
+        .get("contains_user_owned_outcome")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| HostError::new("contains_user_owned_outcome must be boolean"))?;
+    let mut ownership_source_basis = source_ids(value, "ownership_source_ids")?;
+    ownership_source_basis.sort_unstable();
+    ownership_source_basis.dedup();
     Ok(MaterialityDimension {
         dimension_id: choice.choice_id.clone(),
         discovered_choice_ids: vec![choice.choice_id.clone()],
@@ -4749,6 +4800,17 @@ fn materiality_dimension_from_judgment(
         affected_scope: choice.affected_scope.clone(),
         material_consequences: choice.technical_consequences.clone(),
         observable_signals: material_outcome_signals(&choice.effect_categories),
+        ownership: MaterialOutcomeOwnershipAssessment {
+            materially_varying_outcomes: string_array(value, "materially_varying_outcomes")?,
+            contains_user_owned_outcome,
+            user_owned_outcomes: string_array(value, "user_owned_outcomes")?,
+            rationale: required_str(value, "ownership_rationale")?.to_owned(),
+            bounded_implementation_discretion_rationale: optional_string(
+                value,
+                "bounded_implementation_discretion_rationale",
+            )?,
+            source_basis: ownership_source_basis,
+        },
         disposition,
         basis: WorkAuthorityBasis {
             kinds,
@@ -5397,6 +5459,18 @@ fn materiality_draft_json(
                 "agent recommendation",
                 "library or repository convention"
             ],
+            "ownership_assessment":{
+                "required_for_every_dimension":true,
+                "semantic_owner":"active_agent",
+                "questions":[
+                    "Which materially observable outcomes vary across the discovered alternatives?",
+                    "Does any varying outcome select user-owned product policy?",
+                    "If none does, why do all alternatives remain within bounded implementation discretion?",
+                    "Which current Sources support this ownership judgment?"
+                ],
+                "structural_rule":"ImplementationPreference is never ownership evidence. AgentOwnedImplementationChoice requires contains_user_owned_outcome=false plus a bounded-discretion rationale; user-owned outcomes use existing exact authority, Decision, delegation, exploration, or Question dispositions.",
+                "category_rule":"Effect categories prompt semantic review but never determine ownership automatically."
+            },
             "outcomes":{
                 "unresolved_user_owned_outcome":"Use when credible alternatives have materially different consequences and no exact authority settles the dimension.",
                 "exploratory_uncertainty":"Use when evidence is still required to establish whether the alternatives or material consequences are real.",
