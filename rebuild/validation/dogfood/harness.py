@@ -3187,6 +3187,12 @@ def workflow_has_identity(workflow: Any, kind: str, identity: Any) -> bool:
 
 
 def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
+    """Check returned category evidence and scope accounting, without sorting.
+
+    Only the production-returned review is consumed here. Caller ordering and
+    duplicate input paths have already been handled by production.
+    """
+
     categories = {
         "implementation",
         "focused_tests",
@@ -3210,7 +3216,8 @@ def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
         category = assessment.get("category")
         disposition = assessment.get("disposition")
         if (
-            category not in categories
+            not isinstance(category, str)
+            or category not in categories
             or category in observed_categories
             or not nonempty_string(assessment.get("basis_summary"))
             or not isinstance(disposition, dict)
@@ -3225,7 +3232,6 @@ def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
             or disposition.get("state") != "included"
             or not isinstance(repository_paths, list)
             or not repository_paths
-            or repository_paths != sorted(set(repository_paths))
             or not all(nonempty_string(path) for path in repository_paths)
         ):
             return False
@@ -3309,10 +3315,7 @@ def executable_scope_binding_observation(
         for path in paths
     ):
         reason = "invalid_paths"
-    if reason is None and (
-        not coupled_artifact_review_valid(coupled_review, paths)
-        or inspect_call.arguments.get("coupled_artifact_review") != coupled_review
-    ):
+    if reason is None and not coupled_artifact_review_valid(coupled_review, paths):
         reason = "invalid_coupled_artifact_review"
     if reason is None and (
         inspect_call.arguments.get("project_id") != project_id
@@ -16638,6 +16641,56 @@ def self_test() -> int:
         )):
             raise AssertionError(f"invalid canonical work/resume result qualified: {label}")
 
+    canonical_artifacts = real_session_fixture("volicord", 1, revision, evidence_directory)
+    for role in ("work", "resume"):
+        def reorder_artifact_request(arguments: dict[str, Any]) -> None:
+            assessments = arguments["coupled_artifact_review"]["assessments"]
+            assessments.reverse()
+            for assessment in assessments:
+                disposition = assessment["disposition"]
+                if disposition["state"] == "included":
+                    paths = disposition["repository_paths"]
+                    disposition["repository_paths"] = list(reversed(paths)) + paths[:1]
+
+        mutate_mcp_call_action(
+            canonical_artifacts, role, "materiality_review", "inspect", reorder_artifact_request
+        )
+    canonical_artifact_result = real_session_evidence(
+        canonical_artifacts, kind="volicord", cycle=1, repository_revision=revision
+    )
+    if any(canonical_artifact_result["checks"][check] != "passed" for check in (
+        "pre_write_materiality_work_authority", "resume_materiality_work_authority"
+    )):
+        raise AssertionError("production-canonical coupled artifacts required sorted unique caller input")
+
+    invalid_artifact_results: dict[str, Callable[[dict[str, Any]], None]] = {
+        "missing_category": lambda review: review["assessments"].pop(),
+        "missing_exclusion_basis": lambda review: review["assessments"][1].pop("basis_summary"),
+        "unaccounted_path": lambda review: review["assessments"][0]["disposition"].update(
+            {"repository_paths": ["unrelated/artifact.rs"]}
+        ),
+        "malformed_category": lambda review: review["assessments"][0].update({"category": []}),
+        "malformed_path": lambda review: review["assessments"][0]["disposition"].update(
+            {"repository_paths": [{}]}
+        ),
+    }
+    for label, mutation in invalid_artifact_results.items():
+        fixture = real_session_fixture("volicord", 1, revision, evidence_directory)
+        for role in ("work", "resume"):
+            mutate_custom_output(
+                fixture, role, "materiality-scope-binding",
+                lambda output, mutation=mutation: mutation(
+                    output["executable_work_scope"]["coupled_artifact_review"]
+                ),
+            )
+        observed = real_session_evidence(
+            fixture, kind="volicord", cycle=1, repository_revision=revision
+        )
+        if any(observed["checks"][check] != "failed" for check in (
+            "pre_write_materiality_work_authority", "resume_materiality_work_authority"
+        )):
+            raise AssertionError(f"invalid canonical coupled artifacts qualified: {label}")
+
     for field, wrong_value in (
         ("project_id", "fe" * 16),
         ("goal_context_id", "fd" * 16),
@@ -20805,6 +20858,8 @@ def self_test() -> int:
         "staged_prospective_scope_expansion": "passed",
         "late_scope_expansion_rejected": "passed",
         "canonical_materiality_result_work_and_resume": "passed",
+        "canonical_coupled_artifacts_without_caller_sorting": "passed",
+        "malformed_or_missing_canonical_artifact_evidence_rejected": "passed",
         "canonical_expansion_revision_accepted": "passed",
         "scope_binding_superseded_by_later_review_rejected": "passed",
         "root_artifact_first_write_rejected": "passed",

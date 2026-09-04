@@ -2783,6 +2783,16 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     assert campaign.inspect_resume(capture, descriptor, state) == "01" * 16
 
     # Exercise the campaign's shared canonical observer through resume intake.
+    def noncanonical_arguments(arguments: dict[str, object]) -> None:
+        arguments["components"] = ["worker", "parser"]
+        assessments = arguments["coupled_artifact_review"]["assessments"]
+        assessments.reverse()
+        for assessment in assessments:
+            disposition = assessment["disposition"]
+            if disposition["state"] == "included":
+                paths = disposition["repository_paths"]
+                disposition["repository_paths"] = list(reversed(paths)) + paths[:1]
+
     canonical_events = [json.loads(line) for line in resume.read_text().splitlines()]
     for value in canonical_events:
         payload = value.get("payload", {})
@@ -2794,7 +2804,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
             result["executable_work_scope"]["components"] = ["parser", "worker"]
             payload["output"][1]["text"] = json.dumps(result)
         elif payload.get("type") == "mcp_tool_call_end":
-            payload["invocation"]["arguments"]["components"] = ["worker", "parser"]
+            noncanonical_arguments(payload["invocation"]["arguments"])
             result = payload["result"]["Ok"]["structuredContent"]
             result["review_revision"] = 7
             result["executable_work_scope"]["components"] = ["parser", "worker"]
@@ -2802,7 +2812,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
             wrapper = harness.parse_mcp_wrapper(payload["input"])
             assert wrapper is not None
             arguments = copy.deepcopy(wrapper.arguments)
-            arguments["components"] = ["worker", "parser"]
+            noncanonical_arguments(arguments)
             payload["input"] = payload["input"].replace(
                 json.dumps(wrapper.arguments, separators=(",", ":")),
                 json.dumps(arguments, separators=(",", ":")),
