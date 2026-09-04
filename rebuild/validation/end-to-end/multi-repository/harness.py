@@ -115,6 +115,43 @@ def coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
     }
 
 
+def alternative_accounting(
+    choice_id: str,
+    alternative_ids: list[str],
+    source_id: str,
+    *,
+    resolution_decision_id: str | None = None,
+) -> list[dict[str, Any]]:
+    accounts: list[dict[str, Any]] = []
+    for index, alternative_id in enumerate(alternative_ids):
+        account: dict[str, Any] = {
+            "choice_id": choice_id,
+            "alternative_id": alternative_id,
+            "status": "unresolved",
+            "rationale": "This discovered alternative remains credible on the current authority basis.",
+            "source_ids": [source_id],
+        }
+        if resolution_decision_id:
+            account.update(
+                {
+                    "status": (
+                        "selected"
+                        if index == 0
+                        else "eliminated_by_applicable_decision"
+                    ),
+                    "rationale": (
+                        "The current-host Decision selects this alternative."
+                        if index == 0
+                        else "The current-host Decision excludes this alternative."
+                    ),
+                }
+            )
+            if index != 0:
+                account["decision_id"] = resolution_decision_id
+        accounts.append(account)
+    return accounts
+
+
 def material_boundary_review(
     choices: list[dict[str, Any]], source_ids: list[str]
 ) -> list[dict[str, Any]]:
@@ -1109,19 +1146,41 @@ def rehearse_target(
             canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
             learning_active = target_kind == "small-python"
             technical_delegated = target_kind == "polyglot-medium"
-            goal_text = (
-                f"Teach me through the meaningful technical fork while rehearsing {target_kind} through the resolved self-guiding work-authority path"
-                if learning_active
-                else f"Rehearse {target_kind} through the resolved self-guiding work-authority path; I delegate the internal technical state representation to you"
+            base_goal_statement = (
+                f"Rehearse {target_kind} through the resolved self-guiding work-authority path"
+            )
+            learning_statement = "Teach me through the meaningful technical fork"
+            goal_statement = (
+                f"{base_goal_statement}; I delegate the internal technical state representation to you"
                 if technical_delegated
-                else f"Rehearse {target_kind} through the resolved self-guiding work-authority path"
+                else base_goal_statement
+            )
+            goal_turn = (
+                f"{goal_statement}; {learning_statement}"
+                if learning_active
+                else goal_statement
             )
             goal, goal_ok = host.tool("context_record", {
                 "project_id": project_id,
-                "user_turn": goal_text,
+                "user_turn": goal_turn,
                 "role": "goal",
-                "statement": goal_text,
+                "statement": goal_statement,
             })
+            learning_context, learning_context_ok = (
+                host.tool("context_record", {
+                    "project_id": project_id,
+                    "user_turn": goal_turn,
+                    "role": "learning",
+                    "statement": learning_statement,
+                })
+                if learning_active
+                else (None, True)
+            )
+            behavioral_context_ids = (
+                [learning_context.get("context_item_id")]
+                if learning_context_ok and learning_context
+                else []
+            )
             candidate_analysis, candidate_analysis_ok = host.tool(
                 "repository_analyze", {"project_id": project_id, "excluded_paths": []}
             )
@@ -1176,8 +1235,8 @@ def rehearse_target(
             learning_participation = (
                 {
                     "state": "active",
-                    "user_turn_source_id": (goal or {}).get("source_id"),
-                    "verbatim_statement": goal_text,
+                    "user_turn_source_id": (learning_context or {}).get("source_id"),
+                    "verbatim_statement": learning_statement,
                 }
                 if learning_active
                 else {"state": "inactive"}
@@ -1203,11 +1262,33 @@ def rehearse_target(
                 "project_id": project_id,
                 "engineering_choice_discovery_candidate_id": discovery_id,
                 "rationale": "The durable Project context boundary requires explicit user authority.",
+                "behavioral_context_basis": {
+                    "context_item_ids": behavioral_context_ids,
+                    "completeness_rationale": (
+                        "The separate Learning Context is the only behaviorally consequential non-Goal statement used by this review."
+                        if learning_active
+                        else "No behaviorally consequential non-Goal Context is used by this review."
+                    ),
+                },
                 "learning_participation": learning_participation,
                 "judgments": [
                     {
                         "choice_id": materiality_dimension_id,
                         "disposition": "unresolved_user_owned_outcome",
+                        "materially_varying_outcomes": [
+                            "whether canonical Project context remains local or depends on a provider-backed boundary"
+                        ],
+                        "contains_user_owned_outcome": True,
+                        "user_owned_outcomes": [
+                            "the durable local-versus-provider Project context policy"
+                        ],
+                        "ownership_rationale": "The alternatives change durable product behavior and provider dependence reserved to the user.",
+                        "ownership_source_ids": [source_id],
+                        "alternative_accounting": alternative_accounting(
+                            materiality_dimension_id,
+                            ["local", "remote"],
+                            source_id,
+                        ),
                         "basis_summary": "Repository evidence establishes the boundary but cannot choose it",
                         "authority_counterfactual": "The Goal can be satisfied with either Project or clone-local context; no repository fact, contract, Decision, or exact delegation selects the user-owned boundary.",
                         "learning_value": {"state": "routine", "rationale": "User authority uses Inquiry even when learning is active."},
@@ -1218,6 +1299,19 @@ def rehearse_target(
                             "delegated_implementation_choice"
                             if technical_delegated
                             else "agent_owned_implementation_choice"
+                        ),
+                        "materially_varying_outcomes": [
+                            "the private bounded-state representation and invariant placement"
+                        ],
+                        "contains_user_owned_outcome": False,
+                        "user_owned_outcomes": [],
+                        "ownership_rationale": "Both alternatives preserve the selected product behavior and vary only private implementation mechanics.",
+                        "bounded_implementation_discretion_rationale": "Ordered records and a keyed index remain within the bounded internal representation scope.",
+                        "ownership_source_ids": [source_id],
+                        "alternative_accounting": alternative_accounting(
+                            technical_dimension_id,
+                            ["ordered-records", "keyed-index"],
+                            source_id,
                         ),
                         "basis_summary": "The representation is explicitly delegated in this Goal and does not change the user-owned context boundary."
                         if technical_delegated
@@ -1364,12 +1458,35 @@ def rehearse_target(
                 "project_id": project_id,
                 "review_candidate_id": review_candidate_id,
                 "rationale": "The explicit current-host Decision resolves the Project context boundary.",
+                "behavioral_context_basis": {
+                    "context_item_ids": behavioral_context_ids,
+                    "completeness_rationale": (
+                        "The separate Learning Context is the only behaviorally consequential non-Goal statement used by this review."
+                        if learning_active
+                        else "No behaviorally consequential non-Goal Context is used by this review."
+                    ),
+                },
                 "learning_participation": learning_participation,
                 "judgments": [
                     {
                         "choice_id": materiality_dimension_id,
                         "disposition": "unresolved_user_owned_outcome",
                         "resolution_decision_id": decision_id,
+                        "materially_varying_outcomes": [
+                            "whether canonical Project context remains local or depends on a provider-backed boundary"
+                        ],
+                        "contains_user_owned_outcome": True,
+                        "user_owned_outcomes": [
+                            "the durable local-versus-provider Project context policy"
+                        ],
+                        "ownership_rationale": "The alternatives change durable product behavior and provider dependence reserved to the user.",
+                        "ownership_source_ids": [source_id],
+                        "alternative_accounting": alternative_accounting(
+                            materiality_dimension_id,
+                            ["local", "remote"],
+                            source_id,
+                            resolution_decision_id=decision_id,
+                        ),
                         "basis_summary": "The explicit current-host Decision supplies current authority",
                         "authority_counterfactual": "The current-host Decision now selects the exact context boundary that the broad Goal left unresolved.",
                         "learning_value": {"state": "routine", "rationale": "The user-owned outcome remains on the canonical Inquiry path."},
@@ -1380,6 +1497,19 @@ def rehearse_target(
                             "delegated_implementation_choice"
                             if technical_delegated
                             else "agent_owned_implementation_choice"
+                        ),
+                        "materially_varying_outcomes": [
+                            "the private bounded-state representation and invariant placement"
+                        ],
+                        "contains_user_owned_outcome": False,
+                        "user_owned_outcomes": [],
+                        "ownership_rationale": "Both alternatives preserve the selected product behavior and vary only private implementation mechanics.",
+                        "bounded_implementation_discretion_rationale": "Ordered records and a keyed index remain within the bounded internal representation scope.",
+                        "ownership_source_ids": [source_id],
+                        "alternative_accounting": alternative_accounting(
+                            technical_dimension_id,
+                            ["ordered-records", "keyed-index"],
+                            source_id,
                         ),
                         "basis_summary": "The representation remains explicitly delegated independently from the canonical Decision."
                         if technical_delegated
@@ -1568,6 +1698,13 @@ def rehearse_target(
                 canonical_before_ok,
                 goal_ok,
                 goal,
+                not learning_active
+                or (
+                    learning_context_ok
+                    and learning_context
+                    and learning_context.get("context_item_id")
+                    in behavioral_context_ids
+                ),
                 (goal or {}).get("workflow", {}).get("stage")
                 == "repository_baseline",
                 candidate_analysis_ok,
@@ -1633,6 +1770,7 @@ def rehearse_target(
                 "candidate_research_analysis": candidate_research_analysis,
                 "candidate_research_source_id": research_source_id,
                 "goal": goal,
+                "learning_context": learning_context,
                 "materiality_review": review,
                 "materiality_review_readiness": review_readiness,
                 "submission": submitted,
@@ -2587,6 +2725,7 @@ def assert_current_materiality_review_contract(source: str) -> None:
             "project_id",
             "engineering_choice_discovery_candidate_id",
             "rationale",
+            "behavioral_context_basis",
             "learning_participation",
             "judgments",
         },
@@ -2595,6 +2734,7 @@ def assert_current_materiality_review_contract(source: str) -> None:
             "project_id",
             "review_candidate_id",
             "rationale",
+            "behavioral_context_basis",
             "learning_participation",
             "judgments",
         },
@@ -2652,6 +2792,12 @@ def assert_current_materiality_review_contract(source: str) -> None:
                 "disposition",
                 "basis_summary",
                 "authority_counterfactual",
+                "materially_varying_outcomes",
+                "contains_user_owned_outcome",
+                "user_owned_outcomes",
+                "ownership_rationale",
+                "ownership_source_ids",
+                "alternative_accounting",
                 "learning_value",
             } <= judgment_fields:
                 raise AssertionError(f"V11 {action} materiality judgment lost required authority fields")
@@ -2702,6 +2848,23 @@ def self_check() -> int:
         != "no_independent_fork"
     ):
         raise AssertionError("V11 material-boundary review fixture is incomplete")
+    unresolved_accounts = alternative_accounting(
+        "context-boundary", ["local", "remote"], "current-source"
+    )
+    resolved_accounts = alternative_accounting(
+        "context-boundary",
+        ["local", "remote"],
+        "current-source",
+        resolution_decision_id="current-decision",
+    )
+    if (
+        [account["status"] for account in unresolved_accounts]
+        != ["unresolved", "unresolved"]
+        or [account["status"] for account in resolved_accounts]
+        != ["selected", "eliminated_by_applicable_decision"]
+        or resolved_accounts[1].get("decision_id") != "current-decision"
+    ):
+        raise AssertionError("V11 alternative accounting fixture is incomplete")
     assert_required_steps_are_evidence_driven()
     assert_required_step_policy_regressions()
     if parser_degradation_status(
@@ -2752,8 +2915,11 @@ def self_check() -> int:
         'provider_request_after.get("outcome") == "provider_unavailable"',
         '"local_canonical": local_canonical',
         '"action": "submit_question_from_materiality"',
+        '"presentation_receipt_id": displayed.get("presentation_receipt_id")',
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
         '"material_boundary_review": material_boundary_review(',
+        '"role": "learning"',
+        '"behavioral_context_basis": {',
         '"interruption_counterfactual":',
         '"participation_scope_alignment":',
         '"delegated_implementation_choice"',
