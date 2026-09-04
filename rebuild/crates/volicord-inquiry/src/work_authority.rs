@@ -446,7 +446,7 @@ fn validate_discovery_boundary<'a>(
     Ok(discovery)
 }
 
-fn unresolved_discovery_evidence(
+pub(crate) fn unresolved_discovery_evidence(
     discovery: &crate::EngineeringChoiceDiscovery,
     dimension: &MaterialityDimension,
 ) -> Option<String> {

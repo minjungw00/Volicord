@@ -5889,6 +5889,7 @@ fn materiality_draft_json(
         "authority_learning_routing":authority_learning_routing_json(),
         "evidence_state_precedence":{
             "rule":"A discovery-owned research_required or prototype_required state blocks ordinary work before agent-owned or delegated implementation authority can apply.",
+            "mutation_boundary":"Research/prototype grants no tracked repository mutation authority. Use read-only inspection, scratch outside the repository, or a separate disposable worktree. Retain the original Project/Goal/Discovery/baseline chain; do not replace a blocked baseline. Restore repository mutations before evidence resolution. Incorporate scratch results only after normal ready_for_work and executable scope binding.",
             "prospective_authority":"A valid agent-owned or exact delegated disposition may be retained while evidence is incomplete; it becomes actionable only after a Materiality revision supplies current bounded evidence_completion_basis.",
             "post_evidence_routes":["retain the prospective agent-owned or delegated disposition","classify a repository-settled fact without a Question","route a newly revealed user-owned material outcome to the Question lifecycle"],
             "field":"judgments[].evidence_completion_basis",

@@ -880,6 +880,62 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("Candidate submission failed", error))
     }
 
+    fn validate_exploratory_baseline_continuity(
+        &self,
+        project_id: ProjectId,
+        goal_context_id: ContextItemId,
+        baseline_id: AnalysisSnapshotId,
+    ) -> Result<(), Error> {
+        let candidates = self.candidate_basis(project_id)?;
+        for candidate in &candidates.candidates {
+            let Some(discovery) = candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.engineering_choice_discovery.as_ref())
+            else {
+                continue;
+            };
+            if discovery.goal_context_id != goal_context_id
+                || discovery.baseline_analysis_snapshot_id == baseline_id
+            {
+                continue;
+            }
+            let review = candidates
+                .candidates
+                .iter()
+                .filter_map(|record| {
+                    record
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.materiality_review.as_ref())
+                        .filter(|review| {
+                            review.engineering_choice_discovery_candidate_id == candidate.id
+                        })
+                        .map(|review| (record, review))
+                })
+                .max_by_key(|(record, _)| (record.created_at, record.id));
+            let blocked = if let Some((record, review)) = review {
+                !review.late_work_authority_revisions.is_empty()
+                    || self
+                        .workflow_for_review_candidate(project_id, record.id)?
+                        .stage
+                        == WorkflowStage::ResearchOrPrototype
+            } else {
+                discovery.choices.iter().any(|choice| {
+                    choice.evidence_state
+                        != volicord_inquiry::EngineeringChoiceEvidenceState::Sufficient
+                })
+            };
+            if blocked {
+                return Err(Error::new(format!(
+                    "research/prototype baseline cannot be replaced: retain original baseline {} and discovery {}; collect scratch/read-only evidence and revise the original Materiality Review before ordinary work",
+                    discovery.baseline_analysis_snapshot_id, candidate.id
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub fn record_engineering_choice_discovery(
         &self,
         draft: EngineeringChoiceDiscoveryDraft,
@@ -888,6 +944,11 @@ impl LocalOperations {
         let baseline =
             self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
         let _mutation = self.layout.acquire_mutation_lock()?;
+        self.validate_exploratory_baseline_continuity(
+            draft.project_id,
+            draft.goal_context_id,
+            baseline.identity,
+        )?;
         let canonical = self.canonical_basis(draft.project_id)?;
         let goal = canonical
             .context_items
@@ -995,6 +1056,11 @@ impl LocalOperations {
             .ok_or_else(|| Error::new("Materiality Review analysis produced no usable snapshot"))?
             .analysis;
         let _mutation = self.layout.acquire_mutation_lock()?;
+        self.validate_exploratory_baseline_continuity(
+            draft.project_id,
+            draft.goal_context_id,
+            baseline.identity,
+        )?;
         let canonical = self.canonical_basis(draft.project_id)?;
         let discovery_candidate = CandidateStore::open(self.layout.candidate_store())
             .and_then(|store| {

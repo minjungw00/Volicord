@@ -219,6 +219,25 @@ impl CandidateStore {
                 baseline,
                 current,
             )?;
+            let discovery = discovery_candidate.content.as_ref()
+                .and_then(|content| content.engineering_choice_discovery.as_ref())
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "prototype discovery is unavailable"))?;
+            let evidence_blocked = review.dimensions.iter().any(|dimension| {
+                crate::work_authority::unresolved_discovery_evidence(discovery, dimension).is_some()
+                    || matches!(dimension.disposition, crate::MaterialityDisposition::ExploratoryUncertainty {
+                        disposition: crate::ExploratoryDisposition::ResearchRequired | crate::ExploratoryDisposition::PrototypeRequired
+                    })
+            });
+            if evidence_blocked {
+                match crate::attribute_repository_changes(project_id, &crate::RepositoryWorkBasis {
+                    baseline, current,
+                    pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
+                }) {
+                    crate::ChangeAttribution::Attributed { changed_paths, .. } if changed_paths.is_empty() => {}
+                    _ => return Err(Error::new(ErrorKind::DomainConflict,
+                        "research/prototype evidence requires an unchanged original repository baseline; use scratch/read-only evidence and restore repository mutations before revising the original review")),
+                }
+            }
             let learning_value_revisions = validate_learning_value_revisions(
                 review,
                 &revision.dimensions,

@@ -228,6 +228,14 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   bounded research/prototype Source와 evidence-completion basis가 들어온 뒤에만 그 prospective
   authority를 적용한다. Evidence가 user-owned material policy를 드러내면 같은 revision에서
   unresolved user-owned outcome으로 분류해 Question lifecycle로 보낸다.
+- Research/prototype는 현재 tracked repository write authority를 제공하지 않는다. Evidence는
+  read-only inspection, repository 밖 scratch 또는 별도 disposable worktree에서 수집한다.
+  Original Project/Goal/Discovery/baseline chain을 유지하며 blocked research/prototype를 새
+  baseline/Discovery로 대체하지 않는다. Repository mutation이 관찰되면 원래 baseline으로
+  복구하기 전 evidence-completion revision을 거부한다. 이 검사는 filesystem write interception이나
+  exclusive actor attribution이 아니며 host가 first-write boundary를 지킨다. Scratch 결과를
+  production에 반영하려면 원래 Review를 evidence로 resolve하고 정상 executable scope/readiness를
+  확보한 뒤 ordinary work로 적용한다. 사후 baseline은 이전 write를 certify하지 않는다.
 - material하게 다른 consequence가 남은 unresolved user-owned outcome은 선택하거나
   구현하기 전에 explicit user authority를 얻는다.
 

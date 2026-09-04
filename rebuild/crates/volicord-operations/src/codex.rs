@@ -19,7 +19,7 @@ const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
 
 fn activation_context() -> String {
-    "Volicord is active for this explicitly authorized repository. Start project-scoped repository work with project_resolve, then follow every returned workflow.required_next_action until blocks_ordinary_work is false. Do not infer user authority from an agent recommendation, reuse an Analysis Snapshot first captured after ordinary work as the baseline, transmit repository sources without the separate exact provider authorization, or report Checkpoint verification that was not actually observed. Non-project requests require no Volicord ceremony.".into()
+    "Volicord is active for this explicitly authorized repository. Start project-scoped repository work with project_resolve, then follow every returned workflow.required_next_action until blocks_ordinary_work is false. Research/prototype states permit read-only or scratch evidence only; preserve the original Goal/Discovery/baseline and do not mutate the repository or rebaseline blocked work. Do not infer user authority from an agent recommendation, reuse an Analysis Snapshot first captured after ordinary work as the baseline, transmit repository sources without the separate exact provider authorization, or report Checkpoint verification that was not actually observed. Non-project requests require no Volicord ceremony.".into()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

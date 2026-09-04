@@ -53,6 +53,13 @@ baseline-dirty path whose fingerprint changed again is included in the bounded
 delta. This observation does not claim exclusive actor or process ownership.
 Missing, stale, freshness-unknown, wrong-Project, or incompatible-source
 grounding still rejects canonical Checkpoint creation.
+Research and prototype dispositions grant no tracked repository write authority.
+Use read-only inspection, scratch outside the repository, or a separate disposable
+worktree. Keep the original Goal/Discovery/baseline chain, resolve its Materiality
+Review with evidence, and obtain ordinary executable scope before incorporating
+results. A later baseline cannot replace blocked exploration. Repository changes
+must be restored before that review can consume evidence completion.
+
 Before the first ordinary write, `materiality_review` action `inspect` binds one
 explicit executable scope to the current review. Its `paths`, `components`, and
 `work_contexts` are typed independently from descriptive materiality scope;

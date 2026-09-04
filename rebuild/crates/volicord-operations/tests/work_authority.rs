@@ -2531,7 +2531,7 @@ fn late_exploratory_resolution_cannot_certify_affected_work(
     exploratory.disposition = MaterialityDisposition::ExploratoryUncertainty {
         disposition: ExploratoryDisposition::ResolvedByResearch,
     };
-    let revised = fixture
+    let rejected = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
             project_id: fixture.project_id,
@@ -2540,10 +2540,14 @@ fn late_exploratory_resolution_cannot_certify_affected_work(
             learning_participation: LearningParticipation::Inactive,
             dimensions: vec![exploratory],
             learning_value_revision_bases: Vec::new(),
-        })?;
+        })
+        .expect_err("repository mutation cannot become qualifying prototype evidence");
+    assert!(rejected
+        .message()
+        .contains("unchanged original repository baseline"));
     assert_eq!(
-        readiness(&fixture, &revised)?.disposition,
-        WorkAuthorityDisposition::ReviewInvalid
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ResearchOrPrototype
     );
     Ok(())
 }
@@ -3637,6 +3641,139 @@ fn materially_atomic_private_details_terminate_without_question(
         let recorded = review_with_choices(&fixture, vec![choice], vec![bounded])?;
         assert_eq!(
             readiness(&fixture, &recorded)?.stage,
+            WorkAuthorityStage::ReadyForWork
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn blocked_prototype_cannot_rebase_tracked_fixture_mutation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for evidence in [
+        EngineeringChoiceEvidenceState::PrototypeRequired,
+        EngineeringChoiceEvidenceState::ResearchRequired,
+    ] {
+        let mut fixture = fixture()?;
+        fs::create_dir_all(fixture.repository.join("tests"))?;
+        fs::write(fixture.repository.join("tests/prototype.txt"), "original\n")?;
+        for args in [
+            vec!["init", "-q"],
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        ] {
+            assert!(std::process::Command::new("git")
+                .args(args)
+                .current_dir(&fixture.repository)
+                .status()?
+                .success());
+        }
+        fixture.baseline = fixture
+            .operations
+            .analyze(fixture.project_id, vec![])?
+            .value
+            .ok_or("analysis")?
+            .analysis;
+        let source = fixture.baseline.repository_source.identity();
+        let mut choice = engineering_choice(
+            "prototype",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        );
+        choice.evidence_state = evidence;
+        let bounded = agent_owned_dimension(
+            "prototype",
+            source,
+            LearningValueAssessment::Routine {
+                rationale: "bounded implementation after evidence".into(),
+            },
+        );
+        let original = review_with_choices(&fixture, vec![choice.clone()], vec![bounded.clone()])?;
+        assert!(readiness(&fixture, &original)?.blocking);
+        fs::write(
+            fixture.repository.join("tests/prototype.txt"),
+            "unauthorized experiment\n",
+        )?;
+        let later = fixture
+            .operations
+            .analyze(fixture.project_id, vec![])?
+            .value
+            .ok_or("analysis")?
+            .analysis;
+        choice.evidence_state = EngineeringChoiceEvidenceState::Sufficient;
+        choice.source_basis = vec![later.repository_source.identity()];
+        let attempt = fixture.operations.record_engineering_choice_discovery(
+            EngineeringChoiceDiscoveryDraft {
+                project_id: fixture.project_id,
+                goal_context_id: fixture.goal_id,
+                baseline_analysis_snapshot_id: later.identity,
+                session: "fresh-resume".into(),
+                source_operation: "post-write rebaseline".into(),
+                summary: "attempt fresh readiness".into(),
+                material_boundary_review: complete_material_boundary_review(
+                    &[choice.clone()],
+                    later.repository_source.identity(),
+                ),
+                choices: vec![choice],
+            },
+        );
+        assert!(
+            attempt.is_err(),
+            "post-write baseline must not replace blocked authority"
+        );
+        let mut resolved = bounded;
+        resolved.basis.kinds.push(match evidence {
+            EngineeringChoiceEvidenceState::ResearchRequired => {
+                WorkAuthorityBasisKind::ResearchEvidence
+            }
+            _ => WorkAuthorityBasisKind::PrototypeEvidence,
+        });
+        resolved.basis.research_basis = vec!["bounded experiment result".into()];
+        assert!(
+            fixture
+                .operations
+                .revise_materiality_review(MaterialityReviewRevisionDraft {
+                    project_id: fixture.project_id,
+                    review_candidate_id: original.review_candidate_id,
+                    rationale: "attempt resolution after tracked fixture mutation".into(),
+                    learning_participation: LearningParticipation::Inactive,
+                    dimensions: vec![resolved.clone()],
+                    learning_value_revision_bases: vec![],
+                })
+                .is_err(),
+            "tracked evidence must be restored before resolving the original chain"
+        );
+        fs::write(fixture.repository.join("tests/prototype.txt"), "original\n")?;
+        let scratch = tempdir()?;
+        fs::write(
+            scratch.path().join("prototype.txt"),
+            "scratch experiment evidence\n",
+        )?;
+        let ready =
+            fixture
+                .operations
+                .revise_materiality_review(MaterialityReviewRevisionDraft {
+                    project_id: fixture.project_id,
+                    review_candidate_id: original.review_candidate_id,
+                    rationale: "scratch evidence resolves the original pre-work chain".into(),
+                    learning_participation: LearningParticipation::Inactive,
+                    dimensions: vec![resolved],
+                    learning_value_revision_bases: vec![],
+                })?;
+        assert_eq!(
+            ready.baseline_analysis_snapshot_id,
+            fixture.baseline.identity
+        );
+        assert_eq!(
+            readiness(&fixture, &ready)?.stage,
             WorkAuthorityStage::ReadyForWork
         );
     }
