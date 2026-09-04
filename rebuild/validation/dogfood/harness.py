@@ -3317,6 +3317,8 @@ def executable_scope_binding_observation(
         reason = "invalid_paths"
     if reason is None and not coupled_artifact_review_valid(coupled_review, paths):
         reason = "invalid_coupled_artifact_review"
+    if reason is None and inspect_call.result.get("action") != "inspect":
+        reason = "invalid_inspect_result"
     if reason is None and (
         inspect_call.arguments.get("project_id") != project_id
         or inspect_call.result.get("project_id") != project_id
@@ -3422,7 +3424,6 @@ def executable_scope_chronology(
         call
         for call in capture.successful_calls("materiality_review")
         if call.arguments.get("action") == "inspect"
-        and call.result.get("action") == "inspect"
         and call.arguments.get("project_id") == project_id
         and call.arguments.get("review_candidate_id") == review_candidate_id
     ]
@@ -16809,6 +16810,34 @@ def self_test() -> int:
         failed_work_result["status"]
     )
 
+    for action in (None, "record"):
+        fixture = canonical_result_fixture("volicord", 1, "explicit_user_owned_decision")
+        path, _ = capture_events(fixture, "work")
+        ready_inspect = next(
+            call for call in load_codex_capture(path).successful_calls("materiality_review")
+            if call.arguments.get("action") == "inspect"
+        )
+        malformed_result = json.loads(json.dumps(ready_inspect.result))
+        if action is None:
+            malformed_result.pop("action")
+        else:
+            malformed_result["action"] = action
+        insert_successful_mcp_completion_before_first_write(
+            fixture, operation="materiality_review",
+            arguments=ready_inspect.arguments, structured=malformed_result,
+        )
+        observed = executable_scope_chronology(
+            load_codex_capture(path), project_id="01" * 16,
+            review_candidate_id="18" * 16, goal_context_id="08" * 16,
+            baseline_analysis_snapshot_id="0b" * 32,
+        )
+        if (
+            observed["qualified"]
+            or observed["binding_count"] != 2
+            or observed["write_events"][0]["binding_failure"] != "invalid_inspect_result"
+        ):
+            raise AssertionError("malformed successful inspect fell back to earlier readiness")
+
     for field, wrong_value in (
         ("project_id", "fe" * 16),
         ("goal_context_id", "fd" * 16),
@@ -21052,6 +21081,7 @@ def self_test() -> int:
         "canonical_result_behavior_truth_table": canonical_result_truth_table,
         "canonical_coupled_artifacts_without_caller_sorting": "passed",
         "malformed_or_missing_canonical_artifact_evidence_rejected": "passed",
+        "malformed_inspect_cannot_fall_back_to_earlier_scope": "passed",
         "canonical_expansion_revision_accepted": "passed",
         "scope_binding_superseded_by_later_review_rejected": "passed",
         "root_artifact_first_write_rejected": "passed",
