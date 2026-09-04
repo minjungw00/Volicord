@@ -627,6 +627,23 @@ def main() -> int:
         )
         or materiality_contract.get("executable_scope_fields")
         != ["paths", "components", "work_contexts"]
+        or materiality_contract.get("coupled_artifact_review")
+        != {
+            "categories": [
+                "implementation",
+                "focused_tests",
+                "public_or_internal_documentation",
+                "changelog_or_release_notes",
+                "schema_snapshot_or_generated_artifact",
+                "other_repository_owned_artifact",
+            ],
+            "exactly_once": True,
+            "included_paths_exactly_account_for_executable_paths": True,
+            "no_coupled_artifact_requires_basis": True,
+            "late_discovery_is_prospective_only": True,
+            "new_material_outcome_requires_materiality_reevaluation": True,
+            "repository_root_convenience_scope_allowed": False,
+        }
         or materiality_contract.get("pre_work_readiness_sequence")
         != [
             "record_or_revise_returns_executable_scope_required",
@@ -852,6 +869,7 @@ def main() -> int:
         "promoted",
         "current_revision_available",
         "inquiry_frontier_presented",
+        "exact_presentation_receipt_bound",
         "current_host_response_matched",
         "decision_recorded",
         "post_decision_materiality_resolved_before_affected_work",
@@ -937,7 +955,7 @@ def main() -> int:
         "does not disclose Recall",
         "resolves the repository-bound existing Project through project_resolve before Recall",
         "a fresh resume session invokes Recall after project_resolve",
-        "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
+        "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
         "correlate every unresolved review dimension through its Question Candidate",
         "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work",
         "event_msg.mcp_tool_call_end",

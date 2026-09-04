@@ -49,7 +49,7 @@ use volicord_inquiry::{
     CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateObservationBasis, CandidateOrigin,
     CandidateReadBasis, CandidateRecord, CandidateRetention, CandidateStore, ChangeAttribution,
-    CheckpointCandidate, CheckpointEvaluation, DecisionApplicabilityState,
+    CheckpointCandidate, CheckpointEvaluation, CoupledArtifactReview, DecisionApplicabilityState,
     EngineeringChoiceDiscovery, FrontierRead, InquiryScope, LearningDeliberation,
     LearningDeliberationState, LearningParticipation, MaterialityDisposition, MaterialityReview,
     PromotionResult, RepositoryResearchBasis, RepositoryWorkBasis, SubmissionOutcome,
@@ -1200,6 +1200,7 @@ impl LocalOperations {
         baseline_analysis_snapshot_id: AnalysisSnapshotId,
         review_candidate_id: CandidateId,
         scope: ApplicabilityScope,
+        coupled_artifact_review: CoupledArtifactReview,
     ) -> Result<MaterialityReviewOutcome, Error> {
         self.initialize_runtime()?;
         let existing = CandidateStore::open(self.layout.candidate_store())
@@ -1245,6 +1246,7 @@ impl LocalOperations {
                     &baseline,
                     &current,
                     scope,
+                    coupled_artifact_review,
                 )
             })
             .map_err(|error| Error::with_source("Executable work scope binding failed", error))?;

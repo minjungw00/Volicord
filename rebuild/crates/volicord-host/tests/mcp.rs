@@ -18,12 +18,13 @@ use volicord_inquiry::{
     CandidateStore, CurrentHostResponse, DisplayedQuestion, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution, EngineeringAlternative,
-    EngineeringChoice, EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState,
-    EngineeringChoiceRelationship, EngineeringEffectCategory, LocalOperations,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, RuntimeLayout,
-    WorkAuthorityBasis, WorkAuthorityBasisKind,
+    CoupledArtifactAssessment, CoupledArtifactCategory, CoupledArtifactDisposition,
+    CoupledArtifactReview, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
+    LocalOperations, MaterialBoundaryConclusion, MaterialBoundaryReview,
+    MaterialOutcomeOwnershipAssessment, MaterialityDimension, MaterialityDisposition,
+    MaterialityReviewDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
@@ -3500,6 +3501,9 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     );
     assert!(descriptions["materiality_review"]
         .contains("account exactly once for every discovered alternative"));
+    assert!(descriptions["materiality_review"].contains("changelog/release-note"));
+    assert!(descriptions["materiality_review"].contains("revise Materiality first"));
+    assert!(descriptions["materiality_review"].contains("never by authorizing the repository root"));
     assert!(descriptions["context_record"].contains("caller-reported"));
     assert!(descriptions["context_record"].contains("does not authenticate"));
     assert!(descriptions["context_record"].contains("One turn may require repeated calls"));
@@ -4913,6 +4917,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 components: Vec::new(),
                 work_contexts: Vec::new(),
             },
+            coupled_artifact_review(&["implemented.rs"]),
         )
         .expect("pre-work executable scope");
 
@@ -6055,7 +6060,68 @@ fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
                 }),
             );
     }
+    if name == "materiality_review"
+        && arguments.get("action").and_then(Value::as_str) == Some("inspect")
+        && arguments.get("coupled_artifact_review").is_none()
+    {
+        let paths = arguments
+            .get("paths")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let implementation_disposition = if paths.is_empty() {
+            json!({"state":"no_coupled_artifact"})
+        } else {
+            json!({"state":"included","repository_paths":paths})
+        };
+        arguments
+            .as_object_mut()
+            .expect("tool arguments object")
+            .insert(
+                "coupled_artifact_review".into(),
+                json!({
+                    "assessments":[
+                        {"category":"implementation","disposition":implementation_disposition,"basis_summary":"fixture repository inspection identifies the implementation paths"},
+                        {"category":"focused_tests","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no separate focused-test artifact"},
+                        {"category":"public_or_internal_documentation","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no separate documentation artifact"},
+                        {"category":"changelog_or_release_notes","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no changelog artifact"},
+                        {"category":"schema_snapshot_or_generated_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no schema or generated artifact"},
+                        {"category":"other_repository_owned_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no other coupled artifact"}
+                    ],
+                    "materiality_reassessment":"fixture scope introduces no new material product outcome"
+                }),
+            );
+    }
     adapter.handle(json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":name,"arguments":arguments}})).expect("tool response")
+}
+
+fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
+    let categories = [
+        CoupledArtifactCategory::Implementation,
+        CoupledArtifactCategory::FocusedTests,
+        CoupledArtifactCategory::PublicOrInternalDocumentation,
+        CoupledArtifactCategory::ChangelogOrReleaseNotes,
+        CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact,
+        CoupledArtifactCategory::OtherRepositoryOwnedArtifact,
+    ];
+    CoupledArtifactReview {
+        assessments: categories
+            .into_iter()
+            .map(|category| CoupledArtifactAssessment {
+                category,
+                disposition: if category == CoupledArtifactCategory::Implementation {
+                    CoupledArtifactDisposition::Included {
+                        repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+                    }
+                } else {
+                    CoupledArtifactDisposition::NoCoupledArtifact
+                },
+                basis_summary: "fixture repository inspection accounts for this category".into(),
+            })
+            .collect(),
+        materiality_reassessment:
+            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+    }
 }
 
 fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&str]) -> Value {
@@ -6271,6 +6337,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "components",
                     "work_contexts",
                     "met_revisit_triggers",
+                    "coupled_artifact_review",
                 ],
                 &[
                     "action",
@@ -6278,6 +6345,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "goal_context_id",
                     "baseline_analysis_snapshot_id",
                     "review_candidate_id",
+                    "coupled_artifact_review",
                 ],
             ),
         ],

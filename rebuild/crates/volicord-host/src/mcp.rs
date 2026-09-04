@@ -18,15 +18,16 @@ use volicord_inquiry::{
     BatchResponseItem, BehavioralContextBasis, CandidateCollectionMode, CandidateCollectionScope,
     CandidateContent, CandidateDisposition, CandidateDraft, CandidateFreshness, CandidateId,
     CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention,
-    CurrentHostResponse, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
-    DisplayedQuestion, DuplicateAssessment, EngineeringAlternative, EngineeringChoice,
-    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
-    LearningInitialResponse, LearningParticipation, LearningRecommendation,
-    LearningValueAssessment, LearningValueRevisionBasis, LearningValueRevisionRequest,
-    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
-    MaterialityAssessment, MaterialityStatus, QuestionCandidate, ResponseMapping,
-    SubmissionOutcome,
+    CoupledArtifactAssessment, CoupledArtifactCategory, CoupledArtifactDisposition,
+    CoupledArtifactReview, CurrentHostResponse, DiscoveredAlternativeAccounting,
+    DiscoveredAlternativeResolution, DisplayedQuestion, DuplicateAssessment,
+    EngineeringAlternative, EngineeringChoice, EngineeringChoiceEvidenceState,
+    EngineeringChoiceRelationship, EngineeringEffectCategory, LearningAlternativeSelection,
+    LearningDeliberation, LearningDeliberationState, LearningInitialResponse,
+    LearningParticipation, LearningRecommendation, LearningValueAssessment,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
+    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialityAssessment,
+    MaterialityStatus, QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
     bounded_repository_analysis_json, AnalysisSnapshotId, BackgroundProviderOperationDraft,
@@ -651,6 +652,7 @@ impl HostAdapter {
                 work_contexts.sort();
                 work_contexts.dedup();
                 let met_revisit_triggers = string_array(args, "met_revisit_triggers")?;
+                let coupled_artifact_review = coupled_artifact_review(args)?;
                 let outcome = self
                     .operations
                     .bind_executable_work_scope(
@@ -663,6 +665,7 @@ impl HostAdapter {
                             components: components.clone(),
                             work_contexts: work_contexts.clone(),
                         },
+                        coupled_artifact_review.clone(),
                     )
                     .map_err(operation_error)?;
                 let workflow = self
@@ -689,6 +692,7 @@ impl HostAdapter {
                             "paths": paths,
                             "components": components,
                             "work_contexts": work_contexts,
+                            "coupled_artifact_review": coupled_artifact_review_json(&coupled_artifact_review),
                         },
                         "read_only":false,
                     }),
@@ -1887,7 +1891,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, or applicable Decision, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact Decision or delegation resolves it, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect binds the explicit typed executable paths, components, and work contexts to the current review before ready_for_work; descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, or applicable Decision, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact Decision or delegation resolves it, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect explicitly reviews implementation, focused-test, documentation, changelog/release-note, schema/snapshot/generated, and other repository-owned artifact categories and binds only the resulting exact paths, components, and work contexts before ready_for_work. Include predictable coupled artifacts before their first write; add later discoveries prospectively, never by authorizing the repository root. If an artifact introduces a new material product outcome, revise Materiality first rather than treating it as a path-only expansion. Descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2334,6 +2338,91 @@ fn behavioral_context_basis_schema() -> Value {
     );
     schema["description"] =
         json!("Complete durable non-Goal Context basis for behavior affected by this review");
+    schema
+}
+
+fn coupled_artifact_review_schema() -> Value {
+    let included = object_schema(
+        vec![
+            (
+                "state",
+                enum_schema("Coupled-artifact disposition", &["included"]),
+            ),
+            (
+                "repository_paths",
+                nonempty_string_array_schema(
+                    "Executable repository paths owned by this artifact category",
+                ),
+            ),
+        ],
+        &["state", "repository_paths"],
+    );
+    let absent = object_schema(
+        vec![(
+            "state",
+            enum_schema("Coupled-artifact disposition", &["no_coupled_artifact"]),
+        )],
+        &["state"],
+    );
+    let assessment = object_schema(
+        vec![
+            (
+                "category",
+                enum_schema(
+                    "Maintained coupled-artifact category",
+                    &[
+                        "implementation",
+                        "focused_tests",
+                        "public_or_internal_documentation",
+                        "changelog_or_release_notes",
+                        "schema_snapshot_or_generated_artifact",
+                        "other_repository_owned_artifact",
+                    ],
+                ),
+            ),
+            (
+                "disposition",
+                json!({
+                    "description":"Whether this category contributes exact executable repository paths",
+                    "oneOf":[included, absent]
+                }),
+            ),
+            (
+                "basis_summary",
+                text_schema(
+                    "Source-grounded reason for the included paths or the no-coupled-artifact conclusion",
+                    1,
+                    4096,
+                ),
+            ),
+        ],
+        &["category", "disposition", "basis_summary"],
+    );
+    let mut schema = object_schema(
+        vec![
+            (
+                "assessments",
+                json!({
+                    "type":"array",
+                    "description":"Exactly one assessment for every maintained coupled-artifact category",
+                    "minItems":6,
+                    "maxItems":6,
+                    "items":assessment
+                }),
+            ),
+            (
+                "materiality_reassessment",
+                text_schema(
+                    "Why the planned artifacts introduce no new material product outcome, or how current Materiality was reevaluated before this binding",
+                    1,
+                    4096,
+                ),
+            ),
+        ],
+        &["assessments", "materiality_reassessment"],
+    );
+    schema["description"] =
+        json!("Complete pre-write review of predictable directly coupled repository artifacts");
     schema
 }
 
@@ -3070,6 +3159,7 @@ fn materiality_review_schemas() -> Vec<Value> {
             "met_revisit_triggers",
             string_array_schema("Known met Decision revisit triggers"),
         ),
+        ("coupled_artifact_review", coupled_artifact_review_schema()),
     ]);
     vec![
         object_schema(
@@ -3100,6 +3190,7 @@ fn materiality_review_schemas() -> Vec<Value> {
                 "goal_context_id",
                 "baseline_analysis_snapshot_id",
                 "review_candidate_id",
+                "coupled_artifact_review",
             ],
         ),
     ]
@@ -4186,6 +4277,14 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             LearningParticipation::Inactive => json!({"state":"inactive"}),
             LearningParticipation::Active { user_turn_source_id, verbatim_statement } => json!({"state":"active","user_turn_source_id":user_turn_source_id.to_string(),"verbatim_statement":verbatim_statement}),
         },
+        "executable_work_scope":review.executable_work_scope.as_ref().map(|binding| json!({
+            "paths":binding.scope.paths,
+            "components":binding.scope.components,
+            "work_contexts":binding.scope.work_contexts,
+            "materiality_dimension_ids":binding.materiality_dimension_ids,
+            "bound_analysis_snapshot_id":binding.bound_analysis_snapshot_id.to_string(),
+            "coupled_artifact_review":coupled_artifact_review_json(&binding.coupled_artifact_review),
+        })),
         "late_work_authority_revisions":review.late_work_authority_revisions.iter().map(|revision| json!({
             "dimension_id":revision.dimension_id,
             "detected_analysis_snapshot_id":revision.detected_analysis_snapshot_id.to_string(),
@@ -5254,6 +5353,88 @@ fn behavioral_context_basis(value: &Value) -> Result<BehavioralContextBasis, Hos
     })
 }
 
+fn coupled_artifact_review(value: &Value) -> Result<CoupledArtifactReview, HostError> {
+    let review = value
+        .get("coupled_artifact_review")
+        .ok_or_else(|| HostError::new("coupled_artifact_review is required"))?;
+    let assessments = review
+        .get("assessments")
+        .and_then(Value::as_array)
+        .ok_or_else(|| HostError::new("coupled-artifact assessments are required"))?
+        .iter()
+        .map(|assessment| {
+            let category = match required_str(assessment, "category")? {
+                "implementation" => CoupledArtifactCategory::Implementation,
+                "focused_tests" => CoupledArtifactCategory::FocusedTests,
+                "public_or_internal_documentation" => {
+                    CoupledArtifactCategory::PublicOrInternalDocumentation
+                }
+                "changelog_or_release_notes" => CoupledArtifactCategory::ChangelogOrReleaseNotes,
+                "schema_snapshot_or_generated_artifact" => {
+                    CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact
+                }
+                "other_repository_owned_artifact" => {
+                    CoupledArtifactCategory::OtherRepositoryOwnedArtifact
+                }
+                _ => return Err(HostError::new("unknown coupled-artifact category")),
+            };
+            let disposition = assessment
+                .get("disposition")
+                .ok_or_else(|| HostError::new("coupled-artifact disposition is required"))?;
+            let disposition = match required_str(disposition, "state")? {
+                "included" => CoupledArtifactDisposition::Included {
+                    repository_paths: required_strings(disposition, "repository_paths")?,
+                },
+                "no_coupled_artifact" => CoupledArtifactDisposition::NoCoupledArtifact,
+                _ => return Err(HostError::new("unknown coupled-artifact disposition")),
+            };
+            Ok(CoupledArtifactAssessment {
+                category,
+                disposition,
+                basis_summary: required_str(assessment, "basis_summary")?.to_owned(),
+            })
+        })
+        .collect::<Result<Vec<_>, HostError>>()?;
+    Ok(CoupledArtifactReview {
+        assessments,
+        materiality_reassessment: required_str(review, "materiality_reassessment")?.to_owned(),
+    })
+}
+
+fn coupled_artifact_review_json(review: &CoupledArtifactReview) -> Value {
+    json!({
+        "assessments":review.assessments.iter().map(|assessment| json!({
+            "category":coupled_artifact_category_name(assessment.category),
+            "disposition":match &assessment.disposition {
+                CoupledArtifactDisposition::Included { repository_paths } => json!({
+                    "state":"included",
+                    "repository_paths":repository_paths,
+                }),
+                CoupledArtifactDisposition::NoCoupledArtifact => json!({
+                    "state":"no_coupled_artifact",
+                }),
+            },
+            "basis_summary":assessment.basis_summary,
+        })).collect::<Vec<_>>(),
+        "materiality_reassessment":review.materiality_reassessment,
+    })
+}
+
+fn coupled_artifact_category_name(category: CoupledArtifactCategory) -> &'static str {
+    match category {
+        CoupledArtifactCategory::Implementation => "implementation",
+        CoupledArtifactCategory::FocusedTests => "focused_tests",
+        CoupledArtifactCategory::PublicOrInternalDocumentation => {
+            "public_or_internal_documentation"
+        }
+        CoupledArtifactCategory::ChangelogOrReleaseNotes => "changelog_or_release_notes",
+        CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact => {
+            "schema_snapshot_or_generated_artifact"
+        }
+        CoupledArtifactCategory::OtherRepositoryOwnedArtifact => "other_repository_owned_artifact",
+    }
+}
+
 fn learning_selections(
     value: &Value,
     key: &str,
@@ -6204,7 +6385,9 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                     "materiality_review_candidate_id":identity("materiality_review_candidate"),
                 },
                 "required_scope_fields":["paths","components","work_contexts"],
-                "scope_contract":"Bind the complete bounded executable scope before ordinary writes; descriptive affected_scope does not authorize repository paths.",
+                "required_coupled_artifact_review_field":"coupled_artifact_review",
+                "coupled_artifact_categories":["implementation","focused_tests","public_or_internal_documentation","changelog_or_release_notes","schema_snapshot_or_generated_artifact","other_repository_owned_artifact"],
+                "scope_contract":"Before ordinary writes, assess every directly coupled artifact category exactly once and bind only included repository paths. A no-coupled-artifact conclusion needs a source-grounded basis. A later artifact may be added prospectively before its first write; an artifact with a new material product outcome requires Materiality reevaluation before scope binding. Descriptive affected_scope does not authorize repository paths, and repository root is not a convenience scope.",
             })
         }
         WorkflowStage::MaterialityReview => json!({

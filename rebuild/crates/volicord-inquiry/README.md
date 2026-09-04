@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 13. Candidate identity and persistence
+  `volicord-inquiry-candidates`, version 18. Candidate identity and persistence
   are physically separate from `volicord-context`; Candidate rows never enter
   a canonical portable bundle.
 - The Candidate kinds preserve bounded origin, collection scope,

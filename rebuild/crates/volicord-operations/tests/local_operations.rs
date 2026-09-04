@@ -7,13 +7,14 @@ use volicord_context::{
 };
 use volicord_local_platform::{CancellationFlag, ProcessTermination, ProcessTreeCleanup};
 use volicord_operations::{
-    CommandVerificationDraft, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
-    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
-    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    GroundedCheckpointDraft, HealthState, LocalOperations, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialityDimension,
-    MaterialityDisposition, MaterialityReviewDraft, OperationState, ProjectResolution,
-    RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    CommandVerificationDraft, CoupledArtifactAssessment, CoupledArtifactCategory,
+    CoupledArtifactDisposition, CoupledArtifactReview, DiscoveredAlternativeAccounting,
+    DiscoveredAlternativeResolution, EngineeringAlternative, EngineeringChoice,
+    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
+    EngineeringEffectCategory, GroundedCheckpointDraft, HealthState, LocalOperations,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft, OperationState,
+    ProjectResolution, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 use volicord_projections::{CandidateDependencyState, ProjectionHealth, ProjectionIssueKind};
 use volicord_repository_intelligence::{
@@ -22,6 +23,35 @@ use volicord_repository_intelligence::{
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::{symlink, PermissionsExt};
+
+fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
+    let categories = [
+        CoupledArtifactCategory::Implementation,
+        CoupledArtifactCategory::FocusedTests,
+        CoupledArtifactCategory::PublicOrInternalDocumentation,
+        CoupledArtifactCategory::ChangelogOrReleaseNotes,
+        CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact,
+        CoupledArtifactCategory::OtherRepositoryOwnedArtifact,
+    ];
+    CoupledArtifactReview {
+        assessments: categories
+            .into_iter()
+            .map(|category| CoupledArtifactAssessment {
+                category,
+                disposition: if category == CoupledArtifactCategory::Implementation {
+                    CoupledArtifactDisposition::Included {
+                        repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+                    }
+                } else {
+                    CoupledArtifactDisposition::NoCoupledArtifact
+                },
+                basis_summary: "fixture repository inspection accounts for this category".into(),
+            })
+            .collect(),
+        materiality_reassessment:
+            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+    }
+}
 
 fn fixture() -> Result<(TempDir, LocalOperations, std::path::PathBuf), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;
@@ -471,6 +501,7 @@ fn record_ready_review(
             components: Vec::new(),
             work_contexts: Vec::new(),
         },
+        coupled_artifact_review(&["src", "README.md", "pyproject.toml", "draft.rs"]),
     )?;
     Ok(())
 }

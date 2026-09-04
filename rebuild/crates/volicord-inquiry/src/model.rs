@@ -495,7 +495,37 @@ pub struct MaterialityReview {
 pub struct ExecutableWorkScopeBinding {
     pub scope: volicord_context::ApplicabilityScope,
     pub materiality_dimension_ids: Vec<String>,
+    pub coupled_artifact_review: CoupledArtifactReview,
     pub bound_analysis_snapshot_id: AnalysisSnapshotId,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum CoupledArtifactCategory {
+    Implementation,
+    FocusedTests,
+    PublicOrInternalDocumentation,
+    ChangelogOrReleaseNotes,
+    SchemaSnapshotOrGeneratedArtifact,
+    OtherRepositoryOwnedArtifact,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CoupledArtifactDisposition {
+    Included { repository_paths: Vec<String> },
+    NoCoupledArtifact,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CoupledArtifactAssessment {
+    pub category: CoupledArtifactCategory,
+    pub disposition: CoupledArtifactDisposition,
+    pub basis_summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CoupledArtifactReview {
+    pub assessments: Vec<CoupledArtifactAssessment>,
+    pub materiality_reassessment: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

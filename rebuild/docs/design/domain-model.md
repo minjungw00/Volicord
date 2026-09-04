@@ -70,9 +70,10 @@ Question, possible Checkpoint와 promotion proposal을 포함할 수 있다.
 `Materiality Review`도 Session Candidate다. 현재 user-stated Goal, exact retained
 pre-work Analysis Snapshot과 independently material한 outcome dimension을 묶어 각
 dimension의 fact/settled authority/delegation/exploration/user-owned disposition과 bounded
-evidence basis를 보존한다. Fact/settled dimension의 `exact_authority`는 exact covered outcome,
-모든 cited authority를 적용한 뒤 남은 credible alternatives와 unique-outcome rationale를
-보존한다. Settling disposition에서는 remaining alternatives가 비어 있어야 한다. Related evidence,
+evidence basis를 보존한다. Fact/settled dimension의 `exact_authority`는 exact covered outcome과
+unique-outcome rationale를 보존하고, identity-linked alternative accounting은 모든 discovered
+alternative를 selected/eliminated/unresolved 상태와 exact source basis로 exactly once 보존한다.
+Settling disposition에서는 unresolved alternative가 없어야 한다. Related evidence,
 architecture constraint 또는 convention이 outcome space를 좁혀도 material alternative가 남으면
 settling authority가 아니며, repository fact는 contract나 convention을 mechanical observation으로
 relabel할 수 없다. Current-task delegation basis는 exact Goal identity, 그 Goal의
@@ -83,8 +84,13 @@ category를 별도 typed evidence로 보존한다. 같은 statement가 여러 di
 delegation을 추론하지 않고 research, recommendation, convention, accepted contract 또는
 Decision authority와 합치지 않는다. 이 review는 일곱 번째 canonical entity, user Decision 또는
 ordinary-write permission이 아니다. Review는 descriptive `affected_scope`와 별도로 path,
-component, work-context를 구분한 typed executable work scope를 보존한다. 이 scope는 current
-dimension identity set에 bind되며 parent repository path는 descendant file을 포함한다. Material
+component, work-context를 구분한 typed executable work scope를 보존한다. 이 binding은 directly
+coupled implementation, focused test, public/internal documentation, changelog/release note,
+schema/snapshot/generated, other repository-owned artifact category를 각각 exactly once 검토하고 included
+path가 executable path set을 정확히 account하도록 한다. 각 no-artifact 결론과 included set은 exact
+Analysis Snapshot에 bind된 rationale를 가지며, 새 material outcome은 path-only expansion보다 먼저
+Materiality reevaluation을 요구한다. 이 scope는 current dimension identity set에 bind되며 parent
+repository path는 descendant file을 포함한다. Material
 dimension identity/affected-scope가 확장되면 binding은 invalidated되고, baseline 뒤 이미 변경된
 path를 새 binding으로 retroactively 포함할 수 없다. 첫 authoritative review가 meaningful repository
 mutation 전이었는지와 이후 evidence revision을 구분한다. Maintained baseline/current repository

@@ -404,7 +404,8 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
     descriptions = {entry["name"]: entry.get("description", "") for entry in catalog}
     require(
         "typed pre-work Materiality Review" in descriptions["materiality_review"]
-        and "Inquiry owns the authority evaluation" in descriptions["materiality_review"],
+        and "changelog/release-note" in descriptions["materiality_review"]
+        and "revise Materiality first" in descriptions["materiality_review"],
         "materiality_review no longer exposes the owned authority boundary",
     )
     require(
@@ -419,7 +420,8 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
         "candidate_manage no longer owns Candidate lifecycle guidance",
     )
     require(
-        "present each actual alternative" in descriptions["inquiry_frontier"],
+        "presentation_receipt_id" in descriptions["inquiry_frontier"]
+        and "exact revision" in descriptions["inquiry_frontier"],
         "inquiry_frontier no longer owns Question presentation guidance",
     )
     require(

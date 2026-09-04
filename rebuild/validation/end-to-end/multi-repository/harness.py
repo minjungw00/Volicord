@@ -87,6 +87,34 @@ ENGINEERING_EFFECT_CATEGORIES = (
 )
 
 
+def coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
+    categories = (
+        "implementation",
+        "focused_tests",
+        "public_or_internal_documentation",
+        "changelog_or_release_notes",
+        "schema_snapshot_or_generated_artifact",
+        "other_repository_owned_artifact",
+    )
+    return {
+        "assessments": [
+            {
+                "category": category,
+                "disposition": (
+                    {"state": "included", "repository_paths": paths}
+                    if category == "implementation"
+                    else {"state": "no_coupled_artifact"}
+                ),
+                "basis_summary": "V11 repository inspection accounts for this artifact category.",
+            }
+            for category in categories
+        ],
+        "materiality_reassessment": (
+            "The bounded V11 artifact introduces no new material outcome beyond the current dimensions."
+        ),
+    }
+
+
 def material_boundary_review(
     choices: list[dict[str, Any]], source_ids: list[str]
 ) -> list[dict[str, Any]]:
@@ -1230,6 +1258,7 @@ def rehearse_target(
                     "components": [],
                     "work_contexts": ["internal-state"] if technical_delegated else [],
                     "met_revisit_triggers": [],
+                    "coupled_artifact_review": coupled_artifact_review(["v11-ordinary-work.txt"]),
                 })
             candidate_research_analysis, candidate_research_analysis_ok = host.tool(
                 "repository_analyze", {"project_id": project_id, "excluded_paths": []}
@@ -1390,6 +1419,7 @@ def rehearse_target(
                         "components": [],
                         "work_contexts": ["internal-state"] if technical_delegated else [],
                         "met_revisit_triggers": [],
+                        "coupled_artifact_review": coupled_artifact_review(["v11-ordinary-work.txt"]),
                     },
                 )
             learning_evidence: dict[str, Any] = {"active": learning_active}

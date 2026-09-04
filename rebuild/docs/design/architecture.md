@@ -463,8 +463,11 @@ current-host response → Decision path만 사용한다. Shared result는 stage,
 next Volicord action, blocking 여부, reason, satisfied와 unresolved requirement를 보존하며
 모든 requirement가 충족되고 descriptive materiality scope와 분리된 typed executable path/component/
 work-context scope가 existing Materiality inspection transition으로 current review에 bind된 뒤에만
-`ready_for_work`를 표시한다. Parent repository path는 descendant를 cover하고 material scope expansion은
-binding을 invalidate하며 이미 변경된 path에 대한 late expansion은 거부한다.
+`ready_for_work`를 표시한다. Binding은 implementation/test/documentation/changelog/schema-or-generated/
+other repository-owned artifact category를 exactly once 검토하고 included path만 authorize한다. Later
+coupled artifact는 first write 전 prospective expansion이 가능하지만 새 material product outcome이면
+Materiality reevaluation이 먼저다. Parent repository path는 descendant를 cover하고 material scope
+expansion은 binding을 invalidate하며 이미 변경된 path에 대한 late expansion은 거부한다.
 
 Materiality Review의 learning participation은 inactive 또는 exact current-host user Source로 입증된
 active state다. Authority와 독립적인 routine/deliberation-worthy assessment 뒤, active이며 agent-owned인

@@ -521,6 +521,22 @@
         "components",
         "work_contexts"
       ],
+      "coupled_artifact_review": {
+        "categories": [
+          "implementation",
+          "focused_tests",
+          "public_or_internal_documentation",
+          "changelog_or_release_notes",
+          "schema_snapshot_or_generated_artifact",
+          "other_repository_owned_artifact"
+        ],
+        "exactly_once": true,
+        "included_paths_exactly_account_for_executable_paths": true,
+        "no_coupled_artifact_requires_basis": true,
+        "late_discovery_is_prospective_only": true,
+        "new_material_outcome_requires_materiality_reevaluation": true,
+        "repository_root_convenience_scope_allowed": false
+      },
       "write_chronology_basis": "each repository path's first supported meaningful Codex file-change event",
       "event_authority_selection": "latest valid matching production Materiality scope binding completed before the write event",
       "prospective_scope_expansion_supported": true,
@@ -600,7 +616,7 @@
       "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; bind every behaviorally consequential non-Goal item used by Materiality to its canonical Context identity, and keep unused Goal records as bounded diagnostics",
       "establish the repository baseline through repository_analyze before ordinary work",
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
-      "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
+      "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
       "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
       "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",

@@ -1276,7 +1276,7 @@ def load_definition() -> dict[str, Any]:
             "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; bind every behaviorally consequential non-Goal item used by Materiality to its canonical Context identity, and keep unused Goal records as bounded diagnostics",
             "establish the repository baseline through repository_analyze before ordinary work",
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
-            "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
+            "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
             "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
             "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
@@ -1431,6 +1431,25 @@ def load_definition() -> dict[str, Any]:
         "all_behavior_classes_require_inquiry": False,
     }:
         raise ValueError("the behavior-specific work-intake contract changed")
+    if evidence.get("materiality_review_contract", {}).get(
+        "coupled_artifact_review"
+    ) != {
+        "categories": [
+            "implementation",
+            "focused_tests",
+            "public_or_internal_documentation",
+            "changelog_or_release_notes",
+            "schema_snapshot_or_generated_artifact",
+            "other_repository_owned_artifact",
+        ],
+        "exactly_once": True,
+        "included_paths_exactly_account_for_executable_paths": True,
+        "no_coupled_artifact_requires_basis": True,
+        "late_discovery_is_prospective_only": True,
+        "new_material_outcome_requires_materiality_reevaluation": True,
+        "repository_root_convenience_scope_allowed": False,
+    }:
+        raise ValueError("the coupled-artifact review contract changed")
     if evidence.get("mcp_completion_contract") != {
         "accepted_representations": [
             "event_msg.mcp_tool_call_end",
@@ -3118,6 +3137,7 @@ class ExecutableScopeBinding:
     paths: tuple[str, ...]
     components: tuple[str, ...]
     work_contexts: tuple[str, ...]
+    coupled_artifact_review: dict[str, Any] | None
     valid: bool
     reason: str | None
 
@@ -3165,6 +3185,87 @@ def workflow_has_identity(workflow: Any, kind: str, identity: Any) -> bool:
     )
 
 
+def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
+    categories = {
+        "implementation",
+        "focused_tests",
+        "public_or_internal_documentation",
+        "changelog_or_release_notes",
+        "schema_snapshot_or_generated_artifact",
+        "other_repository_owned_artifact",
+    }
+    if not isinstance(review, dict) or not nonempty_string(
+        review.get("materiality_reassessment")
+    ):
+        return False
+    assessments = review.get("assessments")
+    if not isinstance(assessments, list) or len(assessments) != len(categories):
+        return False
+    observed_categories: set[str] = set()
+    included_paths: list[str] = []
+    for assessment in assessments:
+        if not isinstance(assessment, dict):
+            return False
+        category = assessment.get("category")
+        disposition = assessment.get("disposition")
+        if (
+            category not in categories
+            or category in observed_categories
+            or not nonempty_string(assessment.get("basis_summary"))
+            or not isinstance(disposition, dict)
+        ):
+            return False
+        observed_categories.add(category)
+        if disposition == {"state": "no_coupled_artifact"}:
+            continue
+        repository_paths = disposition.get("repository_paths")
+        if (
+            set(disposition) != {"state", "repository_paths"}
+            or disposition.get("state") != "included"
+            or not isinstance(repository_paths, list)
+            or not repository_paths
+            or repository_paths != sorted(set(repository_paths))
+            or not all(nonempty_string(path) for path in repository_paths)
+        ):
+            return False
+        included_paths.extend(repository_paths)
+    return (
+        observed_categories == categories
+        and len(included_paths) == len(set(included_paths))
+        and set(included_paths) == set(paths)
+    )
+
+
+def fixture_coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
+    categories = [
+        "implementation",
+        "focused_tests",
+        "public_or_internal_documentation",
+        "changelog_or_release_notes",
+        "schema_snapshot_or_generated_artifact",
+        "other_repository_owned_artifact",
+    ]
+    return {
+        "assessments": [
+            {
+                "category": category,
+                "disposition": (
+                    {"state": "included", "repository_paths": paths}
+                    if category == "implementation" and paths
+                    else {"state": "no_coupled_artifact"}
+                ),
+                "basis_summary": (
+                    "The fixture repository inspection accounts for this exact artifact category."
+                ),
+            }
+            for category in categories
+        ],
+        "materiality_reassessment": (
+            "The executable artifacts introduce no material outcome beyond the current review dimensions."
+        ),
+    }
+
+
 def executable_scope_binding_observation(
     capture: CodexCapture,
     inspect_call: ToolCall,
@@ -3192,6 +3293,9 @@ def executable_scope_binding_observation(
             break
         scope_fields[field] = tuple(values)
     paths = scope_fields.get("paths", ())
+    coupled_review = (
+        scope.get("coupled_artifact_review") if isinstance(scope, dict) else None
+    )
     if reason is None and any(
         Path(path).is_absolute()
         or ".." in Path(path).parts
@@ -3199,6 +3303,11 @@ def executable_scope_binding_observation(
         for path in paths
     ):
         reason = "invalid_paths"
+    if reason is None and (
+        not coupled_artifact_review_valid(coupled_review, paths)
+        or inspect_call.arguments.get("coupled_artifact_review") != coupled_review
+    ):
+        reason = "invalid_coupled_artifact_review"
     if reason is None and (
         inspect_call.arguments.get("project_id") != project_id
         or inspect_call.result.get("project_id") != project_id
@@ -3307,6 +3416,7 @@ def executable_scope_binding_observation(
         paths,
         scope_fields.get("components", ()),
         scope_fields.get("work_contexts", ()),
+        coupled_review if isinstance(coupled_review, dict) else None,
         reason is None,
         reason,
     )
@@ -3401,6 +3511,7 @@ def executable_scope_chronology(
                 "paths": list(binding.paths),
                 "components": list(binding.components),
                 "work_contexts": list(binding.work_contexts),
+                "coupled_artifact_review": binding.coupled_artifact_review,
             }
         else:
             state = "uncovered"
@@ -10305,6 +10416,9 @@ def real_session_fixture(
             judgment["resolution_decision_id"] = decision
         return judgment
 
+    def coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
+        return fixture_coupled_artifact_review(paths)
+
     def secondary_materiality_judgment(
         *, resolved: bool = False, source_id: str = repository_source
     ) -> dict[str, Any]:
@@ -10769,6 +10883,7 @@ def real_session_fixture(
                 "components": [],
                 "work_contexts": [],
                 "met_revisit_triggers": [],
+                "coupled_artifact_review": coupled_artifact_review(work_paths),
             },
         ),
         custom_output(
@@ -10785,6 +10900,7 @@ def real_session_fixture(
                     "paths": work_paths,
                     "components": [],
                     "work_contexts": [],
+                    "coupled_artifact_review": coupled_artifact_review(work_paths),
                 },
                 "read_only": False,
                 "workflow": ready_workflow(review_candidate, baseline_analysis),
@@ -11276,6 +11392,7 @@ def real_session_fixture(
                 "components": [],
                 "work_contexts": [],
                 "met_revisit_triggers": [],
+                "coupled_artifact_review": coupled_artifact_review(["src/resume.rs"]),
             },
             fallback="??",
         ),
@@ -11293,6 +11410,7 @@ def real_session_fixture(
                     "paths": ["src/resume.rs"],
                     "components": [],
                     "work_contexts": [],
+                    "coupled_artifact_review": coupled_artifact_review(["src/resume.rs"]),
                 },
                 "read_only": False,
                 "workflow": ready_workflow(
@@ -16615,15 +16733,23 @@ def self_test() -> int:
             "work",
             "materiality_review",
             "inspect",
-            lambda arguments: arguments.update({"paths": [first_path]}),
+            lambda arguments: arguments.update({
+                "paths": [first_path],
+                "coupled_artifact_review": fixture_coupled_artifact_review(
+                    [first_path]
+                ),
+            }),
         )
         mutate_custom_output(
             fixture,
             "work",
             "materiality-scope-binding",
-            lambda output: output["executable_work_scope"].update(
-                {"paths": [first_path]}
-            ),
+            lambda output: output["executable_work_scope"].update({
+                "paths": [first_path],
+                "coupled_artifact_review": fixture_coupled_artifact_review(
+                    [first_path]
+                ),
+            }),
         )
         path, events = capture_events(fixture, "work")
         first_patch = next(
@@ -16649,6 +16775,9 @@ def self_test() -> int:
             "components": [],
             "work_contexts": [],
             "met_revisit_triggers": [],
+            "coupled_artifact_review": fixture_coupled_artifact_review(
+                [first_path, second_path]
+            ),
         }
         capture = load_codex_capture(path)
         initial_binding = next(
@@ -16662,6 +16791,9 @@ def self_test() -> int:
             first_path,
             second_path,
         ]
+        expanded_result["executable_work_scope"]["coupled_artifact_review"] = (
+            fixture_coupled_artifact_review([first_path, second_path])
+        )
         insert_successful_mcp_completion_before(
             fixture,
             before_call_marker="current-analysis-call",
@@ -20395,15 +20527,23 @@ def self_test() -> int:
         "resume",
         "materiality_review",
         "inspect",
-        lambda arguments: arguments.update({"paths": [regression_path]}),
+        lambda arguments: arguments.update({
+            "paths": [regression_path],
+            "coupled_artifact_review": fixture_coupled_artifact_review(
+                [regression_path]
+            ),
+        }),
     )
     mutate_custom_output(
         typed_regression_continuation,
         "resume",
         "resume-materiality-scope-binding",
-        lambda output: output["executable_work_scope"].update(
-            {"paths": [regression_path]}
-        ),
+        lambda output: output["executable_work_scope"].update({
+            "paths": [regression_path],
+            "coupled_artifact_review": fixture_coupled_artifact_review(
+                [regression_path]
+            ),
+        }),
     )
     regression_capture_path, regression_events = capture_events(
         typed_regression_continuation, "resume"

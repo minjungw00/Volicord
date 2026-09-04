@@ -1,11 +1,11 @@
 use crate::{
     CandidateCleanup, CandidateCleanupKind, CandidateCollectionMode, CandidateDisposition,
     CandidateDraft, CandidateId, CandidateKind, CandidateReadBasis, CandidateRecord,
-    CollectionOptOut, CollectionOptOutScope, DuplicateAssessment, EngineeringChoiceDiscovery,
-    Error, ErrorKind, LateWorkAuthorityRevision, LearningDeliberationState,
-    LearningInitialResponse, LearningRecommendation, MaterialityAssessment, MaterialityDisposition,
-    MaterialityReview, MaterialityStatus, PromotionResult, RepositoryResearchBasis,
-    SubmissionOutcome,
+    CollectionOptOut, CollectionOptOutScope, CoupledArtifactCategory, CoupledArtifactDisposition,
+    CoupledArtifactReview, DuplicateAssessment, EngineeringChoiceDiscovery, Error, ErrorKind,
+    LateWorkAuthorityRevision, LearningDeliberationState, LearningInitialResponse,
+    LearningRecommendation, MaterialityAssessment, MaterialityDisposition, MaterialityReview,
+    MaterialityStatus, PromotionResult, RepositoryResearchBasis, SubmissionOutcome,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 17;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 18;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -267,6 +267,7 @@ impl CandidateStore {
         baseline: &AnalysisSnapshot,
         current: &AnalysisSnapshot,
         mut scope: ApplicabilityScope,
+        mut coupled_artifact_review: CoupledArtifactReview,
     ) -> Result<CandidateRecord, Error> {
         if baseline.project.identity() != project_id || current.project.identity() != project_id {
             return Err(Error::new(
@@ -275,6 +276,7 @@ impl CandidateStore {
             ));
         }
         normalize_executable_scope(&mut scope)?;
+        normalize_coupled_artifact_review(&mut coupled_artifact_review, &scope)?;
         let changes = crate::attribute_repository_changes(
             project_id,
             &crate::RepositoryWorkBasis {
@@ -309,7 +311,9 @@ impl CandidateStore {
         if existing_review
             .executable_work_scope
             .as_ref()
-            .is_some_and(|binding| binding.scope == scope)
+            .is_some_and(|binding| {
+                binding.scope == scope && binding.coupled_artifact_review == coupled_artifact_review
+            })
         {
             return Ok(existing);
         }
@@ -355,6 +359,7 @@ impl CandidateStore {
             review.executable_work_scope = Some(crate::ExecutableWorkScopeBinding {
                 scope,
                 materiality_dimension_ids,
+                coupled_artifact_review,
                 bound_analysis_snapshot_id: current.identity,
             });
             validate_materiality_review(review)
@@ -1806,6 +1811,7 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
     }
     if let Some(binding) = &review.executable_work_scope {
         validate_executable_scope(&binding.scope)?;
+        validate_coupled_artifact_review(&binding.coupled_artifact_review, &binding.scope)?;
         let bound_dimensions = binding
             .materiality_dimension_ids
             .iter()
@@ -1870,6 +1876,89 @@ fn normalize_executable_scope(scope: &mut ApplicabilityScope) -> Result<(), Erro
     scope.work_contexts.sort();
     scope.work_contexts.dedup();
     validate_executable_scope(scope)
+}
+
+fn normalize_coupled_artifact_review(
+    review: &mut CoupledArtifactReview,
+    scope: &ApplicabilityScope,
+) -> Result<(), Error> {
+    for assessment in &mut review.assessments {
+        if let CoupledArtifactDisposition::Included { repository_paths } =
+            &mut assessment.disposition
+        {
+            repository_paths.sort();
+            repository_paths.dedup();
+        }
+    }
+    review
+        .assessments
+        .sort_by_key(|assessment| assessment.category);
+    validate_coupled_artifact_review(review, scope)
+}
+
+fn validate_coupled_artifact_review(
+    review: &CoupledArtifactReview,
+    scope: &ApplicabilityScope,
+) -> Result<(), Error> {
+    validate_text(
+        "coupled-artifact materiality reassessment",
+        &review.materiality_reassessment,
+    )?;
+    let required_categories = BTreeSet::from([
+        CoupledArtifactCategory::Implementation,
+        CoupledArtifactCategory::FocusedTests,
+        CoupledArtifactCategory::PublicOrInternalDocumentation,
+        CoupledArtifactCategory::ChangelogOrReleaseNotes,
+        CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact,
+        CoupledArtifactCategory::OtherRepositoryOwnedArtifact,
+    ]);
+    let categories = review
+        .assessments
+        .iter()
+        .map(|assessment| assessment.category)
+        .collect::<BTreeSet<_>>();
+    if categories != required_categories || review.assessments.len() != required_categories.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "coupled-artifact review must assess every maintained artifact category exactly once",
+        ));
+    }
+    let mut included_paths = BTreeSet::new();
+    for assessment in &review.assessments {
+        validate_text(
+            "coupled-artifact assessment basis",
+            &assessment.basis_summary,
+        )?;
+        if let CoupledArtifactDisposition::Included { repository_paths } = &assessment.disposition {
+            validate_list(repository_paths)?;
+            if repository_paths.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "included coupled-artifact assessment requires a repository path",
+                ));
+            }
+            for path in repository_paths {
+                if !included_paths.insert(path.as_str()) {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "each executable repository path must belong to exactly one coupled-artifact category",
+                    ));
+                }
+            }
+        }
+    }
+    let scope_paths = scope
+        .paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if included_paths != scope_paths {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "coupled-artifact included paths must exactly account for executable scope paths",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_executable_scope(scope: &ApplicabilityScope) -> Result<(), Error> {

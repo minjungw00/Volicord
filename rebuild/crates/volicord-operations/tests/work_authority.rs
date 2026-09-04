@@ -13,20 +13,58 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    CommandVerificationDraft, DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution,
-    EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscoveryDraft,
-    EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
-    ExactAuthoritySufficiency, ExplicitDelegationEvidence, ExploratoryDisposition,
-    GroundedCheckpointDraft, LearningAlternativeSelection, LearningDeliberationDraft,
-    LearningDeliberationState, LearningFeedbackDraft, LearningInitialResponse,
-    LearningParticipation, LearningRecommendation, LearningReconsiderationDraft,
-    LearningResponseDraft, LearningValueAssessment, LearningValueRevisionBasis,
-    LearningValueRevisionRequest, LocalOperations, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
-    MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
+    CommandVerificationDraft, CoupledArtifactAssessment, CoupledArtifactCategory,
+    CoupledArtifactDisposition, CoupledArtifactReview, DiscoveredAlternativeAccounting,
+    DiscoveredAlternativeResolution, EngineeringAlternative, EngineeringChoice,
+    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
+    EngineeringEffectCategory, ExactAuthoritySufficiency, ExplicitDelegationEvidence,
+    ExploratoryDisposition, GroundedCheckpointDraft, LearningAlternativeSelection,
+    LearningDeliberationDraft, LearningDeliberationState, LearningFeedbackDraft,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningReconsiderationDraft, LearningResponseDraft, LearningValueAssessment,
+    LearningValueRevisionBasis, LearningValueRevisionRequest, LocalOperations,
+    MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
+    MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
     MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
     WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition, WorkflowStage,
 };
+
+fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
+    categorized_coupled_artifact_review(&[(CoupledArtifactCategory::Implementation, paths)])
+}
+
+fn categorized_coupled_artifact_review(
+    included: &[(CoupledArtifactCategory, &[&str])],
+) -> CoupledArtifactReview {
+    let categories = [
+        CoupledArtifactCategory::Implementation,
+        CoupledArtifactCategory::FocusedTests,
+        CoupledArtifactCategory::PublicOrInternalDocumentation,
+        CoupledArtifactCategory::ChangelogOrReleaseNotes,
+        CoupledArtifactCategory::SchemaSnapshotOrGeneratedArtifact,
+        CoupledArtifactCategory::OtherRepositoryOwnedArtifact,
+    ];
+    CoupledArtifactReview {
+        assessments: categories
+            .into_iter()
+            .map(|category| CoupledArtifactAssessment {
+                category,
+                disposition: included
+                    .iter()
+                    .find(|(included_category, _)| *included_category == category)
+                    .map_or(
+                        CoupledArtifactDisposition::NoCoupledArtifact,
+                        |(_, paths)| CoupledArtifactDisposition::Included {
+                            repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+                        },
+                    ),
+                basis_summary: "fixture repository inspection accounts for this category".into(),
+            })
+            .collect(),
+        materiality_reassessment:
+            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+    }
+}
 
 fn dimension(
     id: &str,
@@ -902,6 +940,8 @@ fn review_with_learning(
         .flat_map(|dimension| dimension.affected_scope.iter().cloned())
         .collect::<Vec<_>>();
     paths.push("src/lib.rs".into());
+    let artifact_review =
+        coupled_artifact_review(&paths.iter().map(String::as_str).collect::<Vec<_>>());
     let review = record_review_with_learning(fixture, choices, dimensions, learning_participation)?;
     fixture.operations.bind_executable_work_scope(
         fixture.project_id,
@@ -913,6 +953,7 @@ fn review_with_learning(
             components: Vec::new(),
             work_contexts: Vec::new(),
         },
+        artifact_review,
     )
 }
 
@@ -1630,6 +1671,7 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
             components: vec!["serializer-core".into()],
             work_contexts: vec!["checkpoint-publication".into()],
         },
+        coupled_artifact_review(&["src/serializer"]),
     )?;
 
     let ready = fixture.operations.work_readiness(
@@ -1714,8 +1756,8 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
 }
 
 #[test]
-fn binds_parent_roots_before_work_and_accepts_a_multi_file_checkpoint(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn binds_predictable_coupled_changelog_before_first_write() -> Result<(), Box<dyn std::error::Error>>
+{
     let fixture = fixture_with_goal(
         "Add bounded Repository Intelligence regression coverage; choose the test structure.",
     )?;
@@ -1778,10 +1820,27 @@ fn binds_parent_roots_before_work_and_accepts_a_multi_file_checkpoint(
         fixture.baseline.identity,
         recorded.review_candidate_id,
         volicord_context::ApplicabilityScope {
-            paths: vec!["src".into(), "tests".into(), "docs".into()],
+            paths: vec![
+                "src".into(),
+                "tests".into(),
+                "docs".into(),
+                "CHANGES.rst".into(),
+            ],
             components: Vec::new(),
             work_contexts: Vec::new(),
         },
+        categorized_coupled_artifact_review(&[
+            (CoupledArtifactCategory::Implementation, &["src"]),
+            (CoupledArtifactCategory::FocusedTests, &["tests"]),
+            (
+                CoupledArtifactCategory::PublicOrInternalDocumentation,
+                &["docs"],
+            ),
+            (
+                CoupledArtifactCategory::ChangelogOrReleaseNotes,
+                &["CHANGES.rst"],
+            ),
+        ]),
     )?;
     let advertised = fixture
         .operations
@@ -1803,11 +1862,100 @@ fn binds_parent_roots_before_work_and_accepts_a_multi_file_checkpoint(
         fixture.repository.join("docs/structural.md"),
         "# Bounded structural behavior\n",
     )?;
+    fs::write(
+        fixture.repository.join("CHANGES.rst"),
+        "Coupled structural behavior\n",
+    )?;
 
     let checkpoint = fixture
         .operations
         .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
-    assert_eq!(checkpoint.changed_paths.len(), 3);
+    assert_eq!(checkpoint.changed_paths.len(), 4);
+    Ok(())
+}
+
+#[test]
+fn later_coupled_artifact_can_be_added_prospectively_before_its_first_write(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![dimension(
+            "bounded-implementation",
+            MaterialityDisposition::AgentOwnedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ImplementationPreference],
+            source,
+        )],
+    )?;
+
+    let rebound = fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        ApplicabilityScope {
+            paths: vec!["src/lib.rs".into(), "tests".into()],
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+        categorized_coupled_artifact_review(&[
+            (CoupledArtifactCategory::Implementation, &["src/lib.rs"]),
+            (CoupledArtifactCategory::FocusedTests, &["tests"]),
+        ]),
+    )?;
+    assert!(rebound.review_revision > recorded.review_revision);
+
+    fs::create_dir_all(fixture.repository.join("tests"))?;
+    fs::write(
+        fixture.repository.join("tests/prospective.rs"),
+        "#[test] fn prospective() { assert!(true); }\n",
+    )?;
+    let checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths, ["tests/prospective.rs"]);
+    Ok(())
+}
+
+#[test]
+fn executable_scope_requires_complete_coupled_artifact_accounting(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![dimension(
+            "bounded-implementation",
+            MaterialityDisposition::AgentOwnedImplementationChoice,
+            vec![WorkAuthorityBasisKind::ImplementationPreference],
+            source,
+        )],
+    )?;
+    let mut incomplete = coupled_artifact_review(&["src/lib.rs"]);
+    incomplete.assessments.retain(|assessment| {
+        assessment.category != CoupledArtifactCategory::ChangelogOrReleaseNotes
+    });
+
+    let error = fixture
+        .operations
+        .bind_executable_work_scope(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            recorded.review_candidate_id,
+            ApplicabilityScope {
+                paths: vec!["src/lib.rs".into()],
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+            },
+            incomplete,
+        )
+        .expect_err("every coupled-artifact category must be reviewed");
+    assert!(std::error::Error::source(&error)
+        .expect("coupled-artifact source error")
+        .to_string()
+        .contains("assess every maintained artifact category exactly once"));
     Ok(())
 }
 
@@ -1843,6 +1991,7 @@ fn executable_scope_expansion_cannot_retroactively_cover_changed_work(
                 components: Vec::new(),
                 work_contexts: Vec::new(),
             },
+            coupled_artifact_review(&["src/lib.rs", "tests"]),
         )
         .expect_err("late scope expansion cannot authorize an already-changed path");
     assert!(std::error::Error::source(&error)

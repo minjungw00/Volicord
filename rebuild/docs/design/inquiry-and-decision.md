@@ -372,9 +372,16 @@ unresolved user-owned, evidence-required exploratory dimension 또는 active req
 Deliberation이 없고 current review에 bounded executable work scope가 bind되었을 때만 가능하다.
 Descriptive `affected_scope`는 material outcome을 설명하고 executable scope를 암묵적으로 만들지
 않는다. Existing `materiality_review.inspect(paths, components, work_contexts)` transition이 exact
-current dimension set에 typed scope를 보존한다. Repository-relative parent path는 descendant를
-cover하지만 component와 work context는 exact match다. Material dimension/scope expansion은 binding을
-invalidate하며 baseline 뒤 이미 변경된 path를 뒤늦게 추가해 earlier work를 authorize할 수 없다.
+current dimension set에 typed scope를 보존한다. 같은 transition은 implementation, focused tests,
+public/internal documentation, changelog/release notes, schema/snapshot/generated artifact, other
+repository-owned artifact를 각각 exactly once 검토한다. Included category의 path는 executable paths를
+exactly partition하고, `no_coupled_artifact`도 repository inspection에 근거한 rationale를 요구한다.
+Predictable coupled artifact는 first write 전에 포함해야 하며 나중에 발견한 artifact는 그 artifact의
+first write 전 prospective rebind만 허용한다. 새 material product outcome을 발견하면 path-only expansion이
+아니라 Materiality를 먼저 재평가한다. Repository root는 편의를 위한 scope가 아니다.
+Repository-relative parent path는 descendant를 cover하지만 component와 work context는 exact match다.
+Material dimension/scope expansion은 binding을 invalidate하며 baseline 뒤 이미 변경된 path를 뒤늦게
+추가해 earlier work를 authorize할 수 없다.
 Checkpoint scope evaluation은 deterministically 알 수 있는 uncovered changed path, component와 work
 context를 모두 수집하고 current executable scope, review/binding basis와 maintained next action을 한
 번에 반환한다. Scope mismatch를 수집해도 Goal/baseline, Decision applicability, chronology, revisit,
