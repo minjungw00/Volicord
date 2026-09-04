@@ -19,7 +19,7 @@ const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
 
 fn activation_context() -> String {
-    "Volicord is active for this explicitly authorized repository. Start project-scoped repository work with project_resolve, then follow every returned workflow.required_next_action until blocks_ordinary_work is false. Research/prototype states permit read-only or scratch evidence only; preserve the original Goal/Discovery/baseline and do not mutate the repository or rebaseline blocked work. Do not infer user authority from an agent recommendation, reuse an Analysis Snapshot first captured after ordinary work as the baseline, transmit repository sources without the separate exact provider authorization, or report Checkpoint verification that was not actually observed. For behavior-preserving/refactor completion, inspect relevant compatibility surfaces and link focused verification, including overrides and default propagation where repository evidence shows they matter. Non-project requests require no Volicord ceremony.".into()
+    "Volicord is active for this authorized repository. Start project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Research/prototype: read-only or scratch only; keep the original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires relevant compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.".into()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -898,6 +898,8 @@ mod tests {
             assert!(context.contains("Do not infer user authority from an agent recommendation"));
             assert!(context.contains("separate exact provider authorization"));
             assert!(context.contains("Checkpoint verification that was not actually observed"));
+            assert!(context.contains("no repository writes or rebasing blocked work"));
+            assert!(context.contains("compatibility surfaces linked to focused verification"));
             assert!(!context.contains("submit a Question Candidate"));
             assert!(
                 context.len() < 768,
