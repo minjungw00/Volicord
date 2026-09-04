@@ -658,21 +658,33 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         re.DOTALL,
     )
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
-    correlated_split_forward = re.fullmatch(
+    correlated_projection = re.fullmatch(
         rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
-        rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{\s*exit_code\s*:\s*"
-        rf"{variable}\.exit_code\s*\}}\s*\)\s*\)\s*;",
+        rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{(?P<fields>.*?)\}}\s*\)\s*\)\s*;",
         forward,
         re.DOTALL,
     )
-    correlated_session_forward = re.fullmatch(
-        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
-        rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{\s*exit_code\s*:\s*"
-        rf"{variable}\.exit_code\s*,\s*session_id\s*:\s*{variable}\.session_id\s*"
-        rf"\}}\s*\)\s*\)\s*;",
-        forward,
-        re.DOTALL,
-    )
+    correlated_fields: set[str] | None = None
+    if correlated_projection is not None:
+        fields = [field.strip() for field in correlated_projection.group("fields").split(",")]
+        parsed_fields: list[str] = []
+        for field in fields:
+            projection = re.fullmatch(
+                rf"(?P<key>[A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*"
+                rf"{variable}\.(?P<member>[A-Za-z_$][A-Za-z0-9_$]*)",
+                field,
+            )
+            if projection is None or projection.group("key") != projection.group("member"):
+                parsed_fields = []
+                break
+            parsed_fields.append(projection.group("key"))
+        if (
+            parsed_fields
+            and len(parsed_fields) <= 16
+            and len(parsed_fields) == len(set(parsed_fields))
+            and "exit_code" in parsed_fields
+        ):
+            correlated_fields = set(parsed_fields)
     template_exit_forward = re.fullmatch(
         rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
         rf"text\s*\(\s*`exit=\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
@@ -686,8 +698,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         for item in (
             result_forward,
             output_forward,
-            correlated_split_forward,
-            correlated_session_forward,
+            correlated_fields,
             template_exit_forward,
         )
     ):
@@ -702,9 +713,9 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         "result"
         if result_forward is not None
         else "correlated_split"
-        if correlated_split_forward is not None
+        if correlated_fields is not None and "session_id" not in correlated_fields
         else "correlated_session"
-        if correlated_session_forward is not None
+        if correlated_fields is not None
         else "template_exit"
         if template_exit_forward is not None
         else "output"
@@ -948,7 +959,7 @@ def custom_output_parts(value: Any) -> list[str] | None:
 
 def custom_correlated_command_result(
     value: Any, *, includes_session_id: bool = False
-) -> tuple[str, int] | None:
+) -> tuple[str, int, int | None] | None:
     parts = custom_output_parts(value)
     if parts is None or len(parts) != 3:
         return None
@@ -959,8 +970,12 @@ def custom_correlated_command_result(
         status = json.loads(parts[2])
     except json.JSONDecodeError:
         return None
-    expected_keys = {"exit_code", "session_id"} if includes_session_id else {"exit_code"}
-    if not isinstance(status, dict) or set(status) != expected_keys:
+    required_keys = {"exit_code", "session_id"} if includes_session_id else {"exit_code"}
+    if (
+        not isinstance(status, dict)
+        or len(status) > 16
+        or not required_keys <= set(status)
+    ):
         return None
     if "session_id" in status and status["session_id"] is not None and (
         isinstance(status["session_id"], bool)
@@ -970,7 +985,8 @@ def custom_correlated_command_result(
     exit_code = status["exit_code"]
     if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not 0 <= exit_code <= 2_147_483_647:
         return None
-    return parts[1], exit_code
+    session_id = status.get("session_id")
+    return parts[1], exit_code, session_id
 
 
 def custom_template_command_result(value: Any) -> tuple[str, int] | None:
@@ -1524,7 +1540,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
             exit_code = result.get("exit_code")
             if not isinstance(output, str) or (
                 exit_code is not None
-                and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
+                and (
+                    isinstance(exit_code, bool)
+                    or not isinstance(exit_code, int)
+                    or not 0 <= exit_code <= 2_147_483_647
+                )
             ):
                 continue
             pending["output"] += output
@@ -1582,6 +1602,12 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 raw_session_id = (
                     result.get("session_id") if isinstance(result, dict) else None
                 )
+                if (
+                    correlated is not None
+                    and parsed.output_mode
+                    in {"correlated_split", "correlated_session"}
+                ):
+                    raw_session_id = correlated[2]
                 if isinstance(raw_session_id, int) and not isinstance(
                     raw_session_id, bool
                 ):
@@ -1608,7 +1634,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     continue
                 if not isinstance(output, str) or (
                     exit_code is not None
-                    and (isinstance(exit_code, bool) or not isinstance(exit_code, int))
+                    and (
+                        isinstance(exit_code, bool)
+                        or not isinstance(exit_code, int)
+                        or not 0 <= exit_code <= 2_147_483_647
+                    )
                 ):
                     continue
                 normalized_results = [(output, exit_code)]

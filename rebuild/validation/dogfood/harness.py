@@ -13250,12 +13250,23 @@ def self_test() -> int:
         f"const r=await tools.exec_command({command_arguments});\n"
         "text(r.output); text(JSON.stringify({exit_code:r.exit_code}));\n"
     )
+    correlated_metadata_wrapper = (
+        f"const r=await tools.exec_command({command_arguments});\n"
+        "text(r.output); text(JSON.stringify({exit_code:r.exit_code,"
+        "wall_time_seconds:r.wall_time_seconds}));\n"
+    )
     complete_parsed = parse_custom_call(complete_result_wrapper)
     correlated_parsed = parse_custom_call(correlated_split_wrapper)
+    correlated_metadata_parsed = parse_custom_call(correlated_metadata_wrapper)
     if complete_parsed is None or complete_parsed.output_mode != "result":
         raise AssertionError("complete command result forwarding is no longer supported")
     if correlated_parsed is None or correlated_parsed.output_mode != "correlated_split":
         raise AssertionError("same-result correlated command forwarding was not recognized")
+    if (
+        correlated_metadata_parsed is None
+        or correlated_metadata_parsed.output_mode != "correlated_split"
+    ):
+        raise AssertionError("correlated command metadata projection was not recognized")
     json_result_parsed = parse_custom_call(
         f"const r=await tools.exec_command({command_arguments});\n"
         "text(JSON.stringify(r));\n"
@@ -18118,6 +18129,25 @@ def self_test() -> int:
     )["checks"]["source_grounded_checkpoint"] != "passed":
         raise AssertionError("same-result split forwarding did not qualify matching failed verification")
 
+    correlated_metadata_verification = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    replace_command_observation(
+        correlated_metadata_verification,
+        "work",
+        "verification-call",
+        correlated_metadata_wrapper,
+        "Ran focused tests\nOK\n",
+        '{"exit_code":0,"wall_time_seconds":1.25}',
+    )
+    if real_session_evidence(
+        correlated_metadata_verification,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["source_grounded_checkpoint"] != "passed":
+        raise AssertionError("harmless correlated command metadata rejected terminal evidence")
+
     for label, wrapper in unsupported_split_wrappers.items():
         uncorrelated = real_session_fixture("volicord", 1, revision, evidence_directory)
         replace_command_observation(
@@ -18135,7 +18165,6 @@ def self_test() -> int:
 
     for label, status_text in {
         "non-numeric correlated status": '{"exit_code":"0"}',
-        "correlated status with an extra field": '{"exit_code":0,"session_id":null}',
         "correlated status literal": "exit_code=0",
     }.items():
         malformed_correlated = real_session_fixture(
@@ -18156,6 +18185,33 @@ def self_test() -> int:
             repository_revision=revision,
         )["checks"]["source_grounded_checkpoint"] != "failed":
             raise AssertionError(f"{label} qualified passed verification")
+
+    conflicting_session_wrapper = (
+        f"const r=await tools.exec_command({command_arguments});\n"
+        "text(r.output); text(JSON.stringify({exit_code:r.exit_code,"
+        "session_id:r.session_id,wall_time_seconds:r.wall_time_seconds}));\n"
+    )
+    conflicting_session = real_session_fixture(
+        "volicord", 1, revision, evidence_directory
+    )
+    replace_command_observation(
+        conflicting_session,
+        "work",
+        "verification-call",
+        conflicting_session_wrapper,
+        "Ran focused tests\nOK\n",
+        '{"exit_code":0,"session_id":77,"wall_time_seconds":1.25}',
+    )
+    conflicting_path = (
+        evidence_directory
+        / conflicting_session["evidence"]["captures"]["work"]["file"]
+    )
+    try:
+        load_codex_capture(conflicting_path)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("conflicting terminal and process-session identity qualified")
 
     correlated_inspection = real_session_fixture(
         "volicord", 1, revision, evidence_directory
