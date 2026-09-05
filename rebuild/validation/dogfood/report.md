@@ -2,25 +2,29 @@
 
 ## Status
 
-Failed diagnostic. Candidate
-`537bd0cadf40bedaf0719b658a860ac369d3faa6` entered the naturalistic campaign.
-Its explicit user-owned control succeeded, but the hidden user-owned control
-failed to discover the material outcome before affected work. The incomplete
-campaign, its sealed descriptors, and its private evidence are diagnostic only;
-they must not be repaired, resumed, or reused for replacement qualification.
-The prior technical-entry capsule remains historical evidence and cannot by
-itself qualify a later campaign contract. A new candidate requires a new
-technical gate and a wholly fresh campaign.
+Failed diagnostic; no replacement qualification. The latest inspected campaign
+candidate is `bbb64b4274c3f726fbeffae2389089819972b9ff` (2026-09-05).
+Its batch intake rejected the evidence as `operator_environment_invalid`:
+repository-scoped SessionStart activation was not established in the work and
+resume evidence for all eight cycles. All sixteen session identities were
+distinct, but automated qualification remained `not_run`.
+
+The predecessor candidate `537bd0cadf40bedaf0719b658a860ac369d3faa6` had a
+successful explicit user-owned control and a hidden user-owned materiality
+discovery failure. These are separate diagnostic outcomes. Neither campaign,
+its sealed descriptors, nor its private evidence may be repaired, resumed, or
+reused for replacement qualification. Historical technical-entry evidence
+cannot qualify the current HEAD; a new candidate requires a new technical gate
+and a wholly fresh campaign.
 
 - `replacement_gate = failed`
 - `replacement_pass_candidate = false`
 - `phase_9_ready = false`
-- `automated_qualification = failed`
+- `automated_qualification = not_run` for the latest inspected campaign
 - `human_review = not_provided`
 
-The remediation and support checks in this change do not establish a new
-technical entry, automated Dogfood passage, replacement passage, or Phase 9
-readiness.
+Subsequent production fixes and support checks do not establish a new technical
+entry, automated Dogfood passage, replacement passage, or Phase 9 readiness.
 
 ## Goal
 
@@ -46,7 +50,7 @@ prompt choreography.
 
 ## Input repositories and revisions
 
-The failed campaign's candidate, descriptors, workspaces, Runtime Homes,
+Both diagnostic campaigns' candidates, descriptors, workspaces, Runtime Homes,
 rollouts, bundles, observations, blocker results, and session identities are
 non-qualifying diagnostic evidence and cannot be reused.
 
@@ -291,22 +295,40 @@ failed campaign is diagnostic-only and cannot qualify this or any later
 candidate. A later candidate must pass a new technical gate and use a wholly
 fresh campaign.
 
-The campaign stopped at that point. These observations do not qualify the
+That predecessor campaign stopped at that point. These observations do not qualify the
 candidate, and V11 remains scripted conformance rather than naturalistic
 Dogfood passage.
+
+The latest campaign's preserved `batch-intake-summary.json` records candidate
+`bbb64b4274c3f726fbeffae2389089819972b9ff` and the following bounded results:
+
+- eight cycles with sixteen expected and sixteen observed distinct sessions;
+- `intake_state = rejected`, `outcome = operator_environment_invalid`, and
+  `qualification_state = not_run`;
+- eight failures of `repository_scoped_session_start_activation` and eight of
+  `resume_repository_scoped_session_start_activation`;
+- sixteen environment-attributed diagnostics, each reporting
+  `runtime_session_start_activation_observed = false`.
+
+These are evidence-classification results. They do not establish that the hook
+never executed, nor do they establish a product materiality result for those
+sessions. The activation/evidence boundary must be demonstrated by a new
+campaign after remediation. The private summary and rollouts remain external
+diagnostic inputs; this report does not copy or alter their evidence.
 
 ## Coverage and failures
 
 Historical technical Phase 8 entry evidence remains passed/eligible only for
-the technically gated candidate. The partial naturalistic campaign failed on
-material Question discovery and descriptor validity before complete coverage.
-Unrun cycles and campaign-wide interaction,
-document, Viewer, Repository Intelligence, CLI, and resource conclusions remain
-unqualified. Campaign-level human review is `not_provided`.
+the technically gated candidate. The predecessor partial naturalistic campaign
+failed on material Question discovery and descriptor validity. The latest
+campaign was rejected at environment-evidence intake before qualification.
+Neither result supplies campaign-wide interaction, document, Viewer,
+Repository Intelligence, CLI, or resource qualification. Campaign-level human
+review is `not_provided`.
 
-The observed naturalistic behavior is a product diagnostic failure. Incomplete
-campaign-wide coverage adds no replacement evidence and cannot support Phase 9
-readiness.
+The predecessor product diagnostic and the latest environment diagnostic must
+remain separately attributed. Neither supplies replacement evidence or supports
+Phase 9 readiness.
 
 ## Performance and resource observations
 
@@ -338,12 +360,14 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Failed campaign candidate | `537bd0cadf40bedaf0719b658a860ac369d3faa6` |
+| Latest inspected campaign candidate | `bbb64b4274c3f726fbeffae2389089819972b9ff` |
+| Predecessor product diagnostic candidate | `537bd0cadf40bedaf0719b658a860ac369d3faa6` |
 | Sealed production/test candidate | `technical_entry_only` |
 | Technical Phase 8 entry | `passed_historical_candidate_evidence` |
-| Naturalistic Dogfood | `failed_diagnostic_hidden_materiality_discovery` |
+| Latest naturalistic intake | `rejected_operator_environment_invalid` |
+| Predecessor naturalistic Dogfood | `failed_diagnostic_hidden_materiality_discovery` |
 | Complete replacement campaign | `not_run` |
-| Automated Dogfood qualification | `failed` |
+| Latest automated Dogfood qualification | `not_run` |
 | Campaign-level human review | `not_provided` |
 | Replacement gate | `failed` |
 | Replacement pass candidate | `false` |
@@ -355,8 +379,11 @@ separate private archive for the independent review handoff.
   agent discovery in ordinary user sessions.
 - The current evidence says nothing yet about reliability of strengthened
   material-Question discovery or real-session usability.
-- The failed campaign descriptors and evidence are immutable diagnostics, not
+- Both campaigns' descriptors and evidence are immutable diagnostics, not
   inputs to a fresh qualification campaign.
+- Missing activation evidence cannot by itself distinguish a hook execution failure
+  from an observation/attribution failure; subsequent support fixes are not a
+  fresh real-session campaign result.
 - No campaign-level human usability/accessibility or sustained resource
   conclusion exists for this candidate.
 
@@ -390,9 +417,10 @@ validation tooling and do not own product semantics.
 ## Decision revisit trigger status
 
 Official V11 reported no active accepted Q1–Q13 revisit trigger for technical
-entry. Naturalistic Dogfood then produced failed diagnostic evidence requiring
-production materiality-screening and evaluator-contract remediation, without
-changing the accepted Candidate/Inquiry/Decision model.
+entry. The predecessor naturalistic Dogfood produced a materiality-screening diagnostic;
+the latest batch intake produced an environment-evidence diagnostic. Subsequent
+remediation has not established new naturalistic passage. These diagnostics do
+not change the accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
