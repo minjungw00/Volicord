@@ -117,7 +117,10 @@ Blocker가 하나라도 있으면 exact final command count와 official V11 comm
 Authenticated V11은 installed Codex CLI가 사용하는 OpenAI Codex service를 destination으로
 하고, 세 target(`volicord`, `small-python`, `polyglot-medium`)에서 installed
 `project_health` MCP tool을 선택하는 세 bounded turn을 purpose/scope로 하는 외부 전송을
-필요로 한다. Intended transmitted scope는 bounded V11 prompt, Project identity와 tool
+필요로 한다. Gate의 explicit `--provider-model`은 background qualification과 세
+인증된 probe에 동일하게 전달하며 host/global default model로 대체하지 않는다.
+Official V11 run은 `--model`을 명시하고 missing/empty model이면 전송 전에 거부한다.
+Intended transmitted scope는 bounded V11 prompt, Project identity와 tool
 result이며 repository source body 전송은 의도하지 않는다. 이 전송에는 current
 invocation의 exact assertion
 `v11-openai-codex-project-health-three-targets`가 필요하다. Credential 소유,

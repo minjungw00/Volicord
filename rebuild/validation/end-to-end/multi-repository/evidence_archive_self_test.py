@@ -315,6 +315,7 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
                 str(gate / "final" / "summary.json"),
                 "--output-dir",
                 str(gate / "official-v11"),
+                "--model", "private-exact-model",
             ],
             ["harness.py", "run", "--validated-head"],
         ),
@@ -377,6 +378,10 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
     for command, expected_prefix in family_shapes:
         projected = builder.sanitized_argv(command, ROOT, gate)
         assert projected["argv"][: len(expected_prefix)] == expected_prefix
+        if "--model" in command:
+            index = command.index("--model") + 1
+            assert projected["argv"][index] == "<redacted:provider-model>"
+            assert [index, "redacted", "provider_model"] in projected["non_structural_argument_roles"]
 
 
 def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], Path]]:
@@ -577,6 +582,7 @@ def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], 
                 [
                     str(HERE / "harness.py"), "run", "--validated-head", HEAD,
                     "--final-artifact", path, "--output-dir", str(gate / "output"),
+                    "--model", "private-exact-model",
                 ],
                 ROOT,
             ),

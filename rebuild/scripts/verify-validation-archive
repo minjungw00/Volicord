@@ -490,7 +490,7 @@ def verify_current_command_grammar(
             (
                 ("executable",), "run", "--validated-head",
                 ("redacted", "candidate_identity"), "--final-artifact", ("path",),
-                "--output-dir", ("path",),
+                "--output-dir", ("path",), "--model", ("redacted", "provider_model"),
             ),
             (
                 ("executable",), "--live", "--authorize-source-transmission",

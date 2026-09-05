@@ -464,6 +464,7 @@ def run_gate(arguments: Sequence[str]) -> int:
             (
                 str(gate.HARNESS), "run", "--validated-head", candidate_head,
                 "--final-artifact", str(final_path), "--output-dir", str(output_directory),
+                "--model", provider_model or "",
             ),
         )
         result_path = output_directory / "result.json"

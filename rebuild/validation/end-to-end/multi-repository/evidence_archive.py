@@ -434,11 +434,12 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
                 {5},
             ),
             "run": (
-                8,
+                10,
                 {
                     2: "--validated-head",
                     4: "--final-artifact",
                     6: "--output-dir",
+                    8: "--model",
                 },
                 {5, 7},
             ),
@@ -453,6 +454,8 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
                 structural(index, "flag")
                 if argument == "--validated-head":
                     redact(index + 1, "candidate_identity")
+                elif argument == "--model":
+                    redact(index + 1, "provider_model")
             for index in shape[2]:
                 path(index)
         return roles

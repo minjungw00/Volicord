@@ -826,9 +826,12 @@ def authenticated_codex(
     project_id: str,
     retained_root: Path,
     *,
+    model: str,
     staging_parent: Path | None = None,
     authentication_source: Path | None = None,
 ) -> dict[str, Any]:
+    if not model.strip():
+        return step("environment_blocked", "an explicit Codex probe model is required")
     auth = authentication_source or (
         Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
     )
@@ -855,7 +858,7 @@ def authenticated_codex(
                 [
                     codex, "--dangerously-bypass-hook-trust", "--ask-for-approval", "never", "--config",
                     'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
-                    "exec", "--ephemeral", "--json", "--sandbox", "read-only",
+                    "exec", "--model", model, "--ephemeral", "--json", "--sandbox", "read-only",
                     "--skip-git-repo-check", "-C", str(repository), prompt,
                 ],
                 env | {"CODEX_HOME": str(codex_home)},
@@ -893,6 +896,7 @@ def rehearse_target(
     recorder: Recorder,
     base_env: dict[str, str],
     codex: str | None,
+    model: str,
 ) -> dict[str, Any]:
     target_root = run_root / "work" / target_kind
     home = target_root / "home"
@@ -985,7 +989,7 @@ def rehearse_target(
         direct_ok = False
         mcp_evidence = {"error": str(error)}
     codex_result = authenticated_codex(
-        recorder, codex, env, repository, project_id, target_root
+        recorder, codex, env, repository, project_id, target_root, model=model
     )
     combined_status = "passed" if direct_ok and codex_result["status"] == "passed" else (
         "environment_blocked" if direct_ok and codex_result["status"] == "environment_blocked" else "failed"
@@ -2628,6 +2632,8 @@ def assert_authenticated_codex_lifecycle() -> None:
             "expected = b'{\\\"synthetic\\\":\\\"v11-auth-lifecycle\\\"}\\n'\n"
             "if not auth.is_file() or auth.read_bytes() != expected:\n"
             "    raise SystemExit(41)\n"
+            "if '--model' not in sys.argv or sys.argv[sys.argv.index('--model') + 1] != 'synthetic-selected-model':\n"
+            "    raise SystemExit(44)\n"
             "prompt = sys.argv[-1]\n"
             "if 'bounded MCP connectivity probe, not repository work' not in prompt:\n"
             "    raise SystemExit(42)\n"
@@ -2646,6 +2652,13 @@ def assert_authenticated_codex_lifecycle() -> None:
             "V11_AUTH_VISIBILITY_MARKER": str(visibility_marker),
         }
 
+        missing_model = authenticated_codex(
+            recorder, str(fake_codex), env, repository, "synthetic-project", retained,
+            model=" ", staging_parent=staging_parent, authentication_source=source_auth,
+        )
+        if missing_model["status"] != "environment_blocked" or visibility_marker.exists():
+            raise AssertionError("missing model dispatched a Codex probe")
+
         succeeded = authenticated_codex(
             recorder,
             str(fake_codex),
@@ -2653,6 +2666,7 @@ def assert_authenticated_codex_lifecycle() -> None:
             repository,
             "synthetic-project",
             retained,
+            model="synthetic-selected-model",
             staging_parent=staging_parent,
             authentication_source=source_auth,
         )
@@ -2668,6 +2682,7 @@ def assert_authenticated_codex_lifecycle() -> None:
             repository,
             "synthetic-project",
             retained,
+            model="synthetic-selected-model",
             staging_parent=staging_parent,
             authentication_source=source_auth,
         )
@@ -3157,6 +3172,8 @@ def preflight(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if not args.model.strip():
+        raise ValueError("an explicit Codex probe model is required")
     output = Path(args.output_dir).resolve()
     if output.exists():
         raise RuntimeError("V11 output directory already exists")
@@ -3169,7 +3186,7 @@ def run(args: argparse.Namespace) -> int:
     repositories = []
     for target in ("volicord", "small-python", "polyglot-medium"):
         try:
-            repositories.append(rehearse_target(target, output, recorder, base_env, shutil.which("codex")))
+            repositories.append(rehearse_target(target, output, recorder, base_env, shutil.which("codex"), args.model))
         except (AssertionError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             repositories.append({
                 "class": target,
@@ -3209,6 +3226,7 @@ def parse_args() -> argparse.Namespace:
             child.add_argument("--allow-validation-changes", action="store_true")
         if name == "run":
             child.add_argument("--output-dir", required=True)
+            child.add_argument("--model", required=True)
     audit = subparsers.add_parser("credential-audit")
     audit.add_argument("--artifact-dir", required=True)
     return parser.parse_args()
