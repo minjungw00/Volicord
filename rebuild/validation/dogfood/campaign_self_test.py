@@ -585,6 +585,53 @@ def batch_exporter(bundles: dict[str, Path]):
     return export
 
 
+def assert_production_session_start(parent: Path, binary: Path) -> None:
+    """Sanitized sixteen-session production hook -> collect-batch parser regression."""
+    root, captures, bundles = prepared_batch(parent, "production-activation", binary)
+    mapped = campaign.map_batch_rollouts(root, captures)
+    assert len(mapped) == 16
+    assert all(item.capture.repository_scoped_activation_observed for item in mapped.values())
+    assert all(item.capture.tool_calls for item in mapped.values())
+    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    original = [json.loads(line) for line in work.read_text().splitlines()]
+    context = original[1]["payload"]["content"][0]["text"]
+    identity = context.splitlines()[0]
+    assert context != identity  # Actual production guidance, not just a marker fixture.
+    controls = {
+        "missing": (None, "absent"),
+        "unrelated": ("Volicord project_resolve workflow.required_next_action", "absent"),
+        "truncated": (identity[:-1], "malformed"),
+        "unsupported": (identity + ":unknown", "malformed"),
+        "wrong-binding": (identity[:-1] + ("0" if identity[-1] != "0" else "1"), "binding_mismatch"),
+        "prose-change": (identity + "\nReworded human guidance.", "valid"),
+        "late": (context, "late"),
+        "wrong-repository": (context, "binding_mismatch"),
+        "wrong-session": (context, "binding_mismatch"),
+    }
+    for label, (replacement, expected) in controls.items():
+        events = copy.deepcopy(original)
+        if replacement is None:
+            del events[1]
+        else:
+            events[1]["payload"]["content"][0]["text"] = replacement
+        if label == "late":
+            events.insert(4, events.pop(1))
+        elif label == "wrong-repository":
+            events[0]["payload"]["cwd"] += "/another"
+        elif label == "wrong-session":
+            events[0]["payload"]["id"] += "-another"
+            events[0]["payload"]["session_id"] += "-another"
+        path = parent / f"production-activation-{label}.jsonl"
+        path.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+        capture = harness.load_codex_capture(path)
+        assert capture.activation_evidence_state == expected, label
+        assert capture.repository_scoped_activation_observed == (expected == "valid"), label
+        assert capture.tool_calls  # MCP cannot rescue any failed activation control.
+    summary = campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
+    assert summary["outcome"] == "evidence_collected"
+    assert not summary["failure_attribution"]
+
+
 def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
     runtime = parent / "strict-runtime"
     repository = parent / "strict-repository"
@@ -834,7 +881,7 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     missing = filtered_capture(
         activation_work,
         parent / "missing-activation.jsonl",
-        "Volicord is active for this explicitly authorized repository.",
+        harness.ACTIVATION_PREFIX,
     )
     invalid = campaign.collect_work(activation_root, "volicord", 1, missing)
     assert invalid["outcome"] == "operator_environment_invalid"
@@ -2534,7 +2581,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     missing_activation = filtered_capture(
         activation_work,
         parent / "batch-missing-activation.jsonl",
-        "Volicord is active for this explicitly authorized repository.",
+        harness.ACTIVATION_PREFIX,
     )
     activation_inputs = [
         missing_activation if path == activation_work else path
@@ -3134,6 +3181,7 @@ def main() -> int:
             parent = Path(temporary)
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
+            assert_production_session_start(parent, binary)
             assert_strict_cli_contract(parent, binary)
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)

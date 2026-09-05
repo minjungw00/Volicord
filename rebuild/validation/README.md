@@ -309,6 +309,20 @@ python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
   --output <blocker-result.json>
 ```
 
+SessionStart identity is owned by
+`rebuild/crates/volicord-operations/src/session_start_identity.txt`, consumed by
+the production `codex::activation_context` renderer and Dogfood `codex_events`.
+The marker binds SHA-256 of canonical cwd UTF-8, NUL, and host session ID UTF-8.
+It contains no source content and is correlation evidence, not authentication.
+The hook emits protocol JSON; total additional context remains below 768 bytes.
+Detection requires an exact bound marker line in developer context before the
+first user task. Campaign intake separately checks candidate, workspace,
+revision, fresh session and sealed role identity. MCP use only corroborates it.
+Human guidance wording is independent; stale prose is not a supported identity.
+`campaign_self_test.py::assert_production_session_start` builds the current CLI,
+generates sixteen disposable work/resume hook outputs, and exercises the same
+`load_codex_capture`, mapping and `collect_batch` paths used for real intake.
+
 The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
 required high-level Project, Goal Context, repository baseline, behavior-class
 evidence, or grounded Checkpoint operations are terminal when absent from a

@@ -25,6 +25,8 @@ import time
 from typing import Any, Callable
 
 from codex_events import (
+    ACTIVATION_PREFIX,
+    activation_identity,
     CanonicalBundle,
     CodexCapture,
     EvidenceError,
@@ -10024,7 +10026,14 @@ def real_session_fixture(
             },
         )
 
-    def activation_message() -> dict[str, Any]:
+    def activation_message(session: str) -> dict[str, Any]:
+        from activation_fixture import production_context
+
+        context = (
+            production_context(Path(repository_cwd), session)
+            if repository_path is not None
+            else activation_identity(Path(repository_cwd), session)
+        )
         return event(
             "response_item",
             {
@@ -10033,11 +10042,7 @@ def real_session_fixture(
                 "content": [
                     {
                         "type": "input_text",
-                        "text": (
-                            "Volicord is active for this explicitly authorized repository. "
-                            "Start project-scoped repository work with project_resolve, then follow "
-                            "every returned workflow.required_next_action until blocks_ordinary_work is false."
-                        ),
+                        "text": context,
                     }
                 ],
             },
@@ -10521,7 +10526,7 @@ def real_session_fixture(
     )
     work_events = [
         session_meta(work_session),
-        activation_message(),
+        activation_message(work_session),
         task(work_turn),
         user(work_turn, f"{kind}-user-turn-{cycle}", work_user_task),
         mcp_call(
@@ -11162,7 +11167,7 @@ def real_session_fixture(
     )
     resume_events = [
         session_meta(resume_session),
-        activation_message(),
+        activation_message(resume_session),
         task(resume_turn),
         user(resume_turn, f"{kind}-resume-user-turn-{cycle}", resume_user_task),
         mcp_call(

@@ -145,6 +145,7 @@ def main() -> int:
         "rebuild/crates/volicord-operations/Cargo.toml",
         "rebuild/crates/volicord-operations/src/cli.rs",
         "rebuild/crates/volicord-operations/src/codex.rs",
+        "rebuild/crates/volicord-operations/src/session_start_identity.txt",
         "rebuild/crates/volicord-operations/src/lib.rs",
         "rebuild/crates/volicord-operations/src/main.rs",
         "rebuild/crates/volicord-host/README.md",

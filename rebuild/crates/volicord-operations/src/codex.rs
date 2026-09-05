@@ -1,6 +1,7 @@
 use crate::{cli::usage, cli::Cursor, Error, RuntimeLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     env,
     ffi::OsStr,
@@ -18,8 +19,19 @@ const SESSION_MATCHER: &str = "^(startup|resume|clear|compact)$";
 const EXCLUDE_BEGIN: &str = "# BEGIN Volicord Codex integration";
 const EXCLUDE_END: &str = "# END Volicord Codex integration";
 
-fn activation_context() -> String {
-    "Volicord is active for this authorized repository. Start project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Research/prototype: read-only or scratch only; keep the original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires relevant compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.".into()
+// Shared with rollout validation. Binding is SHA-256(canonical cwd UTF-8, NUL,
+// host session ID UTF-8); it is correlation evidence, not authentication.
+const ACTIVATION_IDENTITY: &str = include_str!("session_start_identity.txt");
+
+fn activation_context(cwd: &Path, session_id: &str) -> String {
+    let mut binding = Sha256::new();
+    binding.update(cwd.to_string_lossy().as_bytes());
+    binding.update([0]);
+    binding.update(session_id.as_bytes());
+    let identity = ACTIVATION_IDENTITY
+        .trim_end()
+        .replace("{binding}", &format!("{:x}", binding.finalize()));
+    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -257,6 +269,8 @@ fn session_start(repository: &Path, input: &mut dyn Read) -> Result<Option<Value
     let event: SessionStartInput = serde_json::from_reader(input)
         .map_err(|error| Error::with_source("cannot parse Codex SessionStart input", error))?;
     if event.hook_event_name != "SessionStart"
+        || event.session_id.trim().is_empty()
+        || event.session_id.contains('\0')
         || !matches!(
             event.source.as_str(),
             "startup" | "resume" | "clear" | "compact"
@@ -279,7 +293,7 @@ fn session_start(repository: &Path, input: &mut dyn Read) -> Result<Option<Value
     Ok(Some(json!({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": activation_context(),
+            "additionalContext": activation_context(&cwd, &event.session_id),
         }
     })))
 }
@@ -887,7 +901,7 @@ mod tests {
             );
             assert_eq!(
                 output["hookSpecificOutput"]["additionalContext"],
-                activation_context()
+                activation_context(&child, "session")
             );
             let context = output["hookSpecificOutput"]["additionalContext"]
                 .as_str()
@@ -938,6 +952,17 @@ mod tests {
                 String::from_utf8_lossy(&stderr)
             );
             assert_eq!(!stdout.is_empty(), expects_context);
+            if expects_context {
+                let output: Value = serde_json::from_slice(&stdout).expect("hook protocol JSON");
+                assert_eq!(
+                    output["hookSpecificOutput"]["hookEventName"],
+                    "SessionStart"
+                );
+                assert_eq!(
+                    output["hookSpecificOutput"]["additionalContext"],
+                    activation_context(cwd, "session")
+                );
+            }
             assert!(!runtime.exists());
         }
     }

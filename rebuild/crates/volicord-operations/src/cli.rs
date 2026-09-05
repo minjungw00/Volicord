@@ -96,7 +96,7 @@ fn execute(matches: ArgMatches, input: &mut dyn Read, stdout: &mut dyn Write) ->
     } else {
         RuntimeLayout::from_environment()?
     };
-    let format = OutputMode {
+    let mut format = OutputMode {
         json: matches.get_flag("json"),
         locale: match matches
             .get_one::<String>("locale")
@@ -117,6 +117,10 @@ fn execute(matches: ArgMatches, input: &mut dyn Read, stdout: &mut dyn Write) ->
     let (name, command_matches) = matches
         .subcommand()
         .ok_or_else(|| Error::new("a command is required"))?;
+    // Lifecycle hooks are a host protocol even when ordinary CLI output is human-readable.
+    if name == "codex" && command_matches.subcommand_name() == Some("hook") {
+        format.json = true;
+    }
     let operations = LocalOperations::new(runtime.clone());
     let value = dispatch(
         name,

@@ -25,11 +25,33 @@ MAX_USER_MESSAGE_CONTENT_ITEMS = 256
 MAX_USER_TURN_TEXT_CHARS = 1 << 20
 MAX_MCP_CONTENT_RESULT_CHARS = 2 << 20
 MAX_FILE_CHANGE_BODY_CHARS = 8 << 20
-ACTIVATION_CONTEXT_MARKERS = (
-    "Volicord is active for this explicitly authorized repository.",
-    "Start project-scoped repository work with project_resolve",
-    "workflow.required_next_action",
-)
+# The production owner supplies the wire identity; prose is not a contract.
+ACTIVATION_IDENTITY = (
+    Path(__file__).resolve().parents[2]
+    / "crates/volicord-operations/src/session_start_identity.txt"
+).read_text(encoding="utf-8").rstrip("\n")
+ACTIVATION_PREFIX, ACTIVATION_SUFFIX = ACTIVATION_IDENTITY.split("{binding}")
+
+
+def activation_identity(cwd: Path, session_id: str) -> str:
+    binding = hashlib.sha256(
+        str(cwd).encode("utf-8") + b"\0" + session_id.encode("utf-8")
+    ).hexdigest()
+    return ACTIVATION_IDENTITY.replace("{binding}", binding)
+
+
+def activation_evidence(text: str, cwd: Path, session_id: str) -> str:
+    lines = [line for line in text.splitlines() if line.startswith(ACTIVATION_PREFIX)]
+    if not lines:
+        return "absent"
+    if len(lines) != 1 or re.fullmatch(
+        re.escape(ACTIVATION_PREFIX) + r"[0-9a-f]{64}" + re.escape(ACTIVATION_SUFFIX),
+        lines[0],
+    ) is None:
+        return "malformed"
+    return "valid" if lines[0] == activation_identity(cwd, session_id) else "binding_mismatch"
+
+
 VOLICORD_OPERATIONS = {
     "background_semantic_operation",
     "candidate_inspect",
@@ -1066,6 +1088,7 @@ class CodexCapture:
     thread_source: str
     fresh_user_thread: bool
     repository_scoped_activation_observed: bool
+    activation_evidence_state: str
     task_sequences: tuple[int, ...]
     completed_task_sequences: tuple[int, ...]
     compacted_sequences: tuple[int, ...]
@@ -1327,6 +1350,20 @@ def load_codex_capture(path: Path) -> CodexCapture:
     evidence_transport_issues: list[EvidenceTransportIssue] = []
     raw_path_observations: list[_PathObservationEvidence] = []
     repository_scoped_activation_observed = False
+    activation_states: list[str] = []
+    # User messages can precede task_started in supported host transports.
+    first_task_sequence = min((
+        sequence for sequence, event in enumerate(events)
+        if isinstance(event.get("payload"), dict)
+        and (
+            event["payload"].get("type") in {"task_started", "user_message"}
+            or (event["payload"].get("type") == "message"
+                and event["payload"].get("role") == "user")
+            or (event["payload"].get("type") == "item_completed"
+                and isinstance(event["payload"].get("item"), dict)
+                and event["payload"]["item"].get("type") == "UserMessage")
+        )
+    ), default=len(events))
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -1348,8 +1385,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     and item.get("type") in {"input_text", "output_text"}
                     and isinstance(item.get("text"), str)
                 )
-                if all(marker in developer_text for marker in ACTIVATION_CONTEXT_MARKERS):
-                    repository_scoped_activation_observed = True
+                state = activation_evidence(developer_text, cwd, str(session_id))
+                if state != "absent":
+                    activation_states.append(
+                        "late" if sequence >= first_task_sequence else state
+                    )
         if envelope == "event_msg" and payload_type == "task_started":
             turn_id = payload.get("turn_id")
             if nonempty(turn_id):
@@ -1793,6 +1833,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
         thread_source == "user"
         and meta.get("forked_from_id") in {None, ""}
     )
+    activation_state = next((
+        state for state in ("malformed", "binding_mismatch", "valid", "late")
+        if state in activation_states
+    ), "absent")
+    repository_scoped_activation_observed = activation_state == "valid"
     return CodexCapture(
         source_sha256=sha256_bytes(raw_bytes),
         session_id=str(session_id),
@@ -1804,6 +1849,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         thread_source=str(thread_source),
         fresh_user_thread=fresh_user_thread,
         repository_scoped_activation_observed=repository_scoped_activation_observed,
+        activation_evidence_state=activation_state,
         task_sequences=tuple(task_sequences),
         completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),
