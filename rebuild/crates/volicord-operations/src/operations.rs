@@ -258,29 +258,38 @@ impl LocalOperations {
 
     pub fn health(&self, project_id: Option<ProjectId>) -> HealthReport {
         let mut issues = Vec::new();
-        if let Err(error) = self.initialize_runtime() {
-            issues.push(HealthIssue {
-                kind: HealthIssueKind::Failed,
-                scope: "runtime_access".into(),
-                detail: error.to_string(),
-            });
-            return HealthReport {
-                state: HealthState::Failed,
-                runtime_root: self.layout.root().to_path_buf(),
-                canonical_available: false,
-                candidate_available: false,
-                privacy_available: false,
-                guarded_available: false,
-                forgetting_available: false,
-                repository_available: None,
-                issues,
-            };
-        }
-        let canonical = Store::open(self.layout.canonical_store());
-        let candidates = CandidateStore::open(self.layout.candidate_store());
-        let privacy = PrivacyStore::open(self.layout.privacy_store());
-        let guarded = GuardedStore::open(self.layout.guarded_store());
-        let forgetting = ForgettingStore::open(&self.layout.forgetting_store());
+        let _health_lock = match self.layout.acquire_health_lock() {
+            Ok(lock) => lock,
+            Err(error) => {
+                issues.push(HealthIssue {
+                    kind: HealthIssueKind::Failed,
+                    scope: "runtime_access".into(),
+                    detail: error.to_string(),
+                });
+                return HealthReport {
+                    state: HealthState::Failed,
+                    runtime_root: self.layout.root().to_path_buf(),
+                    canonical_available: false,
+                    candidate_available: false,
+                    privacy_available: false,
+                    guarded_available: false,
+                    forgetting_available: false,
+                    repository_available: None,
+                    issues,
+                };
+            }
+        };
+        let canonical = open_health_store(&self.layout.canonical_store(), |path| Store::open(path));
+        let candidates = open_health_store(&self.layout.candidate_store(), |path| {
+            CandidateStore::open(path)
+        });
+        let privacy = open_health_store(&self.layout.privacy_store(), |path| {
+            PrivacyStore::open(path)
+        });
+        let guarded = open_health_store(&self.layout.guarded_store(), |path| {
+            GuardedStore::open(path)
+        });
+        let forgetting = open_health_store(&self.layout.forgetting_store(), ForgettingStore::open);
         let canonical_available = canonical.is_ok();
         let candidate_available = candidates.is_ok();
         let privacy_available = privacy.is_ok();
@@ -288,35 +297,35 @@ impl LocalOperations {
         let forgetting_available = forgetting.is_ok();
         if let Err(error) = &canonical {
             issues.push(HealthIssue {
-                kind: classify_context_error(error.kind()),
+                kind: classify_health_error(error),
                 scope: "canonical".into(),
                 detail: error.to_string(),
             });
         }
         if let Err(error) = &candidates {
             issues.push(HealthIssue {
-                kind: HealthIssueKind::Failed,
+                kind: classify_health_error(error),
                 scope: "candidates".into(),
                 detail: error.to_string(),
             });
         }
         if let Err(error) = &privacy {
             issues.push(HealthIssue {
-                kind: HealthIssueKind::Failed,
+                kind: classify_health_error(error),
                 scope: "privacy".into(),
                 detail: error.to_string(),
             });
         }
         if let Err(error) = &guarded {
             issues.push(HealthIssue {
-                kind: HealthIssueKind::Failed,
+                kind: classify_health_error(error),
                 scope: "guarded_operations".into(),
                 detail: error.to_string(),
             });
         }
         if let Err(error) = &forgetting {
             issues.push(HealthIssue {
-                kind: HealthIssueKind::Failed,
+                kind: classify_health_error(error),
                 scope: "forgetting_operations".into(),
                 detail: error.to_string(),
             });
@@ -3943,6 +3952,58 @@ fn classify_context_error(kind: volicord_context::ErrorKind) -> HealthIssueKind 
         }
         _ => HealthIssueKind::Failed,
     }
+}
+
+fn open_health_store<T, E: StdError + Send + Sync + 'static>(
+    path: &Path,
+    open: impl FnOnce(&Path) -> Result<T, E>,
+) -> Result<T, Error> {
+    let secure = || {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let mut name = path.as_os_str().to_os_string();
+            name.push(suffix);
+            let file = PathBuf::from(name);
+            match fs::symlink_metadata(&file) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(Error::with_source("cannot inspect store file", error)),
+                Ok(_) => volicord_local_platform::ensure_private_file(&file)
+                    .map_err(|error| Error::with_source("store file is not private", error))?,
+            }
+        }
+        Ok(())
+    };
+    secure()?;
+    let result = open(path).map_err(|error| Error::with_source(error.to_string(), error));
+    secure()?;
+    result
+}
+
+fn classify_health_error(error: &Error) -> HealthIssueKind {
+    let mut cause: Option<&(dyn StdError + 'static)> = Some(error);
+    while let Some(value) = cause {
+        if let Some(error) = value.downcast_ref::<volicord_context::Error>() {
+            return classify_context_error(error.kind());
+        }
+        if let Some(error) = value.downcast_ref::<volicord_inquiry::Error>() {
+            return match error.kind() {
+                volicord_inquiry::ErrorKind::UnsupportedVersion => HealthIssueKind::Unsupported,
+                volicord_inquiry::ErrorKind::CorruptState => HealthIssueKind::Corrupt,
+                volicord_inquiry::ErrorKind::StorageUnavailable
+                | volicord_inquiry::ErrorKind::NotFound => HealthIssueKind::Unavailable,
+                _ => HealthIssueKind::Failed,
+            };
+        }
+        if let Some(error) = value.downcast_ref::<volicord_privacy::Error>() {
+            return match error.kind() {
+                volicord_privacy::ErrorKind::CorruptState => HealthIssueKind::Corrupt,
+                volicord_privacy::ErrorKind::StorageUnavailable
+                | volicord_privacy::ErrorKind::NotFound => HealthIssueKind::Unavailable,
+                _ => HealthIssueKind::Failed,
+            };
+        }
+        cause = value.source();
+    }
+    HealthIssueKind::Failed
 }
 
 fn canonical_record_parts(record: CanonicalRecordId) -> (String, String) {

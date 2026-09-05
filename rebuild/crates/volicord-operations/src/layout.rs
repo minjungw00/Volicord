@@ -137,4 +137,14 @@ impl RuntimeLayout {
         MutationLockGuard::acquire(&self.mutation_lock())
             .map_err(|error| Error::with_source("cannot coordinate Runtime Home mutation", error))
     }
+
+    pub(crate) fn acquire_health_lock(&self) -> Result<MutationLockGuard, Error> {
+        // Store-specific access failures belong to their individual health results.
+        ensure_private_directory(&self.root)
+            .map_err(|error| Error::with_source("Runtime Home is not private", error))?;
+        ensure_private_file(&self.mutation_lock())
+            .map_err(|error| Error::with_source("mutation lock is not private", error))?;
+        MutationLockGuard::acquire(&self.mutation_lock())
+            .map_err(|error| Error::with_source("cannot coordinate Runtime Home inspection", error))
+    }
 }
