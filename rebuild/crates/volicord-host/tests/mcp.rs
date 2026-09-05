@@ -572,6 +572,28 @@ fn draft_judgment(
         );
         result.insert("alternative_accounting".into(), accounting);
     }
+    if result.contains_key("authority_coverage") {
+        let source = &template["discovery_owned"]["available_source_ids"][0];
+        let role = if let Some(reference) = result
+            .get("contract_basis")
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+        {
+            json!({"kind":"accepted_contract", "contract_reference":reference})
+        } else if let Some(id) = result
+            .get("decision_ids")
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+        {
+            json!({"kind":"applicable_decision", "decision_id":id})
+        } else {
+            json!({"kind":"unique_mechanical_fact"})
+        };
+        result.entry("authority_source_evidence").or_insert(json!([{
+            "source_id":source, "role":role,
+            "rationale":"The current fixture source explicitly requires the exact outcome and excludes the other alternatives as described in their accounting."
+        }]));
+    }
     if result["contains_user_owned_outcome"] == false {
         let proofs = result["alternative_accounting"].as_array().expect("accounts").iter().map(|a| json!({
             "choice_id":a["choice_id"], "alternative_id":a["alternative_id"], "externally_observable":false,
@@ -2042,6 +2064,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "disposition":"repository_or_environment_fact",
                 "basis_summary":"repository fact",
                 "authority_counterfactual":"The repository would select the exact outcome in this invalid-field fixture.",
+                "authority_source_evidence":[{"source_id":current_source_id,"role":{"kind":"applicable_decision","decision_id":"00000000000000000000000000000000"},"rationale":"Claimed inactive Decision must be rejected by canonical applicability validation."}],
                 "authority_coverage":"The complete bounded choice.",
                 "unique_outcome_rationale":"The fixture claims one mechanically valid outcome.",
                 "research_basis":["not legal for this disposition"],
@@ -2161,6 +2184,7 @@ fn materiality_validation_reports_exact_correction_context() {
                     {"choice_id":"bounded-choice","alternative_id":"first","status":"selected","rationale":"the claimed Decision selects this alternative","source_ids":[current_source_id]},
                     {"choice_id":"bounded-choice","alternative_id":"second","status":"eliminated_by_applicable_decision","decision_id":"00000000000000000000000000000000","rationale":"the claimed Decision excludes this alternative","source_ids":[current_source_id]}
                 ],
+                "authority_source_evidence":[{"source_id":current_source_id,"role":{"kind":"applicable_decision","decision_id":"00000000000000000000000000000000"},"rationale":"Claimed inactive Decision must be rejected by canonical applicability validation."}],
                 "authority_coverage":"The complete bounded choice.",
                 "unique_outcome_rationale":"The claimed Decision would select one outcome if it were applicable.",
                 "decision_ids":["00000000000000000000000000000000"],
@@ -4920,6 +4944,11 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     authority_counterfactual:
                         "The accepted contract selects the exact Checkpoint behavior.".into(),
                     exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
+                        source_evidence: vec![volicord_operations::AuthoritySourceEvidence {
+                            source_id: repository_source_id,
+                            role: volicord_operations::AuthoritySourceRole::AcceptedContract { contract_reference: "rebuild/docs/design/inquiry-and-decision.md".into() },
+                            rationale: "The accepted Checkpoint contract requires current source grounding.".into(),
+                        }],
                         covered_outcome: "the complete grounded Checkpoint behavior".into(),
                         unique_outcome_rationale:
                             "the accepted contract explicitly requires this exact behavior".into(),

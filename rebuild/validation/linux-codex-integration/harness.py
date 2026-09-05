@@ -643,6 +643,11 @@ def record_settled_fixture_review(
             } for alternative in [a["alternative_id"] for a in accounts]],
             "ownership_source_ids": choice["source_ids"],
             "alternative_accounting": accounts,
+            "authority_source_evidence": [{
+                "source_id": choice["source_ids"][0],
+                "role": {"kind": "accepted_contract", "contract_reference": contract},
+                "rationale": "The maintained fixture contract explicitly selects the first deterministic treatment.",
+            }],
             "authority_coverage": choice["summary"],
             "unique_outcome_rationale": "The maintained test contract requires the first deterministic treatment.",
             "contract_basis": [contract],

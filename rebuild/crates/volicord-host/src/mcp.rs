@@ -2704,6 +2704,33 @@ fn learning_deliberation_schemas() -> Vec<Value> {
     ]
 }
 
+fn authority_source_evidence_schema() -> Value {
+    let role = |kind| {
+        object_schema(
+            vec![(
+                "kind",
+                enum_schema(
+                    "Supporting evidence role, not exact settling authority",
+                    &[kind],
+                ),
+            )],
+            &["kind"],
+        )
+    };
+    json!({"type":"array", "minItems":1, "maxItems":64,
+        "description":"Classify sources used to claim exact authority. Precedent, compatible patterns, recommendations and architecture ownership do not uniquely select a new contract. Cite the actual accepted clause adopting any precedent for this exact dimension, or the applicable Decision/unique mechanical fact.",
+        "items": object_schema(vec![
+            ("source_id", identity_schema("Current Source in this dimension's authority and alternative-accounting basis")),
+            ("role", json!({"description":"Source's actual authority role", "oneOf":[
+                object_schema(vec![("kind",enum_schema("Normative accepted contract", &["accepted_contract"])), ("contract_reference",text_schema("Exact accepted contract reference from contract_basis",1,4096))], &["kind","contract_reference"]),
+                object_schema(vec![("kind",enum_schema("Applicable current Decision", &["applicable_decision"])), ("decision_id",identity_schema("Exact applicable Decision identity"))], &["kind","decision_id"]),
+                role("unique_mechanical_fact"), role("compatibility_constraint"), role("repository_precedent"), role("recommendation_or_preference")
+            ]})),
+            ("rationale",text_schema("Identify the source passage and explain whether it requires the exact outcome or merely supports/constrains it. For a precedent adopted by an accepted contract, identify the adopting clause and why it eliminates the other material alternatives.",1,4096)),
+        ], &["source_id","role","rationale"])
+    })
+}
+
 fn materiality_judgment_schema(
     disposition: &'static str,
     mut fields: Vec<(&'static str, Value)>,
@@ -2806,6 +2833,9 @@ fn materiality_judgment_schema(
         "alternative_accounting",
         "learning_value",
     ];
+    if required_fields.contains(&"authority_coverage") {
+        required.push("authority_source_evidence");
+    }
     required.extend_from_slice(required_fields);
     object_schema(common, &required)
 }
@@ -2896,7 +2926,7 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
         )
     };
     let exact_authority_fields = || {
-        vec![
+        vec![("authority_source_evidence", authority_source_evidence_schema()),
             (
                 "authority_coverage",
                 text_schema(
@@ -4372,6 +4402,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "authority_disposition":materiality_disposition_json(&dimension.disposition),
             "authority_counterfactual":dimension.basis.authority_counterfactual,
             "exact_authority":dimension.basis.exact_authority.as_ref().map(|authority| json!({
+                "source_evidence":authority.source_evidence.iter().map(authority_source_evidence_json).collect::<Vec<_>>(),
                 "covered_outcome":authority.covered_outcome,
                 "unique_outcome_rationale":authority.unique_outcome_rationale,
             })),
@@ -4985,6 +5016,7 @@ fn materiality_dimension_from_judgment(
             | MaterialityDisposition::SettledAuthority
     ) {
         Some(ExactAuthoritySufficiency {
+            source_evidence: authority_source_evidence(value)?,
             covered_outcome: required_str(value, "authority_coverage")?.to_owned(),
             unique_outcome_rationale: required_str(value, "unique_outcome_rationale")?.to_owned(),
         })
@@ -5132,6 +5164,43 @@ fn materiality_dimension_from_judgment(
         },
         learning_value: learning_value_assessment(value)?,
     })
+}
+
+fn authority_source_evidence(
+    value: &Value,
+) -> Result<Vec<volicord_inquiry::AuthoritySourceEvidence>, HostError> {
+    value["authority_source_evidence"]
+        .as_array()
+        .ok_or_else(|| {
+            HostError::new(
+                "authority_source_evidence must classify the sources used to claim exact authority",
+            )
+        })?
+        .iter()
+        .map(|evidence| {
+            let mut role = evidence["role"].clone();
+            if let Some(id) = role.get("decision_id").and_then(Value::as_str) {
+                role["decision_id"] = json!(parse_identity(id)?);
+            }
+            Ok(volicord_inquiry::AuthoritySourceEvidence {
+                source_id: SourceId::from_bytes(parse_identity(required_str(
+                    evidence,
+                    "source_id",
+                )?)?),
+                role: serde_json::from_value(role).map_err(|e| HostError::new(e.to_string()))?,
+                rationale: required_str(evidence, "rationale")?.into(),
+            })
+        })
+        .collect()
+}
+
+fn authority_source_evidence_json(evidence: &volicord_inquiry::AuthoritySourceEvidence) -> Value {
+    let mut role = json!(evidence.role);
+    if let volicord_inquiry::AuthoritySourceRole::ApplicableDecision { decision_id } = evidence.role
+    {
+        role["decision_id"] = json!(decision_id.to_string());
+    }
+    json!({"source_id":evidence.source_id.to_string(), "role":role, "rationale":evidence.rationale})
 }
 
 fn discovered_alternative_accounting(
@@ -5946,8 +6015,8 @@ fn materiality_draft_json(
         },
         "exact_authority_sufficiency_contract":{
             "applies_to":["repository_or_environment_fact","settled_authority"],
-            "required_semantic_fields":["authority_coverage","unique_outcome_rationale","alternative_accounting"],
-            "coverage_rule":"Cited authority must cover this exact discovery-owned dimension, not merely a related subsystem or a subset of alternatives.",
+            "required_semantic_fields":["authority_coverage","unique_outcome_rationale","authority_source_evidence","alternative_accounting"],
+            "coverage_rule":"Cited authority must cover this exact discovery-owned dimension. Repository precedent/convention and compatibility-compatible patterns are descriptive, not normative selection. Architecture ownership, recommendation, and preference are not accepted requirements. Identify the actual current accepted clause adopting a precedent for this dimension, or keep materially viable alternatives unresolved and use Question/current-host Decision before affected work.",
             "alternative_accounting_rule":"Every alternative_id from every referenced choice_id must appear exactly once. Settling dispositions select exactly one alternative per choice and eliminate every other alternative with its exact fact, accepted-contract reference, or applicable Decision identity. Unresolved alternatives drive the Question path unless the ownership assessment proves bounded agent discretion or exact delegation applies.",
             "source_rule":"Repository facts must be mechanically grounded in current repository/environment Sources. Settled authority requires an exact accepted contract or applicable Decision; recommendations, research, prototypes, libraries, and conventions can inform reasoning but do not independently settle an outcome.",
             "semantic_owner":"active_agent",

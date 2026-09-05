@@ -5252,6 +5252,7 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
                     not isinstance(exact_authority, dict)
                     or set(exact_authority)
                     != {
+                        "source_evidence",
                         "covered_outcome",
                         "unique_outcome_rationale",
                     }
@@ -5470,6 +5471,7 @@ def materiality_dimensions_from_judgments(
         "evidence_completion_basis",
     }
     exact_authority_fields = {
+        "authority_source_evidence",
         "authority_coverage",
         "unique_outcome_rationale",
     }
@@ -5696,6 +5698,7 @@ def materiality_dimensions_from_judgments(
             ):
                 return None
             exact_authority = {
+                "source_evidence": judgment["authority_source_evidence"],
                 "covered_outcome": judgment["authority_coverage"],
                 "unique_outcome_rationale": judgment["unique_outcome_rationale"],
             }
@@ -10532,6 +10535,11 @@ def real_session_fixture(
             resolved=resolved, source_id=source_id
         )
         for judgment in [primary, secondary]:
+            if judgment["disposition"] == "repository_or_environment_fact":
+                judgment["authority_source_evidence"] = [{
+                    "source_id": source_id, "role": {"kind": "unique_mechanical_fact"},
+                    "rationale": "The retained fixture repository observation makes only this outcome mechanically valid.",
+                }]
             if not judgment["contains_user_owned_outcome"]:
                 judgment["discretion_counterfactuals"] = [{
                     "choice_id": account["choice_id"], "alternative_id": account["alternative_id"],

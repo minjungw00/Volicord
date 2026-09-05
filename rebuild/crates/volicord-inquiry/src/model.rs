@@ -334,8 +334,29 @@ pub struct ExplicitDelegationEvidence {
     pub semantic_rationale: String,
 }
 
+/// Role of a source in an exact-authority claim, judged by the active agent.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AuthoritySourceRole {
+    AcceptedContract { contract_reference: String },
+    ApplicableDecision { decision_id: DecisionId },
+    UniqueMechanicalFact,
+    CompatibilityConstraint,
+    RepositoryPrecedent,
+    RecommendationOrPreference,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AuthoritySourceEvidence {
+    pub source_id: SourceId,
+    pub role: AuthoritySourceRole,
+    /// Exact source passage and why it requires (or merely supports) this outcome.
+    pub rationale: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ExactAuthoritySufficiency {
+    pub source_evidence: Vec<AuthoritySourceEvidence>,
     pub covered_outcome: String,
     pub unique_outcome_rationale: String,
 }

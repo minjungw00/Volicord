@@ -66,6 +66,18 @@ fn categorized_coupled_artifact_review(
     }
 }
 
+fn authority_evidence(
+    source: volicord_context::SourceId,
+    contract: bool,
+) -> volicord_operations::AuthoritySourceEvidence {
+    volicord_operations::AuthoritySourceEvidence {
+        source_id: source,
+        role: if contract { volicord_operations::AuthoritySourceRole::AcceptedContract { contract_reference: "fixture accepted contract".into() } }
+            else { volicord_operations::AuthoritySourceRole::UniqueMechanicalFact },
+        rationale: "The maintained fixture source explicitly requires this exact outcome; alternative accounting states how each other outcome violates that requirement.".into(),
+    }
+}
+
 fn discretion_proof(
     id: &str,
     alternatives: &[&str],
@@ -91,6 +103,10 @@ fn dimension(
             | MaterialityDisposition::SettledAuthority
     )
     .then(|| ExactAuthoritySufficiency {
+        source_evidence: vec![authority_evidence(
+            source,
+            kinds.contains(&WorkAuthorityBasisKind::AcceptedContract),
+        )],
         covered_outcome: format!("the complete {id} material dimension"),
         unique_outcome_rationale:
             "the cited fixture authority leaves one mechanically or normatively selected outcome"
@@ -1555,6 +1571,15 @@ fn necessarily_coupled_choices_may_share_one_authority_dimension(
     );
     coupled.discovered_choice_ids = vec!["response-shape".into(), "status-code".into()];
     coupled.basis.contract_basis = vec!["accepted protocol response contract".into()];
+    coupled
+        .basis
+        .exact_authority
+        .as_mut()
+        .ok_or("authority missing")?
+        .source_evidence[0]
+        .role = volicord_operations::AuthoritySourceRole::AcceptedContract {
+        contract_reference: "accepted protocol response contract".into(),
+    };
     let choices = vec![response, status];
     coupled.alternative_accounting = settled_contract_accounts_for_choices(
         &choices,
@@ -2436,6 +2461,10 @@ fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.summary = "current repository evidence fixes the value".into();
     repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
+        source_evidence: vec![authority_evidence(
+            repository_fact.basis.source_basis[0],
+            false,
+        )],
         covered_outcome: "the complete implementation-boundary dimension".into(),
         unique_outcome_rationale: "current repository evidence mechanically fixes one value".into(),
     });
@@ -2607,6 +2636,10 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     repository_fact.basis.kinds = vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact];
     repository_fact.basis.explicit_delegation = None;
     repository_fact.basis.exact_authority = Some(ExactAuthoritySufficiency {
+        source_evidence: vec![authority_evidence(
+            repository_fact.basis.source_basis[0],
+            false,
+        )],
         covered_outcome: "the complete implementation-boundary dimension".into(),
         unique_outcome_rationale: "pre-work repository evidence mechanically fixes one value"
             .into(),
@@ -4053,5 +4086,110 @@ fn discretion_counterfactuals_require_complete_linked_evidence_without_category_
         readiness(&fixture, &recorded)?.disposition,
         WorkAuthorityDisposition::ReadyForWork
     );
+    Ok(())
+}
+
+#[test]
+fn tuple_precedent_does_not_normatively_select_new_public_result(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let mut representation = dimension(
+        "result-representation",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        fixture.baseline.repository_source.identity(),
+    );
+    if let Some(authority) = &mut representation.basis.exact_authority {
+        authority.source_evidence[0].role =
+            volicord_operations::AuthoritySourceRole::RepositoryPrecedent;
+        authority.source_evidence[0].rationale = "decode_unchecked demonstrates a tuple convention, without requiring that shape for the new API.".into();
+    }
+    representation.material_consequences = vec!["An optional tuple and a structured result both preserve existing callers but give new callers different public representations.".into()];
+    representation.basis.summary = "The existing decode_unchecked API returns a tuple; follow that convention for the new API.".into();
+    representation.basis.authority_counterfactual = "The existing tuple convention is a compatibility precedent, with no accepted requirement selecting the new result shape.".into();
+    assert!(review(&fixture, vec![representation]).is_err(),
+        "a descriptive tuple precedent needs an exact normative source before settling the new public contract");
+    Ok(())
+}
+
+#[test]
+fn exact_authority_requires_normative_source_linkage_for_each_alternative(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::AuthoritySourceRole;
+    for role in [
+        AuthoritySourceRole::RepositoryPrecedent,
+        AuthoritySourceRole::CompatibilityConstraint,
+        AuthoritySourceRole::RecommendationOrPreference,
+    ] {
+        let fixture = fixture()?;
+        let mut choice = dimension(
+            "new-result",
+            MaterialityDisposition::SettledAuthority,
+            vec![WorkAuthorityBasisKind::AcceptedContract],
+            fixture.baseline.repository_source.identity(),
+        );
+        choice
+            .basis
+            .exact_authority
+            .as_mut()
+            .ok_or("authority missing")?
+            .source_evidence[0]
+            .role = role;
+        assert!(review(&fixture, vec![choice]).is_err());
+    }
+    for defect in ["missing", "wrong-contract", "unlinked", "duplicate"] {
+        let fixture = fixture()?;
+        let mut choice = dimension(
+            "new-result",
+            MaterialityDisposition::SettledAuthority,
+            vec![WorkAuthorityBasisKind::AcceptedContract],
+            fixture.baseline.repository_source.identity(),
+        );
+        let evidence = &mut choice
+            .basis
+            .exact_authority
+            .as_mut()
+            .ok_or("authority missing")?
+            .source_evidence;
+        match defect {
+            "missing" => evidence.clear(),
+            "wrong-contract" => {
+                evidence[0].role = AuthoritySourceRole::AcceptedContract {
+                    contract_reference: "unrelated convention".into(),
+                }
+            }
+            "unlinked" => evidence[0].source_id = fixture.goal_source_id,
+            _ => evidence.push(evidence[0].clone()),
+        }
+        assert!(review(&fixture, vec![choice]).is_err(), "{defect}");
+    }
+    // A precedent remains useful when an actual accepted requirement adopts it.
+    let fixture = fixture()?;
+    let mut choice = dimension(
+        "new-result",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        fixture.baseline.repository_source.identity(),
+    );
+    let mut precedent = authority_evidence(fixture.baseline.repository_source.identity(), true);
+    precedent.role = AuthoritySourceRole::RepositoryPrecedent;
+    precedent.rationale = "The existing tuple example supports the recommendation; the separately identified accepted requirement explicitly mandates that same shape for this new API.".into();
+    choice
+        .basis
+        .exact_authority
+        .as_mut()
+        .ok_or("authority missing")?
+        .source_evidence
+        .push(precedent);
+    let recorded = review(&fixture, vec![choice])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_questions
+        .is_empty());
     Ok(())
 }

@@ -758,6 +758,7 @@ fn evaluate_dimension(
         _ => {}
     }
     validate_alternative_resolution_compatibility(dimension)?;
+    validate_authority_source_roles(dimension).map_err(DimensionIssue::Invalid)?;
     if matches!(
         dimension.disposition,
         MaterialityDisposition::DelegatedImplementationChoice
@@ -956,6 +957,78 @@ fn evaluate_dimension(
             Ok(vec![*decision_id])
         }
     }
+}
+
+pub(crate) fn validate_authority_source_roles(
+    dimension: &MaterialityDimension,
+) -> Result<(), String> {
+    use crate::{AuthoritySourceRole as Role, DiscoveredAlternativeResolution as Resolution};
+    let Some(authority) = &dimension.basis.exact_authority else {
+        return Ok(());
+    };
+    let mut identities = BTreeSet::new();
+    for evidence in &authority.source_evidence {
+        if evidence.rationale.trim().is_empty()
+            || !dimension.basis.source_basis.contains(&evidence.source_id)
+            || !identities.insert((evidence.source_id, &evidence.role))
+        {
+            return Err("exact authority source roles require unique current basis Source linkage and a source-grounded rationale".into());
+        }
+        let valid = match &evidence.role {
+            Role::AcceptedContract { contract_reference } => {
+                dimension.basis.contract_basis.contains(contract_reference)
+            }
+            Role::ApplicableDecision { decision_id } => {
+                dimension.basis.decision_basis.contains(decision_id)
+            }
+            _ => true,
+        };
+        if !valid {
+            return Err("normative source evidence must link the exact accepted contract or applicable Decision in the authority basis".into());
+        }
+    }
+    let normative = |role: &Role| match dimension.disposition {
+        MaterialityDisposition::RepositoryOrEnvironmentFact => {
+            matches!(role, Role::UniqueMechanicalFact)
+        }
+        MaterialityDisposition::SettledAuthority => matches!(
+            role,
+            Role::AcceptedContract { .. } | Role::ApplicableDecision { .. }
+        ),
+        _ => false,
+    };
+    if !authority.source_evidence.iter().any(|e| normative(&e.role)) {
+        return Err("precedent, compatibility constraint, or recommendation alone cannot settle an outcome: exact normative contract, applicable Decision, or unique mechanical fact evidence is required".into());
+    }
+    for account in &dimension.alternative_accounting {
+        let linked = authority.source_evidence.iter().any(|evidence| {
+            account.source_basis.contains(&evidence.source_id)
+                && match (&account.resolution, &evidence.role) {
+                    (Resolution::Selected, role) => normative(role),
+                    (
+                        Resolution::EliminatedByRepositoryOrEnvironmentFact,
+                        Role::UniqueMechanicalFact,
+                    ) => true,
+                    (
+                        Resolution::EliminatedByAcceptedContract {
+                            contract_reference: expected,
+                        },
+                        Role::AcceptedContract { contract_reference },
+                    ) => expected == contract_reference,
+                    (
+                        Resolution::EliminatedByApplicableDecision {
+                            decision_id: expected,
+                        },
+                        Role::ApplicableDecision { decision_id },
+                    ) => expected == decision_id,
+                    _ => false,
+                }
+        });
+        if !linked {
+            return Err("every selected or eliminated alternative must link its exact normative authority Source role; descriptive precedent cannot eliminate a viable alternative".into());
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_discretion_counterfactuals(

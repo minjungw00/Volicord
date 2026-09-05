@@ -479,6 +479,10 @@ fn record_ready_review(
                 authority_counterfactual:
                     "The repository fact selects the only supported bounded outcome.".into(),
                 exact_authority: Some(volicord_operations::ExactAuthoritySufficiency {
+                    source_evidence: vec![volicord_operations::AuthoritySourceEvidence {
+                        source_id: baseline.repository_source.identity(), role: volicord_operations::AuthoritySourceRole::UniqueMechanicalFact,
+                        rationale: "The observed current repository delta mechanically fixes the attributed paths.".into(),
+                    }],
                     covered_outcome: "the complete bounded repository outcome".into(),
                     unique_outcome_rationale:
                         "the observed repository shape makes only this outcome mechanically valid"

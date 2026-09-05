@@ -1735,6 +1735,8 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             }
             _ => {}
         }
+        crate::work_authority::validate_authority_source_roles(dimension)
+            .map_err(|message| Error::new(ErrorKind::InvalidInput, message))?;
         validate_list(&dimension.basis.contract_basis)?;
         validate_list(&dimension.basis.research_basis)?;
         validate_id_list(&dimension.basis.source_basis)?;
@@ -2842,10 +2844,23 @@ fn authority_anchors_changed(
             .iter()
             .collect::<BTreeSet<_>>()
             != revised.basis.decision_basis.iter().collect::<BTreeSet<_>>()
+        || authority_source_anchors(previous) != authority_source_anchors(revised)
         || explicit_delegation_changed(
             previous.basis.explicit_delegation.as_ref(),
             revised.basis.explicit_delegation.as_ref(),
         )
+}
+
+fn authority_source_anchors(
+    dimension: &crate::MaterialityDimension,
+) -> BTreeSet<(SourceId, &crate::AuthoritySourceRole)> {
+    dimension
+        .basis
+        .exact_authority
+        .iter()
+        .flat_map(|authority| authority.source_evidence.iter())
+        .map(|evidence| (evidence.source_id, &evidence.role))
+        .collect()
 }
 
 fn explicit_delegation_changed(

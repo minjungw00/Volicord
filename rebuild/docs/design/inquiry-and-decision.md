@@ -289,7 +289,19 @@ alternative와 exact fact/contract/Decision에 의해 제거된 나머지를 기
 승격할 수 없다. Repository fact는
 mechanically observed fact basis만 허용하고 contract, Decision, delegation, recommendation,
 convention 또는 preference를 fact로 relabel하지 않는다. Settled authority는 accepted contract
-basis, applicable Decision identity 또는 둘 다를 요구한다. Agent-owned choice는 exact-authority
+basis, applicable Decision identity 또는 둘 다를 요구한다.
+`WorkAuthorityBasis.exact_authority.source_evidence`는 exact authority를 주장하는 Source마다
+accepted contract(reference), applicable Decision(identity), unique mechanical fact,
+compatibility constraint, repository precedent/convention, recommendation/preference 역할과
+source-grounded rationale를 보존한다. 기존 basis kind는 disposition의 authority 종류이고
+Source role은 그 주장을 뒷받침하는 개별 Source의 실제 역할이다. 두 번째 authority system이 아니다.
+Descriptive precedent 또는 compatible pattern은 새 public contract를 유일하게 정하지 않는다.
+Precedent를 채택했다면 실제 current accepted contract의 adopting clause가 이 exact dimension을
+왜 요구하는지 명시해야 한다. 각 selected/eliminated alternative의 Source는 해당 exact
+contract reference/Decision identity/mechanical fact role과 연결되어야 한다. Related architecture
+ownership, convention 또는 추천만으로 alternative를 제거할 수 없다. Source role/identity 변경은
+기존 prospective authority chronology에 포함하며 rationale-only 수정은 authority 변경이 아니다.
+ Agent-owned choice는 exact-authority
 field를 받지 않는다. Current-task
 delegation은 bounded verbatim delegation statement와 delegated scope를 caller에게 요구하고,
 Goal/Source identity와 exact dimension/choice/consequence/effect boundary는 현재 bound Goal과
