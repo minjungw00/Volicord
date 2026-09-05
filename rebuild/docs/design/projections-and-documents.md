@@ -137,6 +137,14 @@ Brief는 사용자 판단, agent recommendation, observed fact, semantic result�
 interpretation을 구분한다. Source repository가 unavailable해도 goal, Decision과
 Checkpoint를 제공하고 current code relation을 unavailable로 표시한다.
 
+CLI와 interactive-host Recall은 같은 bounded Resume Brief의 minimum meaning을
+전달한다. `goals`의 statement 목록에는 `goal_basis`의 identity/role/Source basis를
+함께 제공하며, Decision rationale/review basis, Checkpoint의 verification·user review·
+acceptance, Question frontier, risk/assumption, snapshot capability/coverage/freshness와
+omission reason을 adapter에서 버리지 않는다. `used_sources` identity 목록의
+`source_details`는 provenance와 availability/freshness를 제공하지만 raw user turn이나
+repository body를 복제하지 않는다.
+
 ### Bounded selection과 omission
 
 Selection은 Project/scope relevance, active applicability, recency of meaningful

@@ -336,45 +336,14 @@ impl HostAdapter {
                     json!({"state":"degraded","reason":error.to_string()}),
                 ),
             };
-        let checkpoint = brief.latest_meaningful_checkpoint.map(|value| json!({
-            "identity":value.id.to_string(),
-            "revision":value.revision,
-            "kind":checkpoint_kind_name(value.kind),
-            "goal":value.goal,
-            "work_state":work_state_name(value.work_state),
-            "state_change":value.state_change,
-            "source_basis":value.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "changed_source_basis":value.changed_source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "changed_paths":value.changed_paths,
-            "applied_decisions":value.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "verification":value.verification.into_iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
-            "user_review":{"state":user_review_state_name(value.user_review.state),"source_id":value.user_review.source_id.map(|id| id.to_string())},
-            "user_acceptance":{"state":user_acceptance_state_name(value.user_acceptance.state),"source_id":value.user_acceptance.source_id.map(|id| id.to_string())},
-            "known_limits":value.known_limits,
-            "non_goals":value.non_goals,
-            "open_questions":value.open_questions.into_iter().map(|question| json!({"identity":question.question_id.to_string(),"revision":question.revision})).collect::<Vec<_>>(),
-            "next_step":value.next_step,
-            "handoff_to":value.handoff_to,
-            "recorded_at_unix_micros":value.recorded_at.as_unix_micros(),
-        }));
         let workflow = self
             .operations
             .workflow_after_recall(brief.project_id)
             .map_err(operation_error)?;
-        Ok(with_workflow(
-            json!({
-                "project_id":brief.project_id.to_string(),"project_name":brief.project_name,
-                "goals":brief.goals_and_why.into_iter().map(|value| value.statement).collect::<Vec<_>>(),
-                "behaviorally_relevant_context":brief.behaviorally_relevant_context.into_iter().map(|value| json!({"identity":value.identity.to_string(),"role":context_item_role_name(value.role),"statement":value.statement,"source_ids":value.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),
-                "decisions":brief.decisions.into_iter().map(|value| json!({"identity":value.decision_id.to_string(),"revision":value.revision,"state":format!("{:?}",value.state).to_lowercase(),"choice":format!("{:?}",value.choice),"rationale":value.user_rationale})).collect::<Vec<_>>(),
-                "open_questions":brief.open_questions.into_iter().map(|value| json!({"identity":value.question_id.to_string(),"revision":value.revision,"prompt":value.prompt})).collect::<Vec<_>>(),
-                "known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"checkpoint":checkpoint,"omitted_count":brief.omitted_count,
-                "learning_context":learning_context,
-                "learning_context_health":learning_context_health,
-                "read_only":true
-            }),
-            workflow,
-        ))
+        let mut output = volicord_operations::resume_brief_json(&brief);
+        output["learning_context"] = json!(learning_context);
+        output["learning_context_health"] = learning_context_health;
+        Ok(with_workflow(output, workflow))
     }
 
     fn repository_understanding(&self, args: &Value) -> Result<Value, HostError> {
@@ -4523,30 +4492,12 @@ fn context_item_role(value: &str) -> Result<ContextItemRole, HostError> {
     }
 }
 
-const fn checkpoint_kind_name(value: CheckpointKind) -> &'static str {
-    match value {
-        CheckpointKind::Completion => "completion",
-        CheckpointKind::Pause => "pause",
-        CheckpointKind::Handoff => "handoff",
-    }
-}
-
 fn checkpoint_kind(value: &str) -> Result<CheckpointKind, HostError> {
     match value {
         "completion" => Ok(CheckpointKind::Completion),
         "pause" => Ok(CheckpointKind::Pause),
         "handoff" => Ok(CheckpointKind::Handoff),
         _ => Err(HostError::new("unknown Checkpoint kind")),
-    }
-}
-
-const fn work_state_name(value: WorkState) -> &'static str {
-    match value {
-        WorkState::InProgress => "in_progress",
-        WorkState::Paused => "paused",
-        WorkState::Completed => "completed",
-        WorkState::Abandoned => "abandoned",
-        WorkState::Superseded => "superseded",
     }
 }
 
@@ -4558,32 +4509,6 @@ fn work_state(value: &str) -> Result<WorkState, HostError> {
         "abandoned" => Ok(WorkState::Abandoned),
         "superseded" => Ok(WorkState::Superseded),
         _ => Err(HostError::new("unknown work state")),
-    }
-}
-
-const fn verification_state_name(value: VerificationState) -> &'static str {
-    match value {
-        VerificationState::NotRun => "not_run",
-        VerificationState::Partial => "partial",
-        VerificationState::Passed => "passed",
-        VerificationState::Failed => "failed",
-    }
-}
-
-const fn user_review_state_name(value: volicord_context::UserReviewState) -> &'static str {
-    match value {
-        volicord_context::UserReviewState::NotRequested => "not_requested",
-        volicord_context::UserReviewState::Pending => "pending",
-        volicord_context::UserReviewState::Reviewed => "reviewed",
-    }
-}
-
-const fn user_acceptance_state_name(value: volicord_context::UserAcceptanceState) -> &'static str {
-    match value {
-        volicord_context::UserAcceptanceState::NotRequested => "not_requested",
-        volicord_context::UserAcceptanceState::Pending => "pending",
-        volicord_context::UserAcceptanceState::Accepted => "accepted",
-        volicord_context::UserAcceptanceState::Rejected => "rejected",
     }
 }
 

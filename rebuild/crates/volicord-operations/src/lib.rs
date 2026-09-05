@@ -13,6 +13,7 @@ mod layout;
 mod model;
 mod operations;
 mod provider;
+mod recall;
 
 pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
@@ -44,6 +45,7 @@ pub use operations::LocalOperations;
 pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };
+pub use recall::resume_brief_json;
 pub use volicord_inquiry::{
     AuthoritySourceEvidence, AuthoritySourceRole, BehavioralContextBasis,
     CoupledArtifactAssessment, CoupledArtifactCategory, CoupledArtifactDisposition,

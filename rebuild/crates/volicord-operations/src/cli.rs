@@ -1765,9 +1765,9 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
 fn recall(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     let project = project_id(&cursor.next("Project ID")?)?;
     let brief = operations.recall(project)?;
-    Ok(
-        json!({"operation":"recall","project_id":brief.project_id.to_string(),"project_name":brief.project_name,"goals":brief.goals_and_why.into_iter().map(|item| item.statement).collect::<Vec<_>>(),"behaviorally_relevant_context":brief.behaviorally_relevant_context.into_iter().map(|item| json!({"identity":item.identity.to_string(),"role":debug_name(item.role),"statement":item.statement,"source_ids":item.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"active_decision_count":brief.decisions.len(),"open_questions":brief.open_questions.into_iter().map(|question| json!({"identity":question.question_id.to_string(),"revision":question.revision,"prompt":question.prompt})).collect::<Vec<_>>(),"known_limits":brief.known_limits,"next_step":brief.next_meaningful_step,"omitted_count":brief.omitted_count,"used_sources":brief.used_sources.into_iter().map(|source| source.source.id.to_string()).collect::<Vec<_>>() }),
-    )
+    let mut output = crate::resume_brief_json(&brief);
+    output["operation"] = json!("recall");
+    Ok(output)
 }
 
 fn documents(

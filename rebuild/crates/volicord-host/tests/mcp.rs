@@ -4747,6 +4747,20 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         .expect("create Question")
         .value;
     drop(store);
+    let open = cli_recall(&adapter, &project);
+    assert_eq!(
+        open["open_questions"][0]["identity"],
+        question.id.to_string()
+    );
+    assert_eq!(open["open_questions"][0]["on_current_frontier"], true);
+    assert_eq!(
+        open["open_questions"][0]["what_the_answer_unlocks"],
+        json!(["V08 Decision transport"])
+    );
+    assert_eq!(
+        open["open_questions"][0]["source_basis"],
+        json!([basis.id.to_string()])
+    );
 
     let frontier = structured(&call(
         &mut adapter,
@@ -5395,6 +5409,46 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         json!(["V11 is independent"])
     );
     assert_eq!(recalled["next_step"], "Run maintained V08 assertions");
+    assert_eq!(
+        recalled["decisions"][0]["recommendation_rationale"],
+        "The accepted product boundary is local-first"
+    );
+    assert_eq!(
+        recalled["decisions"][0]["expected_consequences"],
+        json!([
+            "Keep canonical data local",
+            "Require a separate provider decision"
+        ])
+    );
+    assert!(!recalled["decisions"][0]["source_basis"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        recalled["checkpoint"]["user_review"]["state"],
+        "not_requested"
+    );
+    assert_eq!(
+        recalled["checkpoint"]["user_acceptance"]["state"],
+        "not_requested"
+    );
+    let cli = cli_recall(&restarted, &project);
+    for key in [
+        "goals",
+        "goal_basis",
+        "decisions",
+        "checkpoint",
+        "open_questions",
+        "snapshots",
+        "source_details",
+        "omissions",
+    ] {
+        assert_eq!(cli[key], recalled[key], "Recall surface lost {key}");
+    }
+    assert_eq!(
+        canonical,
+        restarted.operations().canonical_basis(project_id).unwrap()
+    );
 }
 
 #[test]
@@ -6890,4 +6944,151 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
         ],
         _ => panic!("unexpected public tool {name}"),
     }
+}
+
+fn cli_recall(adapter: &HostAdapter, project: &str) -> Value {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit = volicord_operations::run_cli(
+        [
+            "--runtime",
+            adapter.operations().layout().root().to_str().unwrap(),
+            "--json",
+            "recall",
+            "--project",
+            project,
+        ],
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(exit.code(), 0, "{}", String::from_utf8_lossy(&stderr));
+    serde_json::from_slice(&stdout).unwrap()
+}
+
+#[test]
+fn recall_surfaces_preserve_risks_sources_coverage_and_degraded_omissions() {
+    let (temporary, mut adapter, project) = setup();
+    let project_id = parse_project(&project);
+    let repository = temporary.path().join("repository");
+    fs::write(repository.join("main.py"), "def before():\n    return 1\n").unwrap();
+    let risk = adapter
+        .operations()
+        .record_current_host_user_context(
+            project_id,
+            "codex".into(),
+            "recall-fixture".into(),
+            "Raw private preamble. Cache loss can interrupt resumption.".into(),
+            volicord_context::ContextItemRole::Risk,
+            "Cache loss can interrupt resumption".into(),
+        )
+        .unwrap();
+    adapter
+        .operations()
+        .record_current_host_user_context(
+            project_id,
+            "codex".into(),
+            "recall-fixture".into(),
+            "Assume the repository stays local".into(),
+            volicord_context::ContextItemRole::Assumption,
+            "the repository stays local".into(),
+        )
+        .unwrap();
+    // More than the default section budget: verify exact omissions, not silent loss.
+    for index in 0..10 {
+        adapter
+            .operations()
+            .record_current_host_user_context(
+                project_id,
+                "codex".into(),
+                "recall-fixture".into(),
+                format!("Remember goal {index}"),
+                volicord_context::ContextItemRole::Goal,
+                format!("goal {index}"),
+            )
+            .unwrap();
+    }
+    let analysis = adapter
+        .operations()
+        .analyze(project_id, Vec::new())
+        .unwrap()
+        .value
+        .unwrap();
+    fs::write(repository.join("main.py"), "def after():\n    return 2\n").unwrap();
+    let canonical = adapter.operations().canonical_basis(project_id).unwrap();
+    let cli = cli_recall(&adapter, &project);
+    let host = structured(&call(&mut adapter, "recall", json!({"project_id":project}))).clone();
+    for output in [&cli, &host] {
+        assert_eq!(output["goals"].as_array().unwrap().len(), 8);
+        assert!(output["goals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(Value::is_string));
+        let item = output["risks_assumptions_and_limits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["role"] == "risk")
+            .unwrap();
+        assert_eq!(item["identity"], risk.context_item_id.to_string());
+        assert_eq!(item["statement"], "Cache loss can interrupt resumption");
+        assert_eq!(item["source_ids"], json!([risk.source_id.to_string()]));
+        assert!(output["declared_assumptions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("the repository stays local")));
+        let snapshot = &output["snapshots"][0];
+        assert_eq!(
+            snapshot["analysis_snapshot"],
+            analysis.analysis.identity.to_string()
+        );
+        assert_eq!(snapshot["freshness"]["state"], "stale");
+        assert_ne!(
+            snapshot["freshness"]["compared_repository_snapshot"],
+            snapshot["repository_snapshot"]
+        );
+        assert!(snapshot["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability["coverage"]["stale"]
+                .as_array()
+                .is_some_and(|areas| !areas.is_empty())));
+        assert!(output["source_details"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|source| source["availability"].is_string() && source["freshness"].is_string()));
+        assert!(output["omissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|omission| omission["reason"] == "bound" && omission["kind"] == "context_goal"));
+        assert!(output["omitted_count"].as_u64().unwrap() >= 2);
+        assert!(!output.to_string().contains("Raw private preamble"));
+    }
+    fs::write(&analysis.stored_at, "{corrupt cache}").unwrap();
+    let cli = cli_recall(&adapter, &project);
+    let host = structured(&call(&mut adapter, "recall", json!({"project_id":project}))).clone();
+    for output in [&cli, &host] {
+        assert!(output["snapshots"].as_array().unwrap().is_empty());
+        assert!(output["omissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|omission| omission["reason"] == "failed_basis"
+                && omission["expandable_basis"]
+                    .as_str()
+                    .unwrap()
+                    .contains("doctor repair")));
+        assert_eq!(output["goals"].as_array().unwrap().len(), 8);
+    }
+    assert_eq!(
+        canonical,
+        adapter.operations().canonical_basis(project_id).unwrap()
+    );
+    assert_eq!(
+        fs::read_to_string(&analysis.stored_at).unwrap(),
+        "{corrupt cache}"
+    );
 }
