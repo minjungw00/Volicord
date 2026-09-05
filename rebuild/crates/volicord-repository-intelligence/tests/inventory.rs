@@ -31,6 +31,102 @@ fn request(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
 }
 
 #[test]
+fn nested_ignore_rules_match_git_and_do_not_leak_into_sibling_directories(
+) -> Result<(), Box<dyn Error>> {
+    let repository = tempfile::tempdir()?;
+    let root = repository.path();
+    assert!(std::process::Command::new("git")
+        .args(["init", "-q"])
+        .arg(root)
+        .status()?
+        .success());
+    fs::create_dir_all(root.join("nested/deeper"))?;
+    fs::create_dir_all(root.join("sibling"))?;
+    fs::create_dir_all(root.join("nested/blocked"))?;
+    fs::write(root.join(".gitignore"), "*.log\n")?;
+    fs::write(
+        root.join("nested/.gitignore"),
+        "ignored.py\n!keep.log\n/root-only.py\n[a-b].py\nblocked/\n\\#literal.py\n",
+    )?;
+    fs::write(root.join("nested/deeper/.gitignore"), "!ignored.py\n")?;
+    fs::write(root.join("nested/blocked/.gitignore"), "!never.py\n")?;
+    let paths = [
+        "nested/ignored.py",
+        "nested/keep.log",
+        "sibling/keep.log",
+        "sibling/ignored.py",
+        "nested/root-only.py",
+        "nested/deeper/root-only.py",
+        "nested/a.py",
+        "nested/c.py",
+        "nested/deeper/ignored.py",
+        "nested/blocked/never.py",
+        "nested/#literal.py",
+    ];
+    for path in paths {
+        fs::write(root.join(path), "def marker():\n    pass\n")?;
+    }
+    let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(request(root)?))?;
+    for path in paths {
+        let ignored = std::process::Command::new("git")
+            .current_dir(root)
+            .args(["check-ignore", "--no-index", "-q", path])
+            .status()?
+            .success();
+        let entry = analysis
+            .inventory
+            .entries
+            .iter()
+            .find(|entry| entry.area.path == path);
+        if path == "nested/blocked/never.py" {
+            assert!(ignored && entry.is_none());
+        } else {
+            let entry = entry.ok_or("fixture entry missing")?;
+            assert_eq!(
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Ignored),
+                ignored,
+                "{path}"
+            );
+            if ignored {
+                assert!(
+                    entry.content_sha256.is_none(),
+                    "ignored content was read: {path}"
+                );
+            }
+        }
+        if ignored {
+            assert!(!analysis
+                .structural_facts
+                .iter()
+                .any(|fact| fact.entity.area.path == path));
+        }
+    }
+    let (_, repeated) = analyze_repository(StructuralAnalysisRequest::new(request(root)?))?;
+    assert_eq!(canonical_json(&analysis)?, canonical_json(&repeated)?);
+    Ok(())
+}
+
+#[test]
+fn unreadable_ignore_rules_are_explicit_partial_inventory() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join(".gitignore"), [0xff, 0xfe])?;
+    fs::write(root.path().join("main.py"), "VALUE = 1\n")?;
+    let (_, analysis) = inventory_repository(request(root.path())?)?;
+    assert!(analysis
+        .diagnostics
+        .iter()
+        .any(|item| item.code == "ignore_rules_unavailable"));
+    assert!(analysis
+        .capabilities
+        .iter()
+        .any(|item| item.capability == Capability::Inventory
+            && item.state == CapabilityState::Partial));
+    Ok(())
+}
+
+#[test]
 fn maintained_fixtures_recognize_all_seven_gate_languages() -> Result<(), Box<dyn Error>> {
     let matrix = [
         ("java", Language::Java),

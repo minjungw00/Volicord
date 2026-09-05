@@ -10,6 +10,7 @@ use crate::model::{
 use crate::{
     AnalysisSnapshotId, CanonicalGrounding, CanonicalGroundingError, RepositorySnapshotId,
 };
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error as StdError;
@@ -108,8 +109,7 @@ pub fn inventory_repository(
     }
 
     let excluded_paths = normalize_excluded_paths(&request.excluded_paths)?;
-    let ignore_patterns = load_ignore_patterns(request.root);
-    let mut state = ScanState::new(excluded_paths, ignore_patterns);
+    let mut state = ScanState::new(excluded_paths);
     state.entries.push(InventoryEntry {
         area: repository_area(),
         entry_kind: EntryKind::Directory,
@@ -222,16 +222,16 @@ pub fn inventory_repository(
 
 struct ScanState {
     excluded_paths: Vec<String>,
-    ignore_patterns: Vec<IgnorePattern>,
+    ignore_patterns: Vec<Gitignore>,
     entries: Vec<InventoryEntry>,
     diagnostics: Vec<AnalysisDiagnostic>,
 }
 
 impl ScanState {
-    fn new(excluded_paths: Vec<String>, ignore_patterns: Vec<IgnorePattern>) -> Self {
+    fn new(excluded_paths: Vec<String>) -> Self {
         Self {
             excluded_paths,
-            ignore_patterns,
+            ignore_patterns: Vec::new(),
             entries: Vec::new(),
             diagnostics: Vec::new(),
         }
@@ -291,6 +291,8 @@ fn scan_directory(absolute: &Path, relative: &Path, state: &mut ScanState) {
         (Err(left), Err(right)) => left.to_string().cmp(&right.to_string()),
     });
 
+    let inherited_rules = state.ignore_patterns.len();
+    load_directory_ignores(absolute, relative, state);
     for child in children {
         match child {
             Ok(child) => scan_entry(child.path(), relative.join(child.file_name()), state),
@@ -305,6 +307,7 @@ fn scan_directory(absolute: &Path, relative: &Path, state: &mut ScanState) {
             }
         }
     }
+    state.ignore_patterns.truncate(inherited_rules);
 }
 
 fn scan_entry(absolute: PathBuf, relative: PathBuf, state: &mut ScanState) {
@@ -1315,98 +1318,74 @@ fn read_packed_reference(git_directory: &Path, reference: &str) -> Option<String
         })
 }
 
-#[derive(Clone, Debug)]
-struct IgnorePattern {
-    pattern: String,
-    directory_only: bool,
-    negated: bool,
-    anchored: bool,
-}
-
-fn load_ignore_patterns(root: &Path) -> Vec<IgnorePattern> {
-    let Ok(contents) = fs::read_to_string(root.join(".gitignore")) else {
-        return Vec::new();
+fn load_directory_ignores(absolute: &Path, relative: &Path, state: &mut ScanState) {
+    let path = absolute.join(".gitignore");
+    let area = file_area(portable_locator(&relative.join(".gitignore")));
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return,
+        Ok(metadata) if metadata.is_file() => {}
+        _ => {
+            state.diagnostic(
+                "ignore_rules_unavailable",
+                "ignore rules are not a readable regular file; symbolic links are not followed"
+                    .into(),
+                area,
+                DiagnosticSeverity::Warning,
+            );
+            return;
+        }
+    }
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(_) => {
+            state.diagnostic(
+                "ignore_rules_unavailable",
+                "ignore rules could not be read as UTF-8".into(),
+                area,
+                DiagnosticSeverity::Warning,
+            );
+            return;
+        }
     };
-    contents
-        .lines()
-        .filter_map(|line| {
-            let mut pattern = line.trim();
-            if pattern.is_empty() || pattern.starts_with('#') {
-                return None;
-            }
-            let negated = pattern.starts_with('!');
-            if negated {
-                pattern = pattern.get(1..)?;
-            }
-            let anchored = pattern.starts_with('/');
-            if anchored {
-                pattern = pattern.get(1..)?;
-            }
-            let directory_only = pattern.ends_with('/');
-            if directory_only {
-                pattern = pattern.strip_suffix('/')?;
-            }
-            (!pattern.is_empty()).then(|| IgnorePattern {
-                pattern: pattern.to_owned(),
-                directory_only,
-                negated,
-                anchored,
-            })
+    let mut builder = GitignoreBuilder::new(relative);
+    let mut invalid_lines = 0;
+    for line in contents.lines() {
+        if builder.add_line(None, line).is_err() {
+            invalid_lines += 1;
+        }
+    }
+    if invalid_lines != 0 {
+        state.diagnostic(
+            "ignore_rules_invalid",
+            format!(
+                "{invalid_lines} ignore rules could not be parsed; only valid rules are applied"
+            ),
+            area.clone(),
+            DiagnosticSeverity::Warning,
+        );
+    }
+    match builder.build() {
+        Ok(rules) => state.ignore_patterns.push(rules),
+        Err(_) => {
+            state.diagnostic(
+                "ignore_rules_invalid",
+                "ignore rules could not be compiled".into(),
+                area,
+                DiagnosticSeverity::Warning,
+            );
+        }
+    }
+}
+
+fn is_ignored(locator: &str, is_directory: bool, patterns: &[Gitignore]) -> bool {
+    patterns
+        .iter()
+        .rev()
+        .find_map(|rules| {
+            let matched = rules.matched(locator, is_directory);
+            (!matched.is_none()).then(|| matched.is_ignore())
         })
-        .collect()
-}
-
-fn is_ignored(locator: &str, is_directory: bool, patterns: &[IgnorePattern]) -> bool {
-    let mut ignored = false;
-    for pattern in patterns {
-        if pattern.directory_only
-            && !is_directory
-            && !locator.starts_with(&format!("{}/", pattern.pattern))
-        {
-            continue;
-        }
-        let matched = if pattern.anchored || pattern.pattern.contains('/') {
-            glob_matches(&pattern.pattern, locator)
-                || locator.starts_with(&format!("{}/", pattern.pattern))
-        } else {
-            locator
-                .split('/')
-                .any(|component| glob_matches(&pattern.pattern, component))
-        };
-        if matched {
-            ignored = !pattern.negated;
-        }
-    }
-    ignored
-}
-
-fn glob_matches(pattern: &str, value: &str) -> bool {
-    let pattern = pattern.as_bytes();
-    let value = value.as_bytes();
-    let (mut pattern_index, mut value_index) = (0_usize, 0_usize);
-    let (mut star_index, mut star_value_index) = (None, 0_usize);
-    while value_index < value.len() {
-        if pattern_index < pattern.len()
-            && (pattern[pattern_index] == b'?' || pattern[pattern_index] == value[value_index])
-        {
-            pattern_index += 1;
-            value_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-            star_index = Some(pattern_index);
-            pattern_index += 1;
-            star_value_index = value_index;
-        } else if let Some(star) = star_index {
-            pattern_index = star + 1;
-            star_value_index += 1;
-            value_index = star_value_index;
-        } else {
-            return false;
-        }
-    }
-    while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-        pattern_index += 1;
-    }
-    pattern_index == pattern.len()
+        .unwrap_or(false)
 }
 
 fn normalize_excluded_paths(values: &[String]) -> Result<Vec<String>, InventoryError> {
@@ -1514,30 +1493,4 @@ fn hex_digest(bytes: &[u8]) -> String {
 fn hash_part(hasher: &mut Sha256, value: &[u8]) {
     hasher.update((value.len() as u64).to_be_bytes());
     hasher.update(value);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{glob_matches, is_ignored, IgnorePattern};
-
-    #[test]
-    fn simple_ignore_patterns_are_deterministic() {
-        let patterns = vec![
-            IgnorePattern {
-                pattern: "*.log".to_owned(),
-                directory_only: false,
-                negated: false,
-                anchored: false,
-            },
-            IgnorePattern {
-                pattern: "keep.log".to_owned(),
-                directory_only: false,
-                negated: true,
-                anchored: false,
-            },
-        ];
-        assert!(glob_matches("*.log", "debug.log"));
-        assert!(is_ignored("logs/debug.log", false, &patterns));
-        assert!(!is_ignored("logs/keep.log", false, &patterns));
-    }
 }

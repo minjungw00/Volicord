@@ -106,6 +106,12 @@ classification을 대체하거나 모든 tool artifact를 추측해 제외하는
 
 ## 4. Accepted capability와 상태
 
+Inventory는 source boundary 안의 root와 하위 directory `.gitignore`를 계층적으로
+적용한다. Negation, directory pruning과 directory-relative pattern scope를 유지하며
+sibling directory에 하위 규칙을 적용하지 않는다. Ignore된 file은 content와 Structural
+Fact를 만들지 않는다. 읽거나 해석할 수 없는 규칙은 explicit partial diagnostic으로
+남긴다. 외부 사용자/global Git 설정은 이 repository-local observation에 포함하지 않는다.
+
 ### 4.1 Capability vocabulary
 
 | Capability | 소유하는 의미 |
