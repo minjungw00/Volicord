@@ -62,7 +62,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "1"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "2"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));
@@ -282,6 +282,120 @@ class Greeter implements Named {
         1,
         "two-argument overload was conflated with interface method"
     );
+    Ok(())
+}
+
+#[test]
+fn same_arity_overrides_require_a_unique_declaration() -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    fs::write(
+        root.path().join("Example.java"),
+        r#"
+class Base {
+    void duplicated(int value) {}
+    void duplicated(String value) {}
+    void unique() {}
+}
+class Derived extends Base {
+    void duplicated(int value) {}
+    void unique() {}
+}
+"#,
+    )?;
+    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    let overrides = analysis
+        .semantic_results
+        .iter()
+        .filter(|result| result.relation.kind == SemanticRelationKind::Overrides)
+        .map(|result| {
+            analysis
+                .structural_facts
+                .iter()
+                .find(|fact| fact.entity.identity == result.relation.source_entity)
+                .and_then(|fact| fact.entity.display_name.as_deref())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(overrides, vec![Some("unique")]);
+    Ok(())
+}
+
+#[test]
+fn ambiguous_targets_stay_unresolved_across_repository_observations() -> Result<(), Box<dyn Error>>
+{
+    for (extension, declaration, caller) in [
+        ("rs", "pub fn duplicated() {}\npub struct Shared;\n",
+         "pub fn caller() { duplicated(); unique(); }\npub fn unique() {}\npub fn typed() -> Shared { todo!() }\n"),
+        ("ts", "export function duplicated() {}\nexport class Shared {}\n",
+         "function caller() { duplicated(); unique(); }\nfunction unique() {}\nfunction typed(): Shared { return null; }\n"),
+        ("java", "class Shared { static void duplicated() {} }\n",
+         "class Caller { void caller() { Shared.duplicated(); unique(); }\nvoid unique() {}\nShared typed() { return null; } }\n"),
+    ] {
+        let root = tempdir()?;
+        fs::write(root.path().join(format!("one.{extension}")), declaration)?;
+        fs::write(root.path().join(format!("two.{extension}")), declaration)?;
+        fs::write(root.path().join(format!("caller.{extension}")), caller)?;
+        let canonical = support::repository_grounding(0x71, 0x72)?;
+        let mut previous = None;
+        for observation in 0..4 {
+            let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+                StructuralAnalysisRequest::new(InventoryRequest::new(
+                    root.path(), &canonical.grounding, canonical.source_id,
+                    OBSERVED_AT + observation,
+                )?),
+            ))?;
+            let mut ambiguous_call = false;
+            let mut unique_call = false;
+            let mut ambiguous_type = false;
+            let mut meaning = BTreeSet::new();
+            let entity_label = |identity: &str| {
+                analysis.structural_facts.iter().find(|fact| fact.entity.identity == identity)
+                    .map(|fact| format!("{}:{:?}:{:?}:{:?}", fact.entity.area.path,
+                        fact.entity.kind, fact.entity.qualified_name, fact.entity.source_range.as_ref().map(|range| &range.start)))
+            };
+            for result in &analysis.semantic_results {
+                let relation = &result.relation;
+                let target = match &relation.target {
+                    RelationTarget::ResolvedEntity(identity) => entity_label(identity).ok_or("ungrounded resolved target")?,
+                    other => format!("{other:?}"),
+                };
+                meaning.insert(format!("{:?}|{:?}|{target}|{:?}", relation.kind,
+                    entity_label(&relation.source_entity), relation.uncertainty));
+                if matches!(relation.kind, SemanticRelationKind::References | SemanticRelationKind::ResolvesTo) {
+                    match &relation.target {
+                        RelationTarget::Unresolved(target) if target.display.ends_with("duplicated") => {
+                            assert!(target.reason.contains("ambiguous"));
+                            ambiguous_call = true;
+                        }
+                        RelationTarget::ResolvedEntity(identity) => {
+                            let target = analysis.structural_facts.iter().find(|fact| fact.entity.identity == *identity).ok_or("missing target")?;
+                            assert_ne!(target.entity.display_name.as_deref(), Some("duplicated"), "{extension}: guessed duplicate declaration");
+                            unique_call |= target.entity.display_name.as_deref() == Some("unique");
+                        }
+                        _ => {}
+                    }
+                }
+                if relation.kind == SemanticRelationKind::TypeOf {
+                    if let RelationTarget::Unresolved(target) = &relation.target {
+                        if target.display == "Shared" {
+                            assert!(target.reason.contains("ambiguous"));
+                            ambiguous_type = true;
+                        }
+                    }
+                }
+            }
+            assert!(ambiguous_call && unique_call && ambiguous_type, "{extension}: missing ambiguity/unique-target evidence");
+            let coverage = analysis.capabilities.iter().filter(|report| report.capability == Capability::Semantic)
+                .map(|report| (report.language.clone(), report.state.clone(), report.coverage.clone())).collect::<Vec<_>>();
+            if let Some((prior_id, prior_meaning, prior_coverage)) = previous {
+                assert_ne!(analysis.identity, prior_id);
+                assert_eq!(meaning, prior_meaning, "{extension}: observation changed relation meaning");
+                assert_eq!(coverage, prior_coverage, "{extension}: observation changed coverage");
+            }
+            previous = Some((analysis.identity, meaning, coverage));
+        }
+    }
     Ok(())
 }
 

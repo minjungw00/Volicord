@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "1";
+const SEMANTIC_ANALYZER_VERSION: &str = "2";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {
@@ -494,13 +494,13 @@ fn add_overrides(
             && qualified_parent(&fact.entity) == implementing_name
     });
     for method in implementing_methods {
-        let Some(target_method) = facts.iter().find(|candidate| {
+        let Some(target_method) = unique_match(facts.iter().filter(|candidate| {
             candidate.entity.kind == CodeEntityKind::Method
                 && candidate.entity.display_name == method.entity.display_name
                 && qualified_parent(&candidate.entity) == target_name
                 && declared_arity(&candidate.entity, sources)
                     == declared_arity(&method.entity, sources)
-        }) else {
+        })) else {
             continue;
         };
         results.push(make_result(
@@ -542,12 +542,10 @@ fn add_type_relations(
         let Some(type_name) = declared_type(&fact.entity, line) else {
             continue;
         };
-        let target = entities
-            .values()
-            .find(|entity| {
+        let target = unique_match(entities.values().filter(|entity| {
                 entity.language == fact.entity.language
                     && entity.display_name.as_deref() == Some(type_name.as_str())
-            })
+            }))
             .map(|entity| RelationTarget::ResolvedEntity(entity.identity.clone()))
             .unwrap_or_else(|| {
                 RelationTarget::Unresolved(UnresolvedTarget {
@@ -555,7 +553,7 @@ fn add_type_relations(
                     language: Some(fact.entity.language.clone()),
                     locator_hint: None,
                     reason:
-                        "declared type is builtin, external, or absent from this source snapshot"
+                        "declared type is builtin, external, absent, or ambiguous in this source snapshot"
                             .to_owned(),
                 })
             });
@@ -599,6 +597,11 @@ fn declared_type(entity: &CodeEntity, line: &str) -> Option<String> {
             .map(str::to_owned),
         _ => None,
     }
+}
+
+fn unique_match<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
+    let first = candidates.next()?;
+    candidates.next().is_none().then_some(first)
 }
 
 fn resolve_target(
@@ -649,20 +652,18 @@ fn resolve_target(
     } else if candidates.len() == 1 {
         Some(candidates[0])
     } else {
-        candidates
-            .iter()
-            .find(|candidate| {
-                candidate
-                    .entity
-                    .qualified_name
-                    .as_deref()
-                    .is_some_and(|qualified| {
-                        qualified
-                            .replace('.', "::")
-                            .ends_with(&display.replace('.', "::"))
-                    })
-            })
-            .copied()
+        unique_match(candidates.iter().filter(|candidate| {
+            candidate
+                .entity
+                .qualified_name
+                .as_deref()
+                .is_some_and(|qualified| {
+                    qualified
+                        .replace('.', "::")
+                        .ends_with(&display.replace('.', "::"))
+                })
+        }))
+        .copied()
     };
     selected.map_or_else(
         || {

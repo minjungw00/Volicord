@@ -381,6 +381,9 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   `implements`와 `overrides` relation만 semantic provenance로 publish한다.
 - 같은 이름 또는 overload 후보는 declared/call arity와 scope로 하나만 확인될 때
   resolve하고, 남은 ambiguity는 unresolved target과 diagnostic으로 보존한다.
+  Source-semantic analyzer version `2`는 이름/type/override 후보의 첫 항목을
+  임의로 선택하지 않는다. Observation-bound identity의 정렬 순서는 해석 근거가
+  아니며, 중복 override 후보로는 확정된 override relation을 만들지 않는다.
 - Java package/Maven manifest, TypeScript relative module/Node·`tsconfig`, Rust
   module/Cargo·explicit trait impl evidence를 build context로 기록하되 external package
   body, generated source와 compiler-only resolution을 current fact로 만들지 않는다.
