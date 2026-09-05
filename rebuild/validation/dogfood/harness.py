@@ -5123,6 +5123,71 @@ def current_goal_delegation_evidence_valid(
     )
 
 
+def materiality_reasoning_evidence_complete(dimension: dict[str, Any]) -> bool:
+    """Check typed reasoning linkage, never infer semantic ownership from prose."""
+    ownership = dimension["ownership"]
+    accounts = dimension["alternative_accounting"]
+    proofs = ownership.get("discretion_counterfactuals", [])
+    if not isinstance(proofs, list):
+        return False
+    if ownership["contains_user_owned_outcome"]:
+        if proofs:
+            return False
+    else:
+        expected = {(a["choice_id"], a["alternative_id"]) for a in accounts}
+        observed = set()
+        for proof in proofs:
+            if (not isinstance(proof, dict)
+                or not isinstance(proof.get("externally_observable"), bool)
+                or not nonempty_string(proof.get("observation_rationale"))
+                or not nonempty_string(proof.get("source_supported_boundary"))
+                or proof.get("source_id") not in ownership["source_ids"]
+                or not nonempty_string(proof.get("choice_id"))
+                or not nonempty_string(proof.get("alternative_id"))):
+                return False
+            observed.add((proof["choice_id"], proof["alternative_id"]))
+        if observed != expected or len(proofs) != len(expected):
+            return False
+    basis = dimension["basis"]
+    authority = basis.get("exact_authority")
+    if authority is None:
+        return True
+    evidence = authority.get("source_evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return False
+    seen = set()
+    for item in evidence:
+        if (not isinstance(item, dict) or item.get("source_id") not in basis["source_ids"]
+            or not nonempty_string(item.get("rationale")) or not isinstance(item.get("role"), dict)):
+            return False
+        role = item["role"]
+        kind = role.get("kind")
+        if kind not in {"accepted_contract", "applicable_decision", "unique_mechanical_fact",
+                        "compatibility_constraint", "repository_precedent", "recommendation_or_preference"}:
+            return False
+        if kind == "accepted_contract" and role.get("contract_reference") not in basis["contract_basis"]:
+            return False
+        if kind == "applicable_decision" and role.get("decision_id") not in basis["decision_ids"]:
+            return False
+        identity = (item["source_id"], json.dumps(role, sort_keys=True))
+        if identity in seen:
+            return False
+        seen.add(identity)
+    def supports(account: dict[str, Any], item: dict[str, Any]) -> bool:
+        role = item["role"]
+        kind = role["kind"]
+        if item["source_id"] not in account["source_ids"]:
+            return False
+        if account["status"] == "selected":
+            return kind == "unique_mechanical_fact" if dimension["disposition"] == "repository_or_environment_fact" else kind in {"accepted_contract", "applicable_decision"}
+        return (
+            account["status"] == "eliminated_by_repository_or_environment_fact" and kind == "unique_mechanical_fact"
+            or account["status"] == "eliminated_by_accepted_contract" and kind == "accepted_contract" and account.get("contract_reference") == role.get("contract_reference")
+            or account["status"] == "eliminated_by_applicable_decision" and kind == "applicable_decision" and account.get("decision_id") == role.get("decision_id")
+        )
+    return all(any(supports(account, item) for item in evidence) for account in accounts)
+
+
 def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | None:
     if not isinstance(value, list) or not value:
         return None
@@ -5287,6 +5352,8 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
                 )
             )
         ):
+            return None
+        if not materiality_reasoning_evidence_complete(dimension):
             return None
         indexed[str(dimension_id)] = dimension
     return indexed
@@ -15394,7 +15461,38 @@ def self_test() -> int:
             raise AssertionError(f"open subordinate material choice qualified: {shape}")
         decomposition_qualification[shape] = "rejected_open_subchoice"
 
+    for defect in ("missing-discretion-proof", "precedent-only-settling"):
+        directory = evidence_directory / defect
+        directory.mkdir()
+        fixture = real_session_fixture("small-python", 2, revision, directory, behavior_class="research_or_no_question")
+        def remove_reasoning(arguments: dict[str, Any]) -> None:
+            judgment = arguments["judgments"][0]
+            if defect == "missing-discretion-proof":
+                judgment.pop("discretion_counterfactuals")
+            else:
+                judgment["authority_source_evidence"][0]["role"] = {"kind": "repository_precedent"}
+        mutate_mcp_call_action(fixture, "work", "materiality_review", "record", remove_reasoning)
+        observed = real_session_evidence(fixture, kind="small-python", cycle=2, repository_revision=revision)
+        if observed["checks"]["pre_write_materiality_work_authority"] != "failed":
+            raise AssertionError(f"incomplete semantic authority evidence qualified: {defect}")
+
     authority_scenarios = (
+        (
+            "public-result-tuple-precedent",
+            "Choose the new public result representation; the old tuple API is only precedent",
+            (
+                "Return an optional tuple; callers branch on absence and unpack present values",
+                "Return a tagged structured result; callers inspect a variant while old tuple callers remain unchanged",
+            ),
+        ),
+        (
+            "public-returned-versus-thrown-failure",
+            "Choose the caller-visible failure semantics for the new public API",
+            (
+                "Return a discriminated failure result that callers inspect",
+                "Throw an exception that callers must catch",
+            ),
+        ),
         (
             "candidate-expiry-cleanup-trigger",
             "Choose the candidate expiry cleanup trigger",
@@ -15466,6 +15564,8 @@ def self_test() -> int:
             ):
                 account["choice_id"] = primary["choice_id"]
                 account["alternative_id"] = f"{scenario_id}-{suffix}"
+            for proof, suffix in zip(primary.get("discretion_counterfactuals", []), ("a", "b")):
+                proof["alternative_id"] = f"{scenario_id}-{suffix}"
 
         mutate_mcp_call_action(
             fixture,
@@ -19047,6 +19147,7 @@ def self_test() -> int:
         ):
             judgment.pop(field, None)
         judgment.pop("bounded_implementation_discretion_rationale", None)
+        judgment.pop("discretion_counterfactuals", None)
         judgment["contains_user_owned_outcome"] = True
         judgment["user_owned_outcomes"] = ["observable repository-shape boundary"]
         judgment["ownership_rationale"] = (

@@ -768,6 +768,16 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
   architecture/convention evidence의 constrain-without-settle behavior
 - hidden API/failure와 persistence/reload choice non-collapse, legitimate coupling과 trivial internal
   detail non-discovery
+- `end-to-end/multi-repository/materiality_scenarios.py`의 installed-MCP 7-case matrix:
+  tuple precedent만 있는 새 public result와 returned-versus-thrown failure는 invalid authority
+  rejection → 실제 Question Candidate/promotion → presentation receipt → current-host response →
+  Decision → ready → first affected write 순서를 검증한다. Exact accepted contract, applicable
+  Decision reuse, exact delegation, unique mechanical fact, private helper는 추가 Question 없이
+  진행한다. 이 matrix는 V11 Inquiry 결과의 필수 child evidence이며 isolated Runtime Home을 쓴다.
+- 위 matrix와 Dogfood의 sanitized chronological-capture regression은 deterministic qualification이다.
+  Authenticated V11의 project-health connection probe와 active model의 semantic ownership 품질을
+  혼동하지 않는다. 실제 model의 자연스러운 ownership 판단은 newly gated HEAD의 fresh campaign에서
+  별도로 평가하며 private evaluator label이나 정답을 model 입력에 넣지 않는다.
 - normal-mode autonomy, active pending blocker/Checkpoint refusal, response-before-feedback ordering,
   select/delegate/skip/prototype/reconsideration terminal/research state와 restart reconstruction
 - Candidate Inspection no-mutation과 failure isolation

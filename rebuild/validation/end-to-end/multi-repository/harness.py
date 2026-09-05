@@ -8,6 +8,7 @@ import ast
 from contextlib import contextmanager
 import hashlib
 import html
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ import sys
 import tempfile
 import time
 from typing import Any, Iterator
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -673,6 +675,18 @@ def step(status: str, summary: str, **evidence: Any) -> dict[str, Any]:
     return {"status": status, "summary": summary, "evidence": evidence}
 
 
+def qualify_materiality_scenarios(binary: Path, env: dict[str, str], root: Path) -> dict[str, Any]:
+    spec = importlib.util.spec_from_file_location("v11_materiality_scenarios", HERE / "materiality_scenarios.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("maintained Materiality scenarios unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    api = SimpleNamespace(Mcp=Mcp, material_boundary_review=material_boundary_review,
+                          alternative_accounting=alternative_accounting,
+                          coupled_artifact_review=coupled_artifact_review)
+    return module.qualify(api, binary, env, root)
+
+
 def parser_degradation_status(result: dict[str, Any] | None) -> str:
     degraded_scopes = (
         [
@@ -1111,6 +1125,11 @@ def rehearse_target(
         requested_language_realization=realized_document,
         requested_language_cleanup=language_cleanup,
     )
+
+    try:
+        materiality_semantics = qualify_materiality_scenarios(mcp_binary, env, target_root / "materiality-scenarios")
+    except (OSError, RuntimeError, ValueError) as error:
+        materiality_semantics = {"status": "failed", "error": str(error)}
 
     candidate_tools = {
         "candidate_inspect", "candidate_manage", "inquiry_frontier", "decision_record",
@@ -1809,7 +1828,7 @@ def rehearse_target(
                 len(decision_records_after_learning) == 1,
             ])
             candidate_status = "passed" if candidate_ok else "failed"
-            inquiry_status = "passed" if inquiry_ok else "failed"
+            inquiry_status = "passed" if inquiry_ok and materiality_semantics["status"] == "passed" else "failed"
             candidate_evidence = {
                 "repository_analysis": candidate_analysis,
                 "repository_source_id": source_id,
@@ -1833,6 +1852,7 @@ def rehearse_target(
                 "promoted_disposition": promoted_candidate,
             }
             inquiry_evidence = {
+                "materiality_semantics": materiality_semantics,
                 "frontier": frontier,
                 "displayed_question": displayed,
                 "decision": decision,
