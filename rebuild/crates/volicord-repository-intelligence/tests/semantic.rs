@@ -387,7 +387,7 @@ fn ambiguous_targets_stay_unresolved_across_repository_observations() -> Result<
             }
             assert!(ambiguous_call && unique_call && ambiguous_type, "{extension}: missing ambiguity/unique-target evidence");
             let coverage = analysis.capabilities.iter().filter(|report| report.capability == Capability::Semantic)
-                .map(|report| (report.language.clone(), report.state.clone(), report.coverage.clone())).collect::<Vec<_>>();
+                .map(|report| (report.language.clone(), report.state, report.coverage.clone())).collect::<Vec<_>>();
             if let Some((prior_id, prior_meaning, prior_coverage)) = previous {
                 assert_ne!(analysis.identity, prior_id);
                 assert_eq!(meaning, prior_meaning, "{extension}: observation changed relation meaning");
