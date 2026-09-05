@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -630,6 +631,78 @@ def assert_production_session_start(parent: Path, binary: Path) -> None:
     summary = campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
     assert summary["outcome"] == "evidence_collected"
     assert not summary["failure_attribution"]
+
+
+def assert_activation_failure_attribution(parent: Path, binary: Path) -> None:
+    for label, domain, outcome in (
+        ("absent", "environment", "operator_environment_invalid"),
+        ("late", "environment", "operator_environment_invalid"),
+        ("malformed", "evidence", "evidence_failed"),
+        ("binding_mismatch", "evidence", "evidence_failed"),
+        ("validator_mismatch", "validation_internal", "evidence_failed"),
+    ):
+        root, captures, bundles = prepared_batch(parent, f"attribution-{label}", binary)
+        originals = {path: path.read_bytes() for path in captures}
+        if label != "validator_mismatch":
+            for path in captures:
+                events = [json.loads(line) for line in path.read_text().splitlines()]
+                if label == "absent":
+                    del events[1]
+                elif label == "late":
+                    events.insert(4, events.pop(1))
+                else:
+                    item = events[1]["payload"]["content"][0]
+                    identity, prose = item["text"].split("\n", 1)
+                    if label == "malformed":
+                        identity = identity[:-1]
+                    else:
+                        identity = identity[:-1] + ("0" if identity[-1] != "0" else "1")
+                    item["text"] = identity + "\n" + prose
+                path.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+
+        original_loader = campaign.load_codex_capture
+
+        def inconsistent_validator(path: Path):
+            capture = original_loader(path)
+            assert capture.activation_evidence_state == "valid"
+            assert capture.repository_scoped_activation_observed
+            # Inject the old false-negative shape after recognition of real hook evidence.
+            return replace(capture, repository_scoped_activation_observed=False)
+
+        if label == "validator_mismatch":
+            campaign.load_codex_capture = inconsistent_validator
+        try:
+            summary = campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
+        finally:
+            campaign.load_codex_capture = original_loader
+        failure = harness.ACTIVATION_FAILURES[label]
+        assert summary["outcome"] == outcome, label
+        assert summary["intake_state"] == "rejected", label
+        assert summary["failure_attribution"] == [{
+            "domain": domain, "cycle_count": 8, "attribution_count": 16,
+        }], label
+        assert all(
+            attribution["basis"] == failure.basis
+            for cycle in summary["cycles"] for attribution in cycle["failure_attribution"]
+        ), label
+        diagnostics = summary[
+            "environment_invalid_diagnostics" if domain == "environment"
+            else "activation_invalid_diagnostics"
+        ]
+        assert len(diagnostics) == 16
+        assert all(item["volicord_mcp_calls_observed"] for item in diagnostics)
+        if domain != "environment":
+            assert not summary["environment_invalid_diagnostics"]
+        for kind in campaign.CLASSES:
+            for cycle in campaign.cycle_numbers(kind):
+                blocker = campaign.read_json(
+                    campaign.cycle_root(root, kind, cycle) / "blocker-result.json"
+                )
+                harness.validate_blocker_result(blocker)
+                assert blocker["classification"] == failure.classification
+                assert blocker["outcome"] == outcome
+        if label == "validator_mismatch":
+            assert all(path.read_bytes() == raw for path, raw in originals.items())
 
 
 def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
@@ -2616,6 +2689,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert activation_summary["environment_invalid_diagnostics"] == [{
         "kind": "phase8_dogfood_missing_session_start_activation",
         "classification": "operator_environment_setup_failure",
+        "activation_evidence_state": "absent",
+        "failure_attribution": {
+            "domain": "environment", "basis": "repository_session_activation_missing",
+        },
         "source_file": str(missing_activation.resolve()),
         "source_sha256": hashlib.sha256(missing_activation.read_bytes()).hexdigest(),
         "session_id": "volicord-work-session-1",
@@ -2822,6 +2899,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     assert revision is not None
     state = {
         "repository_revision": revision,
+        "repository_path": "/phase8/repository",
         "project_id": "01" * 16,
         "work_session_id": "different-work-session",
     }
@@ -3182,6 +3260,7 @@ def main() -> int:
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
             assert_production_session_start(parent, binary)
+            assert_activation_failure_attribution(parent, binary)
             assert_strict_cli_contract(parent, binary)
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
@@ -3199,6 +3278,8 @@ def main() -> int:
     print(json.dumps({
         "status": "passed",
         "checks": [
+            "production_session_start_sixteen_session_parser_and_intake_integration",
+            "activation_absent_late_malformed_binding_and_validator_failure_attribution",
             "campaign_level_human_review_operations",
             "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
             "collect_batch_rejects_superseded_or_dirty_candidate",

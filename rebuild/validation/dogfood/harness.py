@@ -1585,6 +1585,7 @@ def load_definition() -> dict[str, Any]:
                 "environment",
                 "evidence",
                 "behavior_contract",
+                "validation_internal",
             ],
             "failure_attribution_basis_visibility": (
                 "bounded_evaluator_safe_identifier"
@@ -3853,6 +3854,50 @@ USER_DECISION_BLOCKER_CHECKS = (
     "explicit_current_host_user_decision_operation",
 )
 SETUP_ACTIVATION_CHECK = "repository_scoped_session_start_activation"
+
+
+@dataclass(frozen=True)
+class ActivationFailure:
+    domain: str
+    basis: str
+    classification: str
+    outcome: str
+
+
+ACTIVATION_FAILURES = {
+    "absent": ActivationFailure(
+        "environment", "repository_session_activation_missing",
+        "operator_environment_setup_failure", "operator_environment_invalid",
+    ),
+    "late": ActivationFailure(
+        "environment", "repository_session_activation_late",
+        "operator_environment_setup_failure", "operator_environment_invalid",
+    ),
+    "binding_mismatch": ActivationFailure(
+        "evidence", "repository_session_activation_binding_mismatch",
+        "activation_evidence_failure", "evidence_failed",
+    ),
+    "malformed": ActivationFailure(
+        "evidence", "repository_session_activation_malformed_or_unsupported",
+        "activation_evidence_failure", "evidence_failed",
+    ),
+    "validator_mismatch": ActivationFailure(
+        "validation_internal", "session_activation_validator_contract_mismatch",
+        "validation_internal_failure", "evidence_failed",
+    ),
+}
+
+
+def activation_failure(capture: CodexCapture) -> ActivationFailure | None:
+    state = capture.activation_evidence_state
+    observed = capture.repository_scoped_activation_observed
+    if observed != (state == "valid"):
+        return ACTIVATION_FAILURES["validator_mismatch"]
+    if observed:
+        return None
+    return ACTIVATION_FAILURES.get(state, ACTIVATION_FAILURES["validator_mismatch"])
+
+
 WORK_CHECK_OPERATIONS = {
     "project_session_entry": ("project_initialize", "project_resolve"),
     "goal_context_operation": ("context_record",),
@@ -4283,6 +4328,8 @@ def build_work_blocker_result(
         raise ValueError("qualify-work-blocker requires an exact candidate HEAD")
     if (
         capture.git_revision != descriptor.get("repository_revision")
+        or (target_repository is not None
+            and capture.cwd.resolve(strict=False) != target_repository.resolve(strict=False))
         or capture.source != "vscode"
         or capture.originator != "codex_vscode"
         or not capture.fresh_user_thread
@@ -4300,7 +4347,8 @@ def build_work_blocker_result(
     ):
         raise ValueError("work capture is not machine-observably completed")
 
-    activation_observed = capture.repository_scoped_activation_observed
+    activation_problem = activation_failure(capture)
+    activation_observed = activation_problem is None
     project_entries = [
         call
         for call in (
@@ -4427,15 +4475,15 @@ def build_work_blocker_result(
     ]
     failure_attribution = {
         "domain": (
-            "environment"
-            if not activation_observed
+            activation_problem.domain
+            if activation_problem is not None
             else "evidence"
             if evidence_failed_checks
             else "behavior_contract"
         ),
         "basis": (
-            "repository_session_activation_missing"
-            if not activation_observed
+            activation_problem.basis
+            if activation_problem is not None
             else "required_evidence_transport_indeterminate"
             if evidence_failed_checks
             else "maintained_work_behavior_contract_failed"
@@ -4446,15 +4494,15 @@ def build_work_blocker_result(
         "kind": "phase8_dogfood_blocker_result",
         "status": "failed",
         "classification": (
-            "operator_environment_setup_failure"
-            if not activation_observed
+            activation_problem.classification
+            if activation_problem is not None
             else "evidence_transport_failure"
             if evidence_failed_checks
             else "product_work_session_blocker"
         ),
         "outcome": (
-            "operator_environment_invalid"
-            if not activation_observed
+            activation_problem.outcome
+            if activation_problem is not None
             else "evidence_failed"
             if evidence_failed_checks
             else "campaign_stop"
@@ -4528,6 +4576,8 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     outcome = result.get("outcome")
     if (classification, outcome) not in {
         ("operator_environment_setup_failure", "operator_environment_invalid"),
+        ("activation_evidence_failure", "evidence_failed"),
+        ("validation_internal_failure", "evidence_failed"),
         ("evidence_transport_failure", "evidence_failed"),
         ("product_work_session_blocker", "campaign_stop"),
     }:
@@ -4547,7 +4597,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or not failed_checks
         or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
         or (
-            classification == "operator_environment_setup_failure"
+            classification in {failure.classification for failure in ACTIVATION_FAILURES.values()}
             and failed_checks != [SETUP_ACTIVATION_CHECK]
         )
         or (
@@ -4563,11 +4613,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or result.get("failed_check_count") != len(failed_checks)
     ):
         raise ValueError("work-blocker result has invalid failed checks")
-    expected_attribution = {
-        "operator_environment_setup_failure": (
-            "environment",
-            "repository_session_activation_missing",
-        ),
+    expected_attributions = {
         "evidence_transport_failure": (
             "evidence",
             "required_evidence_transport_indeterminate",
@@ -4576,12 +4622,19 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
             "behavior_contract",
             "maintained_work_behavior_contract_failed",
         ),
-    }[classification]
-    if failure_attribution != {
-        "domain": expected_attribution[0],
-        "basis": expected_attribution[1],
+    }
+    permitted_attributions = [
+        (failure.domain, failure.basis)
+        for failure in ACTIVATION_FAILURES.values()
+        if failure.classification == classification
+    ]
+    if classification in expected_attributions:
+        permitted_attributions.append(expected_attributions[classification])
+    if not any(failure_attribution == {
+        "domain": domain,
+        "basis": basis,
         "failed_checks": failed_checks,
-    }:
+    } for domain, basis in permitted_attributions):
         raise ValueError("work-blocker failure attribution is inconsistent")
     evidence_transport = result.get("evidence_transport")
     product_failed_checks = result.get("product_failed_checks")

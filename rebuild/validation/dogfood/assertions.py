@@ -1155,6 +1155,7 @@ def main() -> int:
             "environment",
             "evidence",
             "behavior_contract",
+            "validation_internal",
         ],
         "failure_attribution_basis_visibility": "bounded_evaluator_safe_identifier",
     }:

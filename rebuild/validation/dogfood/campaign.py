@@ -2074,11 +2074,12 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         or capture.originator != "codex_vscode"
         or not capture.fresh_user_thread
         or capture.git_revision != state["repository_revision"]
+        or capture.cwd.resolve(strict=False) != Path(state["repository_path"]).resolve(strict=False)
         or not capture.user_turns
         or not harness.codex_user_turn_transport_identity_matches(
             capture.user_turns[0].text, descriptor["fresh_resume_user_task"]
         )
-        or not capture.repository_scoped_activation_observed
+        or harness.activation_failure(capture) is not None
     ):
         raise ResumeContractError(
             "resume capture does not match the frozen fresh VS Code cycle contract"
@@ -2901,15 +2902,24 @@ def nonempty_session_id(value: Any) -> bool:
     )
 
 
-def missing_activation_diagnostic(
+def activation_failure_diagnostic(
     source: Path,
     capture: Any,
     review_slot_id: str,
     role: str,
 ) -> dict[str, Any]:
+    failure = harness.activation_failure(capture)
+    if failure is None:
+        raise AssertionError("activated capture cannot have an activation failure diagnostic")
     return {
-        "kind": "phase8_dogfood_missing_session_start_activation",
-        "classification": "operator_environment_setup_failure",
+        "kind": (
+            "phase8_dogfood_missing_session_start_activation"
+            if capture.activation_evidence_state == "absent"
+            else "phase8_dogfood_invalid_session_start_activation"
+        ),
+        "classification": failure.classification,
+        "activation_evidence_state": capture.activation_evidence_state,
+        "failure_attribution": {"domain": failure.domain, "basis": failure.basis},
         "source_file": str(source.resolve()),
         "source_sha256": capture.source_sha256,
         "session_id": capture.session_id,
@@ -2927,7 +2937,7 @@ FAILURE_DOMAINS = (
     "validation_internal",
 )
 FAILURE_BASES = {
-    "repository_session_activation_missing",
+    *(failure.basis for failure in harness.ACTIVATION_FAILURES.values()),
     "required_evidence_transport_indeterminate",
     "maintained_work_behavior_contract_failed",
     "work_project_identity_unavailable",
@@ -3029,6 +3039,7 @@ def collect_batch(
     has_environment_invalid = False
     has_evidence_failure = False
     environment_invalid_diagnostics: list[dict[str, Any]] = []
+    activation_invalid_diagnostics: list[dict[str, Any]] = []
     for kind in CLASSES:
         for cycle in cycle_numbers(kind):
             key = cycle_key(kind, cycle)
@@ -3041,36 +3052,24 @@ def collect_batch(
             work_capture = work_mapping.capture
             resume_capture = resume_mapping.capture
             cycle_attributions: list[dict[str, Any]] = []
-            if (
-                not work_capture.repository_scoped_activation_observed
-                or not resume_capture.repository_scoped_activation_observed
-            ):
-                has_environment_invalid = True
-            if not work_capture.repository_scoped_activation_observed:
-                environment_invalid_diagnostics.append(missing_activation_diagnostic(
-                    mapped[(kind, cycle, "work")].source,
-                    work_capture,
-                    state["review_slot_id"],
-                    "work",
+            for role, capture in (("work", work_capture), ("resume", resume_capture)):
+                failure = harness.activation_failure(capture)
+                if failure is None:
+                    continue
+                has_environment_invalid |= failure.domain == "environment"
+                has_evidence_failure |= failure.outcome == "evidence_failed"
+                diagnostics = (
+                    environment_invalid_diagnostics
+                    if failure.domain == "environment"
+                    else activation_invalid_diagnostics
+                )
+                diagnostics.append(activation_failure_diagnostic(
+                    mapped[(kind, cycle, role)].source, capture, state["review_slot_id"], role,
                 ))
                 cycle_attributions.append(bounded_failure_attribution(
-                    "work",
-                    "environment",
-                    "repository_session_activation_missing",
-                    [harness.SETUP_ACTIVATION_CHECK],
-                ))
-            if not resume_capture.repository_scoped_activation_observed:
-                environment_invalid_diagnostics.append(missing_activation_diagnostic(
-                    mapped[(kind, cycle, "resume")].source,
-                    resume_capture,
-                    state["review_slot_id"],
-                    "resume",
-                ))
-                cycle_attributions.append(bounded_failure_attribution(
-                    "resume",
-                    "environment",
-                    "repository_session_activation_missing",
-                    ["resume_repository_scoped_session_start_activation"],
+                    role, failure.domain, failure.basis,
+                    [harness.SETUP_ACTIVATION_CHECK if role == "work"
+                     else "resume_repository_scoped_session_start_activation"],
                 ))
             project_ids = observed_project_ids(work_capture)
             blocker: dict[str, Any] | None = None
@@ -3192,21 +3191,22 @@ def collect_batch(
                         ),
                     )
                 except ResumeContractError as error:
+                    activation_problem = harness.activation_failure(resume_capture)
                     resume_result = {
                         "kind": "phase8_dogfood_resume_intake",
                         "outcome": "evidence_failed",
                         "repository_class": kind,
                         "cycle": cycle,
                         "basis": (
-                            "repository_session_activation_missing"
-                            if not resume_capture.repository_scoped_activation_observed
+                            activation_problem.basis
+                            if activation_problem is not None
                             else "maintained_resume_behavior_contract_failed"
                         ),
                         "error_kind": type(error).__name__,
                         "resume_capture_sha256": resume_capture.source_sha256,
                     }
                     has_evidence_failure = True
-                    if resume_capture.repository_scoped_activation_observed:
+                    if activation_problem is None:
                         cycle_attributions.append(bounded_failure_attribution(
                             "resume",
                             "behavior_contract",
@@ -3360,6 +3360,7 @@ def collect_batch(
         "schema_version": 1,
         "candidate_head": campaign["candidate_head"],
         "environment_invalid_diagnostics": environment_invalid_diagnostics,
+        "activation_invalid_diagnostics": activation_invalid_diagnostics,
         "failed_checks": failed_checks,
         "failure_attribution": failure_attribution,
         "intake_state": "accepted" if all(item["intake_state"] == "accepted" for item in cycle_results) else "rejected",

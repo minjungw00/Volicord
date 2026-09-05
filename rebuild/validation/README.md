@@ -322,6 +322,17 @@ Human guidance wording is independent; stale prose is not a supported identity.
 `campaign_self_test.py::assert_production_session_start` builds the current CLI,
 generates sixteen disposable work/resume hook outputs, and exercises the same
 `load_codex_capture`, mapping and `collect_batch` paths used for real intake.
+Activation failures retain bounded evidence state and attribution: absent or
+late context is an `environment` setup failure; malformed/unsupported identity
+or a cwd/session binding mismatch is an `evidence` failure. A contradiction
+between valid production identity evidence and the validator's activation result
+is `validation_internal`. The latter two remain `evidence_failed`, never a pass
+or an operator setup failure. Batch summaries keep these diagnostics in
+`activation_invalid_diagnostics`, separate from `environment_invalid_diagnostics`.
+Candidate/revision/workspace/role mismatches remain pre-mutation mapping errors.
+`assert_activation_failure_attribution` exercises all sixteen work/resume slots
+for each failure class, including an injected validator false negative over
+unmodified production-generated evidence.
 
 The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
 required high-level Project, Goal Context, repository baseline, behavior-class

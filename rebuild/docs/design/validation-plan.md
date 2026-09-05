@@ -1098,6 +1098,16 @@ session도 통과하지 않는다.
 Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
 evidence를 확인한다. Activation이 없으면 operator/environment setup failure로 분류하고 그
 campaign path를 중단하며 Question/Decision 부재를 product failure로 귀속하지 않는다.
+Production-owned `volicord-operations/src/session_start_identity.txt`의 identity는 human
+guidance와 분리되며 canonical cwd와 host session ID를 bounded hash로 연결한다. 첫 user task
+전에 developer context에 exact identity가 있어야 하고 MCP call은 대체 증거가 아니다.
+Late activation도 environment failure다. Malformed/unsupported identity와 repository/session
+binding mismatch는 `evidence`, valid identity와 activation 판정의 내부 모순은
+`validation_internal`로 귀속한다. 둘 다 `evidence_failed`이며 pass로 바꾸지 않는다.
+Candidate/revision/workspace/role mismatch는 기존 pre-mutation mapping rejection으로 유지한다.
+Maintained campaign self-test는 current production CLI hook의 실제 JSON 출력을 16개 sanitized
+work/resume capture로 만들어 parser와 `collect_batch`를 통과시키며 negative controls와
+production evidence를 변경하지 않은 validator mismatch injection을 검증한다.
 
 Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
 보존하기 위한 failure-only command를 제공한다.
