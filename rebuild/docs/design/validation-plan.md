@@ -899,6 +899,18 @@ clean Linux install
 → provider/parser/index failure recovery
 ```
 
+Controlled derived-index recovery는 변경하지 않은 repository에서 repair 전후의
+Canonical Recall 필드(Goal basis, Decision rationale, Checkpoint의 verification/review/
+acceptance, 열린 질문, risk/assumption, next step 포함)를 그대로 비교한다. Source 목록과
+상세 정보의 identity 일치 및 중복 부재, 기존 non-Repository Source와 유지된 Source의
+provenance 보존을 별도로 확인한다. Repair가 새로 만든 Repository Source는 available/
+current이며 새로운 observation basis를 가져야 한다. 복구 후 Recall의 Analysis Snapshot은
+repair 결과와 일치하는 새 식별자와 current repository freshness를 가져야 하며, 같은
+repository를 관찰한 capability의 state, coverage, diagnostics, uncertainty는 보존해야
+한다. 관찰 시각과 snapshot 식별자 갱신 자체를 Canonical 변경으로 판정하지 않는다.
+이 구분은 정상 갱신의 통과뿐 아니라 Canonical 내용, Source provenance, freshness,
+capability/coverage 손실 및 불완전한 복구 증거의 거부를 self-check로 검증한다.
+
 ### 통과 조건
 
 `acceptance-scenarios.md`의 최종 통과 조건을 모두 만족한다. 하나의 repository에서만 통과한 결과로 cutover gate를 열지 않는다.

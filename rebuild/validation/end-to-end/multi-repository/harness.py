@@ -708,7 +708,117 @@ def parser_degradation_status(result: dict[str, Any] | None) -> str:
 def recall_meaning(value: dict[str, Any] | None) -> dict[str, Any] | None:
     if value is None:
         return None
-    return {key: item for key, item in value.items() if key != "used_sources"}
+    return {key: item for key, item in value.items()
+            if key not in {"used_sources", "source_details", "snapshots"}}
+
+
+def recovery_recall_checks(
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    prior_analysis_id: str | None,
+    repaired: dict[str, Any] | None,
+) -> dict[str, bool]:
+    """Qualify the controlled repair's canonical meaning and refreshed read basis."""
+    checks = dict.fromkeys((
+        "canonical_recall_meaning_unchanged", "source_catalogs_consistent",
+        "retained_source_provenance_unchanged", "repository_source_refreshed",
+        "analysis_basis_refreshed", "capability_meaning_preserved",
+    ), False)
+    required = {
+        "project_id", "goals", "goal_basis", "decisions", "checkpoint",
+        "open_questions", "risks_assumptions_and_limits", "declared_assumptions",
+        "next_step", "used_sources", "source_details", "snapshots",
+    }
+    if not all(isinstance(value, dict) and required <= value.keys() for value in (before, after)):
+        return checks
+    checks["canonical_recall_meaning_unchanged"] = recall_meaning(before) == recall_meaning(after)
+
+    def source_catalog(value: dict[str, Any]) -> dict[str, Any] | None:
+        sources = value["source_details"]
+        if not isinstance(sources, list) or not all(
+            isinstance(source, dict)
+            and isinstance(source.get("identity"), str)
+            and re.fullmatch(r"[0-9a-f]{32}", source["identity"])
+            and isinstance(source.get("actor"), dict)
+            and source["actor"].get("kind") in {"User", "Agent", "Repository", "Command", "Provider", "Generator", "Importer"}
+            and (source.get("snapshot_basis") is None or isinstance(source["snapshot_basis"], str))
+            and source.get("availability") in {"available", "unavailable", "stale", "unknown"}
+            and source.get("freshness") in {"current", "unavailable", "stale", "unknown"}
+            for source in sources
+        ):
+            return None
+        identities = [source["identity"] for source in sources]
+        if identities != value["used_sources"] or len(set(identities)) != len(identities):
+            return None
+        return {source["identity"]: source for source in sources}
+
+    old_sources, new_sources = source_catalog(before), source_catalog(after)
+    if old_sources is not None and new_sources is not None:
+        checks["source_catalogs_consistent"] = True
+        def non_repository(sources: dict[str, Any]) -> dict[str, Any]:
+            return {identity: source for identity, source in sources.items()
+                    if source["actor"]["kind"] != "Repository"}
+        checks["retained_source_provenance_unchanged"] = (
+            non_repository(old_sources) == non_repository(new_sources)
+            and all(old_sources[key] == new_sources[key] for key in old_sources.keys() & new_sources.keys())
+        )
+        added = [source for key, source in new_sources.items() if key not in old_sources]
+        old_basis = {source.get("snapshot_basis") for source in old_sources.values()}
+        checks["repository_source_refreshed"] = bool(added) and all(
+            source["actor"]["kind"] == "Repository"
+            and source["availability"] == "available" and source["freshness"] == "current"
+            and isinstance(source.get("snapshot_basis"), str) and source["snapshot_basis"]
+            and source["snapshot_basis"] not in old_basis
+            for source in added
+        )
+
+    def current_snapshot(snapshot: Any) -> bool:
+        if not isinstance(snapshot, dict):
+            return False
+        repository_id = snapshot.get("repository_snapshot")
+        capabilities = snapshot.get("capabilities")
+        return bool(
+            isinstance(repository_id, str) and re.fullmatch(r"[0-9a-f]{64}", repository_id)
+            and isinstance(snapshot.get("analysis_snapshot"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", snapshot["analysis_snapshot"])
+            and isinstance(snapshot.get("freshness"), dict)
+            and snapshot["freshness"].get("state") == "current"
+            and snapshot["freshness"].get("compared_repository_snapshot") in (None, repository_id)
+            and snapshot["freshness"].get("repository_snapshot") == repository_id
+            and isinstance(capabilities, list) and capabilities
+            and all(
+                isinstance(capability, dict)
+                and capability.get("repository_snapshot") == repository_id
+                and isinstance(capability.get("freshness"), dict)
+                and capability["freshness"].get("state") == "current"
+                and capability["freshness"].get("compared_repository_snapshot") in (None, repository_id)
+                and capability["freshness"].get("repository_snapshot") == repository_id
+                and isinstance(capability.get("coverage"), dict)
+                and {"included", "excluded", "unsupported", "unavailable", "failed", "stale",
+                     "covered_file_count", "covered_entity_count", "covered_relation_count"} <= capability["coverage"].keys()
+                for capability in capabilities
+            )
+        )
+
+    old_snapshots, new_snapshots = before["snapshots"], after["snapshots"]
+    if not isinstance(old_snapshots, list) or not isinstance(new_snapshots, list):
+        return checks
+    old = [snapshot for snapshot in old_snapshots if isinstance(snapshot, dict)
+           and snapshot.get("analysis_snapshot") == prior_analysis_id]
+    if len(old) != 1 or len(new_snapshots) != 1 or not all(map(current_snapshot, [old[0], new_snapshots[0]])):
+        return checks
+    old_snapshot, new_snapshot = old[0], new_snapshots[0]
+    checks["analysis_basis_refreshed"] = bool(
+        repaired and new_snapshot["analysis_snapshot"] == repaired.get("analysis_snapshot")
+        and new_snapshot["analysis_snapshot"] != prior_analysis_id
+        and new_snapshot["repository_snapshot"] != old_snapshot["repository_snapshot"]
+    )
+    def capability_meaning(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        return [{key: value for key, value in capability.items()
+                 if key not in {"repository_snapshot", "freshness", "observed_at_unix_micros"}}
+                for capability in snapshot["capabilities"]]
+    checks["capability_meaning_preserved"] = capability_meaning(old_snapshot) == capability_meaning(new_snapshot)
+    return checks
 
 
 def canonical_record(
@@ -2423,26 +2533,25 @@ def rehearse_target(
         recall_post_recovery, _ = cli_json(
             recorder, "recovery-recall-after", cli, env, "recall", cwd=repository
         )
+        recovery_checks = recovery_recall_checks(
+            recall_pre_recovery, recall_post_recovery, parser_result.get("analysis_snapshot"), repaired
+        )
         recovery_ok = (
             degraded_health and degraded_health.get("state") == "degraded" and repaired and
-            repaired.get("state") in {"succeeded", "partial"} and
-            recall_meaning(recall_pre_recovery) == recall_meaning(recall_post_recovery)
+            repaired.get("state") in {"succeeded", "partial"} and all(recovery_checks.values())
         )
     else:
         degraded_health = repaired = recall_post_recovery = None
         health_op = repair_op = {"exit_code": None}
+        recovery_checks = recovery_recall_checks(None, None, None, None)
         recovery_ok = False
     steps["derived_index_recovery"] = step(
-        "passed" if recovery_ok else "failed", "controlled derived corruption was diagnosed and rebuilt without changing Recall",
+        "passed" if recovery_ok else "failed", "controlled derived corruption was rebuilt while preserving canonical Recall and refreshing analysis provenance",
         degraded_health=degraded_health, health_operation=health_op, repair=repaired,
         repair_operation=repair_op,
-        canonical_recall_meaning_unchanged=(
-            recall_meaning(recall_pre_recovery) == recall_meaning(recall_post_recovery)
-        ),
-        repository_source_refreshed=(
-            recall_pre_recovery is not None and recall_post_recovery is not None and
-            recall_pre_recovery.get("used_sources") != recall_post_recovery.get("used_sources")
-        ),
+        checks=recovery_checks,
+        canonical_recall_meaning_unchanged=recovery_checks["canonical_recall_meaning_unchanged"],
+        repository_source_refreshed=recovery_checks["repository_source_refreshed"],
     )
 
     try:
@@ -2715,6 +2824,121 @@ def assert_authenticated_codex_lifecycle() -> None:
                 raise AssertionError("retained V11 evidence contains synthetic authentication content")
         if source_auth.read_bytes() != synthetic_material:
             raise AssertionError("source Codex authentication was modified")
+
+
+def assert_recovery_recall_contract() -> None:
+    from copy import deepcopy
+
+    user_id, old_source_id, new_source_id = "1" * 32, "2" * 32, "3" * 32
+    old_analysis, new_analysis = "a" * 64, "c" * 64
+
+    def source(identity: str, kind: str, basis: str | None) -> dict[str, Any]:
+        return {
+            "identity": identity, "actor": {"kind": kind, "identity": "fixture-actor"},
+            "observer": {"kind": "Agent", "identity": "fixture-host"},
+            "availability": "available", "freshness": "current", "snapshot_basis": basis,
+        }
+
+    def snapshot(analysis: str, repository: str, observed: int) -> dict[str, Any]:
+        freshness = {"state": "current", "repository_snapshot": repository,
+                     "compared_repository_snapshot": None, "reason": None}
+        return {
+            "analysis_snapshot": analysis, "repository_snapshot": repository,
+            "freshness": deepcopy(freshness),
+            "capabilities": [{
+                "capability": "structural", "language": "Python", "state": "partial",
+                "repository_snapshot": repository, "freshness": freshness,
+                "observed_at_unix_micros": observed,
+                "area": {"kind": "repository", "path": "."},
+                "coverage": {
+                    "included": [{"kind": "file", "path": "app.py"}],
+                    "failed": [{"kind": "file", "path": "broken.py"}],
+                    "excluded": [], "unsupported": [], "unavailable": [], "stale": [],
+                    "covered_file_count": 1, "covered_entity_count": 1,
+                    "covered_relation_count": 0,
+                },
+                "diagnostics": ["parser failure: broken.py"],
+                "uncertainty": {"level": "partial", "reasons": ["broken.py"]},
+            }],
+        }
+
+    before = {
+        "project_id": "4" * 32, "goals": ["Keep service behavior understandable"],
+        "goal_basis": [{"source_ids": [user_id], "role": "goal"}],
+        "decisions": [{"choice": "bounded retry", "user_rationale": "avoid duplicate writes"}],
+        "checkpoint": {"verification": "tests passed", "user_review": "pending",
+                       "user_acceptance": "pending"},
+        "open_questions": [{"revision": 1, "question": "Which retry limit?"}],
+        "risks_assumptions_and_limits": ["remote availability is unknown"],
+        "declared_assumptions": ["requests have stable identities"],
+        "next_step": "review retry behavior",
+        "used_sources": [user_id, old_source_id],
+        "source_details": [source(user_id, "User", None),
+                           source(old_source_id, "Repository", "local-observation:before")],
+        "snapshots": [snapshot(old_analysis, "b" * 64, 1)],
+    }
+    after = deepcopy(before)
+    after["used_sources"].append(new_source_id)
+    after["source_details"].append(source(new_source_id, "Repository", "local-observation:after"))
+    after["snapshots"] = [snapshot(new_analysis, "d" * 64, 2)]
+    repaired = {"analysis_snapshot": new_analysis}
+    if not all(recovery_recall_checks(before, after, old_analysis, repaired).values()):
+        raise AssertionError("valid repair observation failed the Recall contract")
+
+    # A refreshed observation may not conceal any change to retained meaning or provenance.
+    mutations = [
+        (("goals", 0), "silently changed goal"),
+        (("goal_basis", 0, "source_ids", 0), old_source_id),
+        (("decisions", 0, "user_rationale"), "inferred rationale"),
+        (("decisions", 0, "choice"), "unbounded retry"),
+        (("checkpoint", "verification"), "not run"),
+        (("checkpoint", "user_review"), "approved"),
+        (("checkpoint", "user_acceptance"), "accepted"),
+        (("open_questions", 0, "revision"), 2),
+        (("risks_assumptions_and_limits", 0), "no risks"),
+        (("declared_assumptions", 0), "identities are irrelevant"),
+        (("next_step",), "deploy immediately"),
+        (("used_sources",), [user_id, old_source_id]),
+        (("source_details", 0, "availability"), "unavailable"),
+        (("source_details", 0, "actor", "identity"), "another-user"),
+        (("source_details", 0, "snapshot_basis"), []),
+        (("source_details", 2, "identity"), old_source_id),
+        (("source_details", 2, "actor", "kind"), "User"),
+        (("source_details", 2, "freshness"), "unknown"),
+        (("source_details", 2, "snapshot_basis"), "local-observation:before"),
+        (("snapshots",), []),
+        (("snapshots", 0, "analysis_snapshot"), old_analysis),
+        (("snapshots", 0, "freshness"), None),
+        (("snapshots", 0, "freshness", "state"), "stale"),
+        (("snapshots", 0, "freshness", "compared_repository_snapshot"), "e" * 64),
+        (("snapshots", 0, "capabilities", 0, "freshness"), None),
+        (("snapshots", 0, "capabilities", 0, "freshness", "repository_snapshot"), "b" * 64),
+        (("snapshots", 0, "capabilities", 0, "coverage"), {}),
+        (("snapshots", 0, "capabilities", 0, "coverage", "covered_file_count"), 0),
+        (("snapshots", 0, "capabilities", 0, "coverage", "failed"), []),
+        (("snapshots", 0, "capabilities", 0, "state"), "available"),
+        (("snapshots", 0, "capabilities", 0, "diagnostics"), []),
+        (("snapshots", 0, "capabilities"), []),
+    ]
+    for path, value in mutations:
+        changed = deepcopy(after)
+        parent = changed
+        for key in path[:-1]:
+            parent = parent[key]
+        parent[path[-1]] = value
+        if all(recovery_recall_checks(before, changed, old_analysis, repaired).values()):
+            raise AssertionError(f"repair concealed a Recall regression at {path}")
+    missing_user = deepcopy(after)
+    missing_user["used_sources"].remove(user_id)
+    missing_user["source_details"].pop(0)
+    incomplete = deepcopy(after)
+    del incomplete["goal_basis"]
+    for previous, current, repair in (
+        (None, None, None), (before, before, repaired), (before, incomplete, repaired),
+        (before, missing_user, repaired), (before, after, {"analysis_snapshot": "e" * 64}),
+    ):
+        if all(recovery_recall_checks(previous, current, old_analysis, repair).values()):
+            raise AssertionError("incomplete or mismatched repair evidence qualified")
 
 
 def assert_candidate_repository_source_contract() -> None:
@@ -3064,6 +3288,7 @@ def self_check() -> int:
             {"repository_map": {"entities": [{"name": "Service"}]}},
         )["status"] != "failed":
             raise AssertionError("ungrounded Viewer diagram qualified")
+    assert_recovery_recall_contract()
     assert_candidate_repository_source_contract()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
