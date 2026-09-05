@@ -348,19 +348,51 @@ fn candidate_store_accepts_only_the_current_material_boundary_format(
     drop(CandidateStore::open(&current)?);
     drop(CandidateStore::open(&current)?);
 
-    let non_current = root.path().join("non-current.sqlite3");
-    drop(CandidateStore::open(&non_current)?);
-    rusqlite::Connection::open(&non_current)?.execute(
-        "UPDATE metadata SET value = '12' WHERE key = 'schema_version'",
+    let version = volicord_inquiry::CANDIDATE_SCHEMA_VERSION;
+    let stored_version: String = rusqlite::Connection::open(&current)?.query_row(
+        "SELECT value FROM metadata WHERE key = 'schema_version'",
         [],
+        |row| row.get(0),
     )?;
-    let error = CandidateStore::open(&non_current)
-        .err()
-        .ok_or("non-current Candidate format was admitted")?;
-    assert_eq!(
-        error.kind(),
-        volicord_inquiry::ErrorKind::UnsupportedVersion
+    assert_eq!(stored_version, version.to_string());
+    let owner = include_str!("../../../docs/design/versioning-policy.md");
+    let candidate_contract = owner
+        .split("### Session Candidate store format")
+        .nth(1)
+        .ok_or("Candidate format owner section is missing")?
+        .split("\n## ")
+        .next()
+        .unwrap();
+    assert!(
+        candidate_contract.contains(&format!("version `{version}` 하나다")),
+        "Candidate owner must name the actual current writer format"
     );
-    assert!(error.to_string().contains("current version is 18"));
+
+    for unsupported in [12, 14, version - 1, version + 1] {
+        let non_current = root
+            .path()
+            .join(format!("non-current-{unsupported}.sqlite3"));
+        drop(CandidateStore::open(&non_current)?);
+        rusqlite::Connection::open(&non_current)?.execute(
+            "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
+            [unsupported.to_string()],
+        )?;
+        let before = std::fs::read(&non_current)?;
+        let error = CandidateStore::open(&non_current)
+            .err()
+            .ok_or("non-current Candidate format was admitted")?;
+        assert_eq!(
+            error.kind(),
+            volicord_inquiry::ErrorKind::UnsupportedVersion
+        );
+        assert!(error
+            .to_string()
+            .contains(&format!("current version is {version}")));
+        assert_eq!(
+            before,
+            std::fs::read(&non_current)?,
+            "rejection must not migrate the store"
+        );
+    }
     Ok(())
 }
