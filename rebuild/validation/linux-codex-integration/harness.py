@@ -634,6 +634,13 @@ def record_settled_fixture_review(
             "contains_user_owned_outcome": False, "user_owned_outcomes": [],
             "ownership_rationale": "This is deterministic fixture machinery within settled product behavior.",
             "bounded_implementation_discretion_rationale": "No user-owned product policy varies within this maintained fixture.",
+            "discretion_counterfactuals": [{
+                "choice_id": choice["choice_id"], "alternative_id": alternative,
+                "externally_observable": False,
+                "observation_rationale": "The fixture preserves caller behavior; the alternatives vary private organization only.",
+                "source_id": choice["source_ids"][0],
+                "source_supported_boundary": "The current fixture source fixes caller results and leaves internal record organization unconstrained.",
+            } for alternative in [a["alternative_id"] for a in accounts]],
             "ownership_source_ids": choice["source_ids"],
             "alternative_accounting": accounts,
             "authority_coverage": choice["summary"],

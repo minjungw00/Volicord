@@ -371,6 +371,18 @@ pub struct WorkAuthorityBasis {
     pub explicit_delegation: Option<ExplicitDelegationEvidence>,
 }
 
+/// Active-agent counterfactual for one discovered alternative. Observable differences
+/// do not determine ownership; the cited boundary must explain the discretion.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ImplementationDiscretionCounterfactual {
+    pub choice_id: String,
+    pub alternative_id: String,
+    pub externally_observable: bool,
+    pub observation_rationale: String,
+    pub source_id: SourceId,
+    pub source_supported_boundary: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialOutcomeOwnershipAssessment {
     pub materially_varying_outcomes: Vec<String>,
@@ -378,6 +390,7 @@ pub struct MaterialOutcomeOwnershipAssessment {
     pub user_owned_outcomes: Vec<String>,
     pub rationale: String,
     pub bounded_implementation_discretion_rationale: Option<String>,
+    pub discretion_counterfactuals: Vec<ImplementationDiscretionCounterfactual>,
     pub source_basis: Vec<SourceId>,
 }
 

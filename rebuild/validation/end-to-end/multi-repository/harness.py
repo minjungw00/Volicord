@@ -1322,6 +1322,13 @@ def rehearse_target(
                         "contains_user_owned_outcome": False,
                         "user_owned_outcomes": [],
                         "ownership_rationale": "Both alternatives preserve the selected product behavior and vary only private implementation mechanics.",
+                        "discretion_counterfactuals": [{
+                "choice_id": technical_dimension_id, "alternative_id": alternative,
+                "externally_observable": False,
+                "observation_rationale": "The fixture preserves caller behavior; the alternatives vary private organization only.",
+                "source_id": source_id,
+                "source_supported_boundary": "The current fixture source fixes caller results and leaves internal record organization unconstrained.",
+            } for alternative in ["ordered-records", "keyed-index"]],
                         "bounded_implementation_discretion_rationale": "Ordered records and a keyed index remain within the bounded internal representation scope.",
                         "ownership_source_ids": [source_id],
                         "alternative_accounting": alternative_accounting(
@@ -1512,6 +1519,13 @@ def rehearse_target(
                         "contains_user_owned_outcome": False,
                         "user_owned_outcomes": [],
                         "ownership_rationale": "Both alternatives preserve the selected product behavior and vary only private implementation mechanics.",
+                        "discretion_counterfactuals": [{
+                "choice_id": technical_dimension_id, "alternative_id": alternative,
+                "externally_observable": False,
+                "observation_rationale": "The fixture preserves caller behavior; the alternatives vary private organization only.",
+                "source_id": source_id,
+                "source_supported_boundary": "The current fixture source fixes caller results and leaves internal record organization unconstrained.",
+            } for alternative in ["ordered-records", "keyed-index"]],
                         "bounded_implementation_discretion_rationale": "Ordered records and a keyed index remain within the bounded internal representation scope.",
                         "ownership_source_ids": [source_id],
                         "alternative_accounting": alternative_accounting(

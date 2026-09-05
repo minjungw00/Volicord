@@ -1590,6 +1590,8 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         }
         validate_list(&dimension.affected_scope)?;
         validate_list(&dimension.material_consequences)?;
+        crate::work_authority::validate_discretion_counterfactuals(dimension)
+            .map_err(|message| Error::new(ErrorKind::InvalidInput, message))?;
         validate_list(&dimension.ownership.materially_varying_outcomes)?;
         validate_list(&dimension.ownership.user_owned_outcomes)?;
         validate_text(

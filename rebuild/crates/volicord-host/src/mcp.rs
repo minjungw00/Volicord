@@ -2766,6 +2766,16 @@ fn materiality_judgment_schema(
             "ownership_source_ids",
             identity_array_schema("Current Sources supporting the ownership judgment", 1),
         ),
+        ("discretion_counterfactuals", json!({
+            "type":"array", "description":"Required for every agent-owned assessment: one source-grounded discretion counterfactual per discovered alternative; empty or omitted for user-owned assessments", "items": object_schema(vec![
+                ("choice_id", text_schema("Exact discovered choice", 1, 256)),
+                ("alternative_id", text_schema("Exact discovered alternative", 1, 256)),
+                ("externally_observable", json!({"type":"boolean", "description":"Can a caller, user, or operator observe this alternative's difference?"})),
+                ("observation_rationale", text_schema("Counterfactual against the other alternatives: explain observable API, error, default, compatibility, lifetime, privacy, security, resource, operability or other effects, or why the difference is private/mechanically equivalent", 1, 4096)),
+                ("source_id", identity_schema("Current ownership Source supporting the discretion boundary")),
+                ("source_supported_boundary", text_schema("Identify the current source passage/contract boundary and explain why the acknowledged differences remain permitted implementation discretion. Implementing internally is not evidence of ownership. Exact delegation uses the delegated disposition.", 1, 4096)),
+            ], &["choice_id", "alternative_id", "externally_observable", "observation_rationale", "source_id", "source_supported_boundary"])
+        })),
         ("alternative_accounting", alternative_accounting_schema()),
         (
             "additional_source_ids",
@@ -4351,6 +4361,12 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
                 "user_owned_outcomes":dimension.ownership.user_owned_outcomes,
                 "rationale":dimension.ownership.rationale,
                 "bounded_implementation_discretion_rationale":dimension.ownership.bounded_implementation_discretion_rationale,
+                "discretion_counterfactuals":dimension.ownership.discretion_counterfactuals.iter().map(|proof| json!({
+                    "choice_id":proof.choice_id, "alternative_id":proof.alternative_id,
+                    "externally_observable":proof.externally_observable,
+                    "observation_rationale":proof.observation_rationale,
+                    "source_id":proof.source_id.to_string(), "source_supported_boundary":proof.source_supported_boundary,
+                })).collect::<Vec<_>>(),
                 "source_ids":dimension.ownership.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             },
             "authority_disposition":materiality_disposition_json(&dimension.disposition),
@@ -5072,6 +5088,33 @@ fn materiality_dimension_from_judgment(
                 value,
                 "bounded_implementation_discretion_rationale",
             )?,
+            discretion_counterfactuals: value
+                .get("discretion_counterfactuals")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|proof| {
+                    Ok(volicord_inquiry::ImplementationDiscretionCounterfactual {
+                        choice_id: required_str(proof, "choice_id")?.into(),
+                        alternative_id: required_str(proof, "alternative_id")?.into(),
+                        externally_observable: proof["externally_observable"]
+                            .as_bool()
+                            .ok_or_else(|| {
+                                HostError::new("externally_observable must be boolean")
+                            })?,
+                        observation_rationale: required_str(proof, "observation_rationale")?.into(),
+                        source_id: SourceId::from_bytes(parse_identity(required_str(
+                            proof,
+                            "source_id",
+                        )?)?),
+                        source_supported_boundary: required_str(
+                            proof,
+                            "source_supported_boundary",
+                        )?
+                        .into(),
+                    })
+                })
+                .collect::<Result<Vec<_>, HostError>>()?,
             source_basis: ownership_source_basis,
         },
         alternative_accounting,
@@ -5889,7 +5932,7 @@ fn materiality_draft_json(
                     "If none does, why do all alternatives remain within bounded implementation discretion?",
                     "Which current Sources support this ownership judgment?"
                 ],
-                "structural_rule":"ImplementationPreference is never ownership evidence. AgentOwnedImplementationChoice requires contains_user_owned_outcome=false plus a bounded-discretion rationale; user-owned outcomes use existing exact authority, Decision, delegation, exploration, or Question dispositions.",
+                "structural_rule":"ImplementationPreference is never ownership evidence. Every contains_user_owned_outcome=false assessment requires discretion_counterfactuals covering each discovered alternative, its observable differences and current source-supported discretion boundary, plus a bounded-discretion rationale; implementing a public outcome internally does not establish ownership. If no such boundary or exact authority exists, classify the user-owned outcome as unresolved and use the existing Question/current-host Decision path before work; user-owned outcomes use existing exact authority, Decision, delegation, exploration, or Question dispositions.",
                 "category_rule":"Effect categories prompt semantic review but never determine ownership automatically."
             },
             "outcomes":{

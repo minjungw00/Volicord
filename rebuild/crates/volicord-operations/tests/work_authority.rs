@@ -66,6 +66,19 @@ fn categorized_coupled_artifact_review(
     }
 }
 
+fn discretion_proof(
+    id: &str,
+    alternatives: &[&str],
+    source: volicord_context::SourceId,
+) -> Vec<volicord_operations::ImplementationDiscretionCounterfactual> {
+    alternatives.iter().map(|alternative| volicord_operations::ImplementationDiscretionCounterfactual {
+        choice_id: id.into(), alternative_id: (*alternative).into(), externally_observable: false,
+        observation_rationale: "The fixture alternatives preserve caller results; only private organization differs.".into(),
+        source_id: source,
+        source_supported_boundary: "The current fixture source defines the same result for either internal structure; private organization is unconstrained.".into(),
+    }).collect()
+}
+
 fn dimension(
     id: &str,
     disposition: MaterialityDisposition,
@@ -149,6 +162,11 @@ fn dimension(
         material_consequences: vec!["changes externally observable behavior".to_owned()],
         observable_signals: vec![MaterialOutcomeSignal::PublicApiSemantics],
         ownership: MaterialOutcomeOwnershipAssessment {
+            discretion_counterfactuals: if contains_user_owned_outcome {
+                Vec::new()
+            } else {
+                discretion_proof(id, &["approach-a", "approach-b"], source)
+            },
             materially_varying_outcomes: vec![
                 "the exact externally observable behavior selected by the alternatives".into(),
             ],
@@ -2352,6 +2370,7 @@ fn late_user_authority_correction_preserves_prospective_only_work_state(
         resolution_decision_id: None,
     };
     corrected.ownership.contains_user_owned_outcome = true;
+    corrected.ownership.discretion_counterfactuals.clear();
     corrected.ownership.user_owned_outcomes = vec!["the public network exposure default".into()];
     corrected
         .ownership
@@ -2402,6 +2421,11 @@ fn late_delegated_to_repository_fact_revision_cannot_certify_affected_work_after
     let mut repository_fact = delegated;
     repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
     repository_fact.ownership.contains_user_owned_outcome = false;
+    repository_fact.ownership.discretion_counterfactuals = discretion_proof(
+        &repository_fact.dimension_id,
+        &["approach-a", "approach-b"],
+        repository_fact.ownership.source_basis[0],
+    );
     repository_fact.ownership.user_owned_outcomes.clear();
     repository_fact
         .ownership
@@ -2475,6 +2499,11 @@ fn late_delegated_to_agent_owned_revision_cannot_certify_affected_work(
     let mut agent_owned = delegated;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
     agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.discretion_counterfactuals = discretion_proof(
+        &agent_owned.dimension_id,
+        &["approach-a", "approach-b"],
+        agent_owned.ownership.source_basis[0],
+    );
     agent_owned.ownership.user_owned_outcomes.clear();
     agent_owned
         .ownership
@@ -2564,6 +2593,11 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     let mut repository_fact = delegated;
     repository_fact.disposition = MaterialityDisposition::RepositoryOrEnvironmentFact;
     repository_fact.ownership.contains_user_owned_outcome = false;
+    repository_fact.ownership.discretion_counterfactuals = discretion_proof(
+        &repository_fact.dimension_id,
+        &["approach-a", "approach-b"],
+        repository_fact.ownership.source_basis[0],
+    );
     repository_fact.ownership.user_owned_outcomes.clear();
     repository_fact
         .ownership
@@ -2599,6 +2633,11 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
     let mut agent_owned = repository_fact;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
     agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.discretion_counterfactuals = discretion_proof(
+        &agent_owned.dimension_id,
+        &["approach-a", "approach-b"],
+        agent_owned.ownership.source_basis[0],
+    );
     agent_owned.ownership.user_owned_outcomes.clear();
     agent_owned
         .ownership
@@ -2686,6 +2725,11 @@ fn unrelated_paths_and_metadata_only_revisions_do_not_create_late_blockers(
     let mut agent_owned = delegated;
     agent_owned.disposition = MaterialityDisposition::AgentOwnedImplementationChoice;
     agent_owned.ownership.contains_user_owned_outcome = false;
+    agent_owned.ownership.discretion_counterfactuals = discretion_proof(
+        &agent_owned.dimension_id,
+        &["approach-a", "approach-b"],
+        agent_owned.ownership.source_basis[0],
+    );
     agent_owned.ownership.user_owned_outcomes.clear();
     agent_owned
         .ownership
@@ -2924,6 +2968,7 @@ fn completed_discovery_evidence_restores_prospective_authority_or_reveals_a_ques
         resolution_decision_id: None,
     };
     exploratory.ownership.contains_user_owned_outcome = true;
+    exploratory.ownership.discretion_counterfactuals.clear();
     exploratory.ownership.user_owned_outcomes = vec!["the public result contract".into()];
     exploratory
         .ownership
@@ -3009,6 +3054,7 @@ fn public_path_exclusion_policy_cannot_escape_through_agent_owned_disposition(
         "exact-path semantics retain descendants by default".into(),
     ];
     path_policy.ownership = MaterialOutcomeOwnershipAssessment {
+        discretion_counterfactuals: Vec::new(),
         materially_varying_outcomes: vec![
             "which repository paths callers can include or exclude".into(),
             "the compatibility lifetime of the public matching syntax".into(),
@@ -3913,5 +3959,99 @@ fn preserving_refactor_requires_override_and_default_propagation_evidence(
                 .any(|fact| fact.outcome.as_deref().is_some_and(|text| text
                     .contains("override-default")
                     && text.contains("make_signer")))));
+    Ok(())
+}
+
+#[test]
+fn public_failure_semantics_rejects_bare_agent_owned_assertion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let mut failure = dimension(
+        "failure-contract",
+        MaterialityDisposition::AgentOwnedImplementationChoice,
+        vec![WorkAuthorityBasisKind::ImplementationPreference],
+        fixture.baseline.repository_source.identity(),
+    );
+    failure.material_consequences = vec![
+        "returned discriminated failure requires caller result inspection".into(),
+        "thrown failure requires caller exception handling".into(),
+    ];
+    failure.observable_signals = vec![MaterialOutcomeSignal::ObservableFailurePolicy];
+    failure.ownership.materially_varying_outcomes = failure.material_consequences.clone();
+    failure.ownership.discretion_counterfactuals.clear();
+    failure.ownership.rationale = "the agent implements the error handling internally".into();
+    failure
+        .ownership
+        .bounded_implementation_discretion_rationale =
+        Some("implementation is the agent's responsibility".into());
+    assert!(
+        review(&fixture, vec![failure]).is_err(),
+        "caller-visible failure semantics need source-grounded discretion proof"
+    );
+    Ok(())
+}
+
+#[test]
+fn discretion_counterfactuals_require_complete_linked_evidence_without_category_classifier(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for defect in [
+        "missing",
+        "duplicate",
+        "foreign-alternative",
+        "ungrounded",
+        "empty-observation",
+    ] {
+        let fixture = fixture()?;
+        let mut choice = agent_owned_dimension(
+            "private-index",
+            fixture.baseline.repository_source.identity(),
+            LearningValueAssessment::Routine {
+                rationale: "private organization".into(),
+            },
+        );
+        match defect {
+            "missing" => {
+                choice.ownership.discretion_counterfactuals.pop();
+            }
+            "duplicate" => {
+                choice.ownership.discretion_counterfactuals[1] =
+                    choice.ownership.discretion_counterfactuals[0].clone();
+            }
+            "foreign-alternative" => {
+                choice.ownership.discretion_counterfactuals[0].alternative_id = "unrelated".into();
+            }
+            "ungrounded" => {
+                choice.ownership.discretion_counterfactuals[0]
+                    .source_supported_boundary
+                    .clear();
+            }
+            _ => {
+                choice.ownership.discretion_counterfactuals[0]
+                    .observation_rationale
+                    .clear();
+            }
+        }
+        assert!(review(&fixture, vec![choice]).is_err(), "{defect}");
+    }
+    let fixture = fixture()?;
+    let mut choice = agent_owned_dimension(
+        "private-index",
+        fixture.baseline.repository_source.identity(),
+        LearningValueAssessment::Routine {
+            rationale: "bounded resource discretion".into(),
+        },
+    );
+    // Observable differences can still be implementation discretion; typed evidence
+    // is checked, without promoting the observation boolean to an ownership rule.
+    choice.ownership.discretion_counterfactuals[0].externally_observable = true;
+    choice.ownership.discretion_counterfactuals[0].observation_rationale =
+        "The two private indexes use different amounts of memory within the fixed resource budget."
+            .into();
+    choice.ownership.discretion_counterfactuals[0].source_supported_boundary = "The fixture resource boundary permits either allocation inside the fixed budget without changing result semantics.".into();
+    let recorded = review(&fixture, vec![choice])?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
     Ok(())
 }

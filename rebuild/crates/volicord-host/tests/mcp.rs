@@ -430,6 +430,15 @@ fn draft_learning_participation(draft: &Value, state: &str, semantic_fields: Val
     )
 }
 
+fn discretion_counterfactuals(choice: &str, alternatives: &[&str], source: &Value) -> Value {
+    json!(alternatives.iter().map(|alternative| json!({
+        "choice_id":choice, "alternative_id":alternative, "externally_observable":false,
+        "observation_rationale":"Both alternatives preserve caller behavior; only private organization changes.",
+        "source_id":source,
+        "source_supported_boundary":"The current fixture source fixes public results and permits either private mechanism."
+    })).collect::<Vec<_>>())
+}
+
 fn draft_judgment(
     draft: &Value,
     choice_id: &str,
@@ -562,6 +571,17 @@ fn draft_judgment(
                 .collect(),
         );
         result.insert("alternative_accounting".into(), accounting);
+    }
+    if result["contains_user_owned_outcome"] == false {
+        let proofs = result["alternative_accounting"].as_array().expect("accounts").iter().map(|a| json!({
+            "choice_id":a["choice_id"], "alternative_id":a["alternative_id"], "externally_observable":false,
+            "observation_rationale":"The fixture alternatives retain the same caller behavior and differ in private organization.",
+            "source_id":result["ownership_source_ids"][0],
+            "source_supported_boundary":"The current fixture source fixes caller behavior and leaves private organization unconstrained."
+        })).collect::<Vec<_>>();
+        result
+            .entry("discretion_counterfactuals")
+            .or_insert(json!(proofs));
     }
     for required in contract["required_fields"]
         .as_array()
@@ -2302,6 +2322,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
                 "alternative_accounting":unresolved_alternative_accounting("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
+                "discretion_counterfactuals":discretion_counterfactuals("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"deliberation_worthy","rationale":"The consistency boundary illustrates a reusable design principle.","consequence_significance":["Missed invalidation can serve stale data"],"transferable_principles":["Centralize invariants when mutation sites multiply"],"non_obvious_trade_offs":["Local simplicity can create distributed correctness obligations"],"interruption_counterfactual":"Without participation, the requested understanding of consistency ownership would be lost.","participation_scope_alignment":"The Goal explicitly requests learning through meaningful technical boundaries."}
             }]
         }),
@@ -2348,6 +2369,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "bounded_implementation_discretion_rationale":"the choice changes only the private consistency mechanism",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
                 "alternative_accounting":unresolved_alternative_accounting("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
+                "discretion_counterfactuals":discretion_counterfactuals("cache-invalidation-boundary", &["mutation-sites","versioned-facade"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"Unsupported downgrade without repository or prototype evidence."}
             }],
             "learning_value_revision_bases":[{
@@ -2631,6 +2653,7 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
                 "bounded_implementation_discretion_rationale":"both orders produce the same public wording and passing test",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
                 "alternative_accounting":unresolved_alternative_accounting("diagnostic-test-wording", &["wording-first","test-first"], &analyzed["repository_source_id"]),
+                "discretion_counterfactuals":discretion_counterfactuals("diagnostic-test-wording", &["wording-first","test-first"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"No meaningful transferable understanding would be lost, and the user explicitly excluded routine wording and test synchronization from interruptions."}
             }]
         }),
@@ -2978,6 +3001,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
                 "bounded_implementation_discretion_rationale":"the research precedes any selection and all observed mechanisms remain inside settled behavior",
                 "ownership_source_ids":[analyzed["repository_source_id"]],
                 "alternative_accounting":unresolved_alternative_accounting("retry-observation", &["first","second"], &analyzed["repository_source_id"]),
+                "discretion_counterfactuals":discretion_counterfactuals("retry-observation", &["first","second"], &analyzed["repository_source_id"]),
                 "research_basis":["Inspect retained runtime observations for retry correlation"],
                 "learning_value":{"state":"deliberation_worthy","rationale":"The evidence can illustrate retry correlation.","consequence_significance":["Correlated retries can amplify load"],"transferable_principles":["Observe uncertain behavior before selecting policy"],"non_obvious_trade_offs":["Extra observation delays implementation but avoids a speculative choice"],"interruption_counterfactual":"Without participation, the requested understanding of evidence-first retry design would be lost.","participation_scope_alignment":"The active learning scope includes meaningful operability evidence choices."}
             }]
@@ -4860,6 +4884,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 material_consequences: vec!["records bounded work and truthful evidence".into()],
                 observable_signals: Vec::new(),
                 ownership: MaterialOutcomeOwnershipAssessment {
+                    discretion_counterfactuals: Vec::new(),
                     materially_varying_outcomes: vec![
                         "whether Checkpoint evidence is bounded and truthful".into(),
                     ],

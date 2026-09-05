@@ -5462,6 +5462,7 @@ def materiality_dimensions_from_judgments(
         "user_owned_outcomes",
         "ownership_rationale",
         "bounded_implementation_discretion_rationale",
+        "discretion_counterfactuals",
         "ownership_source_ids",
         "alternative_accounting",
         "additional_source_ids",
@@ -5748,6 +5749,7 @@ def materiality_dimensions_from_judgments(
                 "bounded_implementation_discretion_rationale": judgment.get(
                     "bounded_implementation_discretion_rationale"
                 ),
+                "discretion_counterfactuals": judgment.get("discretion_counterfactuals", []),
                 "source_ids": judgment["ownership_source_ids"],
             },
             "alternative_accounting": alternative_accounting,
@@ -10529,6 +10531,15 @@ def real_session_fixture(
         secondary = secondary_materiality_judgment(
             resolved=resolved, source_id=source_id
         )
+        for judgment in [primary, secondary]:
+            if not judgment["contains_user_owned_outcome"]:
+                judgment["discretion_counterfactuals"] = [{
+                    "choice_id": account["choice_id"], "alternative_id": account["alternative_id"],
+                    "externally_observable": False,
+                    "observation_rationale": "The fixture alternatives preserve caller behavior and only vary internal organization.",
+                    "source_id": source_id,
+                    "source_supported_boundary": "The retained fixture source fixes the product outcome and leaves this private representation unconstrained.",
+                } for account in judgment["alternative_accounting"]]
         return [secondary, primary] if resolved else [primary, secondary]
 
     def ready_workflow(review_id: str, baseline_id: str) -> dict[str, Any]:

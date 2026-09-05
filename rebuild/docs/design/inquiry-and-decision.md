@@ -333,7 +333,17 @@ materially observable outcome, 그중 user-owned product outcome의 존재와 ex
 rationale와 current Source basis를 보존한다. User-owned outcome이 없다는 판단은 모든 materially
 different alternative가 settled product behavior 안의 bounded implementation discretion에 남는 이유를
 별도로 설명해야 한다. `AgentOwnedImplementationChoice`는 이 explicit agent-owned assessment와만
-호환되며 `ImplementationPreference` 자체는 ownership evidence가 아니다. User-owned outcome이 있으면
+호환되며 `ImplementationPreference` 자체는 ownership evidence가 아니다.
+`contains_user_owned_outcome = false`이면 `discretion_counterfactuals`가 모든 discovered
+`(choice_id, alternative_id)`를 exactly once 포함해야 한다. 각 counterfactual은 caller/user/operator가
+차이를 관찰할 수 있는지, 다른 대안과 비교한 observable effect 또는 private/mechanical equivalence,
+current ownership Source identity와 그 source가 실제 허용하는 재량 boundary를 명시한다.
+기존 bounded-discretion rationale는 관찰 가능한 차이가 왜 user-owned product policy가 아닌지
+설명한다. 내부에서 구현한다는 사실은 소유권 근거가 아니다. Source-grounded boundary나 exact
+authority가 없으면 active agent는 unresolved user-owned로 분류하고 affected work 전에 기존
+Question/current-host Decision을 사용한다. Production은 대안/Source linkage와 typed completeness를
+검증하며 observable boolean이나 effect category로 소유권을 자동 결정하지 않는다.
+ User-owned outcome이 있으면
 exact fact/contract/Decision/delegation/exploration 또는 unresolved Question에 해당하는 기존 disposition을
 사용한다. Effect category는 이 semantic review를 빠뜨리지 않게 하는 prompt일 뿐 자동 ownership
 classifier가 아니다.

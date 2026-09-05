@@ -440,6 +440,12 @@ fn record_ready_review(
             material_consequences: vec!["records the attributed repository delta".into()],
             observable_signals: Vec::new(),
             ownership: MaterialOutcomeOwnershipAssessment {
+                discretion_counterfactuals: ["record", "omit"].into_iter().map(|alternative| volicord_operations::ImplementationDiscretionCounterfactual {
+                    choice_id: "bounded-repository-outcome".into(), alternative_id: alternative.into(), externally_observable: false,
+                    observation_rationale: "Repository observation mechanically determines the attributed delta.".into(),
+                    source_id: baseline.repository_source.identity(),
+                    source_supported_boundary: "Current repository delta leaves no discretionary product behavior.".into(),
+                }).collect(),
                 materially_varying_outcomes: vec!["the repository-observed bounded delta".into()],
                 contains_user_owned_outcome: false,
                 user_owned_outcomes: Vec::new(),

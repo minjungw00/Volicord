@@ -958,10 +958,44 @@ fn evaluate_dimension(
     }
 }
 
+pub(crate) fn validate_discretion_counterfactuals(
+    dimension: &MaterialityDimension,
+) -> Result<(), String> {
+    let ownership = &dimension.ownership;
+    if ownership.contains_user_owned_outcome {
+        if !ownership.discretion_counterfactuals.is_empty() {
+            return Err(
+                "user-owned outcomes cannot claim implementation discretion counterfactuals".into(),
+            );
+        }
+        return Ok(());
+    }
+    let expected = dimension
+        .alternative_accounting
+        .iter()
+        .map(|a| (&a.choice_id, &a.alternative_id))
+        .collect::<BTreeSet<_>>();
+    let mut observed = BTreeSet::new();
+    for proof in &ownership.discretion_counterfactuals {
+        if !observed.insert((&proof.choice_id, &proof.alternative_id))
+            || proof.observation_rationale.trim().is_empty()
+            || proof.source_supported_boundary.trim().is_empty()
+            || !ownership.source_basis.contains(&proof.source_id)
+        {
+            return Err("implementation discretion counterfactual requires unique alternative identity, observation rationale, and a boundary grounded in ownership Source evidence".into());
+        }
+    }
+    if expected.is_empty() || observed != expected {
+        return Err("implementation discretion counterfactual must cover every discovered alternative with source-grounded observation and bounded-discretion evidence".into());
+    }
+    Ok(())
+}
+
 fn validate_ownership_assessment(
     canonical: &CanonicalReadBasis,
     dimension: &MaterialityDimension,
 ) -> Result<(), DimensionIssue> {
+    validate_discretion_counterfactuals(dimension).map_err(DimensionIssue::Invalid)?;
     let ownership = &dimension.ownership;
     if ownership.materially_varying_outcomes.is_empty()
         || ownership.rationale.trim().is_empty()
