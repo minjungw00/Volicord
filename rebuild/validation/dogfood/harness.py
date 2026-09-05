@@ -18893,6 +18893,11 @@ def self_test() -> int:
         primary["contract_basis"] = [
             "the accepted repository contract already settles this choice"
         ]
+        primary["authority_source_evidence"] = [{
+            "source_id": primary["ownership_source_ids"][0],
+            "role": {"kind": "accepted_contract", "contract_reference": primary["contract_basis"][0]},
+            "rationale": "The fixture's current accepted contract explicitly selects this exact outcome.",
+        }]
         for account in primary["alternative_accounting"]:
             if account["status"] != "selected":
                 account["status"] = "eliminated_by_accepted_contract"
@@ -18951,6 +18956,11 @@ def self_test() -> int:
         judgment = arguments["judgments"][0]
         judgment.update({
             "disposition": "repository_or_environment_fact",
+            "authority_source_evidence": [{
+                "source_id": judgment["ownership_source_ids"][0],
+                "role": {"kind": "unique_mechanical_fact"},
+                "rationale": "The retained repository observation mechanically selects the routine fixture outcome.",
+            }],
             "authority_coverage": "The repository Source covers the complete routine detail.",
             "unique_outcome_rationale": "Only one mechanically valid routine outcome remains.",
         })
