@@ -18713,6 +18713,7 @@ def self_test() -> int:
         second["delegation_statement"] = primary["delegation_statement"]
         second["delegated_scope"] = ["repository file shape"]
         for field in (
+            "authority_source_evidence",
             "authority_coverage",
             "unique_outcome_rationale",
         ):
@@ -18751,6 +18752,7 @@ def self_test() -> int:
         second["delegation_statement"] = primary["delegation_statement"]
         second["delegated_scope"] = shared_scope
         for field in (
+            "authority_source_evidence",
             "authority_coverage",
             "unique_outcome_rationale",
         ):
@@ -18853,6 +18855,7 @@ def self_test() -> int:
         second["exploratory_disposition"] = "resolved_by_research"
         second["research_basis"] = ["inspected implementation evidence"]
         for field in (
+            "authority_source_evidence",
             "authority_coverage",
             "unique_outcome_rationale",
         ):
@@ -19028,6 +19031,7 @@ def self_test() -> int:
         judgment = arguments["judgments"][1]
         judgment["disposition"] = "unresolved_user_owned_outcome"
         for field in (
+            "authority_source_evidence",
             "authority_coverage",
             "unique_outcome_rationale",
         ):
