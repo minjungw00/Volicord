@@ -14359,6 +14359,30 @@ def self_test() -> int:
     current_candidate = git_head(ROOT)
     if current_candidate is None:
         raise AssertionError("work-blocker CLI self-test could not resolve current candidate")
+    # The standalone CLI has an explicit repository binding too. Generate its
+    # SessionStart via production instead of pairing synthetic cwd with ROOT.
+    from activation_fixture import production_context
+
+    cli_work_events = json.loads(json.dumps(zero_workflow_events))
+    cli_work_events[0]["payload"]["cwd"] = str(ROOT)
+    cli_work_events[1]["payload"]["content"][0]["text"] = production_context(
+        ROOT, cli_work_events[0]["payload"]["session_id"]
+    )
+    cli_work_path = evidence_directory / "production-hook-zero-work.jsonl"
+    cli_work_path.write_text(
+        "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in cli_work_events),
+        encoding="utf-8",
+    )
+    try:
+        build_work_blocker_result(
+            candidate_revision, external_fixture, descriptor_identity,
+            zero_workflow_capture, target_repository=ROOT,
+        )
+    except ValueError as error:
+        if "does not match the descriptor" not in str(error):
+            raise
+    else:
+        raise AssertionError("work-blocker accepted activation for a different repository")
     blocker_cli = subprocess.run(
         [
             sys.executable,
@@ -14372,7 +14396,7 @@ def self_test() -> int:
             "--repository",
             str(ROOT),
             "--work-capture",
-            str(zero_workflow_path),
+            str(cli_work_path),
             "--output",
             str(blocker_output_path),
         ],
@@ -14386,6 +14410,8 @@ def self_test() -> int:
         or not blocker_output_path.is_file()
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("kind")
         != "phase8_dogfood_blocker_result"
+        or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("failed_checks")
+        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
     ):
         raise AssertionError(
             "qualify-work-blocker CLI did not emit the failure-only result: "
