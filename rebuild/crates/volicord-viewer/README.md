@@ -38,6 +38,9 @@ supersession and forgetting, explicit document export, and exact Guarded
 confirmation forms submit to Local Operations; the viewer does not persist or
 reinterpret their domain state.
 
+Client disconnects and response-write failures end only the affected connection;
+the listener continues serving subsequent requests without retrying a mutation.
+
 Every level begins with the bounded `ProjectUnderstanding` read model: Goal and
 why, completed/current/remaining work, next steps, Decision rationale and code
 impact, material Questions, architecture, generated interpretations, evidence,

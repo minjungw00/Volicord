@@ -1,7 +1,8 @@
 use std::{
     env,
     ffi::OsString,
-    net::{SocketAddr, TcpListener},
+    io::Write,
+    net::{SocketAddr, TcpListener, TcpStream},
     path::PathBuf,
     time::Duration,
 };
@@ -111,20 +112,27 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     eprintln!("Volicord local viewer: http://{authority}/");
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|error| format!("viewer connection failed: {error}"))?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .map_err(|error| format!("cannot bound viewer request read: {error}"))?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(5)))
-            .map_err(|error| format!("cannot bound viewer response write: {error}"))?;
-        let mut response_stream = stream
-            .try_clone()
-            .map_err(|error| format!("cannot prepare viewer response stream: {error}"))?;
-        server
-            .serve_connection(&mut stream, &mut response_stream)
-            .map_err(|error| format!("viewer request failed: {error}"))?;
+        if let Err(error) = serve_stream(&server, &mut stream) {
+            // Neither a disconnected client nor a closed diagnostic pipe owns the listener.
+            let _ = writeln!(std::io::stderr().lock(), "viewer request failed: {error}");
+        }
     }
     Ok(())
+}
+
+fn serve_stream(server: &ViewerServer, stream: &mut TcpStream) -> Result<(), String> {
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| format!("cannot bound viewer request read: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| format!("cannot bound viewer response write: {error}"))?;
+    let mut response_stream = stream
+        .try_clone()
+        .map_err(|error| format!("cannot prepare viewer response stream: {error}"))?;
+    server
+        .serve_connection(stream, &mut response_stream)
+        .map_err(|error| error.to_string())
 }
 
 fn parse_project(value: &str) -> Result<ProjectId, String> {

@@ -156,6 +156,39 @@ fn export(
 }
 
 #[test]
+fn client_reset_does_not_end_the_listener_or_change_canonical_memory() {
+    let temporary = TempDir::new().expect("temporary root");
+    let runtime = temporary.path().join("runtime");
+    let operations = LocalOperations::new(RuntimeLayout::new(&runtime).expect("runtime layout"));
+    let project = operations
+        .initialize_project("Disconnected client", None)
+        .expect("initialize Project")
+        .project
+        .id;
+    let before = operations
+        .canonical_basis(project)
+        .expect("canonical before");
+    let mut viewer = start_viewer(&runtime, &project.to_string());
+    let mut reset = TcpStream::connect(&viewer.address).expect("reset connection");
+    rustix::net::sockopt::set_socket_linger(&reset, Some(Duration::ZERO)).expect("abortive close");
+    // An incomplete header keeps the server reading until the abortive close.
+    reset
+        .write_all(b"GET / HTTP/1.1\r\nHost:")
+        .expect("partial request");
+    drop(reset);
+    let response = get(&viewer.address, "/");
+    assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+    assert!(response.contains("Disconnected client"));
+    assert!(viewer.child.try_wait().expect("process state").is_none());
+    assert_eq!(
+        before,
+        operations
+            .canonical_basis(project)
+            .expect("canonical after")
+    );
+}
+
+#[test]
 fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
     let temporary = TempDir::new().expect("temporary root");
     let runtime = temporary.path().join("runtime");
