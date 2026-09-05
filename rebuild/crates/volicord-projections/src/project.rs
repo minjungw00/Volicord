@@ -29,6 +29,7 @@ impl Default for ProjectionBound {
 }
 
 pub struct ProjectProjectionInputs<'a> {
+    pub analysis_issues: &'a [ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
     pub applicability: ApplicabilityQuery,
@@ -480,6 +481,7 @@ pub struct ProjectProjection {
 pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectProjection {
     let limit = inputs.bound.max_items_per_section.max(1);
     let resume = build_resume_brief(RecallInputs {
+        analysis_issues: inputs.analysis_issues,
         canonical: inputs.canonical,
         analyses: inputs.analyses,
         scope: inputs.applicability.clone(),
@@ -488,6 +490,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         },
     });
     let mut issues = source_issues(inputs.canonical);
+    issues.extend_from_slice(inputs.analysis_issues);
     let repository_map = build_repository_map(
         inputs.canonical.project.id,
         inputs.analyses,

@@ -507,6 +507,9 @@ Projection은 input별 current state를 보존한다.
 - stale Source/analysis를 current evidence로 표시하지 않는다.
 - unavailable repository에서는 canonical-only section을 계속 제공하고 code section의
   unavailable basis를 표시한다.
+- 분석 cache가 corrupt, unsupported 또는 unreadable이면 safe canonical-only projection을
+  유지하고 `derived_analysis` failure/omission과 실제 supported repair action을 표시한다.
+  Read는 cache를 삭제하거나 재생성하지 않으며, 이전 cache를 current로 대신 사용하지 않는다.
 - partial/failed analyzer area는 coverage와 omitted claim scope를 함께 표시한다.
 - superseded Decision은 current recommendation에 섞지 않되 history omission 또는
   explicit trail로 inspect 가능하게 한다.

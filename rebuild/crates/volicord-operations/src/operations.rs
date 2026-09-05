@@ -2306,7 +2306,7 @@ impl LocalOperations {
 
     pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
         let canonical = self.canonical_basis(project_id)?;
-        let analyses = self.load_analyses(project_id)?;
+        let (analyses, analysis_issues) = self.load_projection_analyses(project_id);
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         let mut candidate_basis = None;
         let candidate_failure;
@@ -2361,6 +2361,7 @@ impl LocalOperations {
             },
         };
         Ok(build_project_projection(ProjectProjectionInputs {
+            analysis_issues: &analysis_issues,
             canonical: &canonical,
             analyses: &analysis_refs,
             applicability: empty_applicability(project_id),
@@ -2373,9 +2374,10 @@ impl LocalOperations {
 
     pub fn recall(&self, project_id: ProjectId) -> Result<ResumeBrief, Error> {
         let canonical = self.canonical_basis(project_id)?;
-        let analyses = self.load_analyses(project_id)?;
+        let (analyses, analysis_issues) = self.load_projection_analyses(project_id);
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         Ok(volicord_projections::build_resume_brief(RecallInputs {
+            analysis_issues: &analysis_issues,
             canonical: &canonical,
             analyses: &analysis_refs,
             scope: empty_applicability(project_id),
@@ -3471,6 +3473,25 @@ impl LocalOperations {
         fs::read_dir(directory)
             .map_err(|error| Error::with_source("cannot inspect Project analysis directory", error))
             .map(|entries| entries.count() as u64)
+    }
+
+    fn load_projection_analyses(
+        &self,
+        project_id: ProjectId,
+    ) -> (
+        Vec<AnalysisSnapshot>,
+        Vec<volicord_projections::ProjectionIssue>,
+    ) {
+        match self.load_analyses(project_id) {
+            Ok(analyses) => (analyses, Vec::new()),
+            Err(error) => (Vec::new(), vec![volicord_projections::ProjectionIssue {
+                kind: volicord_projections::ProjectionIssueKind::FailedCapability,
+                identity: project_id.to_string(),
+                affected_scope: "derived_analysis".into(),
+                reason: format!("Stored analysis is unavailable: {error}. Canonical memory remains readable; run volicord doctor repair from the bound repository."),
+                omitted_count: 0,
+            }]),
+        }
     }
 
     fn load_analyses(&self, project_id: ProjectId) -> Result<Vec<AnalysisSnapshot>, Error> {

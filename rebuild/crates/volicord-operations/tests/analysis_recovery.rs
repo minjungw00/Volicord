@@ -335,6 +335,74 @@ fn assert_user_owned_meaning_preserved(before: &CanonicalReadBasis, after: &Cano
 }
 
 #[test]
+fn corrupt_and_noncurrent_analysis_keep_public_read_surfaces_usable(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let project = fixture
+        .operations
+        .initialize_project(
+            "Canonical survives cache failure",
+            Some(&fixture.repository),
+        )?
+        .project
+        .id;
+    let value = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("analysis")?;
+    let mut unsupported = serde_json::to_value(&value.analysis)?;
+    fixture.operations.record_current_host_user_context(
+        project,
+        "test-host".into(),
+        "read-recovery".into(),
+        "Canonical survives cache failure".into(),
+        ContextItemRole::Goal,
+        "Canonical survives cache failure".into(),
+    )?;
+    unsupported["format_version"] = serde_json::json!(999);
+    let mut invalid_identity = serde_json::to_value(&value.analysis)?;
+    invalid_identity["identity"] = serde_json::json!(format!("가{}", "0".repeat(61)));
+    let before = fixture.operations.canonical_basis(project)?;
+    for bytes in [
+        b"{corrupt".to_vec(),
+        serde_json::to_vec(&unsupported)?,
+        serde_json::to_vec(&invalid_identity)?,
+    ] {
+        fs::write(&value.stored_at, &bytes)?;
+        for command in [
+            vec!["recall"],
+            vec!["status"],
+            vec!["document", "preview", "handoff-resume"],
+        ] {
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_volicord"))
+                .arg("--runtime")
+                .arg(fixture.operations.layout().root())
+                .args(["--project", &project.to_string(), "--json"])
+                .args(&command)
+                .output()?;
+            assert!(
+                output.status.success(),
+                "{command:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let text = String::from_utf8(output.stdout)?;
+            assert!(
+                text.contains("Stored analysis is unavailable"),
+                "{command:?}: {text}"
+            );
+            assert!(
+                text.contains("Canonical survives cache failure"),
+                "{command:?}: {text}"
+            );
+        }
+        assert_eq!(fs::read(&value.stored_at)?, bytes);
+        assert_eq!(before, fixture.operations.canonical_basis(project)?);
+    }
+    Ok(())
+}
+
+#[test]
 fn corrupt_analysis_repair_observes_current_repository_and_preserves_user_meaning(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture()?;
@@ -370,6 +438,33 @@ fn corrupt_analysis_repair_observes_current_repository_and_preserves_user_meanin
         issue.kind == HealthIssueKind::Corrupt
             && issue.scope == format!("derived_analysis:{}", initialized.project.id)
     }));
+
+    let brief = fixture.operations.recall(initialized.project.id)?;
+    assert!(!brief.decisions.is_empty());
+    assert!(brief.latest_meaningful_checkpoint.is_some());
+    assert!(brief.snapshots.is_empty());
+    assert!(brief
+        .omissions
+        .iter()
+        .any(|issue| issue.kind == "derived_analysis"));
+    assert!(brief
+        .known_limits
+        .iter()
+        .any(|reason| reason.contains("volicord doctor repair")));
+    let projection = fixture
+        .operations
+        .project_projection(initialized.project.id)?;
+    assert_eq!(
+        projection.health,
+        volicord_projections::ProjectionHealth::Degraded
+    );
+    assert!(!projection.canonical_inspection.is_empty());
+    assert!(projection.repository_map.entities.is_empty());
+    assert_eq!(
+        before_basis,
+        fixture.operations.canonical_basis(initialized.project.id)?
+    );
+    assert_eq!(fs::read(&stored)?, b"{ corrupt derived bytes");
 
     let repaired =
         fixture

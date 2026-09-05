@@ -568,6 +568,7 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     let analyses = [&analysis];
     let build = || {
         build_resume_brief(RecallInputs {
+            analysis_issues: &[],
             canonical: &canonical,
             analyses: &analyses,
             scope: volicord_inquiry::ApplicabilityQuery {
@@ -652,6 +653,7 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     );
 
     let bounded = build_resume_brief(RecallInputs {
+        analysis_issues: &[],
         canonical: &canonical,
         analyses: &analyses,
         scope: ApplicabilityQuery {
@@ -755,6 +757,7 @@ fn historical_checkpoint_remains_readable_with_non_current_source_basis(
         source.availability = availability;
         source.source.availability = availability;
         let brief = build_resume_brief(RecallInputs {
+            analysis_issues: &[],
             canonical: &degraded,
             analyses: &[],
             scope: ApplicabilityQuery {

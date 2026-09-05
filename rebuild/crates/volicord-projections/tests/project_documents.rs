@@ -123,6 +123,7 @@ fn build_projection_fixture(
     bound: ProjectionBound,
 ) -> ProjectProjection {
     build_project_projection(ProjectProjectionInputs {
+        analysis_issues: &[],
         canonical,
         analyses: &[analysis],
         applicability: ApplicabilityQuery {
@@ -279,6 +280,7 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
     let candidate_store = CandidateStore::open(root.path().join("completed-candidates.sqlite3"))?;
     let candidates = candidate_store.read_basis(project.id)?;
     let projection = build_project_projection(ProjectProjectionInputs {
+        analysis_issues: &[],
         canonical: &canonical,
         analyses: &[],
         applicability: ApplicabilityQuery {
@@ -852,6 +854,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     ];
     for (state, failure_kind, issue_kind, reason) in candidate_failures {
         let degraded = build_project_projection(ProjectProjectionInputs {
+            analysis_issues: &[],
             canonical: &canonical,
             analyses: &[&analysis],
             applicability: ApplicabilityQuery {

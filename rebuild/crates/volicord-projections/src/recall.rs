@@ -27,6 +27,7 @@ impl Default for RecallBound {
 }
 
 pub struct RecallInputs<'a> {
+    pub analysis_issues: &'a [crate::ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
     pub scope: ApplicabilityQuery,
@@ -142,6 +143,12 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
     let canonical = inputs.canonical;
     let limit = inputs.bound.max_items_per_section.max(1);
     let mut omissions = Vec::new();
+    omissions.extend(inputs.analysis_issues.iter().map(|issue| RecallOmission {
+        identity: issue.identity.clone(),
+        kind: issue.affected_scope.clone(),
+        reason: OmissionReason::FailedBasis,
+        expandable_basis: issue.reason.clone(),
+    }));
 
     let mut goals = canonical
         .context_items
@@ -476,6 +483,12 @@ pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
                 .map(|item| item.statement.clone()),
         )
         .collect::<Vec<_>>();
+    known_limits.extend(
+        inputs
+            .analysis_issues
+            .iter()
+            .map(|issue| issue.reason.clone()),
+    );
     known_limits.sort();
     known_limits.dedup();
     let omitted_count = omissions.len();
