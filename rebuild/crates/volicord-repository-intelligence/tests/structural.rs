@@ -265,6 +265,20 @@ fn search_is_source_grounded_and_stale_ranges_are_not_current_navigation(
             && !hit.diagnostics.is_empty()
             && hit.navigation_is_current
     }));
+    let mut unverified = analysis.clone();
+    unverified.observe_repository_freshness(None);
+    let unknown = search_local(
+        &unverified,
+        "Greeter.greet",
+        repository.identity,
+        10,
+        &grounding,
+    )?;
+    assert!(!unknown.is_empty());
+    assert!(unknown
+        .iter()
+        .all(|hit| hit.freshness.state == FreshnessState::Unknown && !hit.navigation_is_current));
+    assert_eq!(unverified.identity, analysis.identity);
     let other_root = fixture("python");
     let (other_repository, _) =
         analyze_repository(StructuralAnalysisRequest::new(inventory(&other_root)?))?;

@@ -18,8 +18,9 @@ pub fn search_local(
         return Ok(Vec::new());
     }
     let mut scored = Vec::new();
-    let current = analysis.repository_snapshot == current_repository_snapshot;
-    let freshness = if current {
+    let same_snapshot = analysis.repository_snapshot == current_repository_snapshot;
+    let current = same_snapshot && analysis.freshness.state == FreshnessState::Current;
+    let freshness = if same_snapshot {
         analysis.freshness.clone()
     } else {
         FreshnessBasis {

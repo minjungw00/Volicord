@@ -428,6 +428,13 @@ result가 failure를 숨기지 않고 격리해야 한다는 normal contract만 
 
 ### File-level invalidation
 
+Stored Analysis를 Recall, Viewer 또는 document에 사용할 때 Local Operations는 같은
+canonical repository Source와 explicit exclusion boundary로 current inventory를 read-only
+관찰한다. Snapshot이 다르면 read-side entity/relation/capability는 `stale`, 관찰할 수
+없거나 incomplete하면 freshness `unknown`과 unavailable capability를 표시한다.
+이 비교는 canonical Source나 분석 cache를 새로 저장하지 않고 historical identity와
+range를 유지한다. Analyzer가 직접 반환한 observation-time result와 이후 read를 구분한다.
+
 한 file의 content, classification, availability 또는 analysis-relevant setting이
 바뀌어 그 file에서 직접 생산된 entity, range, relation, diagnostics와 annotation의
 freshness를 재평가해야 한다.

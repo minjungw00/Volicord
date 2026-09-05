@@ -5,6 +5,7 @@
 //! repository source snapshot.
 
 mod canonical;
+mod freshness;
 mod grounding;
 mod identity;
 mod inventory;

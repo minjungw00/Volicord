@@ -2306,7 +2306,7 @@ impl LocalOperations {
 
     pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
         let canonical = self.canonical_basis(project_id)?;
-        let (analyses, analysis_issues) = self.load_projection_analyses(project_id);
+        let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         let mut candidate_basis = None;
         let candidate_failure;
@@ -2374,7 +2374,7 @@ impl LocalOperations {
 
     pub fn recall(&self, project_id: ProjectId) -> Result<ResumeBrief, Error> {
         let canonical = self.canonical_basis(project_id)?;
-        let (analyses, analysis_issues) = self.load_projection_analyses(project_id);
+        let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         Ok(volicord_projections::build_resume_brief(RecallInputs {
             analysis_issues: &analysis_issues,
@@ -3475,15 +3475,68 @@ impl LocalOperations {
             .map(|entries| entries.count() as u64)
     }
 
+    fn observe_projection_repository(
+        &self,
+        canonical: &CanonicalReadBasis,
+        analysis: &AnalysisSnapshot,
+    ) -> Result<volicord_repository_intelligence::RepositorySnapshot, Error> {
+        let store = Store::open_read_only(self.layout.canonical_store())
+            .map_err(|error| Error::with_source("cannot inspect repository binding", error))?;
+        let binding = store
+            .get_local_binding(canonical.project.id)
+            .map_err(|error| Error::with_source("repository binding is unavailable", error))?;
+        let grounding = CanonicalGrounding::from_read_basis(canonical)
+            .map_err(|error| Error::with_source("canonical grounding is unavailable", error))?;
+        let mut request = InventoryRequest::new(
+            &binding.absolute_path,
+            &grounding,
+            analysis.repository_source.identity(),
+            now_micros()?.as_unix_micros(),
+        )
+        .map_err(|error| Error::with_source("repository Source is unavailable", error))?;
+        request.excluded_paths = analysis
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect();
+        let (repository, inventory) =
+            volicord_repository_intelligence::inventory_repository(request).map_err(|error| {
+                Error::with_source("current repository observation failed", error)
+            })?;
+        if inventory.diagnostics.iter().any(|diagnostic| {
+            matches!(
+                diagnostic.severity,
+                volicord_repository_intelligence::DiagnosticSeverity::Error
+                    | volicord_repository_intelligence::DiagnosticSeverity::Warning
+            )
+        }) {
+            return Err(Error::new("current repository inventory is incomplete"));
+        }
+        Ok(repository)
+    }
+
     fn load_projection_analyses(
         &self,
         project_id: ProjectId,
+        canonical: &CanonicalReadBasis,
     ) -> (
         Vec<AnalysisSnapshot>,
         Vec<volicord_projections::ProjectionIssue>,
     ) {
         match self.load_analyses(project_id) {
-            Ok(analyses) => (analyses, Vec::new()),
+            Ok(mut analyses) => {
+                for analysis in &mut analyses {
+                    let observed = self.observe_projection_repository(canonical, analysis).ok();
+                    analysis.observe_repository_freshness(observed.as_ref());
+                }
+                (analyses, Vec::new())
+            },
             Err(error) => (Vec::new(), vec![volicord_projections::ProjectionIssue {
                 kind: volicord_projections::ProjectionIssueKind::FailedCapability,
                 identity: project_id.to_string(),
