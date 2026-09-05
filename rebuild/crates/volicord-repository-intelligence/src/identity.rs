@@ -70,9 +70,10 @@ pub(crate) fn decode_hex<const N: usize>(value: &str) -> Result<[u8; N], String>
         ));
     }
     let mut bytes = [0_u8; N];
-    for (index, slot) in bytes.iter_mut().enumerate() {
-        let offset = index * 2;
-        *slot = u8::from_str_radix(&value[offset..offset + 2], 16)
+    for (slot, pair) in bytes.iter_mut().zip(value.as_bytes().chunks_exact(2)) {
+        let pair = std::str::from_utf8(pair)
+            .map_err(|_| "identity contains a non-hexadecimal digit".to_owned())?;
+        *slot = u8::from_str_radix(pair, 16)
             .map_err(|_| "identity contains a non-hexadecimal digit".to_owned())?;
     }
     Ok(bytes)
@@ -100,5 +101,28 @@ mod tests {
         let encoded = first.to_string();
         assert_eq!(RepositorySnapshotId::from_hex(&encoded), Ok(first));
         assert!(AnalysisSnapshotId::from_hex("not-an-identity").is_err());
+    }
+
+    #[test]
+    fn invalid_unicode_identities_are_errors_at_direct_and_json_boundaries() {
+        for character in ['é', '가', '🦀', 'g'] {
+            for prefix in 0..=(64 - character.len_utf8()) {
+                let value = format!(
+                    "{}{}{}",
+                    "0".repeat(prefix),
+                    character,
+                    "0".repeat(64 - prefix - character.len_utf8())
+                );
+                assert_eq!(value.len(), 64);
+                assert!(AnalysisSnapshotId::from_hex(&value).is_err());
+                assert!(RepositorySnapshotId::from_hex(&value).is_err());
+                let encoded = serde_json::to_string(&value).expect("JSON string");
+                assert!(serde_json::from_str::<AnalysisSnapshotId>(&encoded).is_err());
+                assert!(serde_json::from_str::<RepositorySnapshotId>(&encoded).is_err());
+            }
+        }
+        let uppercase = "AB".repeat(32);
+        let identity = AnalysisSnapshotId::from_hex(&uppercase).expect("uppercase hexadecimal");
+        assert_eq!(identity.to_string(), uppercase.to_lowercase());
     }
 }
