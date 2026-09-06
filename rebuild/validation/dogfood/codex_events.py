@@ -884,12 +884,12 @@ def normalize_mcp_completion(
         raw_error = result.get("Err")
         return operation, arguments, {}, "failed", str(raw_error) if raw_error is not None else "mcp_error"
     ok = result.get("Ok")
-    if not isinstance(ok, dict) or not isinstance(ok.get("isError"), bool):
+    if not isinstance(ok, dict):
         return operation, arguments, {}, "failed", "malformed_mcp_completion"
-    structured = ok.get("structuredContent")
-    if not isinstance(structured, dict):
+    is_error, structured = mcp_result_semantics(ok)
+    if not isinstance(is_error, bool) or not isinstance(structured, dict):
         return operation, arguments, {}, "failed", "malformed_mcp_completion"
-    if ok["isError"]:
+    if is_error:
         raw_error = structured.get("error")
         return operation, arguments, structured, "failed", str(raw_error) if nonempty(raw_error) else "mcp_error"
     return operation, arguments, structured, "succeeded", None
@@ -928,18 +928,10 @@ def normalize_current_mcp_completion(
     is_error = result.get("isError")
     if not isinstance(is_error, bool):
         return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
-    structured = result.get("structuredContent")
-    if structured is not None and not isinstance(structured, dict):
+    if not isinstance(result.get("content"), list):
         return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
-    content_state, content_structured = current_mcp_content_result(result, is_error)
-    if content_state == "malformed":
-        return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
-    if isinstance(structured, dict) and isinstance(content_structured, dict):
-        if structured != content_structured:
-            raise EvidenceError("Codex MCP structured result representations conflict")
-    elif structured is None:
-        structured = content_structured
-    if not isinstance(structured, dict):
+    is_error, structured = mcp_result_semantics(result)
+    if not isinstance(is_error, bool) or not isinstance(structured, dict):
         return str(call_id), operation, arguments, {}, "failed", "malformed_mcp_completion"
     if status == "completed" and not is_error:
         return str(call_id), operation, arguments, structured, "succeeded", None
@@ -956,63 +948,69 @@ def normalize_current_mcp_completion(
     return str(call_id), operation, arguments, structured, "failed", "mcp_completion_status_mismatch"
 
 
-def current_mcp_content_result(
-    result: dict[str, Any], is_error: bool
-) -> tuple[str, dict[str, Any] | None]:
-    """Read only the current serialized CallToolResult content envelope.
+def mcp_result_semantics(result: dict[str, Any]) -> tuple[bool | None, dict[str, Any] | None]:
+    """One bounded semantic decoder shared by legacy and ItemCompleted MCP.
 
-    Direct tool text is not searched for JSON. The supported fallback is one text
-    block whose complete text is a CallToolResult object, containing one text
-    block whose complete text is the structured product result.
+    Text is only a fallback when the entire block is a CallToolResult object.
+    Its optional product-text representation must parse and agree too. Ordinary
+    display text alongside a direct structured result is not success evidence.
     """
-    content = result.get("content")
+    is_error = result.get("isError")
+    structured = result.get("structuredContent")
+    if ("isError" in result and not isinstance(is_error, bool)) or (
+        structured is not None and not isinstance(structured, dict)
+    ):
+        return None, None
+    content = result.get("content", [])
     if not isinstance(content, list):
-        return "malformed", None
-    if not content:
-        return "absent", None
-    if (
-        len(content) != 1
-        or not isinstance(content[0], dict)
-        or set(content[0]) != {"type", "text"}
-        or content[0].get("type") != "text"
-        or not isinstance(content[0].get("text"), str)
-        or len(content[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS
-    ):
-        return "malformed" if result.get("structuredContent") is None else "absent", None
-    try:
-        envelope = json.loads(content[0]["text"])
-    except json.JSONDecodeError:
-        return "malformed" if result.get("structuredContent") is None else "absent", None
-    if not isinstance(envelope, dict) or set(envelope) not in (
-        {"content", "isError"},
-        {"content", "structuredContent", "isError"},
-    ):
-        return "malformed" if result.get("structuredContent") is None else "absent", None
-    envelope_content = envelope.get("content")
-    if (
-        envelope.get("isError") is not is_error
-        or not isinstance(envelope_content, list)
-        or len(envelope_content) != 1
-        or not isinstance(envelope_content[0], dict)
-        or set(envelope_content[0]) != {"type", "text"}
-        or envelope_content[0].get("type") != "text"
-        or not isinstance(envelope_content[0].get("text"), str)
-        or len(envelope_content[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS
-    ):
-        return "malformed", None
-    try:
-        text_structured = json.loads(envelope_content[0]["text"])
-    except json.JSONDecodeError:
-        return "malformed", None
-    if not isinstance(text_structured, dict):
-        return "malformed", None
-    envelope_structured = envelope.get("structuredContent")
-    if envelope_structured is not None:
-        if not isinstance(envelope_structured, dict):
-            return "malformed", None
-        if envelope_structured != text_structured:
-            raise EvidenceError("Codex MCP content result representations conflict")
-    return "valid", text_structured
+        return None, None
+    if content:
+        if (len(content) != 1 or not isinstance(content[0], dict)
+            or set(content[0]) != {"type", "text"} or content[0].get("type") != "text"
+            or not isinstance(content[0].get("text"), str)
+            or len(content[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS):
+            return None, None
+        try:
+            envelope = json.loads(content[0]["text"])
+        except json.JSONDecodeError:
+            # A purported serialized object that is truncated is not display prose.
+            if structured is None or content[0]["text"].lstrip().startswith("{"):
+                return None, None
+            envelope = None
+        if isinstance(envelope, dict) and set(envelope) & {"content", "structuredContent", "isError"}:
+            if (set(envelope) not in (
+                {"content", "isError"}, {"structuredContent", "isError"},
+                {"content", "structuredContent", "isError"},
+            ) or not isinstance(envelope.get("isError"), bool)):
+                return None, None
+            nested_error = envelope["isError"]
+            if is_error is not None and is_error != nested_error:
+                raise EvidenceError("Codex MCP error representations conflict")
+            nested = envelope.get("structuredContent")
+            if nested is not None and not isinstance(nested, dict):
+                return None, None
+            if "content" in envelope:
+                inner = envelope["content"]
+                if (not isinstance(inner, list) or len(inner) != 1
+                    or not isinstance(inner[0], dict) or set(inner[0]) != {"type", "text"}
+                    or inner[0].get("type") != "text" or not isinstance(inner[0].get("text"), str)
+                    or len(inner[0]["text"]) > MAX_MCP_CONTENT_RESULT_CHARS):
+                    return None, None
+                try:
+                    product = json.loads(inner[0]["text"])
+                except json.JSONDecodeError:
+                    return None, None
+                if not isinstance(product, dict):
+                    return None, None
+                if nested is not None and nested != product:
+                    raise EvidenceError("Codex MCP content result representations conflict")
+                nested = product
+            if not isinstance(nested, dict):
+                return None, None
+            if structured is not None and structured != nested:
+                raise EvidenceError("Codex MCP structured result representations conflict")
+            is_error, structured = nested_error, nested
+    return is_error, structured
 
 
 def merge_tool_call_evidence(evidence: list[_ToolCallEvidence]) -> tuple[ToolCall, ...]:

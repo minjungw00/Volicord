@@ -1196,6 +1196,15 @@ Production evidence를 변경하지 않은 validator mismatch injection도 검�
 campaign replay는 non-mutating diagnostic regression일 뿐 campaign repair, requalification
 또는 Phase 8 qualification evidence가 아니다. Raw rollout은 maintained fixture로 복사하지 않는다.
 
+Codex legacy `event_msg.mcp_tool_call_end.result.Ok`와 current
+`item_completed.McpToolCall.result`는 하나의 bounded MCP semantic decoder를 공유한다.
+Direct `isError` boolean과 `structuredContent` object, 또는 single text content block의
+complete JSON CallToolResult envelope를 지원한다. Envelope는 `isError`와 structured
+object 또는 single product-JSON text block을 가진다. Direct/nested/error/product-text
+representations가 함께 있으면 모두 일치해야 한다. 각 text는 최대 2 Mi characters이며
+arbitrary prose, malformed/truncated JSON, unsupported content shape와 conflicting result를
+structured success로 복원하지 않는다. Transport-level `Err`와 semantic MCP error는 실패다.
+
 Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
 보존하기 위한 failure-only command를 제공한다.
 

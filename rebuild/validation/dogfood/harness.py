@@ -13063,6 +13063,8 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 
 def self_test() -> int:
+    from capture_self_test import check_capture_regressions
+    check_capture_regressions()
     from authority_obligations_self_test import self_test as authority_self_test
     authority_obligation_results = authority_self_test()
     definition = load_definition()
