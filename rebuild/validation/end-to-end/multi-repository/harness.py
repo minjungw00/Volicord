@@ -28,6 +28,11 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[4]
 HERE = Path(__file__).resolve().parent
+_performance_spec = importlib.util.spec_from_file_location("v11_performance", HERE / "performance.py")
+assert _performance_spec is not None and _performance_spec.loader is not None
+performance_module = importlib.util.module_from_spec(_performance_spec)
+_performance_spec.loader.exec_module(performance_module)
+PERFORMANCE = performance_module.Collector()
 INSTALLER = ROOT / "rebuild/install.sh"
 SMALL_FIXTURE = ROOT / "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/python"
 POLYGLOT_FIXTURE = HERE / "fixtures/polyglot-medium"
@@ -297,6 +302,7 @@ def make_v11_result(
     duration_ms: float,
     repositories: list[dict[str, Any]],
     revisit_assessment: dict[str, Any],
+    performance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     statuses = [
         value["status"]
@@ -310,7 +316,8 @@ def make_v11_result(
         and isinstance(revisit_assessment.get("active_decision_revisit_triggers"), list)
     )
     no_active_triggers = revisit_assessment.get("active_decision_revisit_triggers") == []
-    phase_8_ready = steps_passed and assessment_completed and no_active_triggers
+    phase_8_ready = steps_passed and assessment_completed and no_active_triggers and (
+        performance is None or performance.get("status") == "passed")
     result = {
         "schema_version": 1,
         "validation_id": "V11",
@@ -323,6 +330,8 @@ def make_v11_result(
         **revisit_assessment,
         "phase_8_ready": phase_8_ready,
     }
+    if performance is not None:
+        result["performance"] = performance
     validate_result(result)
     return result
 
@@ -403,6 +412,7 @@ class Recorder:
             ),
         }
         write_json(directory / "result.json", result)
+        PERFORMANCE.snapshots(env)
         return result
 
 
@@ -633,8 +643,14 @@ class Mcp:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         self.request_id = 0
+        self.env = env
 
     def rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        operation = params.get("name", method) if method == "tools/call" else method
+        with PERFORMANCE.measurement(self.process.pid, operation, self.env):
+            return self._rpc(method, params)
+
+    def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         self.request_id += 1
         assert self.process.stdin is not None and self.process.stdout is not None
         message = {"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}
@@ -2647,6 +2663,11 @@ def validate_result(result: dict[str, Any]) -> None:
         raise AssertionError("V11 result status and Phase 8 readiness disagree")
     if result.get("status") not in {"passed", "failed"}:
         raise AssertionError("V11 result has an invalid aggregate status")
+    performance = result.get("performance")
+    if performance is not None:
+        qualified = performance_module.qualify(performance.get("observed", {}), performance_module.maintained_limits())
+        if qualified != performance or (result.get("phase_8_ready") is True and qualified["status"] != "passed"):
+            raise AssertionError("V11 performance evidence or readiness is inconsistent")
     if result.get("status") == "passed":
         for repository in repositories:
             authenticated = (
@@ -3117,6 +3138,7 @@ def assert_current_materiality_review_contract(source: str) -> None:
 
 
 def self_check() -> int:
+    performance_module.self_check()
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
     if not SMALL_FIXTURE.is_dir() or not POLYGLOT_FIXTURE.is_dir():
@@ -3343,6 +3365,25 @@ def self_check() -> int:
     )
     if active_result["phase_8_ready"] is not False or active_result["status"] != "failed":
         raise AssertionError("active Decision revisit trigger did not block Phase 8")
+    limits = performance_module.maintained_limits()
+    observed = {**limits, "mcp_sample_count": 1, "mcp_call_count": 1, "sampling_error_count": 0}
+    for metric in performance_module.METRICS:
+        report = performance_module.qualify({**observed, metric: limits[metric] + 1}, limits)
+        failed = make_v11_result(
+            validated_production_head="0" * 40,
+            final_gate_artifact="/synthetic/final.json", duration_ms=1.0,
+            repositories=active_result["repositories"], revisit_assessment=assessment,
+            performance=report,
+        )
+        assert failed["counts"]["passed"] == 54
+        assert failed["status"] == "failed" and failed["phase_8_ready"] is False
+        report["status"] = "passed"
+        try:
+            validate_result(failed)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("falsified performance verdict was accepted")
     print(json.dumps({
         "status": "passed",
         "required_steps": len(REQUIRED_STEPS),
@@ -3408,6 +3449,7 @@ def run(args: argparse.Namespace) -> int:
     base_env.setdefault("CARGO_HOME", str(Path.home() / ".cargo"))
     base_env.setdefault("RUSTUP_HOME", str(Path.home() / ".rustup"))
     started = time.monotonic_ns()
+    PERFORMANCE.enabled = True
     repositories = []
     for target in ("volicord", "small-python", "polyglot-medium"):
         try:
@@ -3422,12 +3464,16 @@ def run(args: argparse.Namespace) -> int:
         revisit_assessment = read_decision_revisit_assessment()
     except (OSError, ValueError):
         revisit_assessment = failed_decision_revisit_assessment()
+    duration_ms = round((time.monotonic_ns() - started) / 1_000_000, 3)
+    performance = PERFORMANCE.report(duration_ms)
+    write_json(output / "performance-calls.json", {"calls": PERFORMANCE.calls})
     result = make_v11_result(
         validated_production_head=args.validated_head,
         final_gate_artifact=str(Path(args.final_artifact).resolve()),
-        duration_ms=round((time.monotonic_ns() - started) / 1_000_000, 3),
+        duration_ms=duration_ms,
         repositories=repositories,
         revisit_assessment=revisit_assessment,
+        performance=performance,
     )
     write_json(output / "result.json", result)
     print(json.dumps({

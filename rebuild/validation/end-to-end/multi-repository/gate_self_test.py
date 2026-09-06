@@ -308,6 +308,10 @@ class Owners:
             duration_ms=1.0,
             repositories=repositories,
             revisit_assessment=self.revisit_assessment or harness.read_decision_revisit_assessment(),
+            performance=harness.performance_module.qualify({
+                **{key: 1 for key in harness.performance_module.METRICS},
+                "mcp_call_count": 1, "mcp_sample_count": 1, "sampling_error_count": 0,
+            }, harness.performance_module.maintained_limits()),
         )
         result["raw_repository_source_body"] = SECRET_SENTINELS[3]
         result["raw_provider_payload"] = SECRET_SENTINELS[5]
@@ -432,6 +436,20 @@ def main() -> int:
         assert owners.counts == {"final": 1, "provider": 1, "preflight": 1, "v11": 1, "audit": 1}
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
+        assert capsule["official_v11"]["performance"] == owners.v11_result["performance"]
+        for metric in harness.performance_module.METRICS:
+            class FalsifiedPerformanceOwners(Owners):
+                def v11(self, *args):
+                    result, execution = super().v11(*args)
+                    report = result["performance"]
+                    report["observed"][metric] = report["limits"][metric] + 1
+                    return result, execution
+            rejected, _ = run_orchestration(
+                root / f"performance-{metric}-gate", admitted,
+                FalsifiedPerformanceOwners(root / f"performance-{metric}-owners"),
+            )
+            assert rejected["phase_8_ready"] is False
+            assert rejected["blocking_classification"] == "v11_failed"
         pending_capsule = gate.stage_evidence_archive(capsule)
         assert pending_capsule["phase_8_ready"] is False
         assert pending_capsule["blocking_classification"] == "evidence_archive_pending"

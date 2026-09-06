@@ -1,0 +1,10 @@
+{
+  "policy_version": 1,
+  "basis": "Regression ceilings for the maintained three-target Linux V11 journey; preserve source, provenance, freshness and functional coverage.",
+  "limits": {
+    "mcp_peak_rss_bytes": 4294967296,
+    "max_snapshot_bytes": 2147483648,
+    "v11_duration_ms": 900000,
+    "max_mcp_call_ms": 90000
+  }
+}

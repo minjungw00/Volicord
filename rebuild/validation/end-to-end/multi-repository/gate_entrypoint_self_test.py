@@ -71,6 +71,8 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     shutil.copy2(EVIDENCE_ARCHIVE, evidence_archive)
     shutil.copy2(EVIDENCE_ARCHIVE_VERIFIER, evidence_archive_verifier)
     shutil.copy2(GATE, gate)
+    for name in ("performance.py", "performance-budgets.json"):
+        shutil.copy2(GATE.with_name(name), gate.with_name(name))
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
 
     (candidate / ".gitignore").write_text("/rebuild/.local/\n", encoding="utf-8")
@@ -177,6 +179,8 @@ def assert_maintained_preflight(parent: Path) -> None:
     harness = candidate / "rebuild/validation/end-to-end/multi-repository/harness.py"
     harness.parent.mkdir(parents=True)
     shutil.copy2(HARNESS, harness)
+    for name in ("performance.py", "performance-budgets.json"):
+        shutil.copy2(HARNESS.with_name(name), harness.with_name(name))
     assert git(candidate, "init", "-q").returncode == 0
     assert git(candidate, "add", ".").returncode == 0
     committed = run(

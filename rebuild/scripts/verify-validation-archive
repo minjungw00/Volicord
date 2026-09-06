@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path, PurePosixPath
 import re
 import sys
@@ -14,6 +15,36 @@ from typing import Any
 
 
 ROOT = "validation-evidence"
+
+
+def verify_performance(capsule):
+    official = capsule.get("official_v11", {})
+    report = official.get("performance")
+    if report is None:
+        if official.get("phase_8_ready") is True:
+            fail("ready V11 has no performance evidence")
+        return
+    if not isinstance(report, dict):
+        fail("invalid V11 performance evidence")
+    metrics = {"mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms"}
+    limits, observed = report.get("limits", {}), report.get("observed", {})
+    if not isinstance(limits, dict) or not isinstance(observed, dict) or set(limits) != metrics:
+        fail("invalid V11 performance metric schema")
+    valid = all(type(limits[key]) is int and limits[key] > 0
+                and type(observed.get(key)) in (int, float)
+                and math.isfinite(observed[key]) and observed[key] >= 0 for key in metrics)
+    measured = valid and all(type(observed.get(key)) is int and observed[key] > 0
+                            for key in ("mcp_sample_count", "mcp_call_count"))
+    measured = measured and observed.get("sampling_error_count") == 0 and observed.get("max_snapshot_bytes", 0) > 0
+    exceeded = sorted(key for key in metrics if valid and observed[key] > limits[key])
+    passed = bool(measured and not exceeded)
+    if (report.get("measurement_complete") is not bool(measured)
+            or report.get("exceeded") != exceeded
+            or report.get("status") != ("passed" if passed else "failed")
+            or (official.get("phase_8_ready") is True and not passed)):
+        fail("V11 performance verdict disagrees with measurements")
+
+
 MAX_ARCHIVE_BYTES = 512 * 1024
 MAX_MEMBER_BYTES = 256 * 1024
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -706,6 +737,7 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     verify_process_payloads(contents)
 
     capsule = load_json(contents, f"{ROOT}/capsule.json")
+    verify_performance(capsule)
     admission = load_json(contents, f"{ROOT}/admission.json")
     gate_result = load_json(contents, f"{ROOT}/gate-result.json")
     tracked = load_json(contents, f"{ROOT}/tracked-files.json")

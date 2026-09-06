@@ -67,6 +67,17 @@ def payloads() -> dict[str, object]:
             "final_summary_sha256": None,
             "evidence_archive": {"status": "pending"},
             "phase_8_ready": False,
+            "official_v11": {
+                "phase_8_ready": True,
+                "performance": {
+                    "status": "passed", "measurement_complete": True, "exceeded": [],
+                    "limits": {key: 100 for key in (
+                        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms")},
+                    "observed": {"mcp_peak_rss_bytes": 100, "max_snapshot_bytes": 100,
+                        "v11_duration_ms": 100, "max_mcp_call_ms": 100,
+                        "mcp_sample_count": 1, "mcp_call_count": 1, "sampling_error_count": 0},
+                },
+            },
         },
         "gate-result.json": {
             "kind": "validation_gate_result",
@@ -1133,6 +1144,16 @@ def main() -> int:
             return archive_payloads["capsule.json"]["live_provider_qualification"][
                 "evidence"
             ]["retained_evidence"]
+
+        for metric in ("mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms"):
+            rejected_attestation(
+                f"falsified-performance-{metric}",
+                lambda values: values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__(metric, 101),
+            )
+        rejected_attestation("missing-performance", lambda values:
+            values["capsule.json"]["official_v11"].pop("performance"))
+        rejected_attestation("unmeasured-performance", lambda values:
+            values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__("mcp_sample_count", 0))
 
         source_content = rejected_attestation(
             "negative-attestation-source-content",

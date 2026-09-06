@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,10 @@ ROOT = Path(__file__).resolve().parents[4]
 REBUILD_ROOT = ROOT / "rebuild"
 HERE = Path(__file__).resolve().parent
 HARNESS = HERE / "harness.py"
+_performance_spec = importlib.util.spec_from_file_location("gate_performance", HERE / "performance.py")
+assert _performance_spec is not None and _performance_spec.loader is not None
+performance_module = importlib.util.module_from_spec(_performance_spec)
+_performance_spec.loader.exec_module(performance_module)
 ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
 DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
@@ -838,6 +843,7 @@ def make_capsule(
             "required_step_count": sum(counts.values()) if counts else 0,
             "status_counts": counts,
             "phase_8_ready": bool(v11_result and v11_result.get("phase_8_ready")),
+            "performance": v11_result.get("performance") if v11_result else None,
         },
         "required_identities": {
             "candidate_head": candidate_head,
@@ -1073,6 +1079,7 @@ def orchestrate(
         and v11_result is not None
         and v11_result.get("status") == "passed"
         and v11_result.get("phase_8_ready") is True
+        and performance_module.accepted(v11_result.get("performance"))
         and revisit_evidence_view(v11_result)[3]
         and revisit_evidence_view(v11_result)[1] == []
     )

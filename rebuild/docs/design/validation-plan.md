@@ -920,6 +920,23 @@ action/target/effect/scope/revision/expiration match, user-response Source, sing
 rejection, no-dispatch-before-valid-confirmation, ordinary-action non-blocking 및
 indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한다.
 
+### V11 resource regression qualification
+
+Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께
+검사한다: MCP process high-water RSS 4 GiB, snapshot 파일 하나 2 GiB, V11 journey
+15분, 개별 MCP RPC 90초. 이는 현재 three-target journey의 회귀 상한이며 일반 제품의
+모든 repository에 대한 latency SLA는 아니다. 상한 초과 또는 측정 누락/오류는 functional
+54개가 통과해도 aggregate readiness를 막는다. 변경 시 실제 원인과 근거를 검토하며
+실패 실행을 통과시키기 위해 관측값에 맞춰 상한을 올리지 않는다.
+
+각 RPC는 monotonic duration과 Linux `/proc` VmHWM을 50ms 간격으로 관측하고 호출
+종료 시 한 번 더 읽는다. VmHWM은 그 프로세스의 누적 high-water 값이므로 call-local
+allocation delta로 해석하지 않는다. Snapshot publication 이후 파일 크기를 검사한다.
+Raw per-call 수치는 ignored evidence에, bounded aggregate/ceiling/verdict는 gate capsule과
+sanitized archive에 보존한다. RPC argument/response나 Source body는 성능 기록에 넣지
+않는다. Self-check는 초과값, NaN, 측정 누락/오류의 거부와 실제 local process 관측을
+검사한다. Functional coverage, provenance, freshness를 줄여서 이 상한을 만족시키지 않는다.
+
 ### Phase 8 naturalistic Dogfood qualification
 
 Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification

@@ -25,6 +25,8 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/end-to-end/multi-repository/evidence_archive.py",
     "rebuild/validation/end-to-end/multi-repository/gate.py",
     "rebuild/validation/end-to-end/multi-repository/harness.py",
+    "rebuild/validation/end-to-end/multi-repository/performance.py",
+    "rebuild/validation/end-to-end/multi-repository/performance-budgets.json",
     "rebuild/scripts/check-fixture-manifest",
     "rebuild/scripts/check-architecture-contracts",
     "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
