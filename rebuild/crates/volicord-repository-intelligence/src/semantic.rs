@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "2";
+const SEMANTIC_ANALYZER_VERSION: &str = "3";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {
@@ -139,10 +139,10 @@ fn analyze_repository_semantics_inner(
     let canonical_grounding = request.structural.inventory.canonical_grounding.clone();
     let (repository, mut analysis) =
         analyze_repository(request.structural).map_err(SemanticAnalysisError::structural)?;
-    let facts = analysis.structural_facts.clone();
+    let facts = std::mem::take(&mut analysis.structural_facts);
     let by_identity = facts
         .iter()
-        .map(|fact| (fact.entity.identity.clone(), fact.entity.clone()))
+        .map(|fact| (fact.entity.identity.clone(), &fact.entity))
         .collect::<BTreeMap<_, _>>();
     let mut results = Vec::new();
     let mut diagnostics = Vec::new();
@@ -265,11 +265,26 @@ fn analyze_repository_semantics_inner(
         );
         replace_semantic_capability(&mut analysis, report);
         update_ecosystem_capability(&mut analysis, &language, state, &diagnostic_ids);
+        let mut diagnostics_by_area: BTreeMap<&AreaId, Vec<String>> = BTreeMap::new();
+        for diagnostic in &language_diagnostics {
+            diagnostics_by_area
+                .entry(&diagnostic.affected_area)
+                .or_default()
+                .push(diagnostic.identity.clone());
+        }
         for mut basis in language_bases {
             basis.adapter = semantic_adapter(&language);
             basis.analyzer = semantic_analyzer();
-            basis.state = state;
-            basis.diagnostic_ids = diagnostic_ids.clone();
+            // File bases own file-scoped diagnostics. Repository-wide diagnostics remain
+            // on the language capability and in the shared diagnostic catalog.
+            if let Some(local) = diagnostics_by_area.get(&basis.area) {
+                basis.diagnostic_ids.extend(local.iter().cloned());
+                if basis.state == CapabilityState::Available {
+                    basis.state = CapabilityState::Partial;
+                }
+            }
+            basis.diagnostic_ids.sort();
+            basis.diagnostic_ids.dedup();
             bases.push(basis);
             refresh.analyzed_file_count += 1;
         }
@@ -277,6 +292,8 @@ fn analyze_repository_semantics_inner(
         diagnostics.extend(language_diagnostics);
     }
 
+    drop(by_identity);
+    analysis.structural_facts = facts;
     apply_canonical_links(&mut analysis, canonical_links, &canonical_grounding)?;
     analysis.semantic_results = results;
     analysis.semantic_bases = bases;
@@ -372,7 +389,7 @@ fn add_definition_relations(
 
 fn add_structural_semantics(
     facts: &[&crate::StructuralFact],
-    entities: &BTreeMap<String, CodeEntity>,
+    entities: &BTreeMap<String, &CodeEntity>,
     sources: &BTreeMap<String, String>,
     results: &mut Vec<SemanticAnalysisResult>,
     diagnostics: &mut Vec<AnalysisDiagnostic>,
@@ -479,7 +496,7 @@ fn add_overrides(
     implementing: &CodeEntity,
     target_identity: &str,
     facts: &[&crate::StructuralFact],
-    entities: &BTreeMap<String, CodeEntity>,
+    entities: &BTreeMap<String, &CodeEntity>,
     sources: &BTreeMap<String, String>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
@@ -516,7 +533,7 @@ fn add_overrides(
 
 fn add_type_relations(
     facts: &[&crate::StructuralFact],
-    entities: &BTreeMap<String, CodeEntity>,
+    entities: &BTreeMap<String, &CodeEntity>,
     sources: &BTreeMap<String, String>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,

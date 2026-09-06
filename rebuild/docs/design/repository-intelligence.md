@@ -384,6 +384,10 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   Source-semantic analyzer version `2`는 이름/type/override 후보의 첫 항목을
   임의로 선택하지 않는다. Observation-bound identity의 정렬 순서는 해석 근거가
   아니며, 중복 override 후보로는 확정된 override relation을 만들지 않는다.
+- Source-semantic analyzer version `3`의 file basis는 해당 파일의 structural 및
+  semantic diagnostic ID만 보유한다. 언어/repository 전체 진단은 shared diagnostic
+  catalog와 capability report가 보존하며, 다른 파일의 진단을 모든 file basis에
+  복제하지 않는다. File capability state는 local failure/partial basis를 보존한다.
 - Java package/Maven manifest, TypeScript relative module/Node·`tsconfig`, Rust
   module/Cargo·explicit trait impl evidence를 build context로 기록하되 external package
   body, generated source와 compiler-only resolution을 current fact로 만들지 않는다.

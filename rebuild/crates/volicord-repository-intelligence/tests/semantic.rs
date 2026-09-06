@@ -41,6 +41,88 @@ fn inventory(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
 }
 
 #[test]
+fn file_semantic_diagnostics_preserve_scope_and_grow_linearly() -> Result<(), Box<dyn Error>> {
+    for (extension, body) in [
+        ("rs", "pub fn run() { missing_external(); }\n"),
+        ("ts", "export function run() { missing_external(); }\n"),
+        (
+            "java",
+            "class Example { void run() { missing_external(); } }\n",
+        ),
+    ] {
+        for count in [8, 16] {
+            let root = tempdir()?;
+            for file in 0..count {
+                fs::write(root.path().join(format!("unit{file}.{extension}")), body)?;
+            }
+            fs::write(
+                root.path().join(format!("clean.{extension}")),
+                match extension {
+                    "rs" => "pub struct Clean;\n",
+                    "ts" => "export class Clean {}\n",
+                    _ => "class Clean {}\n",
+                },
+            )?;
+            let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+                StructuralAnalysisRequest::new(inventory(root.path())?),
+            ))?;
+            let mut file_references = 0;
+            for basis in &analysis.semantic_bases {
+                for id in &basis.diagnostic_ids {
+                    let diagnostic = analysis
+                        .diagnostics
+                        .iter()
+                        .find(|d| d.identity == *id)
+                        .ok_or("dangling file diagnostic")?;
+                    assert_eq!(diagnostic.affected_area, basis.area);
+                    file_references += 1;
+                }
+                if basis.area.path.starts_with("clean.") {
+                    assert!(basis.diagnostic_ids.is_empty());
+                    assert_eq!(basis.state, CapabilityState::Available);
+                } else {
+                    assert!(!basis.diagnostic_ids.is_empty());
+                    assert_eq!(basis.state, CapabilityState::Partial);
+                }
+            }
+            assert!(file_references >= count);
+            assert!(
+                file_references <= count * 3,
+                "per-file storage must not multiply global diagnostics"
+            );
+            let semantic = analysis
+                .capabilities
+                .iter()
+                .find(|c| c.capability == Capability::Semantic && c.analyzer.is_some())
+                .ok_or("semantic capability")?;
+            assert_eq!(semantic.state, CapabilityState::Partial);
+            for diagnostic in analysis
+                .diagnostics
+                .iter()
+                .filter(|d| d.capability == Capability::Semantic)
+            {
+                assert!(
+                    semantic.diagnostics.contains(&diagnostic.identity),
+                    "global report lost diagnostic"
+                );
+                if analysis
+                    .semantic_bases
+                    .iter()
+                    .any(|b| b.area == diagnostic.affected_area)
+                {
+                    assert!(analysis
+                        .semantic_bases
+                        .iter()
+                        .any(|b| b.area == diagnostic.affected_area
+                            && b.diagnostic_ids.contains(&diagnostic.identity)));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result<(), Box<dyn Error>>
 {
     for (fixture_name, language) in [
@@ -62,7 +144,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "2"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "3"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));
