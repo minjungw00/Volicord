@@ -9,7 +9,7 @@ and booleans rather than source bodies or arbitrary tool output.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from pathlib import Path
@@ -1179,6 +1179,78 @@ def custom_output_object(value: Any) -> dict[str, Any] | None:
 
 
 @dataclass(frozen=True)
+class WorkTurn:
+    turn_id: str
+    start_sequence: int
+    end_sequence: int | None
+    state: str
+
+
+@dataclass(frozen=True)
+class TurnLifecycle:
+    state: str
+    turns: tuple[WorkTurn, ...]
+    issues: tuple[str, ...]
+
+    @property
+    def last_interruption(self) -> int:
+        return max((turn.end_sequence for turn in self.turns
+                    if turn.state == "interrupted" and turn.end_sequence is not None), default=-1)
+
+    def contains_completion(self, turn_id: str, start: int, end: int) -> bool:
+        return any(turn.turn_id == turn_id and turn.start_sequence < start <= end
+                   and (turn.end_sequence is None or end < turn.end_sequence)
+                   for turn in self.turns)
+
+
+def normalize_turn_lifecycle(events: list[dict[str, Any]]) -> TurnLifecycle:
+    """Use ordered starts; identity-less completion closes only the active turn.
+
+    A new distinct start interrupts an open turn. Duplicate starts, late or
+    orphan completions and conflicting context are evidence, never repairs.
+    """
+    turns: list[WorkTurn] = []
+    issues: list[str] = []
+    seen: set[str] = set()
+    active: int | None = None
+    for sequence, event in enumerate(events):
+        payload = event.get("payload")
+        if event.get("type") != "event_msg" or not isinstance(payload, dict):
+            continue
+        kind = payload.get("type")
+        identity = payload.get("turn_id")
+        if kind == "task_started":
+            if not nonempty(identity):
+                issues.append("start_identity_missing")
+                continue
+            if identity in seen:
+                issues.append("start_identity_reused")
+                continue
+            seen.add(identity)
+            if active is not None:
+                turns[active] = replace(turns[active], end_sequence=sequence, state="interrupted")
+            turns.append(WorkTurn(identity, sequence, None, "incomplete"))
+            active = len(turns) - 1
+        elif kind in {"task_complete", "task_completed", "turn_aborted"}:
+            if active is None:
+                issues.append("terminal_without_active_turn")
+                continue
+            if "turn_id" in payload and identity != turns[active].turn_id:
+                issues.append("terminal_identity_conflict")
+                continue
+            turns[active] = replace(turns[active], end_sequence=sequence,
+                                    state="interrupted" if kind == "turn_aborted" else "completed")
+            active = None
+    state = (
+        "indeterminate" if issues or not turns else
+        "terminal_incomplete" if turns[-1].state != "completed" else
+        "completed_after_interruption" if any(turn.state == "interrupted" for turn in turns) else
+        "completed"
+    )
+    return TurnLifecycle(state, tuple(turns), tuple(sorted(set(issues))))
+
+
+@dataclass(frozen=True)
 class CodexCapture:
     source_sha256: str
     session_id: str
@@ -1191,6 +1263,7 @@ class CodexCapture:
     fresh_user_thread: bool
     repository_scoped_activation_observed: bool
     activation_evidence_state: str
+    turn_lifecycle: TurnLifecycle
     task_sequences: tuple[int, ...]
     completed_task_sequences: tuple[int, ...]
     compacted_sequences: tuple[int, ...]
@@ -1438,6 +1511,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     git = meta.get("git") if isinstance(meta.get("git"), dict) else {}
     git_revision = git.get("commit_hash") if nonempty(git.get("commit_hash")) else None
 
+    turn_lifecycle = normalize_turn_lifecycle(events)
     current_turn: str | None = None
     task_sequences: list[int] = []
     completed_task_sequences: list[int] = []
@@ -1901,7 +1975,16 @@ def load_codex_capture(path: Path) -> CodexCapture:
         raise EvidenceError("Codex MCP completion refers to an unknown turn identity")
     if any(value.turn_id not in known_turn_ids for value in evidence_transport_issues):
         raise EvidenceError("Codex MCP transport issue refers to an unknown turn identity")
-    tool_calls = merge_tool_call_evidence(tool_call_evidence)
+    tool_calls = tuple(
+        call if turn_lifecycle.contains_completion(call.turn_id, call.sequence, call.completion_sequence)
+        else replace(call, outcome="failed", error="completion_outside_turn")
+        for call in merge_tool_call_evidence(tool_call_evidence)
+    )
+    commands = [
+        command if turn_lifecycle.contains_completion(command.turn_id, command.sequence, command.completion_sequence)
+        else replace(command, exit_code=None, termination=None, evidence_state="indeterminate")
+        for command in commands
+    ]
     commands.sort(key=lambda value: (value.sequence, value.group_index))
     if any(value.turn_id not in known_turn_ids for value in raw_path_observations):
         raise EvidenceError("Codex file change refers to an unknown turn identity")
@@ -1935,6 +2018,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         fresh_user_thread=fresh_user_thread,
         repository_scoped_activation_observed=repository_scoped_activation_observed,
         activation_evidence_state=activation_state,
+        turn_lifecycle=turn_lifecycle,
         task_sequences=tuple(task_sequences),
         completed_task_sequences=tuple(completed_task_sequences),
         compacted_sequences=tuple(compacted_sequences),

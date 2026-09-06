@@ -1111,6 +1111,16 @@ terminal state로 결정하며 malformed final candidate에서 earlier valid Che
 applicable Decision 또는 evidence-backed no-Decision behavior basis과 correlated numeric-exit
 verification을 충족해야 한다.
 
+Work turn lifecycle은 `completed`, `completed_after_interruption`, `terminal_incomplete`,
+`indeterminate`를 구분한다. Unique `task_started.turn_id`와 ordered completion을 사용하며
+identity 없는 completion은 현재 열린 turn에만 연결한다. 새 distinct start는 열린 이전 turn을
+`interrupted`로 보존한다. Duplicate start, orphan/late/conflicting completion은 추정하지 않는다.
+중간 중단 뒤 완료는 마지막 중단 이후 numeric-exit verification과 latest successful terminal
+Checkpoint, 그 뒤 terminal turn completion이 있어야 인정한다. 기존 Goal/baseline, authority,
+changed basis와 Checkpoint grounding 검증은 그대로 적용한다. 이전 turn에서 미완료된 tool/command의
+늦은 output은 successful verification이 아니며 unrelated later completion만으로 복구되지 않는다.
+마지막 turn이 열린 채 끝나거나 abort되면 `terminal_incomplete` evidence failure다.
+
 Fresh resume session의 exact first task에는 Project ID가 포함되지 않는다. Repository
 inspection 또는 continued work 전에 current repository path로 `project_resolve`가
 `found`를 성공적으로 반환하고, 그 result의 Project identity가 cycle canonical bundle의

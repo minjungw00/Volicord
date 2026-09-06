@@ -4342,6 +4342,39 @@ def work_blocker_behavior_observations(
     )
 
 
+class WorkCaptureContractError(ValueError):
+    """Supported capture defect, distinct from a validator invariant failure."""
+
+    def __init__(self, basis: str):
+        self.basis = basis
+        self.check = "work_turn_lifecycle"
+        super().__init__(f"work capture is not machine-observably completed: {basis}")
+
+
+class NoWorkBlocker(ValueError):
+    """Failure-only evaluation found no terminal behavior blocker."""
+
+
+def require_completed_work(capture: CodexCapture) -> None:
+    lifecycle = capture.turn_lifecycle
+    if lifecycle.state not in {"completed", "completed_after_interruption"}:
+        raise WorkCaptureContractError(lifecycle.state)
+    if lifecycle.state == "completed_after_interruption":
+        checkpoint = terminal_checkpoint_call(capture)
+        if checkpoint is None or checkpoint.outcome != "succeeded":
+            raise WorkCaptureContractError("recovery_terminal_checkpoint_missing")
+        if not any(
+            lifecycle.last_interruption < command.sequence
+            and command.completion_sequence < checkpoint.sequence
+            and command.evidence_state == "completed"
+            and command.termination == "exited" and command.exit_code == 0
+            and not command_is_clean_git_status(command.parsed_command)
+            and not command_is_repository_inspection(command.parsed_command)
+            for command in capture.commands
+        ):
+            raise WorkCaptureContractError("recovery_verification_missing")
+
+
 def build_work_blocker_result(
     candidate_head: str,
     descriptor: dict[str, Any],
@@ -4374,12 +4407,7 @@ def build_work_blocker_result(
         )
     ):
         raise ValueError("work capture does not match the descriptor and fresh VS Code Codex contract")
-    if (
-        not capture.task_sequences
-        or len(capture.completed_task_sequences) < len(capture.task_sequences)
-        or max(capture.completed_task_sequences) <= max(capture.task_sequences)
-    ):
-        raise ValueError("work capture is not machine-observably completed")
+    require_completed_work(capture)
 
     activation_problem = activation_failure(capture)
     activation_observed = activation_problem is None
@@ -4503,7 +4531,7 @@ def build_work_blocker_result(
         else [name for name in required_checks if not observed[name]]
     )
     if not failed_checks:
-        raise ValueError(
+        raise NoWorkBlocker(
             "completed work capture has no machine-observable terminal work blocker; use normal full qualification"
         )
     evidence_transport = work_evidence_transport_attribution(capture, failed_checks)
@@ -7327,6 +7355,7 @@ def checkpoint_verification_facts(
             command
             for command in work.commands
             if command.completion_sequence < call.sequence
+            and command.sequence > work.turn_lifecycle.last_interruption
             and (command.sequence, command.group_index) not in used_command_occurrences
             and command_invocation_fingerprint(command) == invocation_fingerprint
             and command.exit_code == exit_code
@@ -7436,7 +7465,15 @@ def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
     if work is None:
         return None
     calls = work.calls("checkpoint_record")
-    return max(calls, key=lambda call: call.sequence) if calls else None
+    call = max(calls, key=lambda call: call.sequence) if calls else None
+    if call is not None and work.turn_lifecycle.last_interruption >= 0:
+        terminal = work.turn_lifecycle.turns[-1]
+        if (work.turn_lifecycle.state != "completed_after_interruption"
+            or call.sequence <= work.turn_lifecycle.last_interruption
+            or terminal.end_sequence is None
+            or call.completion_sequence >= terminal.end_sequence):
+            return None
+    return call
 
 
 def checkpoint_facts(
@@ -7450,6 +7487,10 @@ def checkpoint_facts(
 ) -> tuple[bool, bool, bool, str | None, list[str], str | None]:
     call = terminal_checkpoint_call(work)
     if call is None or work is None or bundle is None:
+        return False, False, False, None, [], None
+    try:
+        require_completed_work(work)
+    except WorkCaptureContractError:
         return False, False, False, None, [], None
     checkpoint_id = call.result.get("checkpoint_id")
     checkpoint = bundle.one("checkpoints", id=checkpoint_id, project_id=bundle.project_id)
@@ -13535,6 +13576,59 @@ def self_test() -> int:
                 raise
         else:
             raise AssertionError(f"valid current {label} work intake became a blocker")
+
+    # Production-like A completed, B dangling, C recovered with terminal work.
+    recovery_events = [json.loads(line) for line in current_work_path.read_text().splitlines()]
+    starts = [index for index, event in enumerate(recovery_events)
+              if event.get("payload", {}).get("type") == "task_started"]
+    recovery_events[starts[-1]:starts[-1]] = [
+        {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "interrupted-turn"}},
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "call_id": "interrupted-command", "name": "exec",
+            "input": 'text(await tools.exec_command({"cmd":"python3 -m unittest tests.test_existing"}));',
+            "internal_chat_message_metadata_passthrough": {"turn_id": "interrupted-turn"},
+        }},
+    ]
+    recovery_path = evidence_directory / "recovered-work.jsonl"
+
+    def recovery_capture(events: list[dict[str, Any]]) -> CodexCapture:
+        recovery_path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        return load_codex_capture(recovery_path)
+
+    small_recovery = load_codex_capture(HERE / "fixtures/recovered-work-turns.jsonl")
+    assert small_recovery.turn_lifecycle.state == "completed_after_interruption"
+    assert small_recovery.turn_lifecycle.turns[-1].turn_id == "turn-C"
+    assert not small_recovery.commands, "dangling command became verification evidence"
+    recovered = recovery_capture(recovery_events)
+    assert len(recovered.completed_task_sequences) < len(recovered.task_sequences), "old aggregate decision must reject"
+    assert recovered.turn_lifecycle.state == "completed_after_interruption"
+    assert [turn.state for turn in recovered.turn_lifecycle.turns] == ["completed", "interrupted", "completed"]
+    assert_current_work_intake_passes(current_transport_fixture, recovered, "recovered interruption")
+    for label, events in (
+        ("terminal_incomplete", recovery_events[:-1]),
+        ("unrelated_completed_turn", recovery_events + [
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "dangling-last"}},
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "unrelated-last"}},
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+        ]),
+        ("duplicate_start", recovery_events + [
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "interrupted-turn"}},
+        ]),
+        ("identityless_orphan_completion", recovery_events + [
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+        ]),
+        ("conflicting_completion", recovery_events + [
+            {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "interrupted-turn"}},
+        ]),
+        ("missing_verification", [event for event in recovery_events
+            if event.get("payload", {}).get("type") != "custom_tool_call_output"]),
+    ):
+        try:
+            require_completed_work(recovery_capture(events))
+        except WorkCaptureContractError:
+            pass
+        else:
+            raise AssertionError(f"{label} was guessed into recovered work success")
 
     sanitized_passing_behavior_shapes = (
         "learning_routine_control",
