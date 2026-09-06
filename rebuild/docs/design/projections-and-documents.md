@@ -594,3 +594,12 @@ database, API, MCP method, output publication mechanism과 host wire format을 �
 compatibility도 정의하지 않는다. Production failure matrix는
 [Failure와 Recovery 계약](failure-and-recovery.md), versioning은
 [Versioning 정책](versioning-policy.md)이 소유한다.
+
+### Projection materialization resource boundary
+
+Repository map의 topology 선택은 borrowed entity/relation identity, kind와 endpoint를
+사용한다. Canonical-linked importance, connected endpoint retention, deterministic ordering과
+omission accounting을 먼저 확정하고, 선택된 항목의 Source/range/freshness/uncertainty/
+diagnostic payload만 MapEntity/MapRelation으로 복제한다. 출력 bound는 직렬화 크기뿐
+아니라 이러한 rich projection payload의 생성 수에도 적용한다. 선택 전 lightweight
+lookup/degree/ranking index의 메모리는 입력 graph 크기에 비례할 수 있다.
