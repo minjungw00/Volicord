@@ -1217,7 +1217,15 @@ def main() -> int:
     from authority_obligations_self_test import self_test as authority_obligation_self_test
     if human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract():
         raise AssertionError("maintained authority obligation schema drifted from the human-review consumer")
-    if len(authority_obligation_self_test()) != 5:
+    required_authority_regressions = {
+        "different_wording_same_authority_obligation", "stronger_repository_contract_disproves_concern",
+        "unrelated_question_plus_silent_target_commitment", "prototype_defer_without_production_commitment", "trivial_question_ceremony",
+        "interaction_unrelated_decisions", "interaction_silent_durability", "interaction_explicit_contract",
+        "interaction_accepted_prior_outcome", "interaction_exact_durability_delegation", "interaction_different_question_decomposition",
+        "interaction_late_resolution", "interaction_avoided", "interaction_deferred", "interaction_scratch_prototype",
+        "human_review_exposes_interaction_and_planned_commitment_identities",
+    }
+    if not required_authority_regressions <= authority_obligation_self_test().keys():
         raise AssertionError("required authority obligation regression scenarios are missing")
     behavior_criteria = human_review.get("interaction_behavior_criterion_contracts", {})
     material_grounding = human_review.get("material_completeness_grounding", {})
