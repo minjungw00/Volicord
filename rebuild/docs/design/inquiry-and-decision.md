@@ -64,22 +64,32 @@ Discovery를 complete로 기록하기 전에 active agent는 다음 counterfactu
 product outcome이 가능한가?" Public API/observable semantics, compatibility/support, failure policy,
 persistence/lifetime, privacy/security, user-visible default, concurrency/resource/operability와 other
 material outcome을 현재 repository scope에 맞게 검토한다. Retained `material_boundary_review`는 각
-closed effect category에 대해 real `choice_id`를 연결하거나 Source-grounded
-`no_independent_fork` semantic judgment를 명시한다. 이 completeness assertion은 active-agent
-판단의 audit trail이며 production은 category coverage, real choice linkage, Source provenance와 closed
-shape만 검증하고 hidden semantic truth를 추론하지 않는다. Repository-settled behavior, private helper
-naming/split와 test fixture selection에는 fake choice를 만들지 않는다.
+closed effect category에 대해 concrete `reviewed_outcomes`와 real `choice_id`를 연결하거나
+Source-grounded `no_independent_fork`를 기록한다. No-fork는 `mechanically_equivalent`,
+`settled_by_current_sources`, `outside_affected_scope` 중 typed basis와 rationale를 가진다.
+Category는 ownership classifier가 아닌 semantic review prompt다.
 
-각 alternative의 `material_decomposition`은 `materially_atomic` rationale 또는
-`decomposed` subordinate `choice_ids`를 명시한다. Atomic rationale는 choice의 current Source에
-근거하여 그 alternative를 선택해도 별도의 materially distinct product outcome이 남지 않는
-이유를 설명한다. Non-atomic alternative는 같은 Discovery 안의 non-empty subordinate choice를
-참조하고 그 choice의 alternatives도 같은 closure를 만족한다. Missing identity, self-reference,
-cycle, duplicate choice/alternative accounting은 거부하며 open decomposition은 Materiality
-readiness가 될 수 없다. Decomposition은 coupling이나 authority가 아니므로 subordinate user-owned
-outcome은 독립적인 기존 Question 경로를 따른다. Private naming, local extraction, mechanically
-equivalent representation은 source-grounded atomic rationale로 종료하며 추가 Question을 만들지 않는다.
-Production은 graph와 typed closure를 검사하고 semantic atomicity 판단은 active agent가 소유한다.
+각 alternative의 `material_decomposition`은 `materially_atomic` 또는 `decomposed`다.
+Atomic alternative는 rationale와 structured `residual_fork_closure`를 반드시 가진다.
+`fixed_outcome`은 그 alternative가 고정하는 concrete material/observable outcome이고,
+`credible_implementations`는 이를 만족하는 서로 다른 두 개 이상의 구현을 비교한다.
+`remaining_material_outcomes`는 atomic closure에서 반드시 비어 있어야 하며 `source_basis`는
+그 비교의 equivalence 또는 authoritative settlement를 뒷받침하는 non-empty current choice
+Source identity다. Rationale는 그 Source가 왜 independent material outcome이 남지 않는다는
+결론을 지지하는지 설명한다. Source linkage는 exact alternative/choice/Discovery identity 안에
+보존된다. 비교가 material outcome을 남기면 prose로 atomic하게 닫지 않고 같은 Discovery의
+explicit subordinate `choice_ids`로 decomposition한다. 모든 subordinate alternative도 재귀적으로
+닫혀야 하며 missing identity, self-reference, cycle과 duplicate accounting은 거부한다.
+
+Response-file 지원 자체는 process-directory와 response-file-directory relative-path policy를
+정하지 않고, direct scalar compatibility 지원 자체는 configuration-source precedence를 정하지
+않는다. 이 residual outcome은 explicit subordinate choice 또는 그 outcome을 유일하게 정하는
+current Source authority로 드러나야 한다. Decomposition은 coupling이나 authority가 아니므로
+subordinate user-owned outcome은 독립 Materiality/Question 경로를 따른다. Private naming, helper
+extraction과 mechanically equivalent representation은 비교와 Source-grounded closure로 끝나며
+fake Question을 만들지 않는다. Production은 declared residual contradiction, graph, typed shape와
+current Source linkage를 검증한다. Undeclared semantic truth, implementation credibility와 settlement
+해석의 정확성은 bounded active-agent/human judgment에 남는다.
 
 Independent choice는 별도 identity로 유지한다. "result retry behavior", "custom parser reload"
 같은 broad Goal label은 API, failure, persistence, network, instrumentation 또는 compatibility

@@ -165,6 +165,7 @@ def material_boundary_review(
     return [
         {
             "effect_category": category,
+            "reviewed_outcomes": [f"Fixture observable behavior within {category}"],
             "conclusion": (
                 {
                     "state": "represented_by_choices",
@@ -177,6 +178,7 @@ def material_boundary_review(
                 if any(category in choice["effect_categories"] for choice in choices)
                 else {
                     "state": "no_independent_fork",
+                    "basis": "outside_affected_scope",
                     "rationale": f"The V11 source basis exposes no independent {category} fork.",
                 }
             ),
@@ -1343,8 +1345,8 @@ def rehearse_target(
                         "summary": "Choose how this Project preserves its durable context boundary",
                         "affected_scope": ["project-context"],
                         "alternatives": [
-                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "local", "summary": "Keep canonical context local", "technical_consequences": ["Canonical context remains locally controlled"]},
-                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "remote", "summary": "Use provider-backed canonical context", "technical_consequences": ["Canonical behavior would depend on a separately authorized provider boundary"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "local", "summary": "Keep canonical context local", "technical_consequences": ["Canonical context remains locally controlled"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "remote", "summary": "Use provider-backed canonical context", "technical_consequences": ["Canonical behavior would depend on a separately authorized provider boundary"]},
                         ],
                         "technical_consequences": ["The outcome changes durable local versus provider-backed behavior"],
                         "source_ids": [source_id] if source_id else [],
@@ -1357,8 +1359,8 @@ def rehearse_target(
                         "summary": "Represent bounded state as ordered records or a keyed index",
                         "affected_scope": ["internal-state", "v11-ordinary-work.txt"],
                         "alternatives": [
-                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
-                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "ordered-records", "summary": "Use ordered records", "technical_consequences": ["Simple deterministic iteration with bounded lookup"]},
+                            {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "keyed-index", "summary": "Use a keyed index", "technical_consequences": ["Direct lookup with additional ordering and synchronization obligations"]},
                         ],
                         "technical_consequences": ["The representation changes invariant placement and maintenance cost"],
                         "source_ids": [source_id] if source_id else [],

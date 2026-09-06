@@ -87,7 +87,7 @@ def qualify(api: Any, binary: Path, env: dict[str, str], root: Path) -> dict[str
                 "alternatives": [{"alternative_id": key, "summary": consequence,
                     "technical_consequences": [consequence],
                     "material_decomposition": {"state": "materially_atomic",
-                        "rationale": "This bounded fixture fixes other behavior; this alternative leaves no subordinate material fork."}}
+                        "rationale": "This bounded fixture fixes other behavior; this alternative leaves no subordinate material fork.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}}
                     for key, consequence in alternatives],
                 "technical_consequences": [text for _, text in alternatives],
                 "source_ids": [source_id], "effect_categories": effects,

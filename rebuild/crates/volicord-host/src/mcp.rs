@@ -2172,8 +2172,14 @@ fn engineering_choice_discovery_schema() -> Value {
                 json!({"description":"Material decomposition closure for this exact alternative", "oneOf":[
                     object_schema(vec![
                         ("state", enum_schema("Closure", &["materially_atomic"])),
+                        ("residual_fork_closure", { let mut schema = object_schema(vec![
+                            ("fixed_outcome", text_schema("Exact observable/material outcome fixed by this alternative", 1, 4096)),
+                            ("credible_implementations", json!({"type":"array","description":"Credible implementations compared for residual material outcomes","minItems":2,"maxItems":64,"uniqueItems":true,"items":text_schema("Credible implementation satisfying this alternative; compare its observable outcome",1,4096)})),
+                            ("remaining_material_outcomes", json!({"type":"array","maxItems":0,"items":{"type":"string"},"description":"Must be empty for atomic closure. If comparison leaves an independent material outcome, use decomposed with subordinate choices."})),
+                            ("source_basis", identity_array_schema("Current choice Sources supporting equivalence or settlement",1)),
+                        ], &["fixed_outcome","credible_implementations","remaining_material_outcomes","source_basis"]); schema["description"] = json!("Residual material outcome counterfactual for this exact alternative"); schema }),
                         ("rationale", text_schema("Active-agent rationale grounded in this choice's Sources: selecting this alternative leaves no further materially distinct product outcome. Private equivalent details may terminate here.", 1, 4096)),
-                    ], &["state", "rationale"]),
+                    ], &["state", "rationale", "residual_fork_closure"]),
                     object_schema(vec![
                         ("state", enum_schema("Closure", &["decomposed"])),
                         ("choice_ids", nonempty_string_array_schema("Subordinate material choices in this discovery; recursively close each alternative")),
@@ -2251,14 +2257,16 @@ fn engineering_choice_discovery_schema() -> Value {
                     object_schema(
                         vec![
                             ("state", enum_schema("Boundary-review conclusion", &["no_independent_fork"])),
+                            ("basis", enum_schema("Why no independent fork remains", &["mechanically_equivalent", "settled_by_current_sources", "outside_affected_scope"])),
                             ("rationale", text_schema("Why no separate material fork remains after reviewing this category", 1, 4096)),
                         ],
-                        &["state", "rationale"],
+                        &["state", "basis", "rationale"],
                     ),
                 ]})),
+                ("reviewed_outcomes", nonempty_string_array_schema("Concrete repository-relevant outcomes challenged in this category, including the outcome boundary reviewed for a no-fork conclusion")),
                 ("source_ids", identity_array_schema("Current Sources grounding this bounded semantic review", 1)),
             ],
-            &["effect_category", "conclusion", "source_ids"],
+            &["effect_category", "reviewed_outcomes", "conclusion", "source_ids"],
         ),
     });
     object_schema(
@@ -4308,9 +4316,10 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "choices":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
             "material_boundary_review":discovery.material_boundary_review.iter().map(|review| json!({
                 "effect_category":engineering_effect_category_name(review.effect_category),
+                "reviewed_outcomes":review.reviewed_outcomes,
                 "conclusion":match &review.conclusion {
                     MaterialBoundaryConclusion::RepresentedByChoices { choice_ids } => json!({"state":"represented_by_choices","choice_ids":choice_ids}),
-                    MaterialBoundaryConclusion::NoIndependentFork { rationale } => json!({"state":"no_independent_fork","rationale":rationale}),
+                    MaterialBoundaryConclusion::NoIndependentFork { basis, rationale } => json!({"state":"no_independent_fork","basis":basis,"rationale":rationale}),
                 },
                 "source_ids":review.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
@@ -5314,17 +5323,11 @@ fn engineering_choices(value: &Value) -> Result<Vec<EngineeringChoice>, HostErro
                 .iter()
                 .map(|alternative| {
                     Ok(EngineeringAlternative {
-                        material_decomposition: serde_json::from_value(
-                            alternative
-                                .get("material_decomposition")
-                                .cloned()
-                                .ok_or_else(|| {
-                                    HostError::new("alternative material_decomposition is required")
-                                })?,
-                        )
-                        .map_err(|error| {
-                            HostError::new(format!("invalid material_decomposition: {error}"))
-                        })?,
+                        material_decomposition: parse_material_decomposition(
+                            alternative.get("material_decomposition").ok_or_else(|| {
+                                HostError::new("alternative material_decomposition is required")
+                            })?,
+                        )?,
                         alternative_id: required_str(alternative, "alternative_id")?.to_owned(),
                         summary: required_str(alternative, "summary")?.to_owned(),
                         technical_consequences: string_array(
@@ -5370,11 +5373,18 @@ fn material_boundary_review(value: &Value) -> Result<Vec<MaterialBoundaryReview>
                     choice_ids: string_array(conclusion, "choice_ids")?,
                 },
                 "no_independent_fork" => MaterialBoundaryConclusion::NoIndependentFork {
+                    basis: serde_json::from_value(
+                        conclusion.get("basis").cloned().unwrap_or(Value::Null),
+                    )
+                    .map_err(|error| {
+                        HostError::new(format!("invalid no-independent-fork basis: {error}"))
+                    })?,
                     rationale: required_str(conclusion, "rationale")?.to_owned(),
                 },
                 _ => return Err(HostError::new("unknown material-boundary conclusion")),
             };
             Ok(MaterialBoundaryReview {
+                reviewed_outcomes: string_array(review, "reviewed_outcomes")?,
                 effect_category: engineering_effect_category(required_str(
                     review,
                     "effect_category",
@@ -6155,7 +6165,7 @@ fn engineering_choice_json(choice: &EngineeringChoice) -> Value {
             "alternative_id":alternative.alternative_id,
             "summary":alternative.summary,
             "technical_consequences":alternative.technical_consequences,
-            "material_decomposition":alternative.material_decomposition,
+            "material_decomposition":material_decomposition_json(&alternative.material_decomposition),
         })).collect::<Vec<_>>(),
         "technical_consequences":choice.technical_consequences,
         "source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -6442,8 +6452,8 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
             "discovery_completion_counterfactual":"Can the Goal be satisfied through materially different subordinate product outcomes that are not yet represented by a discovered choice or settled authority?",
             "material_boundary_review":{
                 "required_categories":["public_api_shape_or_semantics","compatibility","failure_or_error_semantics","persistence_or_lifetime","privacy_or_disclosure","security","user_visible_behavior_or_default","performance_or_resource_behavior","concurrency_or_operability","maintenance_or_support","implementation_internal"],
-                "conclusions":["represented_by_choices with real choice_ids","no_independent_fork with a source-grounded rationale"],
-                "material_decomposition_instruction":"For every alternative, inspect whether selecting it still leaves a materially distinct subordinate public/product outcome. Supply material_decomposition as materially_atomic with a Source-grounded rationale, or decomposed with subordinate choice_ids in this same graph. Recursively close subordinate alternatives; private equivalent details may terminate without Question. Broad control semantics or compatible existing results do not by themselves settle public status/error metadata representation.",
+                "conclusions":["represented_by_choices with real choice_ids","no_independent_fork with a typed basis, concrete reviewed_outcomes and source-grounded rationale"],
+                "material_decomposition_instruction":"For every alternative, inspect whether selecting it still leaves a materially distinct subordinate public/product outcome. Supply material_decomposition as materially_atomic with a Source-grounded rationale and residual_fork_closure (fixed_outcome, two credible_implementations compared, empty remaining_material_outcomes, current choice source_basis), or decomposed with subordinate choice_ids in this same graph. Recursively close subordinate alternatives; private equivalent details may terminate without Question. Broad control semantics or compatible existing results do not by themselves settle public status/error metadata representation.",
                 "review_instruction":"Before declaring discovery complete, examine repository-relevant public API and observable semantics, compatibility/support, failure policy, persistence/lifetime, privacy/security, user-visible defaults, concurrency/resource/operability, and other material outcomes introduced by the requested change. Do not invent a choice for a category whose outcomes are repository-settled, mechanically equivalent, private naming/helper structure, or test-fixture detail.",
                 "semantic_owner":"active_agent",
                 "production_validation":"category coverage, real choice links, Source provenance, and closed shape only; production does not infer semantic truth",
@@ -6750,4 +6760,39 @@ fn narrative_realization(value: &Value) -> Result<NarrativeRealization, HostErro
             model: Some(required_str(generator, "model")?.to_owned()),
         },
     })
+}
+
+fn parse_material_decomposition(
+    value: &Value,
+) -> Result<volicord_inquiry::MaterialDecomposition, HostError> {
+    let mut stored = value.clone();
+    if required_str(value, "state")? == "materially_atomic" {
+        let residual = value
+            .get("residual_fork_closure")
+            .ok_or_else(|| HostError::new("residual_fork_closure is required"))?;
+        stored["residual_fork_closure"]["source_basis"] =
+            json!(source_ids(residual, "source_basis")?);
+    }
+    serde_json::from_value(stored)
+        .map_err(|error| HostError::new(format!("invalid material_decomposition: {error}")))
+}
+
+fn material_decomposition_json(value: &volicord_inquiry::MaterialDecomposition) -> Value {
+    match value {
+        volicord_inquiry::MaterialDecomposition::MateriallyAtomic {
+            rationale,
+            residual_fork_closure: residual,
+        } => json!({
+            "state":"materially_atomic", "rationale":rationale,
+            "residual_fork_closure":{
+                "fixed_outcome":residual.fixed_outcome,
+                "credible_implementations":residual.credible_implementations,
+                "remaining_material_outcomes":residual.remaining_material_outcomes,
+                "source_basis":residual.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            }
+        }),
+        volicord_inquiry::MaterialDecomposition::Decomposed { choice_ids } => {
+            json!({"state":"decomposed", "choice_ids":choice_ids})
+        }
+    }
 }

@@ -374,13 +374,13 @@ fn record_ready_review(
         affected_scope: vec!["repository".into()],
         alternatives: vec![
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
                 alternative_id: "record".into(),
                 summary: "record the bounded delta".into(),
                 technical_consequences: vec!["preserves changed-path basis".into()],
             },
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
                 alternative_id: "omit".into(),
                 summary: "omit the bounded delta".into(),
                 technical_consequences: vec!["loses changed-path basis".into()],
@@ -395,6 +395,9 @@ fn record_ready_review(
     let material_boundary_review = EngineeringEffectCategory::ALL
         .into_iter()
         .map(|effect_category| MaterialBoundaryReview {
+            reviewed_outcomes: vec![format!(
+                "Fixture observable behavior within {effect_category:?}"
+            )],
             effect_category,
             conclusion: if effect_category == EngineeringEffectCategory::ImplementationInternal {
                 MaterialBoundaryConclusion::RepresentedByChoices {
@@ -402,6 +405,7 @@ fn record_ready_review(
                 }
             } else {
                 MaterialBoundaryConclusion::NoIndependentFork {
+                    basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
                     rationale: "the fixture has no separate outcome in this category".into(),
                 }
             },

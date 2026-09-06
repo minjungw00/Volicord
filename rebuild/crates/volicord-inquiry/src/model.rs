@@ -248,8 +248,30 @@ pub enum EngineeringChoiceRelationship {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MaterialDecomposition {
-    MateriallyAtomic { rationale: String },
-    Decomposed { choice_ids: Vec<String> },
+    MateriallyAtomic {
+        rationale: String,
+        residual_fork_closure: ResidualForkClosure,
+    },
+    Decomposed {
+        choice_ids: Vec<String>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResidualForkClosure {
+    pub fixed_outcome: String,
+    pub credible_implementations: Vec<String>,
+    pub remaining_material_outcomes: Vec<String>,
+    pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoIndependentForkBasis {
+    MechanicallyEquivalent,
+    SettledByCurrentSources,
+    OutsideAffectedScope,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -275,13 +297,19 @@ pub struct EngineeringChoice {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum MaterialBoundaryConclusion {
-    RepresentedByChoices { choice_ids: Vec<String> },
-    NoIndependentFork { rationale: String },
+    RepresentedByChoices {
+        choice_ids: Vec<String>,
+    },
+    NoIndependentFork {
+        basis: NoIndependentForkBasis,
+        rationale: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialBoundaryReview {
     pub effect_category: EngineeringEffectCategory,
+    pub reviewed_outcomes: Vec<String>,
     pub conclusion: MaterialBoundaryConclusion,
     pub source_basis: Vec<SourceId>,
 }

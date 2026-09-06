@@ -49,9 +49,9 @@ pub use model::{
     LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
     MaterialBoundaryReview, MaterialDecomposition, MaterialOutcomeOwnershipAssessment,
     MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension, MaterialityDisposition,
-    MaterialityReview, MaterialityReviewRevision, MaterialityStatus, PromotionResult,
-    QuestionCandidate, QuestionPresentation, RepositoryResearchBasis, SubmissionOutcome,
-    WorkAuthorityBasis, WorkAuthorityBasisKind,
+    MaterialityReview, MaterialityReviewRevision, MaterialityStatus, NoIndependentForkBasis,
+    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
+    ResidualForkClosure, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

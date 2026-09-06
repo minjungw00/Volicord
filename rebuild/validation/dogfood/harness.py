@@ -5427,7 +5427,20 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
             if not isinstance(closure, dict):
                 return False
             if closure.get("state") == "materially_atomic":
-                if set(closure) != {"state", "rationale"} or not nonempty_string(closure.get("rationale")):
+                if set(closure) != {"state", "rationale", "residual_fork_closure"} or not nonempty_string(closure.get("rationale")):
+                    return False
+                residual = closure.get("residual_fork_closure")
+                if (
+                    not isinstance(residual, dict)
+                    or set(residual) != {"fixed_outcome", "credible_implementations", "remaining_material_outcomes", "source_basis"}
+                    or not nonempty_string(residual.get("fixed_outcome"))
+                    or not isinstance(residual.get("credible_implementations"), list)
+                    or not all(nonempty_string(item) for item in residual["credible_implementations"])
+                    or len(set(residual["credible_implementations"])) < 2
+                    or residual.get("remaining_material_outcomes") != []
+                    or not isinstance(residual.get("source_basis"), list) or not residual["source_basis"]
+                    or not set(residual["source_basis"]) <= set(indexed[choice_id]["source_ids"])
+                ):
                     return False
             elif closure.get("state") == "decomposed":
                 children = closure.get("choice_ids")
@@ -5464,7 +5477,9 @@ def material_boundary_review_facts(
             category not in ENGINEERING_EFFECT_CATEGORIES
             or category in indexed
             or not isinstance(conclusion, dict)
-            or set(review) != {"effect_category", "conclusion", "source_ids"}
+            or set(review) != {"effect_category", "reviewed_outcomes", "conclusion", "source_ids"}
+            or not isinstance(review.get("reviewed_outcomes"), list) or not review["reviewed_outcomes"]
+            or not all(nonempty_string(item) for item in review["reviewed_outcomes"])
             or review.get("source_ids") != [repository_source_id]
         ):
             return False, {}
@@ -5483,7 +5498,8 @@ def material_boundary_review_facts(
             represented[category] = set(choice_ids)
         elif state == "no_independent_fork":
             if (
-                set(conclusion) != {"state", "rationale"}
+                set(conclusion) != {"state", "basis", "rationale"}
+                or conclusion.get("basis") not in {"mechanically_equivalent", "settled_by_current_sources", "outside_affected_scope"}
                 or not nonempty_string(conclusion.get("rationale"))
             ):
                 return False, {}
@@ -9895,6 +9911,7 @@ def fixture_material_boundary_review(
             if choice_ids
             else {
                 "state": "no_independent_fork",
+                    "basis": "outside_affected_scope",
                 "rationale": (
                     f"Current repository evidence shows no independent {category} "
                     "outcome beyond the represented choices."
@@ -9903,6 +9920,7 @@ def fixture_material_boundary_review(
         )
         reviews.append({
             "effect_category": category,
+            "reviewed_outcomes": [f"Fixture observable behavior within {category}"],
             "conclusion": conclusion,
             "source_ids": [source_id],
         })
@@ -10383,12 +10401,12 @@ def real_session_fixture(
                     else "adapter state representation"
                 ],
                 "alternatives": [
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
                         "alternative_id": "ordered-records",
                         "summary": "Use ordered records",
                         "technical_consequences": ["Deterministic inspection with bounded linear lookup"],
                     },
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
                         "alternative_id": "keyed-index",
                         "summary": "Use a keyed index",
                         "technical_consequences": ["Direct lookup with ordering synchronization obligations"],
@@ -10413,8 +10431,8 @@ def real_session_fixture(
                 "summary": "Choose the coupled repository-shape boundary",
                 "affected_scope": ["repository file shape"],
                 "alternatives": [
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."}, "alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
                 ],
                 "technical_consequences": ["The shape affects the scope of implementation changes"],
                 "source_ids": [source_id],
@@ -15525,14 +15543,14 @@ def self_test() -> int:
             primary = arguments["choices"][0]
             primary["summary"] = summary
             primary["alternatives"] = [
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
                     "alternative_id": f"{scenario_id}-a",
                     "summary": alternatives[0],
                     "technical_consequences": [
                         "This alternative produces one durable product outcome."
                     ],
                 },
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains."},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
                     "alternative_id": f"{scenario_id}-b",
                     "summary": alternatives[1],
                     "technical_consequences": [

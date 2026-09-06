@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 18;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 19;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -2145,6 +2145,13 @@ fn validate_engineering_choice_discovery(
         ));
     }
     for review in &discovery.material_boundary_review {
+        validate_list(&review.reviewed_outcomes)?;
+        if review.reviewed_outcomes.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "material-boundary review requires concrete reviewed outcomes",
+            ));
+        }
         validate_id_list(&review.source_basis)?;
         if review.source_basis.is_empty() {
             return Err(Error::new(
@@ -2170,7 +2177,7 @@ fn validate_engineering_choice_discovery(
                     ));
                 }
             }
-            crate::MaterialBoundaryConclusion::NoIndependentFork { rationale } => {
+            crate::MaterialBoundaryConclusion::NoIndependentFork { rationale, .. } => {
                 validate_text("no-independent-fork rationale", rationale)?;
             }
         }
@@ -2226,8 +2233,33 @@ pub(crate) fn validate_material_decomposition(
             })?;
         for alternative in &choice.alternatives {
             match &alternative.material_decomposition {
-                crate::MaterialDecomposition::MateriallyAtomic { rationale } => {
+                crate::MaterialDecomposition::MateriallyAtomic {
+                    rationale,
+                    residual_fork_closure,
+                } => {
                     validate_text("source-grounded material atomicity rationale", rationale)?;
+                    validate_text(
+                        "fixed material outcome",
+                        &residual_fork_closure.fixed_outcome,
+                    )?;
+                    validate_list(&residual_fork_closure.credible_implementations)?;
+                    validate_id_list(&residual_fork_closure.source_basis)?;
+                    if residual_fork_closure
+                        .credible_implementations
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                        .len()
+                        < 2
+                        || !residual_fork_closure.remaining_material_outcomes.is_empty()
+                        || residual_fork_closure.source_basis.is_empty()
+                        || residual_fork_closure
+                            .source_basis
+                            .iter()
+                            .any(|source| !choice.source_basis.contains(source))
+                    {
+                        return Err(Error::new(ErrorKind::InvalidInput,
+                            "atomic residual-fork closure requires two credible implementations, current choice Sources and no remaining material outcome; decompose remaining outcomes into subordinate choices"));
+                    }
                 }
                 crate::MaterialDecomposition::Decomposed { choice_ids } => {
                     validate_list(choice_ids)?;

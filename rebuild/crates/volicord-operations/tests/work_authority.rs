@@ -930,13 +930,13 @@ fn review(
             affected_scope: dimension.affected_scope.clone(),
             alternatives: vec![
                 EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: dimension.basis.source_basis.clone() } },
                     alternative_id: "approach-a".into(),
                     summary: "first credible approach".into(),
                     technical_consequences: vec!["first bounded consequence".into()],
                 },
                 EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: dimension.basis.source_basis.clone() } },
                     alternative_id: "approach-b".into(),
                     summary: "second credible approach".into(),
                     technical_consequences: vec!["second bounded consequence".into()],
@@ -1065,9 +1065,13 @@ fn complete_material_boundary_review(
                 .map(|choice| choice.choice_id.clone())
                 .collect::<Vec<_>>();
             MaterialBoundaryReview {
+                reviewed_outcomes: vec![format!(
+                    "Fixture observable behavior within {effect_category:?}"
+                )],
                 effect_category,
                 conclusion: if choice_ids.is_empty() {
                     MaterialBoundaryConclusion::NoIndependentFork {
+                        basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
                         rationale:
                             "the fixture review found no separate material outcome in this category"
                                 .into(),
@@ -1156,13 +1160,13 @@ fn engineering_choice(
         affected_scope: vec!["src/lib.rs".into()],
         alternatives: vec![
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![source] } },
                 alternative_id: "approach-a".into(),
                 summary: "first credible approach".into(),
                 technical_consequences: vec!["first observable consequence".into()],
             },
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![source] } },
                 alternative_id: "approach-b".into(),
                 summary: "second credible approach".into(),
                 technical_consequences: vec!["second observable consequence".into()],
@@ -1448,6 +1452,7 @@ fn discovery_requires_explicit_complete_material_boundary_review_with_real_choic
         })
         .ok_or("public API boundary review missing")?;
     public.conclusion = MaterialBoundaryConclusion::NoIndependentFork {
+        basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
         rationale: "incorrectly collapse the open result shape into settled failure behavior"
             .into(),
     };
@@ -1474,6 +1479,7 @@ fn discovery_requires_explicit_complete_material_boundary_review_with_real_choic
         .find(|review| review.effect_category == EngineeringEffectCategory::ImplementationInternal)
         .ok_or("implementation-internal boundary review missing")?;
     internal.conclusion = MaterialBoundaryConclusion::NoIndependentFork {
+                        basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
         rationale:
             "private helper naming and test fixture selection do not create independent product outcomes"
                 .into(),
@@ -1829,13 +1835,13 @@ fn binds_predictable_coupled_changelog_before_first_write() -> Result<(), Box<dy
         affected_scope: delegated.affected_scope.clone(),
         alternatives: vec![
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: delegated.basis.source_basis.clone() } },
                 alternative_id: "one".into(),
                 summary: "one layout".into(),
                 technical_consequences: delegated.material_consequences.clone(),
             },
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: delegated.basis.source_basis.clone() } },
                 alternative_id: "two".into(),
                 summary: "another layout".into(),
                 technical_consequences: delegated.material_consequences.clone(),
@@ -3560,6 +3566,16 @@ fn material_decomposition_closes_hidden_public_contracts_before_materiality(
     use volicord_inquiry::MaterialDecomposition;
     for (parent_id, child_id, alternative_summary) in [
         (
+            "response-file",
+            "relative-path-policy",
+            "Accept response-file arguments",
+        ),
+        (
+            "direct-scalar",
+            "configuration-source-precedence",
+            "Accept a scalar compatibility setting",
+        ),
+        (
             "control-semantics",
             "public-status-contract",
             "Expose control and status",
@@ -3665,10 +3681,11 @@ fn material_decomposition_rejects_open_cyclic_and_duplicate_graphs(
                     parent.alternatives[0].alternative_id.clone()
             }
             "empty-rationale" => {
-                child.alternatives[0].material_decomposition =
-                    MaterialDecomposition::MateriallyAtomic {
-                        rationale: String::new(),
-                    }
+                if let MaterialDecomposition::MateriallyAtomic { rationale, .. } =
+                    &mut child.alternatives[0].material_decomposition
+                {
+                    rationale.clear();
+                }
             }
             _ => {}
         }
@@ -3708,6 +3725,11 @@ fn materially_atomic_private_details_terminate_without_question(
         );
         for alternative in &mut choice.alternatives {
             alternative.material_decomposition = volicord_inquiry::MaterialDecomposition::MateriallyAtomic {
+                residual_fork_closure: volicord_inquiry::ResidualForkClosure {
+                    fixed_outcome: "The public value contract remains identical".into(),
+                    credible_implementations: vec!["Inline value construction".into(), "Private helper returns the identical value".into()],
+                    remaining_material_outcomes: vec![], source_basis: vec![source],
+                },
                 rationale: "Inspection of src/lib.rs establishes that this local representation preserves the public value contract and introduces no additional observable outcome.".into(),
             };
         }
@@ -4191,5 +4213,89 @@ fn exact_authority_requires_normative_source_linkage_for_each_alternative(
         .canonical_basis(fixture.project_id)?
         .active_questions
         .is_empty());
+    Ok(())
+}
+
+#[test]
+fn residual_material_outcomes_cannot_close_as_atomic() -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::MaterialDecomposition;
+    for (feature, residual, implementations) in [
+        (
+            "response-file",
+            "relative-path authority",
+            [
+                "Resolve paths from the process directory",
+                "Resolve paths from the response-file directory",
+            ],
+        ),
+        (
+            "direct-scalar-compatibility",
+            "configuration-source precedence",
+            [
+                "The direct scalar overrides the alias source",
+                "The alias source overrides the direct scalar",
+            ],
+        ),
+    ] {
+        for defect in [
+            "remaining-outcome",
+            "missing-source",
+            "foreign-source",
+            "no-comparison",
+            "missing-fixed-outcome",
+            "missing-boundary-outcomes",
+        ] {
+            let fixture = fixture()?;
+            let source = fixture.baseline.repository_source.identity();
+            let mut choice =
+                engineering_choice(feature, EngineeringEffectCategory::Compatibility, source);
+            if let MaterialDecomposition::MateriallyAtomic {
+                residual_fork_closure,
+                ..
+            } = &mut choice.alternatives[0].material_decomposition
+            {
+                residual_fork_closure.fixed_outcome = format!("Support {feature}");
+                residual_fork_closure.credible_implementations =
+                    implementations.iter().map(|s| (*s).into()).collect();
+                match defect {
+                    "remaining-outcome" => residual_fork_closure
+                        .remaining_material_outcomes
+                        .push(residual.into()),
+                    "missing-source" => residual_fork_closure.source_basis.clear(),
+                    "foreign-source" => {
+                        residual_fork_closure.source_basis = vec![fixture.goal_source_id]
+                    }
+                    "no-comparison" => residual_fork_closure.credible_implementations.truncate(1),
+                    "missing-fixed-outcome" => residual_fork_closure.fixed_outcome.clear(),
+                    _ => {}
+                }
+            }
+            let choices = vec![choice];
+            let mut boundaries = complete_material_boundary_review(&choices, source);
+            if defect == "missing-boundary-outcomes" {
+                boundaries[0].reviewed_outcomes.clear();
+            }
+            let result = fixture.operations.record_engineering_choice_discovery(
+                EngineeringChoiceDiscoveryDraft {
+                    project_id: fixture.project_id,
+                    goal_context_id: fixture.goal_id,
+                    baseline_analysis_snapshot_id: fixture.baseline.identity,
+                    session: "residual-challenge".into(),
+                    source_operation: "bounded counterfactual review".into(),
+                    summary: feature.into(),
+                    choices,
+                    material_boundary_review: boundaries,
+                },
+            );
+            assert!(result.is_err(), "{feature}: {defect} must be rejected");
+        }
+    }
+    // Current wire/persisted atomic shape has no rationale-only decoder.
+    assert!(
+        serde_json::from_value::<MaterialDecomposition>(serde_json::json!({
+            "state":"materially_atomic", "rationale":"prose alone"
+        }))
+        .is_err()
+    );
     Ok(())
 }

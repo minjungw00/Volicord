@@ -232,13 +232,13 @@ fn record_fixture_discovery(
         affected_scope: vec![choice.affected_scope.into()],
         alternatives: vec![
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![source_id] } },
                 alternative_id: "first".into(),
                 summary: "first credible approach".into(),
                 technical_consequences: vec!["first bounded consequence".into()],
             },
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![source_id] } },
                 alternative_id: "second".into(),
                 summary: "second credible approach".into(),
                 technical_consequences: vec!["second bounded consequence".into()],
@@ -284,9 +284,13 @@ fn complete_material_boundary_review(
                 .map(|choice| choice.choice_id.clone())
                 .collect::<Vec<_>>();
             MaterialBoundaryReview {
+                reviewed_outcomes: vec![format!(
+                    "Fixture observable behavior within {effect_category:?}"
+                )],
                 effect_category,
                 conclusion: if choice_ids.is_empty() {
                     MaterialBoundaryConclusion::NoIndependentFork {
+                        basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
                         rationale: "the fixture has no independent outcome in this category".into(),
                     }
                 } else {
@@ -325,7 +329,7 @@ fn complete_material_boundary_review_json(
                     .map_or_else(
                         || {
                             json!({
-                                "state":"no_independent_fork",
+                                "state":"no_independent_fork", "basis":"outside_affected_scope",
                                 "rationale":"The bounded fixture has no separate material outcome in this category."
                             })
                         },
@@ -334,7 +338,7 @@ fn complete_material_boundary_review_json(
                         },
                     );
                 json!({
-                    "effect_category":effect_category,
+                    "effect_category":effect_category, "reviewed_outcomes":[format!("Fixture observable behavior within {effect_category}")],
                     "conclusion":conclusion,
                     "source_ids":[source_id],
                 })
@@ -1115,8 +1119,8 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
                     "summary":"Choose the persistent default scope",
                     "affected_scope":["configuration"],
                     "alternatives":[
-                        {"alternative_id":"project","summary":"Persist per Project","technical_consequences":["All sessions inherit the Project default"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}},
-                        {"alternative_id":"session","summary":"Persist per session","technical_consequences":["Each session can select a different default"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}}
+                        {"alternative_id":"project","summary":"Persist per Project","technical_consequences":["All sessions inherit the Project default"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}},
+                        {"alternative_id":"session","summary":"Persist per session","technical_consequences":["Each session can select a different default"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}}
                     ],
                     "technical_consequences":["The visible default and support commitment differ"],
                     "source_ids":[repository_source],
@@ -1129,8 +1133,8 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
                     "summary":"Choose public signed-link replay semantics",
                     "affected_scope":["public links"],
                     "alternatives":[
-                        {"alternative_id":"single-use","summary":"Reject every replay","technical_consequences":["A consumed link cannot be reused"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}},
-                        {"alternative_id":"bounded-replay","summary":"Allow bounded replay","technical_consequences":["Reliability improves while exposure lasts longer"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}}
+                        {"alternative_id":"single-use","summary":"Reject every replay","technical_consequences":["A consumed link cannot be reused"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}},
+                        {"alternative_id":"bounded-replay","summary":"Allow bounded replay","technical_consequences":["Reliability improves while exposure lasts longer"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}}
                     ],
                     "technical_consequences":["Public security and replay behavior differ"],
                     "source_ids":[repository_source],
@@ -1143,8 +1147,8 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
                     "summary":"Choose whether close exits or keeps background work running",
                     "affected_scope":["process lifecycle"],
                     "alternatives":[
-                        {"alternative_id":"exit","summary":"Exit immediately","technical_consequences":["Background work stops"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}},
-                        {"alternative_id":"continue","summary":"Continue in background","technical_consequences":["Work remains active after close"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}}
+                        {"alternative_id":"exit","summary":"Exit immediately","technical_consequences":["Background work stops"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}},
+                        {"alternative_id":"continue","summary":"Continue in background","technical_consequences":["Work remains active after close"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}}
                     ],
                     "technical_consequences":["The user-visible close policy differs"],
                     "source_ids":[repository_source],
@@ -2265,8 +2269,8 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
                 "summary":"Place invalidation at mutation sites or behind a versioned cache facade",
                 "affected_scope":["cache","mutation paths"],
                 "alternatives":[
-                    {"alternative_id":"mutation-sites","summary":"Invalidate at each mutation site","technical_consequences":["Simple reads but distributed invalidation obligations"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}},
-                    {"alternative_id":"versioned-facade","summary":"Use a versioned cache facade","technical_consequences":["Centralized correctness with indirection and version bookkeeping"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}}
+                    {"alternative_id":"mutation-sites","summary":"Invalidate at each mutation site","technical_consequences":["Simple reads but distributed invalidation obligations"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}},
+                    {"alternative_id":"versioned-facade","summary":"Use a versioned cache facade","technical_consequences":["Centralized correctness with indirection and version bookkeeping"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[repository_source]}}}
                 ],
                 "technical_consequences":["The boundary changes consistency reasoning and future extension cost"],
                 "source_ids":[repository_source],
@@ -2639,8 +2643,8 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
                 "summary":"Update the diagnostic first or update the fixture assertion first",
                 "affected_scope":["private diagnostic wording","test fixture assertion"],
                 "alternatives":[
-                    {"alternative_id":"wording-first","summary":"Change wording before synchronizing the assertion","technical_consequences":["The test is briefly stale during the edit"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}},
-                    {"alternative_id":"test-first","summary":"Change the assertion before synchronizing the wording","technical_consequences":["The test briefly anticipates the maintenance wording"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains."}}
+                    {"alternative_id":"wording-first","summary":"Change wording before synchronizing the assertion","technical_consequences":["The test is briefly stale during the edit"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[analyzed["repository_source_id"]]}}},
+                    {"alternative_id":"test-first","summary":"Change the assertion before synchronizing the wording","technical_consequences":["The test briefly anticipates the maintenance wording"],"material_decomposition":{"state":"materially_atomic","rationale":"The fixture Source bounds this alternative to its stated outcome; no further product choice remains.","residual_fork_closure":{"fixed_outcome":"The alternative stated consequence","credible_implementations":["Direct implementation preserving the consequence","Private helper preserving the same consequence"],"remaining_material_outcomes":[],"source_basis":[analyzed["repository_source_id"]]}}}
                 ],
                 "technical_consequences":["Only the order of a small synchronized maintenance edit differs"],
                 "source_ids":[analyzed["repository_source_id"]],
@@ -4859,13 +4863,13 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                 affected_scope: vec!["host-checkpoint".into()],
                 alternatives: vec![
                     EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![repository_source_id] } },
                         alternative_id: "grounded".into(),
                         summary: "ground the Checkpoint".into(),
                         technical_consequences: vec!["preserves truthful evidence".into()],
                     },
                     EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into() },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![repository_source_id] } },
                         alternative_id: "ungrounded".into(),
                         summary: "omit grounding".into(),
                         technical_consequences: vec!["loses truthful evidence".into()],
@@ -4880,6 +4884,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             material_boundary_review: EngineeringEffectCategory::ALL
                 .into_iter()
                 .map(|effect_category| MaterialBoundaryReview {
+                    reviewed_outcomes: vec![format!("Fixture observable behavior within {effect_category:?}")],
                     effect_category,
                     conclusion: if effect_category
                         == EngineeringEffectCategory::MaintenanceOrSupport
@@ -4889,6 +4894,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                         }
                     } else {
                         MaterialBoundaryConclusion::NoIndependentFork {
+                        basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
                             rationale: "the fixture has no separate outcome in this category"
                                 .into(),
                         }
