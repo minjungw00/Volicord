@@ -209,3 +209,60 @@ pub(crate) fn validate_decomposed_interactions(
     }
     Ok(())
 }
+
+/// A declared independent result cannot disappear behind two equal descriptions.
+pub(crate) fn validate_result_coverage(
+    discovery: &EngineeringChoiceDiscovery,
+) -> Result<(), Error> {
+    for outcome in discovery
+        .interaction_review
+        .iter()
+        .flat_map(|r| &r.outcomes)
+    {
+        let InteractionConclusion::RepresentedByChoices { choice_ids } = &outcome.conclusion else {
+            continue;
+        };
+        let mut pending = choice_ids.clone();
+        let mut visited = BTreeSet::new();
+        let mut represented = BTreeSet::new();
+        let mut evidence_required = false;
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id.clone()) {
+                continue;
+            }
+            if let Some(choice) = discovery.choices.iter().find(|c| c.choice_id == id) {
+                evidence_required |=
+                    choice.evidence_state != crate::EngineeringChoiceEvidenceState::Sufficient;
+                for alternative in &choice.alternatives {
+                    match &alternative.material_decomposition {
+                        crate::MaterialDecomposition::Decomposed { choice_ids } => {
+                            pending.extend(choice_ids.iter().cloned())
+                        }
+                        crate::MaterialDecomposition::MateriallyAtomic {
+                            residual_fork_closure,
+                            ..
+                        } => {
+                            for comparison in &residual_fork_closure.interaction_comparisons {
+                                if comparison.outcome_id == outcome.outcome_id {
+                                    represented
+                                        .extend(comparison.implementation_outcome_ids.iter());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !evidence_required
+            && represented
+                != outcome
+                    .credible_outcomes
+                    .iter()
+                    .map(|r| &r.result_id)
+                    .collect()
+        {
+            return Err(invalid("every declared independent interaction result must be represented by an alternative in its current choice decomposition"));
+        }
+    }
+    Ok(())
+}

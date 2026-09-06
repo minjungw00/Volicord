@@ -4828,12 +4828,33 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
     let error = record(vec![broad.clone(), child.clone()], interactions.clone())
         .expect_err("hard rejection alone cannot absorb batch durability");
     assert!(error.message().contains("independent interaction outcome"));
+    let mut swallowed = interactions.clone();
+    swallowed[2].outcomes[0].affected_choice_ids = vec![parent.choice_id.clone()];
+    swallowed[2].outcomes[0].conclusion = InteractionConclusion::RepresentedByChoices {
+        choice_ids: vec![parent.choice_id.clone()],
+    };
+    let missing_result = record(vec![broad.clone()], swallowed).expect_err(
+        "both rejection alternatives cannot silently omit the credible partial-durability result",
+    );
+    assert!(missing_result
+        .message()
+        .contains("every declared independent interaction result"));
     let mut decomposed = parent.clone();
     for alt in &mut decomposed.alternatives {
         alt.material_decomposition = MaterialDecomposition::Decomposed {
             choice_ids: vec![child.choice_id.clone()],
         };
     }
+    let mut research = child.clone();
+    research.alternatives.clear();
+    research.evidence_state = EngineeringChoiceEvidenceState::ResearchRequired;
+    record(vec![decomposed.clone(), research], interactions.clone())?;
+    assert!(
+        fixture
+            .operations
+            .workflow_after_analysis(fixture.project_id, fixture.baseline.identity)?
+            .blocks_ordinary_work
+    );
     let accepted = record(vec![decomposed, child.clone()], interactions.clone())?;
     let retained = fixture
         .operations

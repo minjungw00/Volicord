@@ -2444,7 +2444,7 @@ pub(crate) fn validate_material_decomposition(
     for choice in &discovery.choices {
         visit(&choice.choice_id, discovery, &mut active, &mut complete)?;
     }
-    Ok(())
+    crate::interaction::validate_result_coverage(discovery)
 }
 
 fn validate_review_against_canonical(

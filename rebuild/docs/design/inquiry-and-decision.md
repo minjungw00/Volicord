@@ -82,6 +82,10 @@ once 참조하고 credible implementation마다 result identity를 순서대로 
 material result를 보존해야 하며, Source-settled result와 모순될 수 없다. 비교가 왜 해당 scenario를
 충분히 challenge하는지 equivalence rationale와 shared current Source가 필요하다. 다른 choice가
 represent하는 outcome이 남으면 atomic closure를 거부하고 해당 subordinate choice까지 decomposition해야 한다.
+Represented independent outcome의 모든 credible result identity는 해당 choice decomposition의 실제
+alternative comparison에 나타나야 한다. 같은 result만 반복해 다른 declared credible result를 누락할 수 없다.
+Research/prototype-required choice의 아직 미확정 result는 그 real choice에 남고 기존 evidence-required
+work blocker를 유지한다. Incomplete evidence representation은 atomic semantic closure가 아니다.
 Safe statement 뒤 unsafe statement를 hard reject하더라도 earlier statement의 durable effect 유지와
 whole-input prevalidation의 zero-write result는 다르다. Rejection policy 자체는 이 차이를 결정하지
 않는다. Repository Source가 atomic whole-input behavior를 명시하면 source-settled no-fork로 닫고,

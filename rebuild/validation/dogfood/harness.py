@@ -5658,6 +5658,13 @@ def interaction_review_facts(value: Any, choices: dict[str, Any] | None, reposit
                     return False, {}
                 if (conclusion["state"] == "represented_by_choices" and conclusion["choice_ids"] != [choice_id]) or (conclusion["state"] == "no_independent_fork" and conclusion["result_id"] != results[0]):
                     return False, {}
+    for outcome in outcomes.values():
+        conclusion = outcome["conclusion"]
+        if conclusion["state"] == "represented_by_choices":
+            represented = {result for choice_id in descendants(conclusion["choice_ids"]) for alternative in choices[choice_id]["alternatives"] for comparison in alternative["material_decomposition"].get("residual_fork_closure", {}).get("interaction_comparisons", []) if comparison["outcome_id"] == outcome["outcome_id"] for result in comparison["implementation_outcome_ids"]}
+            evidence_required = any(choices[choice_id]["evidence_state"] != "sufficient" for choice_id in descendants(conclusion["choice_ids"]))
+            if not evidence_required and represented != {r["result_id"] for r in outcome["credible_outcomes"]}:
+                return False, {}
     return True, {"reviewed_axes": sorted(seen_axes), "outcome_ids": sorted(outcomes), "semantic_judgment_owner": "active_agent_and_bounded_human_review"}
 
 
@@ -18825,7 +18832,7 @@ def self_test() -> int:
     )["checks"]["engineering_choice_discovery"] != "failed":
         raise AssertionError("an omitted material effect-category review qualified")
 
-    for defect in ["missing-axis", "missing-result", "unknown-choice"]:
+    for defect in ["missing-axis", "missing-result", "unknown-choice", "unrepresented-result"]:
         malformed_interaction = real_session_fixture("volicord", 1, revision, evidence_directory)
         def break_interaction(arguments, defect=defect):
             reviews = arguments["interaction_review"]
@@ -18833,6 +18840,15 @@ def self_test() -> int:
                 reviews.pop()
             elif defect == "missing-result":
                 reviews[2]["outcomes"][0]["conclusion"]["result_id"] = "undeclared-durable-result"
+            elif defect == "unrepresented-result":
+                choice = arguments["choices"][0]
+                outcome = reviews[2]["outcomes"][0]
+                outcome["affected_choice_ids"] = [choice["choice_id"]]
+                outcome["credible_outcomes"].append({"result_id":"independent-partial-effect", "description":"A credible different durable result remains possible"})
+                outcome["conclusion"] = {"state":"represented_by_choices", "choice_ids":[choice["choice_id"]]}
+                for alternative in choice["alternatives"]:
+                    residual = alternative["material_decomposition"]["residual_fork_closure"]
+                    residual["interaction_comparisons"] = [{"outcome_id":outcome["outcome_id"], "implementation_outcome_ids":["unchanged"] * len(residual["credible_implementations"]), "equivalence_rationale":"These implementations preserve one result but silently omit the other declared credible result"}]
             else:
                 reviews[2]["outcomes"][0]["affected_choice_ids"] = ["undeclared-choice"]
         mutate_mcp_call(malformed_interaction, "work", "engineering_choice_discovery", break_interaction)
