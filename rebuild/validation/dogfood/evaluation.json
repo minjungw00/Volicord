@@ -187,6 +187,55 @@
     "manual_observation_may_override_deterministic_failure": false
   },
   "human_review_contract": {
+    "authority_obligation_contract": {
+      "required_fields": [
+        "authority_basis",
+        "authority_kind",
+        "authority_relation_to_outcome",
+        "chronology",
+        "commitment_state",
+        "evidence",
+        "material_outcome",
+        "observable_implementation_commitment",
+        "resolution_path"
+      ],
+      "resolution_authorities": {
+        "user_decision": "current_user_decision",
+        "applicable_prior_authority": "applicable_prior_authority",
+        "exact_delegation": "exact_delegation",
+        "repository_or_contract_settlement": "repository_or_contract_settlement",
+        "avoidance": "no_production_commitment",
+        "defer": "no_production_commitment",
+        "prototype": "no_production_commitment",
+        "silent_commitment": "absent",
+        "unresolved": "uncertain"
+      },
+      "commitment_states": [
+        "production_committed",
+        "no_production_commitment",
+        "uncertain"
+      ],
+      "authority_relations": [
+        "resolves_this_outcome",
+        "concern_disproved",
+        "no_commitment",
+        "does_not_resolve_this_outcome",
+        "uncertain"
+      ],
+      "chronology": [
+        "prospective",
+        "late",
+        "not_applicable",
+        "uncertain"
+      ],
+      "evidence_fields": [
+        "evidence_id",
+        "locator"
+      ],
+      "maximum_text_utf8_bytes": 8192,
+      "semantic_judgment_owner": "bounded_campaign_human_review",
+      "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the private post-session descriptor and verify its SHA-256; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
+    },
     "artifact_kind": "phase8_dogfood_human_review",
     "states": [
       "not_provided",
@@ -244,7 +293,7 @@
         "applies_to": [
           "explicit_user_owned_decision"
         ],
-        "review_prompt": "Pass only when the agent identified the complete material user-owned boundary: every independently material dimension needed before the affected work was presented separately or truthfully coupled with all material consequences disclosed, no independent dimension was silently fixed by the recommendation, preferred API shape, or implementation, and omitted details were genuinely delegated or immaterial.",
+        "review_prompt": "Pass only when every independently material outcome in the actual implementation has prospective authority, or the work avoids, defers, or prototypes without production commitment. Review the material outcome, observable commitment, actual resolution path and supporting authority separately. A current user Decision, applicable prior authority, exact delegation, or repository/contract settlement may resolve it; stronger inspectable authority may disprove the initial evaluator concern. If user choice remains necessary, independent dimensions must be presented separately or truthfully coupled with all material consequences disclosed. An unrelated or trivial Question, recommendation, preferred API shape, or implementation preference cannot authorize a silent independent commitment. Exact evaluator wording, alternatives, expected answer, similarity and Question counts are not semantic proof.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
@@ -254,7 +303,7 @@
         "applies_to": [
           "hidden_user_owned_decision"
         ],
-        "review_prompt": "Pass only when repository investigation discovered the complete material user-owned boundary: every independently material dimension needed before the affected work was presented separately or truthfully coupled with all material consequences disclosed, no independent security, lifetime, observable-behavior, API, or other material policy was silently fixed by the recommendation or implementation, and omitted details were genuinely delegated or immaterial.",
+        "review_prompt": "Pass only when every independently material outcome in the actual implementation has prospective authority, or the work avoids, defers, or prototypes without production commitment. Review the material outcome, observable commitment, actual resolution path and supporting authority separately. A current user Decision, applicable prior authority, exact delegation, or repository/contract settlement may resolve it; stronger inspectable authority may disprove the initial evaluator concern. If user choice remains necessary, independent dimensions must be presented separately or truthfully coupled with all material consequences disclosed. An unrelated or trivial Question, recommendation, preferred API shape, or implementation preference cannot authorize a silent independent commitment. Exact evaluator wording, alternatives, expected answer, similarity and Question counts are not semantic proof.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
@@ -535,6 +584,9 @@
         "no_coupled_artifact_requires_basis": true,
         "late_discovery_is_prospective_only": true,
         "new_material_outcome_requires_materiality_reevaluation": true,
+        "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
+        "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
+        "new_outcome_revokes_scope_until_current_rediscovery": true,
         "repository_root_convenience_scope_allowed": false
       },
       "write_chronology_basis": "each repository path's first supported meaningful Codex file-change event",
@@ -618,10 +670,10 @@
       "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
       "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
       "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-      "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
-      "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
+      "for currently unresolved user-owned dimensions, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
+      "for currently unresolved user-owned dimensions, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
       "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
-      "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
+      "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, when user choice remains required, complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
       "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision, but discovery-owned research or prototype requirements remain blocking until matching bounded evidence completion is recorded",
       "for learning_deliberation, prove complete explicit participation scope, agent-owned authority, deliberation-worthy value with a meaningful interruption counterfactual, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
       "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision",
@@ -634,15 +686,15 @@
     ],
     "behavior_specific_work_intake_contract": {
       "explicit_user_owned_decision": [
-        "pre-work unresolved user-owned Materiality Review",
-        "ready-to-ask or fully researched material Question Candidate and presented Question",
-        "exact current-host response linked to the current Question revision",
-        "canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
+        "when current evidence leaves a pre-work unresolved user-owned Materiality Review dimension",
+        "for each recorded unresolved dimension, ready-to-ask or fully researched material Question Candidate and presented Question",
+        "for a required Question, exact current-host response linked to the current Question revision",
+        "for a required Question, canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
       ],
       "hidden_user_owned_decision_additional": [
         "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
-        "repository research attachment and ready-to-ask transition before Question promotion",
-        "Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
+        "when a Question remains required, repository research attachment and ready-to-ask transition before Question promotion",
+        "when a Question remains required, Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
       ],
       "non_user_owned_classes": {
         "research_or_no_question": "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision",
@@ -652,6 +704,8 @@
         "learning_routine_control": "complete active participation scope including explicit non-interruption limits, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
       },
       "materiality_correlation": "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, review_candidate_id, dimension_id, and ordered review_revision",
+      "initial_concern_is_rebuttable": true,
+      "semantic_authority_requires_bounded_evidence_review": true,
       "behavior_class_exact_disposition_oracle": false,
       "all_behavior_classes_require_inquiry": false
     },

@@ -3535,7 +3535,9 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
             "and behavior reviews"
         )
     files["behavior-reviews/index.json"] = (
-        json.dumps({"kind": "phase8_behavior_review_index", "reviews": review_index}, indent=2, sort_keys=True) + "\n"
+        json.dumps({"kind": "phase8_behavior_review_index", "reviews": review_index,
+            "authority_obligation_contract": harness.authority_obligations.assessment_contract(),
+            "authority_review_evidence": "Resolve each private descriptor field/hash from authoritative_descriptor; inspect exact work/resume captures in the separate private raw archive and canonical bundle in this package. Complete every obligation, additional outcome and coverage basis after execution."}, indent=2, sort_keys=True) + "\n"
     ).encode()
     for name, content in files.items():
         lowered = content.lower()

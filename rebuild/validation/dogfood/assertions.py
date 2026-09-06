@@ -215,6 +215,8 @@ def validate_behavior_specific_work_intake_contract(
             "ordered review_revision",
         ),
     )
+    if contract.get("initial_concern_is_rebuttable") is not True or contract.get("semantic_authority_requires_bounded_evidence_review") is not True:
+        raise AssertionError("Phase 8 authority obligations require rebuttable evidence-backed semantic review")
     if contract["behavior_class_exact_disposition_oracle"] is not False:
         raise AssertionError("Phase 8 exact behavior-disposition oracle must remain disabled")
     if contract["all_behavior_classes_require_inquiry"] is not False:
@@ -271,6 +273,14 @@ def assert_behavior_specific_work_intake_regressions(
     expect_rejected(
         "exact behavior-disposition oracle re-enabled",
         lambda value: value.__setitem__("behavior_class_exact_disposition_oracle", True),
+    )
+    expect_rejected(
+        "initial concern used as an oracle",
+        lambda value: value.__setitem__("initial_concern_is_rebuttable", False),
+    )
+    expect_rejected(
+        "machine lifecycle fabricated semantic authority",
+        lambda value: value.__setitem__("semantic_authority_requires_bounded_evidence_review", False),
     )
     expect_rejected(
         "Inquiry universally required",
@@ -642,6 +652,9 @@ def main() -> int:
             "no_coupled_artifact_requires_basis": True,
             "late_discovery_is_prospective_only": True,
             "new_material_outcome_requires_materiality_reevaluation": True,
+            "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
+            "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
+            "new_outcome_revokes_scope_until_current_rediscovery": True,
             "repository_root_convenience_scope_allowed": False,
         }
         or materiality_contract.get("pre_work_readiness_sequence")
@@ -1196,6 +1209,12 @@ def main() -> int:
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
     human_review = definition_value.get("human_review_contract", {})
+    import authority_obligations
+    from authority_obligations_self_test import self_test as authority_obligation_self_test
+    if human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract():
+        raise AssertionError("maintained authority obligation schema drifted from the human-review consumer")
+    if len(authority_obligation_self_test()) != 5:
+        raise AssertionError("required authority obligation regression scenarios are missing")
     behavior_criteria = human_review.get("interaction_behavior_criterion_contracts", {})
     material_grounding = human_review.get("material_completeness_grounding", {})
     if (

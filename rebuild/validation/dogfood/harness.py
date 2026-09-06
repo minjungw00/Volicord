@@ -24,6 +24,8 @@ import threading
 import time
 from typing import Any, Callable
 
+import authority_obligations
+
 from codex_events import (
     ACTIVATION_PREFIX,
     activation_identity,
@@ -144,7 +146,7 @@ REAL_SESSION_CHECKS = (
     "behavior_classification",
     "appropriate_inquiry_outcome",
     "hidden_material_discovery_order",
-    "no_silent_user_owned_choice",
+    "recorded_user_owned_authority",
     "meaningful_ordinary_changes",
     "source_grounded_checkpoint",
     "decision_provenance_when_required",
@@ -1228,6 +1230,7 @@ def load_definition() -> dict[str, Any]:
     human_review = value.get("human_review_contract", {})
     if (
         human_review.get("artifact_kind") != "phase8_dogfood_human_review"
+        or human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract()
         or human_review.get("states") != ["not_provided", "passed", "failed"]
         or human_review.get("replacement_states")
         != ["pending_human_review", "passed", "failed"]
@@ -1280,10 +1283,10 @@ def load_definition() -> dict[str, Any]:
             "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
             "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
             "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-            "for explicit or hidden user-owned decision classes, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
-            "for explicit or hidden user-owned decision classes, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
+            "for currently unresolved user-owned dimensions, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
+            "for currently unresolved user-owned dimensions, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
-            "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, then complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
+            "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, when user choice remains required, complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision, but discovery-owned research or prototype requirements remain blocking until matching bounded evidence completion is recorded",
             "for learning_deliberation, prove complete explicit participation scope, agent-owned authority, deliberation-worthy value with a meaningful interruption counterfactual, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
             "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision",
@@ -1398,15 +1401,15 @@ def load_definition() -> dict[str, Any]:
         raise ValueError("the current Codex rollout evidence contract changed")
     if evidence.get("behavior_specific_work_intake_contract") != {
         "explicit_user_owned_decision": [
-            "pre-work unresolved user-owned Materiality Review",
-            "ready-to-ask or fully researched material Question Candidate and presented Question",
-            "exact current-host response linked to the current Question revision",
-            "canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
+            "when current evidence leaves a pre-work unresolved user-owned Materiality Review dimension",
+            "for each recorded unresolved dimension, ready-to-ask or fully researched material Question Candidate and presented Question",
+            "for a required Question, exact current-host response linked to the current Question revision",
+            "for a required Question, canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
         ],
         "hidden_user_owned_decision_additional": [
             "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
-            "repository research attachment and ready-to-ask transition before Question promotion",
-            "Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
+            "when a Question remains required, repository research attachment and ready-to-ask transition before Question promotion",
+            "when a Question remains required, Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
         ],
         "non_user_owned_classes": {
             "research_or_no_question": (
@@ -1429,6 +1432,8 @@ def load_definition() -> dict[str, Any]:
             "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, "
             "review_candidate_id, dimension_id, and ordered review_revision"
         ),
+        "initial_concern_is_rebuttable": True,
+        "semantic_authority_requires_bounded_evidence_review": True,
         "behavior_class_exact_disposition_oracle": False,
         "all_behavior_classes_require_inquiry": False,
     }:
@@ -1449,6 +1454,9 @@ def load_definition() -> dict[str, Any]:
         "no_coupled_artifact_requires_basis": True,
         "late_discovery_is_prospective_only": True,
         "new_material_outcome_requires_materiality_reevaluation": True,
+        "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
+        "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
+        "new_outcome_revokes_scope_until_current_rediscovery": True,
         "repository_root_convenience_scope_allowed": False,
     }:
         raise ValueError("the coupled-artifact review contract changed")
@@ -4281,7 +4289,7 @@ def work_blocker_behavior_observations(
     )
     ready_before_work = readiness_basis["qualified"]
 
-    if behavior_class not in USER_OWNED_BEHAVIOR_CLASSES:
+    if "unresolved_user_owned_outcome" not in dispositions:
         expected = expected_materiality_dispositions(behavior_class)
         behavior_ok = (
             bool(expected & dispositions)
@@ -4478,10 +4486,16 @@ def build_work_blocker_result(
             capture.successful_calls("checkpoint_record")
         ),
     }
+    declared_user_owned = any(
+        call.arguments.get("action") == "record"
+        and baseline_call is not None
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
+        and any(isinstance(judgment, dict) and judgment.get("disposition") == "unresolved_user_owned_outcome"
+            for judgment in call.arguments.get("judgments", []))
+        for call in capture.successful_calls("materiality_review")
+    )
     required_checks = (
-        (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
-        if is_user_owned_behavior(descriptor.get("behavior_class"))
-        else WORK_BLOCKER_CHECKS
+        (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS) if declared_user_owned else WORK_BLOCKER_CHECKS
     )
     failed_checks = (
         [SETUP_ACTIVATION_CHECK]
@@ -5039,7 +5053,8 @@ def expected_materiality_dispositions(behavior_class: Any) -> frozenset[str]:
     """
 
     if is_user_owned_behavior(behavior_class):
-        return frozenset({"unresolved_user_owned_outcome"})
+        return frozenset({"unresolved_user_owned_outcome", "repository_or_environment_fact", "settled_authority",
+            "delegated_implementation_choice", "agent_owned_implementation_choice", "exploratory_uncertainty"})
     return {
         "research_or_no_question": frozenset({
             "repository_or_environment_fact",
@@ -5914,6 +5929,8 @@ def engineering_choice_discovery_facts(
         if call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("goal_context_id") == goal_context_id
         and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
+        and call.result.get("discovery_candidate_id")
+        == review_call.arguments.get("engineering_choice_discovery_candidate_id")
     ]
     discovery = calls[0] if len(calls) == 1 else None
     choices = indexed_engineering_choices(discovery.arguments.get("choices")) if discovery else None
@@ -6194,14 +6211,14 @@ def materiality_review_facts(
         )
         if discovery[0]:
             correlated_records.append((candidate_record, *discovery))
-    if len(correlated_records) != 1:
+    if not correlated_records:
         return False, None, None, {
             "matching_record_count": len(records),
             "correlated_record_count": len(correlated_records),
             "record_correlation": "goal_context_id+baseline_analysis_snapshot_id+engineering_choice_discovery_candidate_id",
         }
     record, discovery_ok, discovery_basis, dimensions, discovery_choices = (
-        correlated_records[0]
+        max(correlated_records, key=lambda item: item[0].completion_sequence)
     )
     review_id = record.result.get("review_candidate_id")
     learning_participation = record.arguments.get("learning_participation")
@@ -6289,8 +6306,7 @@ def materiality_review_facts(
     initial_dimension_authority = bool(dimensions) and all(
         dimension_authority_valid(dimension)
         or (
-            behavior_class == "exploratory_uncertainty"
-            and dimension_id in pending_exploratory_ids
+            dimension_id in pending_exploratory_ids
         )
         for dimension_id, dimension in dimensions.items()
     )
@@ -6425,7 +6441,7 @@ def materiality_review_facts(
             and (is_user_owned_behavior(behavior_class) or not user_owned_ids)
             and readiness_ok
         )
-    elif is_user_owned_behavior(behavior_class):
+    elif user_owned_ids:
         resolved = bool(final_dimensions) and final_revision is not None and (
             resolved_user_owned_dimensions_valid(
                 final_dimensions,
@@ -6463,7 +6479,7 @@ def materiality_review_facts(
             and revised_workflow.get("blocks_ordinary_work") is True
             and readiness_ok
         )
-    elif behavior_class == "exploratory_uncertainty":
+    elif behavior_class == "exploratory_uncertainty" or pending_exploratory_ids:
         initially_ready = (
             not pending_exploratory_ids
             and all(dimension_authority_valid(value) for value in (dimensions or {}).values())
@@ -7020,7 +7036,7 @@ def question_review_facts(
     observed_question_text = "\n".join(
         value for value in prompt_fields if nonempty_string(value)
     )
-    alternatives_have_real_consequences = bool(alternatives) and all(
+    alternatives_have_consequence_statements = bool(alternatives) and all(
         nonempty_string(alternative.get("label"))
         and nonempty_string(alternative.get("consequence"))
         for alternative in alternatives
@@ -7031,7 +7047,7 @@ def question_review_facts(
         "repository_facts_observed_count": len(established_facts or []),
         "observed_alternative_count": len(alternatives or []),
         "observed_question_basis_bytes": len(observed_question_text.encode("utf-8")),
-        "alternatives_have_real_consequences": alternatives_have_real_consequences,
+        "alternatives_have_consequence_statements": alternatives_have_consequence_statements,
         "candidate_lifecycle_observed": bool(
             candidate_created_from_materiality
             and required_research_complete
@@ -7052,15 +7068,15 @@ def question_review_facts(
             "decision_recorded": decision_recorded,
         },
         "ask_user_invariants": {
-            "material_consequence": alternatives_have_real_consequences,
-            "user_ownership": True,
-            "not_repository_or_environment_fact": True,
-            "not_settled_by_accepted_decision": True,
-            "not_delegated": True,
+            "material_consequence": "requires_bounded_human_review",
+            "user_ownership": "requires_bounded_human_review",
+            "not_repository_or_environment_fact": "requires_bounded_human_review",
+            "not_settled_by_accepted_decision": "requires_bounded_human_review",
+            "not_delegated": "requires_bounded_human_review",
             "current_relevance": nonempty_string(revision.get("why_it_matters_now")) if revision else False,
             "source_grounding": bool(established_facts)
             and required_research_complete,
-            "real_consequence_between_alternatives": alternatives_have_real_consequences,
+            "real_consequence_between_alternatives": "requires_bounded_human_review",
         },
         "exact_preferred_expression_required": False,
     }
@@ -7073,7 +7089,7 @@ def question_review_facts(
         and alternatives is not None
         and f"work-authority:{dimension_id}" in (material_scope or [])
         and len(alternatives) >= 2
-        and alternatives_have_real_consequences
+        and alternatives_have_consequence_statements
         and nonempty_string(revision.get("recommendation_rationale"))
         and candidate_created_from_materiality
         and required_research_complete
@@ -7776,26 +7792,23 @@ def real_session_evidence(
         and isinstance(behavior_review, dict)
         and behavior_review.get("classification") == behavior_class
     )
+    declared_user_owned = bool(materiality_basis.get("user_owned_dimension_ids"))
     appropriate_inquiry_outcome = (
-        question_ok and decision_ok
-        if is_user_owned_behavior(behavior_class)
-        else non_question_outcome_ok
+        question_ok and decision_ok if declared_user_owned else non_question_outcome_ok and materiality_ok
     )
-    no_silent_user_owned_choice = (
-        decision_ok
-        if is_user_owned_behavior(behavior_class)
-        else behavior_review.get("unresolved_material_user_outcome") is False
-        if isinstance(behavior_review, dict)
-        else False
+    # This proves only the lifecycle of submitted dimensions. Semantic coverage
+    # of the independently reviewed outcome remains a mandatory human judgment.
+    recorded_user_owned_authority = (
+        question_ok and decision_ok if declared_user_owned else materiality_ok and non_question_outcome_ok
     )
     decision_calls_for_order = (
         work_capture.successful_calls("decision_record") if work_capture is not None else []
     )
-    discovery_calls_for_order = (
-        work_capture.successful_calls("engineering_choice_discovery")
-        if work_capture is not None
-        else []
-    )
+    discovery_calls_for_order = [
+        call for call in (work_capture.successful_calls("engineering_choice_discovery") if work_capture else [])
+        if call.result.get("discovery_candidate_id")
+        == materiality_basis.get("engineering_choice_discovery", {}).get("discovery_candidate_id")
+    ]
     hidden_discovery_call = (
         discovery_calls_for_order[0]
         if len(discovery_calls_for_order) == 1
@@ -7812,31 +7825,13 @@ def real_session_evidence(
     )
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
-        or (
-            question_ok
-            and decision_calls_for_order
-            and bool(hidden_repository_investigation)
-            and question_review_basis.get(
-                "repository_research_lifecycle_observed"
-            )
-            and len(
-                materiality_basis.get("engineering_choice_discovery", {}).get(
-                    "choice_ids", []
-                )
-            )
-            >= 2
-            and materiality_basis.get("engineering_choice_discovery", {}).get(
-                "effect_categories"
-            )
-            and "coupled"
-            in materiality_basis.get("engineering_choice_discovery", {}).get(
-                "relationship_states", []
-            )
+        or bool(hidden_repository_investigation)
+        and (
+            not declared_user_owned
+            or question_ok
+            and question_review_basis.get("repository_research_lifecycle_observed")
             and first_work_change is not None
-            and all(
-                call.completion_sequence < first_work_change
-                for call in decision_calls_for_order
-            )
+            and all(call.completion_sequence < first_work_change for call in decision_calls_for_order)
         )
     )
     ordinary_ok = (
@@ -8278,12 +8273,12 @@ def real_session_evidence(
         "hidden_material_discovery_order": evidence_check(
             references_present, hidden_material_discovery_order_ok
         ),
-        "no_silent_user_owned_choice": evidence_check(references_present, no_silent_user_owned_choice),
+        "recorded_user_owned_authority": evidence_check(references_present, recorded_user_owned_authority),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
         "source_grounded_checkpoint": evidence_check(references_present, checkpoint_ok),
         "decision_provenance_when_required": evidence_check(
             references_present,
-            decision_ok if is_user_owned_behavior(behavior_class) else not decision_attempted,
+            decision_ok if declared_user_owned else not decision_attempted,
         ),
         "distinct_work_and_resume_invocations": evidence_check(references_present, invocations_ok),
         "fresh_resume_without_prior_context": evidence_check(references_present, fresh_ok),
@@ -8405,6 +8400,14 @@ def real_session_evidence(
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
+        "material_authority_review": authority_obligations.review_basis(
+            evaluation_basis if isinstance(evaluation_basis, dict) else {},
+            behavior_review if isinstance(behavior_review, dict) else {},
+            {"work_capture":work_capture.source_sha256 if work_capture else None,
+             "resume_capture":resume_capture.source_sha256 if resume_capture else None,
+             "canonical_bundle":bundle.source_sha256 if bundle else None},
+            changed_paths=changed_paths, decision_ids=sorted(decision_evidence), materiality=materiality_basis,
+        ),
         "inquiry_behavior_basis": {
             "frontier_interrupted_user": frontier_interrupted,
             "decision_attempted": decision_attempted,
@@ -9017,6 +9020,13 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
             actual = cycle.get("real_session_dogfood", {})
             if actual.get("evidence_class") != "actual_repository_real_session":
                 raise ValueError("dogfood cycle lacks the real-session evidence class")
+            if actual.get("status") == "passed" and (
+                not isinstance(actual.get("material_authority_review"), dict)
+                or actual["material_authority_review"].get("state") != "requires_bounded_human_review"
+                or actual["material_authority_review"].get("machine_proves_semantic_authority") is not False
+                or not actual["material_authority_review"].get("obligations")
+            ):
+                raise ValueError("machine passage requires pending bounded semantic authority obligations")
             if set(actual.get("checks", {})) != set(REAL_SESSION_CHECKS):
                 raise ValueError("real-session dogfood evidence checks are incomplete")
             if not set(actual["checks"].values()) <= ALLOWED_STATUS:
@@ -9234,6 +9244,16 @@ def human_review_observation_template(review_prompt: str | None = None) -> dict[
     }
 
 
+def material_authority_review_templates(automated_result: dict[str, Any]) -> list[dict[str, Any]]:
+    templates = []
+    for sample in automated_result["human_review"]["required_samples"]["interaction"]:
+        repository = next(item for item in automated_result["repositories"] if item["class"] == sample["repository_class"])
+        cycle = next(item for item in repository["cycles"] if item["cycle"] == sample["cycle"])
+        basis = cycle["real_session_dogfood"]["material_authority_review"]
+        templates.append(authority_obligations.review_template(sample, basis))
+    return templates
+
+
 def human_review_template(automated_result: dict[str, Any], result_sha256: str) -> dict[str, Any]:
     if not isinstance(automated_result, dict):
         raise ValueError("automated Dogfood result must be a JSON object")
@@ -9250,6 +9270,8 @@ def human_review_template(automated_result: dict[str, Any], result_sha256: str) 
         "candidate_head": automated_result["candidate_head"],
         "automated_result_sha256": result_sha256,
         "sampling": samples,
+        "authority_obligation_contract": authority_obligations.assessment_contract(),
+        "authority_obligation_reviews": material_authority_review_templates(automated_result),
         "interaction_reviews": [
             {
                 "sample": sample,
@@ -9390,6 +9412,8 @@ def validate_human_review_artifact(
         "automated_result_sha256",
         "sampling",
         "interaction_reviews",
+        "authority_obligation_contract",
+        "authority_obligation_reviews",
         "document_reviews",
         "viewer_snapshot_reviews",
         "repository_intelligence_reviews",
@@ -9509,7 +9533,9 @@ def validate_human_review_artifact(
     )
     if len(observations) != expected_count:
         raise ValueError("human review artifact does not contain every required criterion")
-    statuses: list[str] = []
+    if artifact.get("authority_obligation_contract") != authority_obligations.assessment_contract():
+        raise ValueError("human review authority obligation contract is not current")
+    statuses = authority_obligations.validate_reviews(artifact.get("authority_obligation_reviews"), material_authority_review_templates(automated_result))
     for index, observation in enumerate(observations):
         if not isinstance(observation, dict) or set(observation) != {"status", "basis"}:
             raise ValueError("human review observations require status and basis")
@@ -10119,6 +10145,8 @@ def real_session_fixture(
     repository_path: Path | None = None,
     *,
     behavior_class: str = "explicit_user_owned_decision",
+    evaluation_behavior_class: str | None = None,
+    question_expression: str | None = None,
 ) -> dict[str, Any]:
     project = "01" * 16
     user_source = "02" * 16
@@ -10157,13 +10185,16 @@ def real_session_fixture(
     repository_cwd = str(repository_path.resolve()) if repository_path else "/phase8/repository"
     work_session = f"{kind}-work-session-{cycle}"
     resume_session = f"{kind}-resume-session-{cycle}"
+    challenge = evaluation_behavior_class or behavior_class
     work_user_task = fixture_work_user_task(kind, behavior_class)
+    if challenge == "hidden_user_owned_decision":
+        work_user_task = work_user_task.replace(f"In the {kind} repository", "In this repository")
     question_content = fixture_question_content()
-    evaluation_basis = fixture_evaluation_basis(behavior_class)
+    evaluation_basis = fixture_evaluation_basis(challenge)
     applied_decisions = [decision] if is_user_owned_behavior(behavior_class) else []
     decision_turn_text = "Keep the normal output concise; diagnostics can carry the actionable cause."
     resume_user_task = "Continue the validation-adapter improvement from the current project state."
-    question_prompt = "Which error-detail boundary should the validation adapter expose to operators?"
+    question_prompt = question_expression or "Which error-detail boundary should the validation adapter expose to operators?"
     next_step = "Update src/resume.rs to carry the chosen concise diagnostic boundary and verify it"
     work_paths = (
         ["backend/src/existing.rs", "frontend/src/existing.ts"]
@@ -11190,7 +11221,7 @@ def real_session_fixture(
         ),
         task_complete(decision_turn),
     ]
-    if behavior_class == "hidden_user_owned_decision":
+    if challenge == "hidden_user_owned_decision":
         discovery_index = next(
             index
             for index, value in enumerate(work_events)
@@ -11919,7 +11950,7 @@ def real_session_fixture(
         "_evidence_directory": str(evidence_directory),
         "repository_class": kind,
         "cycle": cycle,
-        "behavior_class": behavior_class,
+        "behavior_class": challenge,
         "repository_revision": revision,
         "work_user_task": work_user_task,
         "fresh_resume_user_task": resume_user_task,
@@ -11929,7 +11960,7 @@ def real_session_fixture(
             "boundary_kind": "component",
         },
         "evaluation_basis": evaluation_basis,
-        "behavior_review": fixture_behavior_review(behavior_class),
+        "behavior_review": fixture_behavior_review(challenge),
         "evidence": {
             "captures": {
                 "work": {"file": work_capture.name, "sha256": sha256(work_capture)},
@@ -12991,6 +13022,8 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 
 def self_test() -> int:
+    from authority_obligations_self_test import self_test as authority_self_test
+    authority_self_test()
     definition = load_definition()
     v11 = load_v11()
     descriptor_task = "Preserve exact prompt identity."
@@ -13540,6 +13573,32 @@ def self_test() -> int:
             behavior_class,
         )
 
+    for index, expression in enumerate((
+        "Should normal output show the cause, or should diagnostic output carry it?",
+        "운영자가 보는 오류 메시지의 상세 수준을 정해주세요.",
+    )):
+        wording_directory = evidence_directory / f"authority-wording-{index}"
+        wording_directory.mkdir()
+        wording_fixture = real_session_fixture("volicord", 1, revision, wording_directory, question_expression=expression)
+        wording_result = real_session_evidence(wording_fixture, kind="volicord", cycle=1, repository_revision=revision)
+        if wording_result["status"] != "passed":
+            raise AssertionError("different Question expression changed the same recorded authority lifecycle")
+        if wording_result["material_authority_review"]["machine_proves_semantic_authority"] is not False:
+            raise AssertionError("Question expression became a semantic oracle")
+
+    # Initial evaluator classes are challenges, not a requirement to manufacture
+    # a Question when current evidence supports a maintained non-Question route.
+    for actual_route in ("research_or_no_question", "delegated_implementation_choice", "exploratory_uncertainty"):
+        for challenge in ("explicit_user_owned_decision", "hidden_user_owned_decision"):
+            challenge_directory = evidence_directory / f"authority-challenge-{actual_route}-{challenge}"
+            challenge_directory.mkdir()
+            challenge_fixture = real_session_fixture("volicord", 1, revision, challenge_directory, behavior_class=actual_route, evaluation_behavior_class=challenge)
+            observed = real_session_evidence(challenge_fixture, kind="volicord", cycle=1, repository_revision=revision)
+            if observed["status"] != "passed":
+                raise AssertionError(f"initial {challenge} forced ceremony for {actual_route}: " + str({key: value for key, value in observed["checks"].items() if value != "passed"}))
+            if observed["material_authority_review"]["state"] != "requires_bounded_human_review":
+                raise AssertionError("recorded non-Question authority became automatic semantic proof")
+
     hidden_early_directory = evidence_directory / "current-intake-hidden-early-write"
     hidden_early_directory.mkdir()
     hidden_early_fixture = real_session_fixture(
@@ -13787,7 +13846,7 @@ def self_test() -> int:
     ask_basis = external_result["inquiry_behavior_basis"]["ask_user_question_basis"]
     if (
         ask_basis.get("exact_preferred_expression_required") is not False
-        or ask_basis.get("ask_user_invariants", {}).get("material_consequence") is not True
+        or ask_basis.get("ask_user_invariants", {}).get("material_consequence") != "requires_bounded_human_review"
         or external_result["checks"]["decision_provenance_when_required"] != "passed"
     ):
         raise AssertionError("ASK_USER invariants or current-host provenance were not qualified")
@@ -14410,7 +14469,7 @@ def self_test() -> int:
     if (
         blocker_result["kind"] != "phase8_dogfood_blocker_result"
         or blocker_result["failed_checks"]
-        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
+        != list(WORK_BLOCKER_CHECKS)
         or blocker_result["classification"] != "product_work_session_blocker"
         or blocker_result["outcome"] != "campaign_stop"
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
@@ -14475,7 +14534,7 @@ def self_test() -> int:
     )
     if (
         transport_blocker_result["failed_checks"]
-        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
+        != list(WORK_BLOCKER_CHECKS)
         or sha256(transport_blocker_path) != transport_blocker_sha256
     ):
         raise AssertionError("work-blocker transport LF regression did not qualify immutably")
@@ -14548,7 +14607,7 @@ def self_test() -> int:
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("kind")
         != "phase8_dogfood_blocker_result"
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("failed_checks")
-        != list((*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS))
+        != list(WORK_BLOCKER_CHECKS)
     ):
         raise AssertionError(
             "qualify-work-blocker CLI did not emit the failure-only result: "
@@ -14843,6 +14902,8 @@ def self_test() -> int:
         observation["status"] = "passed"
         observation["basis"] = "Bounded representative human review passed."
 
+    from authority_obligations_self_test import complete_synthetic_reviews
+    complete_synthetic_reviews(passed_review["authority_obligation_reviews"])
     explicit_review = next(
         review
         for review in passed_review["interaction_reviews"]
@@ -14869,6 +14930,29 @@ def self_test() -> int:
         or qualified["replacement_pass_candidate"] is not True
     ):
         raise AssertionError("passed human review did not qualify replacement independently")
+    from authority_obligations_self_test import assessment as synthetic_authority_assessment
+    for resolution, relation, expected in [
+        ("user_decision", "resolves_this_outcome", "passed"),
+        ("repository_or_contract_settlement", "concern_disproved", "passed"),
+        ("applicable_prior_authority", "resolves_this_outcome", "passed"),
+        ("exact_delegation", "resolves_this_outcome", "passed"),
+        ("prototype", "no_commitment", "passed"),
+        ("defer", "no_commitment", "passed"),
+        ("avoidance", "no_commitment", "passed"),
+        ("silent_commitment", "does_not_resolve_this_outcome", "failed"),
+        ("user_decision", "does_not_resolve_this_outcome", "failed"),
+    ]:
+        obligation_review = json.loads(json.dumps(passed_review))
+        assessment = synthetic_authority_assessment(resolution, expression="A differently expressed authority claim")
+        assessment["authority_relation_to_outcome"] = relation
+        obligation_review["authority_obligation_reviews"][0]["obligations"][0]["assessment"] = assessment
+        combined = combine_human_review(result, obligation_review, automated_result_sha256)
+        if combined["replacement_qualification"]["status"] != expected:
+            raise AssertionError(f"material authority disposition did not control qualification: {resolution}/{relation}")
+    extra_review = json.loads(json.dumps(passed_review))
+    extra_review["authority_obligation_reviews"][0]["additional_outcomes"] = [synthetic_authority_assessment("silent_commitment")]
+    if combine_human_review(result, extra_review, automated_result_sha256)["replacement_qualification"]["status"] != "failed":
+        raise AssertionError("new independently reviewed silent commitment escaped qualification")
     silent_policy_review = json.loads(json.dumps(passed_review))
     silent_hidden_review = next(
         review
@@ -15871,6 +15955,40 @@ def self_test() -> int:
         })
         events[insertion_index:insertion_index] = inserted
         store_capture(fixture, "work", path, events)
+
+    rediscovery_fixture = real_session_fixture("volicord", 1, revision, evidence_directory, behavior_class="research_or_no_question")
+    rediscovery_capture = load_codex_capture(evidence_directory / rediscovery_fixture["evidence"]["captures"]["work"]["file"])
+    current_discovery = rediscovery_capture.successful_calls("engineering_choice_discovery")[0]
+    current_review = next(call for call in rediscovery_capture.successful_calls("materiality_review") if call.arguments.get("action") == "record")
+    old_discovery_result = dict(current_discovery.result, discovery_candidate_id="ad" * 16)
+    old_review_arguments = dict(current_review.arguments, engineering_choice_discovery_candidate_id="ad" * 16)
+    old_review_result = json.loads(json.dumps(current_review.result))
+    old_review_result["review_candidate_id"] = "ae" * 16
+    current_inspect = next(call for call in rediscovery_capture.successful_calls("materiality_review") if call.arguments.get("action") == "inspect")
+    report_arguments = json.loads(json.dumps(current_inspect.arguments))
+    report_arguments["review_candidate_id"] = "ae" * 16
+    report_arguments["coupled_artifact_review"]["materiality_closure"] = {
+        "state": "new_material_outcome", "outcomes": ["An independent path-anchor outcome"],
+        "rationale": "The complete planned artifacts exposed a residual material boundary"}
+    pending_scope = json.loads(json.dumps(current_inspect.result["executable_work_scope"]))
+    pending_scope["coupled_artifact_review"] = report_arguments["coupled_artifact_review"]
+    pending_scope["authority_basis"].update({"review_candidate_id": "ae" * 16, "engineering_choice_discovery_candidate_id": "ad" * 16})
+    for operation, call_id, arguments, output in [
+        ("engineering_choice_discovery", "prior-discovery", current_discovery.arguments, old_discovery_result),
+        ("materiality_review", "prior-review", old_review_arguments, old_review_result),
+        ("materiality_review", "prior-new-material-outcome", report_arguments, {
+            **current_inspect.result, "review_candidate_id": "ae" * 16,
+            "executable_work_scope": None, "pending_pre_write_reassessment": pending_scope,
+            "workflow": {"stage": "engineering_choice_discovery", "disposition": "engineering_choice_discovery_required",
+                "required_next_action": {"tool": "engineering_choice_discovery", "action": "record"},
+                "blocks_ordinary_work": True},
+        }),
+    ]:
+        insert_successful_mcp_completion_before(rediscovery_fixture, before_call_marker="discovery-call",
+            call_id=call_id, operation=operation, arguments=arguments, structured=output)
+    rediscovery_result = real_session_evidence(rediscovery_fixture, kind="volicord", cycle=1, repository_revision=revision)
+    if rediscovery_result["status"] != "passed":
+        raise AssertionError("prospective rediscovery before any write did not select the current review by identity")
 
     def independent_two_question_fixture() -> dict[str, Any]:
         fixture = real_session_fixture(

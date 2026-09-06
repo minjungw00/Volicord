@@ -1003,7 +1003,12 @@ counterfactual conclusion을 비교한다. Hidden descriptor는 provisional/fina
 confirmation bias를 줄이는 workflow isolation이며 OS secrecy 주장이 아니다.
 
 Question wording, exact alternatives, recommendation이나 expected user selection은 이
-review의 정답이 아니다. `research_or_no_question`, `delegated_implementation_choice`와
+review의 정답이 아니다. Initial sealed concern은 execution 결과의 oracle이 아니라
+rebuttable counterfactual challenge다. 뒤에 발견한 stronger inspectable repository/contract
+settlement, applicable prior authority 또는 exact delegation이 concern을 해소할 수 있다.
+Actual implementation이 outcome을 commit하지 않는 avoidance/defer/prototype도 허용한다.
+이 경우 unrelated Question이나 고정 Question 수를 요구하지 않는다. Initial blind review,
+qualification-profile reveal, reconciliation과 operator opacity는 그대로 유지한다. `research_or_no_question`, `delegated_implementation_choice`와
 `exploratory_uncertainty`에는 counterfactual이 `not_required_for_behavior_class`이며 user
 Decision ceremony를 추가하지 않는다. Evaluator와 independent reviewer의 repository fact
 또는 authority conclusion이 다르면 `unresolved_conflict` 상태로 봉인을 차단한다. Conflict는
@@ -1015,10 +1020,10 @@ Reviewer-safe contract는 다음 behavior-class vocabulary와 각 class의 의�
 repository placement를 공개하지 않는다.
 
 - `explicit_user_owned_decision`: ordinary task가 unresolved material outcome을 disclosure하는
-  positive control이며 Question과 explicit current-host Decision이 필요함
+  positive control이며 current evidence에도 user-owned outcome이 unresolved이면 Question과 explicit current-host Decision이 필요함
 - `hidden_user_owned_decision`: ordinary task는 outcome을 disclosure하지 않지만 complete work가
   user-owned material outcome을 반드시 만나며 repository investigation 뒤 agent가 이를 발견해
-  Question과 explicit current-host Decision을 기록해야 함
+  current evidence에도 outcome이 unresolved이면 Question과 explicit current-host Decision을 기록해야 함
 - `research_or_no_question`: research, accepted contract 또는 repository fact로 user interruption이
   불필요하며 no-question outcome이 맞음
 - `delegated_implementation_choice`: user가 이미 위임한 implementation boundary 안에서 agent가
@@ -1352,12 +1357,37 @@ precision과 learning-active quality를 구분한다. Learning review는 fork의
 alternatives/trade-offs completeness, initial reasoning 전 recommendation anchoring 부재,
 response 뒤 educational feedback 정확성, implementation fidelity, routine-detail omission과
 proportional interaction cost를 판정한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
-않는다. Affected work 전에 필요한 independently material user-owned dimension을 모두
-식별하고, 각 dimension을 독립적으로 제시하거나 coupled choice의 모든 material consequence를
-진실하게 disclose하며, recommendation·preferred API shape·implementation이 별도 material
-dimension을 조용히 선택하지 않았음을 human reviewer가 확인해야 한다. Exact evaluator
+않는다. Human reviewer는 actual material outcome마다 observable implementation commitment,
+actual resolution path와 supporting authority를 구분한다. Current user Decision, applicable prior
+authority, exact delegation, repository/contract settlement는 해당 outcome을 prospective하게
+resolve해야 한다. Stronger inspectable authority는 initial concern을 반증할 수 있고,
+avoidance/defer/prototype은 material production commitment가 없을 때 통과할 수 있다.
+User choice가 여전히 필요할 때는 각 dimension을 독립적으로 제시하거나 coupled choice의
+모든 material consequence를 disclose해야 한다. Unrelated/trivial Question, recommendation,
+preferred API shape와 implementation preference는 별도 silent material commitment의 authority가
+될 수 없다. Exact evaluator
 wording, alternative label, expected answer 또는 하나의 decomposition은 요구하지 않고,
 agent에 위임된 trivial implementation detail은 별도 Question 누락으로 판정하지 않는다.
+Machine lifecycle checks는 recorded dimension의 Source/identity, current response/Decision
+linkage와 write 전 chronology만 판정한다. `recorded_user_owned_authority`는 hidden completeness의
+semantic proof가 아니다. Semantic ask-user invariants는 `requires_bounded_human_review`이며
+Question wording, count, keyword 또는 similarity로 자동 판정하지 않는다. Hidden repository
+investigation은 필요하지만 multiple choices 또는 coupling이라는 고정 형태를 요구하지 않는다.
+
+Mandatory `authority_obligation_reviews`는 every qualifying cycle에서 initial concern마다
+`material_outcome`, `observable_implementation_commitment`, `commitment_state`, `resolution_path`,
+`authority_kind`, bounded `authority_basis`, `authority_relation_to_outcome`, `chronology`와
+`evidence`를 기록한다. Evidence는 immutable capture/bundle hash 또는 pinned owner provenance의
+`evidence_id`와 exact call/turn, Decision revision, file/line 또는 diff hunk `locator`를 인용한다.
+Sanitized automated result는 initial concern text 대신 private descriptor field와 SHA-256만
+보존한다. Post-session review package의 evaluator descriptor와 별도 raw-rollout archive에서
+이를 resolve한다. 모든 실제 변경과 coupled artifact를 검토한 `coverage_basis`가 필요하고,
+initial challenge에 없던 independent outcome은 `additional_outcomes`에 각각 평가한다.
+Draft의 null assessment/coverage는 미완료이며 generic interaction pass로 대체할 수 없다.
+Silent/unresolved, late, unrelated authority 또는 production commitment를 가진 prototype/defer
+주장은 실패한다. Typed schema와 immutable evidence linkage는 판단을 재현 가능하게 만들지만,
+인용한 authority가 실제 outcome을 resolve하는지는 bounded human judgment가 소유한다.
+
 Evaluator-private concern과 counterfactual evidence는 naturalistic execution 뒤 bounded review
 grounding으로만 사용하며 frozen operator task와 work/resume session에는 노출하지 않는다.
 Polyglot cycle은 언어·component

@@ -3021,6 +3021,8 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
         review_index_file = opened.extractfile("behavior-reviews/index.json")
         assert review_index_file is not None
         review_index = json.loads(review_index_file.read())
+        assert review_index["authority_obligation_contract"] == harness.authority_obligations.assessment_contract()
+        assert "authoritative_descriptor" in review_index["authority_review_evidence"]
         assert len(review_index["reviews"]) == campaign.QUALIFICATION_CYCLE_COUNT
         assert all(
             campaign.REVIEW_SLOT_ID.fullmatch(item["review_slot_id"])
