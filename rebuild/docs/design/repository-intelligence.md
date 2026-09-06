@@ -544,3 +544,6 @@ snapshot에서 계산한다. 새 observation의 Source, entity/range/provenance�
 analysis identity를 함께 rebind하며, 동일한 새 observation에서 full rebuild와 결과가
 일치해야 한다. 이름/파일별 lookup index는 후보 검색 비용만 줄이며 ambiguity를 임의
 선택으로 해소하지 않는다.
+Semantic lookup은 source line 경계를 한 번 index하고 declaration arity를 fact마다 한 번
+계산하여 같은 이름의 후보를 반복 검사할 때 재사용한다. CRLF/Unicode/빈 줄 및 unknown
+arity와 ambiguity의 의미는 바뀌지 않는다. 이 index는 해당 analysis 실행 안에서만 산다.

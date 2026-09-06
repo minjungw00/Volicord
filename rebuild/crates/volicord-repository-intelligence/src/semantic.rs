@@ -206,11 +206,12 @@ fn analyze_repository_semantics_inner(
         let mut language_diagnostics = Vec::new();
         let source_text =
             read_sources(&root, &language_bases, &language, &mut language_diagnostics);
+        let source_lines = index_source_lines(&source_text);
         add_definition_relations(&language_facts, &mut language_results, &analysis);
         add_structural_semantics(
             &language_facts,
             &by_identity,
-            &source_text,
+            &source_lines,
             &mut language_results,
             &mut language_diagnostics,
             &analysis,
@@ -218,7 +219,7 @@ fn analyze_repository_semantics_inner(
         add_type_relations(
             &language_facts,
             &by_identity,
-            &source_text,
+            &source_lines,
             &mut language_results,
             &analysis,
         );
@@ -333,6 +334,18 @@ fn is_selected_ecosystem(language: &Language) -> bool {
     )
 }
 
+fn index_source_lines(sources: &BTreeMap<String, String>) -> BTreeMap<&str, Vec<&str>> {
+    sources
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.lines().collect()))
+        .collect()
+}
+
+#[cfg(test)]
+thread_local! {
+    static DECLARED_ARITY_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn read_sources(
     root: &Path,
     bases: &[FileAnalysisBasis],
@@ -392,7 +405,7 @@ fn add_definition_relations(
 fn add_structural_semantics(
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
-    sources: &BTreeMap<String, String>,
+    sources: &BTreeMap<&str, Vec<&str>>,
     results: &mut Vec<SemanticAnalysisResult>,
     diagnostics: &mut Vec<AnalysisDiagnostic>,
     analysis: &AnalysisSnapshot,
@@ -403,12 +416,21 @@ fn add_structural_semantics(
             names.entry(name).or_default().push(fact);
         }
     }
+    let arities = facts
+        .iter()
+        .map(|fact| {
+            (
+                fact.entity.identity.as_str(),
+                declared_arity(&fact.entity, sources),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
     for fact in facts {
         for relation in &fact.relations {
             match relation.kind {
                 StructuralRelationKind::Implements | StructuralRelationKind::Inherits => {
                     let target =
-                        resolve_target(&fact.entity, &relation.target, &names, None, sources);
+                        resolve_target(&fact.entity, &relation.target, &names, None, &arities);
                     let semantic_target = target.clone();
                     results.push(make_result(
                         analysis,
@@ -424,7 +446,7 @@ fn add_structural_semantics(
                             &target_identity,
                             facts,
                             entities,
-                            sources,
+                            &arities,
                             results,
                             analysis,
                         );
@@ -434,7 +456,7 @@ fn add_structural_semantics(
                     let arity =
                         call_arity(&fact.entity, relation.supporting_range.as_ref(), sources);
                     let target =
-                        resolve_target(&fact.entity, &relation.target, &names, arity, sources);
+                        resolve_target(&fact.entity, &relation.target, &names, arity, &arities);
                     if let RelationTarget::Unresolved(unresolved) = &target {
                         diagnostics.push(diagnostic(
                             &fact.entity.language,
@@ -505,7 +527,7 @@ fn add_overrides(
     target_identity: &str,
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
-    sources: &BTreeMap<String, String>,
+    arities: &BTreeMap<&str, Option<usize>>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
@@ -523,8 +545,8 @@ fn add_overrides(
             candidate.entity.kind == CodeEntityKind::Method
                 && candidate.entity.display_name == method.entity.display_name
                 && qualified_parent(&candidate.entity) == target_name
-                && declared_arity(&candidate.entity, sources)
-                    == declared_arity(&method.entity, sources)
+                && arities.get(candidate.entity.identity.as_str())
+                    == arities.get(method.entity.identity.as_str())
         })) else {
             continue;
         };
@@ -542,7 +564,7 @@ fn add_overrides(
 fn add_type_relations(
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
-    sources: &BTreeMap<String, String>,
+    sources: &BTreeMap<&str, Vec<&str>>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
@@ -567,10 +589,10 @@ fn add_type_relations(
         let Some(range) = fact.entity.source_range.as_ref() else {
             continue;
         };
-        let Some(source) = sources.get(&fact.entity.area.path) else {
+        let Some(source) = sources.get(fact.entity.area.path.as_str()) else {
             continue;
         };
-        let Some(line) = source.lines().nth(range.start.line as usize) else {
+        let Some(line) = source.get(range.start.line as usize) else {
             continue;
         };
         let Some(type_name) = declared_type(&fact.entity, line) else {
@@ -641,7 +663,7 @@ fn resolve_target(
     target: &RelationTarget,
     names: &BTreeMap<&str, Vec<&crate::StructuralFact>>,
     requested_arity: Option<usize>,
-    sources: &BTreeMap<String, String>,
+    arities: &BTreeMap<&str, Option<usize>>,
 ) -> RelationTarget {
     let RelationTarget::Unresolved(unresolved) = target else {
         return target.clone();
@@ -655,7 +677,9 @@ fn resolve_target(
     if let Some(arity) = requested_arity {
         let arity_matches = candidates
             .iter()
-            .filter(|candidate| declared_arity(&candidate.entity, sources) == Some(arity))
+            .filter(|candidate| {
+                arities.get(candidate.entity.identity.as_str()) == Some(&Some(arity))
+            })
             .copied()
             .collect::<Vec<_>>();
         if !arity_matches.is_empty() {
@@ -710,21 +734,23 @@ fn resolve_target(
     )
 }
 
-fn declared_arity(entity: &CodeEntity, sources: &BTreeMap<String, String>) -> Option<usize> {
+fn declared_arity(entity: &CodeEntity, sources: &BTreeMap<&str, Vec<&str>>) -> Option<usize> {
+    #[cfg(test)]
+    DECLARED_ARITY_READS.with(|reads| reads.set(reads.get() + 1));
     let range = entity.source_range.as_ref()?;
-    let source = sources.get(&entity.area.path)?;
-    let line = source.lines().nth(range.start.line as usize)?;
+    let source = sources.get(entity.area.path.as_str())?;
+    let line = source.get(range.start.line as usize)?;
     parameter_arity(line.split_once('(')?.1.split_once(')')?.0)
 }
 
 fn call_arity(
     source: &CodeEntity,
     range: Option<&SourceRange>,
-    sources: &BTreeMap<String, String>,
+    sources: &BTreeMap<&str, Vec<&str>>,
 ) -> Option<usize> {
     let range = range?;
-    let text = sources.get(&source.area.path)?;
-    let line = text.lines().nth(range.start.line as usize)?;
+    let text = sources.get(source.area.path.as_str())?;
+    let line = text.get(range.start.line as usize)?;
     let start = usize::try_from(range.start.column).ok()?.min(line.len());
     let call = line.get(start..).unwrap_or(line);
     parameter_arity(call.split_once('(')?.1.split_once(')')?.0)
@@ -1240,6 +1266,67 @@ mod tests {
     use std::error::Error;
     use std::path::Path;
     use volicord_context::{ProjectId, SourceId};
+
+    #[test]
+    fn indexed_source_lines_preserve_text_line_boundaries() {
+        let cases = ["", "\n", "\r", "a\n", "a\r\n\r\n", "한글\nnext\r"];
+        for text in cases {
+            let sources = [("source".to_owned(), text.to_owned())]
+                .into_iter()
+                .collect();
+            let lines = super::index_source_lines(&sources);
+            for position in 0..=text.lines().count() {
+                assert_eq!(
+                    lines["source"].get(position).copied(),
+                    text.lines().nth(position)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn declaration_arity_is_read_once_per_fact_despite_repeated_calls() -> Result<(), Box<dyn Error>>
+    {
+        let root = tempfile::tempdir()?;
+        let calls = (0..1000)
+            .map(|index| format!("fn caller_{index}() {{ target(); }}\n"))
+            .collect::<String>();
+        std::fs::write(
+            root.path().join("lib.rs"),
+            format!("fn target() {{}}\n{calls}"),
+        )?;
+        let project = ProjectId::from_bytes([0x91; 16]);
+        let source = SourceId::from_bytes([0x92; 16]);
+        let grounding = crate::canonical::test_repository_grounding(project, source)?;
+        let inventory =
+            InventoryRequest::new(root.path(), &grounding, source, 1_725_000_000_000_000)?;
+        super::DECLARED_ARITY_READS.with(|reads| reads.set(0));
+        let (_, analysis) = super::analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory),
+        ))?;
+        assert_eq!(
+            super::DECLARED_ARITY_READS.with(|reads| reads.get()),
+            analysis.structural_facts.len()
+        );
+        let target = analysis
+            .structural_facts
+            .iter()
+            .find(|fact| fact.entity.display_name.as_deref() == Some("target"))
+            .ok_or("missing target declaration")?;
+        assert_eq!(
+            analysis
+                .semantic_results
+                .iter()
+                .filter(|result| {
+                    result.relation.kind == crate::SemanticRelationKind::ResolvesTo
+                        && result.relation.target
+                            == crate::RelationTarget::ResolvedEntity(target.entity.identity.clone())
+                })
+                .count(),
+            1000
+        );
+        Ok(())
+    }
 
     #[test]
     fn injected_adapter_failure_publishes_no_semantic_fact_for_failed_language(
