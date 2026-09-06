@@ -16,6 +16,7 @@ import tempfile
 
 import campaign
 import harness
+from codex_events import activation_identity
 
 
 REVISION = "ab" * 20
@@ -586,6 +587,149 @@ def batch_exporter(bundles: dict[str, Path]):
     return export
 
 
+ACTIVATION_ORDERING_FIXTURE = (
+    Path(__file__).parent / "fixtures/vscode-session-start-ordering.jsonl"
+)
+
+
+def assert_session_start_ordering(parent: Path) -> None:
+    """Minimal VS Code ordering and negative fixtures; no private rollout data."""
+    original = [json.loads(line) for line in ACTIVATION_ORDERING_FIXTURE.read_text().splitlines()]
+    variants = {"vscode": (copy.deepcopy(original), "valid")}
+
+    def variant(label: str, state: str) -> list[dict]:
+        events = copy.deepcopy(original)
+        variants[label] = events, state
+        return events
+
+    events = variant("before-task-started", "valid")
+    events.insert(1, events.pop(7))
+    events = variant("after-visible-user-before-user-event", "late")
+    events.insert(8, events.pop(7))
+    events = variant("after-legacy-user-event", "late")
+    events.insert(9, events.pop(7))
+    events = variant("after-mcp-without-user", "late")
+    activation = events.pop(7)
+    del events[7:9]
+    events.insert(9, activation)
+    events = variant("after-repository-command-without-user", "late")
+    activation = events.pop(7)
+    del events[7:9]
+    events[7]["payload"]["input"] = 'const r = await tools.exec_command({"cmd":"rg --files","workdir":"/fixture/repository"}); text(JSON.stringify(r));'
+    del events[8]
+    events.insert(8, activation)  # A pending command already proves work began.
+    events = variant("missing-with-later-mcp", "absent")
+    del events[7]
+    for label in ("wrong-repository", "wrong-session", "late-wrong-binding"):
+        events = variant(label, "binding_mismatch")
+        events[7]["payload"]["content"][0]["text"] = activation_identity(
+            Path("/another/repository" if label != "wrong-session" else "/fixture/repository"),
+            "another-session" if label == "wrong-session" else "fixture-session",
+        )
+        if label == "late-wrong-binding":
+            events.insert(9, events.pop(7))
+    for label in ("malformed", "late-malformed", "conflicting"):
+        events = variant(label, "malformed")
+        item = events[7]["payload"]["content"][0]
+        identity = item["text"].splitlines()[0]
+        item["text"] = identity[:-1] if label != "conflicting" else identity + "\n" + identity
+        if label == "late-malformed":
+            events.insert(9, events.pop(7))
+    events = variant("conflict-across-messages", "binding_mismatch")
+    conflict = copy.deepcopy(variants["wrong-session"][0][7])
+    events.insert(10, conflict)
+    events = variant("repeated-valid-context", "valid")
+    events.insert(10, copy.deepcopy(events[7]))
+    events = variant("unknown-setup-ordering", "indeterminate")
+    events[4]["payload"]["content"] = [{"type": "input_text", "text": "Uncorrelated host or user text."}]
+    events = variant("missing-with-unknown-setup", "indeterminate")
+    events[4]["payload"]["content"] = [{"type": "input_text", "text": "Uncorrelated host or user text."}]
+    del events[7]
+    events = variant("mixed-setup-and-task", "indeterminate")
+    events[4]["payload"]["content"].append({"type": "input_text", "text": "Extra uncorrelated task."})
+    events = variant("unknown-pre-activation-event", "indeterminate")
+    events.insert(7, {"type": "unfamiliar_transport", "payload": {}})
+    events = variant("unsupported-pre-activation-tool", "indeterminate")
+    events.insert(7, {"type": "response_item", "payload": {
+        "type": "custom_tool_call", "name": "unknown_tool", "input": "unknown work",
+    }})
+    events = variant("incomplete-capture", "indeterminate")
+    del events[8:]
+    events = variant("unsupported-developer-content", "indeterminate")
+    events[7]["payload"]["content"] = {"text": "Unsupported context transport"}
+    events = variant("unsupported-developer-after-user", "indeterminate")
+    events[7]["payload"]["content"] = {"text": "Unsupported context transport"}
+    events.insert(9, events.pop(7))
+    events = variant("unreadable-context-before-late-identity", "indeterminate")
+    events[2]["payload"]["content"] = {"text": "Unsupported context transport"}
+    events.insert(9, events.pop(7))
+    events = variant("unreadable-context-after-valid-identity", "indeterminate")
+    events.insert(10, {"type": "response_item", "payload": {
+        "type": "message", "role": "developer", "content": {"text": "Unsupported context transport"},
+    }})
+    events = variant("uncorrelated-response-user", "indeterminate")
+    del events[9:]
+    events.insert(8, events.pop(7))
+    for label, (events, expected) in list(variants.items()):
+        path = parent / f"ordering-{label}.jsonl"
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        for transport in ("legacy", "current"):
+            source = path if transport == "legacy" else current_user_message_capture(
+                path, parent / f"ordering-{label}-current.jsonl"
+            )
+            capture = harness.load_codex_capture(source)
+            assert capture.activation_evidence_state == expected, (label, transport, capture.activation_evidence_state)
+            assert capture.repository_scoped_activation_observed == (expected == "valid"), label
+            if label in {"vscode", "missing-with-later-mcp", "after-mcp-without-user"}:
+                assert capture.tool_calls, label
+            failure = harness.activation_failure(capture)
+            assert failure == (None if expected == "valid" else harness.ACTIVATION_FAILURES[expected]), label
+    # Current UserMessage alone is also a boundary; no response_item copy needed.
+    events = copy.deepcopy(original)
+    del events[8]
+    path = parent / "current-user-only.jsonl"
+    path.write_text("".join(json.dumps(event) + "\n" for event in events))
+    current = current_user_message_capture(path, parent / "current-user-only-converted.jsonl")
+    assert harness.load_codex_capture(current).activation_evidence_state == "valid"
+    events = [json.loads(line) for line in current.read_text().splitlines()]
+    events.insert(8, events.pop(7))
+    current.write_text("".join(json.dumps(event) + "\n" for event in events))
+    assert harness.load_codex_capture(current).activation_evidence_state == "late"
+    # Completion-only current MCP and FileChange representations prove earlier
+    # work even when neither a user message nor a custom invocation was retained.
+    path = parent / "ordering-after-mcp-without-user.jsonl"
+    current = current_mcp_tool_call_capture(path, parent / "current-mcp-before-activation.jsonl")
+    events = [json.loads(line) for line in current.read_text().splitlines()]
+    del events[7]
+    current.write_text("".join(json.dumps(event) + "\n" for event in events))
+    assert harness.load_codex_capture(current).activation_evidence_state == "late"
+    events[7]["payload"]["item"] = {
+        "type": "FileChange", "id": "fixture-patch", "status": "completed",
+        "stdout": "", "stderr": "", "changes": {
+            "src/main.py": {"type": "update", "unified_diff": "@@ -1 +1 @@\n-old\n+new\n", "move_path": None},
+        },
+    }
+    current.write_text("".join(json.dumps(event) + "\n" for event in events))
+    assert harness.load_codex_capture(current).activation_evidence_state == "late"
+
+
+def use_vscode_activation_ordering(path: Path) -> None:
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    template = ACTIVATION_ORDERING_FIXTURE.read_text().replace(
+        "/fixture/repository", events[0]["payload"]["cwd"]
+    )
+    setup = [json.loads(line) for line in template.splitlines()][2:7]
+    setup[-1]["payload"]["turn_id"] = events[2]["payload"]["turn_id"]
+    task = copy.deepcopy(events[3])
+    visible = {"type": "response_item", "payload": {
+        "type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": task["payload"]["message"]},
+        ],
+    }}
+    events = [events[0], events[2], *setup, events[1], visible, *events[3:]]
+    path.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+
 def assert_production_session_start(parent: Path, binary: Path) -> None:
     """Sanitized sixteen-session production hook -> collect-batch parser regression."""
     root, captures, bundles = prepared_batch(parent, "production-activation", binary)
@@ -628,6 +772,11 @@ def assert_production_session_start(parent: Path, binary: Path) -> None:
         assert capture.activation_evidence_state == expected, label
         assert capture.repository_scoped_activation_observed == (expected == "valid"), label
         assert capture.tool_calls  # MCP cannot rescue any failed activation control.
+    for path in captures:
+        use_vscode_activation_ordering(path)
+    mapped = campaign.map_batch_rollouts(root, captures)
+    assert len(mapped) == 16
+    assert all(item.capture.activation_evidence_state == "valid" for item in mapped.values())
     summary = campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
     assert summary["outcome"] == "evidence_collected"
     assert not summary["failure_attribution"]
@@ -639,6 +788,7 @@ def assert_activation_failure_attribution(parent: Path, binary: Path) -> None:
         ("late", "environment", "operator_environment_invalid"),
         ("malformed", "evidence", "evidence_failed"),
         ("binding_mismatch", "evidence", "evidence_failed"),
+        ("indeterminate", "evidence", "evidence_failed"),
         ("validator_mismatch", "validation_internal", "evidence_failed"),
     ):
         root, captures, bundles = prepared_batch(parent, f"attribution-{label}", binary)
@@ -650,6 +800,12 @@ def assert_activation_failure_attribution(parent: Path, binary: Path) -> None:
                     del events[1]
                 elif label == "late":
                     events.insert(4, events.pop(1))
+                elif label == "indeterminate":
+                    events.insert(1, {"type": "response_item", "payload": {
+                        "type": "message", "role": "user", "content": [
+                            {"type": "input_text", "text": "Uncorrelated setup or task."},
+                        ],
+                    }})
                 else:
                     item = events[1]["payload"]["content"][0]
                     identity, prose = item["text"].split("\n", 1)
@@ -3259,6 +3415,7 @@ def main() -> int:
             parent = Path(temporary)
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
+            assert_session_start_ordering(parent)
             assert_production_session_start(parent, binary)
             assert_activation_failure_attribution(parent, binary)
             assert_strict_cli_contract(parent, binary)
@@ -3279,7 +3436,8 @@ def main() -> int:
         "status": "passed",
         "checks": [
             "production_session_start_sixteen_session_parser_and_intake_integration",
-            "activation_absent_late_malformed_binding_and_validator_failure_attribution",
+            "vscode_session_start_agent_visible_ordering_current_and_legacy_transports",
+            "activation_absent_late_malformed_binding_indeterminate_and_validator_failure_attribution",
             "campaign_level_human_review_operations",
             "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
             "collect_batch_rejects_superseded_or_dirty_candidate",

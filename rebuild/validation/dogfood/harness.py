@@ -3881,6 +3881,10 @@ ACTIVATION_FAILURES = {
         "evidence", "repository_session_activation_malformed_or_unsupported",
         "activation_evidence_failure", "evidence_failed",
     ),
+    "indeterminate": ActivationFailure(
+        "evidence", "repository_session_activation_timing_indeterminate",
+        "activation_evidence_failure", "evidence_failed",
+    ),
     "validator_mismatch": ActivationFailure(
         "validation_internal", "session_activation_validator_contract_mismatch",
         "validation_internal_failure", "evidence_failed",

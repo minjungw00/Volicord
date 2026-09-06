@@ -52,6 +52,108 @@ def activation_evidence(text: str, cwd: Path, session_id: str) -> str:
     return "valid" if lines[0] == activation_identity(cwd, session_id) else "binding_mismatch"
 
 
+def message_text_segments(payload: dict[str, Any]) -> list[str] | None:
+    content = payload.get("content")
+    if not isinstance(content, list) or not 0 < len(content) <= MAX_USER_MESSAGE_CONTENT_ITEMS:
+        return None
+    if any(
+        not isinstance(item, dict)
+        or item.get("type") not in {"input_text", "output_text"}
+        or not isinstance(item.get("text"), str)
+        for item in content
+    ):
+        return None
+    segments = [item["text"] for item in content]
+    return segments if sum(map(len, segments)) <= MAX_USER_TURN_TEXT_CHARS else None
+
+
+def host_setup_message(segments: list[str]) -> bool:
+    """Recognize the bounded VS Code setup bundle, never arbitrary user prose.
+
+    Require the environment block and whole known setup segments. An unfamiliar
+    or mixed representation stays ambiguous unless a normalized user turn binds it.
+    """
+    environment = False
+    for segment in segments:
+        text = segment.strip()
+        if re.fullmatch(r"<environment_context>.*</environment_context>", text, re.DOTALL):
+            environment = True
+        elif re.fullmatch(r"<recommended_plugins>.*</recommended_plugins>", text, re.DOTALL):
+            continue
+        elif re.fullmatch(
+            r"# AGENTS\.md instructions for [^\n]+\n\s*<INSTRUCTIONS>.*</INSTRUCTIONS>",
+            text, re.DOTALL,
+        ):
+            continue
+        else:
+            return False
+    return environment
+
+
+def session_activation_state(
+    events: list[dict[str, Any]],
+    identities: list[tuple[int, str]],
+    user_turns: tuple[UserTurn, ...],
+    work_sequences: set[int],
+) -> str:
+    """Classify visibility, separately from task_started transport bookkeeping."""
+    for state in ("malformed", "binding_mismatch"):
+        if any(value == state for _, value in identities):
+            return state
+    boundaries = {turn.sequence for turn in user_turns} | work_sequences
+    user_texts = {turn.text for turn in user_turns}
+    uncertain: set[int] = set()
+    unreadable_developer_context = False
+    for sequence, event in enumerate(events):
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            uncertain.add(sequence)
+            continue
+        envelope, kind = event.get("type"), payload.get("type")
+        if envelope == "response_item" and kind == "message":
+            role = payload.get("role")
+            if role in {"user", "developer"}:
+                segments = message_text_segments(payload)
+                if segments is None:
+                    uncertain.add(sequence)
+                    unreadable_developer_context |= role == "developer"
+                elif role == "user":
+                    # The agent-visible copy can precede its user-message event.
+                    if "".join(segments) in user_texts:
+                        boundaries.add(sequence)
+                    elif not host_setup_message(segments):
+                        uncertain.add(sequence)
+            elif role != "system":
+                uncertain.add(sequence)
+        elif envelope == "response_item":
+            # Known project operations are definitive boundaries below. Unknown
+            # agent activity must not silently become setup or an operator fault.
+            uncertain.add(sequence)
+        elif envelope == "event_msg":
+            if kind not in {"task_started", "token_count"}:
+                uncertain.add(sequence)
+        elif envelope not in {"session_meta", "world_state", "turn_context", "token_usage_record"}:
+            uncertain.add(sequence)
+    # An unreadable context may contain a missing or conflicting identity. Its
+    # position cannot turn an identity interpretation failure into setup blame.
+    if unreadable_developer_context:
+        return "indeterminate"
+    first_work = min(boundaries, default=len(events))
+    valid_sequences = [sequence for sequence, state in identities if state == "valid"]
+    if not valid_sequences:
+        # No identifiable work boundary or uninterpretable pre-work context does
+        # not prove that the operator omitted activation.
+        return "indeterminate" if not boundaries or any(
+            sequence < first_work for sequence in uncertain
+        ) else "absent"
+    first_activation = min(valid_sequences)
+    if first_work < first_activation:
+        return "late"
+    if not boundaries or any(sequence < first_activation for sequence in uncertain):
+        return "indeterminate"
+    return "valid"
+
+
 VOLICORD_OPERATIONS = {
     "background_semantic_operation",
     "candidate_inspect",
@@ -1349,21 +1451,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
     current_mcp_completions: list[tuple[int, str, dict[str, Any]]] = []
     evidence_transport_issues: list[EvidenceTransportIssue] = []
     raw_path_observations: list[_PathObservationEvidence] = []
-    repository_scoped_activation_observed = False
-    activation_states: list[str] = []
-    # User messages can precede task_started in supported host transports.
-    first_task_sequence = min((
-        sequence for sequence, event in enumerate(events)
-        if isinstance(event.get("payload"), dict)
-        and (
-            event["payload"].get("type") in {"task_started", "user_message"}
-            or (event["payload"].get("type") == "message"
-                and event["payload"].get("role") == "user")
-            or (event["payload"].get("type") == "item_completed"
-                and isinstance(event["payload"].get("item"), dict)
-                and event["payload"]["item"].get("type") == "UserMessage")
-        )
-    ), default=len(events))
+    activation_states: list[tuple[int, str]] = []
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -1376,20 +1464,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
             and payload_type == "message"
             and payload.get("role") == "developer"
         ):
-            content = payload.get("content")
-            if isinstance(content, list) and len(content) <= 32:
-                developer_text = "\n".join(
-                    item.get("text", "")
-                    for item in content
-                    if isinstance(item, dict)
-                    and item.get("type") in {"input_text", "output_text"}
-                    and isinstance(item.get("text"), str)
-                )
-                state = activation_evidence(developer_text, cwd, str(session_id))
+            segments = message_text_segments(payload)
+            if segments is not None:
+                state = activation_evidence("\n".join(segments), cwd, str(session_id))
                 if state != "absent":
-                    activation_states.append(
-                        "late" if sequence >= first_task_sequence else state
-                    )
+                    activation_states.append((sequence, state))
         if envelope == "event_msg" and payload_type == "task_started":
             turn_id = payload.get("turn_id")
             if nonempty(turn_id):
@@ -1833,10 +1912,16 @@ def load_codex_capture(path: Path) -> CodexCapture:
         thread_source == "user"
         and meta.get("forked_from_id") in {None, ""}
     )
-    activation_state = next((
-        state for state in ("malformed", "binding_mismatch", "valid", "late")
-        if state in activation_states
-    ), "absent")
+    activation_state = session_activation_state(
+        events,
+        activation_states,
+        user_turns,
+        {call.sequence for call in tool_calls}
+        | {command.sequence for command in commands}
+        | {observation.sequence for observation in path_observations}
+        | {sequence for sequence, _, _ in calls.values()}
+        | {sequence for sequence, _, _ in mcp_wrappers.values()},
+    )
     repository_scoped_activation_observed = activation_state == "valid"
     return CodexCapture(
         source_sha256=sha256_bytes(raw_bytes),

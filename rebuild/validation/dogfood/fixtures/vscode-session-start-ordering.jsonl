@@ -1,0 +1,13 @@
+{"type":"session_meta","payload":{"id":"fixture-session","session_id":"fixture-session","cwd":"/fixture/repository","source":"vscode","originator":"codex_vscode","cli_version":"fixture","thread_source":"user"}}
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"fixture-turn"}}
+{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Host tool and permission setup."}]}}
+{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Host collaboration setup."}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<recommended_plugins>\nNo fixture plugins.\n</recommended_plugins>"},{"type":"input_text","text":"# AGENTS.md instructions for /fixture/repository\n\n<INSTRUCTIONS>\nInspect before editing.\n</INSTRUCTIONS>"},{"type":"input_text","text":"<environment_context>\n  <cwd>/fixture/repository</cwd>\n</environment_context>"}]}}
+{"type":"world_state","payload":{"cwd":"/fixture/repository"}}
+{"type":"turn_context","payload":{"cwd":"/fixture/repository","turn_id":"fixture-turn"}}
+{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"volicord-session-start:133a6c800a4ea8958577e2f967bca25d8d259d64d9064cbe5fdb4ba9b5279396\nStart with bounded repository Recall."}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Inspect the repository and explain its entry point."}]}}
+{"type":"event_msg","payload":{"type":"user_message","client_id":"fixture-user","message":"Inspect the repository and explain its entry point."}}
+{"type":"response_item","payload":{"type":"custom_tool_call","call_id":"fixture-recall","name":"exec","status":"completed","input":"const r = await tools.mcp__volicord__recall({}); text(JSON.stringify(r));","internal_chat_message_metadata_passthrough":{"turn_id":"fixture-turn"}}}
+{"type":"event_msg","payload":{"type":"mcp_tool_call_end","call_id":"fixture-recall","invocation":{"server":"volicord","tool":"recall","arguments":{}},"result":{"Ok":{"content":[],"structuredContent":{"project_id":"fixture-project"},"isError":false}}}}
+{"type":"event_msg","payload":{"type":"task_completed","turn_id":"fixture-turn"}}

@@ -1138,18 +1138,48 @@ Checkpoint 없이 통과할 수 있다. Paused/in-progress Checkpoint나 meaning
 session도 통과하지 않는다.
 
 Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
-evidence를 확인한다. Activation이 없으면 operator/environment setup failure로 분류하고 그
-campaign path를 중단하며 Question/Decision 부재를 product failure로 귀속하지 않는다.
+evidence를 확인한다. Supported evidence로 activation 부재 또는 늦은 activation이 확인되면
+operator/environment setup failure로 분류하고 그 campaign path를 중단하며 Question/Decision
+부재를 product failure로 귀속하지 않는다.
 Production-owned `volicord-operations/src/session_start_identity.txt`의 identity는 human
-guidance와 분리되며 canonical cwd와 host session ID를 bounded hash로 연결한다. 첫 user task
-전에 developer context에 exact identity가 있어야 하고 MCP call은 대체 증거가 아니다.
-Late activation도 environment failure다. Malformed/unsupported identity와 repository/session
-binding mismatch는 `evidence`, valid identity와 activation 판정의 내부 모순은
-`validation_internal`로 귀속한다. 둘 다 `evidence_failed`이며 pass로 바꾸지 않는다.
+guidance와 분리되며 canonical cwd와 host session ID를 bounded hash로 연결한다. 첫 실제 user
+task 또는 substantive Volicord/repository work가 agent-visible해지기 전에 developer context에
+exact identity가 있어야 한다. `task_started`는 transport envelope이며 lateness boundary가
+아니다. 따라서 `task_started → host/developer/world setup → bound SessionStart → 실제 frozen
+task → work`는 valid이며 SessionStart가 `task_started`보다 앞선 ordering도 valid다.
+Legacy `event_msg.user_message`와 current `item_completed.UserMessage`의 기존 normalized
+task identity를 유지하고, 같은 text의 `response_item.message(role=user)`가 먼저 나타나면 그
+agent-visible sequence를 사용한다. Known whole setup segments (`recommended_plugins`,
+`AGENTS.md` instructions, required `environment_context`)만 setup으로 인식한다. Normalized
+MCP, command invocation과 repository change도 work boundary이며 user-message evidence가
+불완전해도 activation보다 먼저 관찰되면 late다. Later MCP use는 activation 대체 증거가 아니다.
+
+Activation state와 campaign failure attribution은 다음과 같다. `observed`는 `valid`일 때만
+true이며 identity 형식/binding 검증을 timing보다 먼저 적용한다.
+
+| Activation state | Attribution / outcome |
+|---|---|
+| `valid` | activation 통과; campaign의 나머지 조건은 독립 검증 |
+| `absent`, `late` | proven setup failure: `environment` / `operator_environment_invalid` |
+| `malformed`, `binding_mismatch` | conflicting/unsupported identity 포함: `evidence` / `evidence_failed` |
+| `indeterminate` | timing evidence interpretation failure: `evidence` / `evidence_failed`; operator setup fault로 추정 금지 |
+| `validator_mismatch` | typed state와 observed boolean의 모순 또는 unknown state: `validation_internal` / `evidence_failed` |
+
+Uncorrelated response-only user text, unfamiliar/mixed setup content, unsupported pre-activation
+agent activity 또는 work boundary가 없는 incomplete capture는 timely activation을 증명하지
+못하면 `indeterminate`로 fail closed한다. Unreadable developer context는 missing/conflicting
+identity를 판독할 수 없으므로 위치와 무관하게 evidence interpretation failure로 유지한다.
+Definitive earlier work는 late를 증명하지만 unknown
+ordering 자체는 operator fault를 증명하지 않는다. Failure propagation/retry boundary는
+`failure-and-recovery.md`를 따른다.
 Candidate/revision/workspace/role mismatch는 기존 pre-mutation mapping rejection으로 유지한다.
 Maintained campaign self-test는 current production CLI hook의 실제 JSON 출력을 16개 sanitized
-work/resume capture로 만들어 parser와 `collect_batch`를 통과시키며 negative controls와
-production evidence를 변경하지 않은 validator mismatch injection을 검증한다.
+work/resume capture로 만들어 production-like ordering으로 parser와 `collect_batch`를
+통과시킨다. Minimal fixture는 `rebuild/validation/dogfood/fixtures/vscode-session-start-ordering.jsonl`,
+current/legacy negative ordering과 attribution controls는 `campaign_self_test.py`가 소유한다.
+Production evidence를 변경하지 않은 validator mismatch injection도 검증한다. Prior raw
+campaign replay는 non-mutating diagnostic regression일 뿐 campaign repair, requalification
+또는 Phase 8 qualification evidence가 아니다. Raw rollout은 maintained fixture로 복사하지 않는다.
 
 Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
 보존하기 위한 failure-only command를 제공한다.
@@ -1282,7 +1312,8 @@ session identity와 SessionStart activation으로 unordered input을 전역 mapp
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
 
 Mapping 뒤 raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
-복구하지 않는다. Missing activation은 operator/environment invalid로 유지한다. Cycle별
+복구하지 않는다. Proven missing activation은 operator/environment invalid로 유지하고 ambiguous
+activation evidence는 evidence_failed로 구분한다. Cycle별
 `intake_state = accepted|rejected`와 `qualification_state = not_run`을 기록하여 batch
 intake acceptance를 full qualification passage와 구분한다. 다른 capture는
 bounded diagnostic과 안전하게 식별 가능한 evidence extraction을 위해 계속 parse한다. Extraction은
