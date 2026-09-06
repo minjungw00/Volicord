@@ -747,3 +747,84 @@ fn failed_repository_source_recording_does_not_publish_rebuilt_analysis(
     );
     Ok(())
 }
+
+#[test]
+fn latest_snapshot_selection_is_bounded_and_health_still_audits_history(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let project = fixture
+        .operations
+        .initialize_project("Snapshot selection", Some(&fixture.repository))?
+        .project
+        .id;
+    let first = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("first")?;
+    let second = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("second")?;
+    let canonical = fixture.operations.canonical_basis(project)?;
+    assert_ne!(first.analysis.identity, second.analysis.identity);
+    for _ in 0..2 {
+        let recall = fixture.operations.recall(project)?;
+        assert_eq!(recall.snapshots.len(), 1);
+        assert_eq!(
+            recall.snapshots[0].analysis_snapshot,
+            second.analysis.identity
+        );
+    }
+    // An older graph is not decoded to select the latest graph. Explicit health
+    // inspection must still discover corruption in that historical payload.
+    let mut historical = serde_json::to_value(&first.analysis)?;
+    historical["structural_facts"] = serde_json::json!("corrupt historical graph");
+    fs::write(&first.stored_at, serde_json::to_vec(&historical)?)?;
+    assert_eq!(
+        fixture.operations.recall(project)?.snapshots[0].analysis_snapshot,
+        second.analysis.identity
+    );
+    assert_eq!(
+        fixture.operations.health(Some(project)).state,
+        HealthState::Degraded
+    );
+    // Replacing a selected payload invalidates any cached header and never
+    // silently falls back to the historical graph as if it were current.
+    fs::write(&second.stored_at, b"{corrupt")?;
+    assert!(fixture.operations.recall(project)?.snapshots.is_empty());
+    assert_eq!(fixture.operations.canonical_basis(project)?, canonical);
+    Ok(())
+}
+
+#[test]
+fn snapshot_header_rejects_filename_and_project_substitution(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let project = fixture
+        .operations
+        .initialize_project("Snapshot binding", Some(&fixture.repository))?
+        .project
+        .id;
+    let analysis = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("analysis")?;
+    let substituted = analysis
+        .stored_at
+        .with_file_name(format!("{}.json", "0".repeat(64)));
+    fs::rename(&analysis.stored_at, &substituted)?;
+    assert!(fixture.operations.recall(project)?.snapshots.is_empty());
+    assert_eq!(
+        fixture.operations.health(Some(project)).state,
+        HealthState::Degraded
+    );
+    fs::rename(&substituted, &analysis.stored_at)?;
+    let mut payload = serde_json::to_value(&analysis.analysis)?;
+    payload["project"]["identity"] = serde_json::json!("0".repeat(32));
+    fs::write(&analysis.stored_at, serde_json::to_vec(&payload)?)?;
+    assert!(fixture.operations.recall(project)?.snapshots.is_empty());
+    Ok(())
+}

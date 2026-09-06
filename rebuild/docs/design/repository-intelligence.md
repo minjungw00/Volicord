@@ -524,3 +524,15 @@ database, serialization, embedding, ranking, scheduler, cache key, API, MCP meth
 process topology를 선택하지 않는다. Portable bundle content·merge, general
 failure/recovery policy, generated-document rendering과 legacy data path도 정의하지
 않는다.
+
+### Local snapshot selection and storage resource boundary
+
+Local snapshot selection은 Project/format/filename identity와 observation-time ordering을
+검사하는 작은 header를 먼저 읽고, 최신 snapshot graph 하나만 decode한다. Header read는
+큰 payload를 건너뛰되 JSON syntax를 검사한다. Header cache는 file size/modified time에
+bound된 최대 64개 항목이며 graph를 장기 보유하지 않는다. 선택된 payload는 다시 full
+schema/identity 검사를 통과해야 한다. 명시적 health/repair 진단은 historical snapshot도
+하나씩 full decode하여 corruption을 보고한다. 최신 graph를 읽는 projection과 전체
+store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 current 판정으로 숨기지
+않는다. Snapshot publication은 JSON을 임시 파일에 stream하고 기존 atomic/no-replace 및
+sync 책임을 보존한다. Pretty-printing은 durable meaning의 일부가 아니다.

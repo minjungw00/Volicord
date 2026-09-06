@@ -1,3 +1,4 @@
+use crate::analysis_io::{read_json, AnalysisHeader};
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
@@ -23,13 +24,14 @@ use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
-    collections::BTreeSet,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
-    io::Write,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use volicord_context::{
     ApplicabilityScope, Availability, BundleComparison, BundleMerge, CanonicalInvalidation,
@@ -82,6 +84,7 @@ use volicord_repository_intelligence::{
 
 pub struct LocalOperations {
     layout: RuntimeLayout,
+    analysis_headers: RefCell<BTreeMap<PathBuf, (u64, SystemTime, AnalysisHeader)>>,
 }
 
 struct PreparedAnalysisBasis {
@@ -94,7 +97,10 @@ struct PreparedAnalysisBasis {
 
 impl LocalOperations {
     pub fn new(layout: RuntimeLayout) -> Self {
-        Self { layout }
+        Self {
+            layout,
+            analysis_headers: RefCell::new(BTreeMap::new()),
+        }
     }
     pub fn layout(&self) -> &RuntimeLayout {
         &self.layout
@@ -379,7 +385,7 @@ impl LocalOperations {
             Err(_) => None,
         });
         if let Some(project_id) = project_id {
-            if let Err(error) = self.load_analyses(project_id) {
+            if let Err(error) = self.check_analyses(project_id) {
                 issues.push(HealthIssue {
                     kind: HealthIssueKind::Corrupt,
                     scope: format!("derived_analysis:{project_id}"),
@@ -685,8 +691,8 @@ impl LocalOperations {
                 "unsupported repair scope {scope:?}; supported scope: derived-analysis"
             )));
         }
-        let diagnosis = match self.load_analyses(project_id) {
-            Ok(values) if values.is_empty() => "derived analysis is missing".to_owned(),
+        let diagnosis = match self.check_analyses(project_id) {
+            Ok(0) => "derived analysis is missing".to_owned(),
             Ok(_) => {
                 "derived analysis is readable; forced verification rebuild requested".to_owned()
             }
@@ -3415,10 +3421,8 @@ impl LocalOperations {
         volicord_local_platform::ensure_private_directory(&directory).map_err(|error| {
             Error::with_source("cannot create private Project analysis directory", error)
         })?;
-        let bytes = serde_json::to_vec_pretty(analysis)
-            .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
         let path = directory.join(format!("{}.json", analysis.identity));
-        publish_bytes_no_replace(&path, &bytes)?;
+        publish_analysis(&path, analysis)?;
         Ok(path)
     }
 
@@ -3434,10 +3438,8 @@ impl LocalOperations {
         volicord_local_platform::ensure_private_directory(&staging).map_err(|error| {
             Error::with_source("cannot stage private Project analysis replacement", error)
         })?;
-        let bytes = serde_json::to_vec_pretty(analysis)
-            .map_err(|error| Error::with_source("cannot serialize Analysis Snapshot", error))?;
         let file_name = format!("{}.json", analysis.identity);
-        if let Err(error) = publish_bytes_no_replace(&staging.join(&file_name), &bytes) {
+        if let Err(error) = publish_analysis(&staging.join(&file_name), analysis) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
@@ -3547,48 +3549,79 @@ impl LocalOperations {
         }
     }
 
-    fn load_analyses(&self, project_id: ProjectId) -> Result<Vec<AnalysisSnapshot>, Error> {
+    fn analysis_paths(&self, project_id: ProjectId) -> Result<Vec<PathBuf>, Error> {
         let directory = self.layout.analysis_project_dir(project_id);
         if !directory.exists() {
             return Ok(Vec::new());
         }
-        let mut values = Vec::new();
-        let entries = fs::read_dir(&directory)
-            .map_err(|error| Error::with_source("cannot inspect analysis directory", error))?;
-        for entry in entries {
-            let entry = entry
-                .map_err(|error| Error::with_source("cannot inspect analysis entry", error))?;
-            if entry.path().extension().and_then(OsStr::to_str) != Some("json") {
-                continue;
-            }
-            let bytes = fs::read(entry.path())
-                .map_err(|error| Error::with_source("cannot read Analysis Snapshot", error))?;
-            let value: AnalysisSnapshot = serde_json::from_slice(&bytes).map_err(|error| {
-                Error::with_source(
-                    format!(
-                        "Analysis Snapshot {} is unsupported or corrupt",
-                        entry.path().display()
-                    ),
+        fs::read_dir(directory)
+            .map_err(|error| Error::with_source("cannot inspect analysis directory", error))?
+            .filter_map(|entry| match entry {
+                Ok(entry) if entry.path().extension().and_then(OsStr::to_str) == Some("json") => {
+                    Some(Ok(entry.path()))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(Error::with_source(
+                    "cannot inspect analysis entry",
                     error,
-                )
-            })?;
-            if value.project.identity() != project_id {
-                return Err(Error::new(format!(
-                    "Analysis Snapshot {} belongs to another Project",
-                    entry.path().display()
-                )));
+                ))),
+            })
+            .collect()
+    }
+
+    fn check_analyses(&self, project_id: ProjectId) -> Result<usize, Error> {
+        let paths = self.analysis_paths(project_id)?;
+        for path in &paths {
+            let header = AnalysisHeader::read(path, project_id)?;
+            let snapshot: AnalysisSnapshot = read_json(path)?;
+            if !header.matches(&snapshot) {
+                return Err(Error::new("Analysis Snapshot changed during validation"));
             }
-            values.push(value);
         }
-        values.sort_by_key(|value| (value.generated_at_unix_micros, value.identity));
-        if values.len() > 1 {
-            let latest = values
-                .pop()
-                .ok_or_else(|| Error::new("analysis ordering failed"))?;
-            values.clear();
-            values.push(latest);
+        Ok(paths.len())
+    }
+
+    fn load_analyses(&self, project_id: ProjectId) -> Result<Vec<AnalysisSnapshot>, Error> {
+        let mut selected: Option<(AnalysisHeader, PathBuf)> = None;
+        for path in self.analysis_paths(project_id)? {
+            let metadata = fs::metadata(&path)
+                .map_err(|error| Error::with_source("cannot inspect Analysis Snapshot", error))?;
+            let stamp = metadata.modified().map_err(|error| {
+                Error::with_source("cannot inspect Analysis Snapshot modification time", error)
+            })?;
+            let cached = self
+                .analysis_headers
+                .borrow()
+                .get(&path)
+                .filter(|(length, modified, _)| *length == metadata.len() && *modified == stamp)
+                .map(|(_, _, header)| header.clone());
+            let header = match cached {
+                Some(header) => header,
+                None => {
+                    let header = AnalysisHeader::read(&path, project_id)?;
+                    let mut cache = self.analysis_headers.borrow_mut();
+                    if cache.len() >= 64 {
+                        cache.clear();
+                    }
+                    cache.insert(path.clone(), (metadata.len(), stamp, header.clone()));
+                    header
+                }
+            };
+            if selected.as_ref().is_none_or(|(current, _)| {
+                (header.generated_at_unix_micros, header.identity)
+                    > (current.generated_at_unix_micros, current.identity)
+            }) {
+                selected = Some((header, path));
+            }
         }
-        Ok(values)
+        let Some((header, path)) = selected else {
+            return Ok(Vec::new());
+        };
+        let value: AnalysisSnapshot = read_json(&path)?;
+        if !header.matches(&value) {
+            return Err(Error::new("Analysis Snapshot changed during selection"));
+        }
+        Ok(vec![value])
     }
 
     fn load_analysis_snapshot(
@@ -3600,18 +3633,7 @@ impl LocalOperations {
             .layout
             .analysis_project_dir(project_id)
             .join(format!("{analysis_id}.json"));
-        let bytes = fs::read(&path).map_err(|error| {
-            Error::with_source(
-                format!("baseline Analysis Snapshot {analysis_id} is unavailable"),
-                error,
-            )
-        })?;
-        let value: AnalysisSnapshot = serde_json::from_slice(&bytes).map_err(|error| {
-            Error::with_source(
-                format!("baseline Analysis Snapshot {analysis_id} is unsupported or corrupt"),
-                error,
-            )
-        })?;
+        let value: AnalysisSnapshot = read_json(&path)?;
         if value.identity != analysis_id || value.project.identity() != project_id {
             return Err(Error::new(
                 "baseline Analysis Snapshot identity or Project binding is incompatible",
@@ -3929,7 +3951,25 @@ fn process_state(observation: &volicord_local_platform::ProcessObservation) -> O
     }
 }
 
+fn publish_analysis(
+    destination: &Path,
+    analysis: &AnalysisSnapshot,
+) -> Result<PublicationOutcome, Error> {
+    publish_with(destination, |file| {
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(&mut writer, analysis).map_err(std::io::Error::other)?;
+        writer.flush()
+    })
+}
+
 fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<PublicationOutcome, Error> {
+    publish_with(destination, |file| file.write_all(bytes))
+}
+
+fn publish_with(
+    destination: &Path,
+    write: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
+) -> Result<PublicationOutcome, Error> {
     if !destination.is_absolute() {
         return Err(Error::new("publication destination must be absolute"));
     }
@@ -3946,13 +3986,17 @@ fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<Publicat
     let mut file = options
         .open(&temporary)
         .map_err(|error| Error::with_source("cannot create publication temporary file", error))?;
-    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+    if let Err(error) = write(&mut file).and_then(|_| file.sync_all()) {
         let _ = fs::remove_file(&temporary);
         return Err(Error::with_source(
             "cannot durably write publication temporary file",
             error,
         ));
     }
+    let bytes = file
+        .metadata()
+        .map_err(|error| Error::with_source("cannot inspect publication size", error))?
+        .len();
     drop(file);
     let outcome = publish_file_no_replace(&temporary, destination)
         .map_err(|error| Error::with_source("no-replace publication failed", error))?;
@@ -3973,7 +4017,7 @@ fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<Publicat
     };
     Ok(PublicationOutcome {
         destination: destination.to_path_buf(),
-        bytes: bytes.len() as u64,
+        bytes,
         durability: durability.into(),
     })
 }

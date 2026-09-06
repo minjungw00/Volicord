@@ -4,6 +4,7 @@
 //! It deliberately delegates canonical, analysis, privacy, inquiry, projection,
 //! and portable-format meaning to their existing subsystem owners.
 
+mod analysis_io;
 mod cli;
 mod codex;
 mod error;
