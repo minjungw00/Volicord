@@ -1923,6 +1923,8 @@ impl LocalOperations {
                 )],
             });
         };
+        // Discovery advances the semantic frontier. A retained review of an older
+        // discovery cannot replace it, including while pre-write reassessment is pending.
         let review_candidate = candidates
             .candidates
             .iter()
@@ -1940,18 +1942,11 @@ impl LocalOperations {
                             review.goal_context_id == goal_context_id
                                 && review.baseline_analysis_snapshot_id
                                     == baseline_analysis_snapshot_id
+                                && review.engineering_choice_discovery_candidate_id
+                                    == latest_discovery.id
                         })
             })
             .max_by_key(|candidate| (candidate.created_at, candidate.id));
-        let discovery_candidate = review_candidate
-            .and_then(|candidate| candidate.content.as_ref())
-            .and_then(|content| content.materiality_review.as_ref())
-            .and_then(|review| {
-                candidates.candidates.iter().find(|candidate| {
-                    candidate.id == review.engineering_choice_discovery_candidate_id
-                })
-            })
-            .or(Some(latest_discovery));
         let current_assumptions = canonical
             .context_items
             .iter()
@@ -1962,7 +1957,7 @@ impl LocalOperations {
             &canonical,
             WorkAuthorityCandidateBasis {
                 review: review_candidate,
-                discovery: discovery_candidate,
+                discovery: Some(latest_discovery),
                 learning_deliberations: &candidates.candidates,
             },
             project_id,

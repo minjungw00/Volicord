@@ -808,6 +808,176 @@ fn record_host_question_decision(
 }
 
 #[test]
+fn mcp_rediscovery_requires_its_own_review_and_pre_write_closure() {
+    let (_temporary, mut adapter, project) = setup();
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project, "user_turn":"Implement the bounded behavior",
+            "role":"goal", "statement":"Implement the bounded behavior"
+        }),
+    ))
+    .clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let source = &analyzed["repository_source_id"];
+    let mut discovery_request = json!({
+        "project_id":project, "goal_context_id":goal["context_item_id"],
+        "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+        "source_operation":"bounded materiality inspection", "summary":"Inspect the bounded outcome",
+        "choices":[{
+            "choice_id":"bounded-choice", "summary":"Choose bounded behavior",
+            "affected_scope":["src/lib.rs"],
+            "alternatives":(["first", "second"].map(|id| json!({
+                "alternative_id":id, "summary":format!("{id} approach"),
+                "technical_consequences":[format!("{id} bounded consequence")],
+                "material_decomposition":{"state":"materially_atomic", "rationale":"The source bounds this consequence",
+                    "residual_fork_closure":{"fixed_outcome":format!("{id} bounded outcome"),
+                        "credible_implementations":["Inline implementation", "Private helper preserving the same behavior"],
+                        "remaining_material_outcomes":[], "source_basis":[source]}}
+            }))),
+            "technical_consequences":["The alternatives affect bounded behavior"], "source_ids":[source],
+            "effect_categories":["public_api_shape_or_semantics"],
+            "relationship":{"state":"independent"}, "evidence_state":"sufficient"
+        }],
+        "material_boundary_review":complete_material_boundary_review_json(source.as_str().expect("Source"), &[("public_api_shape_or_semantics", &["bounded-choice"])])
+    });
+    let mut old_review = Value::Null;
+    let mut old_discovery = Value::Null;
+    for round in 1..=2 {
+        discovery_request["summary"] = json!(format!("Bounded outcome discovery {round}"));
+        let discovered = structured(&call(
+            &mut adapter,
+            "engineering_choice_discovery",
+            discovery_request.clone(),
+        ))
+        .clone();
+        assert_eq!(
+            discovered["workflow"]["stage"], "materiality_review",
+            "{discovered}"
+        );
+        assert_eq!(
+            discovered["workflow"]["required_next_action"],
+            json!({"tool":"materiality_review", "action":"record"})
+        );
+        assert_eq!(discovered["workflow"]["blocks_ordinary_work"], true);
+        let discovery_id = &discovered["discovery_candidate_id"];
+        assert_eq!(
+            discovered["workflow"]["input_guidance"]["draft_call"]
+                ["engineering_choice_discovery_candidate_id"],
+            *discovery_id
+        );
+        let draft = structured(&call(&mut adapter, "materiality_review", json!({
+            "action":"draft", "project_id":project, "engineering_choice_discovery_candidate_id":discovery_id
+        }))).clone();
+        assert_eq!(
+            draft["record_request"]["prefilled_fields"]["action"],
+            "record"
+        );
+        assert_eq!(
+            draft["record_request"]["prefilled_fields"]
+                ["engineering_choice_discovery_candidate_id"],
+            *discovery_id
+        );
+        let judgment = draft_judgment(
+            &draft,
+            "bounded-choice",
+            "settled_authority_by_contract",
+            json!({
+                "basis_summary":"The accepted source settles this exact outcome",
+                "authority_coverage":"The complete bounded behavior",
+                "unique_outcome_rationale":"The accepted requirement eliminates the other outcome",
+                "contract_basis":["fixture accepted behavior"],
+                "learning_value":{"state":"routine", "rationale":"No separate learning opportunity"}
+            }),
+        );
+        let request = draft_request(
+            &draft,
+            "Review the current discovery",
+            json!({"state":"inactive"}),
+            vec![judgment],
+        );
+        let recorded = structured(&call(&mut adapter, "materiality_review", request)).clone();
+        assert_eq!(
+            recorded["workflow"]["stage"], "materiality_review",
+            "{recorded}"
+        );
+        assert_eq!(recorded["workflow"]["blocks_ordinary_work"], true);
+        let bound = structured(&bind_recorded_scope(
+            &mut adapter,
+            &recorded,
+            &["src/lib.rs"],
+        ))
+        .clone();
+        assert_eq!(bound["workflow"]["stage"], "ready_for_work", "{bound}");
+        assert_eq!(bound["workflow"]["blocks_ordinary_work"], false);
+        if round == 1 {
+            old_review = recorded["review_candidate_id"].clone();
+            old_discovery = discovery_id.clone();
+            let mut report = bound["executable_work_scope"]["coupled_artifact_review"].clone();
+            report["materiality_closure"] = json!({
+                "state":"new_material_outcome",
+                "outcomes":["A different failure result is introduced by the planned adapter"],
+                "rationale":"The failure outcome needs rediscovery and exact authority"
+            });
+            let pending = structured(&call(&mut adapter, "materiality_review", json!({
+                "action":"inspect", "project_id":project, "review_candidate_id":old_review,
+                "goal_context_id":goal["context_item_id"], "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+                "paths":["src/lib.rs"], "components":[], "work_contexts":[], "met_revisit_triggers":[],
+                "coupled_artifact_review":report
+            }))).clone();
+            assert_eq!(
+                pending["workflow"]["stage"], "engineering_choice_discovery",
+                "{pending}"
+            );
+            assert_eq!(pending["workflow"]["blocks_ordinary_work"], true);
+            assert!(pending["executable_work_scope"].is_null());
+            assert!(pending["pending_pre_write_reassessment"].is_object());
+        } else {
+            let identities = bound["workflow"]["satisfied_basis_identities"]
+                .as_array()
+                .expect("basis identities");
+            for (kind, identity) in [
+                ("engineering_choice_discovery_candidate", discovery_id),
+                (
+                    "materiality_review_candidate",
+                    &recorded["review_candidate_id"],
+                ),
+            ] {
+                assert!(identities
+                    .iter()
+                    .any(|basis| basis["kind"] == kind && basis["identity"] == *identity));
+            }
+            assert!(
+                !identities
+                    .iter()
+                    .any(|basis| basis["identity"] == old_review
+                        || basis["identity"] == old_discovery)
+            );
+            let retained = structured(&call(
+                &mut adapter,
+                "candidate_inspect",
+                json!({"project_id":project}),
+            ))
+            .clone();
+            let old = retained["candidates"]
+                .as_array()
+                .expect("candidates")
+                .iter()
+                .find(|candidate| candidate["identity"] == old_review)
+                .expect("old review remains inspectable");
+            assert!(old["materiality_review"]["pending_pre_write_reassessment"].is_object());
+            assert!(old["materiality_review"]["executable_work_scope"].is_null());
+        }
+    }
+}
+
+#[test]
 fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let (_temporary, mut adapter, project) = setup();
     let goal = call(

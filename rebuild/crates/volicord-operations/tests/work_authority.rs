@@ -4391,12 +4391,213 @@ fn new_pre_write_outcome_revokes_scope_and_requires_rediscovery(
         vec![WorkAuthorityBasisKind::AgentRecommendation],
         source,
     );
-    let reassessed = review(&fixture, vec![bounded, new_material])?;
+    let mut choices = reopened
+        .inspect_workflow_candidate(
+            fixture.project_id,
+            before_review.engineering_choice_discovery_candidate_id,
+        )?
+        .content
+        .and_then(|content| content.engineering_choice_discovery)
+        .ok_or("discovery missing")?
+        .choices;
+    choices.push(engineering_choice(
+        "source-precedence",
+        EngineeringEffectCategory::PublicApiShapeOrSemantics,
+        source,
+    ));
+    let discovery =
+        reopened.record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "rediscovery".into(),
+            source_operation: "pre-write material outcome reassessment".into(),
+            summary: "Represent source precedence independently".into(),
+            material_boundary_review: complete_material_boundary_review(&choices, source),
+            choices,
+        })?;
+    let next =
+        reopened.workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    assert_eq!(next.stage, WorkflowStage::MaterialityReview);
+    assert!(next.blocks_ordinary_work);
+    assert_eq!(
+        next.required_next_action
+            .as_ref()
+            .map(|action| action.tool.as_str()),
+        Some("materiality_review")
+    );
+    assert!(next
+        .satisfied_basis_identities
+        .iter()
+        .any(
+            |basis| basis.kind == "engineering_choice_discovery_candidate"
+                && basis.identity == discovery.discovery_candidate_id.to_string()
+        ));
+    assert!(!next
+        .satisfied_basis_identities
+        .iter()
+        .any(|basis| basis.kind == "materiality_review_candidate"));
+    let reassessment = MaterialityReviewDraft {
+        project_id: fixture.project_id,
+        goal_context_id: fixture.goal_id,
+        baseline_analysis_snapshot_id: fixture.baseline.identity,
+        session: "rediscovery".into(),
+        source_operation: "review rediscovered outcomes".into(),
+        rationale: "The new precedence policy needs user authority".into(),
+        behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+            context_item_ids: vec![],
+            completeness_rationale: "No non-Goal behavioral context in this fixture".into(),
+        },
+        learning_participation: LearningParticipation::Inactive,
+        engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
+        dimensions: vec![bounded, new_material],
+    };
+    // A review after a premature write cannot certify that write, even though R1
+    // was timely. Restore the baseline before recording legitimate R2 authority.
+    let original = fs::read(fixture.repository.join("src/lib.rs"))?;
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+    let late = reopened
+        .record_materiality_review(reassessment.clone())
+        .expect_err("R2 cannot authorize an earlier mutation");
+    assert!(late.message().contains("first Materiality Review is late"));
+    fs::write(fixture.repository.join("src/lib.rs"), original)?;
+    let reassessed = reopened.record_materiality_review(reassessment)?;
     assert_ne!(reassessed.review_candidate_id, recorded.review_candidate_id);
     assert_eq!(
         readiness(&fixture, &reassessed)?.stage,
         WorkAuthorityStage::QuestionRequired
     );
+    let next =
+        reopened.workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    assert_eq!(next.stage, WorkflowStage::QuestionCandidate);
+    assert!(next.blocks_ordinary_work);
+    for (kind, identity) in [
+        (
+            "engineering_choice_discovery_candidate",
+            discovery.discovery_candidate_id.to_string(),
+        ),
+        (
+            "materiality_review_candidate",
+            reassessed.review_candidate_id.to_string(),
+        ),
+    ] {
+        assert!(next
+            .satisfied_basis_identities
+            .iter()
+            .any(|basis| basis.kind == kind && basis.identity == identity));
+    }
+    assert_eq!(
+        reopened.inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)?,
+        pending
+    );
+    assert!(readiness(&fixture, &recorded)?.blocking);
+    Ok(())
+}
+
+#[test]
+fn workflow_selects_reviews_only_within_the_latest_discovery_frontier(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let dimensions = vec![agent_owned_dimension(
+        "bounded",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "private work".into(),
+        },
+    )];
+    let first = review(&fixture, dimensions.clone())?;
+    let second = review(&fixture, dimensions.clone())?;
+    let first_discovery = readiness(&fixture, &first)?
+        .engineering_choice_discovery_candidate_id
+        .ok_or("D1 missing")?;
+    let second_discovery = readiness(&fixture, &second)?
+        .engineering_choice_discovery_candidate_id
+        .ok_or("D2 missing")?;
+    let draft = |discovery| MaterialityReviewDraft {
+        project_id: fixture.project_id,
+        goal_context_id: fixture.goal_id,
+        baseline_analysis_snapshot_id: fixture.baseline.identity,
+        session: "candidate ordering".into(),
+        source_operation: "review candidate ordering".into(),
+        rationale: "Reassess the same bounded dimensions".into(),
+        behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+            context_item_ids: vec![],
+            completeness_rationale: "No other behavioral context".into(),
+        },
+        learning_participation: LearningParticipation::Inactive,
+        engineering_choice_discovery_candidate_id: discovery,
+        dimensions: dimensions.clone(),
+    };
+    // A later review of D1 cannot grant or withhold authority over D2.
+    let older_frontier_review = fixture
+        .operations
+        .record_materiality_review(draft(first_discovery))?;
+    let assert_frontier =
+        |review_id: String, stage, blocked| -> Result<(), volicord_operations::Error> {
+            let reopened = LocalOperations::new(fixture.operations.layout().clone());
+            for requested in [
+                first.review_candidate_id,
+                second.review_candidate_id,
+                older_frontier_review.review_candidate_id,
+            ] {
+                let workflow =
+                    reopened.workflow_for_review_candidate(fixture.project_id, requested)?;
+                assert_eq!(workflow.stage, stage);
+                assert_eq!(workflow.blocks_ordinary_work, blocked);
+                for (kind, identity) in [
+                    (
+                        "engineering_choice_discovery_candidate",
+                        second_discovery.to_string(),
+                    ),
+                    ("materiality_review_candidate", review_id.clone()),
+                ] {
+                    assert!(workflow
+                        .satisfied_basis_identities
+                        .iter()
+                        .any(|basis| basis.kind == kind && basis.identity == identity));
+                }
+            }
+            Ok(())
+        };
+    assert_frontier(
+        second.review_candidate_id.to_string(),
+        WorkflowStage::ReadyForWork,
+        false,
+    )?;
+    // Among reviews of D2, the newest candidate wins and still needs its own closure.
+    let current = fixture
+        .operations
+        .record_materiality_review(draft(second_discovery))?;
+    assert_frontier(
+        current.review_candidate_id.to_string(),
+        WorkflowStage::MaterialityReview,
+        true,
+    )?;
+    fixture
+        .operations
+        .revise_materiality_review(MaterialityReviewRevisionDraft {
+            project_id: fixture.project_id,
+            review_candidate_id: second.review_candidate_id,
+            rationale: "A later revision does not change this candidate's creation order".into(),
+            learning_participation: LearningParticipation::Inactive,
+            dimensions,
+            learning_value_revision_bases: vec![],
+        })?;
+    assert_frontier(
+        current.review_candidate_id.to_string(),
+        WorkflowStage::MaterialityReview,
+        true,
+    )?;
+    bind_current_review_scope(&fixture, &current)?;
+    assert_frontier(
+        current.review_candidate_id.to_string(),
+        WorkflowStage::ReadyForWork,
+        false,
+    )?;
     Ok(())
 }
 
