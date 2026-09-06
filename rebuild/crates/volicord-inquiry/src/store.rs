@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 21;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 22;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -345,6 +345,18 @@ impl CandidateStore {
             return Err(Error::new(ErrorKind::DomainConflict,
                 "new material outcome requires current Engineering Choice Discovery and Materiality reassessment; a no-new-outcome claim cannot clear it"));
         }
+        if let crate::PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
+            &coupled_artifact_review.materiality_closure
+        {
+            let unmapped =
+                crate::commitments::unmapped_commitments(commitments, existing_review, discovery);
+            if !unmapped.is_empty() {
+                coupled_artifact_review.materiality_closure = crate::PreWriteMaterialityClosure::NewMaterialOutcome {
+                    outcomes: unmapped,
+                    rationale: "Planned observable commitments do not map to current reviewed outcomes and applicable alternatives; rediscover and review before affected work".into(),
+                };
+            }
+        }
         let mut source_basis = discovery
             .choices
             .iter()
@@ -360,6 +372,13 @@ impl CandidateStore {
                     .dimensions
                     .iter()
                     .flat_map(|dimension| dimension.ownership.source_basis.iter().copied()),
+            )
+            .chain(
+                discovery
+                    .interaction_review
+                    .iter()
+                    .flat_map(|review| &review.outcomes)
+                    .flat_map(|outcome| outcome.source_basis.iter().copied()),
             )
             .chain(std::iter::once(current.repository_source.identity()))
             .collect::<Vec<_>>();
@@ -2010,6 +2029,14 @@ fn normalize_coupled_artifact_review(
     review: &mut CoupledArtifactReview,
     scope: &ApplicabilityScope,
 ) -> Result<(), Error> {
+    if let crate::PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
+        &mut review.materiality_closure
+    {
+        for commitment in commitments {
+            commitment.repository_paths.sort();
+            commitment.repository_paths.dedup();
+        }
+    }
     for assessment in &mut review.assessments {
         if let CoupledArtifactDisposition::Included { repository_paths } =
             &mut assessment.disposition
@@ -2028,23 +2055,27 @@ fn validate_coupled_artifact_review(
     review: &CoupledArtifactReview,
     scope: &ApplicabilityScope,
 ) -> Result<(), Error> {
-    let (outcomes, rationale) = match &review.materiality_closure {
+    match &review.materiality_closure {
         crate::PreWriteMaterialityClosure::NoNewMaterialOutcome {
-            reviewed_outcomes,
+            commitments,
             rationale,
-        } => (reviewed_outcomes, rationale),
+        } => {
+            validate_text("pre-write materiality closure rationale", rationale)?;
+            crate::commitments::validate_shape(commitments, scope)?;
+        }
         crate::PreWriteMaterialityClosure::NewMaterialOutcome {
             outcomes,
             rationale,
-        } => (outcomes, rationale),
-    };
-    validate_text("pre-write materiality closure rationale", rationale)?;
-    validate_list(outcomes)?;
-    if outcomes.is_empty() {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            "pre-write materiality closure requires concrete reviewed or newly discovered outcomes",
-        ));
+        } => {
+            validate_text("pre-write materiality closure rationale", rationale)?;
+            validate_list(outcomes)?;
+            if outcomes.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "new material closure requires concrete outcomes",
+                ));
+            }
+        }
     }
     let required_categories = BTreeSet::from([
         CoupledArtifactCategory::Implementation,

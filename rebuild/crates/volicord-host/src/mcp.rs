@@ -508,6 +508,10 @@ impl HostAdapter {
                 draft["pre_write_materiality_closure"] = json!({
                     "input_schema":pre_write_materiality_closure_schema(),
                     "artifact_review_schema":coupled_artifact_review_schema(),
+                    "reviewed_interactions":interaction_review_json(&discovery.interaction_review),
+                    "current_choice_alternatives":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
+                    "current_authority_dimensions":current_review.as_ref().and_then(|r| r.content.as_ref()).and_then(|c| c.materiality_review.as_ref()).map(|r| r.dimensions.iter().map(|d| json!({"dimension_id":d.dimension_id,"choice_ids":d.discovered_choice_ids,"disposition":format!("{:?}",d.disposition),"alternative_accounting":d.alternative_accounting.iter().map(|a| json!({"choice_id":a.choice_id,"alternative_id":a.alternative_id,"resolution":format!("{:?}",a.resolution)})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
+                    "commitment_instruction":"Account for concrete observable/durable commitments in implementation, tests and contracts by stable reviewed dimension/choice/alternative or interaction/result identities. Unmapped commitments become NewMaterialOutcome and require rediscovery plus a new Materiality Review. PrivateEquivalent asserts every material outcome in the entire current server-bound graph is preserved; it cannot select an observable/durable branch. Semantic relation remains an active-agent judgment.",
                     "assembly":"After record/revise, draft again for current identities. Fill the exact planned paths/components/work_contexts and six artifact assessments. Select a closure variant and supply its semantic fields. Submit this one inspect request; the server atomically binds its exact plan, current dimensions, review/discovery identities and current Sources. A new outcome removes executable scope and requires rediscovery/review; prose cannot resolve it.",
                     "inspect_request":current_review.as_ref().map(|record| json!({
                         "prefilled_fields":{
@@ -2475,15 +2479,29 @@ fn pre_write_materiality_closure_schema() -> Value {
     json!({"description":"Typed prospective conclusion for the exact planned scope and artifact assessments in this inspect request; the server binds current review/discovery identities and current Sources atomically", "oneOf":[
         object_schema(vec![
             ("state", enum_schema("Pre-write conclusion", &["no_new_material_outcome"])),
-            ("reviewed_outcomes", nonempty_string_array_schema("Concrete material outcomes checked against current reviewed dimensions and authority")),
+            ("commitments", planned_commitments_schema()),
             ("rationale", text_schema("Why the exact planned artifacts remain within that reviewed authority",1,4096)),
-        ], &["state","reviewed_outcomes","rationale"]),
+        ], &["state","commitments","rationale"]),
         object_schema(vec![
             ("state", enum_schema("Pre-write conclusion", &["new_material_outcome"])),
             ("outcomes", nonempty_string_array_schema("New independent material outcomes requiring discovery/materiality reassessment before work")),
             ("rationale", text_schema("What planned artifacts revealed and why current authority does not close it",1,4096)),
         ], &["state","outcomes","rationale"]),
     ]})
+}
+
+fn planned_commitments_schema() -> Value {
+    json!({"type":"array","description":"Concrete planned observable commitments or explicit private equivalence, covering every planned artifact path","minItems":1,"maxItems":64,
+        "items":object_schema(vec![
+            ("commitment_id",text_schema("Unique identity within this exact plan",1,256)),
+            ("description",text_schema("Concrete observable/durable result introduced, or private change preserving all current material outcomes",1,4096)),
+            ("repository_paths",string_array_schema("Exact paths from the planned artifact assessments; empty only for a pathless component/work-context scope")),
+            ("outcome_binding",json!({"description":"Bind a current reviewed material result or explicitly preserve the entire current review graph","oneOf":[
+                object_schema(vec![("state",enum_schema("Binding", &["reviewed_choice"])),("dimension_id",text_schema("Current authority dimension",1,256)),("choice_id",text_schema("Current discovered choice",1,256)),("alternative_id",text_schema("Current non-eliminated alternative",1,256))], &["state","dimension_id","choice_id","alternative_id"]),
+                object_schema(vec![("state",enum_schema("Binding", &["reviewed_interaction"])),("outcome_id",text_schema("Current reviewed interaction outcome",1,256)),("result_id",text_schema("Source-settled or authority-applicable result identity",1,256))], &["state","outcome_id","result_id"]),
+                object_schema(vec![("state",enum_schema("Binding", &["private_equivalent"])),("equivalence_rationale",text_schema("Why this change preserves every observable/durable result in the current server-bound review graph; not authority for a material branch",1,4096))], &["state","equivalence_rationale"])
+            ]}))
+        ], &["commitment_id","description","repository_paths","outcome_binding"])})
 }
 
 fn learning_value_schema() -> Value {

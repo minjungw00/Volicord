@@ -923,9 +923,9 @@ fn mcp_rediscovery_requires_its_own_review_and_pre_write_closure() {
             old_discovery = discovery_id.clone();
             let mut report = bound["executable_work_scope"]["coupled_artifact_review"].clone();
             report["materiality_closure"] = json!({
-                "state":"new_material_outcome",
-                "outcomes":["A different failure result is introduced by the planned adapter"],
-                "rationale":"The failure outcome needs rediscovery and exact authority"
+                "state":"no_new_material_outcome",
+                "commitments":[{"commitment_id":"batch-durability","description":"Prevalidate safe then unsafe statements as a whole input and persist nothing","repository_paths":["src/lib.rs"],"outcome_binding":{"state":"reviewed_interaction","outcome_id":"unreviewed-batch-durability","result_id":"no-writes"}}],
+                "rationale":"Attempt to associate this concrete durable commitment with current reviewed authority"
             });
             let pending = structured(&call(&mut adapter, "materiality_review", json!({
                 "action":"inspect", "project_id":project, "review_candidate_id":old_review,
@@ -940,6 +940,11 @@ fn mcp_rediscovery_requires_its_own_review_and_pre_write_closure() {
             assert_eq!(pending["workflow"]["blocks_ordinary_work"], true);
             assert!(pending["executable_work_scope"].is_null());
             assert!(pending["pending_pre_write_reassessment"].is_object());
+            assert_eq!(
+                pending["pending_pre_write_reassessment"]["coupled_artifact_review"]
+                    ["materiality_closure"]["state"],
+                "new_material_outcome"
+            );
         } else {
             let identities = bound["workflow"]["satisfied_basis_identities"]
                 .as_array()
@@ -6390,7 +6395,7 @@ fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
                         {"category":"schema_snapshot_or_generated_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no schema or generated artifact"},
                         {"category":"other_repository_owned_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no other coupled artifact"}
                     ],
-                    "materiality_closure":{"state":"no_new_material_outcome","reviewed_outcomes":["The bounded fixture preserves the reviewed observable behavior"],"rationale":"fixture scope introduces no new material product outcome"}
+                    "materiality_closure":{"state":"no_new_material_outcome","commitments":[{"commitment_id":"private-test","description":"Private fixture preserves current outcomes","repository_paths":paths,"outcome_binding":{"state":"private_equivalent","equivalence_rationale":"The fixture preserves the complete current server-bound outcome graph"}}],"rationale":"fixture scope introduces no new material product outcome"}
                 }),
             );
     }
@@ -6422,9 +6427,14 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
             })
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
-            reviewed_outcomes: vec![
-                "The bounded fixture preserves the reviewed observable behavior".into(),
-            ],
+            commitments: vec![volicord_inquiry::PlannedCommitment {
+                commitment_id: "fixture-private-preservation".into(),
+                description: "Private fixture change preserves every current reviewed material outcome".into(),
+                repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+                outcome_binding: volicord_inquiry::PlannedOutcomeBinding::PrivateEquivalent {
+                    equivalence_rationale: "The fixture changes implementation privately while preserving the complete current server-bound outcome and authority graph".into(),
+                },
+            }],
             rationale: "fixture scope introduces no material outcome beyond the current dimensions"
                 .into(),
         },
@@ -6460,6 +6470,9 @@ fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&st
     ))
     .clone();
     let closure = &draft["pre_write_materiality_closure"];
+    assert!(closure["reviewed_interactions"].is_array());
+    assert!(closure["current_choice_alternatives"].is_array());
+    assert!(closure["current_authority_dimensions"].is_array());
     assert_schema_is_closed_and_described(&closure["input_schema"]);
     let mut request = closure["inspect_request"]["prefilled_fields"].clone();
     assert_eq!(

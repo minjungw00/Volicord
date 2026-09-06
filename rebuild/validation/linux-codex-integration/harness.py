@@ -680,7 +680,7 @@ def record_settled_fixture_review(
                 "disposition": {"state": "included", "repository_paths": paths} if category == "focused_tests" else {"state": "no_coupled_artifact"},
                 "basis_summary": "Inspection bounds this installed integration fixture to its test artifacts.",
             } for category in categories],
-            "materiality_closure": {"state": "no_new_material_outcome", "reviewed_outcomes": ["The bounded fixture preserves reviewed observable behavior"], "rationale": "The bounded fixture artifacts introduce no additional product outcome."},
+            "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": "The bounded fixture artifacts introduce no additional product outcome."},
         },
     })
 

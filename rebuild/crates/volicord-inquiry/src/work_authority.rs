@@ -309,6 +309,22 @@ pub fn evaluate_work_authority(
         Ok(discovery) => discovery,
         Err(reason) => return invalid(result, None, reason),
     };
+    if let Some(binding) = &review.executable_work_scope {
+        if let crate::PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
+            &binding.coupled_artifact_review.materiality_closure
+        {
+            if crate::commitments::validate_shape(commitments, &binding.scope).is_err()
+                || !crate::commitments::unmapped_commitments(commitments, review, discovery)
+                    .is_empty()
+            {
+                return invalid(
+                    result,
+                    None,
+                    "planned commitments no longer map to current reviewed material outcomes",
+                );
+            }
+        }
+    }
 
     let mut research_required = false;
     let mut question_required = false;
@@ -452,6 +468,7 @@ fn validate_discovery_boundary<'a>(
     {
         return Err("Engineering Choice Discovery Goal or baseline is stale".into());
     }
+    crate::interaction::validate_interactions(discovery).map_err(|error| error.to_string())?;
     crate::store::validate_material_decomposition(discovery).map_err(|error| error.to_string())?;
     let discovered = discovery
         .choices

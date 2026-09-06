@@ -62,9 +62,14 @@ fn categorized_coupled_artifact_review(
             })
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
-            reviewed_outcomes: vec![
-                "The bounded fixture preserves the reviewed observable behavior".into(),
-            ],
+            commitments: vec![volicord_inquiry::PlannedCommitment {
+                commitment_id: "fixture-private-preservation".into(),
+                description: "Private fixture change preserves every current reviewed material outcome".into(),
+                repository_paths: included.iter().flat_map(|(_, paths)| paths.iter().map(|p| (*p).to_owned())).collect(),
+                outcome_binding: volicord_inquiry::PlannedOutcomeBinding::PrivateEquivalent {
+                    equivalence_rationale: "The fixture changes implementation privately while preserving the complete current server-bound outcome and authority graph".into(),
+                },
+            }],
             rationale: "fixture scope introduces no material outcome beyond the current dimensions"
                 .into(),
         },
@@ -4902,6 +4907,13 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
                 source,
             )],
         })?;
+    let mut atomic_plan = coupled_artifact_review(&["src/lib.rs"]);
+    atomic_plan.materiality_closure = volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
+        commitments: vec![volicord_inquiry::PlannedCommitment {
+            commitment_id: "atomic-input".into(), description: "Whole-input prevalidation preserves zero durable writes for safe-then-unsafe input".into(), repository_paths: vec!["src/lib.rs".into()],
+            outcome_binding: volicord_inquiry::PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "durable-prefix".into(), result_id: "nothing-committed".into() },
+        }], rationale: "Current repository Source explicitly fixes the durable result".into(),
+    };
     fixture.operations.bind_executable_work_scope(
         fixture.project_id,
         fixture.goal_id,
@@ -4912,7 +4924,7 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
             components: vec![],
             work_contexts: vec![],
         },
-        coupled_artifact_review(&["src/lib.rs"]),
+        atomic_plan,
     )?;
     assert!(!readiness(&fixture, &reviewed)?.blocking);
     for defect in [
@@ -4960,5 +4972,99 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
     // Equivalent private implementation and outside-scope axes remain closed without user ownership classification.
     interactions[2].outcomes[0].conclusion = InteractionConclusion::NoIndependentFork { basis: volicord_inquiry::NoIndependentForkBasis::MechanicallyEquivalent, result_id: "nothing-committed".into(), rationale: "Direct prevalidation and a private validation helper both preserve the documented no-write result".into() };
     record(vec![broad], interactions)?;
+    Ok(())
+}
+
+#[test]
+fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_rediscoverable(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::{PlannedCommitment, PlannedOutcomeBinding, PreWriteMaterialityClosure};
+    for case in [
+        "mapped",
+        "private",
+        "unmapped-durability",
+        "eliminated-alternative",
+        "wrong-dimension",
+        "unreviewed-source-result",
+        "uncovered-path",
+    ] {
+        let fixture = fixture()?;
+        let source = fixture.baseline.repository_source.identity();
+        let reviewed = review(
+            &fixture,
+            vec![dimension(
+                "rejection-policy",
+                MaterialityDisposition::SettledAuthority,
+                vec![WorkAuthorityBasisKind::AcceptedContract],
+                source,
+            )],
+        )?;
+        let mut plan = coupled_artifact_review(&["src/lib.rs"]);
+        let mut commitment = PlannedCommitment {
+            commitment_id: "planned-result".into(),
+            description:
+                "Preserve the reviewed hard rejection policy in implementation and its assertions"
+                    .into(),
+            repository_paths: vec!["src/lib.rs".into()],
+            outcome_binding: PlannedOutcomeBinding::ReviewedChoice {
+                dimension_id: "rejection-policy".into(),
+                choice_id: "rejection-policy".into(),
+                alternative_id: "approach-a".into(),
+            },
+        };
+        match case {
+            "private" => commitment.outcome_binding = PlannedOutcomeBinding::PrivateEquivalent { equivalence_rationale: "A private helper extracts the same predicate; all current reviewed results remain identical".into() },
+            "unmapped-durability" => { commitment.description = "Prevalidate a whole input containing safe then unsafe statements, leaving no durable database changes".into(); commitment.outcome_binding = PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "batch-durability".into(), result_id: "nothing-committed".into() }; }
+            "eliminated-alternative" => if let PlannedOutcomeBinding::ReviewedChoice { alternative_id, .. } = &mut commitment.outcome_binding { *alternative_id = "approach-b".into(); },
+            "wrong-dimension" => if let PlannedOutcomeBinding::ReviewedChoice { dimension_id, .. } = &mut commitment.outcome_binding { *dimension_id = "unrelated-activation".into(); },
+            "unreviewed-source-result" => commitment.outcome_binding = PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "fixture-MultiItemEffects".into(), result_id: "unchanged".into() },
+            "uncovered-path" => commitment.repository_paths.clear(),
+            _ => (),
+        }
+        plan.materiality_closure = PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            commitments: vec![commitment],
+            rationale: "Concrete plan closure against the current review".into(),
+        };
+        let result = fixture.operations.bind_executable_work_scope(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            reviewed.review_candidate_id,
+            ApplicabilityScope {
+                paths: vec!["src/lib.rs".into()],
+                components: vec![],
+                work_contexts: vec![],
+            },
+            plan,
+        );
+        if case == "uncovered-path" {
+            assert!(result.is_err());
+            continue;
+        }
+        result?;
+        let reopened = LocalOperations::new(fixture.operations.layout().clone());
+        let retained = reopened
+            .inspect_workflow_candidate(fixture.project_id, reviewed.review_candidate_id)?
+            .content
+            .ok_or("content")?
+            .materiality_review
+            .ok_or("review")?;
+        if matches!(case, "mapped" | "private") {
+            assert!(retained.executable_work_scope.is_some());
+            assert!(!readiness(&fixture, &reviewed)?.blocking);
+        } else {
+            assert!(retained.executable_work_scope.is_none(), "{case}");
+            let pending = retained.pending_pre_write_reassessment.ok_or("pending")?;
+            assert!(matches!(
+                pending.coupled_artifact_review.materiality_closure,
+                PreWriteMaterialityClosure::NewMaterialOutcome { .. }
+            ));
+            let workflow = reopened
+                .workflow_for_review_candidate(fixture.project_id, reviewed.review_candidate_id)?;
+            assert_eq!(workflow.stage, WorkflowStage::EngineeringChoiceDiscovery);
+            assert!(workflow.blocks_ordinary_work);
+        }
+    }
+    assert!(serde_json::from_value::<PreWriteMaterialityClosure>(serde_json::json!({"state":"no_new_material_outcome","reviewed_outcomes":["hard reject"],"rationale":"old prose-only shape"})).is_err());
     Ok(())
 }

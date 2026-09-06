@@ -448,8 +448,19 @@ public/internal documentation, changelog/release notes, schema/snapshot/generate
 repository-owned artifact를 각각 exactly once 검토한다. Included category의 path는 executable paths를
 exactly partition하고, `no_coupled_artifact`도 repository inspection에 근거한 rationale를 요구한다.
 `materiality_closure`는 closed `no_new_material_outcome` 또는 `new_material_outcome` variant다.
-No-new는 concrete `reviewed_outcomes`와 current reviewed authority 아래에 planned artifact가 남는
-rationale를 요구한다. New는 새 independent `outcomes`와 발견 rationale를 요구한다. Free-text-only
+No-new는 concrete `commitments`를 요구한다. 각 commitment는 stable plan-local identity,
+observable/durable description과 exact planned artifact paths를 가지며 current authority dimension/
+choice/alternative 또는 reviewed interaction/result identity에 bind된다. Eliminated alternative,
+unknown identity, outside-scope interaction을 material commitment authority로 사용하면 No-new를
+유지하지 않고 같은 atomic inspect에서 `new_material_outcome`으로 전환해 scope를 제거한다.
+Source-settled interaction은 fixed result와 current Source를 사용하며 별도 Question을 요구하지 않는다.
+모든 planned path는 commitment 또는 explicit `private_equivalent` assertion으로 account한다.
+Private equivalence는 entire current server-bound review graph의 모든 material result를 보존한다는
+bounded assertion이며 새 observable/durable branch를 정하는 authority가 아니다. Server가 exact
+review/discovery/current dimension/Source identity를 bind하므로 별도 private authority certificate는 없다.
+Active agent는 concrete plan의 실제 observable 결과가 선택한 identity에 대응하는지 판단하고,
+private라는 label로 material commitment를 숨길 수 없다. Production은 text similarity로 이 semantic
+truth를 추론하지 않고 current graph identity/alternative compatibility, exact plan scope와 chronology를 검증한다. New는 새 independent `outcomes`와 발견 rationale를 요구한다. Free-text-only
 reassessment decoder는 없다. Inspect의 단일 atomic transition은 exact normalized path/component/
 work-context scope와 여섯 artifact assessment, current dimension set, review identity/revision,
 Discovery identity, current repository inspection snapshot 및 current review/discovery/inspection Source

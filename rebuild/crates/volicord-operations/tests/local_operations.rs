@@ -49,9 +49,14 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
             })
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
-            reviewed_outcomes: vec![
-                "The bounded fixture preserves the reviewed observable behavior".into(),
-            ],
+            commitments: vec![volicord_inquiry::PlannedCommitment {
+                commitment_id: "fixture-private-preservation".into(),
+                description: "Private fixture change preserves every current reviewed material outcome".into(),
+                repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+                outcome_binding: volicord_inquiry::PlannedOutcomeBinding::PrivateEquivalent {
+                    equivalence_rationale: "The fixture changes implementation privately while preserving the complete current server-bound outcome and authority graph".into(),
+                },
+            }],
             rationale: "fixture scope introduces no material outcome beyond the current dimensions"
                 .into(),
         },

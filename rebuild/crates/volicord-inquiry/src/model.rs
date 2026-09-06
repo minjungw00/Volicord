@@ -682,13 +682,39 @@ pub struct CoupledArtifactReview {
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PreWriteMaterialityClosure {
     NoNewMaterialOutcome {
-        reviewed_outcomes: Vec<String>,
+        commitments: Vec<PlannedCommitment>,
         rationale: String,
     },
     NewMaterialOutcome {
         outcomes: Vec<String>,
         rationale: String,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlannedCommitment {
+    pub commitment_id: String,
+    pub description: String,
+    pub repository_paths: Vec<String>,
+    pub outcome_binding: PlannedOutcomeBinding,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlannedOutcomeBinding {
+    ReviewedChoice {
+        dimension_id: String,
+        choice_id: String,
+        alternative_id: String,
+    },
+    ReviewedInteraction {
+        outcome_id: String,
+        result_id: String,
+    },
+    /// Preserves every material outcome in the server-bound current review graph.
+    /// This assertion cannot establish a new observable or durable commitment.
+    PrivateEquivalent { equivalence_rationale: String },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -3197,6 +3197,59 @@ def workflow_has_identity(workflow: Any, kind: str, identity: Any) -> bool:
     )
 
 
+def planned_commitments_valid(commitments: Any, paths: tuple[str, ...]) -> bool:
+    if not isinstance(commitments, list) or not 1 <= len(commitments) <= 64:
+        return False
+    ids = set(); covered = set()
+    for commitment in commitments:
+        if not isinstance(commitment, dict) or set(commitment) != {"commitment_id", "description", "repository_paths", "outcome_binding"} or not nonempty_string(commitment["commitment_id"]) or commitment["commitment_id"] in ids or not nonempty_string(commitment["description"]):
+            return False
+        ids.add(commitment["commitment_id"])
+        planned_paths = commitment["repository_paths"]
+        if not isinstance(planned_paths, list) or len(planned_paths) > 64 or not all(nonempty_string(p) for p in planned_paths) or len(set(planned_paths)) != len(planned_paths) or not set(planned_paths) <= set(paths) or (paths and not planned_paths):
+            return False
+        covered.update(planned_paths)
+        binding = commitment["outcome_binding"]
+        if not isinstance(binding, dict):
+            return False
+        fields = {"reviewed_choice": {"dimension_id", "choice_id", "alternative_id"}, "reviewed_interaction": {"outcome_id", "result_id"}, "private_equivalent": {"equivalence_rationale"}}.get(binding.get("state")) if isinstance(binding.get("state"), str) else None
+        if fields is None or set(binding) != fields | {"state"} or not all(nonempty_string(binding[key]) for key in fields):
+            return False
+    return covered == set(paths)
+
+
+def planned_commitments_match_graph(commitments: list[dict[str, Any]], discovery: dict[str, Any], judgments: Any) -> bool:
+    """Current identity/alternative correlation; semantic coverage is reviewed independently."""
+    choices = indexed_engineering_choices(discovery.get("choices"))
+    if choices is None or not isinstance(judgments, list):
+        return False
+    judgments = {j.get("choice_id"): j for j in judgments if isinstance(j, dict) and nonempty_string(j.get("choice_id"))}
+    def allowed(choice_id, alternative_id):
+        judgment = judgments.get(choice_id, {})
+        return choice_id in choices and any(a["alternative_id"] == alternative_id for a in choices[choice_id]["alternatives"]) and any(a.get("choice_id") == choice_id and a.get("alternative_id") == alternative_id and a.get("status") in {"selected", "unresolved"} for a in judgment.get("alternative_accounting", []))
+    outcomes = {o["outcome_id"]: o for r in discovery.get("interaction_review", []) for o in r.get("outcomes", [])}
+    for commitment in commitments:
+        binding = commitment["outcome_binding"]
+        if binding["state"] == "private_equivalent":
+            continue
+        if binding["state"] == "reviewed_choice":
+            if binding["dimension_id"] != binding["choice_id"] or not allowed(binding["choice_id"], binding["alternative_id"]):
+                return False
+        else:
+            outcome = outcomes.get(binding["outcome_id"])
+            if not outcome:
+                return False
+            conclusion = outcome["conclusion"]
+            if conclusion["state"] == "no_independent_fork":
+                if conclusion["basis"] == "outside_affected_scope" or conclusion["result_id"] != binding["result_id"]:
+                    return False
+            else:
+                for choice_id in conclusion["choice_ids"]:
+                    if not any(allowed(choice_id, a["alternative_id"]) and any(c["outcome_id"] == binding["outcome_id"] and all(r == binding["result_id"] for r in c["implementation_outcome_ids"]) for c in a["material_decomposition"].get("residual_fork_closure", {}).get("interaction_comparisons", [])) for a in choices[choice_id]["alternatives"]):
+                        return False
+    return True
+
+
 def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
     """Check returned category evidence and scope accounting, without sorting.
 
@@ -3215,10 +3268,9 @@ def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
     if not isinstance(review, dict) or set(review) != {"assessments", "materiality_closure"}:
         return False
     closure = review.get("materiality_closure")
-    if (not isinstance(closure, dict) or set(closure) != {"state", "reviewed_outcomes", "rationale"}
+    if (not isinstance(closure, dict) or set(closure) != {"state", "commitments", "rationale"}
         or closure.get("state") != "no_new_material_outcome"
-        or not isinstance(closure.get("reviewed_outcomes"), list) or not closure["reviewed_outcomes"]
-        or not all(nonempty_string(item) for item in closure["reviewed_outcomes"])
+        or not planned_commitments_valid(closure.get("commitments"), paths)
         or not nonempty_string(closure.get("rationale"))):
         return False
     assessments = review.get("assessments")
@@ -3283,7 +3335,7 @@ def fixture_coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_closure": {"state": "no_new_material_outcome", "reviewed_outcomes": ["The bounded fixture preserves reviewed observable behavior"], "rationale": (
+        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
             "The executable artifacts introduce no material outcome beyond the current review dimensions."
         )},
     }
@@ -3410,6 +3462,8 @@ def executable_scope_binding_observation(
         or not all(nonempty_string(source) for source in authority["source_ids"])
     ):
         reason = "invalid_pre_write_authority_basis"
+    if reason is None and not planned_commitments_match_graph(coupled_review["materiality_closure"]["commitments"], discovery_calls[-1].arguments, current_review.arguments.get("judgments")):
+        reason = "unmapped_planned_commitment"
     return ExecutableScopeBinding(
         inspect_call.completion_sequence,
         inspect_call.call_id,
