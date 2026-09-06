@@ -15216,6 +15216,7 @@ def self_test() -> int:
             raise AssertionError("independent interaction authority did not control cycle qualification: " + interaction_case["id"])
         failed_machine = json.loads(json.dumps(result))
         failed_machine["automated_qualification"] = {"status":"failed", "passed":False, "blockers":["evidence_failure"]}
+        failed_machine["replacement_qualification"] = {"status":"failed", "basis":"Machine evidence failed before human review"}
         if combine_human_review(failed_machine, interaction_obligation_review, automated_result_sha256)["replacement_pass_candidate"]:
             raise AssertionError("interaction human review overrode machine/evidence failure")
     extra_review = json.loads(json.dumps(passed_review))
