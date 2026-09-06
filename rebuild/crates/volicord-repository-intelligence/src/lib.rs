@@ -22,22 +22,22 @@ pub use grounding::grounded_explanation_basis;
 pub use identity::{AnalysisSnapshotId, RepositorySnapshotId};
 pub use inventory::{inventory_repository, InventoryError, InventoryRequest};
 pub use model::{
-    canonical_json, AdapterIdentity, AgentInterpretation, AnalysisDiagnostic, AnalysisProvenance,
-    AnalysisSnapshot, AnalyzerIdentity, AreaId, AreaKind, CandidateKind, CanonicalCheckpointRef,
-    CanonicalContextItemRef, CanonicalDecisionRef, CanonicalProjectRef, CanonicalReference,
-    CanonicalSourceBasis, CanonicalSourceRef, Capability, CapabilityReport, CapabilityState,
-    CodeEntity, CodeEntityKind, CoordinateConvention, Coverage, DiagnosticSeverity, Ecosystem,
-    EcosystemObservation, EcosystemObservationKind, EntryKind, EvidenceCandidate, ExtensionValue,
-    FileAnalysisBasis, FreshnessBasis, FreshnessState, GitObservation, GroundedExplanationBasis,
-    GroundingEvidence, GroundingGap, GroundingStatementClass, InvalidationCategory,
-    InvalidationRecord, InventoryClassification, InventoryEntry, InventorySnapshot, Language,
-    LanguageExtension, ObservationBasis, ProvenanceClass, RangeMeaning, RefreshAction,
-    RelationTarget, RepositorySnapshot, RepositoryWorktreeObservation, SearchHit, SearchResultKind,
-    SemanticAnalysisResult, SemanticAnnotation, SemanticProvenance, SemanticRefresh,
-    SemanticRelation, SemanticRelationKind, SourcePosition, SourceRange, StructuralFact,
-    StructuralProvenance, StructuralRefresh, StructuralRelation, StructuralRelationKind,
-    Uncertainty, UncertaintyLevel, UnresolvedTarget, ANALYSIS_SNAPSHOT_FORMAT_VERSION,
-    ANALYSIS_SNAPSHOT_KIND,
+    canonical_json, AdapterIdentity, AgentInterpretation, AnalysisDiagnostic, AnalysisMetadata,
+    AnalysisProvenance, AnalysisSnapshot, AnalyzerIdentity, AreaId, AreaKind, CandidateKind,
+    CanonicalCheckpointRef, CanonicalContextItemRef, CanonicalDecisionRef, CanonicalProjectRef,
+    CanonicalReference, CanonicalSourceBasis, CanonicalSourceRef, Capability, CapabilityReport,
+    CapabilityState, CodeEntity, CodeEntityKind, CoordinateConvention, Coverage,
+    DiagnosticSeverity, Ecosystem, EcosystemObservation, EcosystemObservationKind, EntryKind,
+    EvidenceCandidate, ExtensionValue, FileAnalysisBasis, FreshnessBasis, FreshnessState,
+    GitObservation, GroundedExplanationBasis, GroundingEvidence, GroundingGap,
+    GroundingStatementClass, InvalidationCategory, InvalidationRecord, InventoryClassification,
+    InventoryEntry, InventorySnapshot, Language, LanguageExtension, ObservationBasis,
+    ProvenanceClass, RangeMeaning, RefreshAction, RelationTarget, RepositorySnapshot,
+    RepositoryWorktreeObservation, SearchHit, SearchResultKind, SemanticAnalysisResult,
+    SemanticAnnotation, SemanticProvenance, SemanticRefresh, SemanticRelation,
+    SemanticRelationKind, SourcePosition, SourceRange, StructuralFact, StructuralProvenance,
+    StructuralRefresh, StructuralRelation, StructuralRelationKind, Uncertainty, UncertaintyLevel,
+    UnresolvedTarget, ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
 };
 pub use search::search_local;
 pub use semantic::{

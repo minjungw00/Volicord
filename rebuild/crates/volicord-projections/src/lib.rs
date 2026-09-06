@@ -36,9 +36,9 @@ pub use project::{
     ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
-    build_resume_brief, BriefContextItem, BriefDecision, BriefDecisionState, BriefQuestion,
-    BriefSnapshot, OmissionReason, RecallBound, RecallInputs, RecallOmission, RecallProposal,
-    ResumeBrief,
+    build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,
+    BriefDecisionState, BriefQuestion, BriefSnapshot, OmissionReason, RecallBound, RecallInputs,
+    RecallMetadataInputs, RecallOmission, RecallProposal, ResumeBrief,
 };
 pub use trigger::{RecallTriggerOutcome, SessionRecallTrigger};
 pub use understanding::{

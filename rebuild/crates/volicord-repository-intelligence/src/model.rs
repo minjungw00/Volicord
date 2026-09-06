@@ -333,6 +333,73 @@ pub struct AnalysisSnapshot {
     pub freshness: FreshnessBasis,
 }
 
+/// A typed metadata read of an Analysis Snapshot; does not claim to validate or contain its graph.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(try_from = "AnalysisMetadataWire")]
+pub struct AnalysisMetadata {
+    pub format_kind: String,
+    pub format_version: u32,
+    pub identity: AnalysisSnapshotId,
+    pub repository_snapshot: RepositorySnapshotId,
+    pub project: CanonicalProjectRef,
+    pub repository_source: CanonicalSourceRef,
+    pub inventory: InventorySnapshot,
+    pub capabilities: Vec<CapabilityReport>,
+    pub generated_at_unix_micros: i64,
+    pub freshness: FreshnessBasis,
+}
+#[derive(Deserialize)]
+struct AnalysisMetadataWire {
+    format_kind: String,
+    format_version: u32,
+    identity: AnalysisSnapshotId,
+    repository_snapshot: RepositorySnapshotId,
+    project: CanonicalProjectRef,
+    repository_source: CanonicalSourceRef,
+    inventory: InventorySnapshot,
+    capabilities: Vec<CapabilityReport>,
+    generated_at_unix_micros: i64,
+    freshness: FreshnessBasis,
+}
+impl TryFrom<AnalysisMetadataWire> for AnalysisMetadata {
+    type Error = String;
+    fn try_from(wire: AnalysisMetadataWire) -> Result<Self, Self::Error> {
+        if wire.format_kind != ANALYSIS_SNAPSHOT_KIND
+            || wire.format_version != ANALYSIS_SNAPSHOT_FORMAT_VERSION
+        {
+            return Err("unsupported Analysis Snapshot metadata format".into());
+        }
+        Ok(Self {
+            format_kind: wire.format_kind,
+            format_version: wire.format_version,
+            identity: wire.identity,
+            repository_snapshot: wire.repository_snapshot,
+            project: wire.project,
+            repository_source: wire.repository_source,
+            inventory: wire.inventory,
+            capabilities: wire.capabilities,
+            generated_at_unix_micros: wire.generated_at_unix_micros,
+            freshness: wire.freshness,
+        })
+    }
+}
+impl From<&AnalysisSnapshot> for AnalysisMetadata {
+    fn from(snapshot: &AnalysisSnapshot) -> Self {
+        Self {
+            format_kind: snapshot.format_kind.clone(),
+            format_version: snapshot.format_version,
+            identity: snapshot.identity,
+            repository_snapshot: snapshot.repository_snapshot,
+            project: snapshot.project,
+            repository_source: snapshot.repository_source.clone(),
+            inventory: snapshot.inventory.clone(),
+            capabilities: snapshot.capabilities.clone(),
+            generated_at_unix_micros: snapshot.generated_at_unix_micros,
+            freshness: snapshot.freshness.clone(),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct AnalysisSnapshotWire {
     format_kind: String,

@@ -603,3 +603,11 @@ omission accounting을 먼저 확정하고, 선택된 항목의 Source/range/fre
 diagnostic payload만 MapEntity/MapRelation으로 복제한다. 출력 bound는 직렬화 크기뿐
 아니라 이러한 rich projection payload의 생성 수에도 적용한다. 선택 전 lightweight
 lookup/degree/ranking index의 메모리는 입력 graph 크기에 비례할 수 있다.
+
+Recall의 AnalysisMetadata read는 snapshot identity, Source, inventory 기반 current
+observation, capability/coverage/freshness만 decode한다. Graph payload의 schema 검증이나
+graph가 usable하다는 주장은 하지 않는다. 유효한 metadata를 읽을 수 있으면 Canonical
+Recall과 snapshot 근거는 유지할 수 있으며, graph consumer/health의 full payload 검증은
+별도로 실패를 보고한다. Full-snapshot Recall과 metadata Recall은 같은 metadata와
+freshness observation에 대해 동일한 ResumeBrief를 생성해야 한다. Metadata reader도
+공통 Analysis Snapshot kind/current-version 및 typed identity 계약을 검사한다.

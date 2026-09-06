@@ -8,7 +8,8 @@ use volicord_inquiry::{
     DecisionApplicabilityState, InquiryScope,
 };
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, AnalysisSnapshotId, CapabilityReport, FreshnessBasis, RepositorySnapshotId,
+    AnalysisMetadata, AnalysisSnapshot, AnalysisSnapshotId, CapabilityReport, FreshnessBasis,
+    RepositorySnapshotId,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +31,14 @@ pub struct RecallInputs<'a> {
     pub analysis_issues: &'a [crate::ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
+    pub scope: ApplicabilityQuery,
+    pub bound: RecallBound,
+}
+
+pub struct RecallMetadataInputs<'a> {
+    pub analysis_issues: &'a [crate::ProjectionIssue],
+    pub canonical: &'a CanonicalReadBasis,
+    pub analyses: &'a [&'a AnalysisMetadata],
     pub scope: ApplicabilityQuery,
     pub bound: RecallBound,
 }
@@ -140,6 +149,21 @@ pub struct ResumeBrief {
 /// Builds a deterministic, bounded, read-only resumption view. It accepts no
 /// Kernel, CandidateStore, or analyzer mutation handle.
 pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
+    let metadata = inputs
+        .analyses
+        .iter()
+        .map(|snapshot| AnalysisMetadata::from(*snapshot))
+        .collect::<Vec<_>>();
+    build_resume_brief_from_metadata(RecallMetadataInputs {
+        analysis_issues: inputs.analysis_issues,
+        canonical: inputs.canonical,
+        analyses: &metadata.iter().collect::<Vec<_>>(),
+        scope: inputs.scope,
+        bound: inputs.bound,
+    })
+}
+
+pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> ResumeBrief {
     let canonical = inputs.canonical;
     let limit = inputs.bound.max_items_per_section.max(1);
     let mut omissions = Vec::new();

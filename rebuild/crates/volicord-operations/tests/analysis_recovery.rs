@@ -828,3 +828,46 @@ fn snapshot_header_rejects_filename_and_project_substitution(
     assert!(fixture.operations.recall(project)?.snapshots.is_empty());
     Ok(())
 }
+
+#[test]
+fn metadata_recall_equals_full_projection_without_decoding_graph_payloads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let project = fixture
+        .operations
+        .initialize_project("Metadata Recall", Some(&fixture.repository))?
+        .project
+        .id;
+    fixture.operations.record_current_host_user_context(
+        project,
+        "test".into(),
+        "metadata".into(),
+        "Preserve the goal".into(),
+        ContextItemRole::Goal,
+        "Preserve the goal".into(),
+    )?;
+    let analysis = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("analysis")?;
+    let expected = fixture.operations.project_projection(project)?.resume;
+    assert_eq!(fixture.operations.recall(project)?, expected);
+    // Graph schema corruption is deliberately outside the metadata read: Recall
+    // still reports its actual snapshot metadata, while graph consumers degrade.
+    let mut value = serde_json::to_value(&analysis.analysis)?;
+    value["semantic_results"] = serde_json::json!("invalid graph payload");
+    fs::write(&analysis.stored_at, serde_json::to_vec(&value)?)?;
+    assert_eq!(fixture.operations.recall(project)?, expected);
+    assert!(fixture
+        .operations
+        .project_projection(project)?
+        .repository_map
+        .entities
+        .is_empty());
+    assert_eq!(
+        fixture.operations.health(Some(project)).state,
+        HealthState::Degraded
+    );
+    Ok(())
+}

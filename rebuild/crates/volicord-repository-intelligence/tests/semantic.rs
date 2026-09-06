@@ -808,3 +808,35 @@ fn reused_structure_matches_fresh_analysis_under_a_new_observation_source(
     }
     Ok(())
 }
+
+#[test]
+fn metadata_reads_preserve_full_snapshot_freshness_and_reject_noncurrent_formats(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_repository_intelligence::{inventory_repository, AnalysisMetadata};
+    let root = tempdir()?;
+    fs::write(root.path().join("lib.rs"), "pub fn read() {}\n")?;
+    let (repository, original) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    let encoded = serde_json::to_vec(&original)?;
+    let metadata: AnalysisMetadata = serde_json::from_slice(&encoded)?;
+    assert_eq!(metadata, AnalysisMetadata::from(&original));
+    fs::write(root.path().join("lib.rs"), "pub fn changed() {}\n")?;
+    let (changed, _) = inventory_repository(inventory(root.path())?)?;
+    for observation in [Some(&repository), Some(&changed), None] {
+        let mut full = original.clone();
+        let mut summary = metadata.clone();
+        full.observe_repository_freshness(observation);
+        summary.observe_repository_freshness(observation);
+        assert_eq!(summary, AnalysisMetadata::from(&full));
+    }
+    let mut value = serde_json::to_value(&original)?;
+    for version in [0, ANALYSIS_SNAPSHOT_FORMAT_VERSION + 1] {
+        value["format_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<AnalysisMetadata>(value.clone()).is_err());
+    }
+    value["format_version"] = serde_json::json!(ANALYSIS_SNAPSHOT_FORMAT_VERSION);
+    value["format_kind"] = serde_json::json!("another-format");
+    assert!(serde_json::from_value::<AnalysisMetadata>(value).is_err());
+    Ok(())
+}
