@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 20;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 21;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1333,6 +1333,11 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                                 .iter()
                                 .any(|choice| choice.source_basis.contains(&source_id))
                                 || discovery
+                                    .interaction_review
+                                    .iter()
+                                    .flat_map(|review| &review.outcomes)
+                                    .any(|outcome| outcome.source_basis.contains(&source_id))
+                                || discovery
                                     .material_boundary_review
                                     .iter()
                                     .any(|review| review.source_basis.contains(&source_id))
@@ -2241,6 +2246,7 @@ fn validate_engineering_choice_discovery(
             }
         }
     }
+    crate::interaction::validate_interactions(discovery)?;
     validate_material_decomposition(discovery)?;
     let required_categories = crate::EngineeringEffectCategory::ALL
         .into_iter()
@@ -2351,6 +2357,11 @@ pub(crate) fn validate_material_decomposition(
                     rationale,
                     residual_fork_closure,
                 } => {
+                    crate::interaction::validate_atomic_interactions(
+                        discovery,
+                        choice,
+                        residual_fork_closure,
+                    )?;
                     validate_text("source-grounded material atomicity rationale", rationale)?;
                     validate_text(
                         "fixed material outcome",
@@ -2384,6 +2395,9 @@ pub(crate) fn validate_material_decomposition(
                         return Err(Error::new(ErrorKind::InvalidInput,
                             "material decomposition requires non-empty unique subordinate choice identities without self-reference"));
                     }
+                    crate::interaction::validate_decomposed_interactions(
+                        discovery, choice, choice_ids,
+                    )?;
                     for child in choice_ids {
                         visit(child, discovery, active, complete)?;
                     }
@@ -2628,12 +2642,23 @@ fn validate_discovery_against_canonical(
             .source_basis
             .iter()
             .any(|source| !current_sources.contains(source))
-    }) || discovery.material_boundary_review.iter().any(|review| {
-        review
-            .source_basis
-            .iter()
-            .any(|source| !current_sources.contains(source))
-    }) {
+    }) || discovery
+        .interaction_review
+        .iter()
+        .flat_map(|review| &review.outcomes)
+        .any(|outcome| {
+            outcome
+                .source_basis
+                .iter()
+                .any(|source| !current_sources.contains(source))
+        })
+        || discovery.material_boundary_review.iter().any(|review| {
+            review
+                .source_basis
+                .iter()
+                .any(|source| !current_sources.contains(source))
+        })
+    {
         return Err(Error::new(
             ErrorKind::StaleBasis,
             "Engineering Choice Discovery contains a missing or non-current Source basis",

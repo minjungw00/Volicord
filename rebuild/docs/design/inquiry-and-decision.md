@@ -69,6 +69,26 @@ Source-grounded `no_independent_fork`를 기록한다. No-fork는 `mechanically_
 `settled_by_current_sources`, `outside_affected_scope` 중 typed basis와 rationale를 가진다.
 Category는 ownership classifier가 아닌 semantic review prompt다.
 
+Discovery의 `interaction_review`는 effect category와 별도로 reference/scope/context basis,
+existing configuration/authority/Source와 composition/precedence, multi-item ordering/partial
+success/atomic durable effects, failure/retry/recovery를 각각 한 번 challenge한다. 각 axis는 concrete
+scenario, stable `outcome_id`, credible `result_id`/description, affected choice identities와 current
+Source basis를 보존한다. Independent outcome은 real affected representing choices로 닫고,
+no-independent-fork는 기존 typed basis와 Source-grounded rationale 및 fixed result identity로 닫는다.
+Outside-scope도 Source evidence를 요구한다. Challenge는 Question이나 ownership을 만들지 않는다.
+
+Atomic residual closure의 `interaction_comparisons`는 모든 affected interaction outcome을 exactly
+once 참조하고 credible implementation마다 result identity를 순서대로 기록한다. 모든 구현이 같은
+material result를 보존해야 하며, Source-settled result와 모순될 수 없다. 비교가 왜 해당 scenario를
+충분히 challenge하는지 equivalence rationale와 shared current Source가 필요하다. 다른 choice가
+represent하는 outcome이 남으면 atomic closure를 거부하고 해당 subordinate choice까지 decomposition해야 한다.
+Safe statement 뒤 unsafe statement를 hard reject하더라도 earlier statement의 durable effect 유지와
+whole-input prevalidation의 zero-write result는 다르다. Rejection policy 자체는 이 차이를 결정하지
+않는다. Repository Source가 atomic whole-input behavior를 명시하면 source-settled no-fork로 닫고,
+동일 durable result의 private 구현 차이와 genuinely outside-scope interaction은 Question을 만들지 않는다.
+Production은 bounded graph/identity/Source/comparison contradiction을 검사하며 scenario 선정,
+credible implementation의 adequacy와 실제 semantic equivalence는 active-agent/independent-human judgment다.
+
 각 alternative의 `material_decomposition`은 `materially_atomic` 또는 `decomposed`다.
 Atomic alternative는 rationale와 structured `residual_fork_closure`를 반드시 가진다.
 `fixed_outcome`은 그 alternative가 고정하는 concrete material/observable outcome이고,

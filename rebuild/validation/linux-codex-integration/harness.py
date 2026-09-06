@@ -58,6 +58,18 @@ ENGINEERING_EFFECT_CATEGORIES = (
 )
 
 
+def outside_interactions(choices, source_ids):
+    """Isolated qualification choices do not alter these interactions."""
+    return [{"axis": axis, "outcomes": [{
+        "outcome_id": "fixture-" + axis,
+        "scenario": "The bounded fixture leaves existing " + axis + " behavior unchanged",
+        "credible_outcomes": [{"result_id": "unchanged", "description": "Existing interaction result is preserved"}],
+        "affected_choice_ids": [], "source_basis": [source_ids],
+        "conclusion": {"result_id": "unchanged", "state": "no_independent_fork", "basis": "outside_affected_scope",
+            "rationale": "The maintained fixture Source limits this isolated authority test; these interaction results are unchanged"},
+    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery")]
+
+
 def material_boundary_review(
     choices: list[dict[str, Any]], source_id: str
 ) -> list[dict[str, Any]]:
@@ -747,8 +759,8 @@ def exercise_analysis_recovery(
             "summary": "Rebuild derived analysis while preserving canonical meaning",
             "affected_scope": ["derived-analysis"],
             "alternatives": [
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [recovery_baseline["repository_source_id"]]}}, "alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [recovery_baseline["repository_source_id"]]}}, "alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [recovery_baseline["repository_source_id"]]}}, "alternative_id": "repair", "summary": "Repair the current derived snapshot", "technical_consequences": ["Retains compatible derived state where possible"]},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [recovery_baseline["repository_source_id"]]}}, "alternative_id": "reindex", "summary": "Discard and rebuild derived state", "technical_consequences": ["Recomputes derived state from current canonical and repository Sources"]},
             ],
             "technical_consequences": ["The treatment changes only rebuildable derived state"],
             "source_ids": [recovery_baseline["repository_source_id"]],
@@ -768,7 +780,9 @@ def exercise_analysis_recovery(
             "source_operation": "V08 recovery engineering-choice discovery",
             "summary": "Discover the derived-analysis recovery treatment",
             "choices": recovery_choices,
-            "material_boundary_review": material_boundary_review(
+            "interaction_review": outside_interactions(
+                recovery_choices, recovery_baseline["repository_source_id"]
+            ), "material_boundary_review": material_boundary_review(
                 recovery_choices, recovery_baseline["repository_source_id"]
             ),
         },
@@ -1174,8 +1188,8 @@ def main() -> int:
                 "summary": "Apply the maintained fixture filename and content",
                 "affected_scope": ["grounded-checkpoint.txt"],
                 "alternatives": [
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [baseline["repository_source_id"]]}}, "alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [baseline["repository_source_id"]]}}, "alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [baseline["repository_source_id"]]}}, "alternative_id": "maintained", "summary": "Use the maintained V08 fixture", "technical_consequences": ["Matches the deterministic installed-path contract"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [baseline["repository_source_id"]]}}, "alternative_id": "ad-hoc", "summary": "Use an ad-hoc fixture", "technical_consequences": ["Would diverge from the maintained deterministic contract"]},
                 ],
                 "technical_consequences": ["The choice controls deterministic Checkpoint evidence"],
                 "source_ids": [baseline["repository_source_id"]],
@@ -1195,7 +1209,9 @@ def main() -> int:
                 "source_operation": "V08 installed MCP choice discovery",
                 "summary": "Discover the maintained fixture output choice",
                 "choices": checkpoint_choices,
-                "material_boundary_review": material_boundary_review(
+                "interaction_review": outside_interactions(
+                    checkpoint_choices, baseline["repository_source_id"]
+                ), "material_boundary_review": material_boundary_review(
                     checkpoint_choices, baseline["repository_source_id"]
                 ),
             },

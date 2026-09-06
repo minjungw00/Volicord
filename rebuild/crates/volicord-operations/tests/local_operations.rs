@@ -379,13 +379,13 @@ fn record_ready_review(
         affected_scope: vec!["repository".into()],
         alternatives: vec![
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { interaction_comparisons: vec![], fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
                 alternative_id: "record".into(),
                 summary: "record the bounded delta".into(),
                 technical_consequences: vec!["preserves changed-path basis".into()],
             },
             EngineeringAlternative {
-                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
+                    material_decomposition: volicord_inquiry::MaterialDecomposition::MateriallyAtomic { rationale: "The fixture Source bounds this alternative to its stated outcome; no further product choice remains.".into(), residual_fork_closure: volicord_inquiry::ResidualForkClosure { interaction_comparisons: vec![], fixed_outcome: "The fixture alternative's stated observable consequence".into(), credible_implementations: vec!["Direct implementation preserving the stated consequence".into(), "Private helper implementation preserving the same consequence".into()], remaining_material_outcomes: vec![], source_basis: vec![baseline.repository_source.identity()] } },
                 alternative_id: "omit".into(),
                 summary: "omit the bounded delta".into(),
                 technical_consequences: vec!["loses changed-path basis".into()],
@@ -419,6 +419,7 @@ fn record_ready_review(
         .collect();
     let discovery =
         operations.record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            interaction_review: outside_interactions(baseline.repository_source.identity()),
             project_id,
             goal_context_id,
             baseline_analysis_snapshot_id: baseline.identity,
@@ -1130,4 +1131,24 @@ fn project_ids_remain_path_independent() -> Result<(), Box<dyn std::error::Error
         .to_string()
         .contains(repository.to_string_lossy().as_ref()));
     Ok(())
+}
+
+fn outside_interactions(
+    source: volicord_context::SourceId,
+) -> Vec<volicord_inquiry::InteractionReview> {
+    volicord_inquiry::InteractionAxis::ALL.into_iter().map(|axis| volicord_inquiry::InteractionReview {
+        axis,
+        outcomes: vec![volicord_inquiry::InteractionOutcome {
+            outcome_id: format!("fixture-{axis:?}"),
+            scenario: format!("The isolated fixture does not change {axis:?}; its tested authority dimension is bounded separately"),
+            credible_outcomes: vec![volicord_inquiry::InteractionResult { result_id: "unchanged".into(), description: "Existing fixture interaction behavior is preserved".into() }],
+            affected_choice_ids: vec![],
+            conclusion: volicord_inquiry::InteractionConclusion::NoIndependentFork {
+                result_id: "unchanged".into(),
+                basis: volicord_inquiry::NoIndependentForkBasis::OutsideAffectedScope,
+                rationale: "The fixture Source bounds this test to its declared isolated choice; interactions are unchanged".into(),
+            },
+            source_basis: vec![source],
+        }],
+    }).collect()
 }

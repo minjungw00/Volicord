@@ -5510,7 +5510,7 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
                 residual = closure.get("residual_fork_closure")
                 if (
                     not isinstance(residual, dict)
-                    or set(residual) != {"fixed_outcome", "credible_implementations", "remaining_material_outcomes", "source_basis"}
+                    or set(residual) != {"interaction_comparisons", "fixed_outcome", "credible_implementations", "remaining_material_outcomes", "source_basis"}
                     or not nonempty_string(residual.get("fixed_outcome"))
                     or not isinstance(residual.get("credible_implementations"), list)
                     or not all(nonempty_string(item) for item in residual["credible_implementations"])
@@ -5537,6 +5537,72 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
         return True
 
     return indexed if all(closed(choice_id) for choice_id in indexed) else None
+
+
+def interaction_review_facts(value: Any, choices: dict[str, Any] | None, repository_source_id: Any) -> tuple[bool, dict[str, Any]]:
+    """Validate declared identities/comparisons only; never infer material ownership."""
+    axes = {"reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery"}
+    def ids(items, allow_empty=False):
+        return isinstance(items, list) and (allow_empty or bool(items)) and len(items) <= 64 and all(nonempty_string(i) for i in items) and len(set(items)) == len(items)
+    if not choices or not isinstance(value, list) or len(value) != len(axes):
+        return False, {}
+    outcomes = {}; seen_axes = set()
+    for review in value:
+        if not isinstance(review, dict) or set(review) != {"axis", "outcomes"} or not isinstance(review["axis"], str) or review["axis"] not in axes or review["axis"] in seen_axes or not isinstance(review["outcomes"], list) or not 1 <= len(review["outcomes"]) <= 64:
+            return False, {}
+        seen_axes.add(review["axis"])
+        for outcome in review["outcomes"]:
+            if not isinstance(outcome, dict) or set(outcome) != {"outcome_id", "scenario", "credible_outcomes", "affected_choice_ids", "conclusion", "source_basis"} or not nonempty_string(outcome["outcome_id"]) or outcome["outcome_id"] in outcomes or not nonempty_string(outcome["scenario"]) or not ids(outcome["affected_choice_ids"], True) or not set(outcome["affected_choice_ids"]) <= set(choices) or outcome["source_basis"] != [repository_source_id]:
+                return False, {}
+            results = outcome["credible_outcomes"]
+            if not isinstance(results, list) or not 1 <= len(results) <= 64 or any(not isinstance(r, dict) or set(r) != {"result_id", "description"} or not nonempty_string(r["description"]) for r in results) or not ids([r["result_id"] for r in results]):
+                return False, {}
+            conclusion = outcome["conclusion"]
+            if not isinstance(conclusion, dict):
+                return False, {}
+            if conclusion.get("state") == "represented_by_choices":
+                if set(conclusion) != {"state", "choice_ids"} or not ids(conclusion["choice_ids"]) or not set(conclusion["choice_ids"]) <= set(outcome["affected_choice_ids"]) or len(results) < 2:
+                    return False, {}
+            elif conclusion.get("state") == "no_independent_fork":
+                if set(conclusion) != {"state", "basis", "rationale", "result_id"} or conclusion["basis"] not in {"mechanically_equivalent", "settled_by_current_sources", "outside_affected_scope"} or not nonempty_string(conclusion["rationale"]) or conclusion["result_id"] not in [r["result_id"] for r in results] or (not outcome["affected_choice_ids"] and conclusion["basis"] != "outside_affected_scope"):
+                    return False, {}
+            else:
+                return False, {}
+            outcomes[outcome["outcome_id"]] = outcome
+    def descendants(children):
+        found = set(); pending = list(children)
+        while pending:
+            child = pending.pop()
+            if child in found:
+                continue
+            found.add(child)
+            for alternative in choices.get(child, {}).get("alternatives", []):
+                pending.extend(alternative["material_decomposition"].get("choice_ids", []))
+        return found
+    for choice_id, choice in choices.items():
+        applicable = {key: o for key, o in outcomes.items() if choice_id in o["affected_choice_ids"]}
+        for alternative in choice["alternatives"]:
+            closure = alternative["material_decomposition"]
+            if closure["state"] == "decomposed":
+                represented = descendants(closure["choice_ids"]) | {choice_id}
+                if any(not set(o["conclusion"].get("choice_ids", [])) <= represented for o in applicable.values()):
+                    return False, {}
+                continue
+            residual = closure["residual_fork_closure"]
+            comparisons = residual.get("interaction_comparisons")
+            if not isinstance(comparisons, list) or len(comparisons) != len(applicable):
+                return False, {}
+            seen = set()
+            for comparison in comparisons:
+                if not isinstance(comparison, dict) or set(comparison) != {"outcome_id", "implementation_outcome_ids", "equivalence_rationale"} or not nonempty_string(comparison["outcome_id"]) or comparison["outcome_id"] not in applicable or comparison["outcome_id"] in seen or not nonempty_string(comparison["equivalence_rationale"]):
+                    return False, {}
+                seen.add(comparison["outcome_id"])
+                outcome = applicable[comparison["outcome_id"]]; conclusion = outcome["conclusion"]; results = comparison["implementation_outcome_ids"]
+                if not isinstance(results, list) or len(results) != len(residual["credible_implementations"]) or not all(nonempty_string(r) for r in results) or len(set(results)) != 1 or results[0] not in [r["result_id"] for r in outcome["credible_outcomes"]] or not set(outcome["source_basis"]) & set(residual["source_basis"]):
+                    return False, {}
+                if (conclusion["state"] == "represented_by_choices" and conclusion["choice_ids"] != [choice_id]) or (conclusion["state"] == "no_independent_fork" and conclusion["result_id"] != results[0]):
+                    return False, {}
+    return True, {"reviewed_axes": sorted(seen_axes), "outcome_ids": sorted(outcomes), "semantic_judgment_owner": "active_agent_and_bounded_human_review"}
 
 
 def material_boundary_review_facts(
@@ -5988,6 +6054,7 @@ def engineering_choice_discovery_facts(
         choices,
         repository_source_id,
     )
+    interaction_ok, interaction_basis = interaction_review_facts(discovery.arguments.get("interaction_review") if discovery else None, choices, repository_source_id)
     referenced_ids = {
         choice_id
         for dimension in (dimensions or {}).values()
@@ -5998,6 +6065,7 @@ def engineering_choice_discovery_facts(
         and choices
         and dimensions
         and boundary_ok
+        and interaction_ok
         and baseline_call.completion_sequence < discovery.sequence
         and discovery.completion_sequence < review_call.sequence
         and nonempty_string(discovered_id)
@@ -6036,6 +6104,7 @@ def engineering_choice_discovery_facts(
             for choice_id, choice in sorted((choices or {}).items())
         },
         "material_boundary_review": boundary_basis,
+        "interaction_review": interaction_basis,
         "evidence_states_by_choice": {
             choice_id: choice.get("evidence_state")
             for choice_id, choice in sorted((choices or {}).items())
@@ -9998,6 +10067,18 @@ def fixture_question_content() -> dict[str, Any]:
     }
 
 
+def fixture_outside_interactions(choices, source_ids):
+    """Isolated qualification choices do not alter these interactions."""
+    return [{"axis": axis, "outcomes": [{
+        "outcome_id": "fixture-" + axis,
+        "scenario": "The bounded fixture leaves existing " + axis + " behavior unchanged",
+        "credible_outcomes": [{"result_id": "unchanged", "description": "Existing interaction result is preserved"}],
+        "affected_choice_ids": [], "source_basis": [source_ids],
+        "conclusion": {"result_id": "unchanged", "state": "no_independent_fork", "basis": "outside_affected_scope",
+            "rationale": "The maintained fixture Source limits this isolated authority test; these interaction results are unchanged"},
+    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery")]
+
+
 def fixture_material_boundary_review(
     choices: list[dict[str, Any]], source_id: str
 ) -> list[dict[str, Any]]:
@@ -10508,12 +10589,12 @@ def real_session_fixture(
                     else "adapter state representation"
                 ],
                 "alternatives": [
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
                         "alternative_id": "ordered-records",
                         "summary": "Use ordered records",
                         "technical_consequences": ["Deterministic inspection with bounded linear lookup"],
                     },
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}},
                         "alternative_id": "keyed-index",
                         "summary": "Use a keyed index",
                         "technical_consequences": ["Direct lookup with ordering synchronization obligations"],
@@ -10538,8 +10619,8 @@ def real_session_fixture(
                 "summary": "Choose the coupled repository-shape boundary",
                 "affected_scope": ["repository file shape"],
                 "alternatives": [
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
-                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "bounded", "summary": "Keep the bounded file shape", "technical_consequences": ["Limits the touched surface"]},
+                    {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}, "alternative_id": "expanded", "summary": "Expand the file shape", "technical_consequences": ["Broadens the touched surface"]},
                 ],
                 "technical_consequences": ["The shape affects the scope of implementation changes"],
                 "source_ids": [source_id],
@@ -10851,7 +10932,9 @@ def real_session_fixture(
                 "source_operation": "naturalistic engineering-choice discovery",
                 "summary": "Discover independently meaningful technical choices before authority review.",
                 "choices": engineering_choices(repository_source),
-                "material_boundary_review": fixture_material_boundary_review(
+                "interaction_review": fixture_outside_interactions(
+                    engineering_choices(repository_source), repository_source
+                ), "material_boundary_review": fixture_material_boundary_review(
                     engineering_choices(repository_source), repository_source
                 ),
             },
@@ -10866,7 +10949,9 @@ def real_session_fixture(
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": baseline_analysis,
                 "choices": engineering_choices(repository_source),
-                "material_boundary_review": fixture_material_boundary_review(
+                "interaction_review": fixture_outside_interactions(
+                    engineering_choices(repository_source), repository_source
+                ), "material_boundary_review": fixture_material_boundary_review(
                     engineering_choices(repository_source), repository_source
                 ),
                 "canonical_mutation": False,
@@ -11584,7 +11669,10 @@ def real_session_fixture(
                 "source_operation": "fresh-session engineering-choice rediscovery",
                 "summary": "Re-establish current technical choices after Recall.",
                 "choices": engineering_choices(resume_repository_source),
-                "material_boundary_review": fixture_material_boundary_review(
+                "interaction_review": fixture_outside_interactions(
+                    engineering_choices(resume_repository_source),
+                    resume_repository_source,
+                ), "material_boundary_review": fixture_material_boundary_review(
                     engineering_choices(resume_repository_source),
                     resume_repository_source,
                 ),
@@ -11601,7 +11689,10 @@ def real_session_fixture(
                 "goal_context_id": context,
                 "baseline_analysis_snapshot_id": resume_baseline_analysis,
                 "choices": engineering_choices(resume_repository_source),
-                "material_boundary_review": fixture_material_boundary_review(
+                "interaction_review": fixture_outside_interactions(
+                    engineering_choices(resume_repository_source),
+                    resume_repository_source,
+                ), "material_boundary_review": fixture_material_boundary_review(
                     engineering_choices(resume_repository_source),
                     resume_repository_source,
                 ),
@@ -15767,14 +15858,14 @@ def self_test() -> int:
             primary = arguments["choices"][0]
             primary["summary"] = summary
             primary["alternatives"] = [
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
                     "alternative_id": f"{scenario_id}-a",
                     "summary": alternatives[0],
                     "technical_consequences": [
                         "This alternative produces one durable product outcome."
                     ],
                 },
-                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
+                {"material_decomposition": {"state": "materially_atomic", "rationale": "The maintained fixture Source bounds this alternative to its stated outcome; no subordinate product policy remains.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [primary["source_ids"][0]]}},
                     "alternative_id": f"{scenario_id}-b",
                     "summary": alternatives[1],
                     "technical_consequences": [

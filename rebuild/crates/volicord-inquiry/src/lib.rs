@@ -9,6 +9,7 @@ mod checkpoint;
 mod error;
 mod frontier;
 mod identity;
+mod interaction;
 mod model;
 mod response;
 mod store;
@@ -42,7 +43,8 @@ pub use model::{
     EngineeringAlternative, EngineeringChoice, EngineeringChoiceDiscovery,
     EngineeringChoiceEvidenceState, EngineeringChoiceRelationship, EngineeringEffectCategory,
     ExactAuthoritySufficiency, ExecutableWorkScopeBinding, ExplicitDelegationEvidence,
-    ExploratoryDisposition, ImplementationDiscretionCounterfactual, InquiryScope,
+    ExploratoryDisposition, ImplementationDiscretionCounterfactual, InquiryScope, InteractionAxis,
+    InteractionConclusion, InteractionOutcome, InteractionResult, InteractionReview,
     LateWorkAuthorityRevision, LearningAlternativeSelection, LearningDeliberation,
     LearningDeliberationRound, LearningDeliberationState, LearningInitialResponse,
     LearningParticipation, LearningRecommendation, LearningValueAssessment, LearningValueRevision,
@@ -51,8 +53,8 @@ pub use model::{
     MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension, MaterialityDisposition,
     MaterialityReview, MaterialityReviewRevision, MaterialityStatus, NoIndependentForkBasis,
     PreWriteAuthorityBasis, PreWriteMaterialityClosure, PromotionResult, QuestionCandidate,
-    QuestionPresentation, RepositoryResearchBasis, ResidualForkClosure, SubmissionOutcome,
-    WorkAuthorityBasis, WorkAuthorityBasisKind,
+    QuestionPresentation, RepositoryResearchBasis, ResidualForkClosure,
+    ResidualInteractionComparison, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

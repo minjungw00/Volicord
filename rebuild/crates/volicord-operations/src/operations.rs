@@ -994,6 +994,13 @@ impl LocalOperations {
         for review in &draft.material_boundary_review {
             source_basis.extend(review.source_basis.iter().copied());
         }
+        for outcome in draft
+            .interaction_review
+            .iter()
+            .flat_map(|review| &review.outcomes)
+        {
+            source_basis.extend(outcome.source_basis.iter().copied());
+        }
         source_basis.sort_unstable();
         source_basis.dedup();
         let observed_at = SystemClock.now().map_err(|error| {
@@ -1039,6 +1046,7 @@ impl LocalOperations {
                     baseline_analysis_snapshot_id: baseline.identity,
                     choices: draft.choices,
                     material_boundary_review: draft.material_boundary_review,
+                    interaction_review: draft.interaction_review,
                 }),
                 materiality_review: None,
                 learning_deliberation: None,

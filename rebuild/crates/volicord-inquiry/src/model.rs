@@ -260,10 +260,78 @@ pub enum MaterialDecomposition {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResidualForkClosure {
+    pub interaction_comparisons: Vec<ResidualInteractionComparison>,
     pub fixed_outcome: String,
     pub credible_implementations: Vec<String>,
     pub remaining_material_outcomes: Vec<String>,
     pub source_basis: Vec<SourceId>,
+}
+
+/// Completeness prompts, never authority or ownership classifiers.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractionAxis {
+    ReferenceBasis,
+    CompositionAndPrecedence,
+    MultiItemEffects,
+    FailureAndRecovery,
+}
+
+impl InteractionAxis {
+    pub const ALL: [Self; 4] = [
+        Self::ReferenceBasis,
+        Self::CompositionAndPrecedence,
+        Self::MultiItemEffects,
+        Self::FailureAndRecovery,
+    ];
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct InteractionReview {
+    pub axis: InteractionAxis,
+    pub outcomes: Vec<InteractionOutcome>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct InteractionOutcome {
+    pub outcome_id: String,
+    pub scenario: String,
+    pub credible_outcomes: Vec<InteractionResult>,
+    pub affected_choice_ids: Vec<String>,
+    pub conclusion: InteractionConclusion,
+    pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InteractionConclusion {
+    RepresentedByChoices {
+        choice_ids: Vec<String>,
+    },
+    NoIndependentFork {
+        basis: NoIndependentForkBasis,
+        rationale: String,
+        result_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct InteractionResult {
+    pub result_id: String,
+    pub description: String,
+}
+
+/// Each implementation is indexed into the enclosing credible implementation list.
+/// Equal outcome identities assert material equivalence; prose is not compared.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResidualInteractionComparison {
+    pub outcome_id: String,
+    pub implementation_outcome_ids: Vec<String>,
+    pub equivalence_rationale: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -320,6 +388,7 @@ pub struct EngineeringChoiceDiscovery {
     pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
     pub choices: Vec<EngineeringChoice>,
     pub material_boundary_review: Vec<MaterialBoundaryReview>,
+    pub interaction_review: Vec<InteractionReview>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]

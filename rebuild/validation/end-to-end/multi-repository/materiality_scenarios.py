@@ -87,7 +87,7 @@ def qualify(api: Any, binary: Path, env: dict[str, str], root: Path) -> dict[str
                 "alternatives": [{"alternative_id": key, "summary": consequence,
                     "technical_consequences": [consequence],
                     "material_decomposition": {"state": "materially_atomic",
-                        "rationale": "This bounded fixture fixes other behavior; this alternative leaves no subordinate material fork.", "residual_fork_closure": {"fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}}
+                        "rationale": "This bounded fixture fixes other behavior; this alternative leaves no subordinate material fork.", "residual_fork_closure": {"interaction_comparisons": [], "fixed_outcome": "The bounded fixture alternative stated consequence", "credible_implementations": ["Direct implementation preserving the consequence", "Private helper preserving the same consequence"], "remaining_material_outcomes": [], "source_basis": [source_id]}}}
                     for key, consequence in alternatives],
                 "technical_consequences": [text for _, text in alternatives],
                 "source_ids": [source_id], "effect_categories": effects,
@@ -97,7 +97,7 @@ def qualify(api: Any, binary: Path, env: dict[str, str], root: Path) -> dict[str
                 "project_id": project, "goal_context_id": goal["context_item_id"],
                 "baseline_analysis_snapshot_id": analysis["analysis_snapshot_id"],
                 "source_operation": "bounded repository investigation", "summary": goal_text,
-                "choices": [choice], "material_boundary_review": api.material_boundary_review([choice], [source_id]),
+                "choices": [choice], "interaction_review": api.outside_interactions([choice], [source_id]), "material_boundary_review": api.material_boundary_review([choice], [source_id]),
             })
             accounts = api.alternative_accounting(choice["choice_id"], [a[0] for a in alternatives], source_id)
             judgment = {

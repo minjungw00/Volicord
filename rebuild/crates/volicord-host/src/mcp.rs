@@ -430,6 +430,7 @@ impl HostAdapter {
                 summary: required_str(args, "summary")?.to_owned(),
                 choices: engineering_choices(args)?,
                 material_boundary_review: material_boundary_review(args)?,
+                interaction_review: parse_interaction_review(&args["interaction_review"])?,
             })
             .map_err(operation_error)?;
         let workflow = self
@@ -2194,11 +2195,12 @@ fn engineering_choice_discovery_schema() -> Value {
                     object_schema(vec![
                         ("state", enum_schema("Closure", &["materially_atomic"])),
                         ("residual_fork_closure", { let mut schema = object_schema(vec![
+                            ("interaction_comparisons", json!({"type":"array","description":"Comparisons for all applicable interaction outcomes","maxItems":256,"items":object_schema(vec![("outcome_id",text_schema("Applicable interaction outcome identity",1,256)),("implementation_outcome_ids",nonempty_string_array_schema("One credible result_id per implementation in order; identical for atomic closure")),("equivalence_rationale",text_schema("Why the comparison adequately challenges this interaction and preserves the same material result",1,4096))], &["outcome_id","implementation_outcome_ids","equivalence_rationale"])})),
                             ("fixed_outcome", text_schema("Exact observable/material outcome fixed by this alternative", 1, 4096)),
                             ("credible_implementations", json!({"type":"array","description":"Credible implementations compared for residual material outcomes","minItems":2,"maxItems":64,"uniqueItems":true,"items":text_schema("Credible implementation satisfying this alternative; compare its observable outcome",1,4096)})),
                             ("remaining_material_outcomes", json!({"type":"array","maxItems":0,"items":{"type":"string"},"description":"Must be empty for atomic closure. If comparison leaves an independent material outcome, use decomposed with subordinate choices."})),
                             ("source_basis", identity_array_schema("Current choice Sources supporting equivalence or settlement",1)),
-                        ], &["fixed_outcome","credible_implementations","remaining_material_outcomes","source_basis"]); schema["description"] = json!("Residual material outcome counterfactual for this exact alternative"); schema }),
+                        ], &["interaction_comparisons","fixed_outcome","credible_implementations","remaining_material_outcomes","source_basis"]); schema["description"] = json!("Residual material outcome counterfactual for this exact alternative"); schema }),
                         ("rationale", text_schema("Active-agent rationale grounded in this choice's Sources: selecting this alternative leaves no further materially distinct product outcome. Private equivalent details may terminate here.", 1, 4096)),
                     ], &["state", "rationale", "residual_fork_closure"]),
                     object_schema(vec![
@@ -2308,6 +2310,7 @@ fn engineering_choice_discovery_schema() -> Value {
             ("summary", text_schema("Bounded discovery summary", 1, 4096)),
             ("choices", choices),
             ("material_boundary_review", material_boundary_review),
+            ("interaction_review", interaction_review_schema()),
         ],
         &[
             "project_id",
@@ -2317,8 +2320,31 @@ fn engineering_choice_discovery_schema() -> Value {
             "summary",
             "choices",
             "material_boundary_review",
+            "interaction_review",
         ],
     )
+}
+
+fn interaction_review_schema() -> Value {
+    json!({"type":"array", "minItems":4, "maxItems":4,
+        "description":"Challenge each interaction axis exactly once; semantic conclusions belong to the active agent, not a classifier",
+        "items":object_schema(vec![
+            ("axis",enum_schema("Interaction completeness prompt", &["reference_basis","composition_and_precedence","multi_item_effects","failure_and_recovery"])),
+            ("outcomes",json!({"type":"array","description":"Concrete interaction scenarios and their closure","minItems":1,"maxItems":64,"items":object_schema(vec![
+                ("outcome_id",text_schema("Stable interaction outcome identity unique within Discovery",1,256)),
+                ("scenario",text_schema("Concrete affected scenario challenging an independent observable or durable result",1,4096)),
+                ("credible_outcomes",json!({"type":"array","description":"Credible material result identities","minItems":1,"maxItems":64,"items":object_schema(vec![
+                    ("result_id",text_schema("Stable result identity within this outcome",1,256)),
+                    ("description",text_schema("Concrete externally observable or durable result",1,4096))
+                ], &["result_id","description"])})),
+                ("affected_choice_ids",string_array_schema("All choices whose alternatives must account for this outcome; empty only for Source-grounded outside scope")),
+                ("source_basis",identity_array_schema("Current Sources grounding the interaction challenge and conclusion",1)),
+                ("conclusion",json!({"description":"Source-grounded closure or explicit independent choices","oneOf":[
+                    object_schema(vec![("state",enum_schema("Closure", &["represented_by_choices"])),("choice_ids",nonempty_string_array_schema("Real affected choices representing this independent outcome; parent alternatives must decompose subordinate outcomes"))], &["state","choice_ids"]),
+                    object_schema(vec![("state",enum_schema("Closure", &["no_independent_fork"])),("basis",enum_schema("Source-grounded no-fork basis", &["mechanically_equivalent","settled_by_current_sources","outside_affected_scope"])),("rationale",text_schema("Why Source fixes or excludes this outcome or establishes material equivalence",1,4096)),("result_id",text_schema("The preserved result identity fixed by this Source-grounded conclusion",1,256))], &["state","basis","rationale","result_id"])
+                ]}))
+            ], &["outcome_id","scenario","credible_outcomes","affected_choice_ids","source_basis","conclusion"])}))
+        ], &["axis","outcomes"])})
 }
 
 fn learning_participation_schema() -> Value {
@@ -4346,6 +4372,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "goal_context_id":discovery.goal_context_id.to_string(),
             "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
             "choices":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
+            "interaction_review":interaction_review_json(&discovery.interaction_review),
             "material_boundary_review":discovery.material_boundary_review.iter().map(|review| json!({
                 "effect_category":engineering_effect_category_name(review.effect_category),
                 "reviewed_outcomes":review.reviewed_outcomes,
@@ -6477,7 +6504,9 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "goal_context_id":identity("goal_context"),
                 "baseline_analysis_snapshot_id":identity("baseline_analysis_snapshot"),
             },
-            "required_fields":["source_operation","summary","choices","material_boundary_review"],
+            "required_fields":["source_operation","summary","choices","material_boundary_review","interaction_review"],
+            "interaction_review_schema":interaction_review_schema(),
+            "interaction_instruction":"Challenge reference/scope/context basis, composition/precedence with existing sources/configuration/authority, ordering/partial success/atomic durable effects across multiple items, and failure/retry/recovery observable results. For each axis retain concrete scenarios with stable outcome/result identities, affected choices and source-grounded closure. Independent outcomes need real representing choices; atomic alternatives must compare every applicable interaction against each credible implementation. Broad failure policy does not settle partial durability. These are completeness prompts, never ownership classifiers.",
             "choice_required_fields":["choice_id","summary","affected_scope","alternatives","technical_consequences","source_ids","effect_categories","relationship","evidence_state"],
             "allowable_values":{
                 "evidence_state":["sufficient","research_required","prototype_required"],
@@ -6824,6 +6853,7 @@ fn material_decomposition_json(value: &volicord_inquiry::MaterialDecomposition) 
                 "fixed_outcome":residual.fixed_outcome,
                 "credible_implementations":residual.credible_implementations,
                 "remaining_material_outcomes":residual.remaining_material_outcomes,
+                "interaction_comparisons":residual.interaction_comparisons,
                 "source_basis":residual.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             }
         }),
@@ -6846,4 +6876,31 @@ fn executable_work_scope_json(binding: &volicord_inquiry::ExecutableWorkScopeBin
             "source_ids":binding.authority_basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
         },
     })
+}
+
+fn parse_interaction_review(
+    value: &Value,
+) -> Result<Vec<volicord_inquiry::InteractionReview>, HostError> {
+    let mut normalized = value.clone();
+    if let Some(reviews) = normalized.as_array_mut() {
+        for review in reviews {
+            if let Some(outcomes) = review["outcomes"].as_array_mut() {
+                for outcome in outcomes {
+                    outcome["source_basis"] =
+                        serde_json::to_value(source_ids(outcome, "source_basis")?)
+                            .map_err(|e| HostError::new(e.to_string()))?;
+                }
+            }
+        }
+    }
+    serde_json::from_value(normalized)
+        .map_err(|e| HostError::new(format!("invalid interaction review: {e}")))
+}
+
+fn interaction_review_json(reviews: &[volicord_inquiry::InteractionReview]) -> Value {
+    json!(reviews.iter().map(|review| json!({"axis":review.axis,"outcomes":review.outcomes.iter().map(|outcome| json!({
+        "outcome_id":outcome.outcome_id,"scenario":outcome.scenario,"credible_outcomes":outcome.credible_outcomes,
+        "affected_choice_ids":outcome.affected_choice_ids,"conclusion":outcome.conclusion,
+        "source_basis":outcome.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()
+    })).collect::<Vec<_>>()})).collect::<Vec<_>>())
 }
