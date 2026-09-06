@@ -427,6 +427,21 @@ current dimension set에 typed scope를 보존한다. 같은 transition은 imple
 public/internal documentation, changelog/release notes, schema/snapshot/generated artifact, other
 repository-owned artifact를 각각 exactly once 검토한다. Included category의 path는 executable paths를
 exactly partition하고, `no_coupled_artifact`도 repository inspection에 근거한 rationale를 요구한다.
+`materiality_closure`는 closed `no_new_material_outcome` 또는 `new_material_outcome` variant다.
+No-new는 concrete `reviewed_outcomes`와 current reviewed authority 아래에 planned artifact가 남는
+rationale를 요구한다. New는 새 independent `outcomes`와 발견 rationale를 요구한다. Free-text-only
+reassessment decoder는 없다. Inspect의 단일 atomic transition은 exact normalized path/component/
+work-context scope와 여섯 artifact assessment, current dimension set, review identity/revision,
+Discovery identity, current repository inspection snapshot 및 current review/discovery/inspection Source
+basis를 하나의 retained binding에 보존한다. 별도 detached closure certificate나 authority를 caller가
+발급하지 않는다. 같은 request에 붙인 typed assertion은 그 exact plan에만 적용된다.
+Authority/readiness meaning revision은 binding을 invalidate하므로 current authority에서 다시 inspect한다.
+New-outcome report는 기존 binding을 제거하고 pending pre-write reassessment를 restart 뒤에도 보존한다.
+그 review를 no-new prose나 ordinary revise로 clear하지 못하며 maintained Engineering Choice Discovery
+record → Materiality draft/record → 필요한 authority resolution → inspect로 되돌아간다.
+Draft는 현재 review의 inspect prefilled identities, current Sources, exact input schema와 양쪽 closure
+variant를 제공한다. Normal caller는 malformed probe 없이 draft → record/revise → draft → inspect한다.
+Pending report는 executable scope가 아니며 host output도 둘을 구분한다.
 Predictable coupled artifact는 first write 전에 포함해야 하며 나중에 발견한 artifact는 그 artifact의
 first write 전 prospective rebind만 허용한다. 새 material product outcome을 발견하면 path-only expansion이
 아니라 Materiality를 먼저 재평가한다. Repository root는 편의를 위한 scope가 아니다.

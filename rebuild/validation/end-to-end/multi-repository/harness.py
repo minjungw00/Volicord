@@ -116,9 +116,9 @@ def coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_reassessment": (
+        "materiality_closure": {"state": "no_new_material_outcome", "reviewed_outcomes": ["The bounded fixture preserves reviewed observable behavior"], "rationale": (
             "The bounded V11 artifact introduces no new material outcome beyond the current dimensions."
-        ),
+        )},
     }
 
 

@@ -6214,7 +6214,7 @@ fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
                         {"category":"schema_snapshot_or_generated_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no schema or generated artifact"},
                         {"category":"other_repository_owned_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no other coupled artifact"}
                     ],
-                    "materiality_reassessment":"fixture scope introduces no new material product outcome"
+                    "materiality_closure":{"state":"no_new_material_outcome","reviewed_outcomes":["The bounded fixture preserves the reviewed observable behavior"],"rationale":"fixture scope introduces no new material product outcome"}
                 }),
             );
     }
@@ -6245,8 +6245,13 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
                 basis_summary: "fixture repository inspection accounts for this category".into(),
             })
             .collect(),
-        materiality_reassessment:
-            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+        materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            reviewed_outcomes: vec![
+                "The bounded fixture preserves the reviewed observable behavior".into(),
+            ],
+            rationale: "fixture scope introduces no material outcome beyond the current dimensions"
+                .into(),
+        },
     }
 }
 
@@ -6260,21 +6265,35 @@ fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&st
         .and_then(|basis| basis.iter().find(|item| item["kind"] == "project"))
         .and_then(|item| item["identity"].as_str())
         .expect("recorded workflow Project identity");
-    call(
+    let discovery_id = recorded["workflow"]["satisfied_basis_identities"]
+        .as_array()
+        .and_then(|basis| {
+            basis
+                .iter()
+                .find(|item| item["kind"] == "engineering_choice_discovery_candidate")
+        })
+        .and_then(|item| item["identity"].as_str())
+        .expect("current Discovery identity");
+    let draft = structured(&call(
         adapter,
         "materiality_review",
         json!({
-            "action":"inspect",
-            "project_id":project_id,
-            "goal_context_id":recorded["goal_context_id"],
-            "baseline_analysis_snapshot_id":recorded["baseline_analysis_snapshot_id"],
-            "review_candidate_id":recorded["review_candidate_id"],
-            "paths":paths,
-            "components":[],
-            "work_contexts":[],
-            "met_revisit_triggers":[],
+            "action":"draft", "project_id":project_id,
+            "engineering_choice_discovery_candidate_id":discovery_id,
         }),
-    )
+    ))
+    .clone();
+    let closure = &draft["pre_write_materiality_closure"];
+    assert_schema_is_closed_and_described(&closure["input_schema"]);
+    let mut request = closure["inspect_request"]["prefilled_fields"].clone();
+    assert_eq!(
+        request["review_candidate_id"],
+        recorded["review_candidate_id"]
+    );
+    request["paths"] = json!(paths);
+    request["components"] = json!([]);
+    request["work_contexts"] = json!([]);
+    call(adapter, "materiality_review", request)
 }
 fn structured(response: &Value) -> &Value {
     &response["result"]["structuredContent"]

@@ -3204,9 +3204,14 @@ def coupled_artifact_review_valid(review: Any, paths: tuple[str, ...]) -> bool:
         "schema_snapshot_or_generated_artifact",
         "other_repository_owned_artifact",
     }
-    if not isinstance(review, dict) or not nonempty_string(
-        review.get("materiality_reassessment")
-    ):
+    if not isinstance(review, dict) or set(review) != {"assessments", "materiality_closure"}:
+        return False
+    closure = review.get("materiality_closure")
+    if (not isinstance(closure, dict) or set(closure) != {"state", "reviewed_outcomes", "rationale"}
+        or closure.get("state") != "no_new_material_outcome"
+        or not isinstance(closure.get("reviewed_outcomes"), list) or not closure["reviewed_outcomes"]
+        or not all(nonempty_string(item) for item in closure["reviewed_outcomes"])
+        or not nonempty_string(closure.get("rationale"))):
         return False
     assessments = review.get("assessments")
     if not isinstance(assessments, list) or len(assessments) != len(categories):
@@ -3270,9 +3275,9 @@ def fixture_coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_reassessment": (
+        "materiality_closure": {"state": "no_new_material_outcome", "reviewed_outcomes": ["The bounded fixture preserves reviewed observable behavior"], "rationale": (
             "The executable artifacts introduce no material outcome beyond the current review dimensions."
-        ),
+        )},
     }
 
 
@@ -3380,6 +3385,23 @@ def executable_scope_binding_observation(
         != baseline_analysis_snapshot_id
     ):
         reason = "missing_current_materiality_authority"
+    authority = scope.get("authority_basis") if isinstance(scope, dict) else None
+    discovery_calls = [call for call in capture.successful_calls("engineering_choice_discovery")
+        if call.completion_sequence < inspect_call.sequence
+        and call.arguments.get("goal_context_id") == goal_context_id
+        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_analysis_snapshot_id]
+    discovery_id = discovery_calls[-1].result.get("discovery_candidate_id") if discovery_calls else None
+    if reason is None and (
+        not isinstance(authority, dict)
+        or set(authority) != {"review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids"}
+        or authority.get("review_candidate_id") != review_candidate_id
+        or authority.get("engineering_choice_discovery_candidate_id") != discovery_id
+        or not isinstance(authority.get("review_revision"), int) or isinstance(authority.get("review_revision"), bool)
+        or authority["review_revision"] < 1 or authority["review_revision"] > review_revision
+        or not isinstance(authority.get("source_ids"), list) or not authority["source_ids"]
+        or not all(nonempty_string(source) for source in authority["source_ids"])
+    ):
+        reason = "invalid_pre_write_authority_basis"
     return ExecutableScopeBinding(
         inspect_call.completion_sequence,
         inspect_call.call_id,
@@ -11066,6 +11088,10 @@ def real_session_fixture(
                     "components": [],
                     "work_contexts": [],
                     "coupled_artifact_review": coupled_artifact_review(work_paths),
+                    "authority_basis": {"review_candidate_id":review_candidate,
+                        "review_revision":2 if is_user_owned_behavior(behavior_class) else 1,
+                        "engineering_choice_discovery_candidate_id":discovery_candidate,
+                        "source_ids":[repository_source]},
                 },
                 "read_only": False,
                 "workflow": ready_workflow(review_candidate, baseline_analysis),
@@ -11576,6 +11602,9 @@ def real_session_fixture(
                     "components": [],
                     "work_contexts": [],
                     "coupled_artifact_review": coupled_artifact_review(["src/resume.rs"]),
+                    "authority_basis": {"review_candidate_id":resume_review_candidate, "review_revision":1,
+                        "engineering_choice_discovery_candidate_id":resume_discovery_candidate,
+                        "source_ids":[resume_repository_source]},
                 },
                 "read_only": False,
                 "workflow": ready_workflow(

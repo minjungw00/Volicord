@@ -557,6 +557,7 @@ pub struct MaterialityReview {
     pub learning_participation: LearningParticipation,
     pub dimensions: Vec<MaterialityDimension>,
     pub executable_work_scope: Option<ExecutableWorkScopeBinding>,
+    pub pending_pre_write_reassessment: Option<ExecutableWorkScopeBinding>,
     pub late_work_authority_revisions: Vec<LateWorkAuthorityRevision>,
     pub learning_value_revisions: Vec<LearningValueRevision>,
 }
@@ -567,6 +568,16 @@ pub struct ExecutableWorkScopeBinding {
     pub materiality_dimension_ids: Vec<String>,
     pub coupled_artifact_review: CoupledArtifactReview,
     pub bound_analysis_snapshot_id: AnalysisSnapshotId,
+    pub authority_basis: PreWriteAuthorityBasis,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreWriteAuthorityBasis {
+    pub review_candidate_id: CandidateId,
+    pub review_revision: u64,
+    pub engineering_choice_discovery_candidate_id: CandidateId,
+    pub source_basis: Vec<SourceId>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -595,7 +606,20 @@ pub struct CoupledArtifactAssessment {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CoupledArtifactReview {
     pub assessments: Vec<CoupledArtifactAssessment>,
-    pub materiality_reassessment: String,
+    pub materiality_closure: PreWriteMaterialityClosure,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PreWriteMaterialityClosure {
+    NoNewMaterialOutcome {
+        reviewed_outcomes: Vec<String>,
+        rationale: String,
+    },
+    NewMaterialOutcome {
+        outcomes: Vec<String>,
+        rationale: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

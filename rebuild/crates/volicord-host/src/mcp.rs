@@ -496,15 +496,31 @@ impl HostAdapter {
                     })
                     .max_by_key(|candidate| {
                         (candidate.revision, candidate.created_at, candidate.id)
-                    })
-                    .map(|candidate| candidate.id);
-                Ok(materiality_draft_json(
+                    });
+                let mut draft = materiality_draft_json(
                     project_id,
                     candidate_id,
                     discovery,
                     &canonical,
-                    current_review,
-                ))
+                    current_review.as_ref().map(|candidate| candidate.id),
+                );
+                draft["pre_write_materiality_closure"] = json!({
+                    "input_schema":pre_write_materiality_closure_schema(),
+                    "artifact_review_schema":coupled_artifact_review_schema(),
+                    "assembly":"After record/revise, draft again for current identities. Fill the exact planned paths/components/work_contexts and six artifact assessments. Select a closure variant and supply its semantic fields. Submit this one inspect request; the server atomically binds its exact plan, current dimensions, review/discovery identities and current Sources. A new outcome removes executable scope and requires rediscovery/review; prose cannot resolve it.",
+                    "inspect_request":current_review.as_ref().map(|record| json!({
+                        "prefilled_fields":{
+                            "action":"inspect", "project_id":project_id.to_string(),
+                            "review_candidate_id":record.id.to_string(),
+                            "goal_context_id":discovery.goal_context_id.to_string(),
+                            "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
+                        },
+                        "review_revision":record.revision,
+                        "source_ids":canonical.sources.iter().filter(|source| source.freshness == volicord_context::SourceFreshness::Current).map(|source| source.source.id.to_string()).collect::<Vec<_>>(),
+                        "input_schema":materiality_review_schemas()[3],
+                    })),
+                });
+                Ok(draft)
             }
             "record" => {
                 let discovery_candidate_id = parse_candidate(required_str(
@@ -649,6 +665,15 @@ impl HostAdapter {
                         met_revisit_triggers,
                     )
                     .map_err(operation_error)?;
+                let candidate = self
+                    .operations
+                    .inspect_workflow_candidate(project_id, review_candidate_id)
+                    .map_err(operation_error)?;
+                let review = candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.materiality_review.as_ref())
+                    .ok_or_else(|| HostError::new("Materiality Review content is unavailable"))?;
                 Ok(with_workflow(
                     json!({
                         "action":"inspect",
@@ -657,12 +682,8 @@ impl HostAdapter {
                         "baseline_analysis_snapshot_id":baseline_analysis_snapshot_id.to_string(),
                         "review_candidate_id":outcome.review_candidate_id.to_string(),
                         "review_revision":outcome.review_revision,
-                        "executable_work_scope": {
-                            "paths": paths,
-                            "components": components,
-                            "work_contexts": work_contexts,
-                            "coupled_artifact_review": coupled_artifact_review_json(&coupled_artifact_review),
-                        },
+                        "executable_work_scope":review.executable_work_scope.as_ref().map(executable_work_scope_json),
+                        "pending_pre_write_reassessment":review.pending_pre_write_reassessment.as_ref().map(executable_work_scope_json),
                         "read_only":false,
                     }),
                     workflow,
@@ -2413,19 +2434,30 @@ fn coupled_artifact_review_schema() -> Value {
                 }),
             ),
             (
-                "materiality_reassessment",
-                text_schema(
-                    "Why the planned artifacts introduce no new material product outcome, or how current Materiality was reevaluated before this binding",
-                    1,
-                    4096,
-                ),
+                "materiality_closure",
+                pre_write_materiality_closure_schema(),
             ),
         ],
-        &["assessments", "materiality_reassessment"],
+        &["assessments", "materiality_closure"],
     );
     schema["description"] =
         json!("Complete pre-write review of predictable directly coupled repository artifacts");
     schema
+}
+
+fn pre_write_materiality_closure_schema() -> Value {
+    json!({"description":"Typed prospective conclusion for the exact planned scope and artifact assessments in this inspect request; the server binds current review/discovery identities and current Sources atomically", "oneOf":[
+        object_schema(vec![
+            ("state", enum_schema("Pre-write conclusion", &["no_new_material_outcome"])),
+            ("reviewed_outcomes", nonempty_string_array_schema("Concrete material outcomes checked against current reviewed dimensions and authority")),
+            ("rationale", text_schema("Why the exact planned artifacts remain within that reviewed authority",1,4096)),
+        ], &["state","reviewed_outcomes","rationale"]),
+        object_schema(vec![
+            ("state", enum_schema("Pre-write conclusion", &["new_material_outcome"])),
+            ("outcomes", nonempty_string_array_schema("New independent material outcomes requiring discovery/materiality reassessment before work")),
+            ("rationale", text_schema("What planned artifacts revealed and why current authority does not close it",1,4096)),
+        ], &["state","outcomes","rationale"]),
+    ]})
 }
 
 fn learning_value_schema() -> Value {
@@ -4337,14 +4369,8 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             LearningParticipation::Inactive => json!({"state":"inactive"}),
             LearningParticipation::Active { user_turn_source_id, verbatim_statement } => json!({"state":"active","user_turn_source_id":user_turn_source_id.to_string(),"verbatim_statement":verbatim_statement}),
         },
-        "executable_work_scope":review.executable_work_scope.as_ref().map(|binding| json!({
-            "paths":binding.scope.paths,
-            "components":binding.scope.components,
-            "work_contexts":binding.scope.work_contexts,
-            "materiality_dimension_ids":binding.materiality_dimension_ids,
-            "bound_analysis_snapshot_id":binding.bound_analysis_snapshot_id.to_string(),
-            "coupled_artifact_review":coupled_artifact_review_json(&binding.coupled_artifact_review),
-        })),
+        "executable_work_scope":review.executable_work_scope.as_ref().map(executable_work_scope_json),
+        "pending_pre_write_reassessment":review.pending_pre_write_reassessment.as_ref().map(executable_work_scope_json),
         "late_work_authority_revisions":review.late_work_authority_revisions.iter().map(|revision| json!({
             "dimension_id":revision.dimension_id,
             "detected_analysis_snapshot_id":revision.detected_analysis_snapshot_id.to_string(),
@@ -5497,7 +5523,15 @@ fn coupled_artifact_review(value: &Value) -> Result<CoupledArtifactReview, HostE
         .collect::<Result<Vec<_>, HostError>>()?;
     Ok(CoupledArtifactReview {
         assessments,
-        materiality_reassessment: required_str(review, "materiality_reassessment")?.to_owned(),
+        materiality_closure: serde_json::from_value(
+            review
+                .get("materiality_closure")
+                .cloned()
+                .unwrap_or(Value::Null),
+        )
+        .map_err(|error| {
+            HostError::new(format!("invalid pre-write materiality closure: {error}"))
+        })?,
     })
 }
 
@@ -5516,7 +5550,7 @@ fn coupled_artifact_review_json(review: &CoupledArtifactReview) -> Value {
             },
             "basis_summary":assessment.basis_summary,
         })).collect::<Vec<_>>(),
-        "materiality_reassessment":review.materiality_reassessment,
+        "materiality_closure":review.materiality_closure,
     })
 }
 
@@ -6489,6 +6523,8 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 },
                 "required_scope_fields":["paths","components","work_contexts"],
                 "required_coupled_artifact_review_field":"coupled_artifact_review",
+                "pre_write_materiality_closure_schema":pre_write_materiality_closure_schema(),
+                "closure_binding":"Current review/discovery identities, dimensions, current Sources and exact planned scope/artifact assessment are preserved together. New outcomes require rediscovery and Materiality before work; later closure is prospective.",
                 "coupled_artifact_categories":["implementation","focused_tests","public_or_internal_documentation","changelog_or_release_notes","schema_snapshot_or_generated_artifact","other_repository_owned_artifact"],
                 "scope_contract":"Before ordinary writes, assess every directly coupled artifact category exactly once and bind only included repository paths. A no-coupled-artifact conclusion needs a source-grounded basis. A later artifact may be added prospectively before its first write; an artifact with a new material product outcome requires Materiality reevaluation before scope binding. Descriptive affected_scope does not authorize repository paths, and repository root is not a convenience scope.",
             })
@@ -6795,4 +6831,19 @@ fn material_decomposition_json(value: &volicord_inquiry::MaterialDecomposition) 
             json!({"state":"decomposed", "choice_ids":choice_ids})
         }
     }
+}
+
+fn executable_work_scope_json(binding: &volicord_inquiry::ExecutableWorkScopeBinding) -> Value {
+    json!({
+        "paths":binding.scope.paths, "components":binding.scope.components, "work_contexts":binding.scope.work_contexts,
+        "materiality_dimension_ids":binding.materiality_dimension_ids,
+        "coupled_artifact_review":coupled_artifact_review_json(&binding.coupled_artifact_review),
+        "bound_analysis_snapshot_id":binding.bound_analysis_snapshot_id.to_string(),
+        "authority_basis":{
+            "review_candidate_id":binding.authority_basis.review_candidate_id.to_string(),
+            "review_revision":binding.authority_basis.review_revision,
+            "engineering_choice_discovery_candidate_id":binding.authority_basis.engineering_choice_discovery_candidate_id.to_string(),
+            "source_ids":binding.authority_basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        },
+    })
 }

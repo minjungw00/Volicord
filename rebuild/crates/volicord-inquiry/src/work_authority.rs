@@ -35,6 +35,7 @@ pub enum WorkAuthorityDisposition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkAuthorityAction {
     RecordMaterialityReview,
+    ReassessEngineeringChoiceDiscovery,
     ReviseMaterialityReview,
     BindExecutableWorkScope,
     ContinueResearchOrPrototype,
@@ -262,6 +263,33 @@ pub fn evaluate_work_authority(
         || review.baseline_analysis_snapshot_id != baseline_analysis_snapshot_id
     {
         return invalid(result, None, "Materiality Review Goal or baseline is stale");
+    }
+    if review
+        .executable_work_scope
+        .as_ref()
+        .is_some_and(|binding| {
+            binding.authority_basis.review_candidate_id != candidate.id
+                || binding
+                    .authority_basis
+                    .engineering_choice_discovery_candidate_id
+                    != review.engineering_choice_discovery_candidate_id
+                || binding
+                    .authority_basis
+                    .source_basis
+                    .iter()
+                    .any(|source| !source_is_current(canonical, *source))
+        })
+    {
+        return invalid(
+            result,
+            None,
+            "pre-write closure no longer has current identity-linked Source authority",
+        );
+    }
+    if review.pending_pre_write_reassessment.is_some() {
+        let mut blocked = invalid(result, None, "planned artifacts introduced a new material outcome; reassess Engineering Choice Discovery and Materiality before affected ordinary work");
+        blocked.next_action = Some(WorkAuthorityAction::ReassessEngineeringChoiceDiscovery);
+        return blocked;
     }
     if !review.first_review_preceded_meaningful_mutation {
         return invalid(

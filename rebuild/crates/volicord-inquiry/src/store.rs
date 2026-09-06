@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 19;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 20;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -253,6 +253,7 @@ impl CandidateStore {
                     .all(|(before, after)| {
                         before.dimension_id == after.dimension_id
                             && before.affected_scope == after.affected_scope
+                            && !work_authority_meaning_changed(&review.learning_participation, before, &revision.learning_participation, after)
                     });
             review.current_review_analysis_snapshot_id = current.identity;
             review.rationale = revision.rationale;
@@ -281,13 +282,14 @@ impl CandidateStore {
 
     pub fn bind_executable_work_scope(
         &mut self,
-        project_id: ProjectId,
         candidate_id: CandidateId,
         baseline: &AnalysisSnapshot,
         current: &AnalysisSnapshot,
         mut scope: ApplicabilityScope,
         mut coupled_artifact_review: CoupledArtifactReview,
+        canonical: &CanonicalReadBasis,
     ) -> Result<CandidateRecord, Error> {
+        let project_id = canonical.project.id;
         if baseline.project.identity() != project_id || current.project.identity() != project_id {
             return Err(Error::new(
                 ErrorKind::WrongProject,
@@ -327,6 +329,63 @@ impl CandidateStore {
                 "executable work scope does not use the review baseline",
             ));
         }
+        validate_review_against_canonical(canonical, existing_review)?;
+        let discovery_candidate = self.get(
+            project_id,
+            existing_review.engineering_choice_discovery_candidate_id,
+        )?;
+        validate_review_against_discovery(existing_review, &discovery_candidate)?;
+        let discovery = discovery_candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.engineering_choice_discovery.as_ref())
+            .ok_or_else(|| Error::new(ErrorKind::CorruptState, "Discovery content is missing"))?;
+        validate_discovery_against_canonical(canonical, discovery)?;
+        if existing_review.pending_pre_write_reassessment.is_some() {
+            return Err(Error::new(ErrorKind::DomainConflict,
+                "new material outcome requires current Engineering Choice Discovery and Materiality reassessment; a no-new-outcome claim cannot clear it"));
+        }
+        let mut source_basis = discovery
+            .choices
+            .iter()
+            .flat_map(|choice| choice.source_basis.iter().copied())
+            .chain(
+                existing_review
+                    .dimensions
+                    .iter()
+                    .flat_map(|dimension| dimension.basis.source_basis.iter().copied()),
+            )
+            .chain(
+                existing_review
+                    .dimensions
+                    .iter()
+                    .flat_map(|dimension| dimension.ownership.source_basis.iter().copied()),
+            )
+            .chain(std::iter::once(current.repository_source.identity()))
+            .collect::<Vec<_>>();
+        source_basis.sort();
+        source_basis.dedup();
+        if source_basis.iter().any(|id| {
+            !canonical.sources.iter().any(|source| {
+                source.source.id == *id
+                    && source.freshness == volicord_context::SourceFreshness::Current
+            })
+        }) {
+            return Err(Error::new(
+                ErrorKind::StaleBasis,
+                "pre-write closure requires current Source basis",
+            ));
+        }
+        let authority_basis = crate::PreWriteAuthorityBasis {
+            review_candidate_id: candidate_id,
+            review_revision: existing.revision,
+            engineering_choice_discovery_candidate_id: discovery_candidate.id,
+            source_basis,
+        };
+        let newly_discovered = matches!(
+            coupled_artifact_review.materiality_closure,
+            crate::PreWriteMaterialityClosure::NewMaterialOutcome { .. }
+        );
         if existing_review
             .executable_work_scope
             .as_ref()
@@ -348,7 +407,7 @@ impl CandidateStore {
             })
             .cloned()
             .collect::<Vec<_>>();
-        if !late_paths.is_empty() {
+        if !newly_discovered && !late_paths.is_empty() {
             return Err(Error::new(
                 ErrorKind::StaleBasis,
                 format!(
@@ -375,12 +434,19 @@ impl CandidateStore {
                 .collect::<Vec<_>>();
             materiality_dimension_ids.sort();
             review.current_review_analysis_snapshot_id = current.identity;
-            review.executable_work_scope = Some(crate::ExecutableWorkScopeBinding {
+            let assessment = crate::ExecutableWorkScopeBinding {
                 scope,
                 materiality_dimension_ids,
                 coupled_artifact_review,
                 bound_analysis_snapshot_id: current.identity,
-            });
+                authority_basis,
+            };
+            if newly_discovered {
+                review.executable_work_scope = None;
+                review.pending_pre_write_reassessment = Some(assessment);
+            } else {
+                review.executable_work_scope = Some(assessment);
+            }
             validate_materiality_review(review)
         })
     }
@@ -1279,9 +1345,15 @@ fn candidate_refers_to(candidate: &CandidateRecord, record: CanonicalRecordId) -
                                     ..
                                 } if user_turn_source_id == source_id
                             ) || review
-                                .dimensions
+                                .executable_work_scope
                                 .iter()
-                                .any(|dimension| dimension.basis.source_basis.contains(&source_id))
+                                .chain(review.pending_pre_write_reassessment.iter())
+                                .any(|binding| {
+                                    binding.authority_basis.source_basis.contains(&source_id)
+                                })
+                                || review.dimensions.iter().any(|dimension| {
+                                    dimension.basis.source_basis.contains(&source_id)
+                                })
                         })
                         || content
                             .learning_deliberation
@@ -1832,7 +1904,35 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             ));
         }
     }
-    if let Some(binding) = &review.executable_work_scope {
+    for (binding, executable) in review
+        .executable_work_scope
+        .iter()
+        .map(|binding| (binding, true))
+        .chain(
+            review
+                .pending_pre_write_reassessment
+                .iter()
+                .map(|binding| (binding, false)),
+        )
+    {
+        if executable
+            != matches!(
+                binding.coupled_artifact_review.materiality_closure,
+                crate::PreWriteMaterialityClosure::NoNewMaterialOutcome { .. }
+            )
+            || binding
+                .authority_basis
+                .engineering_choice_discovery_candidate_id
+                != review.engineering_choice_discovery_candidate_id
+            || binding.authority_basis.review_revision == 0
+            || binding.authority_basis.source_basis.is_empty()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "pre-write closure authority or outcome state does not match the persisted binding",
+            ));
+        }
+        validate_id_list(&binding.authority_basis.source_basis)?;
         validate_executable_scope(&binding.scope)?;
         validate_coupled_artifact_review(&binding.coupled_artifact_review, &binding.scope)?;
         let bound_dimensions = binding
@@ -1923,10 +2023,24 @@ fn validate_coupled_artifact_review(
     review: &CoupledArtifactReview,
     scope: &ApplicabilityScope,
 ) -> Result<(), Error> {
-    validate_text(
-        "coupled-artifact materiality reassessment",
-        &review.materiality_reassessment,
-    )?;
+    let (outcomes, rationale) = match &review.materiality_closure {
+        crate::PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            reviewed_outcomes,
+            rationale,
+        } => (reviewed_outcomes, rationale),
+        crate::PreWriteMaterialityClosure::NewMaterialOutcome {
+            outcomes,
+            rationale,
+        } => (outcomes, rationale),
+    };
+    validate_text("pre-write materiality closure rationale", rationale)?;
+    validate_list(outcomes)?;
+    if outcomes.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "pre-write materiality closure requires concrete reviewed or newly discovered outcomes",
+        ));
+    }
     let required_categories = BTreeSet::from([
         CoupledArtifactCategory::Implementation,
         CoupledArtifactCategory::FocusedTests,
@@ -3807,7 +3921,27 @@ fn decode_record(value: &str) -> Result<CandidateRecord, Error> {
             "stored Candidate exceeds the bounded-record limit",
         ));
     }
-    serde_json::from_str(value).map_err(decode_error)
+    let record: CandidateRecord = serde_json::from_str(value).map_err(decode_error)?;
+    if let Some(content) = &record.content {
+        if let Some(discovery) = &content.engineering_choice_discovery {
+            validate_engineering_choice_discovery(discovery)?;
+        }
+        if let Some(review) = &content.materiality_review {
+            validate_materiality_review(review)?;
+            for binding in review
+                .executable_work_scope
+                .iter()
+                .chain(review.pending_pre_write_reassessment.iter())
+            {
+                if binding.authority_basis.review_candidate_id != record.id
+                    || binding.authority_basis.review_revision >= record.revision
+                {
+                    return Err(Error::new(ErrorKind::CorruptState, "persisted pre-write closure has a foreign or non-prospective review identity/revision"));
+                }
+            }
+        }
+    }
+    Ok(record)
 }
 
 fn load_record(

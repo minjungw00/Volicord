@@ -135,12 +135,13 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
 ### Session Candidate store format
 
 Current Candidate store format은 Engineering Choice Discovery, Question Candidate, typed
-Materiality Review와 Learning Deliberation payload를 함께 해석하는 version `19` 하나다. Discovery의
+Materiality Review와 Learning Deliberation payload를 함께 해석하는 version `20` 하나다. Discovery의
 closed material-boundary coverage와 real choice/no-independent-fork Source basis, current-task
 delegation의 exact dimension/choice/scope/consequence/effect boundary와 semantic rationale,
 각 dimension의 exact-authority counterfactual, fact/contract/Decision authority의 bounded
 coverage, authority 적용 뒤 remaining credible alternative와 unique-outcome rationale, deterministically observed late
-work-authority/readiness revision, typed executable work-scope binding과 supported
+work-authority/readiness revision, typed pre-write no-new/new-outcome closure, server-bound review/discovery/current Source provenance와
+exact planned-artifact scope, persistent pending reassessment 및 typed executable work-scope binding과 supported
 deliberation-worthy interruption counterfactual/participation-scope alignment 및 supported
 deliberation-worthy-to-routine revision basis를 함께 보존하므로 이전
 version을 decode하거나 missing coverage/boundary/chronology/revision evidence를 ready authority로 추정하지 않는다.
@@ -148,7 +149,7 @@ version을 decode하거나 missing coverage/boundary/chronology/revision evidenc
 residual-fork closure 및 current choice Source linkage를 가진 material decomposition closure, tracked prototype의
 bounded mutation scope, observable material outcome의 user ownership proof와 normative
 exact authority를 constraint/precedent와 구분하는 typed Source evidence를 보존한다.
-Current positive store만 reopen하며 version `18`과 다른 non-current value는
+Current positive store만 reopen하며 version `19`과 다른 non-current value는
 domain decode/mutation 전에 reject한다. Candidate는 portable bundle에 포함되지 않으므로 이
 변경은 canonical schema나 portable bundle version을 바꾸지 않는다.
 

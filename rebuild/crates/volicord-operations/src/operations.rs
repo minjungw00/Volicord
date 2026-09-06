@@ -1183,6 +1183,7 @@ impl LocalOperations {
                     learning_participation: draft.learning_participation,
                     dimensions: draft.dimensions,
                     executable_work_scope: None,
+                    pending_pre_write_reassessment: None,
                     late_work_authority_revisions: Vec::new(),
                     learning_value_revisions: Vec::new(),
                 }),
@@ -1335,15 +1336,16 @@ impl LocalOperations {
             .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
             .analysis;
         let _mutation = self.layout.acquire_mutation_lock()?;
+        let canonical = self.canonical_basis(project_id)?;
         let record = CandidateStore::open(self.layout.candidate_store())
             .and_then(|mut store| {
                 store.bind_executable_work_scope(
-                    project_id,
                     review_candidate_id,
                     &baseline,
                     &current,
                     scope,
                     coupled_artifact_review,
+                    &canonical,
                 )
             })
             .map_err(|error| Error::with_source("Executable work scope binding failed", error))?;
@@ -4375,6 +4377,21 @@ fn workflow_from_authority(
             WorkflowDisposition::ReviewMissing,
             Some(workflow_action("materiality_review", Some("record"))),
         ),
+        WorkAuthorityDisposition::ReviewInvalid
+            if authority_next_action
+                == Some(
+                    volicord_inquiry::WorkAuthorityAction::ReassessEngineeringChoiceDiscovery,
+                ) =>
+        {
+            (
+                WorkflowStage::EngineeringChoiceDiscovery,
+                WorkflowDisposition::EngineeringChoiceDiscoveryRequired,
+                Some(workflow_action(
+                    "engineering_choice_discovery",
+                    Some("record"),
+                )),
+            )
+        }
         WorkAuthorityDisposition::ReviewInvalid => (
             WorkflowStage::MaterialityReview,
             WorkflowDisposition::ReviewInvalid,

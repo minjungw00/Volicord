@@ -48,8 +48,13 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
                 basis_summary: "fixture repository inspection accounts for this category".into(),
             })
             .collect(),
-        materiality_reassessment:
-            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+        materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            reviewed_outcomes: vec![
+                "The bounded fixture preserves the reviewed observable behavior".into(),
+            ],
+            rationale: "fixture scope introduces no material outcome beyond the current dimensions"
+                .into(),
+        },
     }
 }
 

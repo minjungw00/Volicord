@@ -668,7 +668,7 @@ def record_settled_fixture_review(
                 "disposition": {"state": "included", "repository_paths": paths} if category == "focused_tests" else {"state": "no_coupled_artifact"},
                 "basis_summary": "Inspection bounds this installed integration fixture to its test artifacts.",
             } for category in categories],
-            "materiality_reassessment": "The bounded fixture artifacts introduce no additional product outcome.",
+            "materiality_closure": {"state": "no_new_material_outcome", "reviewed_outcomes": ["The bounded fixture preserves reviewed observable behavior"], "rationale": "The bounded fixture artifacts introduce no additional product outcome."},
         },
     })
 

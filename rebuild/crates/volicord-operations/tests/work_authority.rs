@@ -61,8 +61,13 @@ fn categorized_coupled_artifact_review(
                 basis_summary: "fixture repository inspection accounts for this category".into(),
             })
             .collect(),
-        materiality_reassessment:
-            "fixture scope introduces no material outcome beyond the current dimensions".into(),
+        materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            reviewed_outcomes: vec![
+                "The bounded fixture preserves the reviewed observable behavior".into(),
+            ],
+            rationale: "fixture scope introduces no material outcome beyond the current dimensions"
+                .into(),
+        },
     }
 }
 
@@ -417,6 +422,7 @@ fn source_backed_research_can_make_a_prior_learning_fork_routine(
                 },
             }],
         })?;
+    bind_current_review_scope(&fixture, &revised)?;
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -487,6 +493,7 @@ fn current_user_can_withdraw_learning_without_creating_a_decision(
                 },
             }],
         })?;
+    bind_current_review_scope(&fixture, &revised)?;
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2664,6 +2671,7 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
             dimensions: vec![repository_fact.clone()],
             learning_value_revision_bases: Vec::new(),
         })?;
+    bind_current_review_scope(&fixture, &revised)?;
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2697,6 +2705,7 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
             dimensions: vec![agent_owned.clone()],
             learning_value_revision_bases: Vec::new(),
         })?;
+    bind_current_review_scope(&fixture, &revised)?;
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2735,6 +2744,7 @@ fn equivalent_work_authority_revisions_before_affected_work_remain_allowed(
             dimensions: vec![exploratory],
             learning_value_revision_bases: Vec::new(),
         })?;
+    bind_current_review_scope(&fixture, &ready)?;
     assert_eq!(
         readiness(&fixture, &ready)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2787,6 +2797,7 @@ fn unrelated_paths_and_metadata_only_revisions_do_not_create_late_blockers(
                 dimensions: vec![agent_owned],
                 learning_value_revision_bases: Vec::new(),
             })?;
+    bind_current_review_scope(&unrelated, &revised)?;
     assert_eq!(
         readiness(&unrelated, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2820,6 +2831,7 @@ fn unrelated_paths_and_metadata_only_revisions_do_not_create_late_blockers(
                 dimensions: vec![clarified],
                 learning_value_revision_bases: Vec::new(),
             })?;
+    bind_current_review_scope(&metadata, &revised)?;
     assert_eq!(
         readiness(&metadata, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2867,6 +2879,7 @@ fn exploratory_uncertainty_loops_through_research_without_manufacturing_decision
             learning_value_revision_bases: Vec::new(),
         })?;
     assert_eq!(revised.review_revision, 3);
+    bind_current_review_scope(&fixture, &revised)?;
     assert_eq!(
         readiness(&fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -2972,6 +2985,7 @@ fn completed_discovery_evidence_restores_prospective_authority_or_reveals_a_ques
                 dimensions: vec![delegated],
                 learning_value_revision_bases: Vec::new(),
             })?;
+    bind_current_review_scope(&delegated_fixture, &revised)?;
     assert_eq!(
         readiness(&delegated_fixture, &revised)?.stage,
         WorkAuthorityStage::ReadyForWork
@@ -3530,6 +3544,7 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
             dimensions: vec![resolved, resolved_coupled],
             learning_value_revision_bases: Vec::new(),
         })?;
+    bind_current_review_scope(&fixture, &revised)?;
     let ready = readiness(&fixture, &revised)?;
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
     assert_eq!(ready.satisfied_requirements.len(), 2);
@@ -3874,6 +3889,7 @@ fn blocked_prototype_cannot_rebase_tracked_fixture_mutation(
             ready.baseline_analysis_snapshot_id,
             fixture.baseline.identity
         );
+        bind_current_review_scope(&fixture, &ready)?;
         assert_eq!(
             readiness(&fixture, &ready)?.stage,
             WorkAuthorityStage::ReadyForWork
@@ -4296,6 +4312,182 @@ fn residual_material_outcomes_cannot_close_as_atomic() -> Result<(), Box<dyn std
             "state":"materially_atomic", "rationale":"prose alone"
         }))
         .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn new_pre_write_outcome_revokes_scope_and_requires_rediscovery(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let bounded = agent_owned_dimension(
+        "bounded",
+        source,
+        LearningValueAssessment::Routine {
+            rationale: "private work".into(),
+        },
+    );
+    let recorded = review(&fixture, vec![bounded.clone()])?;
+    let before = fixture
+        .operations
+        .inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    let before_review = before
+        .content
+        .as_ref()
+        .and_then(|content| content.materiality_review.as_ref())
+        .ok_or("review missing")?;
+    let binding = before_review
+        .executable_work_scope
+        .as_ref()
+        .ok_or("scope missing")?;
+    assert_eq!(binding.authority_basis.review_candidate_id, before.id);
+    assert!(binding.authority_basis.review_revision < before.revision);
+    assert!(binding.authority_basis.source_basis.contains(&source));
+    assert_eq!(binding.scope.paths, ["src/lib.rs"]);
+    let mut report = coupled_artifact_review(&["src/lib.rs"]);
+    report.materiality_closure = volicord_inquiry::PreWriteMaterialityClosure::NewMaterialOutcome {
+        outcomes: vec!["Configuration-source precedence changes when both sources are present".into()],
+        rationale: "The planned compatibility adapter introduces an independently material precedence branch".into(),
+    };
+    fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        binding.scope.clone(),
+        report,
+    )?;
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let pending =
+        reopened.inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    let pending_review = pending
+        .content
+        .as_ref()
+        .and_then(|content| content.materiality_review.as_ref())
+        .ok_or("pending missing")?;
+    assert!(pending_review.executable_work_scope.is_none());
+    assert!(pending_review.pending_pre_write_reassessment.is_some());
+    assert!(readiness(&fixture, &recorded)?.blocking);
+    let workflow =
+        reopened.workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id)?;
+    assert_eq!(workflow.stage, WorkflowStage::EngineeringChoiceDiscovery);
+    assert!(reopened
+        .bind_executable_work_scope(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            recorded.review_candidate_id,
+            binding.scope.clone(),
+            coupled_artifact_review(&["src/lib.rs"])
+        )
+        .is_err());
+    // Rediscovery represents the newly observed material branch independently.
+    let new_material = dimension(
+        "source-precedence",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::AgentRecommendation],
+        source,
+    );
+    let reassessed = review(&fixture, vec![bounded, new_material])?;
+    assert_ne!(reassessed.review_candidate_id, recorded.review_candidate_id);
+    assert_eq!(
+        readiness(&fixture, &reassessed)?.stage,
+        WorkAuthorityStage::QuestionRequired
+    );
+    Ok(())
+}
+
+#[test]
+fn pre_write_closure_rejects_superseded_or_contradictory_serialized_shapes() {
+    use volicord_inquiry::PreWriteMaterialityClosure;
+    for value in [
+        serde_json::json!({"materiality_reassessment":"no new outcome"}),
+        serde_json::json!({"state":"no_new_material_outcome","rationale":"no new outcome"}),
+        serde_json::json!({"state":"no_new_material_outcome","reviewed_outcomes":["scalar support"],"outcomes":["source precedence"],"rationale":"prose cannot hide the new outcome"}),
+    ] {
+        assert!(serde_json::from_value::<PreWriteMaterialityClosure>(value).is_err());
+    }
+}
+
+fn bind_current_review_scope(
+    fixture: &Fixture,
+    review: &volicord_operations::MaterialityReviewOutcome,
+) -> Result<(), volicord_operations::Error> {
+    fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        review.review_candidate_id,
+        volicord_context::ApplicabilityScope {
+            paths: vec!["src/lib.rs".into()],
+            components: vec![],
+            work_contexts: vec![],
+        },
+        coupled_artifact_review(&["src/lib.rs"]),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn persisted_pre_write_closure_is_validated_before_restart_readiness(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![agent_owned_dimension(
+            "private",
+            source,
+            LearningValueAssessment::Routine {
+                rationale: "bounded helper".into(),
+            },
+        )],
+    )?;
+    let connection = rusqlite::Connection::open(fixture.operations.layout().candidate_store())?;
+    let original: String = connection.query_row(
+        "SELECT record_json FROM candidates WHERE id = ?1",
+        [recorded.review_candidate_id.as_bytes().as_slice()],
+        |row| row.get(0),
+    )?;
+    for defect in ["foreign-review", "new-outcome-as-scope", "missing-source"] {
+        let mut value: serde_json::Value = serde_json::from_str(&original)?;
+        let binding = &mut value["content"]["materiality_review"]["executable_work_scope"];
+        match defect {
+            "foreign-review" => {
+                binding["authority_basis"]["review_candidate_id"] = serde_json::json!(vec![0; 16])
+            }
+            "missing-source" => binding["authority_basis"]["source_basis"] = serde_json::json!([]),
+            _ => {
+                binding["coupled_artifact_review"]["materiality_closure"] = serde_json::json!({
+                    "state":"new_material_outcome","outcomes":["relative-path authority"],"rationale":"discovery is required"
+                })
+            }
+        }
+        connection.execute(
+            "UPDATE candidates SET record_json = ?1 WHERE id = ?2",
+            rusqlite::params![
+                value.to_string(),
+                recorded.review_candidate_id.as_bytes().as_slice()
+            ],
+        )?;
+        let reopened = LocalOperations::new(fixture.operations.layout().clone());
+        assert!(
+            reopened
+                .inspect_workflow_candidate(fixture.project_id, recorded.review_candidate_id)
+                .is_err(),
+            "{defect}"
+        );
+        connection.execute(
+            "UPDATE candidates SET record_json = ?1 WHERE id = ?2",
+            rusqlite::params![original, recorded.review_candidate_id.as_bytes().as_slice()],
+        )?;
+    }
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ReadyForWork
     );
     Ok(())
 }

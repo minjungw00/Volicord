@@ -88,8 +88,11 @@ component, work-context를 구분한 typed executable work scope를 보존한다
 coupled implementation, focused test, public/internal documentation, changelog/release note,
 schema/snapshot/generated, other repository-owned artifact category를 각각 exactly once 검토하고 included
 path가 executable path set을 정확히 account하도록 한다. 각 no-artifact 결론과 included set은 exact
-Analysis Snapshot에 bind된 rationale를 가지며, 새 material outcome은 path-only expansion보다 먼저
-Materiality reevaluation을 요구한다. 이 scope는 current dimension identity set에 bind되며 parent
+Analysis Snapshot에 bind된 rationale를 가지며, 새 material outcome은 typed pre-write report로 binding을 제거하고 retained pending reassessment로
+남아 Discovery/Materiality reevaluation을 요구한다. No-new closure는 concrete reviewed outcomes와
+exact planned scope/artifact assessment, current review identity/revision, Discovery, dimensions와
+current Source basis를 하나의 prospective binding으로 보존한다. Free prose는 executable scope의
+closure evidence를 대신하지 않는다. 이 scope는 current dimension identity set에 bind되며 parent
 repository path는 descendant file을 포함한다. Material
 dimension identity/affected-scope가 확장되면 binding은 invalidated되고, baseline 뒤 이미 변경된
 path를 새 binding으로 retroactively 포함할 수 없다. 첫 authoritative review가 meaningful repository
