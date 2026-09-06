@@ -331,6 +331,7 @@ fn analyze_repository_inner(
             &reused_paths,
             repository.identity,
             final_identity,
+            &analysis.repository_source,
             analysis.generated_at_unix_micros,
         ));
     }
@@ -1539,6 +1540,7 @@ fn rebind_reused_facts(
     reused_paths: &BTreeSet<String>,
     repository_snapshot: crate::RepositorySnapshotId,
     analysis_snapshot: AnalysisSnapshotId,
+    source: &crate::CanonicalSourceRef,
     generated_at: i64,
 ) -> Vec<StructuralFact> {
     let selected = previous
@@ -1571,11 +1573,28 @@ fn rebind_reused_facts(
             let mut rebound = fact.clone();
             rebound.entity.identity = identity_map.get(&fact.entity.identity)?.clone();
             rebound.entity.repository_snapshot = repository_snapshot;
+            rebound.entity.source = source.clone();
+            for link in &mut rebound.entity.canonical_links {
+                if let crate::CanonicalReference::Source(link_source) = link {
+                    if *link_source == previous.repository_source {
+                        *link_source = source.clone();
+                    }
+                }
+            }
+            for basis in &mut rebound.provenance.analysis.source_basis {
+                if *basis == previous.repository_source {
+                    *basis = source.clone();
+                }
+            }
             rebound.entity.analysis_snapshot = analysis_snapshot;
-            rebind_range(rebound.entity.source_range.as_mut(), repository_snapshot);
+            rebind_range(
+                rebound.entity.source_range.as_mut(),
+                repository_snapshot,
+                source,
+            );
             rebound.entity.freshness = current_freshness(repository_snapshot);
             for extension in &mut rebound.entity.extensions {
-                rebind_range(extension.source_range.as_mut(), repository_snapshot);
+                rebind_range(extension.source_range.as_mut(), repository_snapshot, source);
             }
             rebound.provenance.analysis.repository_snapshot = repository_snapshot;
             rebound.provenance.analysis.analysis_snapshot = analysis_snapshot;
@@ -1592,7 +1611,11 @@ fn rebind_reused_facts(
                         *target = replacement.clone();
                     }
                 }
-                rebind_range(relation.supporting_range.as_mut(), repository_snapshot);
+                rebind_range(
+                    relation.supporting_range.as_mut(),
+                    repository_snapshot,
+                    source,
+                );
                 relation.freshness = current_freshness(repository_snapshot);
                 relation.identity = relation_identity(
                     repository_snapshot,
@@ -2344,9 +2367,14 @@ fn current_freshness(repository_snapshot: crate::RepositorySnapshotId) -> Freshn
     }
 }
 
-fn rebind_range(range: Option<&mut SourceRange>, repository_snapshot: crate::RepositorySnapshotId) {
+fn rebind_range(
+    range: Option<&mut SourceRange>,
+    repository_snapshot: crate::RepositorySnapshotId,
+    source: &crate::CanonicalSourceRef,
+) {
     if let Some(range) = range {
         range.repository_snapshot = repository_snapshot;
+        range.source = source.clone();
     }
 }
 

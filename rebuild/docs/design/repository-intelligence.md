@@ -536,3 +536,11 @@ schema/identity 검사를 통과해야 한다. 명시적 health/repair 진단은
 store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 current 판정으로 숨기지
 않는다. Snapshot publication은 JSON을 임시 파일에 stream하고 기존 atomic/no-replace 및
 sync 책임을 보존한다. Pretty-printing은 durable meaning의 일부가 아니다.
+
+Bounded work의 Materiality Review/revision, executable scope와 Checkpoint가 이미 읽은
+baseline은 structural refresh의 previous input으로 재사용한다. 현재 inventory와 content/
+build/adapter/dependency invalidation 검사는 계속 수행하고 semantic resolution도 현재
+snapshot에서 계산한다. 새 observation의 Source, entity/range/provenance와 repository/
+analysis identity를 함께 rebind하며, 동일한 새 observation에서 full rebuild와 결과가
+일치해야 한다. 이름/파일별 lookup index는 후보 검색 비용만 줄이며 ambiguity를 임의
+선택으로 해소하지 않는다.

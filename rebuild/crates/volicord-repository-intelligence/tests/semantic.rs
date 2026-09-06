@@ -722,3 +722,89 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 mod support;
+
+#[test]
+fn reused_structure_matches_fresh_analysis_under_a_new_observation_source(
+) -> Result<(), Box<dyn Error>> {
+    for language in ["java", "typescript", "rust"] {
+        let root = fixture(language);
+        let (_, previous) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory(&root)?),
+        ))?;
+        let home = tempdir()?;
+        let mut store = Store::open_with(
+            home.path().join("canonical.sqlite3"),
+            DeterministicIdGenerator::new([[0x71; 16], [0x72; 16], [0x73; 16]]),
+            FixedClock::new(TimestampMicros::from_unix_micros(OBSERVED_AT)),
+        )?;
+        let project = store
+            .create_project(OperationId::from_bytes([0xa1; 16]), "Observation reuse")?
+            .value;
+        let mut new_source = None;
+        for (index, revision) in ["fixture-repository-snapshot", "new-repository-observation"]
+            .iter()
+            .enumerate()
+        {
+            new_source = Some(
+                store
+                    .record_source(
+                        OperationId::from_bytes([0xa2 + index as u8; 16]),
+                        project.id,
+                        SourceDraft {
+                            expected_project_revision: project.revision,
+                            payload: SourcePayload::RepositorySnapshot {
+                                revision: (*revision).into(),
+                            },
+                            actor: Principal {
+                                kind: PrincipalKind::Repository,
+                                identity: "repository-fixture".into(),
+                            },
+                            observer: None,
+                            availability: Availability::Available,
+                        },
+                    )?
+                    .value
+                    .id,
+            );
+        }
+        let current_source = new_source.ok_or("current source")?;
+        let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+        let current_grounding = CanonicalGrounding::from_read_basis(&canonical)?;
+        let request = || -> Result<_, Box<dyn Error>> {
+            Ok(StructuralAnalysisRequest::new(InventoryRequest::new(
+                &root,
+                &current_grounding,
+                current_source,
+                OBSERVED_AT + 1,
+            )?))
+        };
+        let (_, rebuilt) = analyze_repository_semantics(SemanticAnalysisRequest::new(request()?))?;
+        let (_, reused) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            request()?.with_previous(&previous),
+        ))?;
+        assert!(reused.refresh.reused_file_count > 0);
+        assert_eq!(reused.refresh.parsed_file_count, 0);
+        assert_ne!(previous.repository_source, reused.repository_source);
+        assert_eq!(
+            reused.identity, rebuilt.identity,
+            "{language}: reuse changed observation identity"
+        );
+        assert_eq!(
+            reused.structural_facts, rebuilt.structural_facts,
+            "{language}: reuse lost Source/range/relations"
+        );
+        assert_eq!(reused.semantic_results, rebuilt.semantic_results);
+        assert_eq!(reused.capabilities, rebuilt.capabilities);
+        assert_eq!(reused.diagnostics, rebuilt.diagnostics);
+        for fact in &reused.structural_facts {
+            assert_eq!(fact.entity.source.identity(), current_source);
+            assert!(fact
+                .provenance
+                .analysis
+                .source_basis
+                .iter()
+                .all(|source| source.identity() == current_source));
+        }
+    }
+    Ok(())
+}

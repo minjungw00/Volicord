@@ -418,6 +418,15 @@ impl LocalOperations {
         project_id: ProjectId,
         excluded_paths: Vec<String>,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
+        self.analyze_with_previous(project_id, excluded_paths, None)
+    }
+
+    fn analyze_with_previous(
+        &self,
+        project_id: ProjectId,
+        excluded_paths: Vec<String>,
+        previous: Option<&AnalysisSnapshot>,
+    ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let monotonic = Instant::now();
@@ -433,6 +442,7 @@ impl LocalOperations {
             prepared.repository_worktree,
             excluded_paths,
             false,
+            previous,
         )
     }
 
@@ -561,6 +571,7 @@ impl LocalOperations {
         repository_worktree: RepositoryWorktreeObservation,
         excluded_paths: Vec<String>,
         replace_existing: bool,
+        previous: Option<&AnalysisSnapshot>,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
         let grounding = CanonicalGrounding::from_read_basis(&basis).map_err(|error| {
             Error::with_source("canonical analysis grounding is invalid", error)
@@ -574,10 +585,13 @@ impl LocalOperations {
         .map_err(|error| Error::with_source("cannot create repository inventory request", error))?
         .with_repository_worktree(repository_worktree);
         inventory.excluded_paths = excluded_paths;
-        let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-            StructuralAnalysisRequest::new(inventory),
-        ))
-        .map_err(|error| Error::with_source("repository analysis failed", error))?;
+        let mut structural = StructuralAnalysisRequest::new(inventory);
+        if let Some(previous) = previous {
+            structural = structural.with_previous(previous);
+        }
+        let (repository, analysis) =
+            analyze_repository_semantics(SemanticAnalysisRequest::new(structural))
+                .map_err(|error| Error::with_source("repository analysis failed", error))?;
         let stored_at = if replace_existing {
             self.replace_analysis(&analysis)?
         } else {
@@ -676,6 +690,7 @@ impl LocalOperations {
             prepared.repository_worktree,
             excluded_paths,
             true,
+            None,
         )
     }
 
@@ -1066,7 +1081,7 @@ impl LocalOperations {
             .into_iter()
             .collect();
         let current = self
-            .analyze(draft.project_id, excluded_paths)?
+            .analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?
             .value
             .ok_or_else(|| Error::new("Materiality Review analysis produced no usable snapshot"))?
             .analysis;
@@ -1236,7 +1251,7 @@ impl LocalOperations {
             .into_iter()
             .collect();
         let current = self
-            .analyze(draft.project_id, excluded_paths)?
+            .analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?
             .value
             .ok_or_else(|| Error::new("revised Materiality Review analysis produced no snapshot"))?
             .analysis;
@@ -1314,7 +1329,7 @@ impl LocalOperations {
             .into_iter()
             .collect();
         let current = self
-            .analyze(project_id, excluded_paths)?
+            .analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
             .value
             .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
             .analysis;
@@ -3027,7 +3042,8 @@ impl LocalOperations {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let current_result = self.analyze(draft.project_id, excluded_paths)?;
+        let current_result =
+            self.analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?;
         let current_outcome = current_result.value.ok_or_else(|| {
             Error::new("current repository analysis completed without a usable snapshot")
         })?;
@@ -4493,5 +4509,59 @@ fn workflow_requirement(
         dimension_id,
         reason: reason.into(),
         basis_identities,
+    }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+
+    #[test]
+    fn observation_reuse_keeps_new_source_and_invalidates_changed_files(
+    ) -> Result<(), Box<dyn StdError>> {
+        let home = tempfile::tempdir()?;
+        let root = home.path().join("repository");
+        fs::create_dir_all(&root)?;
+        fs::write(root.join("a.rs"), "pub fn a() -> i32 { 1 }\n")?;
+        fs::write(root.join("b.rs"), "pub fn b() -> i32 { 2 }\n")?;
+        let operations = LocalOperations::new(RuntimeLayout::new(home.path().join("runtime"))?);
+        let project = operations
+            .initialize_project("Reuse", Some(&root))?
+            .project
+            .id;
+        let baseline = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("baseline")?
+            .analysis;
+        let current = operations
+            .analyze_with_previous(project, Vec::new(), Some(&baseline))?
+            .value
+            .ok_or("current")?
+            .analysis;
+        assert_eq!(current.refresh.parsed_file_count, 0);
+        assert_eq!(current.refresh.reused_file_count, 2);
+        assert_ne!(baseline.repository_source, current.repository_source);
+        assert!(current
+            .structural_facts
+            .iter()
+            .all(|fact| fact.entity.source == current.repository_source));
+        fs::write(root.join("b.rs"), "pub fn changed_b() -> i32 { 3 }\n")?;
+        let changed = operations
+            .analyze_with_previous(project, Vec::new(), Some(&current))?
+            .value
+            .ok_or("changed")?
+            .analysis;
+        assert_eq!(changed.refresh.parsed_file_count, 1);
+        assert_eq!(changed.refresh.reused_file_count, 1);
+        assert!(changed
+            .structural_facts
+            .iter()
+            .any(|fact| fact.entity.display_name.as_deref() == Some("changed_b")));
+        assert!(!changed
+            .structural_facts
+            .iter()
+            .any(|fact| fact.entity.display_name.as_deref() == Some("b")));
+        Ok(())
     }
 }

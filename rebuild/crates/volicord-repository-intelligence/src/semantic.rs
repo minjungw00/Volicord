@@ -363,19 +363,21 @@ fn add_definition_relations(
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
+    let files = facts
+        .iter()
+        .filter(|fact| fact.entity.kind == CodeEntityKind::File)
+        .map(|fact| (&fact.entity.area, &fact.entity))
+        .collect::<BTreeMap<_, _>>();
     for fact in facts.iter().filter(|fact| {
         !matches!(
             fact.entity.kind,
             CodeEntityKind::File | CodeEntityKind::Package | CodeEntityKind::Module
         )
     }) {
-        let source = facts
-            .iter()
-            .find(|candidate| {
-                candidate.entity.area == fact.entity.area
-                    && candidate.entity.kind == CodeEntityKind::File
-            })
-            .map_or(&fact.entity, |candidate| &candidate.entity);
+        let source = files
+            .get(&fact.entity.area)
+            .copied()
+            .unwrap_or(&fact.entity);
         results.push(make_result(
             analysis,
             source,
@@ -395,12 +397,18 @@ fn add_structural_semantics(
     diagnostics: &mut Vec<AnalysisDiagnostic>,
     analysis: &AnalysisSnapshot,
 ) {
+    let mut names: BTreeMap<&str, Vec<&crate::StructuralFact>> = BTreeMap::new();
+    for fact in facts {
+        if let Some(name) = fact.entity.display_name.as_deref() {
+            names.entry(name).or_default().push(fact);
+        }
+    }
     for fact in facts {
         for relation in &fact.relations {
             match relation.kind {
                 StructuralRelationKind::Implements | StructuralRelationKind::Inherits => {
                     let target =
-                        resolve_target(&fact.entity, &relation.target, facts, None, sources);
+                        resolve_target(&fact.entity, &relation.target, &names, None, sources);
                     let semantic_target = target.clone();
                     results.push(make_result(
                         analysis,
@@ -426,7 +434,7 @@ fn add_structural_semantics(
                     let arity =
                         call_arity(&fact.entity, relation.supporting_range.as_ref(), sources);
                     let target =
-                        resolve_target(&fact.entity, &relation.target, facts, arity, sources);
+                        resolve_target(&fact.entity, &relation.target, &names, arity, sources);
                     if let RelationTarget::Unresolved(unresolved) = &target {
                         diagnostics.push(diagnostic(
                             &fact.entity.language,
@@ -538,6 +546,15 @@ fn add_type_relations(
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
+    let mut type_names: BTreeMap<(&Language, &str), Vec<&CodeEntity>> = BTreeMap::new();
+    for entity in entities.values() {
+        if let Some(name) = entity.display_name.as_deref() {
+            type_names
+                .entry((&entity.language, name))
+                .or_default()
+                .push(entity);
+        }
+    }
     for fact in facts.iter().filter(|fact| {
         matches!(
             fact.entity.kind,
@@ -559,10 +576,8 @@ fn add_type_relations(
         let Some(type_name) = declared_type(&fact.entity, line) else {
             continue;
         };
-        let target = unique_match(entities.values().filter(|entity| {
-                entity.language == fact.entity.language
-                    && entity.display_name.as_deref() == Some(type_name.as_str())
-            }))
+        let target = unique_match(type_names.get(&(&fact.entity.language, type_name.as_str()))
+            .into_iter().flatten())
             .map(|entity| RelationTarget::ResolvedEntity(entity.identity.clone()))
             .unwrap_or_else(|| {
                 RelationTarget::Unresolved(UnresolvedTarget {
@@ -624,7 +639,7 @@ fn unique_match<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
 fn resolve_target(
     source: &CodeEntity,
     target: &RelationTarget,
-    facts: &[&crate::StructuralFact],
+    names: &BTreeMap<&str, Vec<&crate::StructuralFact>>,
     requested_arity: Option<usize>,
     sources: &BTreeMap<String, String>,
 ) -> RelationTarget {
@@ -636,10 +651,7 @@ fn resolve_target(
         .split(['.', ':'])
         .rfind(|part| !part.is_empty())
         .unwrap_or(display);
-    let mut candidates = facts
-        .iter()
-        .filter(|fact| fact.entity.display_name.as_deref() == Some(simple))
-        .collect::<Vec<_>>();
+    let mut candidates = names.get(simple).cloned().unwrap_or_default();
     if let Some(arity) = requested_arity {
         let arity_matches = candidates
             .iter()
