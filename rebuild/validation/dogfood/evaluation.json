@@ -234,6 +234,7 @@
       ],
       "maximum_text_utf8_bytes": 8192,
       "semantic_judgment_owner": "bounded_campaign_human_review",
+      "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
       "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the private post-session descriptor and verify its SHA-256; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
     },
     "artifact_kind": "phase8_dogfood_human_review",
@@ -518,6 +519,8 @@
         "implementation_internal"
       ],
       "material_boundary_review_requires_exactly_once_and_choice_backlinks": true,
+      "interaction_review_axes": ["reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery"],
+      "interaction_review_requires_current_outcome_and_source_closure": true,
       "discovery_evidence_precedes_work_authority": true,
       "agent_owned_learning_disposition": "agent_owned_implementation_choice",
       "learning_participation_source": "bounded_verbatim_statement_in_explicit_current_host_first_task_turn",
@@ -586,6 +589,8 @@
         "new_material_outcome_requires_materiality_reevaluation": true,
         "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
         "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
+        "commitment_binding_states": ["reviewed_choice", "reviewed_interaction", "private_equivalent"],
+        "unmapped_commitment_becomes_new_material_outcome": true,
         "new_outcome_revokes_scope_until_current_rediscovery": true,
         "repository_root_convenience_scope_allowed": false
       },

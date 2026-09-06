@@ -42,6 +42,7 @@ def assessment_contract() -> dict[str, Any]:
         "evidence_fields": ["evidence_id", "locator"],
         "maximum_text_utf8_bytes": MAX_TEXT_BYTES,
         "semantic_judgment_owner": "bounded_campaign_human_review",
+        "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
         "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the private post-session descriptor and verify its SHA-256; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
     }
 
@@ -82,7 +83,9 @@ def review_basis(evaluation: dict[str, Any], behavior_review: dict[str, Any], ca
         "implementation_observations": {"changed_paths": changed_paths, "decision_ids": decision_ids,
             "materiality_review_candidate_id": materiality.get("review_candidate_id"),
             "dimension_ids": materiality.get("dimension_ids", []),
-            "pre_work_readiness": materiality.get("pre_work_readiness", {})},
+            "pre_work_readiness": materiality.get("pre_work_readiness", {}),
+            "interaction_review": materiality.get("engineering_choice_discovery", {}).get("interaction_review", {}),
+            "planned_commitment_scope": materiality.get("pre_work_readiness", {}).get("latest_executable_work_scope")},
     }
 
 

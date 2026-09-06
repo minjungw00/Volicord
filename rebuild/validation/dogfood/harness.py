@@ -1456,7 +1456,9 @@ def load_definition() -> dict[str, Any]:
         "new_material_outcome_requires_materiality_reevaluation": True,
         "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
         "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
-        "new_outcome_revokes_scope_until_current_rediscovery": True,
+        "commitment_binding_states": ["reviewed_choice", "reviewed_interaction", "private_equivalent"],
+            "unmapped_commitment_becomes_new_material_outcome": True,
+            "new_outcome_revokes_scope_until_current_rediscovery": True,
         "repository_root_convenience_scope_allowed": False,
     }:
         raise ValueError("the coupled-artifact review contract changed")
@@ -15205,6 +15207,17 @@ def self_test() -> int:
         combined = combine_human_review(result, obligation_review, automated_result_sha256)
         if combined["replacement_qualification"]["status"] != expected:
             raise AssertionError(f"material authority disposition did not control qualification: {resolution}/{relation}")
+    from authority_obligations_self_test import interaction_fixture, interaction_assessment
+    for interaction_case in interaction_fixture()["cases"]:
+        interaction_obligation_review = json.loads(json.dumps(passed_review))
+        interaction_obligation_review["authority_obligation_reviews"][0]["additional_outcomes"] = [interaction_assessment(interaction_case)]
+        combined = combine_human_review(result, interaction_obligation_review, automated_result_sha256)
+        if combined["replacement_qualification"]["status"] != interaction_case["expected"]:
+            raise AssertionError("independent interaction authority did not control cycle qualification: " + interaction_case["id"])
+        failed_machine = json.loads(json.dumps(result))
+        failed_machine["automated_qualification"] = {"status":"failed", "passed":False, "blockers":["evidence_failure"]}
+        if combine_human_review(failed_machine, interaction_obligation_review, automated_result_sha256)["replacement_pass_candidate"]:
+            raise AssertionError("interaction human review overrode machine/evidence failure")
     extra_review = json.loads(json.dumps(passed_review))
     extra_review["authority_obligation_reviews"][0]["additional_outcomes"] = [synthetic_authority_assessment("silent_commitment")]
     if combine_human_review(result, extra_review, automated_result_sha256)["replacement_qualification"]["status"] != "failed":
@@ -18810,6 +18823,20 @@ def self_test() -> int:
         repository_revision=revision,
     )["checks"]["engineering_choice_discovery"] != "failed":
         raise AssertionError("an omitted material effect-category review qualified")
+
+    for defect in ["missing-axis", "missing-result", "unknown-choice"]:
+        malformed_interaction = real_session_fixture("volicord", 1, revision, evidence_directory)
+        def break_interaction(arguments, defect=defect):
+            reviews = arguments["interaction_review"]
+            if defect == "missing-axis":
+                reviews.pop()
+            elif defect == "missing-result":
+                reviews[2]["outcomes"][0]["conclusion"]["result_id"] = "undeclared-durable-result"
+            else:
+                reviews[2]["outcomes"][0]["affected_choice_ids"] = ["undeclared-choice"]
+        mutate_mcp_call(malformed_interaction, "work", "engineering_choice_discovery", break_interaction)
+        if real_session_evidence(malformed_interaction, kind="volicord", cycle=1, repository_revision=revision)["checks"]["engineering_choice_discovery"] != "failed":
+            raise AssertionError("invalid interaction graph qualified: " + defect)
 
     hidden_public_api_fork = real_session_fixture(
         "volicord", 1, revision, evidence_directory

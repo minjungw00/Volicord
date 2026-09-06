@@ -614,6 +614,8 @@ def main() -> int:
         "array_order_is_authoritative": False,
         "mixed_dispositions_allowed": True,
         "engineering_choice_discovery_required": True,
+        "interaction_review_axes": ["reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery"],
+        "interaction_review_requires_current_outcome_and_source_closure": True,
         "question_count_is_fixed": False,
         "all_unresolved_user_owned_dimensions_block_work": True,
         "resolved_user_owned_decision_correlation": "per_dimension_id",
@@ -654,6 +656,8 @@ def main() -> int:
             "new_material_outcome_requires_materiality_reevaluation": True,
             "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
             "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
+            "commitment_binding_states": ["reviewed_choice", "reviewed_interaction", "private_equivalent"],
+            "unmapped_commitment_becomes_new_material_outcome": True,
             "new_outcome_revokes_scope_until_current_rediscovery": True,
             "repository_root_convenience_scope_allowed": False,
         }

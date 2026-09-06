@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from typing import Any
+from pathlib import Path
 
 import authority_obligations as authority
 
@@ -33,6 +34,26 @@ def complete_synthetic_reviews(reviews: list[dict[str, Any]]) -> None:
             value = assessment()
             value["material_outcome"] = "Sanitized synthetic material outcome " + obligation["obligation_id"]
             obligation["assessment"] = value
+
+
+def interaction_fixture() -> dict[str, Any]:
+    return json.loads((Path(__file__).parent / "fixtures/interaction-authority-obligations.json").read_text())
+
+
+def interaction_assessment(case: dict[str, str]) -> dict[str, Any]:
+    fixture = interaction_fixture()
+    value = assessment(case["path"], expression="Inspect the exact material result and prospective authority, independently of other valid Decisions")
+    value["material_outcome"] = fixture["independent_outcome"]
+    value["observable_implementation_commitment"] = fixture["commitment"] if value["commitment_state"] == "production_committed" else "The original production behavior is preserved; this interaction branch is avoided, deferred, or confined to disposable scratch"
+    value["authority_relation_to_outcome"] = case["relation"]
+    value["chronology"] = case["chronology"]
+    value["authority_basis"] = {
+        "repository_or_contract_settlement": "Pinned repository contract explicitly requires prevalidation of the entire input and zero durable changes for any invalid statement",
+        "applicable_prior_authority": "An inspectable accepted prior Decision resolves the exact batch-durability boundary before this work",
+        "exact_delegation": "The current user's bounded delegation explicitly covers ordering and durable partial effects for this input scope",
+    }.get(case["path"], "Bounded reviewer checks this durable outcome independently of targeting, unsafe-statement rejection, and activation Decisions")
+    value["evidence"] = [{"evidence_id":"work_capture", "locator":"Synthetic implementation/test change: whole-input prevalidation or preserved production behavior"}, {"evidence_id":"canonical_bundle", "locator":"Synthetic current Decision/Source revision and exact scope preceding the write"}]
+    return value
 
 
 def self_test() -> dict[str, str]:
@@ -86,6 +107,28 @@ def self_test() -> dict[str, str]:
         pass
     else:
         raise AssertionError("unreviewed material obligation omitted")
+    observation = authority.review_basis({}, {}, {"work_capture":"a" * 64}, changed_paths=["executor.py", "test_executor.py"], decision_ids=["rejection-decision"], materiality={
+        "engineering_choice_discovery":{"interaction_review":{"outcome_ids":["durable-prefix"]}},
+        "pre_work_readiness":{"latest_executable_work_scope":{"paths":["executor.py", "test_executor.py"], "coupled_artifact_review":{"materiality_closure":{"commitments":[{"commitment_id":"whole-input-prevalidation"}]}}}},
+    })["implementation_observations"]
+    assert observation["interaction_review"]["outcome_ids"] == ["durable-prefix"]
+    assert observation["planned_commitment_scope"]["coupled_artifact_review"]["materiality_closure"]["commitments"][0]["commitment_id"] == "whole-input-prevalidation"
+    results["human_review_exposes_interaction_and_planned_commitment_identities"] = "passed"
+    fixture = interaction_fixture()
+    initial = {"obligations":[{"obligation_id": f"other-{i}", "initial_concern": outcome} for i, outcome in enumerate(fixture["resolved_other_outcomes"])], "evidence_index":index}
+    expected = [authority.review_template({"cycle":1}, initial)]
+    for case in fixture["cases"]:
+        completed = copy.deepcopy(expected)
+        completed[0]["coverage_basis"] = "Inspected all implementation and test changes, including safe-then-unsafe input durability beyond the initially named choices"
+        for obligation, outcome in zip(completed[0]["obligations"], fixture["resolved_other_outcomes"]):
+            value = assessment()
+            value["material_outcome"] = outcome
+            obligation["assessment"] = value
+        completed[0]["additional_outcomes"] = [interaction_assessment(case)]
+        states = authority.validate_reviews(completed, expected)
+        assert states[:-1] == ["passed"] * (len(fixture["resolved_other_outcomes"]) + 1)
+        assert states[-1] == case["expected"], case["id"]
+        results["interaction_" + case["id"]] = "passed"
     return results
 
 

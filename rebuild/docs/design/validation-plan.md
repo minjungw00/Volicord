@@ -1421,6 +1421,18 @@ Sanitized automated result는 initial concern text 대신 private descriptor fie
 보존한다. Post-session review package의 evaluator descriptor와 별도 raw-rollout archive에서
 이를 resolve한다. 모든 실제 변경과 coupled artifact를 검토한 `coverage_basis`가 필요하고,
 initial challenge에 없던 independent outcome은 `additional_outcomes`에 각각 평가한다.
+Human review는 current Discovery의 interaction outcome identities와 pre-write planned commitment
+binding/scope를 같은 implementation observation에서 inspect한다. Reference/context basis,
+composition/precedence, multi-item ordering/partial durability와 failure/retry/recovery는 actual work와
+coupled artifacts에서 additional independent outcome을 찾기 위한 completeness prompt이며 ownership
+classifier나 fixed Question 수가 아니다. Sanitized `interaction-authority-obligations.json` regression은
+safe statement 뒤 unsafe statement인 input에서 targeting/rejection/activation의 valid user Decisions가
+모두 있어도 durable partial effects를 별도 authority 없이 whole-input prevalidation으로 commit하면
+cycle qualification을 fail한다. Exact current contract/prior authority/delegation이 같은 durable result를
+정하거나 production commitment를 avoid/defer/scratch prototype으로 남기면 redundant Question 없이
+pass할 수 있다. 이 fixture는 raw naturalistic rollout을 복사하지 않으며 새로운 HEAD의 qualification
+evidence가 아니다. Human pass는 machine/evidence failure를 override하지 못한다.
+
 Draft의 null assessment/coverage는 미완료이며 generic interaction pass로 대체할 수 없다.
 Silent/unresolved, late, unrelated authority 또는 production commitment를 가진 prototype/defer
 주장은 실패한다. Typed schema와 immutable evidence linkage는 판단을 재현 가능하게 만들지만,
