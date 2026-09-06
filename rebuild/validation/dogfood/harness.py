@@ -13023,7 +13023,7 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 def self_test() -> int:
     from authority_obligations_self_test import self_test as authority_self_test
-    authority_self_test()
+    authority_obligation_results = authority_self_test()
     definition = load_definition()
     v11 = load_v11()
     descriptor_task = "Preserve exact prompt identity."
@@ -21475,6 +21475,7 @@ def self_test() -> int:
         raise AssertionError("inline manifest literal was accepted as real-session evidence")
     print(json.dumps({
         "status": "passed",
+        "authority_obligation_regressions": authority_obligation_results,
         "definition_sha256": sha256(DEFINITION),
         "required_product_steps": len(definition["required_product_steps"]),
         "repository_classes": list(CLASSES),
@@ -21496,10 +21497,10 @@ def self_test() -> int:
             and len(sanitized_hidden_miss_results) == 2
             else "failed"
         ),
-        "sanitized_exact_authority_two_question_paths_and_two_overreach_rejections": (
+        "sanitized_exact_authority_paths_and_overreach_rejections": (
             "passed"
-            if len(sanitized_authority_question_results) == 2
-            and len(sanitized_authority_overreach_results) == 2
+            if len(sanitized_authority_question_results) == len(authority_scenarios)
+            and len(sanitized_authority_overreach_results) == len(authority_scenarios)
             else "failed"
         ),
         "exact_decision_and_unique_fact_no_question_controls": "passed",
