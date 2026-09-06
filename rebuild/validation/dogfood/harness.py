@@ -4342,12 +4342,25 @@ def work_blocker_behavior_observations(
     )
 
 
+WORK_CAPTURE_FAILURE_CHECKS = {
+    "terminal_incomplete": "work_turn_lifecycle",
+    "indeterminate": "work_turn_lifecycle",
+    "recovery_terminal_checkpoint_missing": "work_turn_lifecycle",
+    "recovery_verification_missing": "work_turn_lifecycle",
+    "invalid_cycle_descriptor": "work_descriptor_binding",
+    "invalid_candidate_head": "work_candidate_binding",
+    "work_capture_binding_mismatch": "work_capture_binding",
+}
+
+
 class WorkCaptureContractError(ValueError):
     """Supported capture defect, distinct from a validator invariant failure."""
 
     def __init__(self, basis: str):
+        if basis not in WORK_CAPTURE_FAILURE_CHECKS:
+            raise AssertionError("unknown work capture failure basis")
         self.basis = basis
-        self.check = "work_turn_lifecycle"
+        self.check = WORK_CAPTURE_FAILURE_CHECKS[basis]
         super().__init__(f"work capture is not machine-observably completed: {basis}")
 
 
@@ -4390,9 +4403,9 @@ def build_work_blocker_result(
         verify_provenance=True,
     )
     if descriptor_errors:
-        raise ValueError("qualify-work-blocker requires one valid cycle descriptor")
+        raise WorkCaptureContractError("invalid_cycle_descriptor")
     if not re.fullmatch(r"[0-9a-f]{40}", candidate_head):
-        raise ValueError("qualify-work-blocker requires an exact candidate HEAD")
+        raise WorkCaptureContractError("invalid_candidate_head")
     if (
         capture.git_revision != descriptor.get("repository_revision")
         or (target_repository is not None
@@ -4406,7 +4419,7 @@ def build_work_blocker_result(
             descriptor.get("work_user_task"),
         )
     ):
-        raise ValueError("work capture does not match the descriptor and fresh VS Code Codex contract")
+        raise WorkCaptureContractError("work_capture_binding_mismatch")
     require_completed_work(capture)
 
     activation_problem = activation_failure(capture)
@@ -13552,9 +13565,8 @@ def self_test() -> int:
             current_descriptor_identity,
             current_work_capture,
         )
-    except ValueError as error:
-        if "has no machine-observable terminal work blocker" not in str(error):
-            raise
+    except NoWorkBlocker:
+        pass
     else:
         raise AssertionError("valid current-format work intake became an early-stop blocker")
     if not current_work_capture.path_observations:
@@ -13573,9 +13585,8 @@ def self_test() -> int:
                 identity,
                 capture,
             )
-        except ValueError as error:
-            if "has no machine-observable terminal work blocker" not in str(error):
-                raise
+        except NoWorkBlocker:
+            pass
         else:
             raise AssertionError(f"valid current {label} work intake became a blocker")
 
@@ -13586,8 +13597,8 @@ def self_test() -> int:
     recovery_events[starts[-1]:starts[-1]] = [
         {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "interrupted-turn"}},
         {"type": "response_item", "payload": {
-            "type": "custom_tool_call", "call_id": "interrupted-command", "name": "exec",
-            "input": 'text(await tools.exec_command({"cmd":"python3 -m unittest tests.test_existing"}));',
+            "type": "custom_tool_call", "call_id": "interrupted-command", "name": "exec", "status": "completed",
+            "input": 'const r = await tools.exec_command({"cmd":"python3 -m unittest tests.test_existing"}); text(r);',
             "internal_chat_message_metadata_passthrough": {"turn_id": "interrupted-turn"},
         }},
     ]
@@ -13606,6 +13617,14 @@ def self_test() -> int:
     assert recovered.turn_lifecycle.state == "completed_after_interruption"
     assert [turn.state for turn in recovered.turn_lifecycle.turns] == ["completed", "interrupted", "completed"]
     assert_current_work_intake_passes(current_transport_fixture, recovered, "recovered interruption")
+    late_output = {"type": "response_item", "payload": {
+        "type": "custom_tool_call_output", "call_id": "interrupted-command",
+        "output": [{"type": "input_text", "text": 'Script completed\nWall time 0.1 seconds\nOutput:\n{"output":"late output", "exit_code":0}'}],
+        "internal_chat_message_metadata_passthrough": {"turn_id": "interrupted-turn"},
+    }}
+    late_capture = recovery_capture(recovery_events[:-1] + [late_output, recovery_events[-1]])
+    late_commands = [command for command in late_capture.commands if command.turn_id == "interrupted-turn"]
+    assert late_commands and all(command.exit_code is None for command in late_commands)
     for label, events in (
         ("terminal_incomplete", recovery_events[:-1]),
         ("unrelated_completed_turn", recovery_events + [
@@ -14474,9 +14493,8 @@ def self_test() -> int:
             descriptor_identity,
             positive_work_capture,
         )
-    except ValueError as error:
-        if "no machine-observable terminal work blocker" not in str(error):
-            raise
+    except NoWorkBlocker:
+        pass
     else:
         raise AssertionError("positive work session converted into an early-stop failure")
 
@@ -14502,9 +14520,8 @@ def self_test() -> int:
             non_question_descriptor_identity,
             non_question_capture,
         )
-    except ValueError as error:
-        if "no machine-observable terminal work blocker" not in str(error):
-            raise
+    except NoWorkBlocker:
+        pass
     else:
         raise AssertionError("correct non-question work was treated as a blocker")
     non_question_zero_path = evidence_directory / "zero-small-python-non-question-work.jsonl"
@@ -14670,9 +14687,8 @@ def self_test() -> int:
             candidate_revision, external_fixture, descriptor_identity,
             zero_workflow_capture, target_repository=ROOT,
         )
-    except ValueError as error:
-        if "does not match the descriptor" not in str(error):
-            raise
+    except WorkCaptureContractError as error:
+        assert error.basis == "work_capture_binding_mismatch"
     else:
         raise AssertionError("work-blocker accepted activation for a different repository")
     blocker_cli = subprocess.run(
@@ -14740,9 +14756,8 @@ def self_test() -> int:
             descriptor_identity,
             load_codex_capture(incomplete_work_path),
         )
-    except ValueError as error:
-        if "not machine-observably completed" not in str(error):
-            raise
+    except WorkCaptureContractError as error:
+        assert error.basis == "terminal_incomplete"
     else:
         raise AssertionError("incomplete work capture produced an early-stop result")
     if len(positive_work_capture.calls("context_record")) != 1:
@@ -16746,9 +16761,8 @@ def self_test() -> int:
             ).hexdigest(),
             load_codex_capture(decomposed_capture_path),
         )
-    except ValueError as error:
-        if "no machine-observable terminal work blocker" not in str(error):
-            raise
+    except NoWorkBlocker:
+        pass
     else:
         raise AssertionError(
             "bounded decomposed Goal was treated as an early work blocker"
@@ -16964,9 +16978,8 @@ def self_test() -> int:
             independent_descriptor_identity,
             load_codex_capture(independent_capture_path),
         )
-    except ValueError as error:
-        if "no machine-observable terminal work blocker" not in str(error):
-            raise
+    except NoWorkBlocker:
+        pass
     else:
         raise AssertionError(
             "valid independent material lifecycles were treated as an early blocker"

@@ -1195,6 +1195,21 @@ class TurnLifecycle:
         return max((turn.end_sequence for turn in self.turns
                     if turn.state == "interrupted" and turn.end_sequence is not None), default=-1)
 
+    def bounded_evidence(self) -> dict[str, Any]:
+        interrupted = [turn for turn in self.turns if turn.state == "interrupted"]
+        return {
+            "state": self.state, "turn_count": len(self.turns),
+            "interrupted_turn_count": len(interrupted),
+            "last_interruption_sequence": self.last_interruption,
+            "terminal_completion_sequence": (
+                self.turns[-1].end_sequence if self.turns and self.turns[-1].state == "completed" else None
+            ),
+            "interrupted_turns": [{"turn_id": turn.turn_id, "start_sequence": turn.start_sequence,
+                                   "interruption_sequence": turn.end_sequence} for turn in interrupted[-32:]],
+            "interrupted_turns_truncated": len(interrupted) > 32,
+            "issues": list(self.issues),
+        }
+
     def contains_completion(self, turn_id: str, start: int, end: int) -> bool:
         return any(turn.turn_id == turn_id and turn.start_sequence < start <= end
                    and (turn.end_sequence is None or end < turn.end_sequence)
@@ -1213,7 +1228,12 @@ def normalize_turn_lifecycle(events: list[dict[str, Any]]) -> TurnLifecycle:
     active: int | None = None
     for sequence, event in enumerate(events):
         payload = event.get("payload")
-        if event.get("type") != "event_msg" or not isinstance(payload, dict):
+        if not isinstance(payload, dict):
+            continue
+        if event.get("type") == "turn_context" and "turn_id" in payload:
+            if active is None or payload["turn_id"] != turns[active].turn_id:
+                issues.append("turn_context_conflict")
+        if event.get("type") != "event_msg":
             continue
         kind = payload.get("type")
         identity = payload.get("turn_id")

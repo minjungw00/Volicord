@@ -1335,7 +1335,26 @@ task, exact workspace/revision, work/resume role, `source=vscode`, `originator=c
 session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
 
-Mapping 뒤 raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
+Mapping 뒤 campaign-local staging에서 raw byte와 mapped capture SHA-256를 재확인하고
+모든 eight cycle을 평가한다. 이 동안 authoritative campaign metadata, descriptor와 inventory는
+변경하지 않는다. Supported work lifecycle/binding failure는 `WorkCaptureContractError`의 finite
+basis/check로 `evidence_failed` intake가 되고, `NoWorkBlocker`는 정상 full-qualification 경로다.
+`ResumeContractError`는 behavior contract, `EvidenceError`/supported extraction failure는 evidence,
+validator assertion/unknown ValueError는 `validation_internal`로 구분한다. Activation의 기존
+`environment`/`evidence`/`validation_internal` 구분은 유지한다. Error message text로 routing하지 않는다.
+
+각 derived extraction에는 staging savepoint를 적용해 실패한 export의 partial file, descriptor와
+inventory mutation을 되돌리고 다른 cycle의 bounded diagnostics를 계속 수집한다. 완성된 summary는
+cycle/role/check/basis, work lifecycle과 interruption evidence, `intake_state`, `outcome`,
+`qualification_state = not_run`을 보존한다. 최종 publication은 exact files, inventory와 campaign state를
+controlled-persist하며 실패 시 original bytes로 rollback한다. Publication journal이 존재하면 모든
+campaign consumer는 `repair_required`로 차단된다. Forced interruption 또는 rollback 실패의 journal과
+staging/backup은 inspection을 위해 보존하며 성공이나 재시도 허가로 추정하지 않는다. Derived process
+logs는 실제 staging execution의 bytes를 유지하고 maintained artifact references는 published relative
+path를 사용한다. Terminal rejection은 immutable하며 같은 identity에서 selected rollout 교체,
+collect-work/resume/batch retry 또는 qualifying manifest 생성으로 repair할 수 없다.
+
+Raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
 복구하지 않는다. Proven missing activation은 operator/environment invalid로 유지하고 ambiguous
 activation evidence는 evidence_failed로 구분한다. Cycle별
 `intake_state = accepted|rejected`와 `qualification_state = not_run`을 기록하여 batch

@@ -122,6 +122,13 @@ def campaign_file(root: Path) -> Path:
 
 
 def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any]:
+    if (root / "batch-publication.json").exists():
+        raise CampaignError(
+            "batch publication is incomplete; preserve its journal and create a new campaign identity",
+            diagnostic={"kind": "phase8_dogfood_batch_publication_failure",
+                        "domain": "evidence", "basis": "batch_publication_incomplete",
+                        "qualification_state": "not_run", "outcome": "repair_required"},
+        )
     value = read_json(campaign_file(root))
     if value.get("kind") != "phase8_dogfood_campaign" or value.get("schema_version") != 1:
         raise CampaignError("unexpected dogfood campaign metadata")
@@ -2032,9 +2039,7 @@ def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[s
             capture,
             target_repository=Path(state["repository_path"]),
         )
-    except ValueError as error:
-        if "has no machine-observable terminal work blocker" not in str(error):
-            raise CampaignError(str(error)) from error
+    except harness.NoWorkBlocker:
         if len(project_ids) != 1:
             raise CampaignError("qualifying work capture must expose one Project identity")
         result = {
@@ -2049,6 +2054,11 @@ def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[s
         state["state"] = "work_collected"
         state["project_id"] = project_ids[0]
         state["work_session_id"] = capture.session_id
+    except harness.WorkCaptureContractError as error:
+        result = work_capture_failure_result(kind, cycle, error)
+        result["failure_attribution"] = bounded_failure_attribution("work", "evidence", error.basis, [error.check])
+        state["state"] = "evidence_failed"
+        campaign["terminal_outcome"] = "evidence_failed"
     else:
         result = blocker
         state["state"] = blocker["outcome"]
@@ -2937,6 +2947,7 @@ FAILURE_DOMAINS = (
     "validation_internal",
 )
 FAILURE_BASES = {
+    *harness.WORK_CAPTURE_FAILURE_CHECKS,
     *(failure.basis for failure in harness.ACTIVATION_FAILURES.values()),
     "required_evidence_transport_indeterminate",
     "maintained_work_behavior_contract_failed",
@@ -3021,19 +3032,135 @@ def collect_batch(
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
-    for state in campaign["cycles"].values():
-        if state.get("state") != "sealed":
-            raise CampaignError("batch collection requires all eight sealed cycles")
-
+    if any(state.get("state") != "sealed" for state in campaign["cycles"].values()):
+        raise CampaignError("batch collection requires all eight sealed cycles")
+    # Global identity mapping is read-only and complete before staging anything.
     mapped = map_batch_rollouts(root, raw_paths)
-    for (kind, cycle, role), mapped_rollout in sorted(mapped.items()):
-        source = mapped_rollout.source
+    for (kind, cycle, role), rollout in mapped.items():
         destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
-        if source.resolve() == destination.resolve():
-            raise CampaignError("batch rollout source must be outside its sealed evidence destination")
-        copy_exact(source, destination)
-        register_artifact(root, destination)
+        if destination.exists() or rollout.source.resolve() == destination.resolve():
+            raise CampaignError("batch evidence destination must be absent and distinct from its source")
+    baseline = {name: (root / name).read_bytes() for name in
+                ["campaign.json", "evidence-inventory.json"]}
+    stage = Path(tempfile.mkdtemp(prefix=".batch-intake-", dir=root))
+    try:
+        for name in load_inventory(root)["artifacts"]:
+            copy_exact(root / name, stage / name)
+        write_json(inventory_path(stage), load_inventory(root))
+        staged_campaign = copy.deepcopy(campaign)
+        staged_campaign["campaign_root"] = str(stage)
+        save_campaign(stage, staged_campaign)
+        for (kind, cycle, role), rollout in sorted(mapped.items()):
+            destination = cycle_root(stage, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
+            copy_exact(rollout.source, destination)
+            if harness.sha256(destination) != rollout.capture.source_sha256:
+                raise CampaignError("raw capture changed after candidate-bound mapping")
+            register_artifact(stage, destination)
+        summary = evaluate_batch(
+            stage, mapped, exporter=exporter, documenter=documenter, snapshotter=snapshotter,
+        )
+        verify_inventory(stage)
+        staged_campaign = load_campaign(stage)
+        staged_campaign["campaign_root"] = str(root)
+        save_campaign(stage, staged_campaign)
+        # No supported capture/extraction failure reaches publication as an exception.
+        publish_batch(root, stage, baseline)
+        return summary
+    finally:
+        # Interrupted/failed rollback evidence stays available behind the journal.
+        if not (root / "batch-publication.json").exists():
+            shutil.rmtree(stage)
 
+
+def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
+    """Controlled publication with rollback and an explicit crash/read barrier.
+
+    Raw captures and derived process logs retain their exact observed bytes.
+    Only relative artifact references and campaign metadata name published files.
+    """
+    require_current_candidate(read_json(stage / "campaign.json")["candidate_head"])
+    verify_inventory(root)
+    if any((root / name).read_bytes() != data for name, data in baseline.items()):
+        raise CampaignError("campaign changed during batch evaluation")
+    names = sorted(load_inventory(stage)["artifacts"])
+    names += ["evidence-inventory.json", "campaign.json"]
+    changed = [name for name in names if not (root / name).is_file()
+               or harness.sha256(root / name) != harness.sha256(stage / name)]
+    backup = stage / "publication-backup"
+    originals: set[str] = set()
+    for name in changed:
+        if (root / name).exists():
+            copy_exact(root / name, backup / name)
+            originals.add(name)
+    journal = root / "batch-publication.json"
+    marker = {"kind": "phase8_dogfood_batch_publication", "state": "publishing",
+              "candidate_head": read_json(stage / "campaign.json")["candidate_head"],
+              "qualification_state": "not_run", "stage_directory": relative(root, stage),
+              "artifacts": [{"path": name, "before_sha256": harness.sha256(backup / name) if name in originals else None,
+                             "after_sha256": harness.sha256(stage / name)} for name in changed]}
+    # Exclusive marker also rejects concurrent publication; readers fail closed.
+    with journal.open("x", encoding="utf-8") as output:
+        output.write(json.dumps(marker))
+        output.flush()
+        os.fsync(output.fileno())
+    written: list[str] = []
+    try:
+        for name in changed:
+            written.append(name)
+            atomic_write_bytes(root / name, (stage / name).read_bytes())
+    except BaseException:
+        try:
+            for name in reversed(written):
+                if name in originals:
+                    atomic_write_bytes(root / name, (backup / name).read_bytes())
+                else:
+                    (root / name).unlink(missing_ok=True)
+        except BaseException:
+            # The durable marker continues to block every campaign consumer.
+            raise CampaignError(
+                "batch publication rollback failed; journal requires inspection",
+                diagnostic={"kind": "phase8_dogfood_batch_publication_failure",
+                            "domain": "evidence", "basis": "batch_publication_incomplete",
+                            "qualification_state": "not_run", "outcome": "repair_required"},
+            )
+        journal.unlink()
+        raise
+    journal.unlink()
+
+
+def extract_batch_resume(root: Path, kind: str, cycle: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Rollback a failed derived extraction inside the unpublished batch stage."""
+    before = {path for path in root.rglob("*") if path.is_file()}
+    mutable = [campaign_file(root), inventory_path(root), evaluator_descriptor_path(root, kind, cycle),
+               cycle_root(root, kind, cycle) / "activation-summary.json"]
+    saved = {path: path.read_bytes() for path in mutable if path.is_file()}
+    try:
+        return extract_resume_evidence(root, kind, cycle, *args, **kwargs)
+    except BaseException:
+        for path in (path for path in root.rglob("*") if path.is_file() and path not in before):
+            path.unlink()
+        for path, data in saved.items():
+            path.write_bytes(data)
+        raise
+
+
+def work_capture_failure_result(kind: str, cycle: int, error: harness.WorkCaptureContractError) -> dict[str, Any]:
+    return {"kind": "phase8_dogfood_work_intake", "outcome": "evidence_failed",
+            "classification": "work_capture_contract_failure", "repository_class": kind,
+            "cycle": cycle, "basis": error.basis, "failed_checks": [error.check]}
+
+
+def evaluate_batch(
+    root: Path,
+    mapped: dict[tuple[str, int, str], MappedRollout],
+    *,
+    exporter: Callable[[Path, Path, Path, Path], None] = default_export,
+    documenter: Callable[
+        [Path, Path, Path, str, str, Path, str, str], dict[str, Any]
+    ] = generate_document,
+    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
+) -> dict[str, Any]:
+    campaign = load_campaign(root)
     cycle_results: list[dict[str, Any]] = []
     has_product_blocker = False
     has_environment_invalid = False
@@ -3074,6 +3201,7 @@ def collect_batch(
             project_ids = observed_project_ids(work_capture)
             blocker: dict[str, Any] | None = None
             work_internal_failure = False
+            work_contract_failure = None
             try:
                 blocker = harness.build_work_blocker_result(
                     campaign["candidate_head"],
@@ -3084,12 +3212,22 @@ def collect_batch(
                 )
             except AssertionError:
                 work_internal_failure = True
-            except ValueError as error:
-                if "has no machine-observable terminal work blocker" not in str(error):
-                    raise CampaignError(str(error)) from error
+            except harness.NoWorkBlocker:
+                pass
+            except harness.WorkCaptureContractError as error:
+                work_contract_failure = error
+            except ValueError:
+                work_internal_failure = True
 
             work_intake_path = cycle_root(root, kind, cycle) / "work-intake.json"
-            if work_internal_failure:
+            if work_contract_failure is not None:
+                work_intake = work_capture_failure_result(kind, cycle, work_contract_failure)
+                state["state"] = "evidence_failed"
+                has_evidence_failure = True
+                cycle_attributions.append(bounded_failure_attribution(
+                    "work", "evidence", work_contract_failure.basis, [work_contract_failure.check],
+                ))
+            elif work_internal_failure:
                 work_intake = {
                     "kind": "phase8_dogfood_work_intake",
                     "outcome": "evidence_failed",
@@ -3175,7 +3313,7 @@ def collect_batch(
             resume_result: dict[str, Any]
             if len(project_ids) == 1:
                 try:
-                    resume_result = extract_resume_evidence(
+                    resume_result = extract_batch_resume(
                         root,
                         kind,
                         cycle,
@@ -3186,7 +3324,7 @@ def collect_batch(
                         snapshotter=snapshotter,
                         final_state=(
                             "resume_collected"
-                            if blocker is None and not work_internal_failure
+                            if blocker is None and not work_internal_failure and work_contract_failure is None
                             else "batch_diagnostic_evidence_collected"
                         ),
                     )
@@ -3213,24 +3351,7 @@ def collect_batch(
                             "maintained_resume_behavior_contract_failed",
                             ["resume_continuation_contract"],
                         ))
-                except AssertionError as error:
-                    resume_result = {
-                        "kind": "phase8_dogfood_resume_intake",
-                        "outcome": "evidence_failed",
-                        "repository_class": kind,
-                        "cycle": cycle,
-                        "basis": "validator_invariant_failure",
-                        "error_kind": type(error).__name__,
-                        "resume_capture_sha256": resume_capture.source_sha256,
-                    }
-                    has_evidence_failure = True
-                    cycle_attributions.append(bounded_failure_attribution(
-                        "resume",
-                        "validation_internal",
-                        "validator_invariant_failure",
-                        ["resume_validator_consistency"],
-                    ))
-                except (CampaignError, EvidenceError, OSError, ValueError) as error:
+                except (CampaignError, EvidenceError, OSError) as error:
                     resume_result = {
                         "kind": "phase8_dogfood_resume_intake",
                         "outcome": "evidence_failed",
@@ -3247,6 +3368,24 @@ def collect_batch(
                         "resume_supported_evidence_collection_failed",
                         ["resume_supported_evidence_collection"],
                     ))
+                except (AssertionError, ValueError) as error:
+                    resume_result = {
+                        "kind": "phase8_dogfood_resume_intake",
+                        "outcome": "evidence_failed",
+                        "repository_class": kind,
+                        "cycle": cycle,
+                        "basis": "validator_invariant_failure",
+                        "error_kind": type(error).__name__,
+                        "resume_capture_sha256": resume_capture.source_sha256,
+                    }
+                    has_evidence_failure = True
+                    cycle_attributions.append(bounded_failure_attribution(
+                        "resume",
+                        "validation_internal",
+                        "validator_invariant_failure",
+                        ["resume_validator_consistency"],
+                    ))
+
             else:
                 resume_result = {
                     "kind": "phase8_dogfood_resume_intake",
@@ -3315,6 +3454,7 @@ def collect_batch(
                     "session_id": work_capture.session_id,
                     "relative_evidence_path": relative(root, work_destination),
                     "sha256": work_capture.source_sha256,
+                    "turn_lifecycle": work_capture.turn_lifecycle.bounded_evidence(),
                     "activation_observed": work_capture.repository_scoped_activation_observed,
                     "task_transport_equivalence": work_mapping.task_transport.bounded_evidence(),
                 },
@@ -3338,9 +3478,18 @@ def collect_batch(
                 },
                 "project_id": state.get("project_id"),
                 "supported_evidence_complete": evidence_complete,
-                "terminal_work_failure_preserved": blocker is not None,
+                "terminal_work_failure_preserved": work_intake["outcome"] != "resume_allowed",
             })
             campaign = load_campaign(root)
+            campaign["cycles"][key]["state"] = (
+                "resume_collected" if cycle_results[-1]["intake_state"] == "accepted"
+                else work_intake["outcome"] if work_intake["outcome"] != "resume_allowed"
+                else "evidence_failed"
+            )
+            resume_intake_path = cycle_root(root, kind, cycle) / "resume-intake.json"
+            write_json(resume_intake_path, resume_result)
+            register_artifact(root, resume_intake_path)
+            save_campaign(root, campaign)
 
     campaign["terminal_outcome"] = (
         "operator_environment_invalid"

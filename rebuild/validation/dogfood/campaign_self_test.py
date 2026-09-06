@@ -2152,6 +2152,179 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         assert any(expected in error for error in errors), (expected, errors)
 
 
+def assert_batch_failure_atomicity(parent: Path, binary: Path) -> None:
+    def snapshot(root: Path) -> dict[str, bytes]:
+        names = [*campaign.load_inventory(root)["artifacts"], "campaign.json", "evidence-inventory.json"]
+        return {name: (root / name).read_bytes() for name in names}
+
+    for index, (kind, cycle) in enumerate((("volicord", 1), ("small-python", 1), ("polyglot-medium", 2))):
+        root, captures, bundles = prepared_batch(parent, f"batch-incomplete-{index}", binary)
+        original = snapshot(root)
+        work = next(path for path in captures if path.name == f"{kind}-{cycle}-work-events.jsonl")
+        events = [json.loads(line) for line in work.read_text().splitlines()]
+        # Only remove the terminal completion, preserving all earlier history.
+        terminal = max(n for n, event in enumerate(events)
+                       if event.get("payload", {}).get("type") in {"task_complete", "task_completed"})
+        events.pop(terminal)
+        bad = parent / f"terminal-incomplete-{index}.jsonl"
+        bad.write_text("".join(json.dumps(event) + "\n" for event in events))
+        inputs = [bad if path == work else path for path in captures]
+        export = batch_exporter(bundles)
+
+        def unchanged_export(binary_path, runtime, repository, destination):
+            assert snapshot(root) == original, "evaluation mutated the authoritative campaign"
+            assert not (root / "batch-intake-summary.json").exists()
+            export(binary_path, runtime, repository, destination)
+
+        summary = campaign.collect_batch(root, inputs, exporter=unchanged_export, documenter=documenter)
+        assert summary["outcome"] == "evidence_failed"
+        assert summary["intake_state"] == "rejected" and summary["qualification_state"] == "not_run"
+        assert len(summary["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
+        affected = next(item for item in summary["cycles"] if (item["repository_class"], item["cycle"]) == (kind, cycle))
+        assert affected["failure_attribution"] == [{"phase": "work", "domain": "evidence",
+            "basis": "terminal_incomplete", "failed_checks": ["work_turn_lifecycle"]}]
+        assert affected["terminal_work_failure_preserved"]
+        assert affected["work"]["outcome"] == "evidence_failed"
+        assert affected["work"]["turn_lifecycle"]["state"] == "terminal_incomplete"
+        assert affected["resume"]["outcome"] == "evidence_collected"
+        assert all(item["intake_state"] == "accepted" for item in summary["cycles"] if item is not affected)
+        assert campaign.load_campaign(root)["terminal_outcome"] == "evidence_failed"
+        assert campaign.cycle_state(root, kind, cycle)["state"] == "evidence_failed"
+        campaign.verify_inventory(root)
+        for slot, mapped in campaign.map_batch_rollouts(root, inputs).items():
+            published = campaign.cycle_root(root, slot[0], slot[1]) / "evidence" / f"{slot[2]}.rollout.jsonl"
+            assert published.read_bytes() == mapped.source.read_bytes()
+            assert harness.sha256(published) == mapped.capture.source_sha256
+        rejected = snapshot(root)
+        for retry_inputs in (inputs, captures):
+            try:
+                campaign.collect_batch(root, retry_inputs, exporter=export, documenter=documenter)
+            except campaign.CampaignError:
+                pass
+            else:
+                raise AssertionError("terminal rejection was repairable by replacing a rollout")
+            assert snapshot(root) == rejected
+
+    root, captures, bundles = prepared_batch(parent, "batch-recovered", binary)
+    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    events = [json.loads(line) for line in work.read_text().splitlines()]
+    starts = [index for index, event in enumerate(events) if event.get("payload", {}).get("type") == "task_started"]
+    events.insert(starts[-1], {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "interrupted-work"}})
+    recovered = parent / "batch-recovered-work.jsonl"
+    recovered.write_text("".join(json.dumps(event) + "\n" for event in events))
+    inputs = [recovered if path == work else path for path in captures]
+    summary = campaign.collect_batch(root, inputs, exporter=batch_exporter(bundles), documenter=documenter)
+    assert summary["intake_state"] == "accepted", summary["failed_checks"]
+    lifecycle = summary["cycles"][0]["work"]["turn_lifecycle"]
+    assert lifecycle["state"] == "completed_after_interruption" and lifecycle["interrupted_turn_count"] == 1
+    assert lifecycle["interrupted_turns"][0]["turn_id"] == "interrupted-work"
+    campaign.verify_inventory(root)
+
+    for failure_kind in ("export_partial", "late_extraction", "validator_value_error"):
+        root, captures, bundles = prepared_batch(parent, f"batch-derived-{failure_kind}", binary)
+        original = snapshot(root)
+        export = batch_exporter(bundles)
+        target = campaign.cycle_state(root, "small-python", 1)["review_slot_id"]
+        real_extract = campaign.extract_resume_evidence
+
+        def injected_extract(staged_root, kind, cycle, *args, **kwargs):
+            result = real_extract(staged_root, kind, cycle, *args, **kwargs)
+            if (kind, cycle) == ("small-python", 1):
+                raise campaign.EvidenceError("injected failure after derived files and state were written")
+            return result
+
+        def injected_export(binary_path, runtime, repository, destination):
+            assert snapshot(root) == original
+            if destination.parent.name == target and failure_kind != "late_extraction":
+                destination.write_bytes(b"incomplete derived export")
+                if failure_kind == "validator_value_error":
+                    raise ValueError("injected validator invariant")
+                raise OSError("injected partial export")
+            export(binary_path, runtime, repository, destination)
+
+        if failure_kind == "late_extraction":
+            campaign.extract_resume_evidence = injected_extract
+        try:
+            summary = campaign.collect_batch(root, captures, exporter=injected_export, documenter=documenter)
+        finally:
+            campaign.extract_resume_evidence = real_extract
+        assert summary["outcome"] == "evidence_failed" and len(summary["cycles"]) == 8
+        affected = next(item for item in summary["cycles"] if item["repository_class"] == "small-python" and item["cycle"] == 1)
+        assert affected["failure_attribution"][0]["domain"] == (
+            "validation_internal" if failure_kind == "validator_value_error" else "evidence")
+        assert not (campaign.cycle_root(root, "small-python", 1) / "context.bundle.json").exists()
+        descriptor = campaign.evaluator_descriptor_path(root, "small-python", 1)
+        assert descriptor.read_bytes() == original[campaign.relative(root, descriptor)]
+        assert campaign.cycle_state(root, "small-python", 1)["state"] == "evidence_failed"
+        campaign.verify_inventory(root)
+        inventory = campaign.load_inventory(root)["artifacts"]
+        assert all(name in inventory for name in (
+            campaign.relative(root, path) for path in campaign.cycle_root(root, "small-python", 1).rglob("*")
+            if path.is_file() and "repository" not in path.parts and "runtime" not in path.parts))
+
+    root, captures, bundles = prepared_batch(parent, "batch-publication-rollback", binary)
+    original = snapshot(root)
+    atomic_write = campaign.atomic_write_bytes
+    writes = 0
+
+    def failing_publication(path, content):
+        nonlocal writes
+        writes += 1
+        assert (root / "batch-publication.json").exists()
+        try:
+            campaign.load_campaign(root)
+        except campaign.CampaignError as error:
+            assert error.diagnostic["outcome"] == "repair_required"
+        else:
+            raise AssertionError("in-flight publication was readable")
+        if writes == 3:
+            raise OSError("injected controlled-publication failure")
+        atomic_write(path, content)
+
+    campaign.atomic_write_bytes = failing_publication
+    try:
+        try:
+            campaign.collect_batch(root, captures, exporter=batch_exporter(bundles), documenter=documenter)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("publication fault was ignored")
+    finally:
+        campaign.atomic_write_bytes = atomic_write
+    assert snapshot(root) == original
+    assert not (root / "batch-publication.json").exists()
+    assert not (root / "batch-intake-summary.json").exists()
+    assert not list(root.glob(".batch-intake-*"))
+
+    writes = 0
+
+    def failed_rollback(path, content):
+        nonlocal writes
+        writes += 1
+        if writes >= 3:
+            raise OSError("injected publication and rollback failure")
+        atomic_write(path, content)
+
+    campaign.atomic_write_bytes = failed_rollback
+    try:
+        try:
+            campaign.collect_batch(root, captures, exporter=batch_exporter(bundles), documenter=documenter)
+        except campaign.CampaignError as error:
+            assert error.diagnostic["outcome"] == "repair_required"
+        else:
+            raise AssertionError("failed rollback did not retain a publication barrier")
+    finally:
+        campaign.atomic_write_bytes = atomic_write
+    journal = campaign.read_json(root / "batch-publication.json")
+    assert (root / journal["stage_directory"] / "publication-backup").is_dir()
+    try:
+        campaign.load_campaign(root)
+    except campaign.CampaignError as error:
+        assert error.diagnostic["basis"] == "batch_publication_incomplete"
+    else:
+        raise AssertionError("failed rollback was readable as a campaign")
+
+
 def assert_batch_workflow(parent: Path, binary: Path) -> None:
     root, captures, bundles = prepared_batch(parent, "batch-campaign", binary)
     run_sheet = (root / "operator/RUN-SHEET.md").read_text(encoding="utf-8")
@@ -2280,9 +2453,8 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             current_mapped_capture,
             target_repository=Path(mapped_state["repository_path"]),
         )
-    except ValueError as error:
-        if "has no machine-observable terminal work blocker" not in str(error):
-            raise
+    except harness.NoWorkBlocker:
+        pass
     else:
         raise AssertionError("valid current-format work mapping became a work blocker")
 
@@ -2723,7 +2895,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         repository: Path,
         destination: Path,
     ) -> None:
-        if destination == failed_bundle_destination:
+        if destination.parts[-3:] == failed_bundle_destination.parts[-3:]:
             raise OSError("injected supported-evidence failure")
         normal_blocker_exporter(binary_path, runtime, repository, destination)
 
@@ -3427,6 +3599,7 @@ def main() -> int:
             assert_sealing_and_provenance(parent, binary)
             assert_blockers(parent, binary)
             assert_batch_workflow(parent, binary)
+            assert_batch_failure_atomicity(parent, binary)
             assert_failed_document_kind_is_machine_failure(parent, binary)
             assert_campaign_level_human_review_operations(parent, binary)
             assert_resume_baseline_identity_and_ordering(parent)
@@ -3500,6 +3673,10 @@ def main() -> int:
             "bounded_work_blocker_failure_domains",
             "evidence_transport_failure_is_not_product_failure",
             "missing_activation_operator_environment_invalid",
+            "batch_staging_early_middle_late_terminal_incompletion",
+            "batch_derived_failure_savepoint_and_typed_invariant",
+            "batch_publication_rollback_and_read_barrier",
+            "batch_terminal_rejection_is_not_repairable",
             "unordered_sixteen_rollout_batch_mapping",
             "compacted_fresh_thread_batch_mapping",
             "current_user_message_batch_mapping",
