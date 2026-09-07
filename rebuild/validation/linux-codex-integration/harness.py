@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import json
 import os
@@ -555,6 +556,139 @@ def portable_tables(path: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[s
             rows.append(dict(zip(columns, decoded, strict=True)))
         tables[table["name"]] = rows
     return tables, payload["lineage"]
+
+
+def export_canonical(cli: Path, env: dict[str, str], repository: Path, path: Path) -> None:
+    run([str(cli), "--repository", str(repository), "context", "export", "--output", str(path)], env)
+
+
+def assert_canonical_continuity(before: Path | dict[str, Any], after: Path) -> None:
+    # Compare the complete typed product representation, including format, Project,
+    # every table/revision/relation/Source and lineage; omit no canonical fields.
+    require(
+        (json.loads(before.read_text()) if isinstance(before, Path) else before)
+        == json.loads(after.read_text()),
+        "reinstall changed logical canonical context",
+    )
+
+
+def repository_files(repository: Path) -> dict[str, str]:
+    return {
+        path.relative_to(repository).as_posix(): sha256(path)
+        for path in repository.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repository).parts
+    }
+
+
+def assert_reinstall_recall(
+    before: dict[str, Any], after: dict[str, Any],
+    files_before: dict[str, str], files_after: dict[str, str],
+) -> None:
+    removed = {".codex/config.toml", ".codex/volicord-integration.json"}
+    require(removed <= files_before.keys(), "baseline lacks owned integration files")
+    require(
+        files_after == {key: value for key, value in files_before.items() if key not in removed},
+        "reinstall repository delta is not exactly owned integration removal",
+    )
+    require(len(before["snapshots"]) == len(after["snapshots"]) == 1, "reinstall lost analysis")
+    prior = before["snapshots"][0]
+    observed = after["snapshots"][0]["freshness"]
+    repository_snapshot = prior["repository_snapshot"]
+    require(prior["freshness"] == {
+        "state": "current", "repository_snapshot": repository_snapshot,
+        "compared_repository_snapshot": None, "reason": None,
+    }, "pre-disable analysis was not current")
+    compared = observed["compared_repository_snapshot"]
+    reason = "the repository has changed since this analysis; refresh analysis before using current code facts"
+    require(
+        isinstance(compared, str) and re.fullmatch(r"[0-9a-f]{64}", compared) is not None
+        and compared != repository_snapshot,
+        "stale analysis lacks a distinct current repository basis",
+    )
+    freshness = {
+        "state": "stale", "repository_snapshot": repository_snapshot,
+        "compared_repository_snapshot": compared, "reason": reason,
+    }
+    expected = deepcopy(before)
+    snapshot = expected["snapshots"][0]
+    snapshot["freshness"] = freshness
+    included_paths = {
+        area["path"] for capability in snapshot["capabilities"]
+        for area in capability["coverage"]["included"]
+    }
+    require(removed <= included_paths, "prior analysis did not cover removed integration files")
+    for capability in snapshot["capabilities"]:
+        require(capability["freshness"] == prior["freshness"], "baseline capability was not current")
+        capability["freshness"] = freshness
+        if capability["state"] == "available":
+            capability["state"] = "stale"
+            capability["reason"] = reason
+            capability["coverage"]["stale"] = capability["coverage"]["included"]
+    # Exact expected transition, not a field-name filter: unknown drift, including
+    # arbitrary coverage/reason/next-step changes, fails this fixture.
+    require(after == expected, "Recall drift exceeds justified repository freshness transition")
+
+
+def require_rejected(check, message: str) -> None:
+    try:
+        check()
+    except AssertionError:
+        return
+    raise AssertionError(message)
+
+
+def exercise_reinstall_negative_checks(
+    cli: Path, env: dict[str, str], repository: Path, runtime: Path,
+    temporary: Path, checkpoint_id: str, before: dict[str, Any], after: dict[str, Any],
+    files_before: dict[str, str], files_after: dict[str, str],
+) -> None:
+    # Real supported canonical deletion in an isolated copy, while the latest
+    # Checkpoint and Goal still make Recall usable. No direct SQLite mutation.
+    copied_runtime = temporary / "negative-runtime"
+    shutil.copytree(runtime, copied_runtime)
+    copied_env = env | {"VOLICORD_RUNTIME_DIR": str(copied_runtime)}
+    source = json.loads(run([
+        str(cli), "--json", "--repository", str(repository), "advanced", "records", "source",
+        "--host", "v08-fixture", "--session", "negative-deletion",
+        "--text", "Forget the earlier fixture Checkpoint in this disposable copy",
+    ], copied_env).stdout)
+    negative_before = temporary / "negative-before.json"
+    negative_after = temporary / "negative-after.json"
+    export_canonical(cli, copied_env, repository, negative_before)
+    # Forgetting sanitizes earlier exported files as well as the copied store.
+    original_canonical = json.loads(negative_before.read_text())
+    old_tables, _ = portable_tables(negative_before)
+    run([
+        str(cli), "--json", "--repository", str(repository), "advanced", "records", "forget",
+        "checkpoint", checkpoint_id, "--source", source["identity"],
+    ], copied_env)
+    usable = json.loads(run([
+        str(cli), "--json", "--repository", str(repository), "recall",
+    ], copied_env).stdout)
+    require(usable["goals"] == before["goals"] and usable["checkpoint"] == before["checkpoint"],
+            "negative fixture lost usable Recall context")
+    export_canonical(cli, copied_env, repository, negative_after)
+    new_tables, _ = portable_tables(negative_after)
+    require(any(row["record_id"] == checkpoint_id and row["record_kind"] == "checkpoint"
+                for row in new_tables["tombstones"]) and new_tables != old_tables,
+            "negative fixture did not forget a canonical Checkpoint")
+    require_rejected(lambda: assert_canonical_continuity(original_canonical, negative_after),
+                     "canonical deletion escaped reinstall validation")
+    for field in ("next_step", "project_name"):
+        changed = deepcopy(after)
+        changed[field] = "unjustified freshness drift"
+        require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+                         f"arbitrary Recall {field} drift escaped validation")
+    changed = deepcopy(after)
+    changed["snapshots"][0]["freshness"]["reason"] = "unrelated provider failure"
+    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+                     "arbitrary freshness reason escaped validation")
+    changed = deepcopy(after)
+    changed["snapshots"][0]["capabilities"][0]["coverage"]["covered_file_count"] += 1
+    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+                     "arbitrary coverage drift escaped validation")
+    require_rejected(lambda: assert_reinstall_recall(before, after, files_before, files_before),
+                     "stale Recall without integration removal escaped validation")
 
 
 def repository_sources(path: Path) -> list[dict[str, Any]]:
@@ -1348,11 +1482,14 @@ def main() -> int:
         else:
             raise AssertionError("missing MCP executable unexpectedly launched")
 
+        canonical_before = temporary / "reinstall-before.json"
+        canonical_after = temporary / "reinstall-after.json"
+        export_canonical(cli, env, repository, canonical_before)
+        files_before = repository_files(repository)
         recall_before = json.loads(run([
             str(cli), "--json", "--repository", str(repository), "recall",
         ], env).stdout)
         canonical = runtime / "canonical.sqlite3"
-        canonical_size = canonical.stat().st_size
         disabled = json.loads(
             run([
                 str(cli), "--json", "--repository", str(repository), "codex", "disable",
@@ -1372,7 +1509,7 @@ def main() -> int:
             env,
         )
         require(not any(binary.exists() for binary in binaries), "uninstall left a product binary")
-        require(canonical.exists() and canonical.stat().st_size == canonical_size, "uninstall changed canonical data")
+        require(canonical.is_file() and canonical.stat().st_size > 0, "uninstall removed canonical storage")
         run(
             [
                 str(INSTALLER),
@@ -1386,8 +1523,101 @@ def main() -> int:
         recall_after = json.loads(run([
             str(cli), "--json", "--repository", str(repository), "recall",
         ], env).stdout)
-        require(recall_after == recall_before, "reinstall changed canonical Recall")
-        run([str(cli), "--repository", str(repository), "codex", "enable"], env)
+        export_canonical(cli, env, repository, canonical_after)
+        assert_canonical_continuity(canonical_before, canonical_after)
+        files_after = repository_files(repository)
+        assert_reinstall_recall(recall_before, recall_after, files_before, files_after)
+        require(recall_after["project_id"] == project_id, "reinstall resolved another Project")
+        tables, _ = portable_tables(canonical_after)
+        require(len(tables["projects"]) == 1 and len(tables["context_items"]) == 1
+                and len(tables["checkpoints"]) == 2 and tables["context_item_revisions"]
+                and tables["checkpoint_source_relations"] and tables["sources"],
+                "reinstall fixture lost its canonical continuity subjects")
+        require(recall_after["goal_basis"][0]["identity"] == goal["context_item_id"]
+                and recall_after["checkpoint"]["identity"] in {row["id"] for row in tables["checkpoints"]},
+                "Recall lost canonical Goal or Checkpoint identity")
+        reenabled = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "codex", "enable",
+        ], env).stdout)
+        require(reenabled == enabled and reenabled["project_trust"] == "user_controlled",
+                "re-enable claimed trust or failed to restore integration")
+        require((repository / ".codex/config.toml").read_text() == project_config,
+                "re-enable did not restore required MCP and SessionStart configuration")
+        require(repository_files(repository) == files_before, "re-enable did not restore owned files")
+        require(not (unauthorized_repository / ".codex").exists(), "re-enable touched another repository")
+        registrations = json.loads(run([codex, "mcp", "list", "--json"], env).stdout)
+        require(not any(entry.get("name") == "volicord" for entry in registrations),
+                "reinstall/re-enable created global registration")
+
+        # A fresh host must resolve the same local binding, Recall durable context,
+        # then explicitly observe a baseline before current-fact work can resume.
+        refresh_host = start_host(prefix / "bin/volicord-mcp", env)
+        initialize_host(refresh_host, 200)
+        refresh_resolve = tool(refresh_host, 202, "project_resolve", {"repository": str(repository)})
+        require(refresh_resolve["project_id"] == project_id
+                and refresh_resolve["binding"] == resolved["binding"], "reinstall changed local binding")
+        refresh_recall = tool(refresh_host, 203, "recall", {"project_id": project_id})
+        require(refresh_recall["workflow"]["stage"] == "repository_baseline"
+                and refresh_recall["workflow"]["blocks_ordinary_work"] is True
+                and refresh_recall["workflow"]["required_next_action"]["tool"] == "repository_analyze",
+                "fresh host did not require supported current baseline recovery")
+        before_refresh = temporary / "reinstall-before-refresh.json"
+        export_canonical(cli, env, repository, before_refresh)
+        assert_canonical_continuity(canonical_before, before_refresh)
+        fresh = tool(refresh_host, 204, "repository_analyze", {"project_id": project_id})
+        require(fresh["workflow"]["stage"] == "engineering_choice_discovery",
+                "fresh baseline did not resume supported pre-work guidance")
+        stop_host(refresh_host)
+        refreshed = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "recall",
+        ], env).stdout)
+        require(len(refreshed["snapshots"]) == 1, "refresh lost the analysis baseline")
+        current = refreshed["snapshots"][0]
+        require(current["analysis_snapshot"] == fresh["analysis_snapshot_id"]
+                and current["repository_snapshot"] == fresh["repository_snapshot_id"]
+                and current["freshness"]["state"] == "current"
+                and all(capability["freshness"]["state"] == "current" for capability in current["capabilities"]),
+                "supported repository analysis did not restore current freshness")
+        # Fresh analysis contributes exactly one new repository observation Source.
+        # Everything outside the named analysis/source projection remains stable.
+        for key in recall_before.keys() | refreshed.keys():
+            if key not in {"snapshots", "source_details", "used_sources"}:
+                require(refreshed.get(key) == recall_before.get(key), f"refresh changed Recall {key}")
+        replaced_source = resumed_baseline["repository_source_id"]
+        require(replaced_source not in recall_before["checkpoint"]["source_basis"]
+                and all(replaced_source not in item["source_ids"] for item in recall_before["goal_basis"]),
+                "refresh fixture observation is also canonical Recall grounding")
+        require(set(refreshed["used_sources"])
+                == (set(recall_before["used_sources"]) - {replaced_source}) | {fresh["repository_source_id"]}, "refresh invented unrelated Recall Sources")
+        after_refresh = temporary / "reinstall-after-refresh.json"
+        export_canonical(cli, env, repository, after_refresh)
+        assert_only_repository_observation_added(canonical_before, after_refresh, fresh["repository_source_id"])
+        fresh_tables, _ = portable_tables(after_refresh)
+        fresh_source = next(row for row in fresh_tables["sources"] if row["id"] == fresh["repository_source_id"])
+        expected_details = [row for row in recall_before["source_details"]
+                            if row["identity"] != replaced_source] + [{
+            "identity": fresh["repository_source_id"], "availability": "available", "freshness": "current",
+            "actor": {"identity": "local-repository-observer", "kind": "Repository"},
+            "observer": {"identity": "volicord-local-operations", "kind": "Agent"},
+            "snapshot_basis": fresh_source["snapshot_basis"],
+        }]
+        require(sorted(refreshed["source_details"], key=lambda row: row["identity"])
+                == sorted(expected_details, key=lambda row: row["identity"]),
+                "refresh changed historical Source details or invented provenance")
+        preserved_after_refresh = json.loads(after_refresh.read_text())
+        print(json.dumps({"reinstall_canonical_tables": {name: len(rows) for name, rows in tables.items()},
+                          "reinstall_removed_paths": sorted(set(files_before) - set(files_after)),
+                          "reinstall_prior_snapshot": recall_before["snapshots"][0]["analysis_snapshot"],
+                          "reinstall_stale_basis": recall_after["snapshots"][0]["freshness"],
+                          "reinstall_fresh_snapshot": fresh["analysis_snapshot_id"]}, sort_keys=True))
+
+        exercise_reinstall_negative_checks(
+            cli, env, repository, runtime, temporary, checkpoint["checkpoint_id"],
+            recall_before, recall_after, files_before, files_after,
+        )
+
+        export_canonical(cli, env, repository, after_refresh)
+        assert_canonical_continuity(preserved_after_refresh, after_refresh)
 
         recovery_evidence = exercise_analysis_recovery(cli, env, temporary, runtime)
 
@@ -1408,7 +1638,10 @@ def main() -> int:
                     "process_cleanup": "passed",
                     "project_id": project_id,
                     "repair_reindex": recovery_evidence,
-                    "reinstall_preserved_recall": True,
+                    "reinstall_canonical_continuity": "complete typed portable export equality",
+                    "reinstall_freshness": "current to stale after owned integration removal",
+                    "reinstall_negative_checks": "passed",
+                    "reinstall_fresh_baseline": "current; only one repository Source added",
                     "runtime_schemas": sorted(runtime_files),
                     "installation_created_global_registration": False,
                     "unauthorized_repository": "unchanged",

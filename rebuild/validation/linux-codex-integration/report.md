@@ -2,7 +2,7 @@
 
 ## Status
 
-Passed against the eight Production commit identities fixed by
+Historical Production evidence passed against the eight commit identities fixed by
 `v08-matrix.json`, ending with `5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a`
 and `3b48545bd9e2a224d6feb75ae1c743d1af31f4cf`. The 81-requirement matrix
 covers the real viewer listener and request-authenticity boundary,
@@ -11,6 +11,16 @@ and an authenticated Codex product-tool turn. The deterministic evidence
 passed, and the authenticated Codex product-tool probe passed. The
 reconstruction final aggregate has not yet been run and is not claimed by this
 report.
+
+The maintained reinstall check now proves complete typed portable export equality
+independently of repository-derived Recall freshness. Reproduction on
+`c17279bbdd86d7c9f059e64130ceb650f1ce7048` failed at the old whole-Recall assertion;
+the separately instrumented journey found no canonical difference. Current-candidate
+focused and admission/gate results belong to their candidate-bound validation
+artifacts, not the historical Production identities above. Historical authenticated
+success is not a current-candidate authenticated pass. The assertion drift audit
+uses the investigated entry HEAD above, and the matrix names the current routine
+non-interruption Rust oracle; neither changes product or Learning semantics.
 
 ## Goal
 
@@ -140,6 +150,56 @@ basis, the unrelated Project remained byte-identical in both canonical and
 derived state, and the Project analysis directory retained one current derived
 snapshot. Unsupported canonical repair failed without changing compared state.
 
+The uninstall/reinstall segment exports canonical context before Recall and before
+repository-scoped Codex disable, then exports again after reinstall and Recall.
+It requires complete typed portable export equality: Project identity, every
+canonical table, typed value, revision, relation, Source, format metadata, checksum,
+and lineage are unchanged. The fixture contains one Goal Context Item with its
+revision and user Source, two Checkpoints with canonical linkage and verification,
+and historical repository-observation Sources. Question and Decision tables are
+empty in this no-question journey and remain empty; the comparison includes them
+and all other canonical tables. Local binding is checked separately through
+`project_resolve`, because machine-local binding is not portable user meaning.
+Uninstall must remove all three binaries and leave nonempty canonical storage;
+file size is not the semantic preservation proof. Recall and re-enable must not
+create a canonical Source.
+
+On the reproduced HEAD, the only Recall differences were current to stale
+Analysis Snapshot/capability freshness, available-to-stale capability state/reason,
+and stale coverage equal to the prior included coverage. File hashes prove that
+the repository delta is exactly removal of `.codex/config.toml` and
+`.codex/volicord-integration.json`, both included in the prior analysis. The stale
+result must retain the old analysis/repository identities and consistently name a
+distinct compared repository snapshot with the repository-change refresh reason.
+The harness checks this exact transition; it does not discard entire freshness,
+coverage, or guidance objects. All remaining Recall fields, including Project,
+Goal, Checkpoint, Decisions, source details and the canonical next step, remain
+identical. Future current-source projections or derived next-action guidance may
+change only with a specifically justified assertion update, not an arbitrary
+Recall exception.
+
+Re-enable restores the owned required MCP/SessionStart configuration and ownership
+files, leaves trust user-controlled, creates no global registration, and leaves
+the unauthorized repository untouched. A fresh host resolves the same binding,
+requires Recall and a repository baseline, and uses `repository_analyze`. That
+fresh repository analysis restores current freshness and pre-work discovery
+guidance. It adds exactly its new canonical repository Source while preserving
+all prior Sources and every other canonical table. Recall keeps user meaning;
+only the new snapshot replaces its predecessor and its source detail/reference
+replaces the prior analysis-only Source projection. Canonical Source history is
+preserved exactly.
+No assertion requires byte-identical derived snapshots after rebuilding.
+
+Negative regressions use a supported forget operation in a disposable Runtime Home
+copy to perform a real canonical deletion of the earlier Checkpoint. Recall still
+has the Goal and latest Checkpoint, but logical canonical continuity must fail.
+The pre-forget logical value is held in memory because forgetting also sanitizes
+previously exported bundles. Further regressions reject arbitrary Recall next-step
+or Project-name drift, unrelated freshness reasons, invented coverage counts,
+and stale claims without the proven integration-file removal. The original
+Runtime Home's canonical value and the byte/timestamp legacy sentinel are checked
+after the negative case.
+
 The authenticated Codex event stream showed the model select
 `volicord.project_health`, construct `{"project_id": ...}` from tool metadata,
 complete the MCP call, receive `connection: connected` and `capability_state:
@@ -148,12 +208,21 @@ not registration, startup, or a manually constructed stdio RPC.
 
 ## Coverage and failures
 
-Final focused results used for this report:
+Historical focused results used for the original Production report:
 
 - real viewer executable: passed in `246.121 ms`;
 - deterministic clean/MCP/recovery harness: passed in `1,204.236 ms` with warm
   release artifacts;
 - authenticated Codex product-tool probe: passed in `13,839.621 ms`.
+
+The current-head reproduction preserved exit 1, no forced termination, and
+`43,754.403 ms` duration. Its diagnostic rerun preserved exit 1 and
+`599.366 ms`: all 24 portable canonical tables and lineage were equal. Raw Recall
+pairs, the canonical exports, complete streams and exact failing assertion are
+retained under ignored `rebuild/.local/validation/` with labels
+`v08-head-reproduction` and `v08-head-characterization`. The corrected journey's
+labels are `v08-canonical-freshness-harness` and `v08-assertions`; current execution
+status must be read from each preserved `result.json`.
 
 The authenticated probe requires a completed event with `status: completed`,
 no tool error, and an actual structured result; selection or startup alone does
@@ -204,8 +273,10 @@ legacy Runtime Home remained byte- and timestamp-identical.
   current repository observation, add only required repository provenance to
   canonical state, preserve user meaning and another Project, retain historical
   Source basis, and reject unsupported scope.
-- Pass: clean install, lifecycle, degradation, process cleanup, canonical
-  preservation, and legacy exclusion remain intact.
+- Maintained lifecycle invariant: uninstall/reinstall preserves logical canonical
+  context, permits only justified repository-derived freshness changes, rejects
+  hidden canonical deletion and arbitrary Recall drift, and restores a fresh
+  baseline through supported analysis. Legacy exclusion remains intact.
 
 ## Known limits
 

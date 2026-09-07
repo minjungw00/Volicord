@@ -631,7 +631,7 @@
       "id": "v08-linux-codex-integration",
       "validation_id": "V08",
       "path": "rebuild/validation/linux-codex-integration/fixtures",
-      "purpose": "Map the clean Linux installation, executable viewer request-authenticity, advertised MCP schemas, installed self-guiding Engineering Choice Discovery and draft-assisted Materiality workflow, ordered Learning Deliberation, a completed authenticated Codex product-tool call, exact Guarded fallback, fresh repository provenance for project-scoped analysis repair and reindex, failure cleanup, user-owned canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence.",
+      "purpose": "Map the clean Linux installation, executable viewer request-authenticity, advertised MCP schemas, installed self-guiding Engineering Choice Discovery and draft-assisted Materiality workflow, ordered Learning Deliberation, a completed authenticated Codex product-tool call, exact Guarded fallback, fresh repository provenance for project-scoped analysis repair and reindex, failure cleanup, user-owned canonical preservation, and legacy exclusion journey to maintained process and Rust semantic evidence. Uninstall/reinstall proves logical canonical continuity separately from justified repository-derived Recall freshness and supported baseline recovery.",
       "expected_entities": [
         "replacement-runtime-home",
         "installed-cli",
@@ -676,7 +676,7 @@
         "concurrent interactive clients or hostile concurrent path replacement",
         "legacy MCP runtime schema command alias migration import backup or dual path"
       ],
-      "content_sha256": "b588480e612c641495e6d7af113475781e3ccc3f39dea697c0b0fa0c56c3ee03",
+      "content_sha256": "7b6e2bc9f043a870ffdc1536bfe845329fa77ea97b3519195fd095a91f8a479e",
       "origin": "Self-authored V08 requirement map with isolated deterministic Linux journeys plus a separately recorded authenticated Codex CLI product-tool probe.",
       "license": "CC0-1.0"
     },

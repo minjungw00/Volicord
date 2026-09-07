@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 import shlex
@@ -61,7 +62,9 @@ EXPECTED_COMMITS = {
         "fix: authenticate local viewer mutations",
     ),
 }
-CURRENT_ENTRY_BASELINE = "ae63fd955863a15b63cd22f50fdaa39e72c2ccc6"
+# The investigated entry HEAD is authoritative; historical Production subjects
+# above document provenance, not a ceiling on already accepted product changes.
+CURRENT_ENTRY_BASELINE = "c17279bbdd86d7c9f059e64130ceb650f1ce7048"
 
 
 def require(condition: bool, message: str) -> None:
@@ -210,6 +213,31 @@ def main() -> int:
         "V08 report omits a corrected provenance or viewer-trust boundary",
     )
 
+    lifecycle = {row[0]: row[3] for row in fixture["groups"]["clean_linux_install"]}
+    require(lifecycle["V08-I07-uninstall-preserves"] ==
+            "uninstall removes binaries while logical canonical context and local Project binding survive",
+            "V08-I07 lost logical canonical continuity")
+    require(lifecycle["V08-I08-reinstall-preserves"] ==
+            "reinstall preserves canonical context by complete typed portable export equality while repository-derived Recall freshness truthfully changes after owned integration removal; fresh analysis adds only its repository Source and restores current freshness",
+            "V08-I08 lost canonical-versus-derived continuity")
+    for phrase in ("complete typed portable export equality", "current to stale",
+                   "canonical deletion", "arbitrary Recall", "fresh repository analysis"):
+        require(phrase in normalized_report, f"V08 report lost reinstall contract: {phrase}")
+    harness_text = HARNESS.read_text(encoding="utf-8")
+    require("reinstall_preserved_recall" not in harness_text,
+            "V08 reintroduced whole-Recall persistence evidence")
+    tree = ast.parse(harness_text)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            names = {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
+            require(not {"recall_before", "recall_after"} <= names,
+                    "V08 reintroduced whole-Recall equality as canonical preservation")
+    calls = {node.func.id for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    require({"assert_canonical_continuity", "assert_reinstall_recall",
+             "exercise_reinstall_negative_checks", "assert_only_repository_observation_added"} <= calls,
+            "V08 lost executable canonical, freshness or negative regression checks")
+
     mappings: list[tuple[str, str, str, str]] = []
     for group, values in fixture["groups"].items():
         require(isinstance(values, list) and values, f"empty V08 group: {group}")
@@ -304,7 +332,7 @@ def main() -> int:
                 "production_targets": len(target_mappings),
                 "discovered_tests": discovered,
                 "deterministic_v08_journey": "passed",
-                "authenticated_codex_probe": "recorded separately as passed",
+                "authenticated_codex_probe": "environment-dependent; run and inspect separately",
                 "status": "passed",
             },
             indent=2,

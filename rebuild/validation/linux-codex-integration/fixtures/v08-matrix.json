@@ -19,8 +19,8 @@
       ["V08-I04-executable-path", "harness", "install", "installed binaries are executable and PATH-discoverable"],
       ["V08-I05-current-schemas", "harness", "install", "canonical Candidate privacy and Guarded stores initialize"],
       ["V08-I06-project-init-bind", "harness", "project", "Project initializes with an exact repository binding"],
-      ["V08-I07-uninstall-preserves", "harness", "lifecycle", "uninstall removes binaries without deleting canonical data"],
-      ["V08-I08-reinstall-preserves", "harness", "lifecycle", "reinstall preserves the same Recall result"]
+      ["V08-I07-uninstall-preserves", "harness", "lifecycle", "uninstall removes binaries while logical canonical context and local Project binding survive"],
+      ["V08-I08-reinstall-preserves", "harness", "lifecycle", "reinstall preserves canonical context by complete typed portable export equality while repository-derived Recall freshness truthfully changes after owned integration removal; fresh analysis adds only its repository Source and restores current freshness"]
     ],
     "codex_and_host": [
       ["V08-H01-real-codex", "harness", "codex", "real Codex executable supplies version evidence"],
@@ -46,7 +46,7 @@
       ["V08-H21-choice-draft-guidance", "harness", "workflow", "the installed MCP path records Engineering Choice Discovery and obtains a prefilled Materiality draft before review"],
       ["V08-H22-learning-deliberation", "rust", "volicord-host/mcp", "installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision"],
       ["V08-H23-aggregate-diagnostics", "rust", "volicord-host/mcp", "aggregate_schema_diagnostic_reports_independent_discovery_problems"],
-      ["V08-H24-learning-routine-control", "rust", "volicord-host/mcp", "active_learning_keeps_routine_agent_choice_non_interrupting_through_mcp"]
+      ["V08-H24-learning-routine-control", "rust", "volicord-host/mcp", "active_learning_respects_non_interruption_for_routine_wording_and_tests"]
     ],
     "viewer_http": [
       ["V08-V01-real-listener", "rust", "volicord-viewer/executable_http", "real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback"],
