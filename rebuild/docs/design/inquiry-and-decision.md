@@ -346,25 +346,45 @@ basis를 요구한다. Unresolved user-owned outcome은 open 상태에서 다른
 invalid value, allowed values, bound Goal/baseline identities와 다음 supported `draft` action을 함께
 반환해 같은 invalid payload의 반복을 피하게 한다.
 
-`draft`는 validator와 같은 closed schema variant owner에서 각 legal judgment contract를
-기계적으로 투영한다. 각 contract는 stable variant identity, exact required/allowed/forbidden
-field, singleton enum value, caller가 제공할 semantic field와 실제 record/revise input schema를
-포함한다. 별도 hand-maintained disposition table은 public contract가 아니다. 각 discovered
-choice template은 discovery-owned summary/scope/alternative/consequence/effect/Source/evidence와
-exact `choice_id`를 제공하고 모든 legal variant identity를 위 contract에 연결한다.
-`learning_value`의 `routine`/`deliberation_worthy`와 learning participation의
-`inactive`/current-host `active`도 실제 validator schema에서 같은 형태로 투영한다.
-Current-task delegation을 검토할 때 draft는 각 choice별 exact Goal identity/text, current-host Goal
-Source identity, dimension/choice identity, affected scope, material consequence와 effect category를
-하나의 reusable evidence candidate로도 제공한다. 이는 delegation을 semantic하게 선언하지 않으며
-caller가 exact verbatim excerpt와 dimension coverage를 판단할 책임을 유지한다.
+`draft`는 validator와 같은 closed schema variant owner에서 stable variant identity,
+required/allowed/forbidden field, singleton enum과 caller semantic field를 투영한다.
+13개 legal judgment variant 목록은 한 번만 제공하며 각 choice는 exact choice/alternative
+identity, evidence state와 Source identity를 가진 ready-to-fill judgment에 연결된다.
+Current Goal text와 current-host Source provenance도 한 번만 제공한다. Dimension scope,
+consequence, residual-fork proof와 full discovery/interaction graph는 `candidate_inspect`에서
+exact `candidate_id`로 읽는다. 이 optional filter는 기존 Candidate Inspection의
+content/forgetting boundary를 그대로 적용하며 Project list bound 밖의 identity도 검사한다.
 
-반환된 `record_request`는 아직 review가 없으면 exact discovery identity를 가진 `record`, 같은
-discovery의 current review가 있으면 exact review identity를 가진 `revise`를 prefill하고 실제
-request schema와 choice order를 함께 제공한다. Caller는 variant를 semantic하게 선택하고,
-prefilled identity와 그 variant의 fixed enum을 합친 뒤 요구된 semantic field만 채워 각 choice당
-정확히 하나의 judgment를 조립한다. 따라서 one-pass caller는 validation failure를 schema discovery로
-사용하지 않으며 placeholder semantic truth를 제출할 필요도 없다.
+현재 authoritative `tools/list`의 `materiality_review.inputSchema`가 모든 nested field,
+closed variant, required field, bound와 description의 단일 wire owner다. Draft는 이 전체
+schema, 반복 explanatory checklist, choice별 Goal text나 full review graph를 복제하지
+않는다. Learning participation/value/revision basis와 pre-write closure의 compact variant
+field table도 같은 schema에서 파생한다. Interaction outcome, residual fork, authority,
+delegation와 commitment의 full nested schema는 기존 tool inputSchema에 남는다.
+별도 detailed contract tool, versioned decoder 또는 두 번째 review workflow는 없다.
+
+`record_request`는 current review가 없으면 discovery identity를 가진 `record`, 있으면
+exact current review identity를 가진 `revise`를 prefill한다. Discovery/review revision,
+required fields와 null semantic placeholders를 가진 `skeleton`을 함께 제공한다.
+Caller는 `tools/list` inputSchema를 읽고, 각 choice에 legal variant의 fixed enum을 합친
+뒤 모든 required semantic fields를 채운다. Record의 behavioral Context binding과
+revise의 retained binding을 구분하며 모든 choice당 정확히 하나의 judgment를 제출한다.
+Null placeholder는 제출 가능한 semantic truth가 아니며 validation은 이를 허용하지 않는다.
+따라서 정상 record/revise는 malformed schema probe를 필요로 하지 않는다.
+
+Draft는 current blocking reason/next operation과 inspect skeleton, 여섯 artifact category,
+current dimension/choice/alternative accounting state 및 interaction/result/closure identity를
+제공한다. 예측 가능한 artifact와 실제 commitment의 의미는 caller가 현재 authoritative
+inspection에서 판단한다. No-new closure가 user-owned outcome을 선택하거나 learning을
+product authority로 바꾸는 일은 없으며 모든 기존 semantic validation을 유지한다.
+
+MCP draft result는 text와 structured content를 합쳐 256 KiB 이하이며, shared compact
+encoding의 structured budget은 80 KiB다. 비필수 behavioral Context detail만 stable
+semantic omission으로 제한하고 canonical inspection basis를 제공한다. Required identity나
+variant를 자른 불완전한 request를 반환하지 않는다. 극단적 identity/state 크기로 compact
+complete draft 자체가 80 KiB를 넘으면 bounded structured error와 authoritative inspection
+identity와 tools/list 기반 record/revise 조립 경로를 제공하며 unchanged draft retry를 안내하지 않는다.
+Byte cap을 맞추려고 authority claim을 약화하거나 schema bound를 늘리지 않는다.
 
 Current Goal 자체가 어떤 outcome을 user control로 남기거나 user가 choice를 retain한다고 밝히면,
 older contract나 repository convention이 존재한다는 이유로 그 exact dimension을 agent-owned
@@ -474,8 +494,8 @@ Authority/readiness meaning revision은 binding을 invalidate하므로 current a
 New-outcome report는 기존 binding을 제거하고 pending pre-write reassessment를 restart 뒤에도 보존한다.
 그 review를 no-new prose나 ordinary revise로 clear하지 못하며 maintained Engineering Choice Discovery
 record → Materiality draft/record → 필요한 authority resolution → inspect로 되돌아간다.
-Draft는 현재 review의 inspect prefilled identities, current Sources, exact input schema와 양쪽 closure
-variant를 제공한다. Normal caller는 malformed probe 없이 draft → record/revise → draft → inspect한다.
+Draft는 현재 review의 inspect prefilled identities/skeleton과 양쪽 closure variant를 제공하며
+full nested input schema는 기존 `tools/list`에서 읽는다. Normal caller는 malformed probe 없이 draft → record/revise → draft → inspect한다.
 Pending report는 executable scope가 아니며 host output도 둘을 구분한다.
 Predictable coupled artifact는 first write 전에 포함해야 하며 나중에 발견한 artifact는 그 artifact의
 first write 전 prospective rebind만 허용한다. 새 material product outcome을 발견하면 path-only expansion이

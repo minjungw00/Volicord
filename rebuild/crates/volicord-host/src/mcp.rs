@@ -210,7 +210,12 @@ impl HostAdapter {
             None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
-            Ok(value) if name == "recall" => Ok(compact_read_tool_result(value)),
+            Ok(value)
+                if name == "recall"
+                    || (name == "materiality_review" && arguments["action"] == "draft") =>
+            {
+                Ok(compact_read_tool_result(value))
+            }
             Ok(value) => Ok(tool_result(value, false)),
             Err(mut error) => {
                 if name == "materiality_review" && error.details.is_none() {
@@ -525,26 +530,51 @@ impl HostAdapter {
                     &canonical,
                     current_review.as_ref().map(|candidate| candidate.id),
                 );
+                draft["engineering_choice_discovery_revision"] = json!(candidate.revision);
+                draft["current_review"] = current_review.as_ref().map_or(Value::Null, |record| json!({"candidate_id":record.id.to_string(),"revision":record.revision}));
                 draft["pre_write_materiality_closure"] = json!({
-                    "input_schema":pre_write_materiality_closure_schema(),
-                    "artifact_review_schema":coupled_artifact_review_schema(),
-                    "reviewed_interactions":interaction_review_json(&discovery.interaction_review),
-                    "current_choice_alternatives":discovery.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
-                    "current_authority_dimensions":current_review.as_ref().and_then(|r| r.content.as_ref()).and_then(|c| c.materiality_review.as_ref()).map(|r| r.dimensions.iter().map(|d| json!({"dimension_id":d.dimension_id,"choice_ids":d.discovered_choice_ids,"disposition":format!("{:?}",d.disposition),"alternative_accounting":d.alternative_accounting.iter().map(|a| json!({"choice_id":a.choice_id,"alternative_id":a.alternative_id,"resolution":format!("{:?}",a.resolution)})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
-                    "commitment_instruction":"Account for concrete observable/durable commitments in implementation, tests and contracts by stable reviewed dimension/choice/alternative or interaction/result identities. Unmapped commitments become NewMaterialOutcome and require rediscovery plus a new Materiality Review. PrivateEquivalent asserts every material outcome in the entire current server-bound graph is preserved; it cannot select an observable/durable branch. Semantic relation remains an active-agent judgment.",
-                    "assembly":"After record/revise, draft again for current identities. Fill the exact planned paths/components/work_contexts and six artifact assessments. Select a closure variant and supply its semantic fields. Submit this one inspect request; the server atomically binds its exact plan, current dimensions, review/discovery identities and current Sources. A new outcome removes executable scope and requires rediscovery/review; prose cannot resolve it.",
-                    "inspect_request":current_review.as_ref().map(|record| json!({
-                        "prefilled_fields":{
-                            "action":"inspect", "project_id":project_id.to_string(),
-                            "review_candidate_id":record.id.to_string(),
-                            "goal_context_id":discovery.goal_context_id.to_string(),
-                            "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
-                        },
-                        "review_revision":record.revision,
-                        "source_ids":canonical.sources.iter().filter(|source| source.freshness == volicord_context::SourceFreshness::Current).map(|source| source.source.id.to_string()).collect::<Vec<_>>(),
-                        "input_schema":materiality_review_schemas()[3],
-                    })),
+                    "closure_variants":schema_alternatives(pre_write_materiality_closure_schema()),
+                    "artifact_categories":coupled_artifact_review_schema()["properties"]["assessments"]["items"]["properties"]["category"]["enum"],
+                    "reviewed_interactions":discovery.interaction_review.iter().map(|review| json!({
+                        "axis":review.axis,
+                        "outcomes":review.outcomes.iter().map(|outcome| json!({
+                            "outcome_id":outcome.outcome_id,
+                            "result_ids":outcome.credible_outcomes.iter().map(|result| &result.result_id).collect::<Vec<_>>(),
+                            "closure":match &outcome.conclusion {
+                                volicord_inquiry::InteractionConclusion::RepresentedByChoices { choice_ids } => json!({"state":"represented_by_choices","choice_ids":choice_ids}),
+                                volicord_inquiry::InteractionConclusion::NoIndependentFork { basis, result_id, .. } => json!({"state":"no_independent_fork","basis":basis,"result_id":result_id}),
+                            },
+                        })).collect::<Vec<_>>(),
+                    })).collect::<Vec<_>>(),
+                    "current_authority_dimensions":current_review.as_ref().and_then(|r| r.content.as_ref()).and_then(|c| c.materiality_review.as_ref()).map(|r| r.dimensions.iter().map(|d| json!({"dimension_id":d.dimension_id,"choice_ids":d.discovered_choice_ids,"disposition":materiality_disposition_json(&d.disposition),"alternative_accounting":d.alternative_accounting.iter().map(|a| json!({"choice_id":a.choice_id,"alternative_id":a.alternative_id,"resolution":alternative_accounting_json(a)["status"]})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
+                    "assembly":"After record/revise resolve authority and learning, then fill inspect's exact planned scope and six artifact assessments. Bind commitments to current dimension/choice/alternative or interaction/result identities. New material outcomes require rediscovery; private_equivalent preserves the entire current graph.",
+                    "inspect_request":current_review.as_ref().map(|record| {
+                        let schema = &materiality_review_schemas()[3];
+                        let prefilled = json!({"action":"inspect","project_id":project_id.to_string(),
+                            "review_candidate_id":record.id.to_string(),"goal_context_id":discovery.goal_context_id.to_string(),
+                            "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string()});
+                        json!({"prefilled_fields":prefilled,"skeleton":request_skeleton(schema, prefilled.clone()),
+                            "required_fields":schema_required_fields(schema)})
+                    }),
                 });
+                if let Some(review) = &current_review {
+                    let workflow = workflow_json(
+                        self.operations
+                            .workflow_for_review_candidate(project_id, review.id)
+                            .map_err(operation_error)?,
+                    );
+                    draft["continuation"] = json!({"stage":workflow["stage"],"blocks_ordinary_work":workflow["blocks_ordinary_work"],
+                        "reason":workflow["reason"],"required_next_action":workflow["required_next_action"]});
+                }
+                // Required choice/dimension/variant identities are never silently
+                // trimmed into an incomplete request. Exceptional states report a
+                // structured failure with the authoritative inspection basis.
+                check_materiality_draft_budget(
+                    &draft,
+                    project_id,
+                    candidate_id,
+                    current_review.as_ref().map(|record| record.id),
+                )?;
                 Ok(draft)
             }
             "record" => {
@@ -1211,6 +1241,24 @@ impl HostAdapter {
     }
 
     fn candidate_inspect(&self, args: &Value) -> Result<Value, HostError> {
+        if let Some(identity) = args.get("candidate_id").and_then(Value::as_str) {
+            let basis = self
+                .operations
+                .candidate_basis(project(args)?)
+                .map_err(operation_error)?;
+            let inspection = volicord_projections::inspect_candidate(
+                &basis,
+                parse_candidate(identity)?,
+                volicord_projections::CandidateContentAccess::AllowBoundedSummary,
+                SystemClock
+                    .now()
+                    .map_err(|error| HostError::new(error.to_string()))?,
+            );
+            return Ok(
+                json!({"health":format!("{:?}",inspection.health).to_lowercase(),
+                "candidates":[candidate_inspection_json(inspection)],"read_only":true}),
+            );
+        }
         let projection = self
             .operations
             .project_projection(project(args)?)
@@ -1912,7 +1960,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive product-owned identities, exact current Goal/user-turn provenance, the required exact-authority counterfactual, machine-readable authority-versus-learning routing, every discovered choice, and the validator-owned closed schema variants needed to assemble one record or revise request without a failed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, or applicable Decision, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact Decision or delegation resolves it, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect explicitly reviews implementation, focused-test, documentation, changelog/release-note, schema/snapshot/generated, and other repository-owned artifact categories and binds only the resulting exact paths, components, and work contexts before ready_for_work. Include predictable coupled artifacts before their first write; add later discoveries prospectively, never by authorizing the repository root. If an artifact introduces a new material product outcome, revise Materiality first rather than treating it as a path-only expansion. Descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive current Goal/user-turn, discovery/review, choice/alternative and dimension identities, ready-to-fill record/revise and inspect skeletons, and validator-derived closed variant names/required fields. This tool inputSchema from tools/list owns complete nested fields, constraints, interaction outcomes, residual forks, authority, delegation, learning and commitment contracts; draft does not duplicate it. Inspect discovery/review details with candidate_inspect. Never submit null skeleton placeholders or probe schemas with a malformed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, or applicable Decision, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact Decision or delegation resolves it, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect explicitly reviews implementation, focused-test, documentation, changelog/release-note, schema/snapshot/generated, and other repository-owned artifact categories and binds only the resulting exact paths, components, and work contexts before ready_for_work. Include predictable coupled artifacts before their first write; add later discoveries prospectively, never by authorizing the repository root. If an artifact introduces a new material product outcome, revise Materiality first rather than treating it as a path-only expansion. Descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -1997,8 +2045,9 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "candidate_inspect" => (
-            "Inspect bounded Candidate lifecycle state without mutation.",
-            project_schema(),
+            "Inspect bounded Candidate lifecycle state without mutation. Supply candidate_id for exact inspection beyond the Project list bound.",
+            object_schema(vec![("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Optional exact Candidate identity"))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),
         "candidate_manage" => (
@@ -5361,21 +5410,6 @@ fn material_outcome_signals(
     signals
 }
 
-const fn material_outcome_signal_name(signal: MaterialOutcomeSignal) -> &'static str {
-    match signal {
-        MaterialOutcomeSignal::PublicApiSemantics => "public_api_semantics",
-        MaterialOutcomeSignal::CliCompatibilityOrExitBehavior => {
-            "cli_compatibility_or_exit_behavior"
-        }
-        MaterialOutcomeSignal::ObservableFailurePolicy => "observable_failure_policy",
-        MaterialOutcomeSignal::PrivacyOrExternalDisclosure => "privacy_or_external_disclosure",
-        MaterialOutcomeSignal::SecurityPosture => "security_posture",
-        MaterialOutcomeSignal::UserVisibleDefault => "user_visible_default",
-        MaterialOutcomeSignal::MaintenanceOrSupportPolicy => "maintenance_or_support_policy",
-        MaterialOutcomeSignal::OtherMaterialOutcome => "other_material_outcome",
-    }
-}
-
 fn materiality_contract_error(
     field_path: String,
     invalid_value: Option<&str>,
@@ -5784,7 +5818,6 @@ fn singleton_enum_fields(schema: &Value) -> serde_json::Map<String, Value> {
 fn materiality_judgment_contract_json(
     contract: &MaterialityJudgmentContract,
     all_fields: &BTreeSet<String>,
-    derived_identities: &Value,
 ) -> Value {
     let required_fields = schema_required_fields(&contract.schema);
     let allowed_fields = schema_property_names(&contract.schema);
@@ -5810,10 +5843,8 @@ fn materiality_judgment_contract_json(
         "forbidden_fields":forbidden_fields,
         "allowed_fields":allowed_fields,
         "bounded_allowed_values":fixed_fields,
-        "server_derived_identities":derived_identities,
         "caller_must_semantically_provide":caller_must_semantically_provide,
         "caller_may_provide":caller_may_provide,
-        "input_schema":contract.schema,
     })
 }
 
@@ -5849,7 +5880,6 @@ fn schema_alternatives(schema: Value) -> Vec<Value> {
                 "allowed_fields":allowed_fields,
                 "bounded_allowed_values":bounded_allowed_values,
                 "caller_must_semantically_provide":caller_must_semantically_provide,
-                "input_schema":input_schema,
             })
         })
         .collect()
@@ -5866,282 +5896,134 @@ fn materiality_draft_json(
         .context_items
         .iter()
         .find(|goal| goal.id == discovery.goal_context_id);
-    let current_host_user_turn_source_ids = goal
+    let user_sources = goal
         .into_iter()
-        .flat_map(|goal| goal.source_basis.iter())
-        .filter_map(|source_id| {
-            canonical
-                .sources
-                .iter()
-                .find(|basis| {
-                    basis.source.id == *source_id
-                        && basis.freshness == volicord_context::SourceFreshness::Current
-                        && basis.source.actor.kind == PrincipalKind::User
-                        && matches!(
-                            basis.source.payload,
-                            volicord_context::SourcePayload::CurrentHostUserTurn { .. }
-                        )
-                })
-                .map(|basis| basis.source.id.to_string())
+        .flat_map(|goal| &goal.source_basis)
+        .filter(|source_id| {
+            canonical.sources.iter().any(|basis| {
+                basis.source.id == **source_id
+                    && basis.freshness == volicord_context::SourceFreshness::Current
+                    && basis.source.actor.kind == PrincipalKind::User
+                    && matches!(
+                        basis.source.payload,
+                        volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+                    )
+            })
         })
-        .collect::<Vec<_>>();
-    let current_goal_authority_inputs = discovery
-        .choices
-        .iter()
-        .flat_map(|choice| {
-            current_host_user_turn_source_ids
-                .iter()
-                .map(|source_id| {
-                    json!({
-                        "goal_context_id":discovery.goal_context_id.to_string(),
-                        "user_turn_source_id":source_id,
-                        "exact_goal_text":goal.map(|item| item.statement.clone()),
-                        "dimension_id":choice.choice_id,
-                        "discovered_choice_ids":[choice.choice_id.clone()],
-                        "affected_scope":choice.affected_scope,
-                        "material_consequences":choice.technical_consequences,
-                        "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
-                        "authority_boundary":"This is provenance input, not delegation evidence. Authority to perform the encompassing work does not delegate this subordinate material outcome.",
-                        "caller_semantic_responsibility":"Use current-task delegation only when a bounded verbatim excerpt explicitly delegates this exact material dimension or a scope that semantically contains it, and explain that relation in authority_counterfactual. Production validates presence, provenance, and scope but does not infer delegation from Goal prose.",
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
+        .map(ToString::to_string)
         .collect::<Vec<_>>();
     let contracts = materiality_judgment_contracts();
-    let all_judgment_fields = contracts
+    let all_fields = contracts
         .iter()
         .flat_map(|contract| schema_property_names(&contract.schema))
         .collect::<BTreeSet<_>>();
-    let derived_identities = json!({
-        "project_id":project_id.to_string(),
-        "goal_context_id":discovery.goal_context_id.to_string(),
-        "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
-        "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
-        "current_goal_user_turn_source_ids":current_host_user_turn_source_ids,
-    });
-    let judgment_contracts = contracts
-        .iter()
-        .map(|contract| {
-            materiality_judgment_contract_json(contract, &all_judgment_fields, &derived_identities)
-        })
-        .collect::<Vec<_>>();
-    let legal_judgment_variant_ids = contracts
+    let variants = contracts
         .iter()
         .map(|contract| contract.variant_id)
         .collect::<Vec<_>>();
-    let judgment_templates = discovery
+    let (action, identity_field, identity, schema) = match current_review {
+        Some(id) => (
+            "revise",
+            "review_candidate_id",
+            id.to_string(),
+            materiality_revise_schema(),
+        ),
+        None => (
+            "record",
+            "engineering_choice_discovery_candidate_id",
+            candidate_id.to_string(),
+            materiality_record_schema(),
+        ),
+    };
+    let mut prefilled = json!({"action":action, "project_id":project_id.to_string()});
+    prefilled[identity_field] = json!(identity);
+    let mut skeleton = request_skeleton(&schema, prefilled.clone());
+    skeleton["judgments"] = json!(discovery
         .choices
         .iter()
-        .map(|choice| {
-            let observable_signals = material_outcome_signals(&choice.effect_categories)
-                .into_iter()
-                .map(material_outcome_signal_name)
-                .collect::<Vec<_>>();
-            json!({
-                "discovery_owned":{
-                    "choice_id":choice.choice_id,
-                    "summary":choice.summary,
-                    "affected_scope":choice.affected_scope,
-                    "alternatives":choice.alternatives.iter().map(|alternative| json!({
-                        "alternative_id":alternative.alternative_id,
-                        "summary":alternative.summary,
-                        "technical_consequences":alternative.technical_consequences,
-                    })).collect::<Vec<_>>(),
-                    "material_consequences":choice.technical_consequences,
-                    "available_source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                    "effect_categories":choice.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
-                    "observable_signals":observable_signals,
-                    "relationship":engineering_choice_json(choice)["relationship"].clone(),
-                    "evidence_state":engineering_evidence_state_name(choice.evidence_state),
-                },
-                "caller_owned_judgment":{
-                    "prefilled_fields":{"choice_id":choice.choice_id},
-                    "legal_judgment_variant_ids":legal_judgment_variant_ids,
-                    "assembly":"Choose one referenced judgment_contract, merge prefilled_fields and its bounded_allowed_values, then provide exactly its caller semantic fields. Do not submit any forbidden field.",
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-    let (request_action, request_identity_field, request_identity, request_schema) =
-        match current_review {
-            Some(review_candidate_id) => (
-                "revise",
-                "review_candidate_id",
-                review_candidate_id.to_string(),
-                materiality_revise_schema(),
-            ),
-            None => (
-                "record",
-                "engineering_choice_discovery_candidate_id",
-                candidate_id.to_string(),
-                materiality_record_schema(),
-            ),
-        };
-    let mut request_prefilled_fields = serde_json::Map::new();
-    request_prefilled_fields.insert("action".into(), json!(request_action));
-    request_prefilled_fields.insert("project_id".into(), json!(project_id.to_string()));
-    request_prefilled_fields.insert(request_identity_field.into(), json!(request_identity));
+        .map(|choice| json!({"choice_id":choice.choice_id}))
+        .collect::<Vec<_>>());
+    let behavioral = canonical.context_items.iter().filter(|item| matches!(item.role,
+        ContextItemRole::Learning | ContextItemRole::Preference | ContextItemRole::Constraint))
+        .map(|item| json!({"context_item_id":item.id.to_string(),"role":context_item_role_name(item.role),
+            "statement":item.statement,"source_ids":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()})).collect::<Vec<_>>();
     json!({
-        "action":"draft",
-        "project_id":project_id.to_string(),
+        "action":"draft", "project_id":project_id.to_string(),
         "goal_context_id":discovery.goal_context_id.to_string(),
         "baseline_analysis_snapshot_id":discovery.baseline_analysis_snapshot_id.to_string(),
         "engineering_choice_discovery_candidate_id":candidate_id.to_string(),
         "current_goal":{
-            "goal_context_id":discovery.goal_context_id.to_string(),
-            "statement":goal.map(|goal| goal.statement.clone()),
-            "current_host_user_turn_source_ids":current_host_user_turn_source_ids,
-            "ownership_notice":"This Goal authorizes the requested work, not every subordinate material product outcome. If it reserves an outcome for user control, asks the user to retain the choice, or merely requests the encompassing feature without exact delegation, do not downgrade that dimension to implementation preference or delegation.",
+            "goal_context_id":discovery.goal_context_id.to_string(),"statement":goal.map(|goal| &goal.statement),
+            "current_host_user_turn_source_ids":user_sources,
+            "ownership_notice":"The Goal authorizes requested work, not every subordinate material product outcome. Do not downgrade a user-owned outcome without exact authority. Learning participation is not delegation evidence.",
         },
-        "current_goal_authority_inputs":current_goal_authority_inputs,
         "behavioral_context_binding":{
-            "available_context_items":canonical.context_items.iter().filter(|item| matches!(item.role, ContextItemRole::Learning | ContextItemRole::Preference | ContextItemRole::Constraint)).map(|item| json!({
-                "context_item_id":item.id.to_string(),
-                "role":context_item_role_name(item.role),
-                "statement":item.statement,
-                "source_ids":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            })).collect::<Vec<_>>(),
-            "required_request_field":"behavioral_context_basis",
-            "rule":"Bind every canonical Learning, Preference, or Constraint item whose loss after fresh Recall could change authority, Question behavior, learning interruption, or bounded work. Use an empty identity list only with an explicit completeness rationale. Never bind another Goal as a substitute.",
+            "available_context_items":volicord_operations::bounded_read_section(json!(behavioral), 12 * 1024),
+            "rule":"Record binds every relevant Learning/Preference/Constraint identity and completeness rationale; revise retains that binding. Inspect omitted Context before judging relevance.",
         },
-        "authority_decision_checklist":{
-            "counterfactual_questions":[
-                "What exact material outcome or dimension varies across the credible alternatives?",
-                "Can the original Goal be satisfied by more than one of those materially different outcomes?",
-                "What exact repository fact, accepted contract, applicable Decision, or explicit delegation selects among them?",
-                "After applying that claimed authority, can two or more credible alternatives still satisfy every settled constraint while producing materially different outcomes?",
-                "Does the current-host statement explicitly delegate choice of that outcome, rather than merely request the encompassing feature?",
-                "If no exact authority selects the outcome, why is this not an unresolved user-owned material decision?"
-            ],
-            "material_outcome_categories":[
-                "externally_observable_contract",
-                "durable_effect",
-                "compatibility_or_support_commitment",
-                "privacy_or_security_posture",
-                "user_visible_default",
-                "observable_failure_policy",
-                "other_material_product_outcome"
-            ],
-            "exact_authority_required":[
-                "current repository or environment fact settling this exact dimension",
-                "accepted contract settling this exact dimension",
-                "applicable Decision settling this exact dimension",
-                "explicit delegation covering this exact dimension"
-            ],
-            "not_authority":[
-                "authority to perform the overall feature request",
-                "imperative wording in the overall Goal",
-                "implementation preference",
-                "agent recommendation",
-                "library or repository convention"
-            ],
-            "ownership_assessment":{
-                "required_for_every_dimension":true,
-                "semantic_owner":"active_agent",
-                "questions":[
-                    "Which materially observable outcomes vary across the discovered alternatives?",
-                    "Does any varying outcome select user-owned product policy?",
-                    "If none does, why do all alternatives remain within bounded implementation discretion?",
-                    "Which current Sources support this ownership judgment?"
-                ],
-                "structural_rule":"ImplementationPreference is never ownership evidence. Every contains_user_owned_outcome=false assessment requires discretion_counterfactuals covering each discovered alternative, its observable differences and current source-supported discretion boundary, plus a bounded-discretion rationale; implementing a public outcome internally does not establish ownership. If no such boundary or exact authority exists, classify the user-owned outcome as unresolved and use the existing Question/current-host Decision path before work; user-owned outcomes use existing exact authority, Decision, delegation, exploration, or Question dispositions.",
-                "category_rule":"Effect categories prompt semantic review but never determine ownership automatically."
+        "legal_judgment_variant_ids":variants,
+        "judgment_contracts":contracts.iter().map(|contract| materiality_judgment_contract_json(contract, &all_fields)).collect::<Vec<_>>(),
+        "judgment_templates":discovery.choices.iter().map(|choice| json!({
+            "discovery_owned":{
+                "choice_id":choice.choice_id,
+                "alternative_ids":choice.alternatives.iter().map(|alternative| &alternative.alternative_id).collect::<Vec<_>>(),
+                "evidence_state":engineering_evidence_state_name(choice.evidence_state),
+                "source_ids":choice.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             },
-            "outcomes":{
-                "unresolved_user_owned_outcome":"Use when credible alternatives have materially different consequences and no exact authority settles the dimension.",
-                "exploratory_uncertainty":"Use when evidence is still required to establish whether the alternatives or material consequences are real.",
-                "agent_owned_implementation_choice":"Use only for bounded implementation discretion remaining after material user-facing policy is settled or credible alternatives do not vary that policy."
-            },
-            "subordinate_boundary_instruction":"Examine every exact material dimension discovered during repository work; the overall Goal is not blanket authority for subordinate public, persistence, compatibility, privacy, security, default, failure, operational, or support semantics. Absence of explicit delegation does not make mechanically equivalent private details user-owned, but materially different outcomes with no exact authority require Question/current-host Decision.",
-            "alternative_accounting_rule":"Account exactly once for every discovered alternative. An unresolved material alternative means related evidence constrained rather than settled the dimension; find exact eliminating authority or use unresolved_user_owned_outcome.",
-            "authority_revision_chronology":"If disposition, authority basis, blocking readiness, or affected-scope applicability changes after affected work, the revision is prospective and does not certify that earlier work. Production records this only when maintained baseline/current path evidence proves the chronology; otherwise rollout validation remains responsible for the ordering judgment.",
-        },
-        "exact_authority_sufficiency_contract":{
-            "applies_to":["repository_or_environment_fact","settled_authority"],
-            "required_semantic_fields":["authority_coverage","unique_outcome_rationale","authority_source_evidence","alternative_accounting"],
-            "coverage_rule":"Cited authority must cover this exact discovery-owned dimension. Repository precedent/convention and compatibility-compatible patterns are descriptive, not normative selection. Architecture ownership, recommendation, and preference are not accepted requirements. Identify the actual current accepted clause adopting a precedent for this dimension, or keep materially viable alternatives unresolved and use Question/current-host Decision before affected work.",
-            "alternative_accounting_rule":"Every alternative_id from every referenced choice_id must appear exactly once. Settling dispositions select exactly one alternative per choice and eliminate every other alternative with its exact fact, accepted-contract reference, or applicable Decision identity. Unresolved alternatives drive the Question path unless the ownership assessment proves bounded agent discretion or exact delegation applies.",
-            "source_rule":"Repository facts must be mechanically grounded in current repository/environment Sources. Settled authority requires an exact accepted contract or applicable Decision; recommendations, research, prototypes, libraries, and conventions can inform reasoning but do not independently settle an outcome.",
-            "semantic_owner":"active_agent",
-            "production_validation":"typed discovered identities, complete per-choice coverage, closed disposition compatibility, current provenance, and exact eliminating-authority linkage; production does not classify natural-language semantic truth",
-        },
-        "authority_learning_routing":authority_learning_routing_json(),
-        "evidence_state_precedence":{
-            "rule":"A discovery-owned research_required or prototype_required state blocks ordinary work before agent-owned or delegated implementation authority can apply.",
-            "mutation_boundary":"Research/prototype grants no tracked repository mutation authority. Use read-only inspection, scratch outside the repository, or a separate disposable worktree. Retain the original Project/Goal/Discovery/baseline chain; do not replace a blocked baseline. Restore repository mutations before evidence resolution. Incorporate scratch results only after normal ready_for_work and executable scope binding.",
-            "prospective_authority":"A valid agent-owned or exact delegated disposition may be retained while evidence is incomplete; it becomes actionable only after a Materiality revision supplies current bounded evidence_completion_basis.",
-            "post_evidence_routes":["retain the prospective agent-owned or delegated disposition","classify a repository-settled fact without a Question","route a newly revealed user-owned material outcome to the Question lifecycle"],
-            "field":"judgments[].evidence_completion_basis",
-        },
-        "learning_participation":{
-            "input_alternatives":schema_alternatives(learning_participation_schema()),
-            "derived_identity_options":{"current_goal_user_turn_source_ids":current_host_user_turn_source_ids},
-            "assembly":"Choose inactive, or choose active and provide the complete relevant verbatim learning scope, including any narrowing or non-interruption clause, from one returned current Goal user-turn Source. Evaluate that scope against current_goal.statement. Learning participation is independent of authority.",
-        },
+            "caller_owned_judgment":{"prefilled_fields":{"choice_id":choice.choice_id}},
+        })).collect::<Vec<_>>(),
+        "learning_participation":{"input_alternatives":schema_alternatives(learning_participation_schema())},
         "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
-        "learning_value_interruption_contract":{
-            "counterfactual":"If the user does not participate in this choice, what meaningful transferable understanding requested by the user would be lost?",
-            "deliberation_worthy_requires":["real consequence significance","a transferable principle","a non-obvious trade-off","consistency with the user's full bounded learning and interruption scope"],
-            "not_sufficient":["two credible alternatives exist","the detail needs wording or test synchronization","the agent can explain either implementation","learning participation is active"],
-            "routine_examples":["small wording choices","test fixture selection","test synchronization details","private naming or helper structure without a meaningful transferable trade-off"],
-            "source_to_consider":"current_goal.statement and the exact current-host user-turn Source; do not discard a narrowing clause when selecting the verbatim participation statement",
+        "learning_value_revision_bases":schema_alternatives(learning_value_revision_bases_schema()["items"].clone()),
+        "authority_learning_routing":{
+            "assessment_owner":authority_learning_routing_json()["assessment_owner"],
+            "learning_requests_not_user_ownership":authority_learning_routing_json()["learning_requests_not_user_ownership"],
+            "independence_rule":"Learning participation and learning value do not establish product authority.",
+            "routes":authority_learning_routing_json()["routes"],
         },
-        "learning_value_revision_contract":{
-            "rule":"A prior deliberation_worthy assessment cannot become routine merely because an implementation was selected.",
-            "supported_downgrade_bases":["current non-user Source-backed research evidence","current non-user Source-backed prototype evidence","exact current-host user withdrawal or narrowing of learning participation"],
-            "user_turn_boundary":"A current-host user-turn Source is valid only through the explicit current_user_withdrawal variant, not when relabeled as research or prototype evidence.",
-            "not_a_basis":["agent preference","implementation selection","desire to avoid Learning Deliberation"],
-            "revise_field":"learning_value_revision_bases",
-            "input_schema":learning_value_revision_bases_schema(),
-        },
-        "field_ownership":{
-            "discovery_owned_derived_server_side":["goal_context_id","baseline_analysis_snapshot_id","dimension_id","discovered_choice_ids","summary","affected_scope","material_consequences","observable_signals","discovery_source_ids"],
-            "caller_owned_semantic_judgments":["rationale","behavioral_context_basis","learning_participation","choice_id","disposition","basis_summary","authority_counterfactual","exact authority coverage when the disposition claims settlement","additional authority evidence allowed for that disposition","learning_value"],
-        },
-        "work_authority_basis_kind_contract":{
-            "repository_or_environment_fact":"derived only for repository_or_environment_fact with current mechanical fact grounding and exact unique-outcome coverage",
-            "accepted_contract":"derived only from non-empty contract_basis plus exact unique-outcome coverage for settled_authority",
-            "applicable_decision":"derived only from Decision identities for settled authority or a resolved user-owned outcome",
-            "explicit_delegation":"derived only for current-task verbatim delegation or Inquiry-time delegation Decision",
-            "research_evidence":"derived only for research-required/resolved exploratory treatment",
-            "prototype_evidence":"derived only for prototype-required exploratory treatment",
-            "defer_or_revisit_basis":"derived only for deferred_with_revisit exploratory treatment",
-            "implementation_preference":"derived only for bounded agent_owned_implementation_choice",
-            "no_settling_authority":"derived only for unresolved_user_owned_outcome without a Decision",
-            "agent_recommendation":"never authority and not accepted as a record input",
-            "library_or_convention":"never authority and not accepted as a record input",
-            "invalid_combinations":[
-                "contract or Decision evidence with agent-owned implementation preference",
-                "accepted contract, recommendation, convention, or implementation preference as delegation",
-                "current-task verbatim delegation combined with Inquiry-time Decision delegation",
-                "resolution Decision on an unresolved user-owned judgment",
-                "disposition-specific fields on any other disposition"
-            ]
-        },
-        "judgment_contract_source":"The same closed schema variants validate materiality_review record and revise calls.",
-        "judgment_contracts":judgment_contracts,
-        "judgment_templates":judgment_templates,
         "record_request":{
-            "action":request_action,
-            "prefilled_fields":request_prefilled_fields,
-            "caller_must_supply":["rationale","learning_participation","judgments"],
-            "judgments_assembly":{
-                "choice_order":discovery.choices.iter().map(|choice| choice.choice_id.clone()).collect::<Vec<_>>(),
-                "exactly_one_judgment_per_choice":true,
-                "steps":[
-                    "For each judgment_template, choose one legal_judgment_variant_id without changing the semantic choice.",
-                    "Merge caller_owned_judgment.prefilled_fields with the selected judgment_contract bounded_allowed_values.",
-                    "Provide every caller_must_semantically_provide field, including authority_counterfactual, the exact-authority coverage fields required by any settling variant, and one learning_value_input_alternative; provide only desired caller_may_provide fields.",
-                    "Place the assembled judgments in choice_order and merge them with record_request.prefilled_fields plus rationale and learning_participation."
-                ]
-            },
-            "input_schema":request_schema,
+            "action":action,"prefilled_fields":prefilled,"skeleton":skeleton,
+            "required_fields":schema_required_fields(&schema),
+            "assembly":"Fill null semantic fields; for every choice merge its prefilled fields with one judgment_contract's bounded_allowed_values and supply its required semantic fields. Nested shapes and bounds are in tools/list inputSchema. Never submit null placeholders.",
         },
-        "required_action":{"tool":"materiality_review","action":request_action},
-        "canonical_mutation":false,
-        "read_only":true,
+        "required_action":{"tool":"materiality_review","action":action},
+        "blocking_reason":if current_review.is_some() { "Review exists; revise judgments for every choice, or inspect to bind the planned work after authority/learning resolution." } else { "No Materiality Review exists for this discovery; record authority and learning judgments before work." },
+        "contract_source":{"method":"tools/list","tool":"materiality_review","field":"inputSchema", "static_owner":"rebuild/docs/design/inquiry-and-decision.md"},
+        "detailed_inspection":{"tool":"candidate_inspect","project_id":project_id.to_string(),"candidate_id":candidate_id.to_string()},
+        "canonical_mutation":false,"read_only":true,
+        "transport_budget":{"mcp_result_bytes":volicord_operations::HOST_READ_RESULT_BYTE_BUDGET,"structured_bytes":volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET},
     })
+}
+
+fn check_materiality_draft_budget(
+    draft: &Value,
+    project_id: ProjectId,
+    discovery_id: CandidateId,
+    review_id: Option<CandidateId>,
+) -> Result<(), HostError> {
+    let bytes = draft.to_string().len();
+    if bytes <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET {
+        return Ok(());
+    }
+    Err(HostError::with_details(
+        "Complete Materiality draft exceeds the structured byte budget; unchanged retries cannot reduce it",
+        json!({"diagnostic":"materiality_draft_payload_budget", "exact_structured_bytes":bytes,
+            "structured_byte_budget":volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET,
+            "bound_identities":{"project_id":project_id.to_string(),"engineering_choice_discovery_candidate_id":discovery_id.to_string(),
+                "review_candidate_id":review_id.map(|id| id.to_string())},
+            "next_supported_action":{"tool":"candidate_inspect","project_id":project_id.to_string(),"candidate_id":discovery_id.to_string()},
+            "continuation":"Read the named discovery and current review separately; construct record/revise from tools/list materiality_review.inputSchema. Do not retry an unchanged oversized draft.",
+        }),
+    ))
+}
+
+fn request_skeleton(schema: &Value, mut prefilled: Value) -> Value {
+    for field in schema_required_fields(schema) {
+        if prefilled.get(&field).is_none() {
+            prefilled[&field] = Value::Null;
+        }
+    }
+    prefilled
 }
 
 fn authority_learning_routing_json() -> Value {
@@ -6951,4 +6833,38 @@ fn interaction_review_json(reviews: &[volicord_inquiry::InteractionReview]) -> V
         "affected_choice_ids":outcome.affected_choice_ids,"conclusion":outcome.conclusion,
         "source_basis":outcome.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()
     })).collect::<Vec<_>>()})).collect::<Vec<_>>())
+}
+
+#[cfg(test)]
+mod draft_budget_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_complete_draft_returns_bounded_inspection_instead_of_a_retry_loop() {
+        let project = ProjectId::from_bytes([1; 16]);
+        let discovery = CandidateId::from_bytes([2; 16]);
+        let review = CandidateId::from_bytes([3; 16]);
+        let draft = json!({"judgment_templates":[{"choice_id":"long identity".repeat(10_000)}]});
+        let error =
+            check_materiality_draft_budget(&draft, project, discovery, Some(review)).unwrap_err();
+        let details = error.details.unwrap();
+        assert_eq!(
+            details["next_supported_action"]["tool"],
+            "candidate_inspect"
+        );
+        assert_eq!(
+            details["next_supported_action"]["candidate_id"],
+            discovery.to_string()
+        );
+        assert_eq!(
+            details["bound_identities"]["review_candidate_id"],
+            review.to_string()
+        );
+        let result = tool_result(json!({"details":details}), true);
+        assert!(result.to_string().len() < volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
+        assert_eq!(
+            serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap(),
+            result["structuredContent"]
+        );
+    }
 }

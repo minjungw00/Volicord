@@ -1502,3 +1502,11 @@ CLI agreement, and parse both MCP content representations under the 256 KiB resu
 budget. Escaped Unicode and oversized whole fields are tested independently. Raw
 campaign completion-size measurements under ignored local state are diagnostics only;
 malformed or truncated captures never qualify a replacement campaign.
+
+Materiality's focused Host regression records 32 real independent choices, constructs
+record and revise from the compact draft and existing tools/list schema, then binds
+inspect from the returned skeleton without test-helper argument supplementation or
+intentional malformed calls. It checks all current identities, closed variants,
+full-wire byte size and both JSON representations against the maintained budget,
+and compares size with the previous duplicated schema shape. Existing authority,
+learning, delegation, interaction and artifact semantic rejection tests remain active.

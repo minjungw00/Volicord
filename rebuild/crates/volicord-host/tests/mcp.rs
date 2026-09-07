@@ -105,6 +105,26 @@ fn canonical_forgetting_mcp_cleans_linked_local_content() {
         .expect("unrelated Candidate")
         .content
         .is_some());
+    let targeted = call(
+        &mut adapter,
+        "candidate_inspect",
+        json!({
+            "project_id":project,"candidate_id":related_candidate.to_string()
+        }),
+    );
+    assert_eq!(targeted["result"]["isError"], false);
+    assert_eq!(
+        structured(&targeted)["candidates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        structured(&targeted)["candidates"][0]["content_cleaned"],
+        true
+    );
+    assert!(structured(&targeted)["candidates"][0]["summary"].is_null());
     let privacy =
         PrivacyStore::open(adapter.operations().layout().privacy_store()).expect("privacy store");
     assert_eq!(
@@ -456,13 +476,11 @@ fn draft_judgment(
         .iter()
         .find(|template| template["discovery_owned"]["choice_id"] == choice_id)
         .expect("choice template");
-    assert!(
-        template["caller_owned_judgment"]["legal_judgment_variant_ids"]
-            .as_array()
-            .expect("legal judgment variants")
-            .iter()
-            .any(|candidate| candidate == variant_id)
-    );
+    assert!(draft["legal_judgment_variant_ids"]
+        .as_array()
+        .expect("legal judgment variants")
+        .iter()
+        .any(|candidate| candidate == variant_id));
     let contract = draft["judgment_contracts"]
         .as_array()
         .expect("judgment contracts")
@@ -520,9 +538,9 @@ fn draft_judgment(
                 json!("Every remaining alternative stays inside the settled fixture behavior.")
             });
     }
-    result.entry("ownership_source_ids").or_insert_with(|| {
-        json!(contract["server_derived_identities"]["current_goal_user_turn_source_ids"])
-    });
+    result
+        .entry("ownership_source_ids")
+        .or_insert_with(|| json!(draft["current_goal"]["current_host_user_turn_source_ids"]));
     if !result.contains_key("alternative_accounting") {
         let contract_reference = result
             .get("contract_basis")
@@ -535,8 +553,8 @@ fn draft_judgment(
             .and_then(|values| values.first())
             .and_then(Value::as_str)
             .or_else(|| result.get("resolution_decision_id").and_then(Value::as_str));
-        let source_ids = template["discovery_owned"]["available_source_ids"].clone();
-        let alternatives = template["discovery_owned"]["alternatives"]
+        let source_ids = template["discovery_owned"]["source_ids"].clone();
+        let alternatives = template["discovery_owned"]["alternative_ids"]
             .as_array()
             .expect("discovered alternatives");
         let accounting = Value::Array(
@@ -544,7 +562,7 @@ fn draft_judgment(
                 .iter()
                 .enumerate()
                 .map(|(index, alternative)| {
-                    let alternative_id = alternative["alternative_id"].clone();
+                    let alternative_id = alternative.clone();
                     if index == 0
                         && matches!(
                             variant_id,
@@ -578,7 +596,7 @@ fn draft_judgment(
         result.insert("alternative_accounting".into(), accounting);
     }
     if result.contains_key("authority_coverage") {
-        let source = &template["discovery_owned"]["available_source_ids"][0];
+        let source = &template["discovery_owned"]["source_ids"][0];
         let role = if let Some(reference) = result
             .get("contract_basis")
             .and_then(Value::as_array)
@@ -1363,61 +1381,16 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         draft["current_goal"]["current_host_user_turn_source_ids"],
         json!([goal_source_id])
     );
-    let authority_input = draft["current_goal_authority_inputs"]
-        .as_array()
-        .expect("current Goal authority inputs")
-        .iter()
-        .find(|candidate| candidate["dimension_id"] == "signed-link-replay-policy")
-        .expect("signed-link authority input");
-    assert_eq!(authority_input["goal_context_id"], goal_context_id);
-    assert_eq!(authority_input["user_turn_source_id"], goal_source_id);
-    assert_eq!(authority_input["exact_goal_text"], goal_turn);
-    assert_eq!(authority_input["affected_scope"], json!(["public links"]));
-    assert_eq!(
-        authority_input["effect_categories"],
-        json!(["public_api_shape_or_semantics", "security"])
+    assert!(
+        draft.get("current_goal_authority_inputs").is_none(),
+        "Goal text is shared, not repeated per choice"
     );
-    assert!(authority_input["authority_boundary"]
-        .as_str()
-        .is_some_and(|notice| notice.contains("not delegation evidence")));
     assert!(draft["current_goal"]["ownership_notice"]
         .as_str()
-        .is_some_and(|notice| notice.contains("do not downgrade")));
-    assert!(
-        draft["authority_decision_checklist"]["counterfactual_questions"]
-            .as_array()
-            .is_some_and(|questions| questions.len() == 6)
-    );
-    assert_eq!(
-        draft["authority_decision_checklist"]["not_authority"],
-        json!([
-            "authority to perform the overall feature request",
-            "imperative wording in the overall Goal",
-            "implementation preference",
-            "agent recommendation",
-            "library or repository convention"
-        ])
-    );
-    assert!(
-        draft["authority_decision_checklist"]["outcomes"]["unresolved_user_owned_outcome"]
-            .as_str()
-            .is_some_and(|guidance| guidance.contains("no exact authority"))
-    );
-    assert!(
-        draft["authority_decision_checklist"]["subordinate_boundary_instruction"]
-            .as_str()
-            .is_some_and(|guidance| guidance.contains("overall Goal is not blanket authority"))
-    );
-    assert!(
-        draft["authority_decision_checklist"]["outcomes"]["agent_owned_implementation_choice"]
-            .as_str()
-            .is_some_and(|guidance| guidance.contains("material user-facing policy is settled"))
-    );
-    assert!(
-        draft["authority_decision_checklist"]["authority_revision_chronology"]
-            .as_str()
-            .is_some_and(|guidance| guidance.contains("blocking readiness"))
-    );
+        .unwrap()
+        .contains("not delegation evidence"));
+    assert_eq!(draft["contract_source"]["method"], "tools/list");
+    assert_eq!(draft["contract_source"]["field"], "inputSchema");
     let templates = draft["judgment_templates"]
         .as_array()
         .expect("judgment templates");
@@ -1425,7 +1398,7 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
     assert!(templates.iter().all(|template| {
         template["discovery_owned"].get("disposition").is_none()
             && template["caller_owned_judgment"]["prefilled_fields"]["choice_id"].is_string()
-            && template["caller_owned_judgment"]["legal_judgment_variant_ids"]
+            && draft["legal_judgment_variant_ids"]
                 .as_array()
                 .is_some_and(|variants| variants.len() == 13)
     }));
@@ -1448,17 +1421,6 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         .is_some_and(|fields| fields
             .iter()
             .any(|field| field == "evidence_completion_basis")));
-    assert!(draft["evidence_state_precedence"]["rule"]
-        .as_str()
-        .is_some_and(|rule| rule.contains("blocks ordinary work")));
-    assert!(unresolved["caller_may_provide"]
-        .as_array()
-        .is_some_and(|fields| fields
-            .iter()
-            .any(|field| field == "evidence_completion_basis")));
-    assert!(draft["evidence_state_precedence"]["rule"]
-        .as_str()
-        .is_some_and(|rule| rule.contains("blocks ordinary work")));
     assert_eq!(
         draft["learning_value_input_alternatives"][1]["required_fields"],
         json!([
@@ -1475,20 +1437,17 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         draft["learning_participation"]["input_alternatives"][1]["required_fields"],
         json!(["state", "user_turn_source_id", "verbatim_statement"])
     );
-    assert!(
-        draft["learning_value_interruption_contract"]["counterfactual"]
-            .as_str()
-            .is_some_and(|value| value.contains("what meaningful transferable understanding"))
-    );
-    assert!(
-        draft["learning_value_interruption_contract"]["source_to_consider"]
-            .as_str()
-            .is_some_and(|value| value.contains("narrowing clause"))
-    );
-    assert!(draft["authority_learning_routing"]["scope_rule"]
-        .as_str()
-        .is_some_and(|value| value.contains("generic alternative count is not enough")));
-    assert!(draft["record_request"]["input_schema"].is_object());
+    assert!(draft["record_request"].get("input_schema").is_none());
+    assert!(draft["record_request"]["skeleton"]["rationale"].is_null());
+    assert!(draft["record_request"]["required_fields"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("behavioral_context_basis")));
+    assert!(draft["judgment_contracts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|contract| contract.get("input_schema").is_none()));
 }
 
 #[test]
@@ -1736,11 +1695,9 @@ fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
         .clone();
 
         assert!(draft.get("delegation_evidence_candidates").is_none());
-        assert!(
-            draft["current_goal_authority_inputs"][0]["authority_boundary"]
-                .as_str()
-                .is_some_and(|notice| notice.contains("not delegation evidence"))
-        );
+        assert!(draft["current_goal"]["ownership_notice"]
+            .as_str()
+            .is_some_and(|notice| notice.contains("not delegation evidence")));
         assert!(draft["current_goal"]["ownership_notice"]
             .as_str()
             .is_some_and(
@@ -1880,15 +1837,7 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
             }),
         ))
         .clone();
-        assert!(
-            draft["authority_decision_checklist"]["alternative_accounting_rule"]
-                .as_str()
-                .is_some_and(|rule| rule.contains("constrained rather than settled"))
-        );
-        assert_eq!(
-            draft["exact_authority_sufficiency_contract"]["semantic_owner"],
-            "active_agent"
-        );
+        assert_eq!(draft["contract_source"]["tool"], "materiality_review");
 
         let mut settling_fields = settling_fields
             .as_object()
@@ -3399,15 +3348,18 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         }),
     ))
     .clone();
-    let reusable = resumed_draft["current_goal_authority_inputs"]
-        .as_array()
-        .expect("resume current Goal authority inputs")
-        .first()
-        .expect("resume delegation candidate");
-    assert_eq!(reusable["goal_context_id"], goal_context_id);
-    assert_eq!(reusable["user_turn_source_id"], goal_source_id);
-    assert_eq!(reusable["dimension_id"], "internal-module-name");
-    assert_eq!(reusable["affected_scope"], json!(["src/lib.rs"]));
+    assert_eq!(
+        resumed_draft["current_goal"]["goal_context_id"],
+        goal_context_id
+    );
+    assert_eq!(
+        resumed_draft["current_goal"]["current_host_user_turn_source_ids"][0],
+        goal_source_id
+    );
+    assert_eq!(
+        resumed_draft["judgment_templates"][0]["discovery_owned"]["choice_id"],
+        "internal-module-name"
+    );
     let resumed_review = structured(&call(
         &mut adapter,
         "materiality_review",
@@ -6472,9 +6424,12 @@ fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&st
     .clone();
     let closure = &draft["pre_write_materiality_closure"];
     assert!(closure["reviewed_interactions"].is_array());
-    assert!(closure["current_choice_alternatives"].is_array());
+    assert!(draft["judgment_templates"][0]["discovery_owned"]["alternative_ids"].is_array());
     assert!(closure["current_authority_dimensions"].is_array());
-    assert_schema_is_closed_and_described(&closure["input_schema"]);
+    assert!(closure["closure_variants"]
+        .as_array()
+        .is_some_and(|variants| variants.len() == 2));
+    assert!(closure.get("input_schema").is_none());
     let mut request = closure["inspect_request"]["prefilled_fields"].clone();
     assert_eq!(
         request["review_candidate_id"],
@@ -6588,11 +6543,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             shape(&["repository"], &["repository"]),
         ],
         "project_health" => vec![shape(&["project_id"], &[])],
-        "recall"
-        | "repository_understanding"
-        | "canonical_inspect"
-        | "candidate_inspect"
-        | "privacy_status" => {
+        "recall" | "repository_understanding" | "canonical_inspect" | "privacy_status" => {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
@@ -6999,6 +6950,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 ],
             ),
         ],
+        "candidate_inspect" => vec![shape(&["project_id", "candidate_id"], &["project_id"])],
         "candidate_manage" => vec![
             shape(
                 &[
@@ -7404,6 +7356,26 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
         .take(64)
         .cloned()
         .collect::<Vec<_>>();
+    let targeted = call(
+        adapter,
+        "candidate_inspect",
+        json!({
+            "project_id":project,"candidate_id":volicord_inquiry::CandidateId::from_bytes([80;16]).to_string()
+        }),
+    );
+    assert_eq!(targeted["result"]["isError"], false);
+    assert_eq!(
+        structured(&targeted)["candidates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        structured(&targeted)["candidates"][0]["identity"],
+        volicord_inquiry::CandidateId::from_bytes([80; 16]).to_string()
+    );
+    assert!(structured(&targeted)["candidates"][0]["learning_deliberation"]["rounds"].is_array());
     let old_bytes = serde_json::to_vec(&old_learning).unwrap().len();
     assert!(
         old_bytes > 1024 * 1024,
@@ -7473,4 +7445,211 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
         "Recall pre-change learning bytes={old_bytes}; bounded full MCP envelope bytes={}",
         bytes.len()
     );
+}
+
+#[test]
+fn compact_materiality_large_state_builds_record_revise_inspect_without_probes() {
+    let (temporary, mut adapter, project) = setup();
+    fs::create_dir_all(temporary.path().join("repository/src")).unwrap();
+    fs::write(
+        temporary.path().join("repository/src/lib.rs"),
+        "pub fn answer() -> u8 { 42 }\n",
+    )
+    .unwrap();
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({"project_id":project,
+        "user_turn":"Preserve public results while organizing internal modules", "role":"goal",
+        "statement":"Preserve public results while organizing internal modules"}),
+    ))
+    .clone();
+    let analysis = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let seed_id = record_fixture_discovery(
+        &adapter,
+        &project,
+        goal["context_item_id"].as_str().unwrap(),
+        analysis["analysis_snapshot_id"].as_str().unwrap(),
+        analysis["repository_source_id"].as_str().unwrap(),
+        FixtureEngineeringChoice {
+            id: "seed",
+            affected_scope: "src/lib.rs",
+            effect_category: EngineeringEffectCategory::ImplementationInternal,
+        },
+    );
+    let basis = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let seed = basis
+        .candidates
+        .iter()
+        .find(|record| record.id.to_string() == seed_id)
+        .unwrap()
+        .content
+        .as_ref()
+        .unwrap()
+        .engineering_choice_discovery
+        .as_ref()
+        .unwrap();
+    let choices = (0..32).map(|index| {
+        let mut choice = seed.choices[0].clone();
+        choice.choice_id = format!("internal-module-{index:02}");
+        choice.summary = format!("Module {index}: preserve the existing public result while changing private organization");
+        choice
+    }).collect::<Vec<_>>();
+    let source = parse_source_identity(analysis["repository_source_id"].as_str().unwrap());
+    let discovery = adapter
+        .operations()
+        .record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+            project_id: parse_project(&project),
+            goal_context_id: seed.goal_context_id,
+            baseline_analysis_snapshot_id: seed.baseline_analysis_snapshot_id,
+            session: "large-materiality".into(),
+            source_operation: "bounded private organization review".into(),
+            summary: "Review independent internal modules and their preserved outcomes".into(),
+            material_boundary_review: complete_material_boundary_review(&choices, source),
+            interaction_review: outside_interactions(source),
+            choices,
+        })
+        .unwrap();
+    // Only supported tools/list schema discovery. All mutation requests below go
+    // directly to the adapter, bypassing call()'s test-only convenience defaults.
+    let tools = adapter
+        .handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .unwrap();
+    let schema = &tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "materiality_review")
+        .unwrap()["inputSchema"];
+    let record_schema = schema["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|variant| variant["properties"]["action"]["enum"] == json!(["record"]))
+        .unwrap();
+    let old_duplicated_schema_shape = json!({"record_request":{"input_schema":record_schema},
+        "judgment_contracts":record_schema["properties"]["judgments"]["items"]["oneOf"]});
+    let old_bytes = old_duplicated_schema_shape.to_string().len();
+    assert!(old_bytes > 300_000);
+    let draft_args = json!({"action":"draft","project_id":project,
+        "engineering_choice_discovery_candidate_id":discovery.discovery_candidate_id.to_string()});
+    let mut largest = 0;
+    for action in ["record", "revise"] {
+        let response = call(&mut adapter, "materiality_review", draft_args.clone());
+        let wire = serde_json::to_vec(&response).unwrap();
+        largest = largest.max(wire.len());
+        assert!(wire.len() < volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
+        let draft = structured(&response);
+        assert_eq!(draft["record_request"]["action"], action);
+        assert_eq!(draft["judgment_templates"].as_array().unwrap().len(), 32);
+        assert_eq!(
+            draft["legal_judgment_variant_ids"]
+                .as_array()
+                .unwrap()
+                .len(),
+            13
+        );
+        assert_eq!(
+            draft["learning_value_revision_bases"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(
+                response["result"]["content"][0]["text"].as_str().unwrap()
+            )
+            .unwrap(),
+            *draft
+        );
+        let mut request = draft["record_request"]["skeleton"].clone();
+        request["rationale"] = json!("Every module preserves the current public result; private organization stays within bounded discretion");
+        request["learning_participation"] =
+            draft_learning_participation(draft, "inactive", json!({}));
+        if action == "record" {
+            request["behavioral_context_basis"] = json!({"context_item_ids":[],"completeness_rationale":"No non-Goal behavioral Context exists in this fixture"});
+        }
+        request["judgments"] = json!(draft["judgment_templates"].as_array().unwrap().iter().map(|template| {
+            let choice = template["discovery_owned"]["choice_id"].as_str().unwrap();
+            draft_judgment(draft, choice, "agent_owned_implementation_choice", json!({
+                "basis_summary":"Only private organization differs; public results remain fixed by the current Source",
+                "ownership_source_ids":[analysis["repository_source_id"]],
+                "learning_value":draft_learning_value(draft,"routine",json!({"rationale":"Routine private module organization carries no requested learning interruption"})),
+            }))
+        }).collect::<Vec<_>>());
+        let result = adapter
+            .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+            "params":{"name":"materiality_review","arguments":request}}))
+            .unwrap();
+        assert_eq!(result["result"]["isError"], false, "{result}");
+    }
+    let response = call(&mut adapter, "materiality_review", draft_args);
+    let draft = structured(&response);
+    assert_eq!(
+        draft["pre_write_materiality_closure"]["current_authority_dimensions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        32
+    );
+    assert_eq!(
+        draft["pre_write_materiality_closure"]["artifact_categories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
+    let mut inspect = draft["pre_write_materiality_closure"]["inspect_request"]["skeleton"].clone();
+    inspect["paths"] = json!(["src/lib.rs"]);
+    inspect["components"] = json!([]);
+    inspect["work_contexts"] = json!([]);
+    inspect["coupled_artifact_review"] = json!({
+        "assessments":draft["pre_write_materiality_closure"]["artifact_categories"].as_array().unwrap().iter().map(|category| json!({
+            "category":category,"disposition":if category == "implementation" { json!({"state":"included","repository_paths":["src/lib.rs"]}) } else { json!({"state":"no_coupled_artifact"}) },
+            "basis_summary":"Inspected this isolated fixture; its sole implementation artifact is src/lib.rs"
+        })).collect::<Vec<_>>(),
+        "materiality_closure":{"state":"no_new_material_outcome","rationale":"No current public result changes",
+            "commitments":[{"commitment_id":"preserved-result","description":"Private module organization preserves the complete current outcome graph",
+                "repository_paths":["src/lib.rs"],"outcome_binding":{"state":"private_equivalent","equivalence_rationale":"Every choice changes only private organization while preserving current public results"}}]}
+    });
+    let inspected = adapter
+        .handle(json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
+        "params":{"name":"materiality_review","arguments":inspect}}))
+        .unwrap();
+    assert_eq!(inspected["result"]["isError"], false, "{inspected}");
+    assert_eq!(
+        structured(&inspected)["workflow"]["stage"],
+        "ready_for_work"
+    );
+    let detail = call(
+        &mut adapter,
+        "candidate_inspect",
+        draft["detailed_inspection"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(key, _)| key.as_str() != "tool")
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    );
+    assert_eq!(detail["result"]["isError"], false, "{detail}");
+    assert_eq!(
+        structured(&detail)["candidates"].as_array().unwrap().len(),
+        1
+    );
+    assert!(
+        largest < old_bytes / 2,
+        "draft must materially reduce the previous duplicated schemas"
+    );
+    eprintln!("Materiality previous duplicated schema bytes={old_bytes}; largest compact draft MCP envelope bytes={largest}");
 }

@@ -155,3 +155,24 @@ already recorded outcomes remain inspectable. This build has no selected
 external semantic-provider transport, so the configured-adapter path truthfully
 records `provider_unavailable`, keeps every manifest entry `not_transmitted`,
 and leaves local operations available.
+
+`materiality_review` draft returns current Goal/user Source, discovery/review identities
+and revisions, choice/alternative and dimension identities, closed judgment variant
+names/required fields, and ready-to-fill `record_request.skeleton` and
+`pre_write_materiality_closure.inspect_request.skeleton`. Read the existing
+`tools/list` → `materiality_review.inputSchema` for nested authority, delegation,
+learning, residual-fork, interaction and commitment fields and bounds. Fill every
+null semantic placeholder and one judgment per choice; record binds behavioral
+Context, while revise retains that binding. No malformed schema probe is needed.
+After authority and learning are resolved, fill the exact inspect scope, six artifact
+assessments and commitment closure. Full explanatory semantics remain in the
+[Inquiry owner](../../docs/design/inquiry-and-decision.md); full current discovery,
+review and learning records remain on `candidate_inspect` with optional `candidate_id`.
+
+Draft shares the 256 KiB complete MCP result budget and 80 KiB structured budget.
+Repeated full schemas and Goal text are absent. Optional Context detail has explicit
+omissions; required identities and variant tables are never truncated. An exceptional
+complete draft larger than 80 KiB returns a bounded error with targeted inspection
+identities and tools/list assembly guidance; retrying the same draft is not a remedy.
+Detailed inspection and the complete tools/list catalog retain their own size limits;
+this transport budget applies to Recall and Materiality draft.
