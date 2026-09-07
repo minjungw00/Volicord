@@ -70,14 +70,15 @@ rebuild/scripts/validate focused codex-exec-help -- codex exec --help
 rebuild/scripts/validate focused codex-login-status -- codex login status
 rebuild/scripts/validate focused viewer-executable-http -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer --test executable_http --all-features
 rebuild/scripts/validate focused v08-provenance-trust-harness -- python3 -B rebuild/validation/linux-codex-integration/harness.py
-rebuild/scripts/validate focused v08-real-codex-product-tool -- python3 -B rebuild/validation/linux-codex-integration/codex_probe.py
+rebuild/scripts/validate focused v08-real-codex-product-tool -- python3 -B rebuild/validation/linux-codex-integration/codex_probe.py --model <authorized-model>
 rebuild/scripts/validate focused v08-assertions -- python3 -B rebuild/validation/linux-codex-integration/assertions.py
 rebuild/scripts/validate focused v08-fixture-manifest -- rebuild/scripts/check-fixture-manifest rebuild/validation/shared/fixture-manifest.json
 rebuild/scripts/validate focused v08-report-shape -- rebuild/scripts/check-validation-report rebuild/validation/linux-codex-integration/report.md
 ```
 
-The successful Codex child command is preserved exactly in the focused probe
-log. It uses an isolated copied authentication file, isolated registration,
+The Codex child command is preserved exactly in the focused probe log. The
+maintained probe requires an explicit nonempty `--model` and forwards it to
+`codex exec`, so an authorized model is never replaced by a host default. It uses an isolated copied authentication file, isolated registration,
 read-only sandbox, no interactive prompt, and the narrow configuration override
 `mcp_servers.volicord.tools.project_health.approval_mode="approve"`.
 

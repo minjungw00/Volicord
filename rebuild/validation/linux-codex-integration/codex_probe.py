@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -93,6 +94,11 @@ def repository_inspection(event: Any) -> bool:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", required=True, help="Exact model for the authorized Codex turn")
+    arguments = parser.parse_args()
+    if not arguments.model.strip():
+        parser.error("--model must not be empty")
     codex = shutil.which("codex")
     if codex is None:
         return report_blocked("installed Codex CLI is unavailable")
@@ -178,6 +184,8 @@ def main() -> int:
             "--config",
             'mcp_servers.volicord.tools.recall.approval_mode="approve"',
             "exec",
+            "--model",
+            arguments.model,
             "--ephemeral",
             "--json",
             "--sandbox",
