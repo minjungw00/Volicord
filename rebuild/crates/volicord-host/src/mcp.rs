@@ -210,6 +210,7 @@ impl HostAdapter {
             None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
+            Ok(value) if name == "recall" => Ok(compact_read_tool_result(value)),
             Ok(value) => Ok(tool_result(value, false)),
             Err(mut error) => {
                 if name == "materiality_review" && error.details.is_none() {
@@ -319,31 +320,50 @@ impl HostAdapter {
             .operations
             .recall(project_id)
             .map_err(operation_error)?;
-        let (learning_context, learning_context_health) =
-            match self.operations.project_projection(project_id) {
-                Ok(projection) => (
-                    projection
-                        .candidate_inspection
-                        .into_iter()
-                        .filter(|candidate| candidate.learning_deliberation.is_some())
-                        .take(64)
-                        .map(candidate_inspection_json)
-                        .collect::<Vec<_>>(),
-                    json!({"state":"available"}),
-                ),
-                Err(error) => (
-                    Vec::new(),
-                    json!({"state":"degraded","reason":error.to_string()}),
-                ),
-            };
+        let (learning_context, learning_context_health) = match self
+            .operations
+            .candidate_basis(project_id)
+        {
+            Ok(basis) => {
+                let projection = volicord_projections::learning_resume_projection(&basis);
+                let items = projection.items.into_iter().map(|item| json!({
+                    "candidate_id":item.candidate_id.to_string(), "revision":item.revision,
+                    "goal_context_id":item.goal_context_id.to_string(),
+                    "baseline_analysis_snapshot_id":item.baseline_analysis_snapshot_id.to_string(),
+                    "engineering_choice_discovery_candidate_id":item.discovery_candidate_id.to_string(),
+                    "materiality_review_candidate_id":item.review_candidate_id.to_string(),
+                    "dimension_id":item.dimension_id,
+                    "state":learning_deliberation_state_json(&item.state),
+                    "response_source_id":item.response_source_id.map(|id| id.to_string()),
+                    "current_implication":item.current_implication,
+                    "implication_omitted":item.implication_omitted,
+                    "canonical_decision":false,
+                    "inspect":{"tool":"candidate_inspect","candidate_id":item.candidate_id.to_string()},
+                })).collect::<Vec<_>>();
+                (
+                    json!(items),
+                    json!({"state":if projection.withheld_count == 0 { "available" } else { "degraded" },
+                    "omitted_count":projection.omitted_count, "withheld_count":projection.withheld_count,
+                    "scope":"LearningDeliberation candidates; pending first, newest observation then identity",
+                    "inspect":{"tool":"candidate_inspect","project_id":project_id.to_string()}}),
+                )
+            }
+            Err(_) => (
+                json!([]),
+                json!({"state":"degraded", "reason":"Candidate inspection unavailable; retry candidate_inspect"}),
+            ),
+        };
         let workflow = self
             .operations
             .workflow_after_recall(brief.project_id)
             .map_err(operation_error)?;
         let mut output = volicord_operations::resume_brief_json(&brief);
-        output["learning_context"] = json!(learning_context);
+        output["learning_context"] =
+            volicord_operations::bounded_read_section(learning_context, 15 * 1024);
         output["learning_context_health"] = learning_context_health;
-        Ok(with_workflow(output, workflow))
+        output["workflow"] =
+            volicord_operations::bounded_read_section(workflow_json(workflow), 8 * 1024);
+        Ok(output)
     }
 
     fn repository_understanding(&self, args: &Value) -> Result<Value, HostError> {
@@ -4154,6 +4174,16 @@ fn is_hex(value: &str, length: usize, uppercase_allowed: bool) -> bool {
                 || (b'a'..=b'f').contains(&byte)
                 || (uppercase_allowed && (b'A'..=b'F').contains(&byte))
         })
+}
+
+fn compact_read_tool_result(value: Value) -> Value {
+    // Encoding compact JSON twice is bounded by 3x the structured bytes, even
+    // when all quotes/backslashes need escaping in the text representation.
+    let value = volicord_operations::bounded_read_section(
+        value,
+        volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET,
+    );
+    json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false})
 }
 
 fn tool_result(value: Value, is_error: bool) -> Value {

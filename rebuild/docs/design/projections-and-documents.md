@@ -163,6 +163,37 @@ report나 hidden memory를 identity authority로 사용하지 않는다.
 동일한 input state, scope와 bound에서는 stable tie-breaker로 reproducible selection을
 만든다. Ranking/model의 concrete algorithm은 V09 evidence 뒤의 implementation choice다.
 
+### Host-facing serialized Recall budget
+
+MCP Recall result는 compact UTF-8 JSON의 `content` text와 `structuredContent`를
+모두 포함해 **262,144 bytes (256 KiB)** 이하다. 관찰된 약 1 MiB host truncation
+경계에 768 KiB headroom을 둔다. Shared CLI/MCP Resume Brief는 56 KiB,
+Candidate Inspection의 compact learning resume는 15 KiB, workflow는 8 KiB를
+사용하고 health/envelope를 포함한 structured payload는 80 KiB 이하다.
+Compact JSON text의 escaping과 중복 structured content 비용도 이 상한에 포함된다.
+
+동일 state에서는 identity/state/authority와 Goal, behavior Context, Decision,
+Checkpoint/work/verification/review/acceptance, next action을 history와 repository
+metadata보다 먼저 유지한다. 큰 object의 identity/state field를 먼저 보존하고
+반복 array는 stable prefix 뒤 `transport_omission` report로 exact suffix count와
+가능한 first omitted identity를 제공한다. 큰 field는 전체 field omission과 exact
+JSON byte count를 제공한다. 문자열이나 record를 mid-value로 자르지 않는다.
+이 report는 semantic item이나 complete authority가 아니며, enclosing Project/record/
+Analysis identity와 field scope로 기존 canonical/candidate/repository inspection을
+다시 읽는다. 비정상적으로 큰 현재 field도 의미를 추측한 축약문으로 대체하지 않는다.
+CLI와 MCP는 같은 shared brief, omission과 expansion basis를 사용한다.
+
+Learning resume는 Candidate Inspection의 content/forgetting boundary 안에 있는
+전용 subprojection이다. Full `CandidateInspection`을 Recall에 복사하지 않는다.
+Candidate/revision, Goal/baseline/discovery/review/dimension identity, current learning
+state와 selected/delegated/skipped outcome, current response Source와 2,048-byte 이하의
+whole current feedback만 노출한다. 더 큰 feedback은 전체 omission으로 표시한다.
+Pending learning, newest observation, stable identity 순으로 최대 64개를 선택하고
+count/byte omission과 withheld count를 구분한다. Full discovery graph, dimensions,
+interaction review, alternative accounting, rounds와 executable artifacts는 기존
+`candidate_inspect`/`learning_deliberation` detail에만 남는다. 이 projection은
+canonical Decision, permanent lesson 또는 새 learning authority를 만들지 않는다.
+
 ## 4. Projection purity와 no-mutation
 
 Projection operation은 다음을 하지 않는다.

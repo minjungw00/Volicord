@@ -283,3 +283,102 @@ fn scope_matches(
             .candidate_kind
             .is_none_or(|value| candidate.candidate_kind == value)
 }
+
+/// Candidate Inspection's compact continuation view. It deliberately has no
+/// discovery graph, Materiality dimensions, interaction review or round history.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningResumeItem {
+    pub candidate_id: CandidateId,
+    pub revision: u64,
+    pub goal_context_id: volicord_context::ContextItemId,
+    pub baseline_analysis_snapshot_id: volicord_repository_intelligence::AnalysisSnapshotId,
+    pub discovery_candidate_id: CandidateId,
+    pub review_candidate_id: CandidateId,
+    pub dimension_id: String,
+    pub state: volicord_inquiry::LearningDeliberationState,
+    pub response_source_id: Option<volicord_context::SourceId>,
+    pub current_implication: Option<String>,
+    pub implication_omitted: bool,
+}
+
+pub struct LearningResumeProjection {
+    pub items: Vec<LearningResumeItem>,
+    pub omitted_count: usize,
+    pub withheld_count: usize,
+}
+
+/// Shares Candidate Inspection's content/forgetting boundary without materializing
+/// full inspections or repository graphs. Pending learning precedes terminal history;
+/// newest observation, then stable identity breaks ties. No durable lesson is inferred.
+pub fn learning_resume_projection(basis: &CandidateReadBasis) -> LearningResumeProjection {
+    use volicord_inquiry::{CandidateKind, LearningDeliberationState};
+    let mut candidates = basis
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.kind == CandidateKind::LearningDeliberation)
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|candidate| {
+        let terminal = candidate
+            .content
+            .as_ref()
+            .and_then(|c| c.learning_deliberation.as_ref())
+            .is_some_and(|learning| {
+                matches!(
+                    learning.state,
+                    LearningDeliberationState::Completed { .. }
+                        | LearningDeliberationState::Delegated { .. }
+                        | LearningDeliberationState::Skipped { .. }
+                )
+            });
+        (
+            terminal,
+            std::cmp::Reverse(candidate.observed_at),
+            candidate.id,
+        )
+    });
+    let mut items = Vec::new();
+    let mut withheld_count = 0;
+    let mut omitted_count = 0;
+    for candidate in candidates {
+        if candidate.cleanup.is_some()
+            || basis
+                .withheld_for_canonical_forgetting
+                .contains(&candidate.id)
+        {
+            withheld_count += 1;
+            continue;
+        }
+        let Some(learning) = candidate
+            .content
+            .as_ref()
+            .and_then(|c| c.learning_deliberation.as_ref())
+        else {
+            withheld_count += 1;
+            continue;
+        };
+        if items.len() == 64 {
+            omitted_count += 1;
+            continue;
+        }
+        let round = learning.rounds.last();
+        let implication = round.and_then(|round| round.agent_feedback.as_ref());
+        items.push(LearningResumeItem {
+            candidate_id: candidate.id,
+            revision: candidate.revision,
+            goal_context_id: learning.goal_context_id,
+            baseline_analysis_snapshot_id: learning.baseline_analysis_snapshot_id,
+            discovery_candidate_id: learning.engineering_choice_discovery_candidate_id,
+            review_candidate_id: learning.materiality_review_candidate_id,
+            dimension_id: learning.dimension_id.clone(),
+            state: learning.state.clone(),
+            response_source_id: round.map(|round| round.initial_response_source_id),
+            current_implication: implication.filter(|text| text.len() <= 2048).cloned(),
+            implication_omitted: implication.is_some_and(|text| text.len() > 2048),
+        });
+    }
+    LearningResumeProjection {
+        items,
+        omitted_count,
+        withheld_count,
+    }
+}

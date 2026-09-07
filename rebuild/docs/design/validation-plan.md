@@ -1491,3 +1491,14 @@ spike 코드 또는 legacy primitive를 production에 넣으려면 다음을 만
 - V10이 각 reuse candidate의 최종 분류를 남김
 - V11 실행 계획에 필요한 architecture와 implementation backlog가 구체적임
 - accepted product decision을 변경해야 하는 새로운 Question이 없거나 명시적으로 사용자에게 제출됨
+
+### Focused host transport regression
+
+Maintained Host/Operations tests scale a validated learning lifecycle to 80 historical
+Candidates with 16 rounds each and large polyglot capability coverage. They characterize
+the previous full-inspection Recall shape above 1 MiB, assert current Goal/behavior
+Context/Decision/Checkpoint/authority continuation, deterministic semantic omissions,
+CLI agreement, and parse both MCP content representations under the 256 KiB result
+budget. Escaped Unicode and oversized whole fields are tested independently. Raw
+campaign completion-size measurements under ignored local state are diagnostics only;
+malformed or truncated captures never qualify a replacement campaign.

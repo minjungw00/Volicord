@@ -13,6 +13,7 @@ mod guarded;
 mod layout;
 mod model;
 mod operations;
+mod payload;
 mod provider;
 mod recall;
 
@@ -43,6 +44,9 @@ pub use model::{
     WorkflowStage,
 };
 pub use operations::LocalOperations;
+pub use payload::{
+    bounded_read_section, HOST_READ_RESULT_BYTE_BUDGET, HOST_READ_STRUCTURED_BYTE_BUDGET,
+};
 pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };

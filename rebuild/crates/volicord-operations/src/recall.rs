@@ -26,7 +26,7 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
             "handoff_to":value.handoff_to,
             "recorded_at_unix_micros":value.recorded_at.as_unix_micros(),
         }));
-    json!({
+    let output = json!({
         "project_id":brief.project_id.to_string(), "project_name":brief.project_name,
         "goals":brief.goals_and_why.iter().map(|item| &item.statement).collect::<Vec<_>>(),
         "goal_basis":brief.goals_and_why.iter().map(context_json).collect::<Vec<_>>(),
@@ -85,7 +85,14 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
             "source_ids":item.source_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "read_only":true,
-    })
+        "transport_budget":{
+            "mcp_result_bytes":crate::HOST_READ_RESULT_BYTE_BUDGET,
+            "resume_brief_bytes":56 * 1024,
+            "omission_rule":"Complete fields or stable suffix items only; transport_omission is not semantic content",
+            "inspection":{"canonical":"canonical_inspect", "analysis":"repository_understanding", "scope":"same project and returned record/snapshot identities"}
+        },
+    });
+    crate::bounded_read_section(output, 56 * 1024)
 }
 
 fn context_json(item: &BriefContextItem) -> Value {

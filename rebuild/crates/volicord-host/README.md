@@ -73,9 +73,17 @@ It validates explicit applied Decision identities through
 the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative
 host evidence rather than an OS attestation. User review and acceptance remain
-independent and are not inferred by this operation. Recall exposes the complete
-latest Checkpoint so a restarted host can recover work state, repository
-changes, Decisions, verification, limits, and next step.
+independent and are not inferred by this operation. Recall prioritizes the latest Checkpoint so a restarted host can recover work
+state, Decisions, verification, limits, and next step. Its complete MCP result
+(text plus structured content) is bounded to 256 KiB, with 768 KiB headroom
+below the observed 1 MiB transport boundary. Whole-field or stable suffix
+`transport_omission` reports carry exact omitted counts/size and parent inspection
+basis; they are not semantic records. CLI and MCP share the same 56 KiB brief.
+Learning resume contains only Candidate/revision and authority identities, current
+state/outcome, response Source and bounded current implication. Full learning
+rounds and discovery/Materiality graphs remain on `candidate_inspect` and
+`learning_deliberation`. Large current fields require explicit inspection; Recall
+never cuts JSON or fabricates an abbreviated authority statement.
 
 `checkpoint_record.verification_basis` distinguishes ordinary changes from explicit
 behavior preservation. A completed preservation claim or discovered compatibility

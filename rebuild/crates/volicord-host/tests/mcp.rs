@@ -2744,9 +2744,10 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
     ))
     .clone();
     assert_eq!(
-        recalled["learning_context"][0]["learning_deliberation"]["state"]["state"],
+        recalled["learning_context"][0]["state"]["state"],
         "completed"
     );
+    assert_large_learning_recall(&mut restarted, &project, deliberation_id);
 }
 
 #[test]
@@ -7336,4 +7337,140 @@ fn outside_interactions_json(source: &str) -> Value {
         review["outcomes"][0]["source_basis"] = json!([source]);
     }
     value
+}
+
+// Scale a history produced by the normal validated learning lifecycle. Direct
+// fixture insertion changes only identities/history volume, not production writes.
+fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learning_id: &str) {
+    let project_id = parse_project(project);
+    let before = structured(&call(adapter, "recall", json!({"project_id":project}))).clone();
+    let basis = adapter.operations().candidate_basis(project_id).unwrap();
+    let original = basis
+        .candidates
+        .iter()
+        .find(|c| c.id.to_string() == learning_id)
+        .unwrap();
+    let connection = Connection::open(adapter.operations().layout().candidate_store()).unwrap();
+    for index in 1..=80u8 {
+        let mut candidate = original.clone();
+        candidate.id = volicord_inquiry::CandidateId::from_bytes([index; 16]);
+        let learning = candidate
+            .content
+            .as_mut()
+            .unwrap()
+            .learning_deliberation
+            .as_mut()
+            .unwrap();
+        let mut round = learning.rounds[0].clone();
+        round.agent_feedback = Some("The selected approach preserves the repository invariant and centralizes mutation checks. ".repeat(15));
+        learning.rounds = vec![round; 16];
+        learning.state = volicord_inquiry::LearningDeliberationState::Completed {
+            round: 15,
+            selected_alternatives: match &original
+                .content
+                .as_ref()
+                .unwrap()
+                .learning_deliberation
+                .as_ref()
+                .unwrap()
+                .state
+            {
+                volicord_inquiry::LearningDeliberationState::Completed {
+                    selected_alternatives,
+                    ..
+                } => selected_alternatives.clone(),
+                _ => unreachable!(),
+            },
+        };
+        let encoded = serde_json::to_string(&candidate).unwrap();
+        assert!(
+            encoded.len() < 131072,
+            "fixture must fit maintained Candidate record bound"
+        );
+        connection.execute("INSERT INTO candidates(id,project_id,revision,record_json,created_at) VALUES(?1,?2,?3,?4,?5)", rusqlite::params![candidate.id.as_bytes().as_slice(), project_id.as_bytes().as_slice(), candidate.revision, encoded, candidate.created_at.as_unix_micros()]).unwrap();
+    }
+    drop(connection);
+    let detailed = structured(&call(
+        adapter,
+        "candidate_inspect",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let old_learning = detailed["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| !c["learning_deliberation"].is_null())
+        .take(64)
+        .cloned()
+        .collect::<Vec<_>>();
+    let old_bytes = serde_json::to_vec(&old_learning).unwrap().len();
+    assert!(
+        old_bytes > 1024 * 1024,
+        "pre-change full-inspection path: {old_bytes}"
+    );
+
+    // Large polyglot coverage metadata, with actual snapshot identity and format.
+    let directory = adapter
+        .operations()
+        .layout()
+        .analysis_project_dir(project_id);
+    for entry in fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let mut analysis: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for capability in analysis["capabilities"].as_array_mut().unwrap() {
+            capability["coverage"]["included"] = json!((0..6000).map(|i| json!({"kind":"file","path":format!("packages/service-{i}/src/repository_metadata.py")})).collect::<Vec<_>>());
+        }
+        fs::write(path, serde_json::to_vec(&analysis).unwrap()).unwrap();
+    }
+    let result = call(adapter, "recall", json!({"project_id":project}));
+    let bytes = serde_json::to_vec(&result).unwrap();
+    assert!(bytes.len() <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
+    let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+    let recalled = structured(&roundtrip);
+    assert_eq!(
+        serde_json::from_str::<Value>(roundtrip["result"]["content"][0]["text"].as_str().unwrap())
+            .unwrap(),
+        *recalled
+    );
+    for key in [
+        "goals",
+        "goal_basis",
+        "behaviorally_relevant_context",
+        "decisions",
+        "checkpoint",
+        "open_questions",
+    ] {
+        assert_eq!(recalled[key], before[key], "large history lost {key}");
+    }
+    assert_eq!(
+        recalled["workflow"]["blocks_ordinary_work"],
+        before["workflow"]["blocks_ordinary_work"]
+    );
+    assert_eq!(
+        recalled["workflow"]["required_next_action"],
+        before["workflow"]["required_next_action"]
+    );
+    assert!(
+        recalled["learning_context_health"]["omitted_count"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(recalled.to_string().contains("transport_omission"));
+    assert!(!recalled["learning_context"].to_string().contains("rounds"));
+    assert!(!recalled["learning_context"]
+        .to_string()
+        .contains("material_decomposition"));
+    let repeated = call(adapter, "recall", json!({"project_id":project}));
+    assert_eq!(structured(&repeated), recalled);
+    let cli = cli_recall(adapter, project);
+    assert_eq!(cli["snapshots"], recalled["snapshots"]);
+    eprintln!(
+        "Recall pre-change learning bytes={old_bytes}; bounded full MCP envelope bytes={}",
+        bytes.len()
+    );
 }
