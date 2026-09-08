@@ -6570,6 +6570,76 @@ def resolved_user_owned_dimensions_valid(
     )
 
 
+def materiality_revision_arguments_valid(
+    revision: ToolCall,
+    previous: dict[str, dict[str, Any]] | None,
+    revised: dict[str, dict[str, Any]] | None,
+    work: CodexCapture,
+    bundle: CanonicalBundle,
+) -> bool:
+    """Check the closed revise input and Inquiry's per-dimension downgrade basis."""
+    required = {
+        "action", "project_id", "review_candidate_id", "rationale",
+        "learning_participation", "judgments",
+    }
+    if (not required <= set(revision.arguments)
+        or set(revision.arguments) - required - {"learning_value_revision_bases"}
+        or previous is None or revised is None or set(previous) != set(revised)):
+        return False
+    bases = revision.arguments.get("learning_value_revision_bases", [])
+    if not isinstance(bases, list) or len(bases) > 64:
+        return False
+    downgrades = {identity for identity in previous
+        if previous[identity]["learning_value"]["state"] == "deliberation_worthy"
+        and revised[identity]["learning_value"]["state"] == "routine"}
+    seen: set[str] = set()
+    for basis in bases:
+        if not isinstance(basis, dict):
+            return False
+        identity = basis.get("dimension_id")
+        if (not nonempty_string(identity) or identity not in downgrades
+            or identity in seen or not nonempty_string(basis.get("rationale"))):
+            return False
+        seen.add(identity)
+        kind = basis.get("kind")
+        if kind in {"research_evidence", "prototype_evidence"}:
+            if (set(basis) != {"dimension_id", "kind", "source_ids", "evidence_basis", "rationale"}
+                or any(not isinstance(basis.get(field), list) or not basis[field]
+                    or not all(nonempty_string(value) for value in basis[field])
+                    for field in ("source_ids", "evidence_basis"))
+                or len(set(basis["source_ids"])) != len(basis["source_ids"])):
+                return False
+            for source_id in basis["source_ids"]:
+                source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
+                # Canonical read maps available Sources to Current freshness.
+                if (source is None or source.get("availability") != "available"
+                    or source.get("source_kind") not in {
+                        "repository_snapshot", "repository_commit", "file", "symbol",
+                        "command_execution", "url", "adopted_artifact",
+                    }):
+                    return False
+        elif kind == "current_user_withdrawal":
+            if (set(basis) != {"dimension_id", "kind", "user_turn_source_id", "verbatim_statement", "rationale"}
+                or not nonempty_string(basis.get("user_turn_source_id"))
+                or not nonempty_string(basis.get("verbatim_statement"))):
+                return False
+            source = bundle.one("sources", id=basis["user_turn_source_id"], project_id=bundle.project_id)
+            if (source is None or source.get("availability") != "available"
+                or source.get("source_kind") != "current_host_user_turn"
+                or source.get("actor_kind") != "user"
+                or source.get("detail_one") != "codex"
+                or source.get("detail_two") != work.session_id
+                or not nonempty_string(source.get("locator"))
+                or basis["verbatim_statement"] not in source["locator"]
+                or not any(turn.sequence < revision.sequence
+                    and codex_user_turn_transport_identity_matches(turn.text, source["locator"])
+                    for turn in work.user_turns)):
+                return False
+        else:
+            return False
+    return seen == downgrades
+
+
 def materiality_review_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
@@ -6806,16 +6876,7 @@ def materiality_review_facts(
         for _, revised in revision_chain
     )
     chain_preserves_review_identity = bool(revision_chain) and all(
-        set(revision.arguments)
-        == {
-            "action",
-            "project_id",
-            "review_candidate_id",
-            "rationale",
-            "learning_participation",
-            "judgments",
-        }
-        and revision.result.get("review_candidate_id") == review_id
+        revision.result.get("review_candidate_id") == review_id
         and revision.result.get("goal_context_id") == goal_context_id
         and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
         and isinstance(revision.result.get("review_revision"), int)
@@ -6843,6 +6904,9 @@ def materiality_review_facts(
     if revision_chain:
         readiness_ok = bool(
             readiness_ok and chain_preserves_dimensions and chain_preserves_review_identity
+            and all(materiality_revision_arguments_valid(revision, previous, revised, work, bundle)
+                for previous, (revision, revised) in zip(
+                    [dimensions, *(value for _, value in revision_chain)], revision_chain))
             and all(
                 later.result["review_revision"] > earlier.result["review_revision"]
                 for earlier, later in zip([record, *revisions], revisions)

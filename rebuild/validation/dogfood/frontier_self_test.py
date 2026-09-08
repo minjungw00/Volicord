@@ -61,6 +61,105 @@ class FrontierTests(unittest.TestCase):
             self.assertTrue(facts[0])
             self.assertEqual(facts[1], "18" * 16)
 
+    def learning_revision(self, kind="research_evidence"):
+        descriptor, capture, bundle = self.fixture("learning_deliberation")
+        record = next(c for c in capture.tool_calls if c.operation == "materiality_review"
+            and c.arguments.get("action") == "record")
+        inspect = next(c for c in capture.tool_calls if c.operation == "materiality_review"
+            and c.arguments.get("action") == "inspect")
+        judgments = deepcopy(record.arguments["judgments"])
+        dimension = next(j for j in judgments if j["learning_value"]["state"] == "deliberation_worthy")
+        dimension["learning_value"] = {"state": "routine", "rationale": "Current evidence removes the trade-off."}
+        basis = {"dimension_id": dimension["choice_id"], "kind": kind,
+            "source_ids": ["0f" * 16], "evidence_basis": ["Both representations share the enforced invariant."],
+            "rationale": "The previously credible trade-off is no longer present."}
+        if kind == "current_user_withdrawal":
+            statement = "I withdraw learning participation for this choice; proceed routinely."
+            turn = capture.user_turns[-1]
+            source_id = "ab" * 16
+            source = {**bundle.rows("sources")[0], "id": source_id, "locator": statement}
+            bundle = replace(bundle, tables={**bundle.tables, "sources": (*bundle.rows("sources"), source)})
+            capture = replace(capture, user_turns=(*capture.user_turns,
+                replace(turn, sequence=inspect.sequence - 30, text=statement, turn_id="withdrawal")))
+            basis = {"dimension_id": dimension["choice_id"], "kind": kind,
+                "user_turn_source_id": source_id, "verbatim_statement": statement,
+                "rationale": "The user explicitly withdrew participation for this choice."}
+        revision = replace(record, call_id="learning-value-revision", sequence=inspect.sequence - 20,
+            completion_sequence=inspect.sequence - 10,
+            arguments={"action": "revise", "project_id": bundle.project_id,
+                "review_candidate_id": record.result["review_candidate_id"],
+                "rationale": "Reassess the prior learning fork from supported evidence.",
+                "learning_participation": deepcopy(record.arguments["learning_participation"]),
+                "judgments": judgments, "learning_value_revision_bases": [basis]},
+            result={**record.result, "action": "revise", "review_revision": 2})
+        output = deepcopy(inspect.result)
+        output["review_revision"] = 2
+        output["executable_work_scope"]["authority_basis"]["review_revision"] = 2
+        calls = [replace(c, result=output) if c is inspect else c for c in capture.tool_calls]
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, revision), key=lambda c: c.sequence)))
+        return descriptor, capture, bundle, revision
+
+    def test_revision_optional_field_is_closed_and_omission_equals_empty(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        revision = next(c for c in capture.tool_calls if c.arguments.get("action") == "revise")
+        for arguments, expected in ((revision.arguments, True),
+            ({**revision.arguments, "learning_value_revision_bases": []}, True),
+            ({**revision.arguments, "unsupported": []}, False),
+            ({k: v for k, v in revision.arguments.items() if k != "rationale"}, False)):
+            with self.subTest(arguments=arguments):
+                changed = replace(capture, tool_calls=tuple(replace(c, arguments=arguments)
+                    if c is revision else c for c in capture.tool_calls))
+                self.assertEqual(self.facts(descriptor, changed, bundle)[0], expected)
+
+    def test_supported_learning_revision_bases(self):
+        for kind in ("research_evidence", "prototype_evidence", "current_user_withdrawal"):
+            with self.subTest(kind=kind):
+                descriptor, capture, bundle, _ = self.learning_revision(kind)
+                self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+                self.assertEqual(capture.calls("decision_record"), [])
+
+    def test_learning_revision_rejects_missing_malformed_and_inappropriate_bases(self):
+        descriptor, capture, bundle, revision = self.learning_revision()
+        basis = revision.arguments["learning_value_revision_bases"][0]
+        cases = [None, {}, "research", [], [None], [basis, basis],
+            [{**basis, "kind": "agent_preference"}], [{**basis, "dimension_id": "missing"}],
+            [{**basis, "dimension_id": revision.arguments["judgments"][1]["choice_id"]}],
+            [{**basis, "extra": True}], [{k: v for k, v in basis.items() if k != "rationale"}],
+            [{**basis, "rationale": " "}], [{**basis, "evidence_basis": []}],
+            [{**basis, "evidence_basis": [None]}], [{**basis, "source_ids": []}],
+            [{**basis, "source_ids": ["missing"]}], [{**basis, "source_ids": ["03" * 16]}],
+            [{**basis, "source_ids": basis["source_ids"] * 2}]]
+        for value in cases:
+            with self.subTest(value=value):
+                arguments = {**revision.arguments, "learning_value_revision_bases": value}
+                changed = replace(capture, tool_calls=tuple(replace(c, arguments=arguments)
+                    if c is revision else c for c in capture.tool_calls))
+                self.assertFalse(self.facts(descriptor, changed, bundle)[0])
+        arguments = {k: v for k, v in revision.arguments.items() if k != "learning_value_revision_bases"}
+        changed = replace(capture, tool_calls=tuple(replace(c, arguments=arguments)
+            if c is revision else c for c in capture.tool_calls))
+        self.assertFalse(self.facts(descriptor, changed, bundle)[0])
+
+    def test_learning_revision_rejects_noncurrent_evidence_and_false_withdrawal(self):
+        for kind in ("research_evidence", "prototype_evidence", "current_user_withdrawal"):
+            descriptor, capture, bundle, revision = self.learning_revision(kind)
+            basis = revision.arguments["learning_value_revision_bases"][0]
+            source_id = basis.get("user_turn_source_id", "0f" * 16)
+            mutations = [{"availability": state} for state in ("stale", "unavailable", "unknown")]
+            mutations += [{"project_id": "ff" * 16}, {"source_kind": "unsupported"}]
+            if kind == "current_user_withdrawal":
+                mutations += [{"actor_kind": "agent"}, {"detail_one": "other-host"},
+                    {"detail_two": "other-session"}, {"locator": "I still want to deliberate."}]
+            for mutation in mutations:
+                with self.subTest(kind=kind, mutation=mutation):
+                    changed_bundle = replace(bundle, tables={**bundle.tables, "sources": tuple(
+                        {**s, **mutation} if s["id"] == source_id else s for s in bundle.rows("sources"))})
+                    self.assertFalse(self.facts(descriptor, capture, changed_bundle)[0])
+            if kind == "current_user_withdrawal":
+                for turns in (capture.user_turns[:-1], (*capture.user_turns[:-1],
+                    replace(capture.user_turns[-1], sequence=revision.completion_sequence + 1))):
+                    self.assertFalse(self.facts(descriptor, replace(capture, user_turns=turns), bundle)[0])
+
     def test_new_discovery_without_review_cannot_fall_back(self):
         descriptor, capture, bundle = self.fixture()
         capture = self.prepend_history(capture)
