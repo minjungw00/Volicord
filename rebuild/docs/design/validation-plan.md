@@ -1093,11 +1093,11 @@ Evaluator는 unrelated Goal/baseline/Discovery의 Materiality record를 current 
 세지 않는다. Current record와 후속 revisions는 Goal, baseline, Discovery candidate,
 `review_candidate_id`, stable `dimension_id`와 monotonic `review_revision`으로 correlate하며 valid
 intermediate revision이 하나보다 많다는 이유만으로 실패시키지 않는다.
-Explicit user-owned Question Candidate는 evidence가 이미 충분하면 direct `ready_to_ask`일 수 있고,
+User-owned Question Candidate는 evidence가 이미 충분하면 direct `ready_to_ask`일 수 있고,
 필요한 경우 repository research attachment와 ready transition 뒤 promotion할 수 있다. 두 경로
 모두 exact current-host response, Decision, 같은 material dimension의 ready revision이 affected
 write보다 먼저 완료되어야 한다. Hidden user-owned path의 meaningful pre-Discovery repository
-investigation 요구는 이 선택적 explicit research allowance로 약화되지 않는다.
+investigation 요구는 충분한 evidence 뒤의 direct-ready allowance로 약화되지 않는다.
 Learning Deliberation은 begin 뒤 current-host response와 feedback의 ordered rounds를 처리하며
 legal reconsider transition 뒤 response/feedback round를 반복할 수 있다. Affected write보다 먼저
 completed/delegated/skipped terminal state와 ready workflow에 도달해야 하고 Learning participation을
@@ -1568,3 +1568,19 @@ SHA-256, caller and canonical Source SHA-256, canonical Source ID, normalized co
 reported escape/suffix normalization. Original source bytes are never rewritten. The sanitized
 `decision_transport_self_test.py` exercises parser-to-canonical provenance, terminal whitespace and
 semantic-difference rejection and is included in the maintained harness self-test.
+
+Current-frontier evaluation also preserves legitimate historical Question lifecycles: each obsolete
+branch must prove its own dimension-linked pre-write resolution, while the current settled Review
+must independently pass authority/closure validation. Historical Decisions do not turn agent-owned
+learning into canonical product authority. Scenario labels do not suppress an independent user-owned
+outcome outside an internal delegation. Serialized creation order is required when no candidate
+creation timestamp/identity ordering is exposed; overlapping creations remain indeterminate instead
+of guessing which completion represents production's latest candidate.
+
+A recorded user-owned concern may be settled by subsequent exact source evidence before commitment;
+only dimensions that still require user authority demand a canonical Decision. The initial disposition
+is historical, while reported current dimensions and disposition come from the last pre-write revision.
+Meaningful text manifests such as requirements.txt and CMakeLists.txt are repository mutations; only
+known synthetic markers/generated state are excluded, rather than an entire text-file suffix family.
+A later Goal invalidates the earlier authority frontier even when the older Goal's Source linkage is
+still valid historical evidence.

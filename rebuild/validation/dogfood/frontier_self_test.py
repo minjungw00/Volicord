@@ -2,6 +2,7 @@
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -109,6 +110,96 @@ class FrontierTests(unittest.TestCase):
             descriptor["behavior_class"] = behavior
             self.assertTrue(self.observe(descriptor, capture))
             self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def test_delegated_behavior_does_not_hide_independent_user_owned_policy(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        descriptor["behavior_class"] = "delegated_implementation_choice"
+        self.assertTrue(self.observe(descriptor, capture))
+        self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+        capture = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "decision_record"))
+        self.assertFalse(self.observe(descriptor, capture))
+        self.assertFalse(self.facts(descriptor, capture, bundle)[0])
+
+    def test_experiment_resolves_uncertainty_into_agent_owned_choice(self):
+        descriptor, capture, bundle = self.fixture("exploratory_uncertainty")
+        _, agent_capture, _ = self.fixture("learning_routine_control")
+        record = next(c for c in capture.tool_calls if c.arguments.get("action") == "record" and c.operation == "materiality_review")
+        agent = next(c for c in agent_capture.tool_calls if c.arguments.get("action") == "record" and c.operation == "materiality_review")
+        initial = deepcopy(record.arguments)
+        initial["judgments"][0]["exploratory_disposition"] = "research_required"
+        pending = replace(record, arguments=initial,
+            result={**record.result, "workflow": {**record.result["workflow"], "stage": "research"}})
+        resolved = replace(record, call_id="evidence-resolved-review", sequence=record.completion_sequence + 10,
+            completion_sequence=record.completion_sequence + 20,
+            arguments={"action": "revise", "project_id": "01" * 16, "review_candidate_id": "18" * 16,
+                "rationale": "The experiment establishes the public outcome and leaves only internal representation.",
+                "learning_participation": {"state": "inactive"}, "judgments": deepcopy(agent.arguments["judgments"])},
+            result={**record.result, "action": "revise", "review_revision": 2})
+        for judgment in resolved.arguments["judgments"]:
+            judgment["learning_authority"] = {"state": "inactive"}
+        calls = tuple(pending if c is record else c for c in capture.tool_calls)
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, resolved), key=lambda c: c.sequence)))
+        self.assertTrue(self.observe(descriptor, capture))
+        self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def test_resolved_historical_question_does_not_block_settled_rediscovery(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        _, settled, _ = self.fixture()
+        discovery = settled.successful_calls("engineering_choice_discovery")[0]
+        review = next(c for c in settled.tool_calls if c.operation == "materiality_review" and c.arguments.get("action") == "record")
+        inspect = next(c for c in capture.tool_calls if c.operation == "materiality_review" and c.arguments.get("action") == "inspect")
+        discovery = replace(discovery, call_id="rediscovery", sequence=inspect.sequence - 80, completion_sequence=inspect.sequence - 70,
+            result={**discovery.result, "discovery_candidate_id": "ad" * 16})
+        review = replace(review, call_id="settled-review", sequence=inspect.sequence - 60, completion_sequence=inspect.sequence - 50,
+            arguments={**review.arguments, "engineering_choice_discovery_candidate_id": "ad" * 16},
+            result={**review.result, "review_candidate_id": "ae" * 16})
+        output = deepcopy(inspect.result)
+        output.update(review_candidate_id="ae" * 16, review_revision=1)
+        output["executable_work_scope"]["authority_basis"].update(review_candidate_id="ae" * 16,
+            engineering_choice_discovery_candidate_id="ad" * 16, review_revision=1)
+        for identity in output["workflow"]["satisfied_basis_identities"]:
+            if identity["kind"] == "materiality_review_candidate":
+                identity["identity"] = "ae" * 16
+        binding = replace(inspect, arguments={**inspect.arguments, "review_candidate_id": "ae" * 16}, result=output)
+        calls = tuple(binding if c is inspect else c for c in capture.tool_calls)
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, discovery, review), key=lambda c: c.sequence)))
+        self.assertTrue(self.observe(descriptor, capture))
+        self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def test_source_evidence_settles_initial_user_uncertainty_without_question(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        _, settled, _ = self.fixture()
+        facts = next(c for c in settled.tool_calls if c.operation == "materiality_review" and c.arguments.get("action") == "record")
+        calls = []
+        for call in capture.tool_calls:
+            if call.operation in {"candidate_manage", "inquiry_frontier", "decision_record"}:
+                continue
+            if call.arguments.get("action") == "revise":
+                call = replace(call, arguments={**call.arguments, "judgments": deepcopy(facts.arguments["judgments"])})
+            calls.append(call)
+        capture = replace(capture, tool_calls=tuple(calls))
+        self.assertTrue(self.observe(descriptor, capture))
+        result = self.facts(descriptor, capture, bundle)
+        self.assertTrue(result[0])
+        self.assertEqual(result[3]["user_owned_dimension_ids"], [])
+
+    def test_hidden_investigation_can_supply_ready_to_ask_evidence(self):
+        descriptor, _, _ = self.fixture("hidden_user_owned_decision")
+        path = self.root / descriptor["evidence"]["captures"]["work"]["file"]
+        events = []
+        for line in path.read_text().splitlines():
+            event = json.loads(line)
+            call_id = str(event.get("payload", {}).get("call_id", ""))
+            if "candidate-research-call" in call_id or "candidate-ready-call" in call_id:
+                continue
+            if "candidate-submit-call" in call_id:
+                event = json.loads(line.replace("research_required", "ready_to_ask"))
+            events.append(event)
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        descriptor["evidence"]["captures"]["work"]["sha256"] = h.sha256(path)
+        result = h.real_session_evidence(descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+        self.assertEqual(result["checks"]["hidden_material_discovery_order"], "passed")
+        self.assertEqual(result["checks"]["appropriate_inquiry_outcome"], "passed")
 
     def test_learning_only_cannot_authorize_canonical_decision(self):
         descriptor, capture, bundle = self.fixture("hidden_user_owned_decision")

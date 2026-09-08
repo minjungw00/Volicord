@@ -1287,10 +1287,10 @@ def load_definition() -> dict[str, Any]:
             "for currently unresolved user-owned dimensions, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
             "for currently unresolved user-owned dimensions, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
             "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
-            "for hidden_user_owned_decision, observe meaningful repository investigation before discovery, when user choice remains required, complete repository research on the material Question Candidate before promotion and before the first ordinary repository write that commits the affected outcome",
+            "for hidden_user_owned_decision, observe meaningful repository investigation before discovery; when user choice remains required, sufficient investigated evidence may submit ready-to-ask, otherwise complete repository research before promotion; resolve the actual outcome before its first affected write",
             "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision, but discovery-owned research or prototype requirements remain blocking until matching bounded evidence completion is recorded",
             "for learning_deliberation, prove complete explicit participation scope, agent-owned authority, deliberation-worthy value with a meaningful interruption counterfactual, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
-            "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision",
+            "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision for routine detail",
             "perform real repository work after the baseline",
             "commands used only for incidental inspection need not become Checkpoint verification facts",
             "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
@@ -1409,7 +1409,7 @@ def load_definition() -> dict[str, Any]:
         ],
         "hidden_user_owned_decision_additional": [
             "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
-            "when a Question remains required, repository research attachment and ready-to-ask transition before Question promotion",
+            "when a Question remains required and evidence is insufficient, repository research attachment and ready-to-ask transition before Question promotion; sufficient investigated evidence may submit ready-to-ask",
             "when a Question remains required, Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work",
         ],
         "non_user_owned_classes": {
@@ -1417,16 +1417,16 @@ def load_definition() -> dict[str, Any]:
                 "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision"
             ),
             "delegated_implementation_choice": (
-                "current Goal delegation with no manufactured Candidate, Question, or Decision"
+                "current Goal delegation for internal detail may coexist with settled public authority, with no manufactured Candidate, Question, or Decision"
             ),
             "exploratory_uncertainty": (
                 "discovery-owned research or prototype requirements remain blocking until a same-review revision supplies matching bounded evidence completion, then typed inspect readiness precedes affected work, with no manufactured Candidate, Question, or Decision"
             ),
             "learning_deliberation": (
-                "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision"
+                "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision from learning-only selection"
             ),
             "learning_routine_control": (
-                "complete active participation scope including explicit non-interruption limits, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision"
+                "complete active participation scope including explicit non-interruption limits, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision for routine detail"
             ),
         },
         "materiality_correlation": (
@@ -3068,7 +3068,6 @@ def relevant_continuation_paths(
     for path in paths:
         if (
             looks_like_synthetic_marker(path)
-            or Path(path).suffix.lower() in {".txt", ".marker"}
             or generated_repository_path(path)
         ):
             continue
@@ -3205,7 +3204,6 @@ def meaningful_first_write_events(
                 for path in observation.paths
                 if path not in seen
                 and not looks_like_synthetic_marker(path)
-                and Path(path).suffix.lower() not in {".txt", ".marker"}
                 and not generated_repository_path(path)
             )
         )
@@ -4310,8 +4308,7 @@ def work_blocker_material_question_lifecycles(
             and ready_calls[0].result.get("research_state") == "ready_to_ask"
         )
         explicit_path = bool(
-            behavior_class == "explicit_user_owned_decision"
-            and submit
+            submit
             and (
                 (
                     submit.arguments.get("research_state") == "ready_to_ask"
@@ -4366,6 +4363,70 @@ def work_blocker_material_question_lifecycles(
     return bool(lifecycles_valid), bool(decisions_valid)
 
 
+def historical_questions_resolved_before_frontier(
+    capture: CodexCapture, record: ToolCall, before_sequence: int,
+) -> bool:
+    """Permit completed obsolete user-owned branches, never gratuitous Questions.
+
+    Historical questions must have their own dimension-linked, prospective
+    resolution. Their presence neither supplies nor invalidates current authority.
+    Canonical Source/Decision semantics are additionally checked by full evaluation.
+    """
+    operations = capture.calls("candidate_manage") + capture.calls("inquiry_frontier") + capture.calls("decision_record")
+    if not operations:
+        return True
+    submits = [c for c in capture.successful_calls("candidate_manage")
+        if c.arguments.get("action") == "submit_question_from_materiality"]
+    for submit in submits:
+        prior = [c for c in capture.successful_calls("materiality_review")
+            if c.arguments.get("action") in {"record", "revise"}
+            and c.result.get("review_candidate_id") == submit.arguments.get("review_candidate_id")
+            and c.completion_sequence < submit.sequence]
+        authority = max(prior, key=lambda c: c.sequence, default=None)
+        if authority is None or not any(
+            j.get("choice_id") == submit.arguments.get("dimension_id")
+            and j.get("disposition") == "unresolved_user_owned_outcome"
+            and (j.get("learning_authority", {}).get("state") == "inactive"
+                or j.get("learning_authority", {}).get("independent_user_authority") is True)
+            for j in authority.arguments.get("judgments", [])
+        ):
+            return False
+    if (not capture.calls("decision_record")
+        and not any(c.result.get("questions") for c in capture.calls("inquiry_frontier"))
+        and not any(c.arguments.get("action") == "promote_question" for c in capture.calls("candidate_manage"))):
+        return bool(submits) and all(c.outcome == "succeeded" and c.completion_sequence < before_sequence for c in operations)
+    if not submits or any(c.completion_sequence >= before_sequence or c.outcome != "succeeded" for c in operations):
+        return False
+    review_ids = {c.arguments.get("review_candidate_id") for c in submits}
+    covered_questions: set[str] = set()
+    for review_id in review_ids:
+        origins = [c for c in capture.successful_calls("materiality_review")
+            if c.arguments.get("action") == "record" and c.result.get("review_candidate_id") == review_id
+            and c.arguments.get("project_id") == record.arguments.get("project_id")
+            and c.result.get("goal_context_id") == record.result.get("goal_context_id")
+            and c.result.get("baseline_analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")
+            and c.completion_sequence < record.sequence]
+        if len(origins) != 1:
+            return False
+        origin = origins[0]
+        revisions = [c for c in capture.successful_calls("materiality_review")
+            if c.arguments.get("action") == "revise" and c.arguments.get("review_candidate_id") == review_id
+            and origin.completion_sequence < c.sequence and c.completion_sequence < before_sequence]
+        revision = max(revisions, key=lambda c: c.sequence, default=None)
+        baseline = next((c for c in capture.successful_calls("repository_analyze")
+            if c.result.get("analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")), None)
+        if baseline is None or not all(work_blocker_material_question_lifecycles(
+            capture, "explicit_user_owned_decision", baseline, origin, revision, before_sequence
+        )):
+            return False
+        candidate_ids = {c.result.get("candidate_id") for c in submits if c.arguments.get("review_candidate_id") == review_id}
+        covered_questions.update(c.result.get("question_id") for c in capture.successful_calls("candidate_manage")
+            if c.arguments.get("action") == "promote_question" and c.arguments.get("candidate_id") in candidate_ids)
+    return all(c.arguments.get("question_id") in covered_questions for c in capture.calls("decision_record")) and all(
+        q.get("identity") in covered_questions for c in capture.successful_calls("inquiry_frontier") for q in c.result.get("questions", [])
+    )
+
+
 def current_authority_frontier(
     capture: CodexCapture, *, project_id: Any, goal_context_id: Any,
     baseline_analysis_snapshot_id: Any, before_sequence: int,
@@ -4376,6 +4437,12 @@ def current_authority_frontier(
     and revise do not create a newer Review. Never fall back across Discovery
     identity when the newest discovery has no review yet.
     """
+    goals = [c for c in capture.successful_calls("context_record")
+        if c.arguments.get("project_id") == project_id and c.arguments.get("role") == "goal"
+        and c.completion_sequence < before_sequence]
+    latest_goal = max(goals, key=lambda c: c.completion_sequence, default=None)
+    if latest_goal is not None and latest_goal.result.get("context_item_id") != goal_context_id:
+        return None, None, []
     discoveries = [
         call for call in capture.successful_calls("engineering_choice_discovery")
         if call.result.get("action") == "record"
@@ -4385,6 +4452,9 @@ def current_authority_frontier(
         and call.completion_sequence < before_sequence
     ]
     discovery = max(discoveries, key=lambda call: call.completion_sequence, default=None)
+    if discovery is not None and any(c is not discovery and c.completion_sequence >= discovery.sequence for c in discoveries):
+        # Overlapping creations do not expose the production created_at/ID order.
+        return None, None, []
     if discovery is None:
         return None, None, []
     records = [
@@ -4400,6 +4470,8 @@ def current_authority_frontier(
         and call.completion_sequence < before_sequence
     ]
     record = max(records, key=lambda call: call.completion_sequence, default=None)
+    if record is not None and any(c is not record and c.completion_sequence >= record.sequence for c in records):
+        return discovery, None, []
     if record is None:
         return discovery, None, []
     revisions = sorted([
@@ -4438,11 +4510,7 @@ def work_blocker_behavior_observations(
         for judgment in judgments
         if isinstance(judgment, dict)
     } if isinstance(judgments, list) else set()
-    no_question_path = (
-        not capture.calls("candidate_manage")
-        and not capture.calls("inquiry_frontier")
-        and not capture.calls("decision_record")
-    )
+    no_question_path = historical_questions_resolved_before_frontier(capture, record, first_work_change)
     workflow = record.result.get("workflow")
     review_id = record.result.get("review_candidate_id")
     final_review = revisions[-1] if revisions else record
@@ -4475,6 +4543,11 @@ def work_blocker_behavior_observations(
         baseline_analysis_snapshot_id=baseline_id,
     )
     ready_before_work = readiness_basis["qualified"]
+    current_user_owned = any(j.get("disposition") == "unresolved_user_owned_outcome"
+        for j in final_review.arguments.get("judgments", []))
+
+    if "unresolved_user_owned_outcome" in dispositions and not current_user_owned:
+        return bool(ready_before_work and no_question_path), False, False
 
     if "unresolved_user_owned_outcome" not in dispositions:
         behavior_ok = (
@@ -4713,12 +4786,13 @@ def build_work_blocker_result(
             capture.successful_calls("checkpoint_record")
         ),
     }
-    _, current_record, _ = current_authority_frontier(
+    _, current_record, current_revisions = current_authority_frontier(
         capture, project_id=baseline_call.result.get("project_id") if baseline_call else None,
         goal_context_id=authoritative_goal_context_id,
         baseline_analysis_snapshot_id=baseline_analysis_id,
         before_sequence=first_work_change or 0,
     )
+    current_record = current_revisions[-1] if current_revisions else current_record
     declared_user_owned = bool(current_record) and any(
         judgment.get("disposition") == "unresolved_user_owned_outcome"
         for judgment in current_record.arguments.get("judgments", [])
@@ -6588,11 +6662,7 @@ def materiality_review_facts(
     workflow = record.result.get("workflow")
     dimension_ids = set(dimensions) if dimensions is not None else set()
     relevant_ids = (
-        [
-            dimension_id
-            for dimension_id, dimension in dimensions.items()
-            if dimension.get("disposition") in expected
-        ]
+        list(dimensions)
         if dimensions is not None
         else []
     )
@@ -6755,6 +6825,10 @@ def materiality_review_facts(
     )
     final_revision = revision_chain[-1][0] if revision_chain else None
     final_dimensions = revision_chain[-1][1] if revision_chain else None
+    current_user_owned_ids = {
+        dimension_id for dimension_id, dimension in (final_dimensions or dimensions or {}).items()
+        if dimension.get("disposition") == "unresolved_user_owned_outcome"
+    }
     revised_workflow = (
         final_revision.result.get("workflow") if final_revision is not None else None
     )
@@ -6796,17 +6870,17 @@ def materiality_review_facts(
         valid = (
             common
             and resolved
-            and (is_user_owned_behavior(behavior_class) or not user_owned_ids)
             and readiness_ok
         )
     elif user_owned_ids:
         resolved = bool(final_dimensions) and final_revision is not None and (
             resolved_user_owned_dimensions_valid(
                 final_dimensions,
-                user_owned_ids,
+                current_user_owned_ids,
                 decision_evidence,
                 revision_sequence=final_revision.sequence,
             )
+            if current_user_owned_ids else True
         )
         unresolved_workflow_ids = {
             requirement.get("dimension_id")
@@ -6862,9 +6936,7 @@ def materiality_review_facts(
             and revised_workflow.get("blocks_ordinary_work") is True
             and readiness_ok
         )
-        valid = common and (initially_ready or resolved_after_evidence) and not work.calls(
-            "candidate_manage"
-        ) and not work.calls("inquiry_frontier") and not work.calls("decision_record")
+        valid = common and (initially_ready or resolved_after_evidence) and historical_questions_resolved_before_frontier(work, record, first_write_sequence)
     else:
         learning_deliberation_expected = behavior_class == "learning_deliberation"
         valid = (
@@ -6882,31 +6954,30 @@ def materiality_review_facts(
                 or workflow.get("disposition") == "executable_scope_required"
             )
             and readiness_ok
-            and not work.calls("candidate_manage")
-            and not work.calls("inquiry_frontier")
-            and not work.calls("decision_record")
+            and historical_questions_resolved_before_frontier(work, record, first_write_sequence)
         )
     return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(primary_dimension_id) if nonempty_string(primary_dimension_id) else None, {
         "record_sequence": record.sequence,
         "review_candidate_id": review_id,
         "dimension_ids": sorted(dimension_ids),
         "relevant_dimension_ids": relevant_ids,
-        "user_owned_dimension_ids": sorted(user_owned_ids),
+        "user_owned_dimension_ids": sorted(current_user_owned_ids),
+        "initial_user_owned_dimension_ids": sorted(user_owned_ids),
         "resolution_decision_ids_by_dimension": {
             dimension_id: (final_dimensions or dimensions or {})
             .get(dimension_id, {})
             .get("resolution_decision_id")
-            for dimension_id in sorted(user_owned_ids)
+            for dimension_id in sorted(current_user_owned_ids)
         },
         "dimension_correlation": "dimension_id",
         "disposition": (
-            dimensions[primary_dimension_id].get("disposition")
+            (final_dimensions or dimensions)[primary_dimension_id].get("disposition")
             if dimensions is not None and primary_dimension_id is not None
             else None
         ),
         "allowed_dispositions": sorted(expected),
         "explicit_delegation": (
-            dimensions[primary_dimension_id]["basis"].get("explicit_delegation")
+            (final_dimensions or dimensions)[primary_dimension_id]["basis"].get("explicit_delegation")
             if dimensions is not None and primary_dimension_id is not None
             else None
         ),
@@ -7122,19 +7193,27 @@ def learning_deliberation_facts(
         dimension_id=dimension_id,
         first_write_sequence=first_write_sequence,
     )
-    canonical_decision_count = len([
+    session_decisions = [
         row
         for row in bundle.rows("decisions")
         if row.get("project_id") == bundle.project_id
-    ])
+        and (bundle.one("sources", id=row.get("user_turn_source_id"), project_id=bundle.project_id) or {}).get("detail_two") == work.session_id
+    ]
+    canonical_decision_count = len(session_decisions)
+    _, _, _, _, _, actual_decisions = decision_facts(work, bundle)
     non_decision_ok = (
         all(
             call.result.get("interaction_kind") == "learning_participation"
             and call.result.get("canonical_decision") is False
             for call in calls
         )
-        and not work.calls("decision_record")
-        and canonical_decision_count == 0
+        and all(row.get("id") in actual_decisions for row in session_decisions)
+        and (not work.calls("decision_record") or bool(materiality_basis.get("user_owned_dimension_ids")) or any(
+            c.arguments.get("action") == "record"
+            and c.result.get("review_candidate_id") == review_candidate_id
+            and historical_questions_resolved_before_frontier(work, c, first_write_sequence)
+            for c in work.successful_calls("materiality_review")
+        ))
     )
     return participation_ok, ordered, non_decision_ok, {
         "participation_state": participation.get("state"),
@@ -7330,8 +7409,7 @@ def question_review_facts(
         and submit_call.sequence < research_call.sequence < ready_call.sequence
     )
     explicit_ready_lifecycle = (
-        is_user_owned_behavior(behavior_class)
-        and candidate_created_from_materiality
+        candidate_created_from_materiality
         and research_call is None
         and ready_call is None
         and submit_call.arguments.get("research_state") == "ready_to_ask"
@@ -7481,7 +7559,6 @@ def material_question_lifecycle_facts(
     if (
         work is None
         or bundle is None
-        or not is_user_owned_behavior(behavior_class)
         or not isinstance(dimension_ids, list)
         or not dimension_ids
         or not isinstance(resolution_by_dimension, dict)
@@ -7758,7 +7835,6 @@ def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
         for observation in work.path_observations
         if any(
             not looks_like_synthetic_marker(path)
-            and Path(path).suffix.lower() not in {".txt", ".marker"}
             and not generated_repository_path(path)
             for path in observation.paths
         )
@@ -8149,10 +8225,14 @@ def real_session_evidence(
         work_capture and work_capture.calls("decision_record")
     )
     non_question_outcome_ok = (
-        not frontier_interrupted
-        and not decision_attempted
-        and bool(work_capture)
-        and not work_capture.calls("candidate_manage")
+        bool(work_capture)
+        and (not decision_attempted or decision_ok)
+        and any(
+            c.result.get("review_candidate_id") == review_candidate_id
+            and c.arguments.get("action") == "record"
+            and historical_questions_resolved_before_frontier(work_capture, c, first_work_change or 0)
+            for c in work_capture.successful_calls("materiality_review")
+        )
     )
     behavior_classification_ok = (
         behavior_class in BEHAVIOR_CLASSES
@@ -8198,7 +8278,6 @@ def real_session_evidence(
         and (
             not declared_user_owned
             or question_ok
-            and question_review_basis.get("repository_research_lifecycle_observed")
             and first_work_change is not None
             and all(call.completion_sequence < first_work_change for call in decision_calls_for_order)
         )
@@ -8207,7 +8286,6 @@ def real_session_evidence(
         checkpoint_call is not None
         and bool(changed_paths)
         and not all(looks_like_synthetic_marker(path) for path in changed_paths)
-        and not all(Path(path).suffix.lower() in {".txt", ".marker"} for path in changed_paths)
         and all(
             item.sequence < checkpoint_call.sequence
             for item in meaningful_work_path_observations(work_capture)
@@ -18159,13 +18237,13 @@ def self_test() -> int:
     if (
         duplicate_goal_result["checks"]["plain_task_goal_linkage"] != "passed"
         or duplicate_goal_result["checks"]["pre_write_materiality_work_authority"]
-        != "passed"
+        != "failed"
         or duplicate_goal_basis["duplicate_or_unused_goal_count"] != 1
         or duplicate_goal_basis["unused_goal_context_ids"]
         != [unused_goal_context_id]
     ):
         raise AssertionError(
-            "an unused Goal record erased the authoritative Goal identity chain"
+            "a later Goal must invalidate old work authority while preserving its historical Source linkage"
         )
 
     missing_frontier_presentation = real_session_fixture(

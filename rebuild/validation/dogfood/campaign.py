@@ -3366,8 +3366,11 @@ def evaluate_batch(
                             else error.basis
                         ),
                         "error_kind": type(error).__name__,
-                        "failed_checks": [error.check],
-                        "failure_attribution": {"domain": error.domain, "basis": error.basis},
+                        "failed_checks": [harness.SETUP_ACTIVATION_CHECK if activation_problem else error.check],
+                        "failure_attribution": {
+                            "domain": activation_problem.domain if activation_problem else error.domain,
+                            "basis": activation_problem.basis if activation_problem else error.basis,
+                        },
                         "resume_capture_sha256": resume_capture.source_sha256,
                     }
                     has_evidence_failure = True

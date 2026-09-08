@@ -67,6 +67,15 @@ class ResumeTests(unittest.TestCase):
         retest = replace(self.verification, sequence=mutation.sequence + 1, completion_sequence=mutation.sequence + 2)
         self.assertEqual(self.inspect(replace(changed, commands=(*changed.commands, retest))), "01" * 16)
 
+    def test_text_manifest_mutation_also_requires_retest(self):
+        mutation = replace(self.capture.path_observations[-1], paths=("requirements.txt",),
+            sequence=self.verification.completion_sequence + 1)
+        changed = replace(self.capture, path_observations=(*self.capture.path_observations, mutation))
+        self.assertEqual(h.resume_continuation_facts(changed, changed.successful_calls("recall")[0],
+            checkpoint_work_state="paused", recalled_work_state="paused", common_identity_and_freshness_ok=True,
+            change_baseline_ok=True, executable_work_scope={"paths": ["src/resume.rs", "requirements.txt"]},
+            descriptor_scope_paths=[])["failure_basis"], "post_change_validation_missing")
+
     def test_nonzero_and_indeterminate_validation_are_distinct(self):
         for command, basis, domain in (
             (replace(self.verification, exit_code=2), "terminal_validation_failed", "product_integration"),
