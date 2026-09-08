@@ -34,6 +34,7 @@ from codex_events import (
     EvidenceError,
     ToolCall,
     VOLICORD_OPERATIONS,
+    command_argvs,
     command_is_clean_git_status,
     command_is_repository_inspection,
     decode_established_fact_statements,
@@ -1592,7 +1593,7 @@ def load_definition() -> dict[str, Any]:
             "actual_missing_required_operation_outcome": "campaign_stop",
             "mixed_failure_checks_preserved": True,
             "failure_attribution_domains": [
-                "environment",
+                "environment", "product_integration",
                 "evidence",
                 "behavior_contract",
                 "validation_internal",
@@ -3069,6 +3070,14 @@ def generated_repository_path(path: str) -> bool:
     )
 
 
+def command_is_read_only_report(value: Any) -> bool:
+    argvs = command_argvs(value)
+    return bool(argvs) and all(
+        argv and Path(argv[0]).name in {"echo", "printf", "true"}
+        for argv in argvs
+    )
+
+
 def meaningful_resume_validation(
     capture: CodexCapture | None, after_sequence: int | None
 ) -> dict[str, Any]:
@@ -3089,8 +3098,8 @@ def meaningful_resume_validation(
         command
         for command in capture.commands
         if command.sequence > after_sequence
-        and not command_is_clean_git_status(command.parsed_command)
         and not command_is_repository_inspection(command.parsed_command)
+        and not command_is_read_only_report(command.parsed_command)
     ]
     terminal = (
         max(commands, key=lambda command: (command.sequence, command.group_index))
@@ -3123,6 +3132,8 @@ def meaningful_resume_validation(
         "terminal_evidence_state": (
             terminal.evidence_state if terminal is not None else None
         ),
+        "terminal_execution_identity": terminal.execution_identity if terminal else None,
+        "terminal_group_index": terminal.group_index if terminal else None,
         "intermediate_failure_count": len(intermediate_failures),
         "indeterminate_execution_count": len(indeterminate),
         "recovered_intermediate_failure": bool(intermediate_failures) and qualified,
@@ -3131,7 +3142,7 @@ def meaningful_resume_validation(
             and terminal.evidence_state == "completed"
             and not qualified
         ),
-        "incomplete_evidence": terminal is None or bool(indeterminate),
+        "incomplete_evidence": terminal is None or terminal.evidence_state != "completed",
     }
 
 
@@ -3700,7 +3711,7 @@ def resume_continuation_facts(
         min(
             (
                 observation.sequence
-                for observation in capture.path_observations
+                for observation in meaningful_work_path_observations(capture)
                 if recall_call is not None
                 and observation.sequence > recall_call.completion_sequence
             ),
@@ -3747,7 +3758,7 @@ def resume_continuation_facts(
     last_change_sequence = max(
         (
             item.sequence
-            for item in capture.path_observations
+            for item in meaningful_work_path_observations(capture)
             if first_inspection is not None and item.sequence > first_inspection
         ),
         default=None,
@@ -3800,7 +3811,19 @@ def resume_continuation_facts(
         if verified_ok
         else None
     )
+    validation = change_validation if last_change_sequence is not None else inspection_validation
+    failure_basis = (
+        None if mode is not None
+        else "pre_recall_repository_access_or_order_violation" if not ordering_ok
+        else "baseline_invalid" if not common_identity_and_freshness_ok
+        else "baseline_invalid" if last_change_sequence is not None and not change_baseline_ok
+        else "terminal_validation_failed" if validation["unresolved_terminal_failure"]
+        else "post_change_validation_missing" if validation["terminal_sequence"] is None
+        else "terminal_validation_indeterminate" if not validation["qualified"]
+        else "scope_or_authority_missing"
+    )
     return {
+        "failure_basis": failure_basis,
         "first_inspection_sequence": first_inspection,
         "prior_inspection_sequences": prior_inspections,
         "first_change_sequence": first_change_sequence,
@@ -8623,6 +8646,8 @@ def real_session_evidence(
         "continuation_paths": continuation_paths,
         "relevant_resume_paths": relevant_resume_paths,
         "continuation_basis": {
+            "failure_basis": continuation_facts["failure_basis"],
+            "last_material_change_sequence": continuation_facts["last_change_sequence"],
             "fresh_resume_session": fresh_ok,
             "repository_bound_project_resolution": resolution_ok,
             "recall_before_inspection_and_continuation": ordering_ok,

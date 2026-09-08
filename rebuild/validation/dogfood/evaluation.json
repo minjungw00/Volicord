@@ -1030,7 +1030,7 @@
       "indeterminate_required_evidence_outcome": "evidence_failed",
       "actual_missing_required_operation_outcome": "campaign_stop",
       "mixed_failure_checks_preserved": true,
-      "failure_attribution_domains": ["environment", "evidence", "behavior_contract", "validation_internal"],
+      "failure_attribution_domains": ["environment", "product_integration", "evidence", "behavior_contract", "validation_internal"],
       "failure_attribution_basis_visibility": "bounded_evaluator_safe_identifier"
     }
   }

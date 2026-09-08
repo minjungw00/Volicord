@@ -1339,7 +1339,10 @@ Mapping 뒤 campaign-local staging에서 raw byte와 mapped capture SHA-256를 �
 모든 eight cycle을 평가한다. 이 동안 authoritative campaign metadata, descriptor와 inventory는
 변경하지 않는다. Supported work lifecycle/binding failure는 `WorkCaptureContractError`의 finite
 basis/check로 `evidence_failed` intake가 되고, `NoWorkBlocker`는 정상 full-qualification 경로다.
-`ResumeContractError`는 behavior contract, `EvidenceError`/supported extraction failure는 evidence,
+`ResumeContractError`는 finite typed basis와 domain을 보존한다. Recall transport/identity와
+indeterminate verification은 evidence, actual failed Recall/validation은 product_integration,
+order/baseline/scope/missing post-change validation은 behavior_contract다.
+`EvidenceError`/supported extraction failure는 evidence,
 validator assertion/unknown ValueError는 `validation_internal`로 구분한다. Activation의 기존
 `environment`/`evidence`/`validation_internal` 구분은 유지한다. Error message text로 routing하지 않는다.
 
@@ -1530,3 +1533,22 @@ temporal/lifetime outcome/result와 primary binding의 일치를 검사한다. P
 추론하지 않으며 completeness와 cited authority의 semantic sufficiency는 independent evaluator와
 human authority-obligation review가 계속 소유한다. Sanitized frontier regressions는
 `rebuild/validation/dogfood/frontier_self_test.py`이며 maintained harness self-test에 포함된다.
+
+### Resume evidence and verification chronology
+
+Maintained resume reasons are `recall_transport_incomplete`, `recall_identity_or_project_invalid`,
+`recall_operation_failed`, `pre_recall_repository_access_or_order_violation`, `baseline_invalid`,
+`scope_or_authority_missing`, `post_change_validation_missing`, `terminal_validation_failed`,
+`terminal_validation_indeterminate`, and `validator_invariant_failure`. Intake, failed_checks and
+transactional batch summaries preserve the exact finite basis and remediation domain. Malformed or
+truncated Recall is evidence failure; an observed failed product Recall is product_integration.
+No text-message classification or blanket behavior attribution is used.
+
+Verification is evaluated after the last observed material mutation, including repeat writes to the
+same path. Later demonstrably read-only inspection/report commands do not replace numeric verification;
+static shell wrappers and Git -C inspection are supported, while write flags/compound mutations cannot
+be ignored as inspection. Echoed success claims never qualify. A later material mutation requires new
+verification. The selected command retains execution identity, aggregate/decomposed group index, numeric
+exit and termination; actual nonzero verification fails and incomplete execution remains indeterminate.
+Session 1's 256 KiB MCP Recall budget remains unchanged. Sanitized bounded Recall and chronology
+regressions live in `resume_self_test.py` and run in the maintained campaign self-test.

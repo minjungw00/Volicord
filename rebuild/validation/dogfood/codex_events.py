@@ -1440,20 +1440,39 @@ def command_is_repository_inspection(value: Any) -> bool:
         "show",
         "status",
     }
-    argvs = command_argvs(value)
-    return bool(argvs) and all(
-        bool(argv)
-        and (
-            Path(argv[0]).name.lower() in inspection_programs
-            or (Path(argv[0]).name.lower() == "cd" and len(argv) == 2)
-            or (
-                Path(argv[0]).name.lower() == "git"
-                and len(argv) >= 2
-                and argv[1].lower() in git_inspections
+    def read_only(argv: tuple[str, ...], depth: int = 0) -> bool:
+        if not argv or depth > 3:
+            return False
+        program = Path(argv[0]).name.lower()
+        if program in {"sh", "bash", "zsh"}:
+            parts = split_static_compound_command(argv[2]) if len(argv) == 3 and argv[1] in {"-c", "-lc"} else []
+            return bool(parts) and all(read_only(part, depth + 1) for part in parts)
+        if program == "git":
+            args = list(argv[1:])
+            while args:
+                if args[0] == "-C" and len(args) >= 2:
+                    args = args[2:]
+                elif args[0] in {"--no-pager", "--literal-pathspecs"}:
+                    args = args[1:]
+                else:
+                    break
+            return bool(args) and args[0] in git_inspections and not any(
+                arg == "--output" or arg.startswith("--output=") or arg in {"--ext-diff", "--textconv"}
+                for arg in args[1:]
             )
-        )
-        for argv in argvs
-    )
+        if program == "cd":
+            return len(argv) == 2
+        if program == "find":
+            return not any(arg.startswith(("-exec", "-ok", "-delete", "-fprint", "-fls")) for arg in argv[1:])
+        if program == "sed":
+            # Only the maintained line-range read form is demonstrably inspection.
+            return len(argv) >= 4 and argv[1] == "-n" and re.fullmatch(r"[0-9]+(?:,[0-9]+|,\$)?p", argv[2]) is not None
+        if program in {"rg", "grep"} and any(arg.startswith(("--pre", "--hostname-bin")) for arg in argv[1:]):
+            return False
+        return program in inspection_programs
+
+    argvs = command_argvs(value)
+    return bool(argvs) and all(read_only(argv) for argv in argvs)
 
 
 def repository_operation_is_inspection(call: ToolCall) -> bool:

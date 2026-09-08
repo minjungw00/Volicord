@@ -69,8 +69,30 @@ class CampaignError(ValueError):
         self.diagnostic = diagnostic
 
 
+RESUME_FAILURE_DOMAINS = {
+    "recall_transport_incomplete": "evidence",
+    "recall_identity_or_project_invalid": "evidence",
+    "recall_operation_failed": "product_integration",
+    "pre_recall_repository_access_or_order_violation": "behavior_contract",
+    "baseline_invalid": "behavior_contract",
+    "scope_or_authority_missing": "behavior_contract",
+    "post_change_validation_missing": "behavior_contract",
+    "terminal_validation_failed": "product_integration",
+    "terminal_validation_indeterminate": "evidence",
+    "validator_invariant_failure": "validation_internal",
+}
+
+
 class ResumeContractError(CampaignError):
-    """A captured resume violates the maintained continuation contract."""
+    """Finite evidence basis, never routed by exception message text."""
+
+    def __init__(self, basis: str):
+        if basis not in RESUME_FAILURE_DOMAINS:
+            raise AssertionError("unknown resume failure basis")
+        self.basis = basis
+        self.domain = RESUME_FAILURE_DOMAINS[basis]
+        self.check = basis
+        super().__init__(basis)
 
 
 @dataclass(frozen=True)
@@ -2092,18 +2114,24 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         or harness.activation_failure(capture) is not None
     ):
         raise ResumeContractError(
-            "resume capture does not match the frozen fresh VS Code cycle contract"
+            "recall_identity_or_project_invalid"
         )
     if capture.session_id == state.get("work_session_id"):
-        raise ResumeContractError("resume capture must come from a distinct fresh session")
+        raise ResumeContractError("recall_identity_or_project_invalid")
     resolves = capture.successful_calls("project_resolve")
     recalls = capture.successful_calls("recall")
     checkpoints = capture.successful_calls("checkpoint_record")
+    if capture.transport_issues("recall"):
+        raise ResumeContractError("recall_transport_incomplete")
+    if not recalls and capture.calls("recall"):
+        raise ResumeContractError("recall_operation_failed")
     if len(resolves) != 1 or len(recalls) != 1 or capture.successful_calls("project_initialize"):
         raise ResumeContractError(
-            "resume must resolve one existing Project and must not initialize a replacement"
+            "recall_identity_or_project_invalid"
         )
     resolve, recall = resolves[0], recalls[0]
+    if recall.result.get("read_only") is not True or "checkpoint" not in recall.result:
+        raise ResumeContractError("recall_transport_incomplete")
     project_id = resolve.result.get("project_id")
     if (
         resolve.result.get("status") != "found"
@@ -2111,21 +2139,21 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         or project_id != recall.arguments.get("project_id")
         or project_id != recall.result.get("project_id")
         or project_id != state.get("project_id")
-        or resolve.sequence >= recall.sequence
+        or resolve.completion_sequence >= recall.sequence
     ):
         raise ResumeContractError(
-            "resume Project resolution/Recall identity or ordering is invalid"
+            "recall_identity_or_project_invalid"
         )
     if any(
-        command.sequence < recall.sequence and command_is_repository_inspection(command.parsed_command)
+        command.sequence <= recall.completion_sequence and command_is_repository_inspection(command.parsed_command)
         for command in capture.commands
     ) or any(
-        call.sequence < recall.sequence
+        call.sequence <= recall.completion_sequence
         for call in capture.tool_calls
         if harness.repository_operation_is_inspection(call)
         or call.operation in {"inquiry_frontier", "checkpoint_record"}
-    ) or any(item.sequence < recall.sequence for item in capture.path_observations):
-        raise ResumeContractError("resume inspected or changed the repository before Recall")
+    ) or any(item.sequence <= recall.completion_sequence for item in capture.path_observations):
+        raise ResumeContractError("pre_recall_repository_access_or_order_violation")
     meaningful_changes = harness.meaningful_work_path_observations(capture)
     first_write = min(
         (item.sequence for item in meaningful_changes),
@@ -2155,24 +2183,19 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         if terminal_checkpoint is not None
         else None
     )
-    review_ids = {
-        call.arguments.get("review_candidate_id")
-        for call in capture.successful_calls("materiality_review")
-        if call.arguments.get("action") == "inspect"
-        and call.arguments.get("project_id") == project_id
-        and call.arguments.get("goal_context_id") == goal_context_id
-        and call.arguments.get("baseline_analysis_snapshot_id") == baseline_id
-        and harness.nonempty_string(call.arguments.get("review_candidate_id"))
-    }
+    _, current_review, _ = harness.current_authority_frontier(
+        capture, project_id=project_id, goal_context_id=goal_context_id,
+        baseline_analysis_snapshot_id=baseline_id, before_sequence=first_write or 0,
+    )
     scope_chronology = (
         harness.executable_scope_chronology(
             capture,
             project_id=project_id,
-            review_candidate_id=next(iter(review_ids)),
+            review_candidate_id=current_review.result.get("review_candidate_id"),
             goal_context_id=goal_context_id,
             baseline_analysis_snapshot_id=baseline_id,
         )
-        if len(review_ids) == 1
+        if current_review is not None
         else {"qualified": False, "executable_work_scope": None}
     )
     continuation = harness.resume_continuation_facts(
@@ -2196,9 +2219,10 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         ),
     )
     if continuation["mode"] is None:
-        raise ResumeContractError(
-            "resume does not satisfy change-continuation or verified-state-continuation invariants"
-        )
+        basis = continuation["failure_basis"]
+        if first_write is not None and change_baseline_ok and not scope_chronology["qualified"]:
+            basis = "scope_or_authority_missing"
+        raise ResumeContractError(basis or "validator_invariant_failure")
     return str(project_id)
 
 
@@ -2942,17 +2966,18 @@ def activation_failure_diagnostic(
 
 FAILURE_DOMAINS = (
     "environment",
+    "product_integration",
     "evidence",
     "behavior_contract",
     "validation_internal",
 )
 FAILURE_BASES = {
+    *RESUME_FAILURE_DOMAINS,
     *harness.WORK_CAPTURE_FAILURE_CHECKS,
     *(failure.basis for failure in harness.ACTIVATION_FAILURES.values()),
     "required_evidence_transport_indeterminate",
     "maintained_work_behavior_contract_failed",
     "work_project_identity_unavailable",
-    "maintained_resume_behavior_contract_failed",
     "resume_supported_evidence_collection_failed",
     "supported_evidence_incomplete",
     "validator_invariant_failure",
@@ -3338,18 +3363,20 @@ def evaluate_batch(
                         "basis": (
                             activation_problem.basis
                             if activation_problem is not None
-                            else "maintained_resume_behavior_contract_failed"
+                            else error.basis
                         ),
                         "error_kind": type(error).__name__,
+                        "failed_checks": [error.check],
+                        "failure_attribution": {"domain": error.domain, "basis": error.basis},
                         "resume_capture_sha256": resume_capture.source_sha256,
                     }
                     has_evidence_failure = True
                     if activation_problem is None:
                         cycle_attributions.append(bounded_failure_attribution(
                             "resume",
-                            "behavior_contract",
-                            "maintained_resume_behavior_contract_failed",
-                            ["resume_continuation_contract"],
+                            error.domain,
+                            error.basis,
+                            [error.check],
                         ))
                 except (CampaignError, EvidenceError, OSError) as error:
                     resume_result = {

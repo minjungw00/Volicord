@@ -1169,7 +1169,7 @@ def main() -> int:
         "actual_missing_required_operation_outcome": "campaign_stop",
         "mixed_failure_checks_preserved": True,
         "failure_attribution_domains": [
-            "environment",
+            "environment", "product_integration",
             "evidence",
             "behavior_contract",
             "validation_internal",

@@ -3582,6 +3582,8 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
 
 
 def main() -> int:
+    from resume_self_test import check_resume_regressions
+    check_resume_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:
