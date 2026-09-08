@@ -2,7 +2,19 @@
 
 ## Status
 
-Failed diagnostic; no replacement qualification. The latest inspected campaign
+Technical entry passed for the repaired Dogfood evaluator at sealed
+production/test candidate `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`
+(2026-09-08). The copied sanitized gate capsule records `phase_8_ready = true`
+and an independently verified evidence archive. No wholly fresh naturalistic
+campaign has started for this candidate, so automated Dogfood qualification and
+replacement qualification have not run and human review is not provided.
+
+The later documentation-only conclusion is the child commit of this sealed
+candidate. Its own HEAD is not the revision for campaign execution. A new
+campaign must use a separate clean worktree whose actual HEAD is exactly the
+sealed candidate above.
+
+Historical failed diagnostics remain non-qualifying. The latest inspected campaign
 candidate is `bbb64b4274c3f726fbeffae2389089819972b9ff` (2026-09-05).
 Its batch intake rejected the evidence as `operator_environment_invalid`:
 repository-scoped SessionStart activation was not established in the work and
@@ -17,14 +29,15 @@ reused for replacement qualification. Historical technical-entry evidence
 cannot qualify the current HEAD; a new candidate requires a new technical gate
 and a wholly fresh campaign.
 
-- `replacement_gate = failed`
+- `phase_8_ready = true` for the sealed technical-entry candidate only
+- `replacement_gate = not_run` for a fresh campaign; historical failures remain failed
 - `replacement_pass_candidate = false`
 - `phase_9_ready = false`
-- `automated_qualification = not_run` for the latest inspected campaign
-- `human_review = not_provided`
+- `automated_qualification = not_run` for the new candidate and latest historical campaign
+- `human_review = not_provided` for the new campaign
 
-Subsequent production fixes and support checks do not establish a new technical
-entry, automated Dogfood passage, replacement passage, or Phase 9 readiness.
+The successful technical gate establishes entry readiness only. It does not
+establish automated Dogfood passage, replacement passage, or Phase 9 readiness.
 
 ## Goal
 
@@ -51,8 +64,8 @@ prompt choreography.
 ## Input repositories and revisions
 
 Both diagnostic campaigns' candidates, descriptors, workspaces, Runtime Homes,
-rollouts, bundles, observations, blocker results, and session identities are
-non-qualifying diagnostic evidence and cannot be reused.
+rollouts, bundles, evidence packages, observations, blocker results, and session
+identities are non-qualifying diagnostic evidence and cannot be reused.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
@@ -62,7 +75,7 @@ may be reused.
 
 ## Environment and tool versions
 
-The prior gate capsule records Linux `x86_64`, CPython `3.12.3`, Git `2.43.0`,
+The new gate capsule records Linux `x86_64`, CPython `3.12.3`, Git `2.43.0`,
 Cargo `1.97.1`, Rust `1.97.1`, and Codex CLI `0.145.0` for the sealed technical
 entry. A new naturalistic campaign must record its own actual operating
 environment; the sealed V11 environment does not substitute for Dogfood.
@@ -149,8 +162,10 @@ Decision path.
 
 ## Commands and configuration
 
-After a later technical-entry gate seals a candidate, start the new campaign
-from a separate clean worktree whose actual `HEAD` is that candidate:
+In a later session, start the new campaign from a separate clean worktree whose
+actual `HEAD` is `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`.
+Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
+documentation-only conclusion HEAD:
 
 ```text
 rebuild/scripts/dogfood-campaign prepare \
@@ -277,17 +292,25 @@ documents and does not share their adoption lifecycle.
 
 ## Observed results
 
-The prior capsule and independently verified archive establish only the
-historical technical entry state for the predecessor campaign contract:
+The new copied capsule and independently verified archive establish technical
+entry for `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
+- separately authorized production-provider qualification `passed` using
+  `openai-codex` and exact model `gpt-5.6-sol`;
 - official V11 `passed` with 54 of 54 required steps;
 - all three authenticated Codex target outcomes `passed`;
 - credential-retention audit `passed` with every recorded count zero;
 - sanitized evidence archive verification `passed`;
+- complete V11 resource measurements `passed`, with no exceeded ceiling;
 - same-gate final/V11 artifact ownership valid;
 - no active accepted-Decision revisit trigger reported by official V11.
+
+The maintained gate ran exact final, live provider qualification, and official
+V11 once for this candidate in the same gate process/session. The later
+documentation conclusion uses the copied capsule and maintained report checks.
+It supplies no new naturalistic observations.
 
 Candidate `537bd0cadf40bedaf0719b658a860ac369d3faa6` established one successful
 explicit user-owned control and one hidden user-owned discovery failure. The
@@ -318,8 +341,9 @@ diagnostic inputs; this report does not copy or alter their evidence.
 
 ## Coverage and failures
 
-Historical technical Phase 8 entry evidence remains passed/eligible only for
-the technically gated candidate. The predecessor partial naturalistic campaign
+Current technical Phase 8 entry evidence is passed/eligible only for
+`0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`. A fresh naturalistic campaign
+has not started. The predecessor partial naturalistic campaign
 failed on material Question discovery and descriptor validity. The latest
 campaign was rejected at environment-evidence intake before qualification.
 Neither result supplies campaign-wide interaction, document, Viewer,
@@ -360,16 +384,21 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
+| Sealed production/test candidate | `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789` |
+| Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
+| Sanitized evidence archive | Creation succeeded; independent verification `passed` |
+| Fresh naturalistic campaign | `not_run` |
+| New candidate automated Dogfood qualification | `not_run` |
+| New campaign human review | `not_provided` |
+| New candidate replacement qualification | `not_run`; replacement not established |
 | Latest inspected campaign candidate | `bbb64b4274c3f726fbeffae2389089819972b9ff` |
 | Predecessor product diagnostic candidate | `537bd0cadf40bedaf0719b658a860ac369d3faa6` |
-| Sealed production/test candidate | `technical_entry_only` |
-| Technical Phase 8 entry | `passed_historical_candidate_evidence` |
 | Latest naturalistic intake | `rejected_operator_environment_invalid` |
 | Predecessor naturalistic Dogfood | `failed_diagnostic_hidden_materiality_discovery` |
 | Complete replacement campaign | `not_run` |
-| Latest automated Dogfood qualification | `not_run` |
-| Campaign-level human review | `not_provided` |
-| Replacement gate | `failed` |
+| Latest historical automated Dogfood qualification | `not_run` |
+| Historical campaign-level human review | `not_provided` |
+| Historical replacement gate | `failed` |
 | Replacement pass candidate | `false` |
 | Phase 9 readiness | `false` |
 
@@ -389,9 +418,12 @@ separate private archive for the independent review handoff.
 
 ## Recommended implementation choice
 
-Use the maintained campaign helper to prepare a new candidate-bound opaque-slot
-campaign, run all sixteen genuine sessions, and obtain the automated result
-first. Add the campaign-level human review when evaluating replacement.
+In a later session, use the maintained campaign helper to prepare a wholly
+fresh opaque-slot campaign in a separate clean worktree at exactly
+`0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, run all sixteen genuine sessions,
+and obtain the automated result first. Add the campaign-level human review when
+evaluating replacement. The documentation-only child commit is not a substitute
+for that exact campaign HEAD.
 
 ## Rejected alternatives and reasons
 
@@ -416,15 +448,17 @@ validation tooling and do not own product semantics.
 
 ## Decision revisit trigger status
 
-Official V11 reported no active accepted Q1–Q13 revisit trigger for technical
-entry. The predecessor naturalistic Dogfood produced a materiality-screening diagnostic;
+Official V11 reported no active accepted Q1–Q14 revisit trigger for this sealed
+technical entry, with all 15 Decision IDs assessed (Q8-A and Q8-B separately).
+The predecessor naturalistic Dogfood produced a materiality-screening diagnostic;
 the latest batch intake produced an environment-evidence diagnostic. Subsequent
 remediation has not established new naturalistic passage. These diagnostics do
 not change the accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
-After remediation passes a new technical entry, prepare one completely fresh opaque-slot helper-owned campaign,
+The repaired evaluator now has a successful technical entry. In a later session,
+prepare one completely fresh opaque-slot helper-owned campaign at the sealed candidate,
 have the control agent research and seal the eight evaluator descriptors, grant
 trust manually, activate all eight repository integrations, run the sixteen
 required work/resume chats with only the frozen tasks, answer the actual
@@ -436,9 +470,19 @@ result.
 
 ## Artifacts
 
-- Copied sanitized capsule SHA-256:
+- Current technical-entry candidate:
+  `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`.
+- Current copied sanitized capsule SHA-256:
+  `4f8750b6364266626e24ed604b3071214a105dc26ca843e755a5c26faad29513`.
+- Current independently verified evidence archive:
+  `validation-evidence-0af4a9e2cbcc.tar.gz`, 14785 bytes, 9 members, SHA-256
+  `46c014791740fc950c2381f71168b276d5eb68d7b808fea623c507e4bd5b7938`.
+- The capsule and archive were copied byte-for-byte to an explicit external
+  handoff directory before documentation; the conversation identifies that
+  directory and the separate documentation-only HEAD.
+- Historical copied sanitized capsule SHA-256 (not current qualification):
   `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
-- Independently verified evidence archive SHA-256:
+- Historical independently verified evidence archive SHA-256 (not current qualification):
   `2a2080ad1a02c6840b7d1619ab8a78851fc57ec5cccc4cef9fd955591ea32f5a`.
 - Maintained inputs: `evaluation.json`, `harness.py`, `campaign.py`,
   `codex_events.py`, and `rebuild/scripts/dogfood-campaign`.
