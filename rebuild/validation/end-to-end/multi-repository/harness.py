@@ -747,6 +747,7 @@ def recovery_recall_checks(
     after: dict[str, Any] | None,
     prior_analysis_id: str | None,
     repaired: dict[str, Any] | None,
+    capability_evidence: tuple[dict[str, Any], dict[str, Any]] | None = None,
 ) -> dict[str, bool]:
     """Qualify the controlled repair's canonical meaning and refreshed read basis."""
     checks = dict.fromkeys((
@@ -835,9 +836,20 @@ def recovery_recall_checks(
         return checks
     old = [snapshot for snapshot in old_snapshots if isinstance(snapshot, dict)
            and snapshot.get("analysis_snapshot") == prior_analysis_id]
-    if len(old) != 1 or len(new_snapshots) != 1 or not all(map(current_snapshot, [old[0], new_snapshots[0]])):
+    if len(old) != 1 or len(new_snapshots) != 1:
         return checks
     old_snapshot, new_snapshot = old[0], new_snapshots[0]
+    if capability_evidence is not None:
+        expanded = []
+        for snapshot, evidence in zip((old_snapshot, new_snapshot), capability_evidence):
+            if not all(snapshot.get(key) == evidence.get(key) for key in (
+                "analysis_snapshot", "repository_snapshot",
+            )) or not bounded_projection_matches(evidence.get("capabilities"), snapshot.get("capabilities")):
+                return checks
+            expanded.append({**snapshot, "capabilities": evidence["capabilities"]})
+        old_snapshot, new_snapshot = expanded
+    if not all(map(current_snapshot, (old_snapshot, new_snapshot))):
+        return checks
     checks["analysis_basis_refreshed"] = bool(
         repaired and new_snapshot["analysis_snapshot"] == repaired.get("analysis_snapshot")
         and new_snapshot["analysis_snapshot"] != prior_analysis_id
@@ -849,6 +861,110 @@ def recovery_recall_checks(
                 for capability in snapshot["capabilities"]]
     checks["capability_meaning_preserved"] = capability_meaning(old_snapshot) == capability_meaning(new_snapshot)
     return checks
+
+
+def bounded_projection_matches(full: Any, projected: Any) -> bool:
+    """Validate visible content and exact omissions against same-identity local evidence."""
+    if isinstance(projected, dict) and "transport_omission" in projected:
+        omission = projected["transport_omission"]
+        if not isinstance(omission, dict) or omission.get("reason") != "serialized_byte_budget":
+            return False
+        if "exact_json_bytes" in omission:
+            return len(projected) == 1 and omission["exact_json_bytes"] == len(
+                json.dumps(full, ensure_ascii=False, separators=(",", ":")).encode()
+            )
+        visible = {key: value for key, value in projected.items() if key != "transport_omission"}
+        return bool(
+            isinstance(full, dict) and visible.keys() <= full.keys()
+            and omission.get("omitted_field_count") == len(full.keys() - visible.keys())
+            and omission["omitted_field_count"] > 0
+            and all(bounded_projection_matches(full[key], value) for key, value in visible.items())
+        )
+    if isinstance(full, dict) and isinstance(projected, dict):
+        return full.keys() == projected.keys() and all(
+            bounded_projection_matches(full[key], value) for key, value in projected.items()
+        )
+    if isinstance(full, list) and isinstance(projected, list):
+        visible = projected
+        if projected and isinstance(projected[-1], dict):
+            omission = projected[-1].get("transport_omission", {})
+            if isinstance(omission, dict) and "omitted_count" in omission:
+                visible = projected[:-1]
+                if (len(projected[-1]) != 1 or omission.get("reason") != "serialized_byte_budget"
+                        or omission["omitted_count"] != len(full) - len(visible)
+                        or omission["omitted_count"] <= 0):
+                    return False
+                return all(bounded_projection_matches(a, b) for a, b in zip(full, visible))
+        return len(full) == len(visible) and all(
+            bounded_projection_matches(a, b) for a, b in zip(full, visible)
+        )
+    return type(full) is type(projected) and full == projected
+
+
+def read_analysis_capabilities(path: Path, analysis_id: str, project_id: str) -> dict[str, Any]:
+    """Read the snapshot's metadata prefix without loading its large analysis graph."""
+    decoder = json.JSONDecoder()
+    with path.open(encoding="utf-8") as stream:
+        buffer = ""
+
+        def token(expected: str | None = None) -> Any:
+            nonlocal buffer
+            while True:
+                buffer = buffer.lstrip()
+                if buffer:
+                    if expected is not None:
+                        if not buffer.startswith(expected):
+                            raise ValueError("invalid Analysis Snapshot metadata delimiter")
+                        buffer = buffer[len(expected):]
+                        return None
+                    try:
+                        value, end = decoder.raw_decode(buffer)
+                    except json.JSONDecodeError:
+                        pass
+                    else:
+                        # A number at a chunk boundary may still be incomplete.
+                        if end < len(buffer):
+                            buffer = buffer[end:]
+                            return value
+                chunk = stream.read(65536)
+                if not chunk:
+                    raise ValueError("incomplete Analysis Snapshot capability evidence")
+                buffer += chunk
+
+        token("{")
+        fields: dict[str, Any] = {}
+        required = {"identity", "repository_snapshot", "project", "capabilities"}
+        while True:
+            key = token()
+            if not isinstance(key, str):
+                raise ValueError("invalid Analysis Snapshot metadata key")
+            token(":")
+            value = token()
+            if key in required:
+                if key in fields:
+                    raise ValueError("duplicate Analysis Snapshot metadata")
+                fields[key] = value
+            if required <= fields.keys():
+                break
+            token(",")
+    if fields["identity"] != analysis_id or fields["project"] != {"identity": project_id}:
+        raise ValueError("Analysis Snapshot capability evidence identity mismatch")
+    return {
+        "analysis_snapshot": fields["identity"],
+        "repository_snapshot": fields["repository_snapshot"],
+        "capabilities": fields["capabilities"],
+    }
+
+
+def completed_learning_recalled(items: Any) -> bool:
+    return isinstance(items, list) and any(
+        isinstance(item, dict) and isinstance(item.get("state"), dict)
+        and item["state"].get("state") == "completed"
+        and item.get("canonical_decision") is False
+        and isinstance(item.get("candidate_id"), str)
+        and re.fullmatch(r"[0-9a-f]{32}", item["candidate_id"])
+        for item in items
+    )
 
 
 def canonical_record(
@@ -2226,12 +2342,7 @@ def rehearse_target(
         recall_after, recall_after_ok, restart_cleanup = {"error": str(error)}, False, {}
     recalled_learning = (recall_after or {}).get("learning_context", [])
     learning_recall_ok = (
-        any(
-            item.get("learning_deliberation", {}).get("state", {}).get("state")
-            == "completed"
-            and item.get("learning_deliberation", {}).get("canonical_decision") is False
-            for item in recalled_learning
-        )
+        completed_learning_recalled(recalled_learning)
         if target_kind == "small-python"
         else not recalled_learning
     )
@@ -2558,7 +2669,15 @@ def rehearse_target(
     recall_pre_recovery, _ = cli_json(
         recorder, "recovery-recall-before", cli, env, "recall", cwd=repository
     )
+    prior_capabilities: dict[str, Any] = {}
+    repaired_capabilities: dict[str, Any] = {}
     if stored_at and stored_at.is_file():
+        try:
+            prior_capabilities = read_analysis_capabilities(
+                stored_at, parser_result["analysis_snapshot"], project_id
+            )
+        except (OSError, ValueError) as error:
+            prior_capabilities = {"error": str(error)}
         stored_at.write_bytes(b"{ controlled V11 derived corruption")
         degraded_health, health_op = cli_json(
             recorder, "corrupt-health", cli, env, "doctor", "check", cwd=repository
@@ -2569,8 +2688,15 @@ def rehearse_target(
         recall_post_recovery, _ = cli_json(
             recorder, "recovery-recall-after", cli, env, "recall", cwd=repository
         )
+        try:
+            repaired_capabilities = read_analysis_capabilities(
+                Path(repaired["stored_at"]), repaired["analysis_snapshot"], project_id
+            ) if repaired and repaired.get("stored_at") else {}
+        except (OSError, ValueError) as error:
+            repaired_capabilities = {"error": str(error)}
         recovery_checks = recovery_recall_checks(
-            recall_pre_recovery, recall_post_recovery, parser_result.get("analysis_snapshot"), repaired
+            recall_pre_recovery, recall_post_recovery, parser_result.get("analysis_snapshot"), repaired,
+            (prior_capabilities, repaired_capabilities),
         )
         recovery_ok = (
             degraded_health and degraded_health.get("state") == "degraded" and repaired and
@@ -2586,6 +2712,9 @@ def rehearse_target(
         degraded_health=degraded_health, health_operation=health_op, repair=repaired,
         repair_operation=repair_op,
         checks=recovery_checks,
+        capability_evidence_errors=[value["error"] for value in (
+            prior_capabilities, repaired_capabilities,
+        ) if "error" in value],
         canonical_recall_meaning_unchanged=recovery_checks["canonical_recall_meaning_unchanged"],
         repository_source_refreshed=recovery_checks["repository_source_refreshed"],
     )
@@ -2925,6 +3054,79 @@ def assert_recovery_recall_contract() -> None:
     repaired = {"analysis_snapshot": new_analysis}
     if not all(recovery_recall_checks(before, after, old_analysis, repaired).values()):
         raise AssertionError("valid repair observation failed the Recall contract")
+
+    # Compact Recall is a projection; full same-identity local capability evidence
+    # must still reject loss hidden in an omitted field or suffix.
+    compact_before, compact_after = deepcopy(before), deepcopy(after)
+    for compact in (compact_before, compact_after):
+        capability = compact["snapshots"][0]["capabilities"][0]
+        del capability["coverage"]
+        capability["transport_omission"] = {
+            "reason": "serialized_byte_budget", "omitted_field_count": 1,
+        }
+    evidence = (before["snapshots"][0], after["snapshots"][0])
+    if not all(recovery_recall_checks(
+        compact_before, compact_after, old_analysis, repaired, evidence
+    ).values()):
+        raise AssertionError("bounded Recall failed with complete bound capability evidence")
+    if all(recovery_recall_checks(compact_before, compact_after, old_analysis, repaired).values()):
+        raise AssertionError("omitted capability detail qualified without expansion evidence")
+    for key, replacement in (("analysis_snapshot", old_analysis), ("capabilities", [])):
+        wrong = deepcopy(evidence[1])
+        wrong[key] = replacement
+        if all(recovery_recall_checks(
+            compact_before, compact_after, old_analysis, repaired, (evidence[0], wrong)
+        ).values()):
+            raise AssertionError("unbound/incomplete capability expansion qualified")
+    changed_coverage = deepcopy(evidence[1])
+    changed_coverage["capabilities"][0]["coverage"]["failed"] = []
+    if all(recovery_recall_checks(
+        compact_before, compact_after, old_analysis, repaired, (evidence[0], changed_coverage)
+    ).values()):
+        raise AssertionError("omitted failed coverage loss qualified after expansion")
+    suffix = [{"transport_omission": {"reason": "serialized_byte_budget", "omitted_count": 1}}]
+    if not bounded_projection_matches(evidence[0]["capabilities"], suffix):
+        raise AssertionError("exact stable suffix omission rejected")
+    suffix[0]["transport_omission"]["omitted_count"] = 2
+    if bounded_projection_matches(evidence[0]["capabilities"], suffix):
+        raise AssertionError("incorrect suffix omission count accepted")
+
+    with tempfile.TemporaryDirectory(prefix="v11-capability-evidence-") as directory:
+        path = Path(directory) / "analysis.json"
+        metadata = {
+            "identity": old_analysis, "repository_snapshot": "b" * 64,
+            "project": {"identity": before["project_id"]},
+            "inventory": {"fixture_padding": "x" * 70000},
+            "capabilities": evidence[0]["capabilities"],
+        }
+        # The capability reader deliberately stops before the graph body.
+        path.write_text(json.dumps(metadata)[:-1] + ',"structural_facts":[', encoding="utf-8")
+        read = read_analysis_capabilities(path, old_analysis, before["project_id"])
+        if read["capabilities"] != evidence[0]["capabilities"]:
+            raise AssertionError("streamed capability metadata changed meaning")
+        for expected_analysis, project in ((new_analysis, before["project_id"]), (old_analysis, "5" * 32)):
+            try:
+                read_analysis_capabilities(path, expected_analysis, project)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("mismatched local capability identity accepted")
+        path.write_text('{"identity":', encoding="utf-8")
+        try:
+            read_analysis_capabilities(path, old_analysis, before["project_id"])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("incomplete capability metadata accepted")
+
+    learning = [{"candidate_id": "6" * 32, "state": {"state": "completed"}, "canonical_decision": False}]
+    if not completed_learning_recalled(learning):
+        raise AssertionError("compact completed learning Recall rejected")
+    for invalid in ([], [{"learning_deliberation": learning[0]}],
+                    [{**learning[0], "canonical_decision": True}],
+                    [{**learning[0], "state": {"state": "pending"}}]):
+        if completed_learning_recalled(invalid):
+            raise AssertionError("missing, pending, or canonical learning authority accepted")
 
     # A refreshed observation may not conceal any change to retained meaning or provenance.
     mutations = [

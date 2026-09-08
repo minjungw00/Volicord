@@ -910,6 +910,12 @@ repository를 관찰한 capability의 state, coverage, diagnostics, uncertainty�
 한다. 관찰 시각과 snapshot 식별자 갱신 자체를 Canonical 변경으로 판정하지 않는다.
 이 구분은 정상 갱신의 통과뿐 아니라 Canonical 내용, Source provenance, freshness,
 capability/coverage 손실 및 불완전한 복구 증거의 거부를 self-check로 검증한다.
+Recall의 명시적 transport omission은 capability 손실 자체가 아니다. V11은 corruption
+직전 및 repair 직후의 같은 Project/Analysis Snapshot에 묶인 로컬 snapshot metadata에서
+전체 capability 근거를 읽고, Recall의 표시된 값과 정확한 생략 수를 대조한 뒤 위의 보존
+검사를 수행한다. 큰 분석 graph 본문은 이 metadata 검사에 로드하지 않는다. 확장 근거가
+없거나 identity가 다르면 통과하지 않는다. Restart learning 검사는 현재 compact Recall
+항목의 candidate identity, completed state와 `canonical_decision = false`를 확인한다.
 
 ### 통과 조건
 
