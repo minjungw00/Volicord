@@ -628,6 +628,10 @@ fn draft_judgment(
             .entry("discretion_counterfactuals")
             .or_insert(json!(proofs));
     }
+    let assessment = json!({"state":"assessed", "independent_user_authority":result["contains_user_owned_outcome"],
+        "rationale":"Without the educational request, the cited fixture contract grants the product ownership or private discretion explicitly assessed above.",
+        "source_ids":result["ownership_source_ids"]});
+    result.entry("learning_authority").or_insert(assessment);
     for required in contract["required_fields"]
         .as_array()
         .expect("required judgment fields")
@@ -2488,6 +2492,48 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         .as_str()
         .expect("review identity");
     assert_eq!(review["workflow"]["stage"], "learning_deliberation");
+    // Even a generic promoted Question with this dimension's exact identity cannot
+    // turn an educational selection into canonical product authority.
+    let mut manufactured = question_candidate_arguments(
+        &project,
+        repository_source,
+        1,
+        "Which internal representation helps you learn?",
+    );
+    manufactured["affected_scope"] = json!(["work-authority:cache-invalidation-boundary"]);
+    let submitted = structured(&call(&mut adapter, "candidate_manage", manufactured)).clone();
+    let promoted = structured(&call(&mut adapter, "candidate_manage", json!({
+        "action":"promote_question", "project_id":project, "candidate_id":submitted["candidate_id"]
+    }))).clone();
+    let frontier = structured(&call(
+        &mut adapter,
+        "inquiry_frontier",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let displayed = &frontier["questions"][0];
+    let refused = call(
+        &mut adapter,
+        "decision_record",
+        json!({
+            "project_id":project, "question_id":promoted["question_id"], "question_revision":displayed["revision"],
+            "presentation_receipt_id":displayed["presentation_receipt_id"], "alternative_key":"local", "user_turn":"For learning I select local"
+        }),
+    );
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    assert!(
+        structured(&refused)["error"]
+            .as_str()
+            .is_some_and(|s| s.contains("independent user authority")),
+        "{refused}"
+    );
+    assert!(adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .expect("canonical")
+        .active_decisions
+        .is_empty());
+
     assert_eq!(
         review["workflow"]["input_guidance"]["interaction_kind"],
         "learning_participation_not_canonical_decision"
@@ -2570,7 +2616,8 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         .as_array()
         .expect("Candidate array")
         .iter()
-        .any(|candidate| candidate["kind"] == "question"));
+        .any(|candidate| candidate["kind"] == "question"
+            && candidate["identity"] != submitted["candidate_id"]));
 
     let begun = structured(&call(
         &mut adapter,
@@ -5055,6 +5102,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             learning_participation: volicord_operations::LearningParticipation::Inactive,
             engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
             dimensions: vec![MaterialityDimension {
+            learning_authority: volicord_inquiry::LearningAuthorityAssessment::Inactive,
                 dimension_id: "grounded-checkpoint-contract".into(),
                 discovered_choice_ids: vec!["grounded-checkpoint-contract".into()],
                 summary: "grounded Checkpoint behavior".into(),
@@ -6272,6 +6320,18 @@ fn question_candidate_arguments(project: &str, source: &str, order: u64, prompt:
 }
 
 fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
+    if name == "materiality_review" {
+        if let Some(judgments) = arguments.get_mut("judgments").and_then(Value::as_array_mut) {
+            for judgment in judgments {
+                if judgment.get("learning_authority").is_none() {
+                    judgment["learning_authority"] = json!({"state":"assessed", "independent_user_authority":judgment["contains_user_owned_outcome"],
+                        "rationale":"Without learning, this synthetic fixture retains the explicitly declared product ownership or private implementation discretion.",
+                        "source_ids":judgment["ownership_source_ids"]});
+                }
+            }
+        }
+    }
+
     if name == "materiality_review"
         && arguments.get("action").and_then(Value::as_str) == Some("record")
         && arguments.get("behavioral_context_basis").is_none()

@@ -181,6 +181,7 @@ fn dimension(
         .into_iter()
         .collect();
     MaterialityDimension {
+        learning_authority: volicord_inquiry::LearningAuthorityAssessment::Inactive,
         dimension_id: id.to_owned(),
         discovered_choice_ids: vec![id.to_owned()],
         summary: format!("material outcome {id}"),
@@ -377,6 +378,7 @@ fn source_backed_research_can_make_a_prior_learning_fork_routine(
         vec![dimension.clone()],
         active_learning(&fixture),
     )?;
+    assess_learning_authority(&mut dimension);
     dimension.learning_value = LearningValueAssessment::Routine {
         rationale: "repository evidence proves both alternatives use the same fixed boundary"
             .into(),
@@ -477,6 +479,7 @@ fn current_user_can_withdraw_learning_without_creating_a_decision(
         ContextItemRole::Preference,
         "I no longer want to deliberate this choice; proceed routinely.".into(),
     )?;
+    assess_learning_authority(&mut dimension);
     dimension.learning_value = LearningValueAssessment::Routine {
         rationale: "the current user withdrew this bounded learning interaction".into(),
     };
@@ -655,6 +658,165 @@ fn learning_deliberation_orders_response_before_feedback_survives_restart_and_re
         learning_statement.into(),
     )?;
     assert_eq!(learning_context.role, ContextItemRole::Learning);
+    Ok(())
+}
+
+fn complete_learning_selection(
+    fixture: &Fixture,
+    review: &volicord_operations::MaterialityReviewOutcome,
+    id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let learning = begin_learning(fixture, review, id)?;
+    fixture
+        .operations
+        .record_learning_response(LearningResponseDraft {
+            project_id: fixture.project_id,
+            deliberation_candidate_id: learning.deliberation_candidate_id,
+            host: "codex".into(),
+            session: "learning-selection".into(),
+            user_turn: "For learning I select approach-a after comparing the representation costs."
+                .into(),
+            response: LearningInitialResponse::Select {
+                selections: selection(id, "approach-a"),
+            },
+            user_rationale: Some(
+                "The representation makes the invariant easier to explain.".into(),
+            ),
+        })?;
+    fixture.operations.provide_learning_feedback(LearningFeedbackDraft {
+        project_id: fixture.project_id, deliberation_candidate_id: learning.deliberation_candidate_id,
+        feedback: "Both representations preserve the externally fixed behavior; the selected structure centralizes provenance at an allocation cost.".into(),
+        recommendation: LearningRecommendation { selections: selection(id, "approach-a"), rationale: "The bounded implementation trade-off favors explicit provenance.".into() },
+    })?;
+    fixture
+        .operations
+        .complete_learning_deliberation(fixture.project_id, learning.deliberation_candidate_id)?;
+    Ok(())
+}
+
+#[test]
+fn provenance_representation_learning_selection_never_becomes_product_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Preserve externally fixed/default behavior. I want to learn. Help me compare a tagged provenance record with a side table and think through the representation for learning.")?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut choice = engineering_choice(
+        "provenance-representation",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    );
+    choice.alternatives[0].summary = "A tagged record stores provenance beside the value".into();
+    choice.alternatives[1].summary = "A side table stores provenance separately".into();
+    let dimension =
+        agent_owned_dimension("provenance-representation", source, deliberation_worthy());
+    let review = review_with_learning(
+        &fixture,
+        vec![choice],
+        vec![dimension],
+        active_learning(&fixture),
+    )?;
+    let retained = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|c| c.id == review.review_candidate_id)
+        .ok_or("missing review")?;
+    let current = retained
+        .content
+        .as_ref()
+        .and_then(|c| c.materiality_review.as_ref())
+        .ok_or("missing content")?;
+    let assessed = current.dimensions[0].clone();
+    assert!(matches!(
+        assessed.learning_authority,
+        volicord_inquiry::LearningAuthorityAssessment::Assessed {
+            independent_user_authority: false,
+            ..
+        }
+    ));
+    for mutation in 0..6 {
+        let mut invalid = assessed.clone();
+        match mutation {
+            0 => {
+                invalid.learning_authority = volicord_inquiry::LearningAuthorityAssessment::Inactive
+            }
+            1 => {
+                if let volicord_inquiry::LearningAuthorityAssessment::Assessed {
+                    independent_user_authority,
+                    ..
+                } = &mut invalid.learning_authority
+                {
+                    *independent_user_authority = true;
+                }
+            }
+            2 => {
+                if let volicord_inquiry::LearningAuthorityAssessment::Assessed {
+                    choice_ids, ..
+                } = &mut invalid.learning_authority
+                {
+                    choice_ids[0] = "different-choice".into();
+                }
+            }
+            3 => {
+                if let volicord_inquiry::LearningAuthorityAssessment::Assessed {
+                    material_outcomes,
+                    ..
+                } = &mut invalid.learning_authority
+                {
+                    material_outcomes[0] = "different-outcome".into();
+                }
+            }
+            4 => {
+                if let volicord_inquiry::LearningAuthorityAssessment::Assessed {
+                    source_basis,
+                    ..
+                } = &mut invalid.learning_authority
+                {
+                    source_basis.clear();
+                }
+            }
+            _ => {
+                invalid.disposition = MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                    resolution_decision_id: None,
+                };
+                invalid.ownership.contains_user_owned_outcome = true;
+                invalid.ownership.user_owned_outcomes = vec!["learning selection".into()];
+            }
+        }
+        assert!(
+            fixture
+                .operations
+                .revise_materiality_review(MaterialityReviewRevisionDraft {
+                    project_id: fixture.project_id,
+                    review_candidate_id: review.review_candidate_id,
+                    rationale: "An educational request cannot manufacture product ownership".into(),
+                    learning_participation: active_learning(&fixture),
+                    dimensions: vec![invalid],
+                    learning_value_revision_bases: vec![],
+                })
+                .is_err(),
+            "invalid learning assessment {mutation}"
+        );
+    }
+    complete_learning_selection(&fixture, &review, "provenance-representation")?;
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    assert_eq!(
+        readiness(&fixture, &review)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    let canonical = reopened.canonical_basis(fixture.project_id)?;
+    assert!(canonical.active_decisions.is_empty());
+    assert!(canonical.active_questions.is_empty());
+    assert!(canonical.terminal_question_history.is_empty());
+    assert!(reopened
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .iter()
+        .any(|c| c
+            .content
+            .as_ref()
+            .and_then(|c| c.learning_deliberation.as_ref())
+            .is_some_and(|l| matches!(l.state, LearningDeliberationState::Completed { .. }))));
     Ok(())
 }
 
@@ -1009,12 +1171,27 @@ fn review_with_learning(
     )
 }
 
+fn assess_learning_authority(dimension: &mut MaterialityDimension) {
+    dimension.learning_authority = volicord_inquiry::LearningAuthorityAssessment::Assessed {
+        independent_user_authority: dimension.ownership.contains_user_owned_outcome,
+        choice_ids: dimension.discovered_choice_ids.clone(),
+        material_outcomes: dimension.ownership.materially_varying_outcomes.clone(),
+        rationale: "Without the educational request, the cited fixture contract grants the same product ownership or private discretion described in this dimension's ownership assessment.".into(),
+        source_basis: dimension.ownership.source_basis.clone(),
+    };
+}
+
 fn record_review_with_learning(
     fixture: &Fixture,
     choices: Vec<EngineeringChoice>,
-    dimensions: Vec<MaterialityDimension>,
+    mut dimensions: Vec<MaterialityDimension>,
     learning_participation: LearningParticipation,
 ) -> Result<volicord_operations::MaterialityReviewOutcome, volicord_operations::Error> {
+    if matches!(learning_participation, LearningParticipation::Active { .. }) {
+        for dimension in &mut dimensions {
+            assess_learning_authority(dimension);
+        }
+    }
     let material_boundary_review =
         complete_material_boundary_review(&choices, fixture.baseline.repository_source.identity());
     let discovery = fixture.operations.record_engineering_choice_discovery(
@@ -3343,7 +3520,17 @@ fn checkpoint_rejects_missing_and_unresolved_materiality_without_recording_compl
 #[test]
 fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestioning(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = fixture()?;
+    run_user_owned_policy_with_learning(false)
+}
+
+#[test]
+fn learning_and_independent_public_policy_keep_separate_lifecycles(
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_user_owned_policy_with_learning(true)
+}
+
+fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Implement the public failure policy, which I retain control over independently of learning. I want to learn the private provenance representation trade-off.")?;
     let source = fixture.baseline.repository_source.identity();
     let user_owned = dimension(
         "failure-policy",
@@ -3361,7 +3548,36 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
         vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
         source,
     );
-    let review_outcome = review(&fixture, vec![user_owned.clone(), coupled.clone()])?;
+    let mut dimensions = vec![user_owned.clone(), coupled.clone()];
+    let mut technical =
+        agent_owned_dimension("provenance-representation", source, deliberation_worthy());
+    if mixed {
+        assess_learning_authority(&mut technical);
+        dimensions.push(technical.clone());
+    }
+    let review_outcome = if mixed {
+        let choices = dimensions
+            .iter()
+            .map(|d| {
+                engineering_choice(
+                    &d.dimension_id,
+                    EngineeringEffectCategory::ImplementationInternal,
+                    source,
+                )
+            })
+            .collect();
+        review_with_learning(&fixture, choices, dimensions, active_learning(&fixture))?
+    } else {
+        review(&fixture, dimensions)?
+    };
+    if mixed {
+        complete_learning_selection(&fixture, &review_outcome, "provenance-representation")?;
+        assert!(fixture
+            .operations
+            .canonical_basis(fixture.project_id)?
+            .active_decisions
+            .is_empty());
+    }
     assert_eq!(
         readiness(&fixture, &review_outcome)?.stage,
         WorkAuthorityStage::QuestionRequired
@@ -3465,6 +3681,14 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
             learning_deliberation: None,
         },
     };
+    if mixed {
+        assert!(bind_question_candidate_to_materiality(
+            &review_record,
+            "provenance-representation",
+            question_draft.clone()
+        )
+        .is_err());
+    }
     let bound =
         bind_question_candidate_to_materiality(&review_record, "failure-policy", question_draft)?;
     let bound = bind_question_candidate_to_materiality(&review_record, "cli-exit-policy", bound)?;
@@ -3547,23 +3771,40 @@ fn user_owned_dimension_can_be_explicitly_delegated_and_reused_without_requestio
         .kinds
         .push(WorkAuthorityBasisKind::ExplicitDelegation);
     resolved_coupled.basis.decision_basis.push(decision_id);
+    let mut revised_dimensions = vec![resolved, resolved_coupled];
+    if mixed {
+        for dimension in &mut revised_dimensions {
+            assess_learning_authority(dimension);
+        }
+        revised_dimensions.push(technical);
+    }
     let revised = fixture
         .operations
         .revise_materiality_review(MaterialityReviewRevisionDraft {
             project_id: fixture.project_id,
             review_candidate_id: review_outcome.review_candidate_id,
             rationale: "the exact current-host response produced an applicable Decision".to_owned(),
-            learning_participation: volicord_operations::LearningParticipation::Inactive,
-            dimensions: vec![resolved, resolved_coupled],
+            learning_participation: if mixed {
+                active_learning(&fixture)
+            } else {
+                LearningParticipation::Inactive
+            },
+            dimensions: revised_dimensions,
             learning_value_revision_bases: Vec::new(),
         })?;
     bind_current_review_scope(&fixture, &revised)?;
     let ready = readiness(&fixture, &revised)?;
     assert_eq!(ready.disposition, WorkAuthorityDisposition::ReadyForWork);
-    assert_eq!(ready.satisfied_requirements.len(), 2);
+    assert_eq!(
+        ready.satisfied_requirements.len(),
+        if mixed { 4 } else { 2 }
+    );
     assert!(ready
         .satisfied_requirements
         .iter()
+        .filter(
+            |requirement| requirement.dimension_id.as_deref() != Some("provenance-representation")
+        )
         .all(|requirement| requirement.decision_basis == [decision_id]));
     assert!(fixture
         .operations

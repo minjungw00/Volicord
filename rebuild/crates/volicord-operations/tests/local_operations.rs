@@ -448,6 +448,7 @@ fn record_ready_review(
         learning_participation: volicord_operations::LearningParticipation::Inactive,
         engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
         dimensions: vec![MaterialityDimension {
+            learning_authority: volicord_inquiry::LearningAuthorityAssessment::Inactive,
             dimension_id: "bounded-repository-outcome".into(),
             discovered_choice_ids: vec!["bounded-repository-outcome".into()],
             summary: "bounded repository behavior".into(),

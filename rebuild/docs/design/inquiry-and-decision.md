@@ -530,6 +530,23 @@ broad Goal로 복제해 Learning/Preference/Constraint 의미를 보존하는 �
 아니다. Proficiency, behavior, conversation style, prior choice나 explanation depth로 추론하지 않는다.
 Review revision은 state를 바꿀 수 있지만 Project/Goal/baseline 밖의 영구 preference로 승격하지 않는다.
 
+Active participation의 각 dimension은 `learning_authority.assessed`로 learning request가 없어도
+해당 material outcome이 independently user-owned인지를 명시적으로 판단한다. Closed assessment는
+independent-user-authority boolean, exact current choice identities와 material outcomes, non-empty
+Source-grounded counterfactual rationale와 current ownership Sources를 보존한다. Ownership assessment와
+모순되거나 다른 choice/outcome의 assessment를 재사용하면 review를 거부한다. Inactive participation은
+`inactive`를 사용할 수 있고 withdrawal 뒤 기존 assessed basis를 audit용으로 유지할 수 있다.
+Independent authority가 false면 learning selection은 canonical product Decision authority가 될 수 없다.
+해당 dimension의 Question binding, current identity-linked Question response와 Decision-based authority를
+거부한다. Agent discretion, exact current-task delegation, repository fact 또는 accepted contract는 각자의
+기존 contract로 검증한다. Separate public product policy가 independently user-owned이면 별도 dimension의
+normal Question/current-host Decision lifecycle을 유지하며 learning response가 이를 대신하지 않는다.
+"help me choose", "teach me", "think through" 같은 문구는 ownership evidence나 classifier가 아니다.
+Assessment의 Source/choice/outcome/ownership 변경도 기존 prospective authority chronology를 따른다.
+MCP judgment의 `learning_authority`는 state와 semantic boolean/rationale/Source만 받으며 current
+choice/outcome binding은 같은 judgment에서 server가 파생한다. Compact draft는 같은 inputSchema에서
+`learning_authority_input_alternatives` field table을 한 번 투영하며 full review를 반복하지 않는다.
+
 각 discovered dimension은 authority와 별도로 `routine` 또는 `deliberation-worthy` learning value를
 가진다. Deliberation-worthy는 consequence significance, future engineering problem에 대한
 transferability와 non-obvious trade-off의 bounded evidence를 모두 요구한다. 또한 active agent는

@@ -108,6 +108,7 @@ def qualify(api: Any, binary: Path, env: dict[str, str], root: Path) -> dict[str
                 "contains_user_owned_outcome": True, "user_owned_outcomes": ["new caller return and failure contract"],
                 "ownership_rationale": "Caller inspection versus exception handling and public return shape are product semantics, regardless of where the code is implemented.",
                 "ownership_source_ids": [source_id], "alternative_accounting": accounts,
+                "learning_authority": {"state": "inactive"},
                 "learning_value": {"state": "routine", "rationale": "User authority is independent of learning participation."},
             }
             request = {

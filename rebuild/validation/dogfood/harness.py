@@ -10749,6 +10749,9 @@ def real_session_fixture(
         *, user_owned: bool, outcome: str, source_id: str = repository_source
     ) -> dict[str, Any]:
         fields = {
+            "learning_authority": {"state": "assessed", "independent_user_authority": user_owned,
+                "rationale": "Without the learning request, this synthetic fixture retains its explicitly assessed public ownership or bounded implementation discretion.",
+                "source_ids": [source_id]},
             "materially_varying_outcomes": [outcome],
             "contains_user_owned_outcome": user_owned,
             "user_owned_outcomes": [outcome] if user_owned else [],

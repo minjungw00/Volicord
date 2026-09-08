@@ -2500,6 +2500,18 @@ impl LocalOperations {
     ) -> Result<BatchResponseResult, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
         let mut canonical = self.open_canonical()?;
+        let basis = self.canonical_basis(project_id)?;
+        let candidates = self.candidate_basis(project_id)?;
+        for response in &responses {
+            volicord_inquiry::validate_question_authority(
+                &basis,
+                &candidates.candidates,
+                response.response.displayed.question_id,
+            )
+            .map_err(|error| {
+                Error::with_source("Question no longer has independent user authority", error)
+            })?;
+        }
         Ok(record_response_batch(&mut canonical, project_id, responses))
     }
 

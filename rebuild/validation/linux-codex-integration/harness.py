@@ -799,6 +799,7 @@ def record_settled_fixture_review(
             "authority_coverage": choice["summary"],
             "unique_outcome_rationale": "The maintained test contract requires the first deterministic treatment.",
             "contract_basis": [contract],
+            "learning_authority": {"state": "inactive"},
             "learning_value": {"state": "routine", "rationale": "The deterministic fixture introduces no meaningful learning fork."},
         }],
     })

@@ -11,6 +11,7 @@ mod error;
 mod frontier;
 mod identity;
 mod interaction;
+mod learning_authority;
 mod model;
 mod response;
 mod store;
@@ -33,6 +34,7 @@ pub use frontier::{
     FrontierRead, ResumeFrontier,
 };
 pub use identity::CandidateId;
+pub use learning_authority::validate_question_authority;
 pub use model::{
     AuthoritySourceEvidence, AuthoritySourceRole, BehavioralContextBasis, CandidateCleanup,
     CandidateCleanupKind, CandidateCollectionMode, CandidateCollectionScope, CandidateContent,
@@ -46,17 +48,17 @@ pub use model::{
     ExactAuthoritySufficiency, ExecutableWorkScopeBinding, ExplicitDelegationEvidence,
     ExploratoryDisposition, ImplementationDiscretionCounterfactual, InquiryScope, InteractionAxis,
     InteractionConclusion, InteractionOutcome, InteractionResult, InteractionReview,
-    LateWorkAuthorityRevision, LearningAlternativeSelection, LearningDeliberation,
-    LearningDeliberationRound, LearningDeliberationState, LearningInitialResponse,
-    LearningParticipation, LearningRecommendation, LearningValueAssessment, LearningValueRevision,
-    LearningValueRevisionBasis, LearningValueRevisionRequest, MaterialBoundaryConclusion,
-    MaterialBoundaryReview, MaterialDecomposition, MaterialOutcomeOwnershipAssessment,
-    MaterialOutcomeSignal, MaterialityAssessment, MaterialityDimension, MaterialityDisposition,
-    MaterialityReview, MaterialityReviewRevision, MaterialityStatus, NoIndependentForkBasis,
-    PlannedCommitment, PlannedOutcomeBinding, PreWriteAuthorityBasis, PreWriteMaterialityClosure,
-    PromotionResult, QuestionCandidate, QuestionPresentation, RepositoryResearchBasis,
-    ResidualForkClosure, ResidualInteractionComparison, SubmissionOutcome, WorkAuthorityBasis,
-    WorkAuthorityBasisKind,
+    LateWorkAuthorityRevision, LearningAlternativeSelection, LearningAuthorityAssessment,
+    LearningDeliberation, LearningDeliberationRound, LearningDeliberationState,
+    LearningInitialResponse, LearningParticipation, LearningRecommendation,
+    LearningValueAssessment, LearningValueRevision, LearningValueRevisionBasis,
+    LearningValueRevisionRequest, MaterialBoundaryConclusion, MaterialBoundaryReview,
+    MaterialDecomposition, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
+    MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
+    MaterialityReviewRevision, MaterialityStatus, NoIndependentForkBasis, PlannedCommitment,
+    PlannedOutcomeBinding, PreWriteAuthorityBasis, PreWriteMaterialityClosure, PromotionResult,
+    QuestionCandidate, QuestionPresentation, RepositoryResearchBasis, ResidualForkClosure,
+    ResidualInteractionComparison, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

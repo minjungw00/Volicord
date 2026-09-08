@@ -1472,6 +1472,7 @@ def rehearse_target(
                         ),
                         "basis_summary": "Repository evidence establishes the boundary but cannot choose it",
                         "authority_counterfactual": "The Goal can be satisfied with either Project or clone-local context; no repository fact, contract, Decision, or exact delegation selects the user-owned boundary.",
+                        "learning_authority": {"state": "assessed", "independent_user_authority": True, "rationale": "Without the learning request, the fixture public policy remains user-owned and its private representation remains implementation discretion.", "source_ids": [source_id]},
                         "learning_value": {"state": "routine", "rationale": "User authority uses Inquiry even when learning is active."},
                     },
                     {
@@ -1518,6 +1519,7 @@ def rehearse_target(
                             if technical_delegated
                             else {}
                         ),
+                        "learning_authority": {"state": "assessed", "independent_user_authority": False, "rationale": "Without the learning request, the fixture public policy remains user-owned and its private representation remains implementation discretion.", "source_ids": [source_id]},
                         "learning_value": technical_learning_value,
                     },
                 ],
@@ -1669,6 +1671,7 @@ def rehearse_target(
                         ),
                         "basis_summary": "The explicit current-host Decision supplies current authority",
                         "authority_counterfactual": "The current-host Decision now selects the exact context boundary that the broad Goal left unresolved.",
+                        "learning_authority": {"state": "assessed", "independent_user_authority": True, "rationale": "Without the learning request, the fixture public policy remains user-owned and its private representation remains implementation discretion.", "source_ids": [source_id]},
                         "learning_value": {"state": "routine", "rationale": "The user-owned outcome remains on the canonical Inquiry path."},
                     },
                     {
@@ -1715,6 +1718,7 @@ def rehearse_target(
                             if technical_delegated
                             else {}
                         ),
+                        "learning_authority": {"state": "assessed", "independent_user_authority": False, "rationale": "Without the learning request, the fixture public policy remains user-owned and its private representation remains implementation discretion.", "source_ids": [source_id]},
                         "learning_value": technical_learning_value,
                     },
                 ],

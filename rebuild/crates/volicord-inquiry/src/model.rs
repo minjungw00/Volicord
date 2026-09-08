@@ -598,8 +598,23 @@ pub struct LearningValueRevision {
     pub revised_analysis_snapshot_id: AnalysisSnapshotId,
 }
 
+/// Counterfactual ownership without the learning request, bound to this assessment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LearningAuthorityAssessment {
+    Inactive,
+    Assessed {
+        independent_user_authority: bool,
+        choice_ids: Vec<String>,
+        material_outcomes: Vec<String>,
+        rationale: String,
+        source_basis: Vec<SourceId>,
+    },
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MaterialityDimension {
+    pub learning_authority: LearningAuthorityAssessment,
     pub dimension_id: String,
     pub discovered_choice_ids: Vec<String>,
     pub summary: String,

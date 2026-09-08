@@ -2853,6 +2853,18 @@ fn authority_source_evidence_schema() -> Value {
     })
 }
 
+fn learning_authority_schema() -> Value {
+    json!({"description":"Independent material ownership without the learning request, bound to the current judgment", "oneOf":[
+        object_schema(vec![("state", enum_schema("No active learning participation", &["inactive"]))], &["state"]),
+        object_schema(vec![
+            ("state", enum_schema("Required for every dimension with active learning", &["assessed"])),
+            ("independent_user_authority", json!({"type":"boolean", "description":"Would this exact material outcome be user-owned without the learning request? Must agree with ownership; false forbids canonical Decision authority for this dimension."})),
+            ("rationale", text_schema("Source-grounded counterfactual without the learning request. Educational selection alone creates no product authority. Current choice and material outcome identities are derived from this judgment.", 1, 4096)),
+            ("source_ids", identity_array_schema("Current ownership Sources supporting independent authority or bounded implementation discretion", 1)),
+        ], &["state","independent_user_authority","rationale","source_ids"])
+    ]})
+}
+
 fn materiality_judgment_schema(
     disposition: &'static str,
     mut fields: Vec<(&'static str, Value)>,
@@ -2939,6 +2951,7 @@ fn materiality_judgment_schema(
                 "Current bounded research or prototype findings that satisfy a discovery-owned evidence requirement before the selected authority disposition applies",
             ),
         ),
+        ("learning_authority", learning_authority_schema()),
         ("learning_value", learning_value_schema()),
     ];
     common.append(&mut fields);
@@ -2954,6 +2967,7 @@ fn materiality_judgment_schema(
         "ownership_source_ids",
         "alternative_accounting",
         "learning_value",
+        "learning_authority",
     ];
     if required_fields.contains(&"authority_coverage") {
         required.push("authority_source_evidence");
@@ -4513,6 +4527,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
             "discovered_choice_ids":dimension.discovered_choice_ids,
             "summary":dimension.summary,
             "affected_scope":dimension.affected_scope,
+            "learning_authority":learning_authority_json(&dimension.learning_authority),
             "ownership":{
                 "materially_varying_outcomes":dimension.ownership.materially_varying_outcomes,
                 "contains_user_owned_outcome":dimension.ownership.contains_user_owned_outcome,
@@ -5188,7 +5203,24 @@ fn materiality_dimension_from_judgment(
     );
     source_basis.sort_unstable();
     source_basis.dedup();
+    let learning_authority = value
+        .get("learning_authority")
+        .ok_or_else(|| HostError::new("learning_authority is required"))?;
+    let learning_authority = match required_str(learning_authority, "state")? {
+        "inactive" => volicord_inquiry::LearningAuthorityAssessment::Inactive,
+        "assessed" => volicord_inquiry::LearningAuthorityAssessment::Assessed {
+            independent_user_authority: learning_authority["independent_user_authority"]
+                .as_bool()
+                .ok_or_else(|| HostError::new("independent_user_authority must be boolean"))?,
+            choice_ids: vec![choice.choice_id.clone()],
+            material_outcomes: string_array(value, "materially_varying_outcomes")?,
+            rationale: required_str(learning_authority, "rationale")?.into(),
+            source_basis: source_ids(learning_authority, "source_ids")?,
+        },
+        _ => return Err(HostError::new("invalid learning authority state")),
+    };
     Ok(MaterialityDimension {
+        learning_authority,
         dimension_id: choice.choice_id.clone(),
         discovered_choice_ids: vec![choice.choice_id.clone()],
         summary: choice.summary.clone(),
@@ -5973,12 +6005,13 @@ fn materiality_draft_json(
             "caller_owned_judgment":{"prefilled_fields":{"choice_id":choice.choice_id}},
         })).collect::<Vec<_>>(),
         "learning_participation":{"input_alternatives":schema_alternatives(learning_participation_schema())},
+        "learning_authority_input_alternatives":schema_alternatives(learning_authority_schema()),
         "learning_value_input_alternatives":schema_alternatives(learning_value_schema()),
         "learning_value_revision_bases":schema_alternatives(learning_value_revision_bases_schema()["items"].clone()),
         "authority_learning_routing":{
             "assessment_owner":authority_learning_routing_json()["assessment_owner"],
             "learning_requests_not_user_ownership":authority_learning_routing_json()["learning_requests_not_user_ownership"],
-            "independence_rule":"Learning participation and learning value do not establish product authority.",
+            "independence_rule":"Active learning requires learning_authority.assessed for each current choice/outcome: assess ownership without the learning request. False forbids canonical Decision authority; a separate user-owned policy keeps its Question/Decision lifecycle.",
             "routes":authority_learning_routing_json()["routes"],
         },
         "record_request":{
@@ -6245,6 +6278,23 @@ fn materiality_disposition_json(disposition: &MaterialityDisposition) -> Value {
         } => json!({
             "state":"unresolved_user_owned_outcome",
             "resolution_decision_id":resolution_decision_id.map(|identity| identity.to_string()),
+        }),
+    }
+}
+
+fn learning_authority_json(assessment: &volicord_inquiry::LearningAuthorityAssessment) -> Value {
+    match assessment {
+        volicord_inquiry::LearningAuthorityAssessment::Inactive => json!({"state":"inactive"}),
+        volicord_inquiry::LearningAuthorityAssessment::Assessed {
+            independent_user_authority,
+            choice_ids,
+            material_outcomes,
+            rationale,
+            source_basis,
+        } => json!({
+            "state":"assessed", "independent_user_authority":independent_user_authority,
+            "choice_ids":choice_ids, "material_outcomes":material_outcomes, "rationale":rationale,
+            "source_ids":source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()
         }),
     }
 }

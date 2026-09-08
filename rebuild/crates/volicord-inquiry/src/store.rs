@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::AnalysisSnapshot;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 22;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 23;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -1611,6 +1611,8 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
 }
 
 fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> {
+    crate::learning_authority::validate(review)
+        .map_err(|message| Error::new(ErrorKind::InvalidInput, message))?;
     validate_text("Materiality Review rationale", &review.rationale)?;
     validate_text(
         "behavioral Context completeness rationale",
@@ -3015,7 +3017,10 @@ fn work_authority_meaning_changed(
     revised_learning_participation: &crate::LearningParticipation,
     revised: &crate::MaterialityDimension,
 ) -> bool {
-    previous.disposition != revised.disposition
+    crate::learning_authority::meaning_changed(
+        &previous.learning_authority,
+        &revised.learning_authority,
+    ) || previous.disposition != revised.disposition
         || previous.affected_scope.iter().collect::<BTreeSet<_>>()
             != revised.affected_scope.iter().collect::<BTreeSet<_>>()
         || authority_anchors_changed(previous, revised)
