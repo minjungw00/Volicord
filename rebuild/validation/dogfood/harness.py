@@ -3235,8 +3235,45 @@ def planned_commitments_match_graph(commitments: list[dict[str, Any]], discovery
         judgment = judgments.get(choice_id, {})
         return choice_id in choices and any(a["alternative_id"] == alternative_id for a in choices[choice_id]["alternatives"]) and any(a.get("choice_id") == choice_id and a.get("alternative_id") == alternative_id and a.get("status") in {"selected", "unresolved"} for a in judgment.get("alternative_accounting", []))
     outcomes = {o["outcome_id"]: o for r in discovery.get("interaction_review", []) for o in r.get("outcomes", [])}
+    temporal_outcomes = {
+        o["outcome_id"]: o for r in discovery.get("interaction_review", [])
+        if r.get("axis") == "temporal_and_lifetime" for o in r.get("outcomes", [])
+        if o.get("conclusion", {}).get("basis") != "outside_affected_scope"
+    }
     for commitment in commitments:
         binding = commitment["outcome_binding"]
+        temporal = commitment["temporal_effect"]
+        if temporal["state"] == "no_temporal_change":
+            if any(
+                binding.get("choice_id") in o.get("affected_choice_ids", [])
+                or binding.get("outcome_id") == o["outcome_id"]
+                for o in temporal_outcomes.values()
+            ):
+                return False
+        else:
+            outcome = temporal_outcomes.get(temporal["outcome_id"])
+            result_id = temporal["result_id"]
+            if not outcome or result_id not in {r["result_id"] for r in outcome["credible_outcomes"]}:
+                return False
+            conclusion = outcome["conclusion"]
+            if conclusion["state"] == "no_independent_fork" and conclusion["result_id"] != result_id:
+                return False
+            if binding["state"] == "reviewed_interaction":
+                if binding["outcome_id"] != temporal["outcome_id"] or binding["result_id"] != result_id:
+                    return False
+            elif binding["state"] == "reviewed_choice":
+                choice = choices.get(binding["choice_id"], {})
+                if binding["choice_id"] not in outcome["affected_choice_ids"] or not any(
+                    a["alternative_id"] == binding["alternative_id"] and any(
+                        c["outcome_id"] == temporal["outcome_id"]
+                        and c["implementation_outcome_ids"]
+                        and all(r == result_id for r in c["implementation_outcome_ids"])
+                        for c in a["material_decomposition"].get("residual_fork_closure", {}).get("interaction_comparisons", [])
+                    ) for a in choice.get("alternatives", [])
+                ):
+                    return False
+            else:
+                return False
         if binding["state"] == "private_equivalent":
             continue
         if binding["state"] == "reviewed_choice":
@@ -3538,6 +3575,11 @@ def executable_scope_chronology(
     indeterminate: set[str] = set()
     latest_scope: dict[str, list[str]] | None = None
     for event in events:
+        _, frontier_record, _ = current_authority_frontier(
+            capture, project_id=project_id, goal_context_id=goal_context_id,
+            baseline_analysis_snapshot_id=baseline_analysis_snapshot_id,
+            before_sequence=event.sequence,
+        )
         prior = [binding for binding in bindings if binding.sequence < event.sequence]
         binding = max(prior, key=lambda item: item.sequence) if prior else None
         current_reviews = [
@@ -3554,6 +3596,8 @@ def executable_scope_chronology(
         )
         binding_is_current = bool(
             binding is not None
+            and frontier_record is not None
+            and frontier_record.result.get("review_candidate_id") == review_candidate_id
             and current_review is not None
             and current_review.arguments.get("project_id") == project_id
             and current_review.result.get("goal_context_id") == goal_context_id
@@ -4231,7 +4275,9 @@ def work_blocker_material_question_lifecycles(
                 or researched_path
             )
         )
-        hidden_path = behavior_class == "hidden_user_owned_decision" and researched_path
+        hidden_path = behavior_class == "hidden_user_owned_decision" and bool(
+            submit and (researched_path or submit.arguments.get("research_state") == "ready_to_ask")
+        )
         lifecycle_valid = bool(
             submit
             and promote
@@ -4268,11 +4314,56 @@ def work_blocker_material_question_lifecycles(
     lifecycles_valid &= (
         hidden_investigation
         and len(used_submit_sequences) == len(submit_calls)
-        and len(capture.successful_calls("decision_record"))
-        == len(dimensions_by_decision)
         and revision.completion_sequence < first_work_change
     )
     return bool(lifecycles_valid), bool(decisions_valid)
+
+
+def current_authority_frontier(
+    capture: CodexCapture, *, project_id: Any, goal_context_id: Any,
+    baseline_analysis_snapshot_id: Any, before_sequence: int,
+) -> tuple[ToolCall | None, ToolCall | None, list[ToolCall]]:
+    """Observe production's Discovery -> Review selection prospectively.
+
+    Successful serialized creation completions witness creation order. Inspect
+    and revise do not create a newer Review. Never fall back across Discovery
+    identity when the newest discovery has no review yet.
+    """
+    discoveries = [
+        call for call in capture.successful_calls("engineering_choice_discovery")
+        if call.result.get("action") == "record"
+        and call.arguments.get("project_id") == project_id
+        and call.result.get("goal_context_id") == goal_context_id
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_snapshot_id
+        and call.completion_sequence < before_sequence
+    ]
+    discovery = max(discoveries, key=lambda call: call.completion_sequence, default=None)
+    if discovery is None:
+        return None, None, []
+    records = [
+        call for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+        and call.result.get("action") == "record"
+        and call.arguments.get("project_id") == project_id
+        and call.result.get("goal_context_id") == goal_context_id
+        and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_snapshot_id
+        and call.arguments.get("engineering_choice_discovery_candidate_id")
+        == discovery.result.get("discovery_candidate_id")
+        and discovery.completion_sequence < call.sequence
+        and call.completion_sequence < before_sequence
+    ]
+    record = max(records, key=lambda call: call.completion_sequence, default=None)
+    if record is None:
+        return discovery, None, []
+    revisions = sorted([
+        call for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "revise"
+        and call.arguments.get("project_id") == project_id
+        and call.arguments.get("review_candidate_id") == record.result.get("review_candidate_id")
+        and record.completion_sequence < call.sequence
+        and call.completion_sequence < before_sequence
+    ], key=lambda call: call.sequence)
+    return discovery, record, revisions
 
 
 def work_blocker_behavior_observations(
@@ -4285,34 +4376,14 @@ def work_blocker_behavior_observations(
     if baseline_call is None or first_work_change is None:
         return False, False, False
     baseline_id = baseline_call.result.get("analysis_snapshot_id")
-    discoveries = {
-        call.result.get("discovery_candidate_id"): call
-        for call in capture.successful_calls("engineering_choice_discovery")
-        if nonempty_string(call.result.get("discovery_candidate_id"))
-        and call.result.get("baseline_analysis_snapshot_id") == baseline_id
-        and baseline_call.completion_sequence < call.sequence
-        and call.completion_sequence < first_work_change
-    }
-    records = [
-        call
-        for call in capture.successful_calls("materiality_review")
-        if call.arguments.get("action") == "record"
-        and call.result.get("action") == "record"
-        and call.result.get("baseline_analysis_snapshot_id") == baseline_id
-        and call.arguments.get("engineering_choice_discovery_candidate_id")
-        in discoveries
-        and discoveries[
-            call.arguments.get("engineering_choice_discovery_candidate_id")
-        ].result.get("goal_context_id")
-        == call.result.get("goal_context_id")
-        and discoveries[
-            call.arguments.get("engineering_choice_discovery_candidate_id")
-        ].completion_sequence
-        < call.sequence
-        and call.completion_sequence < first_work_change
-    ]
-    record = records[0] if len(records) == 1 else None
-    if record is None:
+    checkpoint = terminal_checkpoint_call(capture)
+    goal_id = checkpoint.arguments.get("goal_context_id") if checkpoint else None
+    discovery, record, revisions = current_authority_frontier(
+        capture, project_id=baseline_call.result.get("project_id"),
+        goal_context_id=goal_id, baseline_analysis_snapshot_id=baseline_id,
+        before_sequence=first_work_change,
+    )
+    if discovery is None or record is None or not baseline_call.completion_sequence < discovery.sequence:
         return False, False, False
     judgments = record.arguments.get("judgments")
     dispositions = {
@@ -4327,20 +4398,28 @@ def work_blocker_behavior_observations(
     )
     workflow = record.result.get("workflow")
     review_id = record.result.get("review_candidate_id")
-    revisions = sorted(
-        (
-            call
-            for call in capture.successful_calls("materiality_review")
-            if call.arguments.get("action") == "revise"
-            and call.arguments.get("review_candidate_id") == review_id
-            and call.result.get("review_candidate_id") == review_id
-            and call.result.get("goal_context_id") == record.result.get("goal_context_id")
-            and call.result.get("baseline_analysis_snapshot_id") == baseline_id
-            and call.completion_sequence < first_work_change
-        ),
-        key=lambda call: call.sequence,
-    )
     final_review = revisions[-1] if revisions else record
+    prior_revision = record.result.get("review_revision")
+    choice_ids = {j.get("choice_id") for j in judgments or [] if isinstance(j, dict)}
+    for current in [record, *revisions]:
+        current_judgments = current.arguments.get("judgments", [])
+        if (not isinstance(current_judgments, list)
+            or len(current_judgments) != len(choice_ids)
+            or {j.get("choice_id") for j in current_judgments} != choice_ids
+            or any(j.get("disposition") == "unresolved_user_owned_outcome"
+                and j.get("learning_authority", {}).get("state") == "assessed"
+                and j["learning_authority"].get("independent_user_authority") is not True
+                for j in current_judgments)):
+            return False, False, False
+        if current is not record:
+            revision_number = current.result.get("review_revision")
+            if (not isinstance(prior_revision, int) or not isinstance(revision_number, int)
+                or revision_number <= prior_revision
+                or current.result.get("review_candidate_id") != review_id
+                or current.result.get("goal_context_id") != goal_id
+                or current.result.get("baseline_analysis_snapshot_id") != baseline_id):
+                return False, False, False
+            prior_revision = revision_number
     readiness_basis = executable_scope_chronology(
         capture,
         project_id=record.arguments.get("project_id"),
@@ -4351,9 +4430,8 @@ def work_blocker_behavior_observations(
     ready_before_work = readiness_basis["qualified"]
 
     if "unresolved_user_owned_outcome" not in dispositions:
-        expected = expected_materiality_dispositions(behavior_class)
         behavior_ok = (
-            bool(expected & dispositions)
+            bool(dispositions) and dispositions <= MATERIALITY_DISPOSITIONS
             and no_question_path
             and record.completion_sequence < first_work_change
         )
@@ -4588,13 +4666,16 @@ def build_work_blocker_result(
             capture.successful_calls("checkpoint_record")
         ),
     }
-    declared_user_owned = any(
-        call.arguments.get("action") == "record"
-        and baseline_call is not None
-        and call.result.get("baseline_analysis_snapshot_id") == baseline_analysis_id
-        and any(isinstance(judgment, dict) and judgment.get("disposition") == "unresolved_user_owned_outcome"
-            for judgment in call.arguments.get("judgments", []))
-        for call in capture.successful_calls("materiality_review")
+    _, current_record, _ = current_authority_frontier(
+        capture, project_id=baseline_call.result.get("project_id") if baseline_call else None,
+        goal_context_id=authoritative_goal_context_id,
+        baseline_analysis_snapshot_id=baseline_analysis_id,
+        before_sequence=first_work_change or 0,
+    )
+    declared_user_owned = bool(current_record) and any(
+        judgment.get("disposition") == "unresolved_user_owned_outcome"
+        for judgment in current_record.arguments.get("judgments", [])
+        if isinstance(judgment, dict)
     )
     required_checks = (
         (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS) if declared_user_owned else WORK_BLOCKER_CHECKS
@@ -5164,9 +5245,14 @@ def expected_materiality_dispositions(behavior_class: Any) -> frozenset[str]:
             "exploratory_uncertainty",
         }),
         "delegated_implementation_choice": frozenset({
-            "delegated_implementation_choice"
+            "repository_or_environment_fact", "settled_authority",
+            "agent_owned_implementation_choice", "delegated_implementation_choice",
         }),
-        "exploratory_uncertainty": frozenset({"exploratory_uncertainty"}),
+        "exploratory_uncertainty": frozenset({
+            "repository_or_environment_fact", "settled_authority",
+            "agent_owned_implementation_choice", "delegated_implementation_choice",
+            "exploratory_uncertainty",
+        }),
         "learning_deliberation": frozenset({
             "agent_owned_implementation_choice",
             "delegated_implementation_choice",
@@ -6205,6 +6291,11 @@ def materiality_dimension_authority_valid(
     require_current_goal_delegation: bool,
 ) -> bool:
     disposition = dimension.get("disposition")
+    learning_authority = dimension.get("learning_authority", {})
+    if (disposition == "unresolved_user_owned_outcome"
+        and learning_authority.get("state") == "assessed"
+        and learning_authority.get("independent_user_authority") is not True):
+        return False
     basis = dimension["basis"]
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
@@ -6372,6 +6463,10 @@ def materiality_review_facts(
     ):
         return False, None, None, {}
     baseline_id = baseline_call.result.get("analysis_snapshot_id")
+    _, frontier_record, _ = current_authority_frontier(
+        work, project_id=bundle.project_id, goal_context_id=goal_context_id,
+        baseline_analysis_snapshot_id=baseline_id, before_sequence=first_write_sequence,
+    )
     records = [
         call
         for call in work.successful_calls("materiality_review")
@@ -6392,6 +6487,8 @@ def materiality_review_facts(
         ]
     ] = []
     for candidate_record in records:
+        if candidate_record is not frontier_record:
+            continue
         discovery = engineering_choice_discovery_facts(
             work,
             bundle,
@@ -6561,6 +6658,7 @@ def materiality_review_facts(
         if call.arguments.get("action") == "revise"
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("review_candidate_id") == review_id
+        and call.completion_sequence < first_write_sequence
     ]
     revisions.sort(key=lambda call: call.sequence)
     revision_chain = [
@@ -6592,7 +6690,8 @@ def materiality_review_facts(
         and revision.result.get("review_candidate_id") == review_id
         and revision.result.get("goal_context_id") == goal_context_id
         and revision.result.get("baseline_analysis_snapshot_id") == baseline_id
-        and revision.result.get("review_revision") == expected_revision
+        and isinstance(revision.result.get("review_revision"), int)
+        and revision.result["review_revision"] >= expected_revision
         and nonempty_string(revision.result.get("review_analysis_snapshot_id"))
         for expected_revision, (revision, _) in enumerate(revision_chain, start=2)
     )
@@ -6609,6 +6708,16 @@ def materiality_review_facts(
         baseline_analysis_snapshot_id=baseline_id,
     )
     readiness_ok = readiness_basis["qualified"]
+    if revision_chain:
+        readiness_ok = bool(
+            readiness_ok and chain_preserves_dimensions and chain_preserves_review_identity
+            and all(
+                later.result["review_revision"] > earlier.result["review_revision"]
+                for earlier, later in zip([record, *revisions], revisions)
+            )
+            and final_dimensions
+            and all(dimension_authority_valid(value) for value in final_dimensions.values())
+        )
     first_binding_sequence = min(
         (
             event["binding_sequence"]
@@ -7163,7 +7272,7 @@ def question_review_facts(
         and submit_call.sequence < research_call.sequence < ready_call.sequence
     )
     explicit_ready_lifecycle = (
-        behavior_class == "explicit_user_owned_decision"
+        is_user_owned_behavior(behavior_class)
         and candidate_created_from_materiality
         and research_call is None
         and ready_call is None
@@ -7171,9 +7280,7 @@ def question_review_facts(
         and submit_call.result.get("research_state") == "ready_to_ask"
     )
     required_research_complete = (
-        repository_research_lifecycle
-        if behavior_class == "hidden_user_owned_decision"
-        else repository_research_lifecycle or explicit_ready_lifecycle
+        repository_research_lifecycle or explicit_ready_lifecycle
     )
     candidate_ready = required_research_complete
     promoted = bool(
@@ -13251,6 +13358,8 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 
 def self_test() -> int:
+    from frontier_self_test import check_frontier_regressions
+    check_frontier_regressions()
     from capture_self_test import check_capture_regressions
     check_capture_regressions()
     from authority_obligations_self_test import self_test as authority_self_test

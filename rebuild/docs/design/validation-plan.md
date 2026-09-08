@@ -1075,9 +1075,9 @@ owner/architecture/convention evidence는 constraining evidence일 뿐 settling 
 다른 exact authority가 없다면 pre-work Question/Decision lifecycle 없이는 ready가 될 수 없다.
 Candidate-expiry cleanup trigger와 project-local token-file contract를 sanitized regression으로
 유지한다. Maintained
-delegated positive control은 `settled_authority`가 아니라 실제
-`delegated_implementation_choice` disposition과 exact frozen Goal current-host Source의 bounded
-delegation을 요구한다. 이 current-task 경로는 exact Goal ID, current-host user-turn Source ID,
+delegated positive control은 internal delegation과 settled public authority의 공존을 허용한다.
+Delegated dimension은 exact frozen Goal current-host Source의 bounded delegation을 요구하며,
+최종 disposition label 자체를 behavior 증거로 사용하지 않는다. 이 current-task 경로는 exact Goal ID, current-host user-turn Source ID,
 Goal과 frozen task 안의 bounded verbatim statement/excerpt, affected scope를 담은 typed evidence를
 검사하며 research evidence를 요구하지 않는다. 이 evidence는 각 delegated dimension의 scope를
 cover해야 하고 research/recommendation/convention/accepted contract/Decision을 delegation으로
@@ -1510,3 +1510,23 @@ intentional malformed calls. It checks all current identities, closed variants,
 full-wire byte size and both JSON representations against the maintained budget,
 and compares size with the previous duplicated schema shape. Existing authority,
 learning, delegation, interaction and artifact semantic rejection tests remain active.
+
+### Dogfood prospective authority frontier
+
+Work intake와 full qualification은 first affected write 직전 current Project/Goal/baseline의
+latest completed Engineering Choice Discovery를 먼저 선택하고 그 Discovery의 latest created
+Review와 write 전에 완료된 monotonic revisions만 평가한다. Older Discovery의 Review가 더 늦게
+revised되어도 current authority를 되찾지 못하고, D2 without R2는 blocked다. Successful serialized
+creation calls는 creation order의 observable evidence이며 inspect/revise는 creation이 아니다.
+Executable scope는 각 observed first-path write 전에 current review와 exact closure를 요구한다.
+
+Behavior class는 최종 disposition equality가 아니다. Evidence가 exploration을 resolve하면
+settled/agent-owned authority로 끝날 수 있고 settled product outcome과 delegated internal detail은
+공존한다. Hidden outcome도 pre-write reassessment에서 발견하고 current authority로 해결할 수 있다.
+Already researched hidden Candidate는 ready-to-ask로 제출할 수 있으며 meaningful pre-Discovery
+investigation과 independent outcome별 prospective resolution은 계속 필요하다. Learning-only
+authority는 canonical Decision으로 승격할 수 없다. Temporal commitment는 production처럼 current
+temporal/lifetime outcome/result와 primary binding의 일치를 검사한다. Prose에서 숨은 outcome을
+추론하지 않으며 completeness와 cited authority의 semantic sufficiency는 independent evaluator와
+human authority-obligation review가 계속 소유한다. Sanitized frontier regressions는
+`rebuild/validation/dogfood/frontier_self_test.py`이며 maintained harness self-test에 포함된다.
