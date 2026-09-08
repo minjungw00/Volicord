@@ -2386,6 +2386,30 @@ def codex_user_turn_transport_identity_matches(
     ).equivalent
 
 
+def compare_current_host_response_transport(caller_text: Any, captured_text: Any) -> dict[str, Any]:
+    """Directional Decision-only transport comparison; preserve both raw identities.
+
+    The host can append terminal ASCII space/tab/line endings. Only the captured
+    suffix is removable; caller punctuation, casing, interior whitespace and
+    meaningful escapes remain governed by the existing unique-alignment rule.
+    """
+    comparison = compare_frozen_task_transport(caller_text, captured_text)
+    removed = 0
+    if not comparison.equivalent and isinstance(captured_text, str):
+        bounded = captured_text.rstrip(" \t\r\n")
+        candidate = compare_frozen_task_transport(caller_text, bounded)
+        if candidate.equivalent:
+            comparison = candidate
+            removed = len(captured_text) - len(bounded)
+    return {
+        **comparison.bounded_evidence(),
+        "transport_equivalence_used": comparison.equivalent and caller_text != captured_text,
+        "terminal_ascii_whitespace_removed_count": removed,
+        "caller_text_sha256": hashlib.sha256(caller_text.encode("utf-8")).hexdigest() if isinstance(caller_text, str) else None,
+        "raw_host_text_sha256": hashlib.sha256(captured_text.encode("utf-8")).hexdigest() if isinstance(captured_text, str) else None,
+    }
+
+
 CURRENT_HOST_CONTEXT_ROLES = {
     "goal",
     "assumption",
@@ -4256,9 +4280,9 @@ def work_blocker_material_question_lifecycles(
             turn
             for turn in capture.user_turns
             if decision is not None
-            and codex_user_turn_transport_identity_matches(
-                turn.text, decision.arguments.get("user_turn")
-            )
+            and compare_current_host_response_transport(
+                decision.arguments.get("user_turn"), turn.text
+            )["equivalent"]
             and turn.sequence < decision.sequence
             and turn.turn_id == decision.turn_id
         ]
@@ -5000,6 +5024,9 @@ def decision_facts(
         question_id = call.arguments.get("question_id")
         revision = call.arguments.get("question_revision")
         user_text = call.arguments.get("user_turn")
+        response_transport = compare_current_host_response_transport(
+            user_text, turn.text if turn is not None else None
+        )
         source_id = call.result.get("user_response_source_id")
         source = (
             bundle.one("sources", id=source_id, project_id=bundle.project_id)
@@ -5062,7 +5089,7 @@ def decision_facts(
             and revision >= 1
             and nonempty_string(call.arguments.get("presentation_receipt_id"))
             and nonempty_string(user_text)
-            and codex_user_turn_transport_identity_matches(turn.text, user_text)
+            and response_transport["equivalent"]
             and nonempty_string(source_id)
             and call.result.get("all_succeeded") is True
             and call.arguments.get("project_id") == bundle.project_id
@@ -5071,9 +5098,10 @@ def decision_facts(
             and witness is not None
             and nonempty_string(decision_id)
             and source.get("source_kind") == "current_host_user_turn"
-            and codex_user_turn_transport_identity_matches(
-                turn.text, source.get("locator")
-            )
+            and source.get("locator") == user_text
+            and compare_current_host_response_transport(
+                source.get("locator"), turn.text
+            )["equivalent"]
             and source.get("detail_one") == "codex"
             and source.get("detail_two") == work.session_id
             and source.get("actor_kind") == "user"
@@ -5089,6 +5117,13 @@ def decision_facts(
                 "source_id": str(source_id),
                 "material_scope": material_scope,
                 "completion_sequence": call.completion_sequence,
+                "current_host_response_transport": {
+                    **response_transport,
+                    "raw_capture_sha256": work.source_sha256,
+                    "captured_turn_id": turn.turn_id,
+                    "canonical_response_source_id": str(source_id),
+                    "canonical_source_text_sha256": hashlib.sha256(source["locator"].encode("utf-8")).hexdigest(),
+                },
             }
     ordered = sorted(
         evidence.items(), key=lambda item: item[1]["completion_sequence"]
@@ -8695,6 +8730,10 @@ def real_session_evidence(
         "goal_context_id": goal_context_id,
         "decision_id": decision_id,
         "decision_ids": list(decision_evidence),
+        "decision_response_provenance": {
+            decision_id: evidence["current_host_response_transport"]
+            for decision_id, evidence in decision_evidence.items()
+        },
         "behavior_class": behavior_class,
         "question_id": question_id,
         "question_revision": question_revision,
@@ -13383,6 +13422,8 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 
 def self_test() -> int:
+    from decision_transport_self_test import check_decision_transport_regressions
+    check_decision_transport_regressions()
     from frontier_self_test import check_frontier_regressions
     check_frontier_regressions()
     from capture_self_test import check_capture_regressions

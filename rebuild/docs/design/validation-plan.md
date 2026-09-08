@@ -1552,3 +1552,19 @@ verification. The selected command retains execution identity, aggregate/decompo
 exit and termination; actual nonzero verification fails and incomplete execution remains indeterminate.
 Session 1's 256 KiB MCP Recall budget remains unchanged. Sanitized bounded Recall and chronology
 regressions live in `resume_self_test.py` and run in the maintained campaign self-test.
+
+### Current-host Decision transport provenance
+
+Decision caller text is compared directionally to the actual captured response with the existing
+unique-alignment Markdown escape and CRLF/terminal-line-ending primitive. In this Decision-only
+comparison, additional terminal ASCII space/tab/CR/LF in the host response may be removed; no leading,
+interior, Unicode-whitespace, case, punctuation, paraphrase or fuzzy normalization is permitted.
+Frozen task and Context transport contracts are unchanged. Canonical response Source content must
+remain the exact caller-supplied text, with the existing Source identity, Project, host/session,
+Question revision and presentation linkage. No unavailable authenticated host turn-ID API is invented.
+
+Bounded comparison evidence preserves the raw rollout SHA-256, captured turn identity, raw response
+SHA-256, caller and canonical Source SHA-256, canonical Source ID, normalized comparison hash and
+reported escape/suffix normalization. Original source bytes are never rewritten. The sanitized
+`decision_transport_self_test.py` exercises parser-to-canonical provenance, terminal whitespace and
+semantic-difference rejection and is included in the maintained harness self-test.
