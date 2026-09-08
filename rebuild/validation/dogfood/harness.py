@@ -4162,6 +4162,60 @@ def work_evidence_transport_attribution(
     }
 
 
+def judgment_resolution_decision_ids(judgment: dict[str, Any]) -> tuple[str, ...]:
+    """Read authority from its current Product disposition, not a historical tag."""
+    if judgment.get("disposition") == "unresolved_user_owned_outcome":
+        values = [judgment.get("resolution_decision_id")]
+    elif judgment.get("disposition") == "settled_authority":
+        values = judgment.get("decision_ids")
+    else:
+        return ()
+    if (not isinstance(values, list) or not values
+        or not all(nonempty_string(value) for value in values)
+        or len(set(values)) != len(values)):
+        return ()
+    return tuple(sorted(values))
+
+
+def material_question_decision_current(
+    bundle: CanonicalBundle, decision_id: str, capture: CodexCapture,
+    review_id: str, before_sequence: int,
+) -> bool:
+    """Preserve canonical currency and typed applicability for Question resolution."""
+    decision = bundle.one("decisions", id=decision_id, project_id=bundle.project_id)
+    if decision is None:
+        return False
+    source = bundle.one("sources", id=decision.get("user_turn_source_id"), project_id=bundle.project_id)
+    if source is None or source.get("availability") != "available":
+        return False
+    if any(row.get("project_id") == bundle.project_id and (
+        row.get("relation_kind") == "supersedes" and row.get("to_kind") == "decision" and row.get("to_id") == decision_id
+        or row.get("relation_kind") == "contradicts" and (
+            row.get("from_kind") == "decision" and row.get("from_id") == decision_id
+            or row.get("to_kind") == "decision" and row.get("to_id") == decision_id))
+        for row in bundle.rows("canonical_relations")):
+        return False
+    if any(row.get("project_id") == bundle.project_id and row.get("decision_id") == decision_id
+        for row in bundle.rows("review_due")):
+        return False
+    bindings = [call for call in capture.successful_calls("materiality_review")
+        if call.arguments.get("action") == "inspect"
+        and call.arguments.get("review_candidate_id") == review_id
+        and call.completion_sequence < before_sequence
+        and call.result.get("workflow", {}).get("stage") == "ready_for_work"]
+    for field in ("paths", "components", "work_contexts"):
+        declared = decode_string_blob(decision.get(f"applicability_{field}"))
+        if declared is None:
+            return False
+        for binding in bindings:
+            requested = binding.arguments.get(field, [])
+            if declared and (not requested or not all(any(
+                scope == value or field == "paths" and value.startswith(f"{scope}/")
+                for scope in declared) for value in requested)):
+                return False
+    return True
+
+
 def work_blocker_material_question_lifecycles(
     capture: CodexCapture,
     behavior_class: str,
@@ -4169,8 +4223,11 @@ def work_blocker_material_question_lifecycles(
     record: ToolCall,
     revision: ToolCall | None,
     first_work_change: int,
+    *,
+    bundle: CanonicalBundle | None = None,
+    decision_evidence: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[bool, bool]:
-    """Observe every dimension-linked material lifecycle without bundle semantics."""
+    """Observe dimension-linked lifecycles and, when available, canonical authority."""
 
     if revision is None:
         return False, False
@@ -4191,12 +4248,12 @@ def work_blocker_material_question_lifecycles(
     }
     if not user_dimensions or set(initial_judgments) != set(revised_judgments):
         return False, False
-    dimensions_by_decision: dict[str, set[str]] = {}
+    dimensions_by_decision: dict[tuple[str, ...], set[str]] = {}
     for dimension_id in user_dimensions:
-        decision_id = revised_judgments[dimension_id].get("resolution_decision_id")
-        if not nonempty_string(decision_id):
+        decision_ids = judgment_resolution_decision_ids(revised_judgments[dimension_id])
+        if not decision_ids:
             return False, False
-        dimensions_by_decision.setdefault(str(decision_id), set()).add(dimension_id)
+        dimensions_by_decision.setdefault(decision_ids, set()).add(dimension_id)
     review_id = record.result.get("review_candidate_id")
     submit_calls = [
         call
@@ -4221,7 +4278,7 @@ def work_blocker_material_question_lifecycles(
     used_question_ids: set[str] = set()
     decisions_valid = True
     lifecycles_valid = bool(choices)
-    for group_dimensions in dimensions_by_decision.values():
+    for resolution_ids, group_dimensions in dimensions_by_decision.items():
         group_submits = [
             call
             for call in submit_calls
@@ -4274,6 +4331,8 @@ def work_blocker_material_question_lifecycles(
             and call.arguments.get("question_revision") == question_revision
         ]
         decision = decision_calls[0] if len(decision_calls) == 1 else None
+        presented = next((question for question in frontier.result.get("questions", [])
+            if question.get("identity") == question_id), {}) if frontier else {}
         response_turns = [
             turn
             for turn in capture.user_turns
@@ -4282,6 +4341,7 @@ def work_blocker_material_question_lifecycles(
                 decision.arguments.get("user_turn"), turn.text
             )["equivalent"]
             and turn.sequence < decision.sequence
+            and frontier is not None and frontier.completion_sequence < turn.sequence
             and turn.turn_id == decision.turn_id
         ]
         research_calls = [
@@ -4302,9 +4362,9 @@ def work_blocker_material_question_lifecycles(
             and submit.result.get("research_state") == "research_required"
             and len(research_calls) == 1
             and len(ready_calls) == 1
-            and submit.sequence < research_calls[0].sequence
-            < ready_calls[0].sequence
-            < (promote.sequence if promote is not None else -1)
+            and submit.completion_sequence < research_calls[0].sequence
+            and research_calls[0].completion_sequence < ready_calls[0].sequence
+            and ready_calls[0].completion_sequence < (promote.sequence if promote is not None else -1)
             and ready_calls[0].result.get("research_state") == "ready_to_ask"
         )
         explicit_path = bool(
@@ -4322,6 +4382,15 @@ def work_blocker_material_question_lifecycles(
         hidden_path = behavior_class == "hidden_user_owned_decision" and bool(
             submit and (researched_path or submit.arguments.get("research_state") == "ready_to_ask")
         )
+        # A later revision cannot launder authority first claimed before the answer.
+        authority_sequence = min((call.sequence for call in capture.successful_calls("materiality_review")
+            if call.arguments.get("action") == "revise"
+            and call.arguments.get("review_candidate_id") == review_id
+            and call.sequence <= revision.sequence
+            and any(j.get("choice_id") in group_dimensions
+                and (j.get("disposition") != "unresolved_user_owned_outcome"
+                    or nonempty_string(j.get("resolution_decision_id")))
+                for j in call.arguments.get("judgments", []))), default=revision.sequence)
         lifecycle_valid = bool(
             submit
             and promote
@@ -4330,8 +4399,17 @@ def work_blocker_material_question_lifecycles(
             and coupled
             and nonempty_string(question_id)
             and question_id not in used_question_ids
-            and record.sequence < submit.sequence < promote.sequence < frontier.sequence
-            < decision.sequence < revision.sequence
+            and record.completion_sequence < submit.sequence
+            and submit.completion_sequence < promote.sequence
+            and promote.completion_sequence < frontier.sequence
+            and frontier.completion_sequence < decision.sequence
+            and decision.completion_sequence < authority_sequence
+            and submit.result.get("review_candidate_id") == review_id
+            and submit.result.get("dimension_id") == submit.arguments.get("dimension_id")
+            and all(call.arguments.get("project_id") == record.arguments.get("project_id")
+                for call in (submit, promote, frontier, decision, revision))
+            and nonempty_string(presented.get("presentation_receipt_id"))
+            and decision.arguments.get("presentation_receipt_id") == presented.get("presentation_receipt_id")
             and (explicit_path or hidden_path)
         )
         decision_valid = bool(
@@ -4340,6 +4418,23 @@ def work_blocker_material_question_lifecycles(
             and decision.result.get("all_succeeded") is True
             and nonempty_string(decision.result.get("user_response_source_id"))
         )
+        if bundle is not None:
+            evidence = decision_evidence or {}
+            linked = [evidence[identity] for identity in resolution_ids if identity in evidence
+                and evidence[identity].get("question_id") == question_id
+                and evidence[identity].get("question_revision") == question_revision]
+            decision_valid &= bool(len(linked) == 1 and all(
+                identity in evidence
+                and material_question_decision_current(bundle, identity, capture, review_id, first_work_change)
+                and evidence[identity]["completion_sequence"] < authority_sequence
+                and all(f"work-authority:{dimension}" in evidence[identity]["material_scope"]
+                    for dimension in group_dimensions)
+                for identity in resolution_ids))
+            lifecycle_valid &= question_review_facts(
+                capture, bundle, behavior_class, question_id, question_revision, {},
+                baseline_call, review_id, submit.arguments.get("dimension_id") if submit else None,
+                linked[0] if len(linked) == 1 else None,
+            )[0]
         lifecycles_valid &= lifecycle_valid
         decisions_valid &= decision_valid
         if submit is not None:
@@ -4365,8 +4460,10 @@ def work_blocker_material_question_lifecycles(
 
 def historical_questions_resolved_before_frontier(
     capture: CodexCapture, record: ToolCall, before_sequence: int,
+    *, bundle: CanonicalBundle | None = None,
+    decision_evidence: dict[str, dict[str, Any]] | None = None,
 ) -> bool:
-    """Permit completed obsolete user-owned branches, never gratuitous Questions.
+    """Permit resolved current or obsolete branches, never gratuitous Questions.
 
     Historical questions must have their own dimension-linked, prospective
     resolution. Their presence neither supplies nor invalidates current authority.
@@ -4405,7 +4502,8 @@ def historical_questions_resolved_before_frontier(
             and c.arguments.get("project_id") == record.arguments.get("project_id")
             and c.result.get("goal_context_id") == record.result.get("goal_context_id")
             and c.result.get("baseline_analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")
-            and c.completion_sequence < record.sequence]
+            and (c is record if review_id == record.result.get("review_candidate_id")
+                else c.completion_sequence < record.sequence)]
         if len(origins) != 1:
             return False
         origin = origins[0]
@@ -4416,7 +4514,8 @@ def historical_questions_resolved_before_frontier(
         baseline = next((c for c in capture.successful_calls("repository_analyze")
             if c.result.get("analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")), None)
         if baseline is None or not all(work_blocker_material_question_lifecycles(
-            capture, "explicit_user_owned_decision", baseline, origin, revision, before_sequence
+            capture, "explicit_user_owned_decision", baseline, origin, revision, before_sequence,
+            bundle=bundle, decision_evidence=decision_evidence,
         )):
             return False
         candidate_ids = {c.result.get("candidate_id") for c in submits if c.arguments.get("review_candidate_id") == review_id}
@@ -6432,6 +6531,9 @@ def materiality_dimension_authority_valid(
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
     decision_ids = basis["decision_ids"]
+    if (decision_ids and learning_authority.get("state") == "assessed"
+        and learning_authority.get("independent_user_authority") is not True):
+        return False
     exact_authority = basis.get("exact_authority")
     alternative_accounting = dimension.get("alternative_accounting")
     settling_disposition = disposition in {
@@ -6909,6 +7011,7 @@ def materiality_review_facts(
                     [dimensions, *(value for _, value in revision_chain)], revision_chain))
             and all(
                 later.result["review_revision"] > earlier.result["review_revision"]
+                and earlier.completion_sequence < later.sequence
                 for earlier, later in zip([record, *revisions], revisions)
             )
             and final_dimensions
@@ -7020,6 +7123,12 @@ def materiality_review_facts(
             and readiness_ok
             and historical_questions_resolved_before_frontier(work, record, first_write_sequence)
         )
+    # Settled/current-history paths otherwise skip material_question_lifecycle_facts.
+    # Keep that lifecycle's independent diagnostics for dimensions still reported
+    # as user-owned, including authentic Decision evidence when transport is partial.
+    if not current_user_owned_ids:
+        valid = valid and historical_questions_resolved_before_frontier(
+            work, record, first_write_sequence, bundle=bundle, decision_evidence=decision_evidence)
     return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(primary_dimension_id) if nonempty_string(primary_dimension_id) else None, {
         "record_sequence": record.sequence,
         "review_candidate_id": review_id,

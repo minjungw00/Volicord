@@ -241,7 +241,31 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(self.facts(descriptor, capture, bundle)[0])
 
-    def test_resolved_historical_question_does_not_block_settled_rediscovery(self):
+    @staticmethod
+    def settle_from_decision(arguments):
+        arguments = deepcopy(arguments)
+        for judgment in arguments["judgments"]:
+            if judgment["disposition"] == "unresolved_user_owned_outcome":
+                judgment["disposition"] = "settled_authority"
+                judgment["decision_ids"] = [judgment.pop("resolution_decision_id")]
+                judgment["additional_source_ids"] = ["02" * 16]
+                for account in judgment["alternative_accounting"]:
+                    account["source_ids"] = ["02" * 16]
+                judgment.update(authority_source_evidence=[{"source_id": "02" * 16,
+                    "role": {"kind": "applicable_decision", "decision_id": judgment["decision_ids"][0]},
+                    "rationale": "The exact current-host response selects the observable outcome."}],
+                    authority_coverage="The exact disclosed material outcome",
+                    unique_outcome_rationale="The user's explicit answer settles the credible alternatives.")
+        return arguments
+
+    def settled_same_review(self, behavior="explicit_user_owned_decision"):
+        descriptor, capture, bundle = self.fixture(behavior)
+        capture = replace(capture, tool_calls=tuple(replace(c, arguments=self.settle_from_decision(c.arguments))
+            if c.operation == "materiality_review" and c.arguments.get("action") == "revise"
+            else c for c in capture.tool_calls))
+        return descriptor, capture, bundle
+
+    def settled_rediscovery(self):
         descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
         _, settled, _ = self.fixture()
         discovery = settled.successful_calls("engineering_choice_discovery")[0]
@@ -262,8 +286,184 @@ class FrontierTests(unittest.TestCase):
         binding = replace(inspect, arguments={**inspect.arguments, "review_candidate_id": "ae" * 16}, result=output)
         calls = tuple(binding if c is inspect else c for c in capture.tool_calls)
         capture = replace(capture, tool_calls=tuple(sorted((*calls, discovery, review), key=lambda c: c.sequence)))
+        return descriptor, capture, bundle
+
+    def test_resolved_historical_question_does_not_block_settled_rediscovery(self):
+        descriptor, capture, bundle = self.settled_rediscovery()
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def test_same_review_decision_settlement_passes_both_evaluators(self):
+        for behavior in ("explicit_user_owned_decision", "hidden_user_owned_decision"):
+            with self.subTest(behavior=behavior):
+                descriptor, capture, bundle = self.settled_same_review(behavior)
+                self.assertEqual(sum(c.arguments.get("action") == "record"
+                    for c in capture.calls("materiality_review")), 1)
+                self.assertEqual(len(capture.calls("decision_record")), 1)
+                self.assertTrue(self.observe(descriptor, capture))
+                self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def test_same_review_settlement_in_full_session_evaluation(self):
+        descriptor, _, _ = self.fixture("explicit_user_owned_decision")
+        path = self.root / descriptor["evidence"]["captures"]["work"]["file"]
+        events = [json.loads(line) for line in path.read_text().splitlines()]
+        for event in events:
+            payload = event.get("payload", {})
+            if (payload.get("type") == "custom_tool_call"
+                and "materiality-revision-call" in payload.get("call_id", "")):
+                # Keep the real fixture transport envelope; change only the Product judgment variant.
+                wrapper = h.parse_mcp_wrapper(payload["input"])
+                self.assertIsNotNone(wrapper)
+                arguments = self.settle_from_decision(wrapper.arguments)
+                payload["input"] = payload["input"].replace(
+                    json.dumps(wrapper.arguments, separators=(",", ":")),
+                    json.dumps(arguments, separators=(",", ":")), 1)
+                for completion in events:
+                    output = completion.get("payload", {})
+                    if (output.get("type") == "mcp_tool_call_end"
+                        and output.get("call_id") == f"exec-{payload['call_id']}"):
+                        output["invocation"]["arguments"] = arguments
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        descriptor["evidence"]["captures"]["work"]["sha256"] = h.sha256(path)
+        result = h.real_session_evidence(descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+        for check in ("pre_write_materiality_work_authority", "appropriate_inquiry_outcome",
+            "recorded_user_owned_authority"):
+            self.assertEqual(result["checks"][check], "passed", result)
+
+    def test_same_review_and_history_reject_false_identity_and_late_resolution(self):
+        for factory in (self.settled_same_review, self.settled_rediscovery):
+            descriptor, capture, bundle = factory()
+            revision = next(c for c in capture.tool_calls if c.arguments.get("action") == "revise")
+            decision = capture.calls("decision_record")[0]
+            submit = next(c for c in capture.tool_calls if c.arguments.get("action") == "submit_question_from_materiality")
+            promote = next(c for c in capture.tool_calls if c.arguments.get("action") == "promote_question")
+            frontier = capture.calls("inquiry_frontier")[0]
+            first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
+            cases = [
+                ("missing Decision", decision, None),
+                ("wrong Question", decision, replace(decision, arguments={**decision.arguments, "question_id": "ff" * 16})),
+                ("wrong revision", decision, replace(decision, arguments={**decision.arguments, "question_revision": 2})),
+                ("wrong receipt", decision, replace(decision, arguments={**decision.arguments, "presentation_receipt_id": "ff" * 16})),
+                ("wrong Review", submit, replace(submit, arguments={**submit.arguments, "review_candidate_id": "ff" * 16})),
+                ("wrong dimension", submit, replace(submit, arguments={**submit.arguments, "dimension_id": "unrelated"})),
+                ("wrong returned dimension", submit, replace(submit, result={**submit.result, "dimension_id": "unrelated"})),
+                ("wrong Project", decision, replace(decision, arguments={**decision.arguments, "project_id": "ff" * 16})),
+                ("late Decision completion", decision, replace(decision, completion_sequence=revision.sequence + 1)),
+                ("post-write Decision", decision, replace(decision, sequence=first_write + 1, completion_sequence=first_write + 2)),
+                ("late revision", revision, replace(revision, sequence=first_write + 1, completion_sequence=first_write + 2)),
+                ("overlapping promotion", promote, replace(promote, completion_sequence=frontier.sequence + 1)),
+                ("overlapping submission", submit, replace(submit, completion_sequence=promote.sequence + 1)),
+            ]
+            for label, original, replacement in cases:
+                with self.subTest(lifecycle=factory.__name__, case=label):
+                    calls = tuple(replacement if c is original else c for c in capture.tool_calls
+                        if c is not original or replacement is not None)
+                    changed = replace(capture, tool_calls=calls)
+                    self.assertFalse(self.observe(descriptor, changed))
+                    self.assertFalse(self.facts(descriptor, changed, bundle)[0])
+
+    def test_same_review_and_history_require_canonical_scope_and_provenance(self):
+        for factory in (self.settled_same_review, self.settled_rediscovery):
+            descriptor, capture, bundle = factory()
+            for table, mutation in (
+                ("decisions", {"question_revision": 2}),
+                ("decisions", {"question_id": "ff" * 16}),
+                ("decisions", {"id": "ff" * 16}),
+                ("decisions", {"user_authority": "agent"}),
+                ("questions", {"revision": 2}),
+                ("question_revisions", {"material_scope": "0000000000000000"}),
+                ("question_revisions", {"materiality": "not_material"}),
+                ("question_response_sources", {"source_id": "ff" * 16}),
+                ("question_decision_history_witnesses", {"root_decision_id": "ff" * 16}),
+            ):
+                with self.subTest(lifecycle=factory.__name__, table=table, mutation=mutation):
+                    changed = replace(bundle, tables={**bundle.tables, table: tuple(
+                        {**row, **mutation} for row in bundle.rows(table))})
+                    self.assertFalse(self.facts(descriptor, capture, changed)[0])
+
+    def test_later_revision_cannot_hide_pre_decision_settlement(self):
+        descriptor, capture, bundle = self.settled_same_review()
+        revision = next(c for c in capture.tool_calls if c.arguments.get("action") == "revise")
+        decision = capture.calls("decision_record")[0]
+        early = replace(revision, call_id="premature-settlement", sequence=decision.sequence - 20,
+            completion_sequence=decision.sequence - 10)
+        calls = tuple(replace(c, result={**c.result, "review_revision": 3}) if c is revision else c
+            for c in capture.tool_calls)
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, early), key=lambda c: c.sequence)))
+        self.assertFalse(self.observe(descriptor, capture))
+        self.assertFalse(self.facts(descriptor, capture, bundle)[0])
+
+    def test_settlement_rejects_stale_response_and_inapplicable_decision(self):
+        descriptor, capture, bundle = self.settled_same_review()
+        def strings(values):
+            return (len(values).to_bytes(8, "big") + b"".join(
+                len(value.encode()).to_bytes(8, "big") + value.encode() for value in values)).hex()
+        for field in ("paths", "components", "work_contexts"):
+            with self.subTest(field=field):
+                changed = replace(bundle, tables={**bundle.tables, "decisions": tuple(
+                    {**row, f"applicability_{field}": strings(["unrelated"])} for row in bundle.rows("decisions"))})
+                self.assertFalse(self.facts(descriptor, capture, changed)[0])
+        binding = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "inspect")
+        scoped = replace(bundle, tables={**bundle.tables, "decisions": tuple({**row,
+            **{f"applicability_{field}": strings(binding.arguments.get(field, []))
+                for field in ("paths", "components", "work_contexts")}} for row in bundle.rows("decisions"))})
+        self.assertTrue(self.facts(descriptor, capture, scoped)[0])
+        for state in ("stale", "unknown", "unavailable"):
+            changed = replace(bundle, tables={**bundle.tables, "sources": tuple(
+                {**row, "availability": state} if row["id"] == "02" * 16 else row for row in bundle.rows("sources"))})
+            self.assertFalse(self.facts(descriptor, capture, changed)[0])
+
+    def test_same_review_requires_exact_pre_write_scope_binding(self):
+        descriptor, capture, bundle = self.settled_same_review()
+        binding = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "inspect")
+        first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
+        for replacement in (None,
+            replace(binding, completion_sequence=first_write + 1),
+            replace(binding, arguments={**binding.arguments, "review_candidate_id": "ff" * 16})):
+            changed = replace(capture, tool_calls=tuple(replacement if c is binding else c
+                for c in capture.tool_calls if c is not binding or replacement is not None))
+            self.assertFalse(self.observe(descriptor, changed))
+            self.assertFalse(self.facts(descriptor, changed, bundle)[0])
+
+    def test_settlement_does_not_hide_independent_authority_behind_behavior_labels(self):
+        for behavior in ("delegated_implementation_choice", "research_or_no_question", "exploratory_uncertainty"):
+            descriptor, capture, bundle = self.settled_same_review()
+            descriptor["behavior_class"] = behavior
+            self.assertTrue(self.observe(descriptor, capture))
+            self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+            changed = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "decision_record"))
+            self.assertFalse(self.observe(descriptor, changed))
+            self.assertFalse(self.facts(descriptor, changed, bundle)[0])
+        descriptor, capture, bundle = self.settled_same_review()
+        calls = deepcopy(capture.tool_calls)
+        for call in calls:
+            if call.arguments.get("action") == "revise":
+                for judgment in call.arguments["judgments"]:
+                    judgment["learning_authority"]["independent_user_authority"] = False
+        self.assertFalse(self.facts(descriptor, replace(capture, tool_calls=calls), bundle)[0])
+
+    def test_settlement_requires_current_uncontested_decision(self):
+        descriptor, capture, bundle = self.settled_same_review()
+        for table, row in (
+            ("canonical_relations", {"from_kind": "decision", "from_id": "ff" * 16,
+                "to_kind": "decision", "to_id": "07" * 16, "relation_kind": "supersedes"}),
+            ("canonical_relations", {"from_kind": "decision", "from_id": "07" * 16,
+                "to_kind": "decision", "to_id": "ff" * 16, "relation_kind": "contradicts"}),
+            ("review_due", {"decision_id": "07" * 16}),
+        ):
+            changed = replace(bundle, tables={**bundle.tables, table: (
+                *bundle.rows(table), {**row, "project_id": bundle.project_id})})
+            self.assertFalse(self.facts(descriptor, capture, changed)[0])
+
+    def test_later_review_origin_cannot_be_treated_as_historical(self):
+        descriptor, capture, bundle = self.settled_rediscovery()
+        current = next(c for c in capture.tool_calls if c.call_id == "settled-review")
+        origin = next(c for c in capture.tool_calls if c.operation == "materiality_review"
+            and c.arguments.get("action") == "record" and c is not current)
+        capture = replace(capture, tool_calls=tuple(replace(c, completion_sequence=current.sequence + 1)
+            if c is origin else c for c in capture.tool_calls))
+        self.assertFalse(self.observe(descriptor, capture))
+        self.assertFalse(self.facts(descriptor, capture, bundle)[0])
 
     def test_source_evidence_settles_initial_user_uncertainty_without_question(self):
         descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
