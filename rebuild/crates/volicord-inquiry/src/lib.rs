@@ -56,9 +56,10 @@ pub use model::{
     MaterialDecomposition, MaterialOutcomeOwnershipAssessment, MaterialOutcomeSignal,
     MaterialityAssessment, MaterialityDimension, MaterialityDisposition, MaterialityReview,
     MaterialityReviewRevision, MaterialityStatus, NoIndependentForkBasis, PlannedCommitment,
-    PlannedOutcomeBinding, PreWriteAuthorityBasis, PreWriteMaterialityClosure, PromotionResult,
-    QuestionCandidate, QuestionPresentation, RepositoryResearchBasis, ResidualForkClosure,
-    ResidualInteractionComparison, SubmissionOutcome, WorkAuthorityBasis, WorkAuthorityBasisKind,
+    PlannedOutcomeBinding, PlannedTemporalEffect, PreWriteAuthorityBasis,
+    PreWriteMaterialityClosure, PromotionResult, QuestionCandidate, QuestionPresentation,
+    RepositoryResearchBasis, ResidualForkClosure, ResidualInteractionComparison, SubmissionOutcome,
+    WorkAuthorityBasis, WorkAuthorityBasisKind,
 };
 pub use response::{
     interpret_current_host_response, record_response_batch, BatchResponseItem,

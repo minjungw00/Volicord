@@ -275,14 +275,16 @@ pub enum InteractionAxis {
     CompositionAndPrecedence,
     MultiItemEffects,
     FailureAndRecovery,
+    TemporalAndLifetime,
 }
 
 impl InteractionAxis {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::ReferenceBasis,
         Self::CompositionAndPrecedence,
         Self::MultiItemEffects,
         Self::FailureAndRecovery,
+        Self::TemporalAndLifetime,
     ];
 }
 
@@ -709,10 +711,24 @@ pub enum PreWriteMaterialityClosure {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlannedCommitment {
+    pub temporal_effect: PlannedTemporalEffect,
     pub commitment_id: String,
     pub description: String,
     pub repository_paths: Vec<String>,
     pub outcome_binding: PlannedOutcomeBinding,
+}
+
+/// Temporal completeness within the existing commitment, never ownership inference.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlannedTemporalEffect {
+    NoTemporalChange {
+        rationale: String,
+    },
+    ReviewedTemporalOutcome {
+        outcome_id: String,
+        result_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

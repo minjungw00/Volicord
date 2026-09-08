@@ -68,7 +68,7 @@ def outside_interactions(choices, source_ids):
         "affected_choice_ids": [], "source_basis": [source_ids],
         "conclusion": {"result_id": "unchanged", "state": "no_independent_fork", "basis": "outside_affected_scope",
             "rationale": "The maintained fixture Source limits this isolated authority test; these interaction results are unchanged"},
-    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery")]
+    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery", "temporal_and_lifetime")]
 
 
 def material_boundary_review(
@@ -815,7 +815,7 @@ def record_settled_fixture_review(
                 "disposition": {"state": "included", "repository_paths": paths} if category == "focused_tests" else {"state": "no_coupled_artifact"},
                 "basis_summary": "Inspection bounds this installed integration fixture to its test artifacts.",
             } for category in categories],
-            "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": "The bounded fixture artifacts introduce no additional product outcome."},
+            "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": "The bounded fixture artifacts introduce no additional product outcome."},
         },
     })
 

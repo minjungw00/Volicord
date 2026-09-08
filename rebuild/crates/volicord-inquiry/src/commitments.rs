@@ -1,8 +1,8 @@
 //! Prospective graph binding, not inference of semantic truth from prose.
 use crate::{
-    DiscoveredAlternativeResolution, EngineeringChoiceDiscovery, Error, ErrorKind,
+    DiscoveredAlternativeResolution, EngineeringChoiceDiscovery, Error, ErrorKind, InteractionAxis,
     InteractionConclusion, MaterialDecomposition, MaterialityReview, NoIndependentForkBasis,
-    PlannedCommitment, PlannedOutcomeBinding,
+    PlannedCommitment, PlannedOutcomeBinding, PlannedTemporalEffect,
 };
 use std::collections::BTreeSet;
 use volicord_context::ApplicabilityScope;
@@ -36,7 +36,15 @@ pub(crate) fn validate_shape(
                 equivalence_rationale,
             } => text(equivalence_rationale),
         };
-        if !text(&commitment.commitment_id)
+        let temporal_valid = match &commitment.temporal_effect {
+            PlannedTemporalEffect::NoTemporalChange { rationale } => text(rationale),
+            PlannedTemporalEffect::ReviewedTemporalOutcome {
+                outcome_id,
+                result_id,
+            } => text(outcome_id) && text(result_id),
+        };
+        if !temporal_valid
+            || !text(&commitment.commitment_id)
             || !ids.insert(&commitment.commitment_id)
             || !text(&commitment.description)
             || !binding_valid
@@ -89,7 +97,7 @@ pub(crate) fn unmapped_commitments(
                 })
         })
     };
-    commitments.iter().filter(|commitment| !match &commitment.outcome_binding {
+    commitments.iter().filter(|commitment| !temporal_mapping_valid(commitment, discovery) || !match &commitment.outcome_binding {
         PlannedOutcomeBinding::ReviewedChoice { dimension_id, choice_id, alternative_id } => {
             allowed(dimension_id, choice_id, alternative_id)
                 && discovery.choices.iter().any(|choice| &choice.choice_id == choice_id
@@ -116,4 +124,73 @@ pub(crate) fn unmapped_commitments(
         }
         PlannedOutcomeBinding::PrivateEquivalent { .. } => true,
     }).map(|c| format!("{}: {}", c.commitment_id, c.description)).collect()
+}
+
+fn temporal_mapping_valid(
+    commitment: &PlannedCommitment,
+    discovery: &EngineeringChoiceDiscovery,
+) -> bool {
+    let temporal = discovery
+        .interaction_review
+        .iter()
+        .filter(|review| review.axis == InteractionAxis::TemporalAndLifetime)
+        .flat_map(|review| &review.outcomes)
+        .filter(|outcome| {
+            !matches!(
+                outcome.conclusion,
+                InteractionConclusion::NoIndependentFork {
+                    basis: NoIndependentForkBasis::OutsideAffectedScope,
+                    ..
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+    match &commitment.temporal_effect {
+        PlannedTemporalEffect::NoTemporalChange { .. } => match &commitment.outcome_binding {
+            PlannedOutcomeBinding::ReviewedChoice { choice_id, .. } => !temporal
+                .iter()
+                .any(|outcome| outcome.affected_choice_ids.contains(choice_id)),
+            PlannedOutcomeBinding::ReviewedInteraction { outcome_id, .. } => !temporal
+                .iter()
+                .any(|outcome| &outcome.outcome_id == outcome_id),
+            PlannedOutcomeBinding::PrivateEquivalent { .. } => true,
+        },
+        PlannedTemporalEffect::ReviewedTemporalOutcome {
+            outcome_id,
+            result_id,
+        } => {
+            let Some(outcome) = temporal
+                .iter()
+                .find(|outcome| &outcome.outcome_id == outcome_id)
+            else {
+                return false;
+            };
+            if !outcome
+                .credible_outcomes
+                .iter()
+                .any(|result| &result.result_id == result_id)
+            {
+                return false;
+            }
+            if let InteractionConclusion::NoIndependentFork {
+                result_id: fixed, ..
+            } = &outcome.conclusion
+            {
+                if fixed != result_id {
+                    return false;
+                }
+            }
+            match &commitment.outcome_binding {
+                PlannedOutcomeBinding::ReviewedInteraction { outcome_id: bound, result_id: result } => bound == outcome_id && result == result_id,
+                PlannedOutcomeBinding::ReviewedChoice { choice_id, alternative_id, .. } => {
+                    outcome.affected_choice_ids.contains(choice_id) && discovery.choices.iter().find(|choice| &choice.choice_id == choice_id)
+                        .and_then(|choice| choice.alternatives.iter().find(|alternative| &alternative.alternative_id == alternative_id))
+                        .is_some_and(|alternative| matches!(&alternative.material_decomposition,
+                            MaterialDecomposition::MateriallyAtomic { residual_fork_closure, .. }
+                            if residual_fork_closure.interaction_comparisons.iter().any(|comparison| &comparison.outcome_id == outcome_id && !comparison.implementation_outcome_ids.is_empty() && comparison.implementation_outcome_ids.iter().all(|result| result == result_id))))
+                }
+                PlannedOutcomeBinding::PrivateEquivalent { .. } => false,
+            }
+        }
+    }
 }

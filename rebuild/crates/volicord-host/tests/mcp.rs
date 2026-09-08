@@ -832,6 +832,15 @@ fn record_host_question_decision(
 
 #[test]
 fn mcp_rediscovery_requires_its_own_review_and_pre_write_closure() {
+    exercise_mcp_rediscovery(false);
+}
+
+#[test]
+fn mcp_unreviewed_timestamp_preservation_requires_temporal_rediscovery() {
+    exercise_mcp_rediscovery(true);
+}
+
+fn exercise_mcp_rediscovery(temporal: bool) {
     let (_temporary, mut adapter, project) = setup();
     let goal = structured(&call(
         &mut adapter,
@@ -946,9 +955,33 @@ fn mcp_rediscovery_requires_its_own_review_and_pre_write_closure() {
             let mut report = bound["executable_work_scope"]["coupled_artifact_review"].clone();
             report["materiality_closure"] = json!({
                 "state":"no_new_material_outcome",
-                "commitments":[{"commitment_id":"batch-durability","description":"Prevalidate safe then unsafe statements as a whole input and persist nothing","repository_paths":["src/lib.rs"],"outcome_binding":{"state":"reviewed_interaction","outcome_id":"unreviewed-batch-durability","result_id":"no-writes"}}],
+                "commitments":[{"commitment_id":"batch-durability","description":"Prevalidate safe then unsafe statements as a whole input and persist nothing","repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                "outcome_binding":{"state":"reviewed_interaction","outcome_id":"unreviewed-batch-durability","result_id":"no-writes"}}],
                 "rationale":"Attempt to associate this concrete durable commitment with current reviewed authority"
             });
+            if temporal {
+                let commitment = &mut report["materiality_closure"]["commitments"][0];
+                commitment["description"] = json!(
+                    "Preserve original timestamp and lifetime while re-signing with the newest key"
+                );
+                commitment["temporal_effect"] = json!({"state":"reviewed_temporal_outcome","outcome_id":"unreviewed-rotation-age","result_id":"preserved"});
+                // A valid broader choice cannot absorb an unreviewed temporal result.
+                commitment["outcome_binding"] = json!({"state":"reviewed_choice","dimension_id":"bounded-choice","choice_id":"bounded-choice","alternative_id":"first"});
+                assert_eq!(
+                    draft["pre_write_materiality_closure"]["temporal_effect_variants"]
+                        .as_array()
+                        .expect("temporal variants")
+                        .len(),
+                    2
+                );
+                assert!(
+                    draft["pre_write_materiality_closure"]["reviewed_interactions"]
+                        .as_array()
+                        .expect("interaction identities")
+                        .iter()
+                        .any(|review| review["axis"] == "temporal_and_lifetime")
+                );
+            }
             let pending = structured(&call(&mut adapter, "materiality_review", json!({
                 "action":"inspect", "project_id":project, "review_candidate_id":old_review,
                 "goal_context_id":goal["context_item_id"], "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
@@ -6408,7 +6441,8 @@ fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
                         {"category":"schema_snapshot_or_generated_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no schema or generated artifact"},
                         {"category":"other_repository_owned_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no other coupled artifact"}
                     ],
-                    "materiality_closure":{"state":"no_new_material_outcome","commitments":[{"commitment_id":"private-test","description":"Private fixture preserves current outcomes","repository_paths":paths,"outcome_binding":{"state":"private_equivalent","equivalence_rationale":"The fixture preserves the complete current server-bound outcome graph"}}],"rationale":"fixture scope introduces no new material product outcome"}
+                    "materiality_closure":{"state":"no_new_material_outcome","commitments":[{"commitment_id":"private-test","description":"Private fixture preserves current outcomes","repository_paths":paths,"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"The fixture preserves the complete current server-bound outcome graph"}}],"rationale":"fixture scope introduces no new material product outcome"}
                 }),
             );
     }
@@ -6441,6 +6475,7 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
             commitments: vec![volicord_inquiry::PlannedCommitment {
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
                 commitment_id: "fixture-private-preservation".into(),
                 description: "Private fixture change preserves every current reviewed material outcome".into(),
                 repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
@@ -7679,7 +7714,8 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
         })).collect::<Vec<_>>(),
         "materiality_closure":{"state":"no_new_material_outcome","rationale":"No current public result changes",
             "commitments":[{"commitment_id":"preserved-result","description":"Private module organization preserves the complete current outcome graph",
-                "repository_paths":["src/lib.rs"],"outcome_binding":{"state":"private_equivalent","equivalence_rationale":"Every choice changes only private organization while preserving current public results"}}]}
+                "repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"Every choice changes only private organization while preserving current public results"}}]}
     });
     let inspected = adapter
         .handle(json!({"jsonrpc":"2.0","id":3,"method":"tools/call",

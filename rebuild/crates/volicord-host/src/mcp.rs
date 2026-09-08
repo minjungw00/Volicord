@@ -546,8 +546,9 @@ impl HostAdapter {
                             },
                         })).collect::<Vec<_>>(),
                     })).collect::<Vec<_>>(),
-                    "current_authority_dimensions":current_review.as_ref().and_then(|r| r.content.as_ref()).and_then(|c| c.materiality_review.as_ref()).map(|r| r.dimensions.iter().map(|d| json!({"dimension_id":d.dimension_id,"choice_ids":d.discovered_choice_ids,"disposition":materiality_disposition_json(&d.disposition),"alternative_accounting":d.alternative_accounting.iter().map(|a| json!({"choice_id":a.choice_id,"alternative_id":a.alternative_id,"resolution":alternative_accounting_json(a)["status"]})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
-                    "assembly":"After record/revise resolve authority and learning, then fill inspect's exact planned scope and six artifact assessments. Bind commitments to current dimension/choice/alternative or interaction/result identities. New material outcomes require rediscovery; private_equivalent preserves the entire current graph.",
+                    "current_authority_dimensions":current_review.as_ref().and_then(|r| r.content.as_ref()).and_then(|c| c.materiality_review.as_ref()).map(|r| r.dimensions.iter().map(|d| json!({"dimension_id":d.dimension_id,"choice_ids":d.discovered_choice_ids,"learning_authority":match &d.learning_authority { volicord_inquiry::LearningAuthorityAssessment::Inactive => json!({"state":"inactive"}), volicord_inquiry::LearningAuthorityAssessment::Assessed { independent_user_authority, .. } => json!({"state":"assessed","independent_user_authority":independent_user_authority}) },"disposition":materiality_disposition_json(&d.disposition),"alternative_accounting":d.alternative_accounting.iter().map(|a| json!({"choice_id":a.choice_id,"alternative_id":a.alternative_id,"resolution":alternative_accounting_json(a)["status"]})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
+                    "temporal_effect_variants":schema_alternatives(planned_temporal_effect_schema()),
+                    "assembly":"For temporal commitments bind temporal_effect to a current temporal_and_lifetime outcome/result; the primary binding must cover the same result. After record/revise resolve authority and learning, then fill inspect's exact planned scope and six artifact assessments. Bind commitments to current dimension/choice/alternative or interaction/result identities. New material outcomes require rediscovery; private_equivalent preserves the entire current graph.",
                     "inspect_request":current_review.as_ref().map(|record| {
                         let schema = &materiality_review_schemas()[3];
                         let prefilled = json!({"action":"inspect","project_id":project_id.to_string(),
@@ -2399,10 +2400,10 @@ fn engineering_choice_discovery_schema() -> Value {
 }
 
 fn interaction_review_schema() -> Value {
-    json!({"type":"array", "minItems":4, "maxItems":4,
+    json!({"type":"array", "minItems":5, "maxItems":5,
         "description":"Challenge each interaction axis exactly once; semantic conclusions belong to the active agent, not a classifier",
         "items":object_schema(vec![
-            ("axis",enum_schema("Interaction completeness prompt", &["reference_basis","composition_and_precedence","multi_item_effects","failure_and_recovery"])),
+            ("axis",enum_schema("Interaction completeness prompt", &["reference_basis","composition_and_precedence","multi_item_effects","failure_and_recovery","temporal_and_lifetime"])),
             ("outcomes",json!({"type":"array","description":"Concrete interaction scenarios and their closure","minItems":1,"maxItems":64,"items":object_schema(vec![
                 ("outcome_id",text_schema("Stable interaction outcome identity unique within Discovery",1,256)),
                 ("scenario",text_schema("Concrete affected scenario challenging an independent observable or durable result",1,4096)),
@@ -2559,18 +2560,29 @@ fn pre_write_materiality_closure_schema() -> Value {
     ]})
 }
 
+fn planned_temporal_effect_schema() -> Value {
+    json!({"description":"Challenge this concrete plan's temporal/lifetime consequences independently of replacement triggers; never an ownership classifier", "oneOf":[
+        object_schema(vec![("state",enum_schema("Temporal consequence", &["no_temporal_change"])),
+            ("rationale",text_schema("Why this commitment makes no timestamp/age/expiry/lifetime selection; private equivalence preserves every reviewed temporal result",1,4096))], &["state","rationale"]),
+        object_schema(vec![("state",enum_schema("Temporal consequence", &["reviewed_temporal_outcome"])),
+            ("outcome_id",text_schema("Current temporal_and_lifetime interaction outcome; unknown identities require NewMaterialOutcome rediscovery",1,256)),
+            ("result_id",text_schema("Exact preserve/reset/renew/expiry result covered by the primary outcome_binding's current authority",1,256))], &["state","outcome_id","result_id"])
+    ]})
+}
+
 fn planned_commitments_schema() -> Value {
     json!({"type":"array","description":"Concrete planned observable commitments or explicit private equivalence, covering every planned artifact path","minItems":1,"maxItems":64,
         "items":object_schema(vec![
             ("commitment_id",text_schema("Unique identity within this exact plan",1,256)),
             ("description",text_schema("Concrete observable/durable result introduced, or private change preserving all current material outcomes",1,4096)),
             ("repository_paths",string_array_schema("Exact paths from the planned artifact assessments; empty only for a pathless component/work-context scope")),
+            ("temporal_effect",planned_temporal_effect_schema()),
             ("outcome_binding",json!({"description":"Bind a current reviewed material result or explicitly preserve the entire current review graph","oneOf":[
                 object_schema(vec![("state",enum_schema("Binding", &["reviewed_choice"])),("dimension_id",text_schema("Current authority dimension",1,256)),("choice_id",text_schema("Current discovered choice",1,256)),("alternative_id",text_schema("Current non-eliminated alternative",1,256))], &["state","dimension_id","choice_id","alternative_id"]),
                 object_schema(vec![("state",enum_schema("Binding", &["reviewed_interaction"])),("outcome_id",text_schema("Current reviewed interaction outcome",1,256)),("result_id",text_schema("Source-settled or authority-applicable result identity",1,256))], &["state","outcome_id","result_id"]),
                 object_schema(vec![("state",enum_schema("Binding", &["private_equivalent"])),("equivalence_rationale",text_schema("Why this change preserves every observable/durable result in the current server-bound review graph; not authority for a material branch",1,4096))], &["state","equivalence_rationale"])
             ]}))
-        ], &["commitment_id","description","repository_paths","outcome_binding"])})
+        ], &["commitment_id","description","repository_paths","temporal_effect","outcome_binding"])})
 }
 
 fn learning_value_schema() -> Value {
@@ -6486,7 +6498,7 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
             },
             "required_fields":["source_operation","summary","choices","material_boundary_review","interaction_review"],
             "interaction_review_schema":interaction_review_schema(),
-            "interaction_instruction":"Challenge reference/scope/context basis, composition/precedence with existing sources/configuration/authority, ordering/partial success/atomic durable effects across multiple items, and failure/retry/recovery observable results. For each axis retain concrete scenarios with stable outcome/result identities, affected choices and source-grounded closure. Independent outcomes need real representing choices; atomic alternatives must compare every applicable interaction against each credible implementation. Broad failure policy does not settle partial durability. These are completeness prompts, never ownership classifiers.",
+            "interaction_instruction":"Challenge reference/scope/context basis, composition/precedence with existing sources/configuration/authority, ordering/partial success/atomic durable effects across multiple items, failure/retry/recovery observable results, and temporal/lifetime outcomes: preserve versus reset timestamps, retain versus renew or extend expiry, reissue/rotation/replacement age, and retry/recovery validity. Replacement triggers do not settle independent lifetime outcomes. For each axis retain concrete scenarios with stable outcome/result identities, affected choices and source-grounded closure. Independent outcomes need real representing choices; atomic alternatives must compare every applicable interaction against each credible implementation. Broad failure policy does not settle partial durability. These are completeness prompts, never ownership classifiers.",
             "choice_required_fields":["choice_id","summary","affected_scope","alternatives","technical_consequences","source_ids","effect_categories","relationship","evidence_state"],
             "allowable_values":{
                 "evidence_state":["sufficient","research_required","prototype_required"],

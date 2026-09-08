@@ -50,6 +50,7 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
             commitments: vec![volicord_inquiry::PlannedCommitment {
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
                 commitment_id: "fixture-private-preservation".into(),
                 description: "Private fixture change preserves every current reviewed material outcome".into(),
                 repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),

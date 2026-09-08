@@ -3204,13 +3204,18 @@ def planned_commitments_valid(commitments: Any, paths: tuple[str, ...]) -> bool:
         return False
     ids = set(); covered = set()
     for commitment in commitments:
-        if not isinstance(commitment, dict) or set(commitment) != {"commitment_id", "description", "repository_paths", "outcome_binding"} or not nonempty_string(commitment["commitment_id"]) or commitment["commitment_id"] in ids or not nonempty_string(commitment["description"]):
+        if not isinstance(commitment, dict) or set(commitment) != {"commitment_id", "description", "repository_paths", "outcome_binding", "temporal_effect"} or not nonempty_string(commitment["commitment_id"]) or commitment["commitment_id"] in ids or not nonempty_string(commitment["description"]):
             return False
         ids.add(commitment["commitment_id"])
         planned_paths = commitment["repository_paths"]
         if not isinstance(planned_paths, list) or len(planned_paths) > 64 or not all(nonempty_string(p) for p in planned_paths) or len(set(planned_paths)) != len(planned_paths) or not set(planned_paths) <= set(paths) or (paths and not planned_paths):
             return False
         covered.update(planned_paths)
+        temporal = commitment["temporal_effect"]
+        temporal_fields = {"no_temporal_change": {"rationale"}, "reviewed_temporal_outcome": {"outcome_id", "result_id"}}.get(temporal.get("state")) if isinstance(temporal, dict) and isinstance(temporal.get("state"), str) else None
+        if temporal_fields is None or set(temporal) != temporal_fields | {"state"} or not all(nonempty_string(temporal[key]) for key in temporal_fields):
+            return False
+
         binding = commitment["outcome_binding"]
         if not isinstance(binding, dict):
             return False
@@ -3337,7 +3342,7 @@ def fixture_coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
+        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
             "The executable artifacts introduce no material outcome beyond the current review dimensions."
         )},
     }
@@ -5597,7 +5602,7 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
 
 def interaction_review_facts(value: Any, choices: dict[str, Any] | None, repository_source_id: Any) -> tuple[bool, dict[str, Any]]:
     """Validate declared identities/comparisons only; never infer material ownership."""
-    axes = {"reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery"}
+    axes = {"reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery", "temporal_and_lifetime"}
     def ids(items, allow_empty=False):
         return isinstance(items, list) and (allow_empty or bool(items)) and len(items) <= 64 and all(nonempty_string(i) for i in items) and len(set(items)) == len(items)
     if not choices or not isinstance(value, list) or len(value) != len(axes):
@@ -5762,6 +5767,7 @@ def materiality_dimensions_from_judgments(
         "alternative_accounting",
         "additional_source_ids",
         "learning_value",
+        "learning_authority",
         "evidence_completion_basis",
     }
     exact_authority_fields = {
@@ -5832,6 +5838,17 @@ def materiality_dimensions_from_judgments(
             )
             or not isinstance(judgment.get("learning_value"), dict)
         ):
+            return None
+        learning_authority = judgment.get("learning_authority")
+        if not isinstance(learning_authority, dict):
+            return None
+        if learning_authority.get("state") == "inactive":
+            if set(learning_authority) != {"state"}:
+                return None
+        elif learning_authority.get("state") == "assessed":
+            if set(learning_authority) != {"state", "independent_user_authority", "rationale", "source_ids"} or not isinstance(learning_authority.get("independent_user_authority"), bool) or not nonempty_string(learning_authority.get("rationale")) or not isinstance(learning_authority.get("source_ids"), list) or not learning_authority["source_ids"] or not all(nonempty_string(source) for source in learning_authority["source_ids"]):
+                return None
+        else:
             return None
         learning_value = judgment["learning_value"]
         learning_state = learning_value.get("state")
@@ -6052,6 +6069,7 @@ def materiality_dimensions_from_judgments(
             "alternative_accounting": alternative_accounting,
             "disposition": disposition,
             "learning_value": judgment["learning_value"],
+            "learning_authority": ({**learning_authority, "choice_ids": [choice_id], "material_outcomes": judgment["materially_varying_outcomes"]} if learning_authority["state"] == "assessed" else learning_authority),
             "discovery_evidence_state": choice["evidence_state"],
             "evidence_completion_basis": evidence_completion_basis,
             "basis": {
@@ -10139,7 +10157,7 @@ def fixture_outside_interactions(choices, source_ids):
         "affected_choice_ids": [], "source_basis": [source_ids],
         "conclusion": {"result_id": "unchanged", "state": "no_independent_fork", "basis": "outside_affected_scope",
             "rationale": "The maintained fixture Source limits this isolated authority test; these interaction results are unchanged"},
-    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery")]
+    }]} for axis in ("reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery", "temporal_and_lifetime")]
 
 
 def fixture_material_boundary_review(

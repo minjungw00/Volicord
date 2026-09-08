@@ -63,6 +63,7 @@ fn categorized_coupled_artifact_review(
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
             commitments: vec![volicord_inquiry::PlannedCommitment {
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
                 commitment_id: "fixture-private-preservation".into(),
                 description: "Private fixture change preserves every current reviewed material outcome".into(),
                 repository_paths: included.iter().flat_map(|(_, paths)| paths.iter().map(|p| (*p).to_owned())).collect(),
@@ -5172,6 +5173,7 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
     let mut atomic_plan = coupled_artifact_review(&["src/lib.rs"]);
     atomic_plan.materiality_closure = volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
         commitments: vec![volicord_inquiry::PlannedCommitment {
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
             commitment_id: "atomic-input".into(), description: "Whole-input prevalidation preserves zero durable writes for safe-then-unsafe input".into(), repository_paths: vec!["src/lib.rs".into()],
             outcome_binding: volicord_inquiry::PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "durable-prefix".into(), result_id: "nothing-committed".into() },
         }], rationale: "Current repository Source explicitly fixes the durable result".into(),
@@ -5245,6 +5247,9 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
         "mapped",
         "private",
         "unmapped-durability",
+        "unreviewed-temporal",
+        "wrong-axis-temporal",
+        "temporal-private",
         "eliminated-alternative",
         "wrong-dimension",
         "unreviewed-source-result",
@@ -5263,6 +5268,7 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
         )?;
         let mut plan = coupled_artifact_review(&["src/lib.rs"]);
         let mut commitment = PlannedCommitment {
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
             commitment_id: "planned-result".into(),
             description:
                 "Preserve the reviewed hard rejection policy in implementation and its assertions"
@@ -5280,6 +5286,13 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
             "eliminated-alternative" => if let PlannedOutcomeBinding::ReviewedChoice { alternative_id, .. } = &mut commitment.outcome_binding { *alternative_id = "approach-b".into(); },
             "wrong-dimension" => if let PlannedOutcomeBinding::ReviewedChoice { dimension_id, .. } = &mut commitment.outcome_binding { *dimension_id = "unrelated-activation".into(); },
             "unreviewed-source-result" => commitment.outcome_binding = PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "fixture-MultiItemEffects".into(), result_id: "unchanged".into() },
+            "unreviewed-temporal" | "wrong-axis-temporal" | "temporal-private" => {
+                commitment.description = "Preserve the original timestamp and lifetime during reissue".into();
+                commitment.temporal_effect = volicord_inquiry::PlannedTemporalEffect::ReviewedTemporalOutcome {
+                    outcome_id: if case == "wrong-axis-temporal" { "fixture-MultiItemEffects".into() } else { "unreviewed-lifetime".into() }, result_id: "preserved".into(),
+                };
+                if case == "temporal-private" { commitment.outcome_binding = PlannedOutcomeBinding::PrivateEquivalent { equivalence_rationale: "A private label cannot authorize this temporal commitment".into() }; }
+            },
             "uncovered-path" => commitment.repository_paths.clear(),
             _ => (),
         }
@@ -5325,8 +5338,309 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
                 .workflow_for_review_candidate(fixture.project_id, reviewed.review_candidate_id)?;
             assert_eq!(workflow.stage, WorkflowStage::EngineeringChoiceDiscovery);
             assert!(workflow.blocks_ordinary_work);
+            if case == "unreviewed-temporal" {
+                fs::write(fixture.repository.join("src/lib.rs"), "// A later contract requires original timestamp preservation.\npub fn value() -> u32 { 2 }\n")?;
+                assert!(
+                    review(
+                        &fixture,
+                        vec![dimension(
+                            "lifetime",
+                            MaterialityDisposition::SettledAuthority,
+                            vec![WorkAuthorityBasisKind::AcceptedContract],
+                            source
+                        )]
+                    )
+                    .is_err(),
+                    "later temporal authority cannot retroactively cover earlier baseline writes"
+                );
+            }
         }
     }
     assert!(serde_json::from_value::<PreWriteMaterialityClosure>(serde_json::json!({"state":"no_new_material_outcome","reviewed_outcomes":["hard reject"],"rationale":"old prose-only shape"})).is_err());
+    Ok(())
+}
+
+#[test]
+fn timed_key_rotation_reviews_independent_lifetime_and_binds_temporal_commitments(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_inquiry::{
+        InteractionAxis, InteractionConclusion, InteractionOutcome, InteractionResult,
+        MaterialDecomposition, NoIndependentForkBasis, PlannedOutcomeBinding,
+        PlannedTemporalEffect, PreWriteMaterialityClosure, ResidualInteractionComparison,
+    };
+    for case in [
+        "unresolved",
+        "source-settled",
+        "private-equivalent",
+        "no-change-bypass",
+    ] {
+        let contract = if case == "unresolved" {
+            "// Rotation: an old key validates; the newest key re-signs. Timestamp/lifetime policy is unspecified.\npub fn value() -> u32 { 1 }\n"
+        } else {
+            "// Rotation: an old key validates; the newest key re-signs. Preserve the original timestamp and expiration: rotation must not renew lifetime. Decode/re-encode and byte-copy techniques produce identical age/expiry.\npub fn value() -> u32 { 1 }\n"
+        };
+        let fixture = fixture_with_repository(
+            "Add timed-key rotation under the current accepted contract",
+            contract,
+        )?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut trigger = engineering_choice(
+            "replacement-trigger",
+            EngineeringEffectCategory::Security,
+            source,
+        );
+        trigger.alternatives[0].summary = "Old key validates and newest key re-signs".into();
+        trigger.alternatives[1].summary = "Re-sign only when the newest key validates".into();
+        if case == "private-equivalent" {
+            trigger.alternatives[0].summary =
+                "Decode and re-encode the original timestamp with the new signature".into();
+            trigger.alternatives[1].summary =
+                "Copy the verified timestamp bytes with the new signature".into();
+        }
+        let mut lifetime = engineering_choice(
+            "rotation-lifetime",
+            EngineeringEffectCategory::PersistenceOrLifetime,
+            source,
+        );
+        lifetime.alternatives[0].summary =
+            "Preserve the original timestamp, effective age, and expiration".into();
+        lifetime.alternatives[1].summary =
+            "Reset the timestamp to rotation time, renewing the expiration".into();
+        let comparison = |result: &str| {
+            ResidualInteractionComparison {
+            outcome_id: "rotation-age".into(), implementation_outcome_ids: vec![result.into(), result.into()],
+            equivalence_rationale: "Inline and helper implementations of this alternative give the same effective age and expiration on old-key validation and re-signing, including retry.".into(),
+        }
+        };
+        for (index, alternative) in lifetime.alternatives.iter_mut().enumerate() {
+            if let MaterialDecomposition::MateriallyAtomic {
+                residual_fork_closure,
+                ..
+            } = &mut alternative.material_decomposition
+            {
+                residual_fork_closure.fixed_outcome = alternative.summary.clone();
+                residual_fork_closure.interaction_comparisons =
+                    vec![comparison(if index == 0 { "preserved" } else { "renewed" })];
+            }
+        }
+        let mut interactions = outside_interactions(source);
+        let temporal = interactions
+            .iter_mut()
+            .find(|review| review.axis == InteractionAxis::TemporalAndLifetime)
+            .ok_or("temporal axis")?;
+        temporal.outcomes = vec![InteractionOutcome {
+            outcome_id: "rotation-age".into(),
+            scenario: "An old-key token near expiry validates and is re-signed by the newest key; rotation and retries may preserve or reset its timestamp and effective lifetime independently of the replacement trigger.".into(),
+            credible_outcomes: vec![InteractionResult { result_id: "preserved".into(), description: "Original timestamp/age/expiry survive replacement and retries".into() }, InteractionResult { result_id: "renewed".into(), description: "Rotation/retry resets issuance time and extends validity".into() }],
+            affected_choice_ids: if case == "unresolved" { vec![trigger.choice_id.clone(), lifetime.choice_id.clone()] } else { vec![trigger.choice_id.clone()] },
+            conclusion: if case == "unresolved" { InteractionConclusion::RepresentedByChoices { choice_ids: vec![lifetime.choice_id.clone()] } } else { InteractionConclusion::NoIndependentFork {
+                basis: if case == "source-settled" { NoIndependentForkBasis::SettledByCurrentSources } else { NoIndependentForkBasis::MechanicallyEquivalent },
+                rationale: "The current contract requires the original timestamp and expiration; decoding/re-encoding the original time and copying its bytes preserve identical validity.".into(), result_id: "preserved".into(),
+            } }, source_basis: vec![source],
+        }];
+        let record = |choices: Vec<EngineeringChoice>, interaction_review| {
+            fixture.operations.record_engineering_choice_discovery(
+                EngineeringChoiceDiscoveryDraft {
+                    project_id: fixture.project_id,
+                    goal_context_id: fixture.goal_id,
+                    baseline_analysis_snapshot_id: fixture.baseline.identity,
+                    session: "timed-rotation".into(),
+                    source_operation: "temporal completeness challenge".into(),
+                    summary: "Review trigger and lifetime separately".into(),
+                    material_boundary_review: complete_material_boundary_review(&choices, source),
+                    choices,
+                    interaction_review,
+                },
+            )
+        };
+        // A broad trigger cannot claim atomicity while a separate lifetime fork remains.
+        for alternative in &mut trigger.alternatives {
+            if let MaterialDecomposition::MateriallyAtomic {
+                residual_fork_closure,
+                ..
+            } = &mut alternative.material_decomposition
+            {
+                residual_fork_closure.interaction_comparisons = vec![comparison("preserved")];
+            }
+        }
+        if case == "unresolved" {
+            assert!(record(
+                vec![trigger.clone(), lifetime.clone()],
+                interactions.clone()
+            )
+            .is_err());
+            let mut swallowed = interactions.clone();
+            let outcome = &mut swallowed[4].outcomes[0];
+            outcome.affected_choice_ids = vec![trigger.choice_id.clone()];
+            outcome.conclusion = InteractionConclusion::RepresentedByChoices {
+                choice_ids: vec![trigger.choice_id.clone()],
+            };
+            assert!(
+                record(vec![trigger.clone()], swallowed).is_err(),
+                "trigger alternatives omit the credible renewed result"
+            );
+            let mut divergent = lifetime.clone();
+            if let MaterialDecomposition::MateriallyAtomic {
+                residual_fork_closure,
+                ..
+            } = &mut divergent.alternatives[0].material_decomposition
+            {
+                residual_fork_closure.interaction_comparisons[0].implementation_outcome_ids[1] =
+                    "renewed".into();
+            }
+            let mut child_only = interactions.clone();
+            child_only[4].outcomes[0].affected_choice_ids = vec![lifetime.choice_id.clone()];
+            assert!(
+                record(vec![divergent], child_only).is_err(),
+                "preserve and reset are not materially atomic"
+            );
+            for alternative in &mut trigger.alternatives {
+                alternative.material_decomposition = MaterialDecomposition::Decomposed {
+                    choice_ids: vec![lifetime.choice_id.clone()],
+                };
+            }
+        }
+        let mut choices = vec![trigger.clone()];
+        let mut dimensions = vec![dimension(
+            "replacement-trigger",
+            MaterialityDisposition::SettledAuthority,
+            vec![WorkAuthorityBasisKind::AcceptedContract],
+            source,
+        )];
+        if case == "unresolved" {
+            choices.push(lifetime);
+            dimensions.push(dimension(
+                "rotation-lifetime",
+                MaterialityDisposition::UnresolvedUserOwnedOutcome {
+                    resolution_decision_id: None,
+                },
+                vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+                source,
+            ));
+        }
+        if case == "private-equivalent" {
+            dimensions[0] = agent_owned_dimension(
+                "replacement-trigger",
+                source,
+                LearningValueAssessment::Routine {
+                    rationale: "Equivalent ways to preserve the fixed temporal behavior".into(),
+                },
+            );
+        }
+        let discovery = record(choices.clone(), interactions.clone())?;
+        let reviewed = fixture.operations.record_materiality_review(MaterialityReviewDraft {
+            project_id: fixture.project_id, goal_context_id: fixture.goal_id, baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "timed-rotation".into(), source_operation: "temporal authority".into(), rationale: "Trigger authority does not choose lifetime; only exact current Sources or a separate product Decision can settle that outcome.".into(),
+            behavioral_context_basis: volicord_operations::BehavioralContextBasis { context_item_ids: vec![], completeness_rationale: "No learning or other behavioral Context".into() },
+            learning_participation: LearningParticipation::Inactive, engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id, dimensions,
+        })?;
+        let mut plan = coupled_artifact_review(&["src/lib.rs"]);
+        let commitment = volicord_inquiry::PlannedCommitment {
+            commitment_id: "preserve-original-time".into(), description: "Preserve the original timestamp and expiration while re-signing with the newest key".into(), repository_paths: vec!["src/lib.rs".into()],
+            temporal_effect: PlannedTemporalEffect::ReviewedTemporalOutcome { outcome_id: "rotation-age".into(), result_id: "preserved".into() },
+            outcome_binding: PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "rotation-age".into(), result_id: "preserved".into() },
+        };
+        plan.materiality_closure = PreWriteMaterialityClosure::NoNewMaterialOutcome {
+            commitments: vec![commitment.clone()],
+            rationale: "This planned temporal result must use the reviewed temporal authority"
+                .into(),
+        };
+        fixture.operations.bind_executable_work_scope(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            reviewed.review_candidate_id,
+            ApplicabilityScope {
+                paths: vec!["src/lib.rs".into()],
+                components: vec![],
+                work_contexts: vec![],
+            },
+            plan.clone(),
+        )?;
+        let ready = readiness(&fixture, &reviewed)?;
+        if case == "unresolved" {
+            assert!(ready.blocking);
+            assert_eq!(ready.stage, WorkAuthorityStage::QuestionRequired);
+            assert!(ready
+                .unresolved_requirements
+                .iter()
+                .any(
+                    |requirement| requirement.dimension_id.as_deref() == Some("rotation-lifetime")
+                ));
+        } else {
+            assert!(!ready.blocking, "{case}: {ready:?}");
+            assert!(fixture
+                .operations
+                .canonical_basis(fixture.project_id)?
+                .active_questions
+                .is_empty());
+            // An exact choice binding is valid only when its atomic temporal comparison agrees.
+            let mut by_choice = commitment.clone();
+            by_choice.outcome_binding = PlannedOutcomeBinding::ReviewedChoice {
+                dimension_id: "replacement-trigger".into(),
+                choice_id: "replacement-trigger".into(),
+                alternative_id: "approach-a".into(),
+            };
+            if let PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
+                &mut plan.materiality_closure
+            {
+                *commitments = vec![by_choice];
+            }
+            fixture.operations.bind_executable_work_scope(
+                fixture.project_id,
+                fixture.goal_id,
+                fixture.baseline.identity,
+                reviewed.review_candidate_id,
+                ApplicabilityScope {
+                    paths: vec!["src/lib.rs".into()],
+                    components: vec![],
+                    work_contexts: vec![],
+                },
+                plan.clone(),
+            )?;
+            assert!(!readiness(&fixture, &reviewed)?.blocking);
+            // Reset contradicts the source-settled preserve result and revokes executable authority.
+            let mut reset = commitment;
+            reset.temporal_effect = PlannedTemporalEffect::ReviewedTemporalOutcome {
+                outcome_id: "rotation-age".into(),
+                result_id: "renewed".into(),
+            };
+            if case == "no-change-bypass" {
+                reset.temporal_effect = PlannedTemporalEffect::NoTemporalChange { rationale: "A known temporal commitment cannot bypass its reviewed result by claiming no temporal change".into() };
+            }
+            if let PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
+                &mut plan.materiality_closure
+            {
+                *commitments = vec![reset];
+            }
+            fixture.operations.bind_executable_work_scope(
+                fixture.project_id,
+                fixture.goal_id,
+                fixture.baseline.identity,
+                reviewed.review_candidate_id,
+                ApplicabilityScope {
+                    paths: vec!["src/lib.rs".into()],
+                    components: vec![],
+                    work_contexts: vec![],
+                },
+                plan,
+            )?;
+            let restarted = LocalOperations::new(fixture.operations.layout().clone());
+            let current = restarted
+                .inspect_workflow_candidate(fixture.project_id, reviewed.review_candidate_id)?
+                .content
+                .ok_or("content")?
+                .materiality_review
+                .ok_or("review")?;
+            assert!(current.executable_work_scope.is_none());
+            assert!(current.pending_pre_write_reassessment.is_some());
+        }
+        let mut missing = interactions.clone();
+        missing.pop();
+        assert!(
+            record(choices, missing).is_err(),
+            "the temporal axis is mandatory even when its conclusion is closed"
+        );
+    }
     Ok(())
 }

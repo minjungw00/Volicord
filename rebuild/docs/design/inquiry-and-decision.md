@@ -71,7 +71,12 @@ Category는 ownership classifier가 아닌 semantic review prompt다.
 
 Discovery의 `interaction_review`는 effect category와 별도로 reference/scope/context basis,
 existing configuration/authority/Source와 composition/precedence, multi-item ordering/partial
-success/atomic durable effects, failure/retry/recovery를 각각 한 번 challenge한다. 각 axis는 concrete
+success/atomic durable effects, failure/retry/recovery, temporal/lifetime을 각각 한 번 challenge한다.
+Temporal challenge는 timestamp preserve/reset, expiry retain/extend/renew, reissue/rotation/replacement의
+effective age/expiration과 retry/recovery의 temporal validity를 검토한다. Replacement trigger를 만족하는
+두 대안이 다른 lifetime/security/compatibility result를 만들면 독립 outcome/choice로 표현한다.
+Applicable challenge는 real choice/results 또는 Source-grounded no-independent-fork로 닫으며
+inapplicable/out-of-scope도 기존 typed Source closure를 따른다. Temporal axis도 ownership classifier가 아니다. 각 axis는 concrete
 scenario, stable `outcome_id`, credible `result_id`/description, affected choice identities와 current
 Source basis를 보존한다. Independent outcome은 real affected representing choices로 닫고,
 no-independent-fork는 기존 typed basis와 Source-grounded rationale 및 fixed result identity로 닫는다.
@@ -478,6 +483,19 @@ choice/alternative 또는 reviewed interaction/result identity에 bind된다. El
 unknown identity, outside-scope interaction을 material commitment authority로 사용하면 No-new를
 유지하지 않고 같은 atomic inspect에서 `new_material_outcome`으로 전환해 scope를 제거한다.
 Source-settled interaction은 fixed result와 current Source를 사용하며 별도 Question을 요구하지 않는다.
+각 planned commitment의 required `temporal_effect`는 `no_temporal_change`와 bounded rationale 또는
+`reviewed_temporal_outcome`의 exact outcome/result identity를 가진다. Concrete timestamp/lifetime
+preservation/reset/renewal은 후자를 사용한다. Temporal reference는 current `temporal_and_lifetime`
+axis의 applicable result여야 하고 primary `outcome_binding`과 동일 result를 요구한다. Choice binding은
+그 alternative의 atomic temporal comparison이 같은 result를 보존해야 한다. Source-settled result와
+모순, unknown/wrong-axis/outside-scope reference, temporal commitment를 private label로 대체하거나
+applicable temporal choice를 no-change로 생략하면 No-new를 `NewMaterialOutcome`으로 바꾸고 기존
+rediscovery → new Materiality Review를 요구한다. Private equivalence는 전체 reviewed graph의 결과를
+보존한다는 기존 contract이며 새로운 temporal result의 authority가 아니다. Later authority는 기존
+prospective chronology를 그대로 따르며 earlier writes를 소급 authorize하지 않는다. Temporal relevance,
+scenario completeness와 cited Source가 실제로 preservation을 요구하는지는 active-agent/independent-human
+review에 남는다. Production은 prose keyword로 temporal consequence나 user ownership을 추론하지 않는다.
+
 모든 planned path는 commitment 또는 explicit `private_equivalent` assertion으로 account한다.
 Private equivalence는 entire current server-bound review graph의 모든 material result를 보존한다는
 bounded assertion이며 새 observable/durable branch를 정하는 authority가 아니다. Server가 exact

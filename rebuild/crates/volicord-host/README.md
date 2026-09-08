@@ -185,3 +185,13 @@ participation may use `inactive`. Learning-only selections cannot authorize a
 canonical Decision; independently user-owned policies retain their separate
 Question/Decision lifecycle. Draft projects the compact variant table once as
 `learning_authority_input_alternatives`; tools/list remains the full schema owner.
+
+Discovery now reviews five interaction axes, including `temporal_and_lifetime`.
+Challenge preserve/reset timestamps, retain/renew expiry, replacement age, and
+retry/recovery validity independently of replacement triggers. Every planned
+commitment requires `temporal_effect`: `no_temporal_change` with rationale, or
+`reviewed_temporal_outcome` with current temporal outcome/result IDs. The primary
+choice or interaction binding must cover that same result. Unmapped commitments
+revoke executable scope and require rediscovery and a new Materiality Review.
+Compact draft includes `temporal_effect_variants` and the current temporal IDs in
+`pre_write_materiality_closure`; full nested schemas remain in tools/list.
