@@ -4502,7 +4502,6 @@ def historical_questions_resolved_before_frontier(
             if c.arguments.get("action") == "record" and c.result.get("review_candidate_id") == review_id
             and c.arguments.get("project_id") == record.arguments.get("project_id")
             and c.result.get("goal_context_id") == record.result.get("goal_context_id")
-            and c.result.get("baseline_analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")
             and (c is record if review_id == record.result.get("review_candidate_id")
                 else c.completion_sequence < record.sequence)]
         if len(origins) != 1:
@@ -4512,8 +4511,14 @@ def historical_questions_resolved_before_frontier(
             if c.arguments.get("action") == "revise" and c.arguments.get("review_candidate_id") == review_id
             and origin.completion_sequence < c.sequence and c.completion_sequence < before_sequence]
         revision = max(revisions, key=lambda c: c.sequence, default=None)
+        # Each completed branch keeps its own prospective analysis basis. The
+        # independently selected current Review may legitimately use a refresh.
         baseline = next((c for c in capture.successful_calls("repository_analyze")
-            if c.result.get("analysis_snapshot_id") == record.result.get("baseline_analysis_snapshot_id")), None)
+            if nonempty_string(origin.result.get("baseline_analysis_snapshot_id"))
+            and c.result.get("analysis_snapshot_id") == origin.result.get("baseline_analysis_snapshot_id")
+            and c.arguments.get("project_id") == origin.arguments.get("project_id")
+            and c.result.get("project_id") == origin.arguments.get("project_id")
+            and c.completion_sequence < origin.sequence), None)
         if baseline is None or not all(work_blocker_material_question_lifecycles(
             capture, "explicit_user_owned_decision", baseline, origin, revision, before_sequence,
             bundle=bundle, decision_evidence=decision_evidence,

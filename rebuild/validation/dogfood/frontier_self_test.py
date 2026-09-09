@@ -29,16 +29,16 @@ class FrontierTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(self.root / descriptor["evidence"]["canonical_bundle"]["file"])
         return descriptor, capture, bundle
 
-    def facts(self, descriptor, capture, bundle):
-        baseline = capture.successful_calls("repository_analyze")[0]
+    def facts(self, descriptor, capture, bundle, baseline=None):
+        baseline = baseline or capture.successful_calls("repository_analyze")[0]
         first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
         return h.materiality_review_facts(capture, bundle, descriptor["behavior_class"],
             "08" * 16, descriptor["work_user_task"], descriptor["work_user_task"], baseline,
             first_write, "03" * 16, h.decision_facts(capture, bundle)[-1])
 
-    def observe(self, descriptor, capture):
+    def observe(self, descriptor, capture, baseline=None):
         return h.work_blocker_behavior_observations(capture, descriptor["behavior_class"],
-            capture.successful_calls("repository_analyze")[0],
+            baseline or capture.successful_calls("repository_analyze")[0],
             min(x.sequence for x in h.meaningful_work_path_observations(capture)))[0]
 
     def prepend_history(self, capture):
@@ -443,6 +443,58 @@ class FrontierTests(unittest.TestCase):
         descriptor, capture, bundle = self.settled_rediscovery()
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+
+    def refreshed_rediscovery(self):
+        descriptor, capture, bundle = self.settled_rediscovery()
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = next(c for c in capture.tool_calls if c.call_id == "rediscovery")
+        refreshed = replace(baseline, call_id="refreshed-baseline",
+            sequence=discovery.sequence - 20, completion_sequence=discovery.sequence - 10,
+            result={**baseline.result, "analysis_snapshot_id": "bf" * 32})
+        calls = []
+        for call in capture.tool_calls:
+            if call.call_id in {"rediscovery", "settled-review"} or (
+                call.operation == "materiality_review" and call.arguments.get("action") == "inspect"
+            ):
+                call = replace(call,
+                    arguments=json.loads(json.dumps(call.arguments).replace(baseline.result["analysis_snapshot_id"], "bf" * 32)),
+                    result=json.loads(json.dumps(call.result).replace(baseline.result["analysis_snapshot_id"], "bf" * 32)))
+            calls.append(call)
+        return descriptor, replace(capture, tool_calls=tuple(sorted((*calls, refreshed), key=lambda c: c.sequence))), bundle, refreshed
+
+    def test_historical_resolution_survives_baseline_refresh(self):
+        descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
+        self.assertTrue(self.observe(descriptor, capture, baseline))
+        self.assertTrue(self.facts(descriptor, capture, bundle, baseline)[0])
+
+    def test_refreshed_history_requires_own_baseline_identity_and_chronology(self):
+        descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
+        old = capture.successful_calls("repository_analyze")[0]
+        origin = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "record")
+        for replacement in (None,
+            replace(old, completion_sequence=origin.sequence + 1),
+            replace(old, arguments={**old.arguments, "project_id": "ff" * 16}),
+            replace(old, result={**old.result, "project_id": "ff" * 16}),
+            replace(old, result={**old.result, "analysis_snapshot_id": "ff" * 32})):
+            changed = replace(capture, tool_calls=tuple(replacement if c is old else c
+                for c in capture.tool_calls if c is not old or replacement is not None))
+            self.assertFalse(self.observe(descriptor, changed, baseline))
+            self.assertFalse(self.facts(descriptor, changed, bundle, baseline)[0])
+
+    def test_refresh_does_not_resolve_history_or_supply_current_authority(self):
+        descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
+        for operation, action in (("decision_record", None), ("materiality_review", "revise"),
+                                  ("materiality_review", "inspect")):
+            changed = replace(capture, tool_calls=tuple(c for c in capture.tool_calls
+                if not (c.operation == operation and (action is None or c.arguments.get("action") == action))))
+            self.assertFalse(self.observe(descriptor, changed, baseline))
+            self.assertFalse(self.facts(descriptor, changed, bundle, baseline)[0])
+        origin = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "record")
+        for field in ("goal_context_id", "review_candidate_id"):
+            changed = replace(capture, tool_calls=tuple(replace(c, result={**c.result, field: "ff" * 16})
+                if c is origin else c for c in capture.tool_calls))
+            self.assertFalse(self.observe(descriptor, changed, baseline))
+            self.assertFalse(self.facts(descriptor, changed, bundle, baseline)[0])
 
     def test_same_review_decision_settlement_passes_both_evaluators(self):
         for behavior in ("explicit_user_owned_decision", "hidden_user_owned_decision"):
