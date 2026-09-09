@@ -4327,6 +4327,10 @@ fn learning_deliberation_outcome(
     })
 }
 
+// Shared by the ready workflow projection and Codex SessionStart so readiness
+// carries its continuation boundary wherever the active agent encounters it.
+pub(crate) const WORK_AUTHORITY_CONTINUATION: &str = "ready_for_work covers only current authority and bound executable scope. Compare each new path, component, work context, or coupled artifact with current binding; if uncovered, use materiality_review inspect to prospectively bind it before its first affected write. New material outcomes require Discovery/Materiality reevaluation. If Review/Discovery authority changes or binding becomes stale/invalid, stop affected writes and follow current workflow.required_next_action until blocks_ordinary_work is false again. Retain the original pre-work baseline: post-work analysis cannot replace pre-work authority or certify earlier writes. Covered work needs no per-edit ceremony.";
+
 fn workflow_from_authority(
     canonical: &CanonicalReadBasis,
     candidates: &CandidateReadBasis,
@@ -4458,7 +4462,11 @@ fn workflow_from_authority(
         disposition,
         required_next_action,
         blocks_ordinary_work: authority.blocking,
-        reason: authority.reason,
+        reason: if authority.disposition == WorkAuthorityDisposition::ReadyForWork {
+            format!("{}. {WORK_AUTHORITY_CONTINUATION}", authority.reason)
+        } else {
+            authority.reason
+        },
         satisfied_basis_identities,
         unresolved_requirements,
     }

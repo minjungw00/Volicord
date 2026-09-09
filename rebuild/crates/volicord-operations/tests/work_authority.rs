@@ -1964,6 +1964,21 @@ fn materiality_inspection_blocks_scope_that_checkpoint_authority_would_reject(
             Some("release-publication"),
         ),
     ] {
+        let workflow = fixture.operations.workflow_for_work_basis(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            paths.clone(),
+            components.clone(),
+            work_contexts.clone(),
+            Vec::new(),
+        )?;
+        assert!(workflow.blocks_ordinary_work);
+        let next = workflow
+            .required_next_action
+            .ok_or("scope inspection action missing")?;
+        assert_eq!(next.tool, "materiality_review");
+        assert_eq!(next.action.as_deref(), Some("inspect"));
         let blocked = fixture.operations.work_readiness(
             fixture.project_id,
             fixture.goal_id,
@@ -2143,6 +2158,38 @@ fn later_coupled_artifact_can_be_added_prospectively_before_its_first_write(
         )],
     )?;
 
+    let workflow = |paths: Vec<String>| {
+        fixture.operations.workflow_for_work_basis(
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            paths,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    };
+    let covered = workflow(vec!["src/lib.rs".into()])?;
+    assert!(!covered.blocks_ordinary_work);
+    assert!(covered
+        .reason
+        .contains("ready_for_work covers only current authority and bound executable scope"));
+    // Continuation begins with valid covered work, then discovers a coupled path.
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 2 }\n",
+    )?;
+    assert!(!workflow(vec!["src/lib.rs".into()])?.blocks_ordinary_work);
+    let expanded_paths = vec!["src/lib.rs".into(), "tests/prospective.rs".into()];
+    let blocked = workflow(expanded_paths.clone())?;
+    assert!(blocked.blocks_ordinary_work);
+    let next = blocked
+        .required_next_action
+        .ok_or("scope inspection action missing")?;
+    assert_eq!(next.tool, "materiality_review");
+    assert_eq!(next.action.as_deref(), Some("inspect"));
+    assert!(!fixture.repository.join("tests/prospective.rs").exists());
+
     let rebound = fixture.operations.bind_executable_work_scope(
         fixture.project_id,
         fixture.goal_id,
@@ -2159,16 +2206,146 @@ fn later_coupled_artifact_can_be_added_prospectively_before_its_first_write(
         ]),
     )?;
     assert!(rebound.review_revision > recorded.review_revision);
+    assert!(!workflow(expanded_paths.clone())?.blocks_ordinary_work);
 
     fs::create_dir_all(fixture.repository.join("tests"))?;
     fs::write(
         fixture.repository.join("tests/prospective.rs"),
         "#[test] fn prospective() { assert!(true); }\n",
     )?;
+    assert!(!workflow(expanded_paths)?.blocks_ordinary_work);
     let checkpoint = fixture
         .operations
         .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
-    assert_eq!(checkpoint.changed_paths, ["tests/prospective.rs"]);
+    assert_eq!(
+        checkpoint.changed_paths,
+        ["src/lib.rs", "tests/prospective.rs"]
+    );
+    Ok(())
+}
+
+#[test]
+fn continuation_rechecks_changed_authority_and_retains_pre_work_baseline(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for changed_before_revision in [false, true] {
+        let fixture =
+            fixture_with_goal("Implement the bounded change; choose the bounded implementation.")?;
+        let original = review(&fixture, vec![delegated_dimension(&fixture, "bounded")])?;
+        let current = || {
+            fixture
+                .operations
+                .workflow_for_review_candidate(fixture.project_id, original.review_candidate_id)
+        };
+        assert!(!current()?.blocks_ordinary_work);
+        if changed_before_revision {
+            fs::write(
+                fixture.repository.join("src/lib.rs"),
+                "pub fn value() -> u32 { 2 }\n",
+            )?;
+        }
+        let revised =
+            fixture
+                .operations
+                .revise_materiality_review(MaterialityReviewRevisionDraft {
+                    project_id: fixture.project_id,
+                    review_candidate_id: original.review_candidate_id,
+                    rationale:
+                        "Current evidence changes the authority basis to bounded private discretion"
+                            .into(),
+                    learning_participation: LearningParticipation::Inactive,
+                    dimensions: vec![agent_owned_dimension(
+                        "bounded",
+                        fixture.baseline.repository_source.identity(),
+                        LearningValueAssessment::Routine {
+                            rationale: "private equivalent implementation".into(),
+                        },
+                    )],
+                    learning_value_revision_bases: vec![],
+                })?;
+        assert!(current()?.blocks_ordinary_work);
+        if !changed_before_revision {
+            let next = current()?
+                .required_next_action
+                .ok_or("current inspection action missing")?;
+            assert_eq!(next.tool, "materiality_review");
+            assert_eq!(next.action.as_deref(), Some("inspect"));
+            bind_current_review_scope(&fixture, &revised)?;
+            assert!(!current()?.blocks_ordinary_work);
+            fs::write(
+                fixture.repository.join("src/lib.rs"),
+                "pub fn value() -> u32 { 2 }\n",
+            )?;
+        }
+
+        // Repository analysis remains useful after work, but its identity cannot
+        // replace the original review's pre-work authority for that work.
+        let later = fixture
+            .operations
+            .analyze(fixture.project_id, vec![])?
+            .value
+            .ok_or("post-work analysis missing")?
+            .analysis;
+        assert_ne!(later.identity, fixture.baseline.identity);
+        let substituted = fixture.operations.work_readiness(
+            fixture.project_id,
+            fixture.goal_id,
+            later.identity,
+            revised.review_candidate_id,
+            vec!["src/lib.rs".into()],
+            vec![],
+            vec![],
+            vec![],
+        )?;
+        assert!(substituted.blocking);
+        assert!(substituted.reason.contains("baseline is stale"));
+        let mut rebased_checkpoint = checkpoint_draft(&fixture, vec![]);
+        rebased_checkpoint.baseline_analysis_snapshot_id = later.identity;
+        assert!(fixture
+            .operations
+            .record_grounded_checkpoint(rebased_checkpoint)
+            .is_err());
+        let restarted = LocalOperations::new(fixture.operations.layout().clone());
+        let workflow = restarted
+            .workflow_for_review_candidate(fixture.project_id, revised.review_candidate_id)?;
+        assert_eq!(workflow.blocks_ordinary_work, changed_before_revision);
+        assert!(workflow
+            .satisfied_basis_identities
+            .iter()
+            .any(|basis| basis.kind == "baseline_analysis_snapshot"
+                && basis.identity == fixture.baseline.identity.to_string()));
+        let checkpoint = restarted.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![]));
+        if changed_before_revision {
+            assert!(workflow.reason.contains("cannot certify the earlier work"));
+            assert!(checkpoint.is_err());
+            let choice = engineering_choice(
+                "bounded",
+                EngineeringEffectCategory::ImplementationInternal,
+                later.repository_source.identity(),
+            );
+            let attempt =
+                restarted.record_engineering_choice_discovery(EngineeringChoiceDiscoveryDraft {
+                    project_id: fixture.project_id,
+                    goal_context_id: fixture.goal_id,
+                    baseline_analysis_snapshot_id: later.identity,
+                    session: "continuation".into(),
+                    source_operation: "attempt post-work replacement authority".into(),
+                    summary: "Attempt to replace the retained pre-work chain".into(),
+                    material_boundary_review: complete_material_boundary_review(
+                        &[choice.clone()],
+                        later.repository_source.identity(),
+                    ),
+                    interaction_review: outside_interactions(later.repository_source.identity()),
+                    choices: vec![choice],
+                });
+            assert!(attempt
+                .err()
+                .ok_or("late authority was rebased")?
+                .message()
+                .contains("baseline cannot be replaced"));
+        } else {
+            assert_eq!(checkpoint?.changed_paths, ["src/lib.rs"]);
+        }
+    }
     Ok(())
 }
 

@@ -31,7 +31,8 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
     let identity = ACTIVATION_IDENTITY
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
-    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
+    let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
+    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. {continuation} Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -914,9 +915,20 @@ mod tests {
             assert!(context.contains("Checkpoint verification that was not actually observed"));
             assert!(context.contains("no repository writes or rebasing blocked work"));
             assert!(context.contains("compatibility surfaces linked to focused verification"));
+            assert!(context.contains(
+                "ready_for_work covers only current authority and bound executable scope"
+            ));
+            assert!(context.contains("new path, component, work context, or coupled artifact"));
+            assert!(context.contains("before its first affected write"));
+            assert!(context
+                .contains("Review/Discovery authority changes or binding becomes stale/invalid"));
+            assert!(context.contains("materiality_review inspect"));
+            assert!(context.contains(
+                "post-work analysis cannot replace pre-work authority or certify earlier writes"
+            ));
             assert!(!context.contains("submit a Question Candidate"));
             assert!(
-                context.len() < 768,
+                context.len() < 1536,
                 "activation context should stay compact"
             );
         }

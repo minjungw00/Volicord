@@ -36,5 +36,5 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     context = output["additionalContext"]
-    assert len(context.encode("utf-8")) < 768
+    assert len(context.encode("utf-8")) < 1536
     return context
