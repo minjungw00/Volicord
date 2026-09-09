@@ -4489,7 +4489,8 @@ def historical_questions_resolved_before_frontier(
             for j in authority.arguments.get("judgments", [])
         ):
             return False
-    if (not capture.calls("decision_record")
+    if (all(c.arguments.get("review_candidate_id") == record.result.get("review_candidate_id") for c in submits)
+        and not capture.calls("decision_record")
         and not any(c.result.get("questions") for c in capture.calls("inquiry_frontier"))
         and not any(c.arguments.get("action") == "promote_question" for c in capture.calls("candidate_manage"))):
         return bool(submits) and all(c.outcome == "succeeded" and c.completion_sequence < before_sequence for c in operations)

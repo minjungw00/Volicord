@@ -481,6 +481,14 @@ class FrontierTests(unittest.TestCase):
             self.assertFalse(self.observe(descriptor, changed, baseline))
             self.assertFalse(self.facts(descriptor, changed, bundle, baseline)[0])
 
+    def test_unpromoted_historical_question_is_not_resolved_by_refresh(self):
+        descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
+        changed = replace(capture, tool_calls=tuple(c for c in capture.tool_calls
+            if c.operation not in {"inquiry_frontier", "decision_record"}
+            and not (c.operation == "candidate_manage" and c.arguments.get("action") != "submit_question_from_materiality")))
+        self.assertFalse(self.observe(descriptor, changed, baseline))
+        self.assertFalse(self.facts(descriptor, changed, bundle, baseline)[0])
+
     def test_refresh_does_not_resolve_history_or_supply_current_authority(self):
         descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
         for operation, action in (("decision_record", None), ("materiality_review", "revise"),
