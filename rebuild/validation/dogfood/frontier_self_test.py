@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import harness as h
 
@@ -60,6 +61,156 @@ class FrontierTests(unittest.TestCase):
             facts = self.facts(descriptor, capture, bundle)
             self.assertTrue(facts[0])
             self.assertEqual(facts[1], "18" * 16)
+
+    def test_hidden_investigation_uncertainty_does_not_erase_lifecycle(self):
+        head = h.git_head(h.ROOT)
+        descriptor = h.real_session_fixture("volicord", 1, head, self.root,
+            behavior_class="hidden_user_owned_decision")
+        capture = h.load_codex_capture(self.root / descriptor["evidence"]["captures"]["work"]["file"])
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        prior = [c for c in capture.commands if baseline.completion_sequence < c.sequence < discovery.sequence
+                 and h.command_is_repository_inspection(c.parsed_command)]
+        self.assertTrue(prior)
+        for state in ("complete", "indeterminate", "missing", "failed", "late"):
+            with self.subTest(state=state):
+                commands = tuple(c if c not in prior or state == "complete" else
+                    replace(c, exit_code=None, termination=None, evidence_state="indeterminate") if state == "indeterminate" else
+                    replace(c, exit_code=1) if state == "failed" else
+                    replace(c, completion_sequence=discovery.completion_sequence + 1) if state == "late" else None
+                    for c in capture.commands)
+                changed = replace(capture, commands=tuple(c for c in commands if c is not None))
+                if state == "complete":
+                    with self.assertRaises(h.NoWorkBlocker):
+                        h.build_work_blocker_result(head, descriptor, "0" * 64, changed)
+                else:
+                    result = h.build_work_blocker_result(head, descriptor, "0" * 64, changed)
+                    self.assertEqual(result["failed_checks"], list(h.HIDDEN_INVESTIGATION_CHECKS))
+                    self.assertEqual(result["failure_attribution"]["domain"],
+                        "evidence" if state == "indeterminate" else "behavior_contract")
+                    self.assertEqual(result["product_failed_checks"],
+                        [] if state == "indeterminate" else list(h.HIDDEN_INVESTIGATION_CHECKS))
+                    original_loader = h.load_codex_capture
+                    work_file = descriptor["evidence"]["captures"]["work"]["file"]
+                    with patch.object(h, "load_codex_capture", side_effect=lambda path:
+                            changed if path.name == Path(work_file).name else original_loader(path)):
+                        full = h.real_session_evidence(descriptor, kind="volicord", cycle=1,
+                            repository_revision=head)
+                    self.assertEqual(full["checks"]["appropriate_inquiry_outcome"], "passed")
+                    self.assertEqual(full["checks"]["hidden_material_discovery_order"],
+                        "partial" if state == "indeterminate" else "failed")
+
+    def no_write_exploration(self, prototype=True):
+        descriptor, capture, bundle = self.fixture("exploratory_uncertainty")
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        record = next(c for c in capture.successful_calls("materiality_review") if c.arguments["action"] == "record")
+        inspect = next(c for c in capture.successful_calls("materiality_review") if c.arguments["action"] == "inspect")
+        choice_id = record.arguments["judgments"][0]["choice_id"]
+        requirement = "prototype_required" if prototype else "research_required"
+        discovered = deepcopy(discovery.arguments)
+        next(c for c in discovered["choices"] if c["choice_id"] == choice_id)["evidence_state"] = requirement
+        discovery = replace(discovery, arguments=discovered,
+            result={**discovery.result, "choices": discovered["choices"]})
+        pending = deepcopy(record.arguments)
+        pending["judgments"][0]["exploratory_disposition"] = requirement
+        resolved = deepcopy(record.arguments["judgments"])
+        resolved[0]["evidence_completion_basis"] = ["The bounded scratch experiment resolves the original evidence gap."]
+        revision = replace(record, call_id="exploratory-reassessment", sequence=inspect.sequence - 30,
+            completion_sequence=inspect.sequence - 20,
+            arguments={"action": "revise", "project_id": bundle.project_id,
+                "review_candidate_id": record.result["review_candidate_id"], "rationale": "Reassess the experiment.",
+                "learning_participation": {"state": "inactive"}, "judgments": resolved},
+            result={**record.result, "action": "revise", "review_revision": 2})
+        record = replace(record, arguments=pending,
+            result={**record.result, "workflow": {**record.result["workflow"],
+                "stage": "research_or_prototype", "disposition": "research_required"}})
+        experiment = replace(capture.commands[0], sequence=record.completion_sequence + 10,
+            completion_sequence=record.completion_sequence + 20, exit_code=0, termination="exited",
+            evidence_state="completed", execution_identity="scratch-experiment",
+            parsed_command={"cmd": "python3 probe.py" if prototype else "cat src/lib.rs",
+                "workdir": "/tmp/sanitized-prototype" if prototype else str(capture.cwd)})
+        calls = []
+        for c in capture.tool_calls:
+            if c.call_id == discovery.call_id:
+                c = discovery
+            elif c.call_id == record.call_id:
+                c = record
+            elif c is inspect:
+                c = replace(c, result={**c.result, "review_revision": 2})
+            elif c.operation == "checkpoint_record":
+                c = replace(c, result={**c.result, "changed_paths": [],
+                    "baseline_repository_snapshot_id": "aa" * 32, "current_repository_snapshot_id": "bb" * 32})
+            calls.append(c)
+        capture = replace(capture, path_observations=(), commands=(*capture.commands, experiment),
+            tool_calls=tuple(sorted((*calls, revision), key=lambda c: c.sequence)))
+        bundle = replace(bundle, tables={**bundle.tables,
+            "checkpoints": tuple({**r, "changed_paths": "00" * 8} for r in bundle.rows("checkpoints")),
+            "checkpoint_source_relations": tuple(r for r in bundle.rows("checkpoint_source_relations")
+                if r.get("relation_kind") != "changed_basis")})
+        return descriptor, capture, bundle
+
+    def test_no_write_exploration_requires_affirmative_evidence(self):
+        for prototype in (False, True):
+            descriptor, capture, bundle = self.no_write_exploration(prototype)
+            baseline = capture.successful_calls("repository_analyze")[0]
+            self.assertTrue(h.exploratory_no_write_evidence(capture, baseline)["qualified"])
+            self.assertEqual(h.work_blocker_behavior_observations(capture, descriptor["behavior_class"], baseline, None), (True, False, False))
+            facts = h.materiality_review_facts(capture, bundle, descriptor["behavior_class"],
+                "08" * 16, descriptor["work_user_task"], descriptor["work_user_task"], baseline,
+                None, "03" * 16, h.decision_facts(capture, bundle)[-1])
+            self.assertTrue(facts[0], facts[3])
+            checkpoint = h.checkpoint_facts(capture, bundle, [], "08" * 16, "03" * 16,
+                baseline.result["analysis_snapshot_id"], descriptor["work_user_task"])
+            self.assertTrue(checkpoint[0], checkpoint)
+            original_loader = h.load_codex_capture
+            work_file = descriptor["evidence"]["captures"]["work"]["file"]
+            with patch.object(h, "load_codex_capture", side_effect=lambda path:
+                    capture if path.name == Path(work_file).name else original_loader(path)), \
+                    patch.object(h, "load_canonical_bundle", return_value=bundle):
+                full = h.real_session_evidence(descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+            for check in ("grounded_pre_work_repository_baseline", "engineering_choice_discovery",
+                          "pre_write_materiality_work_authority", "appropriate_inquiry_outcome",
+                          "meaningful_ordinary_changes", "source_grounded_checkpoint"):
+                self.assertEqual(full["checks"][check], "passed", (check, full["checks"]))
+            for missing in ("experiment", "reassessment", "binding", "checkpoint", "routing", "baseline"):
+                with self.subTest(prototype=prototype, missing=missing):
+                    changed = replace(capture,
+                        commands=tuple(c for c in capture.commands if missing != "experiment" or c.execution_identity != "scratch-experiment"),
+                        tool_calls=tuple(c for c in capture.tool_calls if not (
+                            missing == "reassessment" and c.arguments.get("action") == "revise"
+                            or missing == "binding" and c.arguments.get("action") == "inspect"
+                            or missing == "checkpoint" and c.operation == "checkpoint_record"
+                            or missing == "routing" and c.arguments.get("action") == "record" and c.operation == "materiality_review")))
+                    self.assertFalse(h.work_blocker_behavior_observations(changed, descriptor["behavior_class"],
+                        None if missing == "baseline" else baseline, None)[0])
+
+    def test_absent_write_is_not_an_exploratory_pass(self):
+        descriptor, capture, _ = self.fixture("research_or_no_question")
+        capture = replace(capture, path_observations=())
+        self.assertFalse(h.work_blocker_behavior_observations(capture, "exploratory_uncertainty",
+            capture.successful_calls("repository_analyze")[0], None)[0])
+
+    def test_no_write_unknown_experiment_remains_evidence_indeterminate(self):
+        descriptor, capture, bundle = self.no_write_exploration()
+        capture = replace(capture, commands=tuple(replace(c, exit_code=None,
+            termination=None, evidence_state="indeterminate") if c.execution_identity == "scratch-experiment" else c
+            for c in capture.commands))
+        baseline = capture.successful_calls("repository_analyze")[0]
+        evidence = h.exploratory_no_write_evidence(capture, baseline)
+        self.assertFalse(evidence["qualified"])
+        self.assertEqual(evidence["state"], "indeterminate")
+        self.assertFalse(h.work_blocker_behavior_observations(capture, "exploratory_uncertainty", baseline, None)[0])
+        attribution = h.work_evidence_transport_attribution(capture, ["behavior_class_evidence"],
+            exploration_issues=evidence["issues"])
+        self.assertEqual(attribution["affected_checks"], ["behavior_class_evidence"])
+        original_loader = h.load_codex_capture
+        work_file = descriptor["evidence"]["captures"]["work"]["file"]
+        with patch.object(h, "load_codex_capture", side_effect=lambda path:
+                capture if path.name == Path(work_file).name else original_loader(path)), \
+                patch.object(h, "load_canonical_bundle", return_value=bundle):
+            full = h.real_session_evidence(descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+        self.assertEqual(full["checks"]["appropriate_inquiry_outcome"], "partial")
+        self.assertEqual(full["checks"]["pre_write_materiality_work_authority"], "partial")
 
     def learning_revision(self, kind="research_evidence"):
         descriptor, capture, bundle = self.fixture("learning_deliberation")

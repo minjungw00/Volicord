@@ -32,6 +32,7 @@ from codex_events import (
     CanonicalBundle,
     CodexCapture,
     EvidenceError,
+    EvidenceTransportIssue,
     ToolCall,
     VOLICORD_OPERATIONS,
     command_argvs,
@@ -4030,6 +4031,7 @@ WORK_BLOCKER_CHECKS = (
     "behavior_class_evidence",
     "source_grounded_checkpoint_operation",
 )
+HIDDEN_INVESTIGATION_CHECKS = ("hidden_pre_discovery_repository_investigation",)
 USER_DECISION_BLOCKER_CHECKS = (
     "material_question_candidate_lifecycle",
     "explicit_current_host_user_decision_operation",
@@ -4105,7 +4107,9 @@ WORK_CHECK_OPERATIONS = {
 
 
 def work_evidence_transport_attribution(
-    capture: CodexCapture, failed_checks: list[str]
+    capture: CodexCapture, failed_checks: list[str],
+    command_issues: tuple[EvidenceTransportIssue, ...] = (),
+    exploration_issues: tuple[EvidenceTransportIssue, ...] = (),
 ) -> dict[str, Any]:
     path_dependent_checks = {
         "repository_baseline_operation",
@@ -4127,10 +4131,14 @@ def work_evidence_transport_attribution(
         )
         or (malformed_path_evidence and check in path_dependent_checks)
     ]
+    if command_issues and HIDDEN_INVESTIGATION_CHECKS[0] in failed_checks:
+        affected_checks.append(HIDDEN_INVESTIGATION_CHECKS[0])
+    if exploration_issues and "behavior_class_evidence" in failed_checks:
+        affected_checks.append("behavior_class_evidence")
     relevant_operations = {
         operation
         for check in affected_checks
-        for operation in WORK_CHECK_OPERATIONS[check]
+        for operation in WORK_CHECK_OPERATIONS.get(check, ())
     }
     issues = [
         issue
@@ -4141,6 +4149,8 @@ def work_evidence_transport_attribution(
             and bool(set(affected_checks) & path_dependent_checks)
         )
     ]
+    issues.extend(command_issues)
+    issues.extend(exploration_issues)
     unique_issues = {
         (issue.sequence, issue.turn_id, issue.call_id, issue.operation, issue.reason): issue
         for issue in issues
@@ -4442,18 +4452,8 @@ def work_blocker_material_question_lifecycles(
             used_submit_sequences.add(submit.sequence)
         if nonempty_string(question_id):
             used_question_ids.add(str(question_id))
-    hidden_investigation = (
-        behavior_class != "hidden_user_owned_decision"
-        or discovery is not None
-        and bool(repository_investigation_sequences(
-            capture,
-            after_sequence=baseline_call.completion_sequence,
-            before_sequence=discovery.sequence,
-        ))
-    )
     lifecycles_valid &= (
-        hidden_investigation
-        and len(used_submit_sequences) == len(submit_calls)
+        len(used_submit_sequences) == len(submit_calls)
         and revision.completion_sequence < first_work_change
     )
     return bool(lifecycles_valid), bool(decisions_valid)
@@ -4585,6 +4585,131 @@ def current_authority_frontier(
     return discovery, record, revisions
 
 
+def exploratory_no_write_evidence(
+    capture: CodexCapture | None, baseline: ToolCall | None,
+) -> dict[str, Any]:
+    """Prove the exploration frontier without inventing a repository write.
+
+    Successful typed reassessment and the Checkpoint's empty change set complement
+    bounded scratch/read-only command evidence; neither absence of FileChange nor
+    prose describing a prototype supplies these facts on its own.
+    """
+    result = {"qualified": False, "state": "missing", "frontier_sequence": None,
+              "experiment_sequence": None, "binding_sequence": None, "issues": ()}
+    checkpoint = terminal_checkpoint_call(capture)
+    if (capture is None or baseline is None or checkpoint is None
+        or meaningful_work_path_observations(capture)
+        or any(i.reason == "malformed_file_change" for i in capture.evidence_transport_issues)
+        or checkpoint.outcome != "succeeded"
+        or checkpoint.result.get("changed_paths") != []
+        or not nonempty_string(checkpoint.result.get("baseline_repository_snapshot_id"))
+        or not nonempty_string(checkpoint.result.get("current_repository_snapshot_id"))
+        or not nonempty_string(checkpoint.arguments.get("next_step"))):
+        return result
+    project_id = baseline.result.get("project_id")
+    goal_id = checkpoint.arguments.get("goal_context_id")
+    baseline_id = baseline.result.get("analysis_snapshot_id")
+    discovery, record, revisions = current_authority_frontier(capture,
+        project_id=project_id, goal_context_id=goal_id,
+        baseline_analysis_snapshot_id=baseline_id, before_sequence=checkpoint.sequence)
+    if (discovery is None or record is None or not revisions
+        or not baseline.completion_sequence < discovery.sequence
+        or not nonempty_string(baseline.result.get("repository_source_id"))
+        or checkpoint.arguments.get("baseline_analysis_snapshot_id") != baseline_id
+        or checkpoint.result.get("baseline_analysis_snapshot_id") != baseline_id
+        or checkpoint.arguments.get("project_id") != project_id):
+        return result
+    judgments = record.arguments.get("judgments", [])
+    if not isinstance(judgments, list) or not all(isinstance(j, dict) for j in judgments):
+        return result
+    exploratory_ids = {j.get("choice_id") for j in judgments
+        if j.get("disposition") == "exploratory_uncertainty"
+        and j.get("exploratory_disposition") in {"research_required", "prototype_required", "resolved_by_research", "deferred_with_revisit"}
+        and j.get("research_basis")}
+    final = revisions[-1]
+    final_judgments = final.arguments.get("judgments", [])
+    if not isinstance(final_judgments, list) or not all(isinstance(j, dict) for j in final_judgments):
+        return result
+    choice_ids = {j.get("choice_id") for j in judgments}
+    if len(choice_ids) != len(judgments) or not all(nonempty_string(i) for i in choice_ids):
+        return result
+    for previous, current in zip([record, *revisions], revisions):
+        current_judgments = current.arguments.get("judgments")
+        prior_number, number = previous.result.get("review_revision"), current.result.get("review_revision")
+        if (type(prior_number) is not int or type(number) is not int or number <= prior_number
+            or previous.completion_sequence >= current.sequence
+            or current.arguments.get("project_id") != project_id
+            or current.result.get("review_candidate_id") != record.result.get("review_candidate_id")
+            or current.result.get("goal_context_id") != goal_id
+            or current.result.get("baseline_analysis_snapshot_id") != baseline_id
+            or not isinstance(current_judgments, list) or len(current_judgments) != len(choice_ids)
+            or not all(isinstance(j, dict) and j.get("disposition") in MATERIALITY_DISPOSITIONS for j in current_judgments)
+            or {j.get("choice_id") for j in current_judgments} != choice_ids):
+            return result
+    if (not exploratory_ids or {j.get("choice_id") for j in judgments} != {j.get("choice_id") for j in final_judgments}
+        or any(j.get("disposition") == "unresolved_user_owned_outcome" for j in final_judgments)
+        or any(not j.get("evidence_completion_basis") for j in final_judgments if j.get("choice_id") in exploratory_ids)
+        or not historical_questions_resolved_before_frontier(capture, record, checkpoint.sequence)):
+        return result
+
+    def outside(path: Any) -> bool:
+        return (isinstance(path, str) and Path(path).is_absolute()
+                and ".." not in Path(path).parts
+                and not Path(path).is_relative_to(capture.cwd))
+
+    def exploratory_command(command: Any) -> bool:
+        value = command.parsed_command
+        if command_is_repository_inspection(value) and not command_is_clean_git_status(value):
+            return True
+        argvs = command_argvs(value)
+        if not argvs or command_is_read_only_report(value):
+            return False
+        # Static execution location or an explicit external Cargo manifest/tool.
+        if isinstance(value, dict) and outside(value.get("workdir")):
+            return True
+        return all(
+            outside(argv[0]) and Path(argv[0]).parts[:2] == ("/", "tmp")
+            or Path(argv[0]).name == "cargo" and "--manifest-path" in argv
+            and argv.index("--manifest-path") + 1 < len(argv)
+            and outside(argv[argv.index("--manifest-path") + 1])
+            for argv in argvs)
+
+    experiments = [command for command in capture.commands
+        if record.completion_sequence < command.sequence < final.sequence
+        and exploratory_command(command)]
+    succeeded = [command for command in experiments
+        if command.completion_sequence < final.sequence and command.evidence_state == "completed"
+        and command.exit_code == 0 and command.termination == "exited"]
+    unknown = [c for c in experiments if c.evidence_state == "indeterminate"]
+    prototype_required = any(j.get("exploratory_disposition") == "prototype_required" for j in judgments)
+    if prototype_required:
+        succeeded = [c for c in succeeded if not command_is_repository_inspection(c.parsed_command)]
+        unknown = [c for c in unknown if not command_is_repository_inspection(c.parsed_command)]
+    if not succeeded and not unknown:
+        return result
+    bindings = [c for c in capture.successful_calls("materiality_review")
+        if c.arguments.get("action") == "inspect"
+        and final.completion_sequence < c.sequence and c.completion_sequence < checkpoint.sequence
+        and c.arguments.get("review_candidate_id") == record.result.get("review_candidate_id")]
+    valid_bindings = [c for c in bindings if executable_scope_binding_observation(capture, c,
+        project_id=project_id, review_candidate_id=record.result.get("review_candidate_id"),
+        goal_context_id=goal_id, baseline_analysis_snapshot_id=baseline_id).valid]
+    if not valid_bindings:
+        return result
+    issues = []
+    if not succeeded:
+        for c in unknown:
+            issues.extend([i for i in capture.evidence_transport_issues if i.sequence == c.sequence]
+                or [EvidenceTransportIssue(c.sequence, c.turn_id,
+                    c.execution_identity or f"command:{c.sequence}:{c.group_index}",
+                    "codex", None, "command_completion_indeterminate")])
+    result.update(qualified=bool(succeeded), state="complete" if succeeded else "indeterminate",
+        issues=tuple(issues), frontier_sequence=checkpoint.sequence,
+        experiment_sequence=min(c.sequence for c in experiments),
+        binding_sequence=max(c.completion_sequence for c in valid_bindings))
+    return result
+
+
 def work_blocker_behavior_observations(
     capture: CodexCapture,
     behavior_class: str,
@@ -4592,7 +4717,10 @@ def work_blocker_behavior_observations(
     first_work_change: int | None,
 ) -> tuple[bool, bool, bool]:
     """Return behavior evidence, material Question lifecycle, and user Decision."""
-    if baseline_call is None or first_work_change is None:
+    exploration = exploratory_no_write_evidence(capture, baseline_call) if (
+        behavior_class == "exploratory_uncertainty" and first_work_change is None) else {}
+    behavior_frontier = first_work_change if first_work_change is not None else exploration.get("frontier_sequence")
+    if baseline_call is None or behavior_frontier is None:
         return False, False, False
     baseline_id = baseline_call.result.get("analysis_snapshot_id")
     checkpoint = terminal_checkpoint_call(capture)
@@ -4600,7 +4728,7 @@ def work_blocker_behavior_observations(
     discovery, record, revisions = current_authority_frontier(
         capture, project_id=baseline_call.result.get("project_id"),
         goal_context_id=goal_id, baseline_analysis_snapshot_id=baseline_id,
-        before_sequence=first_work_change,
+        before_sequence=behavior_frontier,
     )
     if discovery is None or record is None or not baseline_call.completion_sequence < discovery.sequence:
         return False, False, False
@@ -4610,7 +4738,7 @@ def work_blocker_behavior_observations(
         for judgment in judgments
         if isinstance(judgment, dict)
     } if isinstance(judgments, list) else set()
-    no_question_path = historical_questions_resolved_before_frontier(capture, record, first_work_change)
+    no_question_path = historical_questions_resolved_before_frontier(capture, record, behavior_frontier)
     workflow = record.result.get("workflow")
     review_id = record.result.get("review_candidate_id")
     final_review = revisions[-1] if revisions else record
@@ -4642,7 +4770,7 @@ def work_blocker_behavior_observations(
         goal_context_id=record.result.get("goal_context_id"),
         baseline_analysis_snapshot_id=baseline_id,
     )
-    ready_before_work = readiness_basis["qualified"]
+    ready_before_work = readiness_basis["qualified"] or exploration.get("qualified", False)
     current_user_owned = any(j.get("disposition") == "unresolved_user_owned_outcome"
         for j in final_review.arguments.get("judgments", []))
 
@@ -4653,14 +4781,14 @@ def work_blocker_behavior_observations(
         behavior_ok = (
             bool(dispositions) and dispositions <= MATERIALITY_DISPOSITIONS
             and no_question_path
-            and record.completion_sequence < first_work_change
+            and record.completion_sequence < behavior_frontier
         )
         if behavior_class == "learning_deliberation":
             learning = learning_deliberation_trace(
                 capture,
                 review_id=(str(review_id) if nonempty_string(review_id) else None),
                 dimension_id=None,
-                first_write_sequence=first_work_change,
+                first_write_sequence=behavior_frontier,
             )
             behavior_ok = (
                 behavior_ok
@@ -4692,7 +4820,7 @@ def work_blocker_behavior_observations(
         baseline_call,
         record,
         final_review if final_review is not record else None,
-        first_work_change,
+        behavior_frontier,
     )
     return (
         lifecycle_ok and decision_ok and ready_before_work,
@@ -4829,9 +4957,12 @@ def build_work_blocker_result(
         if baseline_call is not None
         else None
     )
+    exploration = exploratory_no_write_evidence(capture, baseline_call) if (
+        descriptor.get("behavior_class") == "exploratory_uncertainty" and first_work_change is None) else {}
+    baseline_frontier = first_work_change if first_work_change is not None else exploration.get("experiment_sequence")
     baseline_grounding_observed = (
         baseline_call is not None
-        and first_work_change is not None
+        and baseline_frontier is not None
         and checkpoint_call is not None
         and nonempty_string(baseline_analysis_id)
         and baseline_call.arguments.get("project_id")
@@ -4850,7 +4981,7 @@ def build_work_blocker_result(
             for goal in [goal_call]
             if goal is not None
         )
-        and baseline_call.completion_sequence < first_work_change
+        and baseline_call.completion_sequence < baseline_frontier
         and checkpoint_call.arguments.get("baseline_analysis_snapshot_id")
         == baseline_analysis_id
     )
@@ -4898,8 +5029,12 @@ def build_work_blocker_result(
         for judgment in current_record.arguments.get("judgments", [])
         if isinstance(judgment, dict)
     )
+    hidden_basis = hidden_investigation_evidence(capture, baseline_call, first_work_change)
+    observed[HIDDEN_INVESTIGATION_CHECKS[0]] = hidden_basis["state"] == "complete"
     required_checks = (
-        (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS) if declared_user_owned else WORK_BLOCKER_CHECKS
+        *WORK_BLOCKER_CHECKS,
+        *(USER_DECISION_BLOCKER_CHECKS if declared_user_owned else ()),
+        *(HIDDEN_INVESTIGATION_CHECKS if descriptor.get("behavior_class") == "hidden_user_owned_decision" else ()),
     )
     failed_checks = (
         [SETUP_ACTIVATION_CHECK]
@@ -4910,7 +5045,9 @@ def build_work_blocker_result(
         raise NoWorkBlocker(
             "completed work capture has no machine-observable terminal work blocker; use normal full qualification"
         )
-    evidence_transport = work_evidence_transport_attribution(capture, failed_checks)
+    evidence_transport = work_evidence_transport_attribution(capture, failed_checks,
+        hidden_basis["issues"] if HIDDEN_INVESTIGATION_CHECKS[0] in failed_checks else (),
+        exploration.get("issues", ()) if "behavior_class_evidence" in failed_checks else ())
     evidence_failed_checks = evidence_transport["affected_checks"]
     product_failed_checks = [
         check
@@ -5039,7 +5176,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     if (
         not isinstance(failed_checks, list)
         or not failed_checks
-        or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
+        or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
         or (
             classification in {failure.classification for failure in ACTIVATION_FAILURES.values()}
             and failed_checks != [SETUP_ACTIVATION_CHECK]
@@ -5050,7 +5187,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
             and failed_checks
             != [
                 name
-                for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS)
+                for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS)
                 if name in failed_checks
             ]
         )
@@ -6744,6 +6881,9 @@ def materiality_review_facts(
     *,
     resumed: bool = False,
 ) -> tuple[bool, str | None, str | None, dict[str, Any]]:
+    exploration = exploratory_no_write_evidence(work, baseline_call) if (
+        behavior_class == "exploratory_uncertainty" and first_write_sequence is None and not resumed) else {}
+    evaluation_frontier = first_write_sequence if first_write_sequence is not None else exploration.get("frontier_sequence")
     expected = expected_materiality_dispositions(behavior_class)
     if (
         work is None
@@ -6751,13 +6891,13 @@ def materiality_review_facts(
         or not expected
         or not nonempty_string(goal_context_id)
         or baseline_call is None
-        or first_write_sequence is None
+        or evaluation_frontier is None
     ):
         return False, None, None, {}
     baseline_id = baseline_call.result.get("analysis_snapshot_id")
     _, frontier_record, _ = current_authority_frontier(
         work, project_id=bundle.project_id, goal_context_id=goal_context_id,
-        baseline_analysis_snapshot_id=baseline_id, before_sequence=first_write_sequence,
+        baseline_analysis_snapshot_id=baseline_id, before_sequence=evaluation_frontier,
     )
     records = [
         call
@@ -6767,7 +6907,7 @@ def materiality_review_facts(
         and call.result.get("goal_context_id") == goal_context_id
         and call.result.get("baseline_analysis_snapshot_id") == baseline_id
         and baseline_call.completion_sequence < call.sequence
-        and call.completion_sequence < first_write_sequence
+        and call.completion_sequence < evaluation_frontier
     ]
     correlated_records: list[
         tuple[
@@ -6899,7 +7039,7 @@ def materiality_review_facts(
         }
         and
         baseline_call.completion_sequence < record.sequence
-        and record.completion_sequence < first_write_sequence
+        and record.completion_sequence < evaluation_frontier
         and nonempty_string(review_id)
         and record.result.get("goal_context_id") == goal_context_id
         and record.result.get("baseline_analysis_snapshot_id") == baseline_id
@@ -6946,7 +7086,7 @@ def materiality_review_facts(
         if call.arguments.get("action") == "revise"
         and call.arguments.get("project_id") == bundle.project_id
         and call.arguments.get("review_candidate_id") == review_id
-        and call.completion_sequence < first_write_sequence
+        and call.completion_sequence < evaluation_frontier
     ]
     revisions.sort(key=lambda call: call.sequence)
     revision_chain = [
@@ -6990,7 +7130,7 @@ def materiality_review_facts(
         goal_context_id=goal_context_id,
         baseline_analysis_snapshot_id=baseline_id,
     )
-    readiness_ok = readiness_basis["qualified"]
+    readiness_ok = readiness_basis["qualified"] or exploration.get("frontier_sequence") is not None
     if revision_chain:
         readiness_ok = bool(
             readiness_ok and chain_preserves_dimensions and chain_preserves_review_identity
@@ -7011,7 +7151,7 @@ def materiality_review_facts(
             for event in readiness_basis["write_events"]
             if isinstance(event.get("binding_sequence"), int)
         ),
-        default=None,
+        default=exploration.get("binding_sequence"),
     )
 
     if resumed:
@@ -7091,7 +7231,7 @@ def materiality_review_facts(
             and revised_workflow.get("blocks_ordinary_work") is True
             and readiness_ok
         )
-        valid = common and (initially_ready or resolved_after_evidence) and historical_questions_resolved_before_frontier(work, record, first_write_sequence)
+        valid = common and (initially_ready or resolved_after_evidence) and historical_questions_resolved_before_frontier(work, record, evaluation_frontier)
     else:
         learning_deliberation_expected = behavior_class == "learning_deliberation"
         valid = (
@@ -7109,15 +7249,19 @@ def materiality_review_facts(
                 or workflow.get("disposition") == "executable_scope_required"
             )
             and readiness_ok
-            and historical_questions_resolved_before_frontier(work, record, first_write_sequence)
+            and historical_questions_resolved_before_frontier(work, record, evaluation_frontier)
         )
     # Settled/current-history paths otherwise skip material_question_lifecycle_facts.
     # Keep that lifecycle's independent diagnostics for dimensions still reported
     # as user-owned, including authentic Decision evidence when transport is partial.
     if not current_user_owned_ids:
         valid = valid and historical_questions_resolved_before_frontier(
-            work, record, first_write_sequence, bundle=bundle, decision_evidence=decision_evidence)
+            work, record, evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence)
+    exploration_semantics_valid = bool(valid) if exploration else None
+    if exploration:
+        valid = valid and exploration["qualified"]
     return bool(valid), str(review_id) if nonempty_string(review_id) else None, str(primary_dimension_id) if nonempty_string(primary_dimension_id) else None, {
+        "exploration_semantics_valid": exploration_semantics_valid,
         "record_sequence": record.sequence,
         "review_candidate_id": review_id,
         "dimension_ids": sorted(dimension_ids),
@@ -7142,7 +7286,9 @@ def materiality_review_facts(
             if dimensions is not None and primary_dimension_id is not None
             else None
         ),
-        "pre_write": record.completion_sequence < first_write_sequence,
+        "pre_write": first_write_sequence is not None and record.completion_sequence < first_write_sequence,
+        "evaluation_frontier": {"kind": "exploration_terminal" if exploration else "first_repository_write",
+            "sequence": evaluation_frontier},
         "revision_count": len(revision_chain),
         "final_revision_sequence": (
             final_revision.sequence if final_revision is not None else None
@@ -8016,13 +8162,50 @@ def repository_investigation_sequences(
         if after_sequence < command.sequence < before_sequence
         and command_is_repository_inspection(command.parsed_command)
         and command.exit_code == 0
+        and command.evidence_state == "completed"
+        and command.termination == "exited"
+        and command.completion_sequence < before_sequence
     ]
     sequences.extend(
         call.sequence
         for call in work.successful_calls("repository_understanding")
-        if after_sequence < call.sequence < before_sequence
+        if after_sequence < call.sequence and call.completion_sequence < before_sequence
     )
     return sorted(set(sequences))
+
+
+def hidden_investigation_evidence(
+    capture: CodexCapture | None, baseline: ToolCall | None, frontier: int | None,
+) -> dict[str, Any]:
+    result = {"state": "missing", "sequences": [], "issues": ()}
+    checkpoint = terminal_checkpoint_call(capture)
+    if capture is None or baseline is None or frontier is None or checkpoint is None:
+        return result
+    discovery, _, _ = current_authority_frontier(capture,
+        project_id=baseline.result.get("project_id"),
+        goal_context_id=checkpoint.arguments.get("goal_context_id"),
+        baseline_analysis_snapshot_id=baseline.result.get("analysis_snapshot_id"),
+        before_sequence=frontier)
+    if discovery is None:
+        return result
+    sequences = repository_investigation_sequences(capture,
+        after_sequence=baseline.completion_sequence, before_sequence=discovery.sequence)
+    if sequences:
+        return {"state": "complete", "sequences": sequences, "issues": ()}
+    commands = [c for c in capture.commands
+        if baseline.completion_sequence < c.sequence < discovery.sequence
+        and command_is_repository_inspection(c.parsed_command)
+        and c.evidence_state == "indeterminate"]
+    if not commands:
+        return result
+    issues = []
+    for command in commands:
+        existing = [issue for issue in capture.evidence_transport_issues
+                    if issue.sequence == command.sequence and issue.server == "codex"]
+        issues.extend(existing or [EvidenceTransportIssue(command.sequence, command.turn_id,
+            command.execution_identity or f"command:{command.sequence}:{command.group_index}",
+            "codex", None, "command_completion_indeterminate")])
+    return {"state": "indeterminate", "sequences": [c.sequence for c in commands], "issues": tuple(issues)}
 
 
 def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
@@ -8061,11 +8244,12 @@ def checkpoint_facts(
     checkpoint = bundle.one("checkpoints", id=checkpoint_id, project_id=bundle.project_id)
     if checkpoint is None or not nonempty_string(checkpoint_id):
         return False, False, False, None, [], None
+    exploration = exploratory_no_write_evidence(work, selected_checkpoint_baseline_call(work, call))
     changed_paths = decode_string_blob(checkpoint.get("changed_paths"))
     observed_paths = work.paths_before(call.sequence)
     bounded_paths = (
         changed_paths
-        if changed_paths
+        if (changed_paths or changed_paths == [] and exploration.get("frontier_sequence") is not None)
         and all(
             not Path(path).is_absolute()
             and ".." not in Path(path).parts
@@ -8116,7 +8300,7 @@ def checkpoint_facts(
     )
     meaningful_changes = meaningful_work_path_observations(work)
     terminal_after_last_meaningful_change = (
-        bool(meaningful_changes)
+        exploration.get("frontier_sequence") is not None or bool(meaningful_changes)
         and max(item.sequence for item in meaningful_changes) < call.sequence
     )
     valid = (
@@ -8304,6 +8488,9 @@ def real_session_evidence(
         (item.sequence for item in meaningful_work_path_observations(work_capture)),
         default=None,
     ) if work_capture else None
+    exploration = exploratory_no_write_evidence(work_capture, baseline_call) if (
+        behavior_class == "exploratory_uncertainty" and first_work_change is None) else {}
+    work_frontier = first_work_change if first_work_change is not None else exploration.get("frontier_sequence")
     (
         materiality_ok,
         review_candidate_id,
@@ -8391,7 +8578,7 @@ def real_session_evidence(
         and any(
             c.result.get("review_candidate_id") == review_candidate_id
             and c.arguments.get("action") == "record"
-            and historical_questions_resolved_before_frontier(work_capture, c, first_work_change or 0)
+            and historical_questions_resolved_before_frontier(work_capture, c, work_frontier or 0)
             for c in work_capture.successful_calls("materiality_review")
         )
     )
@@ -8433,6 +8620,7 @@ def real_session_evidence(
         if baseline_call is not None and hidden_discovery_call is not None
         else []
     )
+    hidden_evidence = hidden_investigation_evidence(work_capture, baseline_call, first_work_change)
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
         or bool(hidden_repository_investigation)
@@ -8445,8 +8633,8 @@ def real_session_evidence(
     )
     ordinary_ok = (
         checkpoint_call is not None
-        and bool(changed_paths)
-        and not all(looks_like_synthetic_marker(path) for path in changed_paths)
+        and (bool(changed_paths) or exploration.get("qualified", False))
+        and (exploration.get("qualified", False) or not all(looks_like_synthetic_marker(path) for path in changed_paths))
         and all(
             item.sequence < checkpoint_call.sequence
             for item in meaningful_work_path_observations(work_capture)
@@ -8505,7 +8693,7 @@ def real_session_evidence(
     baseline_ok = (
         bundle is not None
         and work_capture is not None
-        and first_work_change is not None
+        and work_frontier is not None
         and work_capture.git_revision == repository_revision
         and initialize_call is not None
         and initialize_call.result.get("project_id") == bundle.project_id
@@ -8520,7 +8708,7 @@ def real_session_evidence(
             checkpoint_call,
             project_id=bundle.project_id,
             boundary_completion_sequence=goal_completion_sequence,
-            first_write_sequence=first_work_change,
+            first_write_sequence=first_work_change if first_work_change is not None else exploration.get("experiment_sequence"),
         )
         and pre_existing_dirty_paths is not None
     )
@@ -8879,7 +9067,7 @@ def real_session_evidence(
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
         "hidden_material_discovery_order": evidence_check(
-            references_present, hidden_material_discovery_order_ok
+            references_present and not (behavior_class == "hidden_user_owned_decision" and hidden_evidence["state"] == "indeterminate"), hidden_material_discovery_order_ok
         ),
         "recorded_user_owned_authority": evidence_check(references_present, recorded_user_owned_authority),
         "meaningful_ordinary_changes": evidence_check(references_present, ordinary_ok),
@@ -8911,10 +9099,20 @@ def real_session_evidence(
             for name, passed in support_checks.items()
         },
     }
+    if exploration.get("state") == "indeterminate" and materiality_basis.get("exploration_semantics_valid"):
+        for check in ("pre_write_materiality_work_authority", "appropriate_inquiry_outcome",
+                      "recorded_user_owned_authority", "meaningful_ordinary_changes"):
+            if checks[check] == "failed":
+                checks[check] = "partial"
     return {
         "evidence_class": "actual_repository_real_session",
         "status": status_from_steps(checks),
         "checks": checks,
+        "work_evidence_basis": {"hidden_investigation_state": hidden_evidence["state"],
+            "hidden_investigation_reasons": sorted({i.reason for i in hidden_evidence["issues"]}),
+            "exploration_state": exploration.get("state"),
+            "exploration_reasons": sorted({i.reason for i in exploration.get("issues", ())}),
+            "exploratory_frontier_sequence": exploration.get("frontier_sequence")},
         "changed_paths": changed_paths or [],
         "pre_existing_dirty_paths": pre_existing_dirty_paths or [],
         "continuation_paths": continuation_paths,
