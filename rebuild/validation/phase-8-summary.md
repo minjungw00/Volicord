@@ -1,57 +1,55 @@
 # Phase 8 technical-entry candidate authority
 
-- Replacement passage: `not_established`
-- `phase_9_ready = false`
-- Historical sealed pre-Dogfood production/test candidate:
-  `6031641c46cf014a754442dcee3137caf265882e`
-- Historical candidate's technical Phase 8 entry gate: `passed`;
-  `phase_8_ready = true` only for that exact candidate HEAD
-- Admission: `eligible`; exact final: `succeeded` with four commands and zero
-  failures; official V11: `passed` with 54 of 54 required steps
-- Live production-provider qualification: `passed`; provider `openai-codex`,
-  model `gpt-5.6-sol`
-- Credential-retention audit: `passed`; all recorded counts are zero
-- Accepted-Decision revisit-trigger assessment: completed; no active Q1–Q14
-  trigger reported
-- Sanitized gate capsule: `verified`; SHA-256
-  `a657b8c517a3135c8b64ce5b75ae98ef66a0e5f43573ef2c092e590e3eba7695`
-- Sanitized evidence archive: `verified`; SHA-256
-  `bed36fa89e82a60e198dd3dc3ef5b8864e9ce27332a8a60461f230a4f74adc0e`
-- Naturalistic Dogfood for this candidate: `not_run`
-- Automated Dogfood qualification: `not_run`
-- Campaign-level human review: `not_provided`
-- `replacement_pass_candidate = false`
+- Sealed Product/test candidate: `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`
+- Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
+- Admission: `eligible`; exact final: `succeeded`, four commands, zero failures
+- Required production-provider qualification: `passed`; `openai-codex`, `gpt-5.6-sol`
+- Official V11: `passed`, 54 of 54 required steps; all three authenticated targets passed
+- Credential-retention audit: `passed`, all counts zero
+- Sanitized evidence archive: creation succeeded; independent verification `passed`
+- Capsule SHA-256: `c27325f66b76d4d4823d5bb7042a8f43cdd54e5a5b7415d52ab7f2d62ae33ec1`
+- Archive SHA-256: `61a88e3ede2c35b7f0731fc2c8d1c68e782c0e0d32de92e048e31ce2718d7efb`
+- Fresh naturalistic Dogfood: `not_run`; automated qualification: `not_run`
+- Human review: `not_provided`; replacement passage: `not_established`
+- `replacement_pass_candidate = false`; `phase_9_ready = false`
 
 ## Maintained conclusion
 
-Candidate `6031641c46cf014a754442dcee3137caf265882e` historically passed the
-technical-entry gate and was eligible to begin a candidate-bound naturalistic
-Dogfood campaign at that exact HEAD. Admission passed with a clean, unchanged
-worktree; the exact final succeeded with all four commands, zero failures, and
-a warning-clean clippy result; the separately authorized live production-provider
-qualification passed; and the same-session official V11 passed all 54 required
-steps. All
-three authenticated Codex targets passed, the credential-retention audit passed
-with zero recorded findings or scan errors, official V11 reported no active
-accepted-Decision revisit trigger, and the sanitized archive was independently
-verified. The capsule, archive, final, provider, and V11 evidence identify the
-same candidate and gate invocation.
+The copied capsule and independently verified archive establish technical entry
+for exactly `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`. Exact final, required
+live provider qualification, and official V11 each ran once for that candidate
+in the same maintained gate.
+Resource measurements passed and no accepted-Decision revisit trigger was
+reported. The later documentation-only conclusion HEAD is distinct from the
+sealed candidate and receives only the maintained documentation checks.
 
-That capsule and archive remain historical evidence only. A later HEAD never
-inherits technical-entry or Dogfood eligibility from an earlier successful
-gate. Technical eligibility is authoritative only for the exact candidate HEAD
-identified by a successful maintained gate and its verified capsule/evidence
-archive; a failed or blocked gate establishes no eligibility for its candidate.
+The preceding Product/test candidate `d62ab35db7609dd5aca4cccf47542a2227359521`
+failed its exact-final aggregate on one test-only clippy finding. That failure
+remains a failure; no provider/V11 qualification ran for it. The atomic
+focused-tested correction created the newly re-admitted candidate above.
+Historical successful gates, including `6031641c46cf014a754442dcee3137caf265882e`
+and `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, do not qualify later HEADs.
 
-This technical entry does not qualify naturalistic Dogfood or replacement
-passage. Naturalistic Dogfood is `not_run`. Automated qualification has not run
-and human review has not been provided, so `replacement_gate = pending`,
-`replacement_pass_candidate = false`, and `phase_9_ready = false` remain
-unchanged for the historical candidate. The failed naturalistic campaign
-recorded in `rebuild/validation/dogfood/report.md`, including its descriptors,
-captures, Runtime Homes, workspaces, bundles, observations, and session
-identities, remains diagnostic-only. It cannot be repaired, continued, or
-reused for this or any future candidate.
+The prior terminal naturalistic campaign remains failed, diagnostic-only, and
+non-reusable. Its evidence was not mutated, retried, collected, finalized, or
+qualified by this repair. The maintained [Dogfood report](dogfood/report.md)
+separates its validation-infrastructure defects from the genuine Product
+work-authority continuation failure.
+
+The earlier normalization/evaluator fixes preserve supported Codex completion
+semantics, evidence indeterminacy, affirmative no-write research/prototype
+evidence, and failure classification for proven late/uncovered authority.
+The distinct Product repair connects existing prospective invariants to
+SessionStart and the ready workflow reason: newly uncovered scope and changed
+or stale authority require current inspection/rebinding before affected writes.
+Post-work analysis cannot replace retained pre-work authority. Product
+regressions prove positive continuation and negative late/stale/post-work cases
+without adding a duplicate authority model or per-edit ceremony. The core
+Inquiry/domain invariants already existed and were not reimplemented.
+
+Fresh naturalistic Dogfood is not yet run, human review is not provided, and
+replacement qualification remains pending. `phase_9_ready` stays false until
+a wholly fresh candidate-bound campaign supplies the required qualification.
 
 The current human-facing surface gives generated documents a
 comprehension-first body and keeps inspectable grounding and audit detail in a
@@ -131,10 +129,9 @@ failure. Ordinary independent review uses the byte-exact raw rollout archive
 plus the bounded review package, not a full Runtime Home.
 
 The candidate-specific gate capsule and verified evidence archive, rather than
-this tracked summary, own the technical-entry result. This summary therefore
-does not require a post-gate commit to name a new current candidate: any later
-tracked commit would create a different HEAD and cannot inherit the capsule's
-authority.
+this tracked summary, own the technical-entry result. This summary records
+that capsule's exact candidate. The later documentation-only HEAD cannot
+inherit or replace the capsule's candidate authority.
 
 ## Remaining Phase 8 risks
 

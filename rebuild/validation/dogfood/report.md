@@ -2,42 +2,34 @@
 
 ## Status
 
-Technical entry passed for the repaired Dogfood evaluator at sealed
-production/test candidate `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`
-(2026-09-08). The copied sanitized gate capsule records `phase_8_ready = true`
-and an independently verified evidence archive. No wholly fresh naturalistic
-campaign has started for this candidate, so automated Dogfood qualification and
-replacement qualification have not run and human review is not provided.
+Technical entry passed for exact sealed Product/test candidate
+`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` (2026-09-09). The copied sanitized
+gate capsule records
+`phase_8_ready = true`; exact final, required provider qualification, official
+V11, archive creation, and independent verification all succeeded.
 
-The later documentation-only conclusion is the child commit of this sealed
-candidate. Its own HEAD is not the revision for campaign execution. A new
-campaign must use a separate clean worktree whose actual HEAD is exactly the
-sealed candidate above.
+The later documentation-only conclusion HEAD is distinct from this sealed
+candidate. A future campaign must run in a separate clean worktree whose
+actual HEAD matches the capsule's exact candidate, with wholly fresh campaign
+identity, Runtime Homes, workspaces, descriptors, rollouts, and sessions.
 
-Historical failed diagnostics remain non-qualifying. The latest inspected campaign
-candidate is `bbb64b4274c3f726fbeffae2389089819972b9ff` (2026-09-05).
-Its batch intake rejected the evidence as `operator_environment_invalid`:
-repository-scoped SessionStart activation was not established in the work and
-resume evidence for all eight cycles. All sixteen session identities were
-distinct, but automated qualification remained `not_run`.
+The prior terminal campaign remains non-reusable diagnostic evidence. Its
+validation-infrastructure findings and genuine work-authority continuation
+failure are separately recorded below. Historical activation-evidence intake
+at candidate `bbb64b4274c3f726fbeffae2389089819972b9ff` and hidden materiality
+discovery failure at `537bd0cadf40bedaf0719b658a860ac369d3faa6` remain separate
+older diagnostics; neither is qualification evidence for this candidate.
 
-The predecessor candidate `537bd0cadf40bedaf0719b658a860ac369d3faa6` had a
-successful explicit user-owned control and a hidden user-owned materiality
-discovery failure. These are separate diagnostic outcomes. Neither campaign,
-its sealed descriptors, nor its private evidence may be repaired, resumed, or
-reused for replacement qualification. Historical technical-entry evidence
-cannot qualify the current HEAD; a new candidate requires a new technical gate
-and a wholly fresh campaign.
-
-- `phase_8_ready = true` for the sealed technical-entry candidate only
-- `replacement_gate = not_run` for a fresh campaign; historical failures remain failed
+- `phase_8_ready = true` only for the sealed technical-entry candidate
+- Fresh naturalistic campaign: `not_run`
+- `automated_qualification = not_run` for the new candidate
+- `human_review = not_provided`
+- `replacement_gate = not_run` for the new campaign; replacement remains pending
 - `replacement_pass_candidate = false`
 - `phase_9_ready = false`
-- `automated_qualification = not_run` for the new candidate and latest historical campaign
-- `human_review = not_provided` for the new campaign
 
-The successful technical gate establishes entry readiness only. It does not
-establish automated Dogfood passage, replacement passage, or Phase 9 readiness.
+Technical entry does not establish naturalistic Dogfood, human review,
+replacement qualification, or Phase 9 passage.
 
 ## Goal
 
@@ -63,7 +55,7 @@ prompt choreography.
 
 ## Input repositories and revisions
 
-Both diagnostic campaigns' candidates, descriptors, workspaces, Runtime Homes,
+All prior diagnostic campaigns' candidates, descriptors, workspaces, Runtime Homes,
 rollouts, bundles, evidence packages, observations, blocker results, and session
 identities are non-qualifying diagnostic evidence and cannot be reused.
 
@@ -163,7 +155,7 @@ Decision path.
 ## Commands and configuration
 
 In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`.
+actual `HEAD` is `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
 Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
 documentation-only conclusion HEAD:
 
@@ -293,7 +285,7 @@ documents and does not share their adoption lifecycle.
 ## Observed results
 
 The new copied capsule and independently verified archive establish technical
-entry for `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`:
+entry for `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -322,7 +314,7 @@ That predecessor campaign stopped at that point. These observations do not quali
 candidate, and V11 remains scripted conformance rather than naturalistic
 Dogfood passage.
 
-The latest campaign's preserved `batch-intake-summary.json` records candidate
+The historical activation campaign's preserved `batch-intake-summary.json` records candidate
 `bbb64b4274c3f726fbeffae2389089819972b9ff` and the following bounded results:
 
 - eight cycles with sixteen expected and sixteen observed distinct sessions;
@@ -339,20 +331,62 @@ sessions. The activation/evidence boundary must be demonstrated by a new
 campaign after remediation. The private summary and rollouts remain external
 diagnostic inputs; this report does not copy or alter their evidence.
 
+The prior terminal naturalistic campaign exposed two distinct classes of
+finding. Validation infrastructure misinterpreted supported Codex FileChange
+and exec completion forms, lost some correlated command/exit evidence, and
+coupled indeterminate investigation evidence to otherwise recorded authority
+lifecycles. No-write research/prototype evaluation also required affirmative
+routing, scratch/read-only evidence, reassessment, binding, and Checkpoint
+evidence instead of treating absent writes as either automatic failure or
+automatic success. Commits `32441c17`, `56f28567`, and `99aa9b10` repaired these
+bounded normalization/evaluation cases while retaining indeterminate exec-cell
+completion and the ability to classify proven late/uncovered authority as failure.
+
+The distinct genuine Product failure was continuation after initial
+`ready_for_work`: later affected scope or changed Review/Discovery authority
+was not prospectively reassessed before subsequent affected writes. The
+domain already required executable scope, invalidated materially changed
+authority bindings, rejected late expansion, and refused post-work evidence
+as authority for earlier work. This was an integration/agent-continuation gap,
+not absence of those core invariants.
+
+Commit `d62ab35d` connects that existing contract to both Codex SessionStart
+and the ready workflow reason through shared guidance. Readiness is bounded
+to current authority and executable scope; newly uncovered paths, components,
+work contexts, and coupled artifacts require prospective inspection/binding,
+and new material outcomes require Discovery/Materiality reevaluation. Changed
+or stale authority stops affected continuation until the current workflow is
+unblocked. The original pre-work baseline is retained. Covered work acquires
+no per-edit ceremony and research/prototype remains read-only or scratch.
+
+Direct Product regressions cover continuation after covered writes, prospective
+expansion, late expansion rejection, changed-authority blocking and timely
+restoration, current Discovery selection, and post-work baseline substitution
+rejection across restart. Existing Inquiry/domain implementation was reused;
+no duplicate permission model or filesystem interceptor was added. The test-only
+clippy correction in `ba4df7e4` was separately committed and focused-tested.
+
+The prior terminal campaign remains failed, diagnostic-only, and non-reusable.
+Its descriptors, workspaces, Runtime Homes, rollouts, and session identities
+were not mutated, retried, collected, finalized, or qualified by this repair.
+The bounded findings above do not constitute a new campaign evaluation.
+Neither infrastructure repairs nor technical-gate passage can retroactively
+qualify it. A wholly fresh campaign is still required to establish naturalistic
+reliability of the repaired continuation guidance.
+
 ## Coverage and failures
 
-Current technical Phase 8 entry evidence is passed/eligible only for
-`0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`. A fresh naturalistic campaign
-has not started. The predecessor partial naturalistic campaign
-failed on material Question discovery and descriptor validity. The latest
-campaign was rejected at environment-evidence intake before qualification.
-Neither result supplies campaign-wide interaction, document, Viewer,
-Repository Intelligence, CLI, or resource qualification. Campaign-level human
-review is `not_provided`.
+Current technical Phase 8 entry is passed/eligible only for
+`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
+The prior terminal naturalistic campaign remains a failure; normalization
+defects, evidence indeterminacy, and the genuine authority-continuation defect
+are separately attributed in Observed results. Older hidden-materiality and
+activation-evidence campaigns remain immutable diagnostics as well.
 
-The predecessor product diagnostic and the latest environment diagnostic must
-remain separately attributed. Neither supplies replacement evidence or supports
-Phase 9 readiness.
+The repaired candidate has no fresh naturalistic campaign, automated Dogfood
+qualification, campaign-wide interaction/document/Viewer/CLI/resource
+qualification, or human-review result. Human review is `not_provided`.
+The technical gate does not supply replacement evidence or Phase 9 readiness.
 
 ## Performance and resource observations
 
@@ -384,20 +418,21 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789` |
+| Sealed production/test candidate | `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
 | New candidate automated Dogfood qualification | `not_run` |
 | New campaign human review | `not_provided` |
 | New candidate replacement qualification | `not_run`; replacement not established |
-| Latest inspected campaign candidate | `bbb64b4274c3f726fbeffae2389089819972b9ff` |
+| Historical activation diagnostic candidate | `bbb64b4274c3f726fbeffae2389089819972b9ff` |
 | Predecessor product diagnostic candidate | `537bd0cadf40bedaf0719b658a860ac369d3faa6` |
-| Latest naturalistic intake | `rejected_operator_environment_invalid` |
+| Historical activation intake | `rejected_operator_environment_invalid` |
 | Predecessor naturalistic Dogfood | `failed_diagnostic_hidden_materiality_discovery` |
 | Complete replacement campaign | `not_run` |
-| Latest historical automated Dogfood qualification | `not_run` |
+| Historical activation automated qualification | `not_run` |
 | Historical campaign-level human review | `not_provided` |
+| Prior terminal continuation campaign | `failed`; diagnostic-only and non-reusable |
 | Historical replacement gate | `failed` |
 | Replacement pass candidate | `false` |
 | Phase 9 readiness | `false` |
@@ -408,7 +443,7 @@ separate private archive for the independent review handoff.
   agent discovery in ordinary user sessions.
 - The current evidence says nothing yet about reliability of strengthened
   material-Question discovery or real-session usability.
-- Both campaigns' descriptors and evidence are immutable diagnostics, not
+- All prior campaigns' descriptors and evidence are immutable diagnostics, not
   inputs to a fresh qualification campaign.
 - Missing activation evidence cannot by itself distinguish a hook execution failure
   from an observation/attribution failure; subsequent support fixes are not a
@@ -420,7 +455,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, run all sixteen genuine sessions,
+`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`, run all sixteen genuine sessions,
 and obtain the automated result first. Add the campaign-level human review when
 evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -450,14 +485,16 @@ validation tooling and do not own product semantics.
 
 Official V11 reported no active accepted Q1–Q14 revisit trigger for this sealed
 technical entry, with all 15 Decision IDs assessed (Q8-A and Q8-B separately).
-The predecessor naturalistic Dogfood produced a materiality-screening diagnostic;
-the latest batch intake produced an environment-evidence diagnostic. Subsequent
-remediation has not established new naturalistic passage. These diagnostics do
-not change the accepted Candidate/Inquiry/Decision model.
+The prior terminal campaign additionally exposed evidence-normalization/evaluator
+defects and a genuine prospective-authority continuation failure. Those findings
+remain distinct from the older materiality and activation-evidence diagnostics.
+Repairs have not established fresh naturalistic passage and do not change the
+accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
-The repaired evaluator now has a successful technical entry. In a later session,
+The repaired evaluator and Codex continuation integration now have a successful
+technical entry for the exact sealed candidate. In a later session,
 prepare one completely fresh opaque-slot helper-owned campaign at the sealed candidate,
 have the control agent research and seal the eight evaluator descriptors, grant
 trust manually, activate all eight repository integrations, run the sixteen
@@ -471,12 +508,12 @@ result.
 ## Artifacts
 
 - Current technical-entry candidate:
-  `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`.
+  `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
 - Current copied sanitized capsule SHA-256:
-  `4f8750b6364266626e24ed604b3071214a105dc26ca843e755a5c26faad29513`.
+  `c27325f66b76d4d4823d5bb7042a8f43cdd54e5a5b7415d52ab7f2d62ae33ec1`.
 - Current independently verified evidence archive:
-  `validation-evidence-0af4a9e2cbcc.tar.gz`, 14785 bytes, 9 members, SHA-256
-  `46c014791740fc950c2381f71168b276d5eb68d7b808fea623c507e4bd5b7938`.
+  `validation-evidence-ba4df7e4afcf.tar.gz`, 14770 bytes, 9 members, SHA-256
+  `61a88e3ede2c35b7f0731fc2c8d1c68e782c0e0d32de92e048e31ce2718d7efb`.
 - The capsule and archive were copied byte-for-byte to an explicit external
   handoff directory before documentation; the conversation identifies that
   directory and the separate documentation-only HEAD.
