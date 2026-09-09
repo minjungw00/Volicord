@@ -4792,7 +4792,8 @@ def work_blocker_behavior_observations(
             learning = learning_deliberation_trace(
                 capture,
                 review_id=(str(review_id) if nonempty_string(review_id) else None),
-                dimension_id=None,
+                dimension_id=next((j.get("choice_id") for j in record.arguments.get("judgments", [])
+                    if j.get("learning_value", {}).get("state") == "deliberation_worthy"), None),
                 first_write_sequence=behavior_frontier,
             )
             behavior_ok = (
@@ -7317,15 +7318,40 @@ def learning_deliberation_trace(
 ) -> tuple[bool, dict[str, Any]]:
     """Validate the maintained Learning Deliberation transition machine."""
 
-    calls = sorted(work.successful_calls("learning_deliberation"), key=lambda call: call.sequence)
-    actions = [call.arguments.get("action") for call in calls]
-    begin_calls = [call for call in calls if call.arguments.get("action") == "begin"]
+    all_calls = sorted(work.successful_calls("learning_deliberation"), key=lambda call: call.sequence)
+    all_begins = [call for call in all_calls if call.arguments.get("action") == "begin"]
+    begin_calls = [call for call in all_begins
+        if call.arguments.get("review_candidate_id") == review_id
+        and call.arguments.get("dimension_id") == dimension_id]
     begin = begin_calls[0] if len(begin_calls) == 1 else None
     deliberation_id = begin.result.get("deliberation_candidate_id") if begin else None
+    # Audit identity linkage across the capture, without folding another
+    # candidate's transitions into the selected state machine.
+    identities_valid = True
+    for call in all_calls:
+        identity = call.result.get("deliberation_candidate_id")
+        origins = [c for c in all_begins if c.result.get("deliberation_candidate_id") == identity]
+        identities_valid &= nonempty_string(identity) and len(origins) == 1
+        if call.arguments.get("action") != "begin":
+            identities_valid &= bool(len(origins) == 1
+                and call.arguments.get("deliberation_candidate_id") == identity
+                and call.arguments.get("project_id") == origins[0].arguments.get("project_id")
+                and origins[0].completion_sequence < call.sequence)
+    calls = [call for call in all_calls if nonempty_string(deliberation_id)
+        and call.result.get("deliberation_candidate_id") == deliberation_id]
+    actions = [call.arguments.get("action") for call in calls]
+    records = [call for call in work.successful_calls("materiality_review")
+        if call.arguments.get("action") == "record"
+        and call.result.get("review_candidate_id") == review_id]
+    record = records[0] if len(records) == 1 else None
     valid = bool(
-        begin
-        and begin.arguments.get("review_candidate_id") == review_id
-        and (dimension_id is None or begin.arguments.get("dimension_id") == dimension_id)
+        identities_valid
+        and begin and record
+        and nonempty_string(review_id) and nonempty_string(dimension_id)
+        and record.completion_sequence < begin.sequence
+        and begin.arguments.get("project_id") == record.arguments.get("project_id")
+        and begin.result.get("materiality_review_candidate_id") == review_id
+        and begin.result.get("dimension_id") == dimension_id
         and nonempty_string(deliberation_id)
         and begin.result.get("state", {}).get("state") == "awaiting_initial_response"
         and not any("recommendation" in key for key in begin.arguments)
@@ -7454,6 +7480,12 @@ def learning_deliberation_trace(
     )
     return valid, {
         "deliberation_candidate_id": deliberation_id,
+        "project_id": record.arguments.get("project_id") if record else None,
+        "goal_context_id": record.result.get("goal_context_id") if record else None,
+        "baseline_analysis_snapshot_id": record.result.get("baseline_analysis_snapshot_id") if record else None,
+        "engineering_choice_discovery_candidate_id": record.arguments.get("engineering_choice_discovery_candidate_id") if record else None,
+        "materiality_review_candidate_id": review_id,
+        "dimension_id": dimension_id,
         "actions": actions,
         "current_host_response_count": current_host_response_count,
         "pre_response_recommendation_absent": bool(begin) and not begin.result.get("rounds")
@@ -7538,6 +7570,7 @@ def learning_deliberation_facts(
 def learning_recall_facts(
     resume: CodexCapture | None,
     behavior_class: Any,
+    learning_basis: dict[str, Any] | None,
 ) -> tuple[bool, dict[str, Any]]:
     if resume is None:
         return False, {}
@@ -7548,16 +7581,25 @@ def learning_recall_facts(
     context = recall.result.get("learning_context")
     health = recall.result.get("learning_context_health", {})
     if behavior_class == "learning_deliberation":
-        matching = [
-            item
-            for item in context or []
-            if item.get("learning_deliberation", {}).get("state", {}).get("state")
-            == "completed"
-            and item.get("learning_deliberation", {}).get("canonical_decision") is False
-            and item.get("learning_deliberation", {}).get("interaction_kind")
-            == "learning_participation"
-        ]
-        valid = isinstance(context, list) and len(matching) == 1
+        basis = learning_basis or {}
+        matching = [item for item in context if isinstance(item, dict)
+            and nonempty_string(basis.get("deliberation_candidate_id"))
+            and item.get("candidate_id") == basis["deliberation_candidate_id"]
+        ] if isinstance(context, list) else []
+        item = matching[0] if len(matching) == 1 else {}
+        valid = bool(
+            len(matching) == 1
+            and nonempty_string(basis.get("project_id"))
+            and recall.arguments.get("project_id") == basis["project_id"]
+            and recall.result.get("project_id") == basis["project_id"]
+            and all(nonempty_string(basis.get(field)) and item.get(field) == basis[field]
+                for field in ("goal_context_id", "baseline_analysis_snapshot_id",
+                    "engineering_choice_discovery_candidate_id", "materiality_review_candidate_id", "dimension_id"))
+            and basis.get("terminal_state") in {"completed", "delegated", "skipped"}
+            and isinstance(item.get("state"), dict)
+            and item["state"].get("state") == basis["terminal_state"]
+            and item.get("canonical_decision") is False
+        )
     else:
         matching = []
         valid = context == []
@@ -8738,7 +8780,9 @@ def real_session_evidence(
     resolve_call = unique_call(resume_capture, "project_resolve")
     recall_call = unique_call(resume_capture, "recall")
     learning_recall_ok, learning_recall_basis = learning_recall_facts(
-        resume_capture, behavior_class
+        resume_capture, behavior_class,
+        learning_basis if materiality_ok and learning_participation_ok
+            and learning_order_ok and learning_non_decision_ok else None,
     )
     resume_checkpoint_calls = (
         resume_capture.successful_calls("checkpoint_record")
@@ -12273,23 +12317,19 @@ def real_session_fixture(
                 "learning_context": (
                     [
                         {
-                            "identity": learning_candidate,
-                            "kind": "learning_deliberation",
-                            "learning_deliberation": {
-                                "interaction_kind": "learning_participation",
-                                "canonical_decision": False,
-                                "deliberation_candidate_id": learning_candidate,
-                                "materiality_review_candidate_id": review_candidate,
-                                "dimension_id": materiality_dimension_id,
-                                "choices": engineering_choices(repository_source)[:1],
-                                "rounds": [{
-                                    "initial_response_source_id": learning_response_source,
-                                    "response": {"kind": "selected", "selections": [{"choice_id": materiality_dimension_id, "alternative_id": "ordered-records"}]},
-                                    "user_rationale": "Deterministic invariant inspection matters more than direct lookup.",
-                                    "agent_feedback": "Ordered records keep deterministic inspection explicit.",
-                                }],
-                                "state": {"state": "completed"},
-                            },
+                            "candidate_id": learning_candidate,
+                            "revision": 4,
+                            "goal_context_id": context,
+                            "baseline_analysis_snapshot_id": baseline_analysis,
+                            "engineering_choice_discovery_candidate_id": discovery_candidate,
+                            "materiality_review_candidate_id": review_candidate,
+                            "dimension_id": materiality_dimension_id,
+                            "state": {"state": "completed"},
+                            "response_source_id": learning_response_source,
+                            "current_implication": "Ordered records keep deterministic inspection explicit.",
+                            "implication_omitted": False,
+                            "canonical_decision": False,
+                            "inspect": {"tool": "candidate_inspect", "candidate_id": learning_candidate},
                         }
                     ]
                     if behavior_class == "learning_deliberation"

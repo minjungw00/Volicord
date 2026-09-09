@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import campaign
 import harness as h
@@ -121,8 +122,145 @@ class ResumeTests(unittest.TestCase):
         self.assertEqual(error.domain, "validation_internal")
 
 
+class LearningContinuityTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.descriptor = h.real_session_fixture("volicord", 1, "0" * 40, self.root,
+            behavior_class="learning_deliberation")
+        captures = self.descriptor["evidence"]["captures"]
+        self.work = h.load_codex_capture(self.root / captures["work"]["file"])
+        self.resume = h.load_codex_capture(self.root / captures["resume"]["file"])
+        self.begin = next(c for c in self.work.calls("learning_deliberation") if c.arguments["action"] == "begin")
+        self.frontier = min(c.sequence for c in h.meaningful_work_path_observations(self.work))
+        self.recall = self.resume.successful_calls("recall")[0]
+        self.item = self.recall.result["learning_context"][0]
+
+    def trace(self, work=None):
+        return h.learning_deliberation_trace(work or self.work,
+            review_id=self.begin.arguments["review_candidate_id"],
+            dimension_id=self.begin.arguments["dimension_id"], first_write_sequence=self.frontier)
+
+    def recalled(self, items, health=None, basis=None, project=None):
+        result = {**self.recall.result, "learning_context": items,
+            "learning_context_health": health or {"state": "available"}}
+        if project is not None:
+            result["project_id"] = project
+        recall = replace(self.recall, result=result)
+        resume = replace(self.resume, tool_calls=tuple(recall if c is self.recall else c for c in self.resume.tool_calls))
+        return h.learning_recall_facts(resume, "learning_deliberation", basis if basis is not None else self.trace()[1])[0]
+
+    def with_other_deliberation(self, same_review=False):
+        calls = []
+        for call in self.work.calls("learning_deliberation"):
+            arguments = {**call.arguments}
+            result = {**call.result, "deliberation_candidate_id": "af" * 16}
+            if arguments["action"] == "begin":
+                arguments.update(review_candidate_id=self.begin.arguments["review_candidate_id"] if same_review else "ae" * 16,
+                    dimension_id="other-dimension")
+                result.update(materiality_review_candidate_id=arguments["review_candidate_id"], dimension_id="other-dimension")
+            else:
+                arguments["deliberation_candidate_id"] = "af" * 16
+            calls.append(replace(call, call_id="other-" + call.call_id, arguments=arguments, result=result))
+        return replace(self.work, tool_calls=(*self.work.tool_calls, *calls))
+
+    def test_relevant_trace_among_multiple_completed_deliberations(self):
+        for same_review in (False, True):
+            work = self.with_other_deliberation(same_review)
+            valid, basis = self.trace(work)
+            self.assertTrue(valid, basis)
+            self.assertEqual(basis["deliberation_candidate_id"], self.item["candidate_id"])
+            self.assertEqual(basis["transition_count"], 4)
+            baseline = work.successful_calls("repository_analyze")[0]
+            self.assertTrue(h.work_blocker_behavior_observations(work, "learning_deliberation", baseline, self.frontier)[0])
+
+    def test_full_evaluator_carries_selected_identity_into_flat_recall(self):
+        work = self.with_other_deliberation()
+        historical = {**self.item, "candidate_id": "af" * 16, "materiality_review_candidate_id": "ae" * 16}
+        for items, expected in (([historical, self.item], "passed"), ([historical], "failed")):
+            recall = replace(self.recall, result={**self.recall.result, "learning_context": items})
+            resume = replace(self.resume, tool_calls=tuple(recall if c is self.recall else c for c in self.resume.tool_calls))
+            loader = h.load_codex_capture
+            work_name = self.descriptor["evidence"]["captures"]["work"]["file"]
+            resume_name = self.descriptor["evidence"]["captures"]["resume"]["file"]
+            with patch.object(h, "load_codex_capture", side_effect=lambda path:
+                work if path.name == Path(work_name).name else resume if path.name == Path(resume_name).name else loader(path)):
+                result = h.real_session_evidence(self.descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+            self.assertEqual(result["checks"]["learning_deliberation_order"], "passed")
+            self.assertEqual(result["checks"]["learning_recall_continuity"], expected)
+
+    def test_duplicate_relevant_begins_and_candidate_identity_are_ambiguous(self):
+        for candidate_id in (self.item["candidate_id"], "af" * 16):
+            duplicate = replace(self.begin, call_id="duplicate-begin",
+                result={**self.begin.result, "deliberation_candidate_id": candidate_id})
+            self.assertFalse(self.trace(replace(self.work, tool_calls=(*self.work.tool_calls, duplicate)))[0])
+        other = self.with_other_deliberation()
+        self.assertFalse(self.trace(replace(other, tool_calls=tuple(c for c in other.tool_calls if c is not self.begin)))[0])
+
+    def test_orphan_cross_candidate_and_wrong_project_transitions_fail(self):
+        work = self.with_other_deliberation()
+        response = next(c for c in work.calls("learning_deliberation") if c.arguments["action"] == "respond_select")
+        for arguments, result in (
+            ({**response.arguments, "deliberation_candidate_id": "af" * 16}, response.result),
+            (response.arguments, {**response.result, "deliberation_candidate_id": "af" * 16}),
+            ({**response.arguments, "deliberation_candidate_id": "ff" * 16}, {**response.result, "deliberation_candidate_id": "ff" * 16}),
+            ({**response.arguments, "project_id": "ff" * 16}, response.result),
+        ):
+            changed = replace(response, arguments=arguments, result=result)
+            self.assertFalse(self.trace(replace(work, tool_calls=tuple(changed if c is response else c for c in work.tool_calls)))[0])
+        orphan = replace(response, call_id="orphan", arguments={**response.arguments, "deliberation_candidate_id": "ff" * 16},
+            result={**response.result, "deliberation_candidate_id": "ff" * 16})
+        self.assertFalse(self.trace(replace(work, tool_calls=(*work.tool_calls, orphan)))[0])
+
+    def test_selected_state_chronology_and_non_decision_invariants(self):
+        complete = next(c for c in self.work.calls("learning_deliberation") if c.arguments["action"] == "complete")
+        response = next(c for c in self.work.calls("learning_deliberation") if c.arguments["action"] == "respond_select")
+        for original, changed in (
+            (complete, replace(complete, completion_sequence=self.frontier + 1)),
+            (complete, replace(complete, result={**complete.result, "canonical_decision": True})),
+            (complete, replace(complete, result={**complete.result, "state": {"state": "feedback_provided"}})),
+            (response, replace(response, arguments={**response.arguments, "user_turn": "Uncaptured answer"})),
+            (self.begin, replace(self.begin, result={**self.begin.result, "recommendation": "Choose now"})),
+        ):
+            self.assertFalse(self.trace(replace(self.work, tool_calls=tuple(changed if c is original else c for c in self.work.tool_calls)))[0])
+
+    def test_flat_recall_selects_exact_current_candidate_among_history(self):
+        historical = {**self.item, "candidate_id": "af" * 16, "materiality_review_candidate_id": "ae" * 16,
+            "baseline_analysis_snapshot_id": "bf" * 32}
+        self.assertTrue(self.recalled([historical, self.item]))
+        self.assertTrue(self.recalled([self.item, historical], {"state": "available", "omitted_count": 8}))
+        self.assertFalse(self.recalled([historical]))
+        self.assertFalse(self.recalled([self.item, self.item]))
+        self.assertFalse(self.recalled([self.item], basis={}))
+        self.assertFalse(self.recalled([self.item], project="ff" * 16))
+
+    def test_recall_rejects_wrong_basis_or_nonterminal_canonical_item(self):
+        for field in ("candidate_id", "goal_context_id", "baseline_analysis_snapshot_id",
+            "engineering_choice_discovery_candidate_id", "materiality_review_candidate_id", "dimension_id"):
+            self.assertFalse(self.recalled([{**self.item, field: "unrelated"}]), field)
+        for field, value in (("canonical_decision", True), ("state", {"state": "awaiting_agent_feedback"}),
+            ("state", {"state": "skipped"}), ("state", None)):
+            self.assertFalse(self.recalled([{**self.item, field: value}]))
+        self.assertFalse(self.recalled([{"learning_deliberation": self.item}]))
+
+    def test_required_learning_evidence_cannot_be_withheld(self):
+        for health in ({"state": "unavailable"}, {"state": "degraded", "withheld_count": 1}):
+            for items in ([], [self.item]):
+                self.assertFalse(self.recalled(items, health))
+        self.assertFalse(self.recalled([], {"state": "available", "omitted_count": 1}))
+
+    def test_non_deliberation_controls_keep_empty_context_precision(self):
+        for behavior in ("learning_routine_control", "research_or_no_question"):
+            self.assertFalse(h.learning_recall_facts(self.resume, behavior, None)[0])
+            empty = replace(self.recall, result={**self.recall.result, "learning_context": []})
+            resume = replace(self.resume, tool_calls=tuple(empty if c is self.recall else c for c in self.resume.tool_calls))
+            self.assertTrue(h.learning_recall_facts(resume, behavior, None)[0])
+
+
 def check_resume_regressions():
-    result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(ResumeTests))
+    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case)
+        for case in (ResumeTests, LearningContinuityTests)))
     if not result.wasSuccessful():
         raise AssertionError("resume evidence regressions failed")
 
