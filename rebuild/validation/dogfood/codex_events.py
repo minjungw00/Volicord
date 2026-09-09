@@ -462,6 +462,29 @@ class EvidenceTransportIssue:
     operation: str | None
     reason: str
 
+    def __post_init__(self) -> None:
+        if not supported_transport_issue(vars(self)):
+            raise EvidenceError("unsupported evidence transport issue")
+
+
+def supported_transport_issue(issue: Any) -> bool:
+    """The single producer/consumer contract for supported transport diagnostics."""
+    return (
+        isinstance(issue, dict)
+        and set(issue) == {"sequence", "turn_id", "call_id", "server", "operation", "reason"}
+        and type(issue["sequence"]) is int and issue["sequence"] >= 0
+        and nonempty(issue["turn_id"]) and nonempty(issue["call_id"])
+        and (
+            issue["server"] == "volicord"
+            and issue["operation"] in VOLICORD_OPERATIONS
+            and issue["reason"] in {"malformed_mcp_completion", "unsupported_mcp_completion_status",
+                                    "mcp_completion_status_mismatch"}
+            or issue["server"] == "codex" and issue["operation"] is None
+            and issue["reason"] in {"malformed_file_change", "malformed_exec_completion",
+                                    "command_completion_indeterminate"}
+        )
+    )
+
 
 @dataclass(frozen=True)
 class PathObservation:
@@ -500,6 +523,7 @@ class ParsedCustomCall:
     tool_name: str
     arguments: Any
     output_mode: str
+    result_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -511,9 +535,10 @@ class ParsedMcpWrapper:
 class JsLiteralParser:
     """Parse only JSON-like JavaScript literals used by current dogfood calls."""
 
-    def __init__(self, source: str):
+    def __init__(self, source: str, bindings: dict[str, str] | None = None):
         self.source = source
         self.offset = 0
+        self.bindings = bindings or {}
 
     def parse(self) -> Any:
         value = self.value()
@@ -537,6 +562,10 @@ class JsLiteralParser:
             return self.object()
         if character == "[":
             return self.array()
+        identifier = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", self.source[self.offset:])
+        if identifier and identifier.group() in self.bindings:
+            self.offset += len(identifier.group())
+            return self.bindings[identifier.group()]
         for literal, value in (("true", True), ("false", False), ("null", None)):
             if self.source.startswith(literal, self.offset):
                 self.offset += len(literal)
@@ -634,7 +663,7 @@ ASSIGNED_CALL = re.compile(
     re.DOTALL,
 )
 PROMISE_ASSIGNED_CALL = re.compile(
-    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+"
+    r"\A\s*const\s+(?P<variable>[A-Za-z_$][A-Za-z0-9_$]*|\[[A-Za-z0-9_$,\s]+\])\s*=\s*await\s+"
     r"Promise\.all\s*\(\s*\[(?P<calls>.*)\]\s*\)\s*;\s*(?P<forward>.*)\s*\Z",
     re.DOTALL,
 )
@@ -655,7 +684,7 @@ BOUND_PATCH = re.compile(
 )
 
 
-def parse_static_exec_command_list(value: str) -> tuple[dict[str, Any], ...] | None:
+def parse_static_exec_command_list(value: str, bindings: dict[str, str] | None = None) -> tuple[dict[str, Any], ...] | None:
     """Parse a bounded comma-separated list of literal exec_command calls."""
     offset = 0
     result: list[dict[str, Any]] = []
@@ -689,7 +718,7 @@ def parse_static_exec_command_list(value: str) -> tuple[dict[str, Any], ...] | N
         if cursor >= len(value) or quote:
             return None
         try:
-            arguments = JsLiteralParser(value[argument_start:cursor]).parse()
+            arguments = JsLiteralParser(value[argument_start:cursor], bindings).parse()
         except EvidenceError:
             return None
         if not isinstance(arguments, dict):
@@ -743,6 +772,22 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     """Recognize one bounded current exec-cell call without evaluating JavaScript."""
     if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
         return None
+    # Only immutable literal strings; no substitution inside strings or captured JS execution.
+    bindings: dict[str, str] = {}
+    declaration = re.compile(r'\s*const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*("(?:\\.|[^"\\])*")\s*;')
+    while match := declaration.match(value):
+        if match[1] in bindings or match[1] in {"tools", "text", "JSON", "Promise"} or len(bindings) >= 16:
+            return None
+        try:
+            bindings[match[1]] = JsLiteralParser(match[2]).parse()
+        except EvidenceError:
+            return None
+        value = value[match.end():]
+    if bindings and not re.search(r"tools\.exec_command\s*\(", value):
+        # Preserve the existing literal-bound patch grammar below.
+        if len(bindings) == 1:
+            name, literal = next(iter(bindings.items()))
+            value = f"const {name}={json.dumps(literal)};" + value
     bound_patch = BOUND_PATCH.fullmatch(value)
     if bound_patch is not None:
         try:
@@ -760,9 +805,43 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
 
     promise_match = PROMISE_ASSIGNED_CALL.fullmatch(value)
     if promise_match is not None:
-        arguments = parse_static_exec_command_list(promise_match.group("calls"))
+        arguments = parse_static_exec_command_list(promise_match.group("calls"), bindings)
+        variable = promise_match.group("variable")
+        forward = promise_match.group("forward").strip()
+        if variable.startswith("["):
+            names = tuple(name.strip() for name in variable[1:-1].split(","))
+            if (arguments is None or len(names) != len(arguments) or len(set(names)) != len(names)
+                or any(not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", name)
+                       or name in bindings or name in {"tools", "text", "JSON", "Promise"} for name in names)):
+                return None
+            named = re.fullmatch(r"text\s*\(\s*JSON\.stringify\s*\(\s*\{(.*?)\}\s*\)\s*\)\s*;", forward, re.DOTALL)
+            if named:
+                fields = [field.strip().split(":") for field in named[1].split(",")]
+                mapping = {field[0].strip(): field[-1].strip() for field in fields if len(field) in {1, 2}}
+                if (len(mapping) == len(names) and set(mapping.values()) == set(names)
+                    and len(fields) == len(names)
+                    and all(re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", key) for key in mapping)):
+                    keys = tuple(next(key for key, name in mapping.items() if name == n) for n in names)
+                    return ParsedCustomCall("exec_command", arguments, "named_result", keys)
+            labeled = re.findall(
+                r'\s*text\s*\(\s*("(?:\\.|[^"\\])*")\s*\+\s*JSON\.stringify\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\)\s*\)\s*;',
+                forward,
+            )
+            if labeled:
+                pattern = r'\s*text\s*\(\s*"(?:\\.|[^"\\])*"\s*\+\s*JSON\.stringify\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)\s*\)\s*;'
+                if (re.fullmatch(f"(?:{pattern})+", forward)
+                    and tuple(name for _, name in labeled) == names):
+                    return ParsedCustomCall("exec_command", arguments, "labeled_results",
+                        tuple(JsLiteralParser(prefix).parse() for prefix, _ in labeled))
+            # Bounded output-only concatenation has no provable numeric completion.
+            literal = r'"(?:\\.|[^"\\])*"'
+            reference = "(?:" + "|".join(re.escape(n) for n in names) + r")\.output"
+            atom = f"(?:{literal}|{reference})"
+            if re.fullmatch(rf"(?:\s*text\s*\(\s*{atom}(?:\s*\+\s*{atom})*\s*\)\s*;)+\s*", forward):
+                return ParsedCustomCall("exec_command", arguments, "indeterminate")
+            return None
         mode = indexed_promise_output_mode(
-            promise_match.group("forward").strip(), promise_match.group("variable")
+            forward, variable
         )
         if arguments is None or mode is None:
             return None
@@ -772,6 +851,8 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     if match is None:
         return None
     variable = re.escape(match.group("variable"))
+    if match.group("variable") in bindings or match.group("variable") in {"tools", "text", "JSON", "Promise"}:
+        return None
     tool_name = match.group("tool")
     if tool_name not in {"exec_command", "write_stdin"}:
         return None
@@ -811,7 +892,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
             correlated_fields = set(parsed_fields)
     template_exit_forward = re.fullmatch(
         rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
-        rf"text\s*\(\s*`exit=\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
+        rf"text\s*\(\s*`(?:\\n)?(?:exit=|exit:|EXIT:|EXIT )\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
         forward,
         re.DOTALL,
     )
@@ -828,7 +909,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     ):
         return None
     try:
-        arguments = JsLiteralParser(match.group("argument")).parse()
+        arguments = JsLiteralParser(match.group("argument"), bindings).parse()
     except EvidenceError:
         return None
     if not isinstance(arguments, dict):
@@ -1116,7 +1197,7 @@ def custom_template_command_result(value: Any) -> tuple[str, int] | None:
     if parts is None or len(parts) != 3:
         return None
     header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
-    status = re.fullmatch(r"exit=([0-9]+)", parts[2])
+    status = re.fullmatch(r"\n?(?:exit=|exit:|EXIT:|EXIT )([0-9]+)", parts[2])
     if header is None or header.group("body") or status is None:
         return None
     exit_code = int(status.group(1))
@@ -1642,8 +1723,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     normalized_changes = normalized_file_changes(item.get("changes"), cwd)
                     if (
                         normalized_changes is None
-                        or not isinstance(item.get("stdout"), str)
-                        or not isinstance(item.get("stderr"), str)
+                        or not isinstance(item.get("stdout", ""), str)
+                        or not isinstance(item.get("stderr", ""), str)
                     ):
                         evidence_transport_issues.append(
                             EvidenceTransportIssue(
@@ -1745,7 +1826,9 @@ def load_codex_capture(path: Path) -> CodexCapture:
     ):
         completion = completions.get(call_id)
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
-            continue
+            if parsed.tool_name != "exec_command":
+                continue
+            completion = (sequence, turn_id, None)
         completion_sequence, _, raw_output = completion
         if parsed.tool_name == "write_stdin":
             result = custom_output_object(raw_output)
@@ -1805,15 +1888,45 @@ def load_codex_capture(path: Path) -> CodexCapture:
             )
             normalized_results: list[tuple[str, int | None]] | None = None
             execution_session_id: int | None = None
-            if parsed.output_mode.startswith("indexed_"):
+            malformed = False
+            if parsed.output_mode in {"named_result", "labeled_results"}:
+                values = []
+                if parsed.output_mode == "named_result":
+                    result = custom_output_object(raw_output)
+                    values = [result.get(key) for key in parsed.result_keys] if isinstance(result, dict) else []
+                else:
+                    parts = custom_output_parts(raw_output)
+                    if (parts and len(parts) == len(arguments) + 1
+                        and CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
+                        and not CUSTOM_OUTPUT_HEADER.fullmatch(parts[0]).group("body")):
+                        for prefix, part in zip(parsed.result_keys, parts[1:], strict=True):
+                            try:
+                                values.append(json.loads(part[len(prefix):]) if part.startswith(prefix) else None)
+                            except json.JSONDecodeError:
+                                values.append(None)
+                if len(values) == len(arguments) and all(isinstance(v, dict) for v in values):
+                    normalized_results = []
+                    for value in values:
+                        output, code = value.get("output"), value.get("exit_code")
+                        if not isinstance(output, str) or (code is not None and
+                            (type(code) is not int or not 0 <= code <= 2_147_483_647)):
+                            malformed = True
+                            normalized_results.append(("", None))
+                        elif value.get("session_id") is not None:
+                            normalized_results.append((output, None))
+                        else:
+                            normalized_results.append((output, code))
+                else:
+                    malformed = raw_output is not None
+            elif parsed.output_mode == "indeterminate":
+                pass
+            elif parsed.output_mode.startswith("indexed_"):
                 indexed = custom_indexed_command_results(
                     raw_output, parsed.output_mode, len(arguments)
                 )
                 normalized_results = indexed
             else:
                 body = custom_output_body(raw_output)
-                if body is None:
-                    continue
                 correlated = (
                     custom_correlated_command_result(
                         raw_output,
@@ -1829,6 +1942,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     if parsed.output_mode == "result"
                     else None
                 )
+                if parsed.output_mode == "result" and result is None and raw_output is not None:
+                    malformed = True
                 raw_session_id = (
                     result.get("session_id") if isinstance(result, dict) else None
                 )
@@ -1861,7 +1976,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
                     "correlated_session",
                     "template_exit",
                 } and correlated is None:
-                    continue
+                    exit_code = None
                 if not isinstance(output, str) or (
                     exit_code is not None
                     and (
@@ -1870,10 +1985,11 @@ def load_codex_capture(path: Path) -> CodexCapture:
                         or not 0 <= exit_code <= 2_147_483_647
                     )
                 ):
-                    continue
+                    malformed = raw_output is not None
+                    output, exit_code = "", None
                 normalized_results = [(output, exit_code)]
             if normalized_results is None or len(normalized_results) != len(arguments):
-                continue
+                normalized_results = [("", None) for _ in arguments]
             if execution_session_id is not None:
                 if len(arguments) != 1 or normalized_results[0][1] is not None:
                     raise EvidenceError("Codex command launch identity is malformed")
@@ -1906,6 +2022,12 @@ def load_codex_capture(path: Path) -> CodexCapture:
                         "completed" if isinstance(exit_code, int) else "indeterminate",
                     )
                 )
+
+            if any(code is None for _, code in normalized_results):
+                evidence_transport_issues.append(EvidenceTransportIssue(
+                    sequence, turn_id, call_id, "codex", None,
+                    "malformed_exec_completion" if malformed else "command_completion_indeterminate",
+                ))
 
     for session_id_value, pending in pending_commands.items():
         commands.append(

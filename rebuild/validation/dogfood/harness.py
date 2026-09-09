@@ -43,6 +43,7 @@ from codex_events import (
     load_canonical_bundle,
     load_codex_capture,
     parse_custom_call,
+    supported_transport_issue,
     parse_mcp_wrapper,
     recalled_checkpoint,
     recalled_decision_ids,
@@ -5100,20 +5101,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         | set(evidence_transport.get("affected_checks", []))
         != {check for check in failed_checks if check != SETUP_ACTIVATION_CHECK}
         or any(
-            not isinstance(issue, dict)
-            or set(issue)
-            != {"sequence", "turn_id", "call_id", "server", "operation", "reason"}
-            or not isinstance(issue.get("sequence"), int)
-            or not nonempty_string(issue.get("turn_id"))
-            or not nonempty_string(issue.get("call_id"))
-            or issue.get("server") != "volicord"
-            or issue.get("operation") not in VOLICORD_OPERATIONS
-            or issue.get("reason")
-            not in {
-                "malformed_mcp_completion",
-                "unsupported_mcp_completion_status",
-                "mcp_completion_status_mismatch",
-            }
+            not supported_transport_issue(issue)
             for issue in evidence_transport.get("issues", [])
         )
         or (
@@ -14212,7 +14200,8 @@ def self_test() -> int:
     small_recovery = load_codex_capture(HERE / "fixtures/recovered-work-turns.jsonl")
     assert small_recovery.turn_lifecycle.state == "completed_after_interruption"
     assert small_recovery.turn_lifecycle.turns[-1].turn_id == "turn-C"
-    assert not small_recovery.commands, "dangling command became verification evidence"
+    assert small_recovery.commands and all(c.evidence_state == "indeterminate" and c.exit_code is None
+        for c in small_recovery.commands), "dangling command became verification evidence"
     recovered = recovery_capture(recovery_events)
     assert len(recovered.completed_task_sequences) < len(recovered.task_sequences), "old aggregate decision must reject"
     assert recovered.turn_lifecycle.state == "completed_after_interruption"
