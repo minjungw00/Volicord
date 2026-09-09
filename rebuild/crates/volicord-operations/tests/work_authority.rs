@@ -2331,7 +2331,7 @@ fn continuation_rechecks_changed_authority_and_retains_pre_work_baseline(
                     source_operation: "attempt post-work replacement authority".into(),
                     summary: "Attempt to replace the retained pre-work chain".into(),
                     material_boundary_review: complete_material_boundary_review(
-                        &[choice.clone()],
+                        std::slice::from_ref(&choice),
                         later.repository_source.identity(),
                     ),
                     interaction_review: outside_interactions(later.repository_source.identity()),
