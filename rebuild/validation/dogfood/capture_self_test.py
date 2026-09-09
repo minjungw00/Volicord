@@ -90,14 +90,14 @@ class CurrentExecutionTests(unittest.TestCase):
             path.write_text("".join(json.dumps(e) + "\n" for e in [*events[:3], *body]))
             return load_codex_capture(path)
 
-    def command(self, source, parts):
+    def command(self, source, parts, *, raw_output=None):
         metadata = {"turn_id": "sanitized-execution-turn"}
         return self.capture([
             {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
              "status": "completed", "call_id": "test", "input": source,
              "internal_chat_message_metadata_passthrough": metadata}},
             {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "test",
-             "output": [{"type": "input_text", "text": p} for p in
+             "output": raw_output if raw_output is not None else [{"type": "input_text", "text": p} for p in
                         ["Script completed\nWall time 0.1 seconds\nOutput:\n", *parts]],
              "internal_chat_message_metadata_passthrough": metadata}},
         ])
@@ -162,6 +162,19 @@ class CurrentExecutionTests(unittest.TestCase):
             capture = self.command('const r=await tools.exec_command({cmd:"rg --files"});text(r);', [value])
             self.assertIsNone(capture.commands[0].exit_code)
             self.assertEqual(capture.evidence_transport_issues[0].reason, "malformed_exec_completion")
+
+    def test_yielded_and_failed_cells_are_not_malformed_command_results(self):
+        source = 'const r=await tools.exec_command({cmd:"rg --files"});text(r);'
+        for status in ("running with cell ID 40", "failed"):
+            for as_parts in (False, True):
+                output = f"Script {status}\nWall time 31.0 seconds\nOutput:\nexit=0"
+                if as_parts:
+                    output = [{"type": "input_text", "text": output}]
+                capture = self.command(source, [], raw_output=output)
+                self.assertEqual(len(capture.commands), 1)
+                self.assertIsNone(capture.commands[0].exit_code)
+                self.assertEqual(capture.commands[0].evidence_state, "indeterminate")
+                self.assertEqual(capture.evidence_transport_issues[0].reason, "command_completion_indeterminate")
 
     def test_dynamic_calls_remain_unsupported(self):
         for source in ('const wd=load("wd");const r=await tools.exec_command({cmd:"rg --files",workdir:wd});text(r);',

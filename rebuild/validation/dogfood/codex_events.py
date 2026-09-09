@@ -1141,6 +1141,17 @@ CUSTOM_OUTPUT_HEADER = re.compile(
 )
 
 
+def custom_cell_without_command_completion(value: Any) -> bool:
+    """A yielded or failed exec cell does not prove a command's exit status."""
+    parts = custom_output_parts(value)
+    body = value if isinstance(value, str) else "".join(parts) if parts else ""
+    return re.fullmatch(
+        r"Script (?:running with cell ID [A-Za-z0-9_-]{1,128}|failed)\n"
+        r"Wall time [0-9]+(?:\.[0-9]+)? seconds\nOutput:\n.*",
+        body, re.DOTALL,
+    ) is not None
+
+
 def custom_output_body(value: Any) -> str | None:
     parts = custom_output_parts(value)
     if parts is None:
@@ -1830,6 +1841,10 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 continue
             completion = (sequence, turn_id, None)
         completion_sequence, _, raw_output = completion
+        if parsed.tool_name == "exec_command" and custom_cell_without_command_completion(raw_output):
+            # Keep the observed static command. Cell lifecycle and command
+            # completion are independent; no later unrelated exit can certify it.
+            raw_output = None
         if parsed.tool_name == "write_stdin":
             result = custom_output_object(raw_output)
             session_id_value = (
