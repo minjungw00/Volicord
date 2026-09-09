@@ -1,14 +1,14 @@
 # Phase 8 technical-entry candidate authority
 
-- Sealed Product/test candidate: `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`
+- Sealed Product/test candidate: `70ee9119e0357a2deed49291a0e5cfdb04fb014f`
 - Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
 - Admission: `eligible`; exact final: `succeeded`, four commands, zero failures
 - Required production-provider qualification: `passed`; `openai-codex`, `gpt-5.6-sol`
 - Official V11: `passed`, 54 of 54 required steps; all three authenticated targets passed
 - Credential-retention audit: `passed`, all counts zero
 - Sanitized evidence archive: creation succeeded; independent verification `passed`
-- Capsule SHA-256: `c27325f66b76d4d4823d5bb7042a8f43cdd54e5a5b7415d52ab7f2d62ae33ec1`
-- Archive SHA-256: `61a88e3ede2c35b7f0731fc2c8d1c68e782c0e0d32de92e048e31ce2718d7efb`
+- Capsule SHA-256: `7b13c2faa2f154192d336b20711932a6c4044601f9e738fe51ab81d6014d5dd7`
+- Archive SHA-256: `ecd6d545b7103d6c5bf7e2654d11e8e07f8596d00e092144cd676527b39de6de`
 - Fresh naturalistic Dogfood: `not_run`; automated qualification: `not_run`
 - Human review: `not_provided`; replacement passage: `not_established`
 - `replacement_pass_candidate = false`; `phase_9_ready = false`
@@ -16,17 +16,20 @@
 ## Maintained conclusion
 
 The copied capsule and independently verified archive establish technical entry
-for exactly `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`. Exact final, required
+for exactly `70ee9119e0357a2deed49291a0e5cfdb04fb014f`. Exact final, required
 live provider qualification, and official V11 each ran once for that candidate
 in the same maintained gate.
 Resource measurements passed and no accepted-Decision revisit trigger was
 reported. The later documentation-only conclusion HEAD is distinct from the
 sealed candidate and receives only the maintained documentation checks.
 
-The preceding Product/test candidate `d62ab35db7609dd5aca4cccf47542a2227359521`
+The historical Product/test candidate `d62ab35db7609dd5aca4cccf47542a2227359521`
 failed its exact-final aggregate on one test-only clippy finding. That failure
 remains a failure; no provider/V11 qualification ran for it. The atomic
-focused-tested correction created the newly re-admitted candidate above.
+focused-tested correction created historical sealed candidate
+`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
+That gate did not cover the remaining historical/learning evaluator mismatches.
+The candidate above passed its own maintained gate after those repairs.
 Historical successful gates, including `6031641c46cf014a754442dcee3137caf265882e`
 and `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, do not qualify later HEADs.
 
@@ -46,6 +49,21 @@ Post-work analysis cannot replace retained pre-work authority. Product
 regressions prove positive continuation and negative late/stale/post-work cases
 without adding a duplicate authority model or per-edit ceremony. The core
 Inquiry/domain invariants already existed and were not reimplemented.
+
+The prior evaluator-remediation conclusion was premature. The current candidate
+adds historical Question resolution against each branch's own prospective baseline
+(`8776b115`), rejection of incomplete historical candidate-only branches (`70ee9119`),
+and selection of the relevant Learning Deliberation plus exact flat Recall identity
+among historical/current items (`161db9a7`). Current authority remains independently
+bound to its own Review, baseline, executable scope, and first-write chronology.
+Learning remains non-canonical; ambiguous begins, orphan/cross-candidate transitions,
+missing current Recall evidence, and degraded required context remain failures.
+
+All 35 maintained frontier and 19 resume/learning regressions, complete harness,
+and campaign self-tests passed. Read-only diagnostic evaluation removed the bounded
+historical/learning false failures and retained the genuine late/uncovered/stale
+authority failure. Inspected campaign evidence hashes were unchanged; no prior
+campaign was recollected, repaired, finalized, or qualified.
 
 Fresh naturalistic Dogfood is not yet run, human review is not provided, and
 replacement qualification remains pending. `phase_9_ready` stays false until

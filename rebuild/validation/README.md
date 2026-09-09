@@ -536,19 +536,28 @@ This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
 
 The maintained Phase 8 candidate-authority summary is
-`phase-8-summary.md`; replacement passage is not established and
-`phase_9_ready = false`. Candidate
-`6031641c46cf014a754442dcee3137caf265882e` is historical sealed evidence:
-admission was `eligible`, exact final succeeded with zero failures, the
-separately authorized live production-provider qualification passed for
-`openai-codex` / `gpt-5.6-sol`, all 54 required V11 steps passed, the
-credential-retention audit passed with zero recorded findings or scan errors,
-no active accepted-Decision revisit trigger was reported, and the sanitized
-evidence archive was independently verified. `phase_8_ready = true` and the
-corresponding technical eligibility apply only to that exact candidate HEAD.
-No later HEAD inherits either result; only its own successful maintained gate
-and verified capsule/evidence archive can make it a sealed candidate.
-Naturalistic Dogfood for the historical candidate remains `not_run`.
+`phase-8-summary.md`. The current sealed Product/test candidate is
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f`: admission, exact final, separately
+authorized production-provider qualification (`openai-codex` / `gpt-5.6-sol`), all 54 official V11 steps,
+credential audit, and evidence archive creation/independent verification passed.
+`phase_8_ready = true` applies only to that exact HEAD; the later documentation-only
+conclusion does not inherit qualification. Historical sealed candidates, including
+`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` and
+`6031641c46cf014a754442dcee3137caf265882e`, remain distinct.
+
+This candidate completes the bounded evaluator remediation for historical Question
+resolution across baseline refresh, relevant Learning Deliberation identity among
+multiple session deliberations, and exact current-candidate matching in flat Recall
+learning context. Incomplete historical branches, ambiguous or mixed learning
+identities, unavailable required Recall evidence, and late/uncovered/stale work
+authority remain rejected. The prior remediation conclusion did not cover these
+remaining mismatches. Product contracts are unchanged by these evaluator fixes.
+
+No fresh naturalistic campaign has run for the new candidate. The prior terminal
+campaign remains failed, diagnostic-only, and non-reusable; read-only diagnostics
+are not campaign intake or qualification. Human review is `not_provided`, replacement
+qualification remains pending, `replacement_pass_candidate = false`, and
+`phase_9_ready = false`.
 
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden

@@ -3,7 +3,7 @@
 ## Status
 
 Technical entry passed for exact sealed Product/test candidate
-`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` (2026-09-09). The copied sanitized
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f` (2026-09-09). The copied sanitized
 gate capsule records
 `phase_8_ready = true`; exact final, required provider qualification, official
 V11, archive creation, and independent verification all succeeded.
@@ -155,7 +155,7 @@ Decision path.
 ## Commands and configuration
 
 In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
+actual `HEAD` is `70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
 Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
 documentation-only conclusion HEAD:
 
@@ -285,7 +285,7 @@ documents and does not share their adoption lifecycle.
 ## Observed results
 
 The new copied capsule and independently verified archive establish technical
-entry for `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`:
+entry for `70ee9119e0357a2deed49291a0e5cfdb04fb014f`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -366,6 +366,36 @@ rejection across restart. Existing Inquiry/domain implementation was reused;
 no duplicate permission model or filesystem interceptor was added. The test-only
 clippy correction in `ba4df7e4` was separately committed and focused-tested.
 
+The prior report's implication that evaluator remediation was complete was
+premature. Three remaining mismatches were fixed without changing Product,
+Inquiry, Host, or Recall contracts:
+
+- `8776b115` validates each historical material Question against its own
+  prospective Review and repository baseline. A resolved earlier-baseline branch
+  neither supplies current authority nor invalidates independently valid authority
+  after refresh. `70ee9119` also rejects an unpromoted historical Question that
+  the candidate-only early return could otherwise treat as resolved.
+- `161db9a7` selects the Learning Deliberation for the evaluated Review and
+  dimension, requires one unambiguous begin identity, and keeps its transitions
+  separate from other legitimate deliberations. Orphan and cross-candidate
+  transitions, invalid states, late terminal transitions, and canonical learning
+  Decisions remain rejected.
+- The same learning repair passes the validated work-side candidate and
+  Project/Goal/baseline/Discovery/Review/dimension basis to Recall evaluation.
+  It matches the actual flat `learning_context` item and its terminal state,
+  requires `canonical_decision = false` and available learning-context health,
+  and permits unrelated historical items without letting them satisfy continuity.
+  Non-deliberation controls retain their empty-learning-context precision.
+
+Maintained validation passed 35 frontier regressions, 19 resume/learning
+regressions, the complete Dogfood harness self-test, and campaign self-tests.
+A supplementary read-only diagnostic removed the historical-baseline and
+multiple-deliberation/Recall false failures while preserving the genuine
+late/uncovered/superseded authority failure. Hashes of the inspected raw and
+mapped captures, descriptors, campaign metadata, inventory, and blocker records
+were unchanged. Remaining transport/investigation indeterminacy stayed explicit;
+this diagnostic did not run campaign intake, finalization, or qualification.
+
 The prior terminal campaign remains failed, diagnostic-only, and non-reusable.
 Its descriptors, workspaces, Runtime Homes, rollouts, and session identities
 were not mutated, retried, collected, finalized, or qualified by this repair.
@@ -377,11 +407,12 @@ reliability of the repaired continuation guidance.
 ## Coverage and failures
 
 Current technical Phase 8 entry is passed/eligible only for
-`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
 The prior terminal naturalistic campaign remains a failure; normalization
-defects, evidence indeterminacy, and the genuine authority-continuation defect
-are separately attributed in Observed results. Older hidden-materiality and
-activation-evidence campaigns remain immutable diagnostics as well.
+defects, the completed bounded historical/learning evaluator repairs, evidence
+indeterminacy, and the genuine authority-continuation defect are separately
+attributed in Observed results. Older hidden-materiality and activation-evidence
+campaigns remain immutable diagnostics as well.
 
 The repaired candidate has no fresh naturalistic campaign, automated Dogfood
 qualification, campaign-wide interaction/document/Viewer/CLI/resource
@@ -418,7 +449,7 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` |
+| Sealed production/test candidate | `70ee9119e0357a2deed49291a0e5cfdb04fb014f` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
@@ -455,7 +486,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`, run all sixteen genuine sessions,
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f`, run all sixteen genuine sessions,
 and obtain the automated result first. Add the campaign-level human review when
 evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -508,15 +539,15 @@ result.
 ## Artifacts
 
 - Current technical-entry candidate:
-  `ba4df7e4afcf6b44c30bf938aac41e2acc121c5d`.
+  `70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
 - Current copied sanitized capsule SHA-256:
-  `c27325f66b76d4d4823d5bb7042a8f43cdd54e5a5b7415d52ab7f2d62ae33ec1`.
+  `7b13c2faa2f154192d336b20711932a6c4044601f9e738fe51ab81d6014d5dd7`.
 - Current independently verified evidence archive:
-  `validation-evidence-ba4df7e4afcf.tar.gz`, 14770 bytes, 9 members, SHA-256
-  `61a88e3ede2c35b7f0731fc2c8d1c68e782c0e0d32de92e048e31ce2718d7efb`.
-- The capsule and archive were copied byte-for-byte to an explicit external
-  handoff directory before documentation; the conversation identifies that
-  directory and the separate documentation-only HEAD.
+  `validation-evidence-70ee9119e035.tar.gz`, 14781 bytes, 9 members, SHA-256
+  `ecd6d545b7103d6c5bf7e2654d11e8e07f8596d00e092144cd676527b39de6de`.
+- The capsule and archive were copied byte-for-byte before documentation to
+  `/tmp/volicord-phase8-handoff-20260909/70ee9119e0357a2deed49291a0e5cfdb04fb014f/`.
+  The documentation-only conclusion HEAD is distinct from the sealed candidate.
 - Historical copied sanitized capsule SHA-256 (not current qualification):
   `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
 - Historical independently verified evidence archive SHA-256 (not current qualification):
