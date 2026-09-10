@@ -4284,6 +4284,7 @@ def applicable_decision_lineages(
     capture: CodexCapture, record: ToolCall, current: ToolCall, before_sequence: int,
     *, bundle: CanonicalBundle | None = None,
     decision_evidence: dict[str, dict[str, Any]] | None = None,
+    require_interaction: bool = True,
 ) -> bool:
     for judgment in current.arguments.get("judgments", []):
         for identity in judgment_resolution_decision_ids(judgment):
@@ -4291,7 +4292,7 @@ def applicable_decision_lineages(
             if origin is None:
                 return False
             origin_record, revision, baseline = origin
-            if not all(origin_material_question_lifecycles(capture, "explicit_user_owned_decision",
+            if require_interaction and not all(origin_material_question_lifecycles(capture, "explicit_user_owned_decision",
                 baseline, origin_record, revision, before_sequence,
                 bundle=bundle, decision_evidence=decision_evidence)):
                 return False
@@ -7404,7 +7405,8 @@ def materiality_review_facts(
             work, record, evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence)
     if not resumed:
         valid = valid and applicable_decision_lineages(work, record, final_revision or record,
-            evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence)
+            evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence,
+            require_interaction=not current_user_owned_ids)
     exploration_semantics_valid = bool(valid) if exploration else None
     if exploration:
         valid = valid and exploration["qualified"]

@@ -678,6 +678,18 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(h.unnecessary_question_repetitions(replace(capture,
             tool_calls=tuple(sorted((*capture.tool_calls, failed), key=lambda c: c.sequence)))), [])
 
+    def test_missing_presentation_preserves_independent_authority_evidence(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        capture = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "inquiry_frontier"))
+        facts = self.facts(descriptor, capture, bundle)
+        self.assertTrue(facts[0])
+        decisions = h.decision_facts(capture, bundle)
+        self.assertTrue(decisions[0])
+        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["behavior_class"], {},
+            capture.successful_calls("repository_analyze")[0], facts[1], facts[3], decisions[-1])
+        self.assertFalse(lifecycle[0])
+        self.assertFalse(self.observe(descriptor, capture))
+
     def test_same_review_settlement_in_full_session_evaluation(self):
         descriptor, _, _ = self.fixture("explicit_user_owned_decision")
         path = self.root / descriptor["evidence"]["captures"]["work"]["file"]
