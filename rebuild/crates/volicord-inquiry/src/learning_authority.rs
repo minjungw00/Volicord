@@ -140,3 +140,113 @@ pub(crate) fn meaning_changed(
         _ => true,
     }
 }
+
+/// Deterministic continuity of a bounded learning choice. Descriptive paths and
+/// presentation summaries are not outcome identities. Executable scope still
+/// requires the independent pre-write materiality/artifact closure.
+pub(crate) fn equivalent_dimension(
+    previous: &MaterialityReview,
+    previous_dimension: &MaterialityDimension,
+    previous_choices: &[crate::EngineeringChoice],
+    current: &MaterialityReview,
+    current_dimension: &MaterialityDimension,
+    current_choices: &[crate::EngineeringChoice],
+) -> bool {
+    let ids = |dimension: &MaterialityDimension| {
+        dimension
+            .discovered_choice_ids
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+    };
+    if previous.goal_context_id != current.goal_context_id
+        || previous.baseline_analysis_snapshot_id != current.baseline_analysis_snapshot_id
+        || previous_dimension.dimension_id != current_dimension.dimension_id
+        || ids(previous_dimension) != ids(current_dimension)
+        || previous_dimension.material_consequences != current_dimension.material_consequences
+        || previous_dimension.observable_signals != current_dimension.observable_signals
+        || previous_dimension.ownership.materially_varying_outcomes
+            != current_dimension.ownership.materially_varying_outcomes
+        || previous_dimension.ownership.contains_user_owned_outcome
+            != current_dimension.ownership.contains_user_owned_outcome
+    {
+        return false;
+    }
+    let basis = |choices: &[crate::EngineeringChoice], dimension: &MaterialityDimension| {
+        let mut selected = choices
+            .iter()
+            .filter(|choice| dimension.discovered_choice_ids.contains(&choice.choice_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        for choice in &mut selected {
+            choice.summary.clear();
+            choice.affected_scope.clear();
+            for alternative in &mut choice.alternatives {
+                alternative.summary.clear();
+            }
+            choice
+                .alternatives
+                .sort_by(|a, b| a.alternative_id.cmp(&b.alternative_id));
+            choice.effect_categories.sort();
+            choice.source_basis.sort();
+        }
+        selected.sort_by(|a, b| a.choice_id.cmp(&b.choice_id));
+        selected
+    };
+    let before = basis(previous_choices, previous_dimension);
+    let after = basis(current_choices, current_dimension);
+    // Missing or duplicate identity evidence cannot prove equivalence.
+    before.len() == ids(previous_dimension).len()
+        && after.len() == ids(current_dimension).len()
+        && before
+            .iter()
+            .map(|choice| choice.choice_id.clone())
+            .collect::<BTreeSet<_>>()
+            == ids(previous_dimension)
+        && after
+            .iter()
+            .map(|choice| choice.choice_id.clone())
+            .collect::<BTreeSet<_>>()
+            == ids(current_dimension)
+        && before == after
+}
+
+pub(crate) fn retained_discovery<'a>(
+    candidates: &'a [crate::CandidateRecord],
+    project_id: volicord_context::ProjectId,
+    review: &MaterialityReview,
+) -> Option<&'a crate::EngineeringChoiceDiscovery> {
+    candidates
+        .iter()
+        .find(|candidate| {
+            candidate.project_id == project_id
+                && candidate.id == review.engineering_choice_discovery_candidate_id
+                && matches!(
+                    candidate.disposition,
+                    crate::CandidateDisposition::PendingOrRetained
+                )
+        })?
+        .content
+        .as_ref()?
+        .engineering_choice_discovery
+        .as_ref()
+}
+
+/// A changed learning assessment may name a new requested learning outcome even
+/// when engineering alternatives remain stable. Only presentation rationale is ignored.
+pub(crate) fn same_learning_requirement(
+    previous: &crate::LearningValueAssessment,
+    current: &crate::LearningValueAssessment,
+) -> bool {
+    let normalize = |value: &crate::LearningValueAssessment| {
+        let mut value = value.clone();
+        match &mut value {
+            crate::LearningValueAssessment::Routine { rationale }
+            | crate::LearningValueAssessment::DeliberationWorthy { rationale, .. } => {
+                rationale.clear()
+            }
+        }
+        value
+    };
+    normalize(previous) == normalize(current)
+}

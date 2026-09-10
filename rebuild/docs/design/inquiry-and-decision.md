@@ -588,6 +588,19 @@ Decision을 만들지 않으며 agent preference, selected implementation이나 
 basis가 아니다. Unsupported revision은 mutation 전에 거부하므로 prior deliberation-worthy state와
 pending Learning Deliberation route가 유지된다.
 
+같은 Project/Goal/retained pre-work baseline에서 Review Candidate를 재생성해도 이 경계는
+유지된다. Inquiry는 retained Review/Discovery의 stable dimension과 discovered-choice identity
+set, 실제 Engineering Choice/alternative identity 및 consequence, decomposition, Source,
+effect category, relationship와 evidence state를 결정적으로 비교한다. Dimension의 material
+outcome/consequence와 ownership도 일치해야 하며 dimension ID만으로 동등성을 추론하지 않는다.
+표현용 summary와 descriptive affected path는 identity가 아니다. 나머지 evidence의 차이 또는
+누락은 동등한 completion의 증거가 아니며 narrative similarity를 사용하지 않는다.
+동등한 최신 retained Review의 deliberation-worthy dimension을 routine/inactive로 초기화하는
+새 submission은 거부한다. Supported downgrade는 기존 `learning_value_revision_bases`를 가진
+prior Review revise로 먼저 보존하고 successor가 effective state를 이어받는다. Active learning
+requirement를 inactive로 바꾸는 revise도 exact current-user withdrawal을 요구하며 research나
+agent preference만으로 participation을 끄지 않는다. 새 submit field나 별도 history schema는 없다.
+
 Materiality draft와 workflow guidance는 이 독립성을 `authority_learning_routing`으로 기계 판독
 가능하게 노출한다. Learn, alternatives 비교, implementation 전 reasoning 또는 학습을 위한
 implementation approach 선택 요청 자체는 user-owned product authority의 증거가 아니다. Active
@@ -618,6 +631,21 @@ state다. 어느 learning-only state도 canonical Decision을 만들거나 user-
 completed/delegated/skipped만 affected work를 해제한다. Durable lesson이 Recall에 필요하면 별도 explicit
 user Source를 가진 기존 `Context Item` role `Learning`을 사용하며 Candidate content에서 permanent
 learner profile을 추론하지 않는다.
+
+동등한 successor Review는 retained prior Learning Deliberation의 completed/delegated/skipped
+state를 기존 satisfied requirement와 learning Candidate identity로 재사용할 수 있다. 현재
+Discovery, prior retained Review/Discovery와 Deliberation에 보존한 실제 choices 모두 위의
+동등성 검사를 통과해야 한다. Current participation Source/statement와 learning assessment의
+requested principle, trade-off, counterfactual와 scope alignment도 같아야 한다. Pending/research/reconsideration branch가 하나라도 남아 있으면
+older terminal completion으로 덮지 않는다. Current Review의 직접 연결된 learning도 실제
+current choices를 다시 검증한다. 재사용은 non-Decision learning satisfaction이며 독립적인
+user-owned outcome을 해제하지 않는다.
+
+같은 stable choice의 predictable coupled test/document/artifact path 확장은 그 자체로 새
+학습 outcome이 아니다. Descriptive path 비교를 completion identity에 넣지 않되 executable
+scope는 기존 prospective artifact/materiality closure를 다시 통과해야 한다. 새로운 material
+outcome, typed choice/alternative 또는 consequence는 기존 Discovery/Materiality 계약으로
+표현하며 old learning completion을 상속하지 않는다.
 
 User-owned dimension을 Question Candidate로 옮길 때 review의 Source와 affected scope를 재사용하고
 stable dimension scope token을 추가할 수 있다. 그 helper는 Candidate만 만들며 research,

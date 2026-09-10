@@ -146,6 +146,12 @@ exact dimension과 prior/current assessment, revision Analysis Snapshot, support
 evidence 또는 current-host user-turn Source의 verbatim learning withdrawal/narrowing이다. Agent preference,
 implementation selection이나 interruption 회피는 revision basis가 아니다.
 
+동등한 Review 재생성의 learning continuity는 이 retained Candidate들과 기존 stable
+choice/alternative identity 및 material meaning으로 검증한다. Separate durable history는
+추가하지 않는다. Supported prior revision 뒤 effective classification을 이어받고, 동등한
+terminal learning은 원래 Candidate identity의 non-Decision satisfaction으로 재사용한다.
+세부 matching, scope와 pending/reconsideration 경계는 Inquiry owner가 소유한다.
+
 Agent, Repository Intelligence, Inquiry and Decision, Host and User Adapter, Local
 Operations와 Optional Semantic Provider Boundary는 각자의 provenance를 가진
 Candidate를 만들 수 있다. User input도 아직 exact Question linkage나 explicit

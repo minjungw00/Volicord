@@ -171,6 +171,13 @@ impl CandidateStore {
         review.first_review_preceded_meaningful_mutation = true;
         validate_review_against_canonical(canonical, review)?;
         validate_review_against_discovery(review, discovery_candidate)?;
+        let history = self.read_basis(draft.project_id)?;
+        validate_learning_continuity(
+            draft.project_id,
+            review,
+            discovery_candidate,
+            &history.candidates,
+        )?;
         self.submit_validated(draft)
     }
 
@@ -237,6 +244,19 @@ impl CandidateStore {
                     _ => return Err(Error::new(ErrorKind::DomainConflict,
                         "research/prototype evidence requires an unchanged original repository baseline; use scratch/read-only evidence and restore repository mutations before revising the original review")),
                 }
+            }
+            if matches!(review.learning_participation, crate::LearningParticipation::Active { .. })
+                && matches!(revision.learning_participation, crate::LearningParticipation::Inactive)
+                && review.dimensions.iter().any(|dimension| {
+                    requires_learning_before_work(&review.learning_participation, dimension)
+                        && !revision.learning_value_revision_bases.iter().any(|request| {
+                            request.dimension_id == dimension.dimension_id
+                                && matches!(request.basis, crate::LearningValueRevisionBasis::CurrentUserWithdrawal { .. })
+                        })
+                })
+            {
+                return Err(Error::new(ErrorKind::DomainConflict,
+                    "active learning requires exact current-user withdrawal through the existing learning-value revision basis before becoming inactive"));
             }
             let learning_value_revisions = validate_learning_value_revisions(
                 review,
@@ -4214,4 +4234,86 @@ fn clock_error(error: volicord_context::Error) -> Error {
         "Candidate observation clock failed",
         error,
     )
+}
+
+fn validate_learning_continuity(
+    project_id: ProjectId,
+    review: &MaterialityReview,
+    discovery_candidate: &CandidateRecord,
+    candidates: &[CandidateRecord],
+) -> Result<(), Error> {
+    let discovery = discovery_candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.engineering_choice_discovery.as_ref())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::StaleBasis,
+                "current learning discovery is unavailable",
+            )
+        })?;
+    for dimension in &review.dimensions {
+        let mut equivalent = Vec::new();
+        for candidate in candidates.iter().filter(|candidate| {
+            candidate.project_id == project_id
+                && matches!(
+                    candidate.disposition,
+                    CandidateDisposition::PendingOrRetained
+                )
+        }) {
+            let Some(previous) = candidate
+                .content
+                .as_ref()
+                .and_then(|content| content.materiality_review.as_ref())
+            else {
+                continue;
+            };
+            if previous.goal_context_id != review.goal_context_id
+                || previous.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
+            {
+                continue;
+            }
+            let Some(previous_dimension) = previous
+                .dimensions
+                .iter()
+                .find(|old| old.dimension_id == dimension.dimension_id)
+            else {
+                continue;
+            };
+            let previous_discovery = crate::learning_authority::retained_discovery(candidates, project_id, previous)
+                .ok_or_else(|| Error::new(ErrorKind::StaleBasis, "retained learning history has unavailable discovery; equivalence cannot be established"))?;
+            if crate::learning_authority::equivalent_dimension(
+                previous,
+                previous_dimension,
+                &previous_discovery.choices,
+                review,
+                dimension,
+                &discovery.choices,
+            ) {
+                equivalent.push((candidate, previous, previous_dimension));
+            }
+        }
+        if let Some((_, previous, previous_dimension)) = equivalent
+            .into_iter()
+            .max_by_key(|(candidate, _, _)| (candidate.created_at, candidate.id))
+        {
+            if matches!(
+                previous_dimension.learning_value,
+                crate::LearningValueAssessment::DeliberationWorthy { .. }
+            ) && (matches!(
+                dimension.learning_value,
+                crate::LearningValueAssessment::Routine { .. }
+            ) || (requires_learning_before_work(
+                &previous.learning_participation,
+                previous_dimension,
+            ) && matches!(
+                review.learning_participation,
+                crate::LearningParticipation::Inactive
+            ))) {
+                return Err(Error::new(ErrorKind::DomainConflict,
+                    "equivalent retained learning cannot reset to routine or inactive; revise the prior Materiality Review with supported research, prototype, or exact current-user withdrawal basis first"));
+            }
+        }
+    }
+    Ok(())
 }

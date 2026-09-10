@@ -84,6 +84,8 @@ pub struct WorkAuthorityResult {
 pub struct WorkAuthorityCandidateBasis<'a> {
     pub review: Option<&'a CandidateRecord>,
     pub discovery: Option<&'a CandidateRecord>,
+    /// Retained Project candidates, including the reviews/discoveries needed to
+    /// prove a prior learning Candidate still satisfies the current requirement.
     pub learning_deliberations: &'a [CandidateRecord],
 }
 
@@ -408,6 +410,7 @@ pub fn evaluate_work_authority(
         canonical,
         candidate,
         review,
+        candidate_basis.discovery,
         candidate_basis.learning_deliberations,
         &mut result,
     ) {
@@ -577,6 +580,7 @@ fn evaluate_learning_readiness(
     canonical: &CanonicalReadBasis,
     review_candidate: &CandidateRecord,
     review: &crate::MaterialityReview,
+    discovery_candidate: Option<&CandidateRecord>,
     learning_candidates: &[CandidateRecord],
     result: &mut WorkAuthorityResult,
 ) -> Result<(), LearningIssue> {
@@ -644,12 +648,36 @@ fn evaluate_learning_readiness(
                             .learning_deliberation
                             .as_ref()
                             .is_some_and(|deliberation| {
-                                deliberation.materiality_review_candidate_id == review_candidate.id
-                                    && deliberation.dimension_id == dimension.dimension_id
+                                deliberation.dimension_id == dimension.dimension_id
+                                    && (deliberation.materiality_review_candidate_id
+                                        == review_candidate.id
+                                        || compatible_prior_learning(
+                                            review_candidate,
+                                            review,
+                                            dimension,
+                                            discovery_candidate,
+                                            learning_candidates,
+                                            deliberation,
+                                        ))
                             })
                     })
             })
-            .max_by_key(|candidate| (candidate.created_at, candidate.id));
+            // A current or historical reopened branch wins over any older completion.
+            .max_by_key(|candidate| {
+                let pending = candidate
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.learning_deliberation.as_ref())
+                    .is_some_and(|learning| {
+                        !matches!(
+                            learning.state,
+                            LearningDeliberationState::Completed { .. }
+                                | LearningDeliberationState::Delegated { .. }
+                                | LearningDeliberationState::Skipped { .. }
+                        )
+                    });
+                (pending, candidate.created_at, candidate.id)
+            });
         let Some(candidate) = candidate else {
             pending = true;
             result.unresolved_requirements.push(requirement(
@@ -668,12 +696,27 @@ fn evaluate_learning_readiness(
                     "Learning Deliberation Candidate content is unavailable".to_owned(),
                 )
             })?;
-        if deliberation.goal_context_id != review.goal_context_id
-            || deliberation.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
-            || deliberation.engineering_choice_discovery_candidate_id
-                != review.engineering_choice_discovery_candidate_id
-            || deliberation.discovered_choice_ids != dimension.discovered_choice_ids
-            || deliberation.affected_scope != dimension.affected_scope
+        if deliberation.materiality_review_candidate_id == review_candidate.id
+            && (deliberation.goal_context_id != review.goal_context_id
+                || deliberation.baseline_analysis_snapshot_id
+                    != review.baseline_analysis_snapshot_id
+                || deliberation.engineering_choice_discovery_candidate_id
+                    != review.engineering_choice_discovery_candidate_id
+                || deliberation.discovered_choice_ids != dimension.discovered_choice_ids
+                || deliberation.affected_scope != dimension.affected_scope
+                || !discovery_candidate
+                    .and_then(|candidate| candidate.content.as_ref())
+                    .and_then(|content| content.engineering_choice_discovery.as_ref())
+                    .is_some_and(|discovery| {
+                        crate::learning_authority::equivalent_dimension(
+                            review,
+                            dimension,
+                            &deliberation.choices,
+                            review,
+                            dimension,
+                            &discovery.choices,
+                        )
+                    }))
         {
             return Err(LearningIssue::Invalid(
                 "Learning Deliberation does not match the exact current choice, Goal, baseline, review, or affected scope"
@@ -1556,4 +1599,83 @@ fn requirement(
         reason: reason.into(),
         decision_basis,
     }
+}
+
+fn compatible_prior_learning(
+    current_candidate: &CandidateRecord,
+    current: &crate::MaterialityReview,
+    dimension: &MaterialityDimension,
+    current_discovery: Option<&CandidateRecord>,
+    candidates: &[CandidateRecord],
+    learning: &crate::LearningDeliberation,
+) -> bool {
+    if learning.goal_context_id != current.goal_context_id
+        || learning.baseline_analysis_snapshot_id != current.baseline_analysis_snapshot_id
+        || learning
+            .discovered_choice_ids
+            .iter()
+            .collect::<BTreeSet<_>>()
+            != dimension.discovered_choice_ids.iter().collect()
+    {
+        return false;
+    }
+    let Some(previous) = candidates
+        .iter()
+        .find(|candidate| {
+            candidate.id == learning.materiality_review_candidate_id
+                && candidate.project_id == current_candidate.project_id
+                && matches!(
+                    candidate.disposition,
+                    crate::CandidateDisposition::PendingOrRetained
+                )
+        })
+        .and_then(|candidate| candidate.content.as_ref())
+        .and_then(|content| content.materiality_review.as_ref())
+    else {
+        return false;
+    };
+    let Some(previous_dimension) = previous
+        .dimensions
+        .iter()
+        .find(|old| old.dimension_id == dimension.dimension_id)
+    else {
+        return false;
+    };
+    let Some(discovery) = current_discovery
+        .filter(|candidate| candidate.project_id == current_candidate.project_id)
+        .and_then(|candidate| candidate.content.as_ref())
+        .and_then(|content| content.engineering_choice_discovery.as_ref())
+    else {
+        return false;
+    };
+    let Some(previous_discovery) = crate::learning_authority::retained_discovery(
+        candidates,
+        current_candidate.project_id,
+        previous,
+    ) else {
+        return false;
+    };
+    previous.learning_participation == current.learning_participation
+        && crate::learning_authority::same_learning_requirement(
+            &previous_dimension.learning_value,
+            &dimension.learning_value,
+        )
+        && learning.engineering_choice_discovery_candidate_id
+            == previous.engineering_choice_discovery_candidate_id
+        && crate::learning_authority::equivalent_dimension(
+            previous,
+            previous_dimension,
+            &previous_discovery.choices,
+            current,
+            dimension,
+            &discovery.choices,
+        )
+        && crate::learning_authority::equivalent_dimension(
+            previous,
+            previous_dimension,
+            &learning.choices,
+            current,
+            dimension,
+            &discovery.choices,
+        )
 }

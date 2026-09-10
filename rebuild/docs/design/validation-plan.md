@@ -738,6 +738,7 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
   independent/coupled completeness와 effect-category non-authority
 - inactive/explicit-active learning participation, independent routine/deliberation-worthy assessment,
   agent-owned Learning Deliberation과 user-owned Question priority
+- equivalent successor Review의 unsupported routine/inactive reset rejection, supported prior revision inheritance, typed choice/alternative completion continuity, coupled artifact expansion과 reopened branch blocking
 - unsupported deliberation-worthy-to-routine revision rejection, prior learning path preservation과
   Source-backed research/prototype 또는 exact current-user withdrawal/narrowing revision basis
 - first authoritative review의 pre-mutation success와 post-mutation backfill rejection

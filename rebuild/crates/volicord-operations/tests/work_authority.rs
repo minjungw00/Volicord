@@ -301,6 +301,479 @@ fn settled_contract_accounts_for_choices(
 }
 
 #[test]
+fn successor_review_cannot_reset_learning_value_or_participation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (inactive, completed) in [(false, false), (true, false), (false, true), (true, true)] {
+        let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+        let source = fixture.baseline.repository_source.identity();
+        let choices = vec![engineering_choice(
+            "stable-choice",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        )];
+        let dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+        let first = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        if completed {
+            complete_learning_selection(&fixture, &first, "stable-choice")?;
+        }
+        let mut successor = dimension;
+        if !inactive {
+            successor.learning_value = LearningValueAssessment::Routine {
+                rationale: "Already selected and completed deliberation; do not interrupt again"
+                    .into(),
+            };
+        }
+        let rejected = record_review_with_learning(
+            &fixture,
+            choices,
+            vec![successor],
+            if inactive {
+                LearningParticipation::Inactive
+            } else {
+                active_learning(&fixture)
+            },
+        );
+        assert!(
+            rejected.is_err(),
+            "equivalent rediscovery cannot reset learning (inactive={inactive})"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn successor_review_reuses_terminal_learning_without_decision_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![engineering_choice(
+        "stable-choice",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    )];
+    let dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+    let first = review_with_learning(
+        &fixture,
+        choices.clone(),
+        vec![dimension.clone()],
+        active_learning(&fixture),
+    )?;
+    complete_learning_selection(&fixture, &first, "stable-choice")?;
+    let satisfied = readiness(&fixture, &first)?;
+    let second = review_with_learning(
+        &fixture,
+        choices,
+        vec![dimension],
+        active_learning(&fixture),
+    )?;
+    let continued = readiness(&fixture, &second)?;
+    assert_eq!(continued.stage, WorkAuthorityStage::ReadyForWork);
+    assert_eq!(
+        continued.learning_deliberation_candidate_ids,
+        satisfied.learning_deliberation_candidate_ids
+    );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn successor_learning_requires_current_typed_meaning_but_allows_coupled_artifact_expansion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for change in [
+        "scope",
+        "alternative",
+        "consequence",
+        "outcome",
+        "choice",
+        "learning",
+    ] {
+        let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut choices = vec![engineering_choice(
+            "stable-choice",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        )];
+        let mut dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+        let first = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        complete_learning_selection(&fixture, &first, "stable-choice")?;
+        match change {
+            "scope" => {
+                dimension.affected_scope.push("tests/learning.rs".into());
+                choices[0].affected_scope.push("tests/learning.rs".into());
+            }
+            "alternative" => {
+                let mut alternative = choices[0].alternatives[1].clone();
+                alternative.alternative_id = "approach-c".into();
+                choices[0].alternatives.push(alternative);
+                dimension.alternative_accounting =
+                    unresolved_accounts_for_choices(&choices, source);
+                dimension.ownership.discretion_counterfactuals = discretion_proof(
+                    "stable-choice",
+                    &["approach-a", "approach-b", "approach-c"],
+                    source,
+                );
+            }
+            "consequence" => choices[0].alternatives[0]
+                .technical_consequences
+                .push("a newly material allocation trade-off".into()),
+            "learning" => {
+                if let LearningValueAssessment::DeliberationWorthy {
+                    transferable_principles,
+                    ..
+                } = &mut dimension.learning_value
+                {
+                    transferable_principles.push("A distinct requested learning principle".into());
+                }
+            }
+            "outcome" => dimension
+                .ownership
+                .materially_varying_outcomes
+                .push("a distinct resource lifetime outcome".into()),
+            _ => {
+                choices[0] = engineering_choice(
+                    "new-choice",
+                    EngineeringEffectCategory::ImplementationInternal,
+                    source,
+                );
+                dimension = agent_owned_dimension("new-choice", source, deliberation_worthy());
+                dimension.dimension_id = "stable-choice".into();
+            }
+        }
+        if change != "scope" && change != "learning" {
+            let mut routine = dimension.clone();
+            routine.learning_value = LearningValueAssessment::Routine {
+                rationale: "The distinct choice has independently routine learning value.".into(),
+            };
+            let unrelated = review_with_learning(
+                &fixture,
+                choices.clone(),
+                vec![routine],
+                active_learning(&fixture),
+            )?;
+            assert_eq!(
+                readiness(&fixture, &unrelated)?.stage,
+                WorkAuthorityStage::ReadyForWork
+            );
+        }
+        let second = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        let state = readiness(&fixture, &second)?;
+        assert_eq!(
+            state.stage,
+            if change == "scope" {
+                WorkAuthorityStage::ReadyForWork
+            } else {
+                WorkAuthorityStage::LearningDeliberation
+            },
+            "{change}"
+        );
+        if change != "scope" {
+            // Unrelated learning meaning is free to be independently assessed as routine.
+            dimension.learning_value = LearningValueAssessment::Routine {
+                rationale: "The distinct learning meaning is routine.".into(),
+            };
+            // Revise the current worthy review first is still required; creating it
+            // made this NEW meaning worthy, so it cannot reset either.
+            assert!(record_review_with_learning(
+                &fixture,
+                choices,
+                vec![dimension],
+                active_learning(&fixture)
+            )
+            .is_err());
+        }
+        assert!(fixture
+            .operations
+            .canonical_basis(fixture.project_id)?
+            .active_decisions
+            .is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn successor_learning_pending_and_reconsidered_branches_override_older_completion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for reconsider in [false, true] {
+        let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+        let source = fixture.baseline.repository_source.identity();
+        let choices = vec![engineering_choice(
+            "stable-choice",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        )];
+        let dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+        let first = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        complete_learning_selection(&fixture, &first, "stable-choice")?;
+        let second = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        if reconsider {
+            let learning_id = readiness(&fixture, &first)?.learning_deliberation_candidate_ids[0];
+            fixture
+                .operations
+                .reconsider_learning_deliberation(LearningReconsiderationDraft {
+                    project_id: fixture.project_id,
+                    deliberation_candidate_id: learning_id,
+                    host: "codex".into(),
+                    session: "reconsider".into(),
+                    user_turn: "Reopen this choice after considering the feedback.".into(),
+                    rationale: "I want to reconsider the trade-off.".into(),
+                })?;
+        } else {
+            begin_learning(&fixture, &second, "stable-choice")?;
+        }
+        let third = review_with_learning(
+            &fixture,
+            choices,
+            vec![dimension],
+            active_learning(&fixture),
+        )?;
+        assert_eq!(
+            readiness(&fixture, &third)?.stage,
+            WorkAuthorityStage::LearningDeliberation
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn successor_review_inherits_only_supported_effective_downgrade(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for evidence in ["research", "prototype", "withdrawal"] {
+        let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+        let source = fixture.baseline.repository_source.identity();
+        let choices = vec![engineering_choice(
+            "stable-choice",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        )];
+        let mut dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+        let first = review_with_learning(
+            &fixture,
+            choices.clone(),
+            vec![dimension.clone()],
+            active_learning(&fixture),
+        )?;
+        let unsupported =
+            fixture
+                .operations
+                .revise_materiality_review(MaterialityReviewRevisionDraft {
+                    project_id: fixture.project_id,
+                    review_candidate_id: first.review_candidate_id,
+                    rationale: "Avoid another learning interruption".into(),
+                    learning_participation: LearningParticipation::Inactive,
+                    dimensions: vec![dimension.clone()],
+                    learning_value_revision_bases: vec![],
+                });
+        assert!(unsupported.is_err());
+        let basis = match evidence {
+            "research" => LearningValueRevisionBasis::ResearchEvidence {
+                source_basis: vec![source],
+                evidence_basis: vec!["The repository eliminates the credible trade-off.".into()],
+                rationale: "Current research resolves the uncertainty.".into(),
+            },
+            "prototype" => LearningValueRevisionBasis::PrototypeEvidence {
+                source_basis: vec![source],
+                evidence_basis: vec![
+                    "The source-backed prototype resolves the uncertain trade-off.".into(),
+                ],
+                rationale: "Current prototype evidence makes this routine.".into(),
+            },
+            _ => {
+                let withdrawal = fixture.operations.record_current_host_user_context(
+                    fixture.project_id,
+                    "codex".into(),
+                    "withdraw".into(),
+                    "Withdraw learning for this choice.".into(),
+                    ContextItemRole::Preference,
+                    "Withdraw learning for this choice.".into(),
+                )?;
+                LearningValueRevisionBasis::CurrentUserWithdrawal {
+                    user_turn_source_id: withdrawal.source_id,
+                    verbatim_statement: "Withdraw learning for this choice.".into(),
+                    rationale: "Exact current user withdrawal.".into(),
+                }
+            }
+        };
+        let participation = if evidence == "withdrawal" {
+            LearningParticipation::Inactive
+        } else {
+            active_learning(&fixture)
+        };
+        assess_learning_authority(&mut dimension);
+        dimension.learning_value = LearningValueAssessment::Routine {
+            rationale:
+                "Supported current evidence or withdrawal supersedes the learning assessment."
+                    .into(),
+        };
+        fixture
+            .operations
+            .revise_materiality_review(MaterialityReviewRevisionDraft {
+                project_id: fixture.project_id,
+                review_candidate_id: first.review_candidate_id,
+                rationale: "Revise the prior review through the supported owner path.".into(),
+                learning_participation: participation.clone(),
+                dimensions: vec![dimension.clone()],
+                learning_value_revision_bases: vec![LearningValueRevisionRequest {
+                    dimension_id: "stable-choice".into(),
+                    basis,
+                }],
+            })?;
+        let second = review_with_learning(&fixture, choices, vec![dimension], participation)?;
+        assert_eq!(
+            readiness(&fixture, &second)?.stage,
+            WorkAuthorityStage::ReadyForWork,
+            "{evidence}"
+        );
+        assert!(fixture
+            .operations
+            .canonical_basis(fixture.project_id)?
+            .active_decisions
+            .is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn successor_learning_fails_closed_without_matching_project_goal_baseline_and_retained_history(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let other = fixture_with_goal("Another bounded learning Goal.")?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![engineering_choice(
+        "stable-choice",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    )];
+    let dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+    let first = review_with_learning(
+        &fixture,
+        choices.clone(),
+        vec![dimension.clone()],
+        active_learning(&fixture),
+    )?;
+    complete_learning_selection(&fixture, &first, "stable-choice")?;
+    let second = review_with_learning(
+        &fixture,
+        choices,
+        vec![dimension],
+        active_learning(&fixture),
+    )?;
+    let basis = fixture.operations.candidate_basis(fixture.project_id)?;
+    let current = basis
+        .candidates
+        .iter()
+        .find(|c| c.id == second.review_candidate_id)
+        .expect("current review");
+    let discovery_id = current
+        .content
+        .as_ref()
+        .expect("content")
+        .materiality_review
+        .as_ref()
+        .expect("review")
+        .engineering_choice_discovery_candidate_id;
+    let discovery = basis
+        .candidates
+        .iter()
+        .find(|c| c.id == discovery_id)
+        .expect("discovery");
+    let canonical = fixture.operations.canonical_basis(fixture.project_id)?;
+    for missing in [
+        "project",
+        "goal",
+        "baseline",
+        "review",
+        "discovery",
+        "choices",
+    ] {
+        let mut candidates = basis.candidates.clone();
+        if missing == "review" {
+            candidates.retain(|c| c.id != first.review_candidate_id);
+        } else if missing == "discovery" {
+            candidates.retain(|c| {
+                c.kind != CandidateKind::EngineeringChoiceDiscovery || c.id == discovery_id
+            });
+        } else {
+            let candidate = candidates
+                .iter_mut()
+                .find(|c| c.kind == CandidateKind::LearningDeliberation)
+                .expect("learning");
+            let learning = candidate
+                .content
+                .as_mut()
+                .expect("content")
+                .learning_deliberation
+                .as_mut()
+                .expect("learning");
+            match missing {
+                "project" => candidate.project_id = other.project_id,
+                "goal" => learning.goal_context_id = other.goal_id,
+                "baseline" => learning.baseline_analysis_snapshot_id = other.baseline.identity,
+                _ => learning.choices.clear(),
+            }
+        }
+        let result = volicord_inquiry::evaluate_work_authority(
+            &canonical,
+            volicord_inquiry::WorkAuthorityCandidateBasis {
+                review: Some(current),
+                discovery: Some(discovery),
+                learning_deliberations: &candidates,
+            },
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            &volicord_inquiry::ApplicabilityQuery {
+                project_id: fixture.project_id,
+                paths: vec!["src/lib.rs".into()],
+                components: vec![],
+                work_contexts: vec![],
+                current_assumptions: vec![],
+                met_revisit_triggers: vec![],
+            },
+        );
+        assert_eq!(
+            result.stage,
+            WorkAuthorityStage::LearningDeliberation,
+            "{missing}"
+        );
+        assert!(
+            result.learning_deliberation_candidate_ids.is_empty(),
+            "{missing}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn learning_worthy_agent_choice_is_non_blocking_in_normal_mode_but_blocks_when_explicitly_active(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let normal = fixture()?;
