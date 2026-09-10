@@ -7773,10 +7773,11 @@ def learning_recall_facts(
 
 
 def unnecessary_question_repetitions(work: CodexCapture) -> list[dict[str, Any]]:
-    """Only prove repeats from a response Product eventually accepted verbatim.
+    """Prove repeats from accepted text or one exact displayed alternative.
 
-    No semantic selection parser: explanation/ambiguous text is not a response
-    unless the exact maintained transport comparison binds it to that Decision.
+    No semantic selection parser: use the maintained transport comparison for
+    accepted response text or an exact, unique option key/label. The latter can
+    precede a later clarification recorded for the same alternative.
     Multiple concurrently presented Questions and failed attempts are conservative
     exclusions because the captured evidence cannot prove needless interruption.
     """
@@ -7811,7 +7812,8 @@ def unnecessary_question_repetitions(work: CodexCapture) -> list[dict[str, Any]]
             continue
         responses = [turn for turn in work.user_turns
             if first.completion_sequence < turn.sequence < later.sequence
-            and compare_current_host_response_transport(decision.arguments.get("user_turn"), turn.text)["equivalent"]]
+            and (compare_current_host_response_transport(decision.arguments.get("user_turn"), turn.text)["equivalent"]
+                or exact_presented_alternative_response(original, decision, turn.text))]
         # A revision transition or any changed displayed basis invalidates reuse.
         basis = lambda q: {k: v for k, v in q.items() if k != "presentation_receipt_id"}
         if len(responses) == 1 and basis(original) == basis(question) and not any(
@@ -7821,6 +7823,20 @@ def unnecessary_question_repetitions(work: CodexCapture) -> list[dict[str, Any]]
                 "presentation_sequence": first.sequence, "response_sequence": responses[0].sequence,
                 "repeat_sequence": later.sequence, "decision_sequence": decision.sequence})
     return repeated
+
+
+def exact_presented_alternative_response(question: dict[str, Any], decision: ToolCall, text: str) -> bool:
+    """Identity matching only; never interpret paraphrases, ordinals or intent."""
+    alternatives = question.get("alternatives")
+    if not isinstance(alternatives, list) or not alternatives or not all(
+        isinstance(option, dict) and nonempty_string(option.get("key"))
+        and nonempty_string(option.get("label")) for option in alternatives
+    ):
+        return False
+    matches = [option for option in alternatives if any(
+        compare_current_host_response_transport(option[field], text)["equivalent"]
+        for field in ("key", "label"))]
+    return len(matches) == 1 and matches[0]["key"] == decision.arguments.get("alternative_key")
 
 
 def question_review_facts(

@@ -678,6 +678,42 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(h.unnecessary_question_repetitions(replace(capture,
             tool_calls=tuple(sorted((*capture.tool_calls, failed), key=lambda c: c.sequence)))), [])
 
+    def test_exact_option_answer_repeat_before_later_clarification(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        frontier = capture.calls("inquiry_frontier")[0]
+        decision = capture.calls("decision_record")[0]
+        user = capture.turn_for_call(decision)
+        result = deepcopy(frontier.result)
+        result["questions"][0]["alternatives"] = [
+            {"key": "concise", "label": "Concise output", "consequence": "Details remain in diagnostics."},
+            {"key": "verbose", "label": "Verbose output", "consequence": "Details appear by default."}]
+        frontier = replace(frontier, result=result)
+        answer = replace(user, sequence=frontier.completion_sequence + 1,
+            turn_id="initial-option-answer", text="Concise output  \n")
+        repeat = replace(frontier, call_id="repeat-before-clarification", sequence=answer.sequence + 1,
+            completion_sequence=answer.sequence + 2, turn_id=answer.turn_id,
+            result=deepcopy(result))
+        repeat.result["questions"][0]["presentation_receipt_id"] = "fresh-receipt"
+        decision = replace(decision, arguments={**decision.arguments, "presentation_receipt_id": "fresh-receipt"})
+        capture = replace(capture, user_turns=tuple(sorted((*capture.user_turns, answer), key=lambda t: t.sequence)),
+            tool_calls=tuple(sorted((*(frontier if c.operation == "inquiry_frontier" else
+                decision if c.operation == "decision_record" else c for c in capture.tool_calls), repeat), key=lambda c: c.sequence)))
+        self.assertEqual(len(h.unnecessary_question_repetitions(capture)), 1)
+        self.assertTrue(h.decision_facts(capture, bundle)[0])
+        for text, expected in (("concise", 1), ("Explain Concise output", 0),
+                ("Concise output or Verbose output", 0), ("Verbose output", 0), ("concise?", 0)):
+            changed = replace(capture, user_turns=tuple(replace(t, text=text) if t is answer else t
+                for t in capture.user_turns))
+            self.assertEqual(len(h.unnecessary_question_repetitions(changed)), expected, text)
+        ambiguous = deepcopy(result)
+        ambiguous["questions"][0]["alternatives"][1]["label"] = "Concise output"
+        ambiguous_repeat = deepcopy(ambiguous)
+        ambiguous_repeat["questions"][0]["presentation_receipt_id"] = "fresh-receipt"
+        changed = replace(capture, tool_calls=tuple(replace(c, result=ambiguous)
+            if c is frontier else replace(c, result=ambiguous_repeat) if c is repeat else c
+            for c in capture.tool_calls))
+        self.assertEqual(h.unnecessary_question_repetitions(changed), [])
+
     def test_missing_presentation_preserves_independent_authority_evidence(self):
         descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
         capture = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "inquiry_frontier"))
