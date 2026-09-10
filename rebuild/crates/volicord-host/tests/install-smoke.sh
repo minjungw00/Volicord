@@ -34,7 +34,7 @@ grep -F "[[hooks.SessionStart]]" "$test_repository/.codex/config.toml" >/dev/nul
 "$test_prefix/bin/volicord" --repository "$test_repository" codex disable >/dev/null
 test ! -e "$test_repository/.codex/config.toml"
 
-"$test_prefix/bin/volicord" --runtime "$test_runtime" project init "Install smoke" >/dev/null
+"$test_prefix/bin/volicord" --runtime "$test_runtime" --repository "$test_repository" init "Install smoke" >/dev/null
 canonical_size=$(wc -c < "$test_runtime/canonical.sqlite3")
 HOME="$test_home" RUSTUP_HOME="$test_rustup_home" CARGO_HOME="$test_cargo_home" \
     "$repository_root/rebuild/install.sh" \
@@ -47,4 +47,4 @@ test "$(wc -c < "$test_runtime/canonical.sqlite3")" -eq "$canonical_size"
 HOME="$test_home" RUSTUP_HOME="$test_rustup_home" CARGO_HOME="$test_cargo_home" \
     "$repository_root/rebuild/install.sh" \
     --prefix "$test_prefix" --runtime-dir "$test_runtime"
-"$test_prefix/bin/volicord" --runtime "$test_runtime" health >/dev/null
+"$test_prefix/bin/volicord" --runtime "$test_runtime" doctor check >/dev/null
