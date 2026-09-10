@@ -36,7 +36,7 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     context = output["additionalContext"]
-    assert len(context.encode("utf-8")) < 2560
+    assert len(context.encode("utf-8")) < 3072
     assert "Checkpoint verification that was not actually observed" in context
     assert "actual numeric exit/termination observable in host-visible results" in context
     assert "long-running/polled commands, retain the execution identity and actual terminal outcome" in context
@@ -51,4 +51,10 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert "caller-supplied current-host response" in context
     assert "never infer a Decision from recommendation or silence" in context
     assert "Stronger confirmation is only for existing high-risk effects" in context
+    assert "Recall restores prior Project state; it does not complete the current request" in context
+    assert "explicitly asks to run, rerun or execute verification, tests, build, lint or another bounded check" in context
+    assert "execute the requested check and observe its terminal outcome before reporting completion" in context
+    assert "If execution is impossible, report the blocker" in context
+    assert "inspection or a prior Checkpoint is not a substitute" in context
+    assert "Requests only to inspect, explain or summarize prior verification do not require execution" in context
     return context
