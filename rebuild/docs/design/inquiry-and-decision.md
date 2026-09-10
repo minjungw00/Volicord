@@ -635,8 +635,9 @@ learner profile을 추론하지 않는다.
 동등한 successor Review는 retained prior Learning Deliberation의 completed/delegated/skipped
 state를 기존 satisfied requirement와 learning Candidate identity로 재사용할 수 있다. 현재
 Discovery, prior retained Review/Discovery와 Deliberation에 보존한 실제 choices 모두 위의
-동등성 검사를 통과해야 한다. Current participation Source/statement와 learning assessment의
-requested principle, trade-off, counterfactual와 scope alignment도 같아야 한다. Pending/research/reconsideration branch가 하나라도 남아 있으면
+동등성 검사를 통과해야 한다. Current participation은 current user Source로 검증하되 같은 학습 참여를 다시 기록한 Source ID
+변화 자체는 새 requirement가 아니다. Learning assessment의 requested principle, trade-off,
+counterfactual와 scope alignment는 같아야 한다. Pending/research/reconsideration branch가 하나라도 남아 있으면
 older terminal completion으로 덮지 않는다. Current Review의 직접 연결된 learning도 실제
 current choices를 다시 검증한다. 재사용은 non-Decision learning satisfaction이며 독립적인
 user-owned outcome을 해제하지 않는다.

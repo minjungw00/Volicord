@@ -1655,13 +1655,14 @@ fn compatible_prior_learning(
     ) else {
         return false;
     };
-    previous.learning_participation == current.learning_participation
-        && crate::learning_authority::same_learning_requirement(
-            &previous_dimension.learning_value,
-            &dimension.learning_value,
-        )
-        && learning.engineering_choice_discovery_candidate_id
-            == previous.engineering_choice_discovery_candidate_id
+    matches!(
+        previous.learning_participation,
+        LearningParticipation::Active { .. }
+    ) && crate::learning_authority::same_learning_requirement(
+        &previous_dimension.learning_value,
+        &dimension.learning_value,
+    ) && learning.engineering_choice_discovery_candidate_id
+        == previous.engineering_choice_discovery_candidate_id
         && crate::learning_authority::equivalent_dimension(
             previous,
             previous_dimension,

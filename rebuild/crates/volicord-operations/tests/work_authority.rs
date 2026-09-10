@@ -774,6 +774,54 @@ fn successor_learning_fails_closed_without_matching_project_goal_baseline_and_re
 }
 
 #[test]
+fn renewed_explicit_participation_preserves_the_same_completed_learning_requirement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Implement it. I want to learn while we work.")?;
+    let source = fixture.baseline.repository_source.identity();
+    let choices = vec![engineering_choice(
+        "stable-choice",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    )];
+    let dimension = agent_owned_dimension("stable-choice", source, deliberation_worthy());
+    let first = review_with_learning(
+        &fixture,
+        choices.clone(),
+        vec![dimension.clone()],
+        active_learning(&fixture),
+    )?;
+    complete_learning_selection(&fixture, &first, "stable-choice")?;
+    let LearningParticipation::Active {
+        verbatim_statement, ..
+    } = active_learning(&fixture)
+    else {
+        unreachable!()
+    };
+    let renewed = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".into(),
+        "renewed-participation".into(),
+        verbatim_statement.clone(),
+        ContextItemRole::Learning,
+        verbatim_statement.clone(),
+    )?;
+    let second = review_with_learning(
+        &fixture,
+        choices,
+        vec![dimension],
+        LearningParticipation::Active {
+            user_turn_source_id: renewed.source_id,
+            verbatim_statement,
+        },
+    )?;
+    assert_eq!(
+        readiness(&fixture, &second)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    Ok(())
+}
+
+#[test]
 fn learning_worthy_agent_choice_is_non_blocking_in_normal_mode_but_blocks_when_explicitly_active(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let normal = fixture()?;
