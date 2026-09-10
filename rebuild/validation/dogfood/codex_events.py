@@ -865,7 +865,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     )
     output_forward = re.fullmatch(rf"text\s*\(\s*{variable}\.output\s*\)\s*;", forward, re.DOTALL)
     correlated_projection = re.fullmatch(
-        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
+        rf"(?P<split>text\s*\(\s*{variable}\.output\s*\)\s*;\s*)?"
         rf"text\s*\(\s*JSON\.stringify\s*\(\s*\{{(?P<fields>.*?)\}}\s*\)\s*\)\s*;",
         forward,
         re.DOTALL,
@@ -889,11 +889,13 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
             and len(parsed_fields) <= 16
             and len(parsed_fields) == len(set(parsed_fields))
             and "exit_code" in parsed_fields
+            and set(parsed_fields) <= {"exit_code", "session_id", "output", "chunk_id",
+                                       "wall_time_seconds", "original_token_count"}
         ):
             correlated_fields = set(parsed_fields)
     template_exit_forward = re.fullmatch(
-        rf"text\s*\(\s*{variable}\.output\s*\)\s*;\s*"
-        rf"text\s*\(\s*`(?:\\n)?(?:exit=|exit:|EXIT:|EXIT )\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
+        rf"(?:text\s*\(\s*{variable}\.output\s*\)\s*;\s*)?"
+        rf"text\s*\(\s*`(?:\\n)?(?:exit=|exit:|EXIT:|EXIT |EXIT_CODE=)\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
         forward,
         re.DOTALL,
     )
@@ -918,6 +920,8 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     mode = (
         "result"
         if result_forward is not None
+        else "projection"
+        if correlated_fields is not None and correlated_projection.group("split") is None
         else "correlated_split"
         if correlated_fields is not None and "session_id" not in correlated_fields
         else "correlated_session"
@@ -926,7 +930,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         if template_exit_forward is not None
         else "output"
     )
-    return ParsedCustomCall(tool_name, arguments, mode)
+    return ParsedCustomCall(tool_name, arguments, mode, tuple(sorted(correlated_fields or ())))
 
 
 def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
@@ -1173,8 +1177,8 @@ def custom_output_parts(value: Any) -> list[str] | None:
 
 
 def custom_correlated_command_result(
-    value: Any, *, includes_session_id: bool = False
-) -> tuple[str, int, int | None] | None:
+    value: Any, *, fields: tuple[str, ...]
+) -> tuple[str, int | None, int | None] | None:
     parts = custom_output_parts(value)
     if parts is None or len(parts) != 3:
         return None
@@ -1185,11 +1189,10 @@ def custom_correlated_command_result(
         status = json.loads(parts[2])
     except json.JSONDecodeError:
         return None
-    required_keys = {"exit_code", "session_id"} if includes_session_id else {"exit_code"}
     if (
         not isinstance(status, dict)
-        or len(status) > 16
-        or not required_keys <= set(status)
+        or "exit_code" not in status
+        or not set(status) <= set(fields)
     ):
         return None
     if "session_id" in status and status["session_id"] is not None and (
@@ -1198,7 +1201,7 @@ def custom_correlated_command_result(
     ):
         return None
     exit_code = status["exit_code"]
-    if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not 0 <= exit_code <= 2_147_483_647:
+    if exit_code is not None and (type(exit_code) is not int or not 0 <= exit_code <= 2_147_483_647):
         return None
     session_id = status.get("session_id")
     return parts[1], exit_code, session_id
@@ -1206,14 +1209,14 @@ def custom_correlated_command_result(
 
 def custom_template_command_result(value: Any) -> tuple[str, int] | None:
     parts = custom_output_parts(value)
-    if parts is None or len(parts) != 3:
+    if parts is None or len(parts) not in {2, 3}:
         return None
     header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
-    status = re.fullmatch(r"\n?(?:exit=|exit:|EXIT:|EXIT )([0-9]+)", parts[2])
+    status = re.fullmatch(r"\n?(?:exit=|exit:|EXIT:|EXIT |EXIT_CODE=)([0-9]+)", parts[-1])
     if header is None or header.group("body") or status is None:
         return None
     exit_code = int(status.group(1))
-    return (parts[1], exit_code) if exit_code <= 2_147_483_647 else None
+    return (parts[1] if len(parts) == 3 else "", exit_code) if exit_code <= 2_147_483_647 else None
 
 
 def custom_indexed_command_results(
@@ -1682,6 +1685,11 @@ def command_role(value: Any, depth: int = 0) -> str:
         roles = [command_role(list(argv), depth + 1) for argv in argvs]
         return "validation" if "validation" in roles and all(r in {"validation", "inspection"} for r in roles) else "unknown"
     argv = argvs[0]
+    # Literal shell assignment words only. Expansion is never evaluated.
+    while argv and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=[^$`\n]*", argv[0]):
+        argv = argv[1:]
+    if not argv:
+        return "unknown"
     program = Path(argv[0]).name
     args = list(argv[1:])
     if program in {"sh", "bash", "zsh"}:
@@ -1694,7 +1702,7 @@ def command_role(value: Any, depth: int = 0) -> str:
         return command_role(args[3:], depth + 1) if len(args) > 3 and args[0] == "focused" and args[2] == "--" else "unknown"
     # Help/version output is reporting, even when it names a test command.
     if program in {"cargo", "python", "python3", "pytest", "cargo-clippy",
-        "npm", "pnpm", "yarn", "go", "make", "cmake", "ctest", "mvn", "gradle", "gradlew"} \
+        "npm", "pnpm", "yarn", "go", "make", "cmake", "ctest", "mvn", "gradle", "gradlew", "ruff", "sphinx-build"} \
         and any(arg in {"--help", "--version", "-h"} for arg in args):
         return "report"
     if program == "cargo":
@@ -1705,11 +1713,17 @@ def command_role(value: Any, depth: int = 0) -> str:
     elif program in {"python", "python3"}:
         if args and args[0] == "-B":
             args.pop(0)
-        valid = (len(args) >= 2 and args[0] == "-m" and args[1] in {"unittest", "pytest", "compileall"}
+        if len(args) >= 2 and args[:2] == ["-m", "ruff"]:
+            return command_role(["ruff", *args[2:]], depth + 1)
+        valid = (len(args) >= 2 and args[0] == "-m" and args[1] in {"unittest", "pytest", "compileall", "sphinx"}
             or bool(args) and Path(args[0]).name.endswith("_self_test.py")
             or len(args) == 2 and Path(args[0]).name == "harness.py" and args[1] == "self-test")
     elif program in {"pytest", "cargo-clippy"}:
         valid = True
+    elif program == "ruff":
+        valid = bool(args) and (args[0] == "check" or args[0] == "format" and "--check" in args)
+    elif program == "sphinx-build":
+        valid = bool(args)
     elif program in {"npm", "pnpm", "yarn"}:
         valid = bool(args) and (args[0] in {"test", "check", "lint", "build"}
             or len(args) >= 2 and args[0] == "run" and args[1] in {"test", "check", "lint", "build"})
@@ -2168,7 +2182,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 correlated = (
                     custom_correlated_command_result(
                         raw_output,
-                        includes_session_id=parsed.output_mode == "correlated_session",
+                        fields=parsed.result_keys,
                     )
                     if parsed.output_mode in {"correlated_split", "correlated_session"}
                     else custom_template_command_result(raw_output)
@@ -2177,11 +2191,17 @@ def load_codex_capture(path: Path) -> CodexCapture:
                 )
                 result = (
                     custom_output_object(raw_output)
-                    if parsed.output_mode == "result"
+                    if parsed.output_mode in {"result", "projection"}
                     else None
                 )
                 if parsed.output_mode == "result" and result is None and raw_output is not None:
                     malformed = True
+                if parsed.output_mode == "projection":
+                    if isinstance(result, dict) and set(result) <= set(parsed.result_keys):
+                        result = {"output": "", **result}
+                    else:
+                        result = None
+                        malformed = raw_output is not None
                 raw_session_id = (
                     result.get("session_id") if isinstance(result, dict) else None
                 )

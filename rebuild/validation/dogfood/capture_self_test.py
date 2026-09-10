@@ -120,13 +120,82 @@ class CurrentExecutionTests(unittest.TestCase):
             self.assertEqual(capture.evidence_transport_issues[0].reason, "malformed_file_change")
 
     def test_current_exit_templates_and_literal_workdir(self):
-        for marker in ("exit=", "EXIT:", "EXIT ", "exit:", "\\nEXIT:"):
+        for marker in ("exit=", "EXIT:", "EXIT ", "exit:", "\\nEXIT:", "EXIT_CODE="):
             with self.subTest(marker=marker):
                 capture = self.command('const wd="/phase8/repository"; const r=await tools.exec_command({cmd:"rg --files",workdir:wd});'
                     + 'text(r.output); text(`' + marker + '${r.exit_code}`);', ["src/lib.rs", marker.replace("\\n", "\n") + "0"])
                 self.assertEqual(len(capture.commands), 1)
                 self.assertEqual(capture.commands[0].exit_code, 0)
                 self.assertEqual(capture.commands[0].parsed_command["workdir"], "/phase8/repository")
+
+    def test_direct_and_split_numeric_projections(self):
+        prefix = 'const r=await tools.exec_command({cmd:"pytest"});'
+        for fields in ("exit_code:r.exit_code", "exit_code:r.exit_code,session_id:r.session_id",
+                       "output:r.output,exit_code:r.exit_code,session_id:r.session_id"):
+            for split in (False, True):
+                for code in (0, 1, None):
+                    with self.subTest(fields=fields, split=split, code=code):
+                        status = {"exit_code": code}
+                        if "output:" in fields:
+                            status["output"] = "tests passed"
+                        capture = self.command(prefix + ('text(r.output);' if split else '')
+                            + 'text(JSON.stringify({' + fields + '}));',
+                            (["tests passed"] if split else []) + [json.dumps(status)])
+                        self.assertEqual(len(capture.commands), 1)
+                        self.assertEqual(capture.commands[0].exit_code, code)
+                        self.assertEqual(capture.commands[0].evidence_state,
+                                         "completed" if code is not None else "indeterminate")
+
+    def test_projection_rejects_invented_or_unbounded_members(self):
+        prefix = 'const r=await tools.exec_command({cmd:"pytest"});'
+        for fields in ("exit_code:0", "exit_code:other.exit_code", "exit_code:r.output",
+                       "exit_code:r.exit_code,secret:r.secret", "exit_code:r.exit_code||0"):
+            self.assertIsNone(parse_custom_call(prefix + 'text(JSON.stringify({' + fields + '}));'))
+
+    def test_projection_continuation_needs_exact_session(self):
+        metadata = {"turn_id": "sanitized-execution-turn"}
+        for split in (False, True):
+            for session in (73, 74):
+                events = []
+                calls = [
+                    ('const r=await tools.exec_command({cmd:"pytest"});'
+                     + ('text(r.output);' if split else '')
+                     + 'text(JSON.stringify({exit_code:r.exit_code,session_id:r.session_id}));',
+                     (["pending"] if split else []) + ['{"exit_code":null,"session_id":73}']),
+                    (f'const r=await tools.write_stdin({{session_id:{session}}});text(r);',
+                     ['{"exit_code":0,"output":"done"}'])]
+                for index, (source, parts) in enumerate(calls):
+                    events.extend([
+                        {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                         "status": "completed", "call_id": str(index), "input": source, "internal_chat_message_metadata_passthrough": metadata}},
+                        {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": str(index),
+                         "output": [{"type": "input_text", "text": p} for p in
+                                    ["Script completed\nWall time 0.1 seconds\nOutput:\n", *parts]],
+                         "internal_chat_message_metadata_passthrough": metadata}}])
+                capture = self.capture(events)
+                self.assertEqual(len(capture.commands), 1)
+                self.assertEqual(capture.commands[0].exit_code, 0 if session == 73 else None)
+
+    def test_exact_status_and_numeric_types(self):
+        source = 'const r=await tools.exec_command({cmd:"pytest"});text(`EXIT_CODE=${r.exit_code}`);'
+        self.assertEqual(self.command(source, ["EXIT_CODE=0"]).commands[0].exit_code, 0)
+        for status in ("EXIT_CODE=undefined", "EXIT_CODE=0 tests passed", "prefix EXIT_CODE=0"):
+            self.assertIsNone(self.command(source, [status]).commands[0].exit_code)
+        source = 'const r=await tools.exec_command({cmd:"pytest"});text(JSON.stringify({exit_code:r.exit_code}));'
+        for status in ({}, {"exit_code": True}, {"exit_code": "0"}, {"exit_code": -1}, {"exit_code": 2**31}):
+            self.assertIsNone(self.command(source, [json.dumps(status)]).commands[0].exit_code)
+
+    def test_current_validation_programs(self):
+        from codex_events import command_role
+        for cmd in ("MODE=test PYTHONPATH=src python3 -m pytest", "/tmp/venv/bin/ruff check .",
+                    "python -m sphinx -b html docs out", "python3 -m ruff check .",
+                    "sphinx-build -b html docs out", "ruff format --check ."):
+            self.assertEqual(command_role({"cmd": cmd}), "validation", cmd)
+        for cmd in ("MODE=$(true) pytest", "MODE=`true` pytest", "MODE=${VALUE} pytest",
+                    "ruff rule ALL", "ruff format .", "python3 -m ruff rule ALL"):
+            self.assertEqual(command_role({"cmd": cmd}), "unknown", cmd)
+        for cmd in ("ruff check --help", "sphinx-build --version", "python -m sphinx --help"):
+            self.assertEqual(command_role({"cmd": cmd}), "report", cmd)
 
     def test_destructured_promise_and_uncorrelated_completion(self):
         prefix = 'const [a,b]=await Promise.all([tools.exec_command({cmd:"rg --files"}),tools.exec_command({cmd:"git diff --check"})]);'
