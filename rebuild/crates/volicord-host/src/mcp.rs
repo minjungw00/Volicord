@@ -1971,7 +1971,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision, alternatives, and recommendation; pass that receipt to decision_record only after the current user responds to that presentation. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
+            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision, alternatives, and recommendation; pass that receipt to decision_record only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1982,7 +1982,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "decision_record" => (
-            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision.",
+            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. For a clear valid answer, use the existing valid presentation_receipt_id, exact revision and exact current user_turn promptly. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. This boundary accepts a caller-supplied current-host response and does not authenticate arbitrary chat text; never infer a Decision from recommendation or silence. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

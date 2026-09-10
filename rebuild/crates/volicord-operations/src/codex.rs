@@ -32,7 +32,7 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
     let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
-    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. {continuation} Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Commands used as Checkpoint verification must keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
+    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. {continuation} After inquiry_frontier presents a Question revision, a clear valid answer means call decision_record promptly with its existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use only a caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Commands used as Checkpoint verification must keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -910,6 +910,22 @@ mod tests {
             assert!(context.contains("Start project-scoped repository work with project_resolve"));
             assert!(context.contains("workflow.required_next_action"));
             assert!(context.contains("blocks_ordinary_work is false"));
+            assert!(context.contains("call decision_record promptly"));
+            assert!(context.contains("existing valid presentation_receipt_id"));
+            assert!(context.contains("exact current user_turn"));
+            assert!(
+                context.contains("Do not re-present an unchanged Question merely for confirmation")
+            );
+            assert!(context.contains("Explanation requests before selection are not Decisions"));
+            assert!(context.contains("clarify genuinely ambiguous answers"));
+            assert!(context.contains(
+                "Changed revisions or stale/invalid receipts require current presentation"
+            ));
+            assert!(context.contains("caller-supplied current-host response"));
+            assert!(context.contains("never infer a Decision from recommendation or silence"));
+            assert!(
+                context.contains("Stronger confirmation is only for existing high-risk effects")
+            );
             assert!(context.contains("Do not infer user authority from an agent recommendation"));
             assert!(context.contains("separate exact provider authorization"));
             assert!(context.contains("Checkpoint verification that was not actually observed"));
@@ -932,7 +948,7 @@ mod tests {
             ));
             assert!(!context.contains("submit a Question Candidate"));
             assert!(
-                context.len() < 1792,
+                context.len() < 2560,
                 "activation context should stay compact"
             );
         }

@@ -3763,6 +3763,21 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     );
     assert!(descriptions["decision_record"].contains("explicit current-host user response"));
     assert!(descriptions["decision_record"].contains("current Question revision"));
+    for tool in ["inquiry_frontier", "decision_record"] {
+        assert!(descriptions[tool].contains("existing valid presentation_receipt_id"));
+        assert!(descriptions[tool].contains("exact current user_turn"));
+        assert!(descriptions[tool]
+            .contains("Do not re-present an unchanged Question merely for confirmation"));
+    }
+    assert!(descriptions["decision_record"]
+        .contains("Explanation requests before selection are not Decisions"));
+    assert!(descriptions["decision_record"].contains("clarify genuinely ambiguous answers"));
+    assert!(descriptions["decision_record"]
+        .contains("Changed revisions or stale/invalid receipts require current presentation"));
+    assert!(descriptions["decision_record"].contains("caller-supplied current-host response"));
+    assert!(descriptions["decision_record"].contains("does not authenticate arbitrary chat text"));
+    assert!(descriptions["decision_record"]
+        .contains("never infer a Decision from recommendation or silence"));
     assert!(descriptions["materiality_review"].contains("broad Goal alone is not delegation"));
     assert!(descriptions["materiality_review"].contains("semantic rationale"));
     assert!(
