@@ -1,4 +1,6 @@
 """Current-host response provenance keeps raw identities and a narrow comparison."""
+from copy import deepcopy
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -22,6 +24,62 @@ class DecisionTransportTests(unittest.TestCase):
         self.assertFalse(h.compare_current_host_response_transport(caller + " ", caller)["equivalent"])
         self.assertFalse(h.compare_current_host_response_transport(r"Choose stable\_order", "Choose stable_order")["equivalent"])
         self.assertFalse(h.compare_frozen_task_transport(caller, caller + " ").equivalent)
+
+    def fixture(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        descriptor = h.real_session_fixture("volicord", 1, "0" * 40, root)
+        capture = h.load_codex_capture(root / descriptor["evidence"]["captures"]["work"]["file"])
+        bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
+        return capture, bundle
+
+    def test_internal_host_session_is_not_raw_codex_session(self):
+        capture, bundle = self.fixture()
+        self.assertTrue(h.decision_facts(capture, bundle)[0])
+        tables = deepcopy(bundle.tables)
+        for source in tables["sources"]:
+            if source["source_kind"] == "current_host_user_turn":
+                source["detail_two"] = "independent-host-adapter-session"
+        changed = replace(bundle, tables=tables)
+        self.assertTrue(h.decision_facts(capture, changed)[0])
+        goal = capture.successful_calls("context_record")[0]
+        self.assertTrue(h.goal_facts(capture, changed, capture.user_turns[0].text,
+            goal.result["context_item_id"])[0])
+
+    def test_exact_decision_links_reject_substitution(self):
+        capture, bundle = self.fixture()
+        decision = capture.successful_calls("decision_record")[0]
+        for field, value in (("question_revision", 99), ("question_id", "ff" * 16),
+            ("presentation_receipt_id", "unrelated-receipt"),
+            ("user_turn", "The agent recommends stable behavior."),
+            ("user_turn", "Keep concise output, please.")):
+            with self.subTest(field=field, value=value):
+                altered = replace(decision, arguments={**decision.arguments, field: value})
+                changed = replace(capture, tool_calls=tuple(altered if c is decision else c for c in capture.tool_calls))
+                self.assertFalse(h.decision_facts(changed, bundle)[0])
+        for field, value in (("actor_kind", "agent"), ("detail_one", "other-host"),
+            ("project_id", "ff" * 16), ("source_kind", "file"),
+            ("locator", "unrelated user turn")):
+            tables = deepcopy(bundle.tables)
+            source = next(s for s in tables["sources"] if s["id"] == decision.result["user_response_source_id"])
+            source[field] = value
+            self.assertFalse(h.decision_facts(capture, replace(bundle, tables=tables))[0])
+        for altered in (
+            replace(decision, turn_id=capture.user_turns[0].turn_id),
+            replace(decision, result={**decision.result, "user_response_source_id": "ff" * 16}),
+        ):
+            changed = replace(capture, tool_calls=tuple(altered if c is decision else c for c in capture.tool_calls))
+            self.assertFalse(h.decision_facts(changed, bundle)[0])
+        response = capture.turn_for_call(decision)
+        changed = replace(capture, user_turns=tuple(replace(t, text="A different response") if t is response else t
+            for t in capture.user_turns))
+        self.assertFalse(h.decision_facts(changed, bundle)[0])
+        self.assertFalse(h.decision_facts(replace(capture, tool_calls=(*capture.tool_calls, decision)), bundle)[0])
+        for table in ("question_response_sources", "question_decision_history_witnesses", "decisions"):
+            tables = deepcopy(bundle.tables)
+            tables[table] = (*tables[table], *tables[table])
+            self.assertFalse(h.decision_facts(capture, replace(bundle, tables=tables))[0])
 
     def test_actual_capture_and_canonical_source_linkage(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -269,6 +269,25 @@ class FrontierTests(unittest.TestCase):
                 self.assertTrue(self.facts(descriptor, capture, bundle)[0])
                 self.assertEqual(capture.calls("decision_record"), [])
 
+    def test_internal_host_session_preserves_withdrawal_and_learning_audit(self):
+        descriptor, capture, bundle, _ = self.learning_revision("current_user_withdrawal")
+        tables = deepcopy(bundle.tables)
+        for source in tables["sources"]:
+            if source["source_kind"] == "current_host_user_turn":
+                source["detail_two"] = "internal-host-session"
+        bundle = replace(bundle, tables=tables)
+        self.assertTrue(self.facts(descriptor, capture, bundle)[0])
+        begin = next(c for c in capture.calls("learning_deliberation") if c.arguments["action"] == "begin")
+        arguments = (capture, bundle, "learning_deliberation",
+            begin.arguments["review_candidate_id"], begin.arguments["dimension_id"],
+            min(c.sequence for c in h.meaningful_work_path_observations(capture)),
+            {"learning_participation": {"state": "active"}})
+        self.assertTrue(h.learning_deliberation_facts(*arguments)[2])
+        source = next(s for s in bundle.rows("sources") if s["source_kind"] == "current_host_user_turn")
+        tables["decisions"] = (*tables["decisions"], {"id": "manufactured", "project_id": bundle.project_id,
+            "user_turn_source_id": source["id"]})
+        self.assertFalse(h.learning_deliberation_facts(*arguments)[2])
+
     def test_learning_revision_rejects_missing_malformed_and_inappropriate_bases(self):
         descriptor, capture, bundle, revision = self.learning_revision()
         basis = revision.arguments["learning_value_revision_bases"][0]
@@ -300,7 +319,7 @@ class FrontierTests(unittest.TestCase):
             mutations += [{"project_id": "ff" * 16}, {"source_kind": "unsupported"}]
             if kind == "current_user_withdrawal":
                 mutations += [{"actor_kind": "agent"}, {"detail_one": "other-host"},
-                    {"detail_two": "other-session"}, {"locator": "I still want to deliberate."}]
+                    {"detail_two": None}, {"locator": "I still want to deliberate."}]
             for mutation in mutations:
                 with self.subTest(kind=kind, mutation=mutation):
                     changed_bundle = replace(bundle, tables={**bundle.tables, "sources": tuple(

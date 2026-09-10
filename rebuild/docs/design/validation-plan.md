@@ -1567,7 +1567,12 @@ comparison, additional terminal ASCII space/tab/CR/LF in the host response may b
 interior, Unicode-whitespace, case, punctuation, paraphrase or fuzzy normalization is permitted.
 Frozen task and Context transport contracts are unchanged. Canonical response Source content must
 remain the exact caller-supplied text, with the existing Source identity, Project, host/session,
-Question revision and presentation linkage. No unavailable authenticated host turn-ID API is invented.
+Question revision and presentation linkage. The canonical session belongs to HostAdapter and need
+not equal the raw Codex thread ID. Cross-layer correlation uses the observed call/result, exact
+Source/response/Decision/witness, maintained presentation receipt and captured current user turn.
+Context and user-withdrawal checks likewise retain their exact text/linkage contracts without
+comparing the two session domains; learning's canonical Decision audit uses internal sessions from
+Sources returned by observed calls. No unavailable authenticated host turn-ID API is invented.
 
 Bounded comparison evidence preserves the raw rollout SHA-256, captured turn identity, raw response
 SHA-256, caller and canonical Source SHA-256, canonical Source ID, normalized comparison hash and

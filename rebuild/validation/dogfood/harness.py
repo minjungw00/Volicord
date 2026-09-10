@@ -5387,8 +5387,24 @@ def decision_facts(
             if question_revision_row is not None
             else None
         )
+        # The receipt is maintained by HostAdapter; raw Codex turn identity is
+        # proved separately by turn_for_call and the directional text comparison.
+        presentations = [
+            presented
+            for frontier in work.successful_calls("inquiry_frontier")
+            if frontier.arguments.get("project_id") == bundle.project_id
+            and frontier.completion_sequence < call.sequence
+            for presented in frontier.result.get("questions", [])
+            if isinstance(presented, dict)
+            and presented.get("identity") == question_id
+            and presented.get("revision") == revision
+            and presented.get("presentation_receipt_id")
+            == call.arguments.get("presentation_receipt_id")
+        ]
         call_valid = (
             turn is not None
+            and turn.sequence < call.sequence
+            and len(presentations) == 1
             and nonempty_string(question_id)
             and isinstance(revision, int)
             and revision >= 1
@@ -5408,7 +5424,9 @@ def decision_facts(
                 source.get("locator"), turn.text
             )["equivalent"]
             and source.get("detail_one") == "codex"
-            and source.get("detail_two") == work.session_id
+            # Canonical session is internal HostAdapter provenance, not the
+            # raw Codex thread ID. Exact call/result/turn links cross the layers.
+            and nonempty_string(source.get("detail_two"))
             and source.get("actor_kind") == "user"
             and isinstance(material_scope, list)
         )
@@ -5502,7 +5520,7 @@ def goal_facts(
                 first_turn.text, source.get("locator")
             )
             and source.get("detail_one") == "codex"
-            and source.get("detail_two") == work.session_id
+            and nonempty_string(source.get("detail_two"))
             and source.get("actor_kind") == "user"
             and relation is not None
         )
@@ -6862,7 +6880,7 @@ def materiality_revision_arguments_valid(
                 or source.get("source_kind") != "current_host_user_turn"
                 or source.get("actor_kind") != "user"
                 or source.get("detail_one") != "codex"
-                or source.get("detail_two") != work.session_id
+                or not nonempty_string(source.get("detail_two"))
                 or not nonempty_string(source.get("locator"))
                 or basis["verbatim_statement"] not in source["locator"]
                 or not any(turn.sequence < revision.sequence
@@ -7538,11 +7556,27 @@ def learning_deliberation_facts(
         dimension_id=dimension_id,
         first_write_sequence=first_write_sequence,
     )
+    # Infer the *canonical* session scope only from Sources returned by observed
+    # calls. Never compare this internal identity with the raw Codex thread ID.
+    observed_source_ids = {
+        call.result.get(field)
+        for call in work.tool_calls if call.outcome == "succeeded"
+        for field in ("source_id", "user_response_source_id")
+        if nonempty_string(call.result.get(field))
+    }
+    host_sessions = {
+        source.get("detail_two") for source in bundle.rows("sources")
+        if source.get("project_id") == bundle.project_id
+        and source.get("id") in observed_source_ids
+        and source.get("source_kind") == "current_host_user_turn"
+        and source.get("detail_one") == "codex"
+        and nonempty_string(source.get("detail_two"))
+    }
     session_decisions = [
         row
         for row in bundle.rows("decisions")
         if row.get("project_id") == bundle.project_id
-        and (bundle.one("sources", id=row.get("user_turn_source_id"), project_id=bundle.project_id) or {}).get("detail_two") == work.session_id
+        and (bundle.one("sources", id=row.get("user_turn_source_id"), project_id=bundle.project_id) or {}).get("detail_two") in host_sessions
     ]
     canonical_decision_count = len(session_decisions)
     _, _, _, _, _, actual_decisions = decision_facts(work, bundle)
