@@ -3,7 +3,7 @@
 ## Status
 
 Technical entry passed for exact sealed Product/test candidate
-`70ee9119e0357a2deed49291a0e5cfdb04fb014f` (2026-09-09). The copied sanitized
+`de4c6d1bea16947616ed6fb78baa8f8c321ef4ff` (2026-09-10). The copied sanitized
 gate capsule records
 `phase_8_ready = true`; exact final, required provider qualification, official
 V11, archive creation, and independent verification all succeeded.
@@ -13,9 +13,10 @@ candidate. A future campaign must run in a separate clean worktree whose
 actual HEAD matches the capsule's exact candidate, with wholly fresh campaign
 identity, Runtime Homes, workspaces, descriptors, rollouts, and sessions.
 
-The prior terminal campaign remains non-reusable diagnostic evidence. Its
-validation-infrastructure findings and genuine work-authority continuation
-failure are separately recorded below. Historical activation-evidence intake
+The prior terminal campaign remains non-reusable diagnostic evidence. Its latest
+Decision/evidence findings, cross-Review learning-continuity Product defect, and
+observed nonzero repository validation are separately recorded below.
+Historical activation-evidence intake
 at candidate `bbb64b4274c3f726fbeffae2389089819972b9ff` and hidden materiality
 discovery failure at `537bd0cadf40bedaf0719b658a860ac369d3faa6` remain separate
 older diagnostics; neither is qualification evidence for this candidate.
@@ -155,7 +156,7 @@ Decision path.
 ## Commands and configuration
 
 In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
+actual `HEAD` is `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`.
 Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
 documentation-only conclusion HEAD:
 
@@ -285,7 +286,7 @@ documents and does not share their adoption lifecycle.
 ## Observed results
 
 The new copied capsule and independently verified archive establish technical
-entry for `70ee9119e0357a2deed49291a0e5cfdb04fb014f`:
+entry for `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -303,6 +304,57 @@ The maintained gate ran exact final, live provider qualification, and official
 V11 once for this candidate in the same gate process/session. The later
 documentation conclusion uses the copied capsule and maintained report checks.
 It supplies no new naturalistic observations.
+
+The latest terminal campaign used Product/test candidate
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f`. Its immutable batch summary records
+`intake_state = rejected`, `outcome = campaign_stop`, and
+`qualification_state = not_run`. It is terminal, failed, diagnostic-only,
+and non-reusable. This is distinct from the older continuation and activation
+campaigns described below.
+
+Its findings have three separate attributions:
+
+- Decision/evidence evaluation: the retained Session 1 repairs distinguish the
+  internal HostAdapter session from the raw Codex thread, preserve exact
+  caller-to-canonical provenance, and apply only the supported directional
+  terminal whitespace/Markdown transport comparison. Investigation/reporting
+  commands do not replace genuine terminal validation; help output, unknown
+  completion and prose success cannot manufacture a numeric exit. The current
+  maintained Decision/evidence regressions and complete harness self-test pass.
+- Product learning continuity: a completed active, deliberation-worthy stable
+  choice was recreated under a successor Discovery/Review and reset to
+  routine/inactive without supported basis. That recorded behavior remains a
+  failure. `f41b6959` enforces retained equivalent classification in Inquiry,
+  retains supported prior-Review research/prototype/withdrawal revisions, and
+  reuses equivalent terminal non-Decision learning. New typed alternatives,
+  material consequences, requested learning outcomes, missing identity evidence,
+  and pending/reconsidered branches cannot inherit old completion. Predictable
+  coupled artifact expansion still requires the existing prospective scope
+  closure. `25a2a8b5` prevents a renewed explicit participation Source identity
+  alone from creating another interruption for the same learning requirement.
+- Repository verification: the historical polyglot hidden-decision resume
+  actually terminated validation with numeric exit `101`. That is a genuine
+  failed execution, independent of valid Decision provenance or evaluator
+  repairs. Other unobserved numeric outcomes remain indeterminate rather than
+  inferred successes. `de4c6d1b` instructs Codex to expose actual numeric
+  exit/termination and preserve execution identity through polled terminal
+  results; guidance cannot guarantee every external host tool's capture.
+
+Focused Product checks passed 68 work-authority cases, 20 Inquiry cases and
+three Codex integration cases, with fmt/clippy and owner checks passing.
+`684d22a4` corrects the installation smoke fixture's obsolete commands; the
+current installation check passes. Full Dogfood harness and clean-candidate
+campaign self-tests pass. Reproduction failures and earlier dirty-candidate
+or stale-fixture check failures remain preserved as their actual nonzero runs.
+
+A targeted read-only diagnostic at the repaired candidate verified unchanged
+hashes for 107 inspected historical inputs. Valid Decision provenance remains
+recognized, the learning reset remains failed, the observed exit `101` remains
+failed, and previously accepted controls remain accepted. This is direct
+provenance/intake diagnostic evidence, not a new full campaign evaluation;
+other historical failures and indeterminate observations are not erased.
+No prior campaign was mutated, retried, recollected, finalized, or qualified.
+No fresh naturalistic campaign has been run for the newly sealed candidate.
 
 Candidate `537bd0cadf40bedaf0719b658a860ac369d3faa6` established one successful
 explicit user-owned control and one hidden user-owned discovery failure. The
@@ -331,7 +383,7 @@ sessions. The activation/evidence boundary must be demonstrated by a new
 campaign after remediation. The private summary and rollouts remain external
 diagnostic inputs; this report does not copy or alter their evidence.
 
-The prior terminal naturalistic campaign exposed two distinct classes of
+An earlier terminal continuation campaign exposed two distinct classes of
 finding. Validation infrastructure misinterpreted supported Codex FileChange
 and exec completion forms, lost some correlated command/exit evidence, and
 coupled indeterminate investigation evidence to otherwise recorded authority
@@ -407,12 +459,14 @@ reliability of the repaired continuation guidance.
 ## Coverage and failures
 
 Current technical Phase 8 entry is passed/eligible only for
-`70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
-The prior terminal naturalistic campaign remains a failure; normalization
-defects, the completed bounded historical/learning evaluator repairs, evidence
-indeterminacy, and the genuine authority-continuation defect are separately
-attributed in Observed results. Older hidden-materiality and activation-evidence
-campaigns remain immutable diagnostics as well.
+`de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`.
+The latest terminal campaign at `70ee9119e0357a2deed49291a0e5cfdb04fb014f`
+remains failed. Decision/evidence evaluator findings, the genuine cross-Review
+learning-continuity defect, and actual nonzero repository validation are
+separately attributed in Observed results. Earlier authority-continuation
+failures and evidence indeterminacy remain historical diagnostics. Older
+hidden-materiality and activation-evidence campaigns remain immutable diagnostics
+as well.
 
 The repaired candidate has no fresh naturalistic campaign, automated Dogfood
 qualification, campaign-wide interaction/document/Viewer/CLI/resource
@@ -449,7 +503,7 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `70ee9119e0357a2deed49291a0e5cfdb04fb014f` |
+| Sealed production/test candidate | `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
@@ -463,6 +517,7 @@ separate private archive for the independent review handoff.
 | Complete replacement campaign | `not_run` |
 | Historical activation automated qualification | `not_run` |
 | Historical campaign-level human review | `not_provided` |
+| Latest terminal learning-continuity campaign | `failed`; diagnostic-only and non-reusable |
 | Prior terminal continuation campaign | `failed`; diagnostic-only and non-reusable |
 | Historical replacement gate | `failed` |
 | Replacement pass candidate | `false` |
@@ -472,8 +527,8 @@ separate private archive for the independent review handoff.
 
 - Official V11 proves scripted installed-product conformance, not independent
   agent discovery in ordinary user sessions.
-- The current evidence says nothing yet about reliability of strengthened
-  material-Question discovery or real-session usability.
+- The current evidence says nothing yet about naturalistic reliability of the
+  new learning-continuity and numeric-evidence guidance or real-session usability.
 - All prior campaigns' descriptors and evidence are immutable diagnostics, not
   inputs to a fresh qualification campaign.
 - Missing activation evidence cannot by itself distinguish a hook execution failure
@@ -486,7 +541,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`70ee9119e0357a2deed49291a0e5cfdb04fb014f`, run all sixteen genuine sessions,
+`de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`, run all sixteen genuine sessions,
 and obtain the automated result first. Add the campaign-level human review when
 evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -516,16 +571,18 @@ validation tooling and do not own product semantics.
 
 Official V11 reported no active accepted Q1–Q14 revisit trigger for this sealed
 technical entry, with all 15 Decision IDs assessed (Q8-A and Q8-B separately).
-The prior terminal campaign additionally exposed evidence-normalization/evaluator
-defects and a genuine prospective-authority continuation failure. Those findings
-remain distinct from the older materiality and activation-evidence diagnostics.
+The latest terminal campaign additionally exposed Decision/evidence evaluator
+findings, a genuine cross-Review learning-continuity defect, and a nonzero
+repository validation outcome. Older prospective-authority continuation findings
+remain separately recorded. Those findings remain distinct from the older
+materiality and activation-evidence diagnostics.
 Repairs have not established fresh naturalistic passage and do not change the
 accepted Candidate/Inquiry/Decision model.
 
 ## Follow-up work
 
-The repaired evaluator and Codex continuation integration now have a successful
-technical entry for the exact sealed candidate. In a later session,
+The learning-continuity repairs and Codex verification guidance now have a
+successful technical entry for the exact sealed candidate. In a later session,
 prepare one completely fresh opaque-slot helper-owned campaign at the sealed candidate,
 have the control agent research and seal the eight evaluator descriptors, grant
 trust manually, activate all eight repository integrations, run the sixteen
@@ -539,14 +596,14 @@ result.
 ## Artifacts
 
 - Current technical-entry candidate:
-  `70ee9119e0357a2deed49291a0e5cfdb04fb014f`.
+  `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`.
 - Current copied sanitized capsule SHA-256:
-  `7b13c2faa2f154192d336b20711932a6c4044601f9e738fe51ab81d6014d5dd7`.
+  `4f8cc53c05f7981e3b8e8e951109d67763d9aedca3e3c23439f0b6b02f70257b`.
 - Current independently verified evidence archive:
-  `validation-evidence-70ee9119e035.tar.gz`, 14781 bytes, 9 members, SHA-256
-  `ecd6d545b7103d6c5bf7e2654d11e8e07f8596d00e092144cd676527b39de6de`.
+  `validation-evidence-de4c6d1bea16.tar.gz`, 14812 bytes, 9 members, SHA-256
+  `49e747c9d3a48a830c558d20eaca60672fa90b3afa293a297ed89187db3a052f`.
 - The capsule and archive were copied byte-for-byte before documentation to
-  `/tmp/volicord-phase8-handoff-20260909/70ee9119e0357a2deed49291a0e5cfdb04fb014f/`.
+  `/tmp/volicord-phase8-handoff-20260910/de4c6d1bea16947616ed6fb78baa8f8c321ef4ff/`.
   The documentation-only conclusion HEAD is distinct from the sealed candidate.
 - Historical copied sanitized capsule SHA-256 (not current qualification):
   `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.

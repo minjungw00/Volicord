@@ -1,14 +1,14 @@
 # Phase 8 technical-entry candidate authority
 
-- Sealed Product/test candidate: `70ee9119e0357a2deed49291a0e5cfdb04fb014f`
+- Sealed Product/test candidate: `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`
 - Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
 - Admission: `eligible`; exact final: `succeeded`, four commands, zero failures
 - Required production-provider qualification: `passed`; `openai-codex`, `gpt-5.6-sol`
 - Official V11: `passed`, 54 of 54 required steps; all three authenticated targets passed
 - Credential-retention audit: `passed`, all counts zero
 - Sanitized evidence archive: creation succeeded; independent verification `passed`
-- Capsule SHA-256: `7b13c2faa2f154192d336b20711932a6c4044601f9e738fe51ab81d6014d5dd7`
-- Archive SHA-256: `ecd6d545b7103d6c5bf7e2654d11e8e07f8596d00e092144cd676527b39de6de`
+- Capsule SHA-256: `4f8cc53c05f7981e3b8e8e951109d67763d9aedca3e3c23439f0b6b02f70257b`
+- Archive SHA-256: `49e747c9d3a48a830c558d20eaca60672fa90b3afa293a297ed89187db3a052f`
 - Fresh naturalistic Dogfood: `not_run`; automated qualification: `not_run`
 - Human review: `not_provided`; replacement passage: `not_established`
 - `replacement_pass_candidate = false`; `phase_9_ready = false`
@@ -16,7 +16,7 @@
 ## Maintained conclusion
 
 The copied capsule and independently verified archive establish technical entry
-for exactly `70ee9119e0357a2deed49291a0e5cfdb04fb014f`. Exact final, required
+for exactly `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`. Exact final, required
 live provider qualification, and official V11 each ran once for that candidate
 in the same maintained gate.
 Resource measurements passed and no accepted-Decision revisit trigger was
@@ -33,37 +33,36 @@ The candidate above passed its own maintained gate after those repairs.
 Historical successful gates, including `6031641c46cf014a754442dcee3137caf265882e`
 and `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, do not qualify later HEADs.
 
-The prior terminal naturalistic campaign remains failed, diagnostic-only, and
-non-reusable. Its evidence was not mutated, retried, collected, finalized, or
-qualified by this repair. The maintained [Dogfood report](dogfood/report.md)
-separates its validation-infrastructure defects from the genuine Product
-work-authority continuation failure.
+The latest terminal naturalistic campaign used candidate
+`70ee9119e0357a2deed49291a0e5cfdb04fb014f` and remains failed, diagnostic-only,
+and non-reusable (`intake_state = rejected`, `outcome = campaign_stop`,
+`qualification_state = not_run`). Its Decision/evidence evaluator findings,
+genuine cross-Review learning reset, and actual polyglot terminal validation
+exit `101` are distinct facts in the maintained [Dogfood report](dogfood/report.md).
+Earlier historical/learning evaluator and prospective-continuation repairs do
+not qualify that later failed campaign.
 
-The earlier normalization/evaluator fixes preserve supported Codex completion
-semantics, evidence indeterminacy, affirmative no-write research/prototype
-evidence, and failure classification for proven late/uncovered authority.
-The distinct Product repair connects existing prospective invariants to
-SessionStart and the ready workflow reason: newly uncovered scope and changed
-or stale authority require current inspection/rebinding before affected writes.
-Post-work analysis cannot replace retained pre-work authority. Product
-regressions prove positive continuation and negative late/stale/post-work cases
-without adding a duplicate authority model or per-edit ceremony. The core
-Inquiry/domain invariants already existed and were not reimplemented.
+The sealed candidate retains the current Session 1 provenance/evidence repairs.
+`f41b6959` and `25a2a8b5` enforce equivalent Review learning classification and
+terminal satisfaction using retained Project/Goal/baseline, stable dimension,
+actual typed choice/alternative and current learning meaning. Unsupported
+routine/inactive reset is rejected; supported prior research/prototype/current-user
+withdrawal revisions remain available. Coupled artifact expansion does not alone
+repeat learning, and new material/reconsidered learning remains pending.
+Learning satisfaction remains non-Decision and cannot resolve a user-owned outcome.
 
-The prior evaluator-remediation conclusion was premature. The current candidate
-adds historical Question resolution against each branch's own prospective baseline
-(`8776b115`), rejection of incomplete historical candidate-only branches (`70ee9119`),
-and selection of the relevant Learning Deliberation plus exact flat Recall identity
-among historical/current items (`161db9a7`). Current authority remains independently
-bound to its own Review, baseline, executable scope, and first-write chronology.
-Learning remains non-canonical; ambiguous begins, orphan/cross-candidate transitions,
-missing current Recall evidence, and degraded required context remain failures.
+`de4c6d1b` strengthens SessionStart guidance for actual numeric exit/termination
+and terminal execution identity in host-visible Checkpoint verification results.
+This is guidance, not a guarantee over every external tool's evidence capture.
+`684d22a4` updates the installation smoke fixture to current CLI commands.
+Focused work-authority (68), Inquiry (20), Codex integration (3), installation,
+Dogfood harness and clean-candidate campaign checks pass. The final aggregate,
+provider, official V11 and archive facts above come from the new copied capsule.
 
-All 35 maintained frontier and 19 resume/learning regressions, complete harness,
-and campaign self-tests passed. Read-only diagnostic evaluation removed the bounded
-historical/learning false failures and retained the genuine late/uncovered/stale
-authority failure. Inspected campaign evidence hashes were unchanged; no prior
-campaign was recollected, repaired, finalized, or qualified.
+Read-only diagnostic replay preserved the inspected 107 input hashes, accepted
+controls, historical learning failure and observed numeric exit `101`. It was
+not campaign mutation or qualification. No historical result was retroactively
+qualified, and no fresh naturalistic campaign has run for the sealed candidate.
 
 Fresh naturalistic Dogfood is not yet run, human review is not provided, and
 replacement qualification remains pending. `phase_9_ready` stays false until
