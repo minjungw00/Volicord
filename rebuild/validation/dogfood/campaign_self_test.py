@@ -3518,6 +3518,8 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         }
 
     operations = {
+        "prepare-document-realizations": lambda: campaign.document_realization.prepare(root, []),
+        "record-document-realization": lambda: campaign.document_realization.record(root, "ab" * 16, missing),
         "prepare-review": lambda: campaign.prepare_review(
             root, "volicord", 1, missing
         ),
@@ -3583,7 +3585,9 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
 
 def main() -> int:
     from resume_self_test import check_resume_regressions
+    from document_realization_self_test import check_document_realization_regressions
     check_resume_regressions()
+    check_document_realization_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:
@@ -3700,6 +3704,9 @@ def main() -> int:
             "read_only_resume_requires_post_inspection_numeric_verification",
             "unfinished_read_only_resume_rejected",
             "four_kind_markdown_html_document_evidence",
+            "active_host_document_preparation_preflight_immutable_record_and_batch",
+            "cross_locale_missing_realization_blocks_before_terminal_mutation",
+            "product_document_plan_topology_protected_terms_and_canonical_purity",
             "document_export_process_streams_exit_and_termination_retained",
             "typed_document_unavailability_preserved",
             "document_evidence_project_candidate_cycle_binding",

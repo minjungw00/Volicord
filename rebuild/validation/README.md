@@ -458,17 +458,69 @@ frozen first task, exact workspace and revision, VS Code source/originator,
 fresh session identity, and SessionStart activation. Ambiguous, missing,
 duplicate, mismatched, or session-reused input is rejected globally.
 
-After mapping succeeds, `collect-batch` copies and hashes every rollout
+For requested-language documents outside the fixed viewer locale (`en`/`en-*` or
+`ko`/`ko-*`), prepare and fix active-host realizations after all sixteen raw rollouts
+exist and before any intake. The candidate's `volicord-mcp` executable is required
+and hash-bound during campaign preparation. The steward runs:
+
+```text
+rebuild/scripts/dogfood-campaign prepare-document-realizations \
+  --campaign-root /absolute/private/campaign \
+  --rollout-directory /absolute/private/raw-rollouts
+```
+
+This uses the same read-only global input mapping and Product `document_preview`
+to obtain fingerprinted plans. It does not qualify sessions or change canonical
+Project state. Give the active host only `realizer/index.json` and its referenced
+plans/drafts. That plane contains opaque document identities, Project/candidate,
+requested language, and bounded Product source plans; it contains no evaluator
+assignment, expected outcome, or raw session data. Never put it in tracked state.
+
+The active host fills each draft's `realization` with the exact plan fingerprint,
+translated `title`, ordered `sections` (`key`, `title`, `claims`), and ordered claims
+(`identity`, `text`), preserving every protected code/path term. It supplies the
+`generator` object with non-empty `generator`, `agent`, and `model` identities.
+The outer draft contains exactly `preparation_sha256`, `requested_language`,
+`all_generated_prose_realized`, and `realization`. Keep the prepared hash/language
+and set the prose confirmation to `true` only after reviewing the complete body.
+Python never writes translated prose. Field text is bounded to 4,096 UTF-8 bytes;
+each private preparation/draft is bounded to 2 MiB. The host then runs:
+
+```text
+rebuild/scripts/dogfood-campaign validate-document-realization \
+  --campaign-root /absolute/private/campaign \
+  --realization-id <opaque-document-id> --draft <private-draft-path>
+rebuild/scripts/dogfood-campaign record-document-realization \
+  --campaign-root /absolute/private/campaign \
+  --realization-id <opaque-document-id> --draft <private-draft-path>
+```
+
+Preflight reads the realizer preparation, input, and inventory membership only.
+Fix errors in the mutable draft and rerun preflight. Recording asks Product to
+validate both formats against the current plan, then fixes the exact bytes/hash;
+later draft edits cannot change that record. Fixed records cannot be overwritten.
+All required records must be fixed before `collect-batch` can create staging or
+publish terminal intake. The preparation also binds all sixteen raw hashes and the
+campaign hash. Missing realizer evidence is a preparation blocker, not a Product
+crash. Individual cross-locale `collect-work`/`collect-resume` cannot bypass this step.
+Product checks structure, grounding, protected terms and provenance; the active
+host confirmation and existing human review still own semantic language quality.
+
+After mapping and required realization checks succeed, `collect-batch` copies and hashes every rollout
 byte-for-byte. It preserves a terminal work blocker even when the matching
 resume exists and continues parsing later captures only for bounded diagnostic
 and extractable evidence. Missing activation remains
 `operator_environment_invalid`. For each safely identifiable cycle it derives
 the Project ID, invokes the installed candidate's repository-selected
 `context export --output`, completes descriptor evidence references and hashes,
-and invokes the supported `document export`
+and invokes the supported same-locale `document export`
 path for `project-architecture-guide`, `decision-report`,
 `implementation-plan`, and `handoff-resume` in both Markdown and
-self-contained HTML. A deterministic per-cycle summary records every
+self-contained HTML. Cross-locale documents instead re-derive the current MCP
+NarrativePlan and submit the exact fixed realization to Product `document_preview`.
+The same realization serves both formats only after their plans compare equal;
+the Product fingerprint is format-independent. Only Product-returned content is
+saved as document evidence. A deterministic per-cycle summary records every
 kind/format status, bounded failure basis or relative evidence path, bytes, and
 SHA-256; export failure remains explicitly failed. The public
 `volicord-viewer --snapshot` capability also produces one self-contained,
@@ -479,7 +531,7 @@ writes a bounded Runtime Home summary containing managed logical names and sizes
 derived-analysis size, configuration presence, and activation booleans; it
 never reads or copies store, derived-analysis, credential, provider-payload,
 prompt, or source-body contents. `collect-work` and `collect-resume` remain
-available as non-default focused diagnostics; they are not the ordinary
+available for same-locale non-default focused diagnostics; they are not the ordinary
 operator workflow.
 
 The generated documents and Viewer serve different review needs. Each document

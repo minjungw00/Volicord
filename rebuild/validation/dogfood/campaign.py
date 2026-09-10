@@ -28,6 +28,7 @@ import tomllib
 from typing import Any, Callable
 
 import harness
+import document_realization
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -1034,7 +1035,9 @@ def render_operator_run_sheet(root: Path) -> Path:
         "VS Code executed SessionStart; every raw session still requires runtime activation evidence. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
         "sixteen fresh work/resume chats, preserve their raw rollouts, and provide the sixteen files once "
-        "through `collect-batch`. No per-chat control-session collection is required.\n\n"
+        "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
+        "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
+        "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are sealed for operator use yet.\n"),
         encoding="utf-8",
     )
@@ -1898,6 +1901,8 @@ def prepare_campaign(
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
     binary = candidate_binary.resolve() if candidate_binary else install_candidate(root)
+    realization_route = (document_realization.route(binary)
+        if document_realization.required(document_language, viewer_locale) else None)
     if not binary.is_file():
         raise CampaignError("candidate binary is unavailable")
     cycles: dict[str, Any] = {}
@@ -1965,6 +1970,7 @@ def prepare_campaign(
         "candidate_binary": str(binary),
         "document_language": document_language,
         "viewer_locale": viewer_locale,
+        "document_realization_route": realization_route,
         "repository_input": relative(root, root / "repository-input.json"),
         "terminal_outcome": None,
         "active_cycle_by_repository": {},
@@ -2037,6 +2043,8 @@ def update_activation_summary(root: Path, kind: str, cycle: int, **updates: Any)
 
 def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
+    if document_realization.required(campaign["document_language"], campaign["viewer_locale"]):
+        raise CampaignError("cross-locale collection requires prepare-document-realizations and collect-batch")
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
@@ -2490,7 +2498,8 @@ def collect_document_evidence(
         for format_name, suffix in DOCUMENT_FORMATS:
             destination = directory / f"{document_kind}.{suffix}"
             try:
-                result = documenter(
+                result = document_realization.generate(root, kind, cycle, project_id,
+                    document_kind, format_name, destination) if document_realization.required(language, locale) else documenter(
                     binary,
                     runtime,
                     repository,
@@ -2503,7 +2512,8 @@ def collect_document_evidence(
             except (OSError, ValueError, CampaignError) as error:
                 result = {
                     "status": "failed",
-                    "basis": f"document evidence adapter failed: {type(error).__name__}",
+                    "basis": str(error)[:512] if isinstance(error, CampaignError)
+                        else f"document evidence adapter failed: {type(error).__name__}",
                 }
             process = result.pop("_process_result", None)
             process_evidence = (
@@ -2753,6 +2763,8 @@ def collect_resume(
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
+    if document_realization.required(campaign["document_language"], campaign["viewer_locale"]):
+        raise CampaignError("cross-locale collection requires prepare-document-realizations and collect-batch")
     verify_inventory(root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("later collection is blocked; create a new campaign identity")
@@ -3061,6 +3073,7 @@ def collect_batch(
         raise CampaignError("batch collection requires all eight sealed cycles")
     # Global identity mapping is read-only and complete before staging anything.
     mapped = map_batch_rollouts(root, raw_paths)
+    document_realization.require_batch_ready(root, campaign, mapped)
     for (kind, cycle, role), rollout in mapped.items():
         destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
         if destination.exists() or rollout.source.resolve() == destination.resolve():
@@ -3604,6 +3617,8 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
 
 def safe_archive_artifact(name: str, *, include_raw: bool) -> bool:
     path = Path(name)
+    if path.name == "realization-bindings.json":
+        return False
     lowered = name.casefold()
     if path.name in RAW_NAMES:
         return include_raw
@@ -3617,6 +3632,7 @@ def safe_archive_artifact(name: str, *, include_raw: bool) -> bool:
             "bootstrap-runtime",
             "derived",
             "document-export-processes",
+            "realizer",
         }
         for part in path.parts
     ):
@@ -3813,6 +3829,9 @@ def parser() -> argparse.ArgumentParser:
     collect_w = sub.add_parser("collect-work")
     collect_r = sub.add_parser("collect-resume")
     collect_b = sub.add_parser("collect-batch")
+    prepare_documents = sub.add_parser("prepare-document-realizations")
+    validate_document = sub.add_parser("validate-document-realization")
+    record_document = sub.add_parser("record-document-realization")
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_review = sub.add_parser("prepare-human-review")
@@ -3842,6 +3861,14 @@ def parser() -> argparse.ArgumentParser:
     batch_input = collect_b.add_mutually_exclusive_group(required=True)
     batch_input.add_argument("--raw-rollout", action="append")
     batch_input.add_argument("--rollout-directory")
+    prepare_documents.add_argument("--campaign-root", required=True)
+    document_inputs = prepare_documents.add_mutually_exclusive_group(required=True)
+    document_inputs.add_argument("--raw-rollout", action="append")
+    document_inputs.add_argument("--rollout-directory")
+    for command in (validate_document, record_document):
+        command.add_argument("--campaign-root", required=True)
+        command.add_argument("--realization-id", required=True)
+        command.add_argument("--draft", required=True)
     finalize.add_argument("--campaign-root", required=True)
     package.add_argument("--campaign-root", required=True)
     package.add_argument("--output", required=True)
@@ -3898,12 +3925,16 @@ def main() -> int:
         value = collect_work(root, args.repository_class, args.cycle, Path(args.raw_rollout))
     elif args.command == "collect-resume":
         value = collect_resume(root, args.repository_class, args.cycle, Path(args.raw_rollout))
-    elif args.command == "collect-batch":
+    elif args.command in {"validate-document-realization", "record-document-realization"}:
+        operation = document_realization.validate if args.command == "validate-document-realization" else document_realization.record
+        value = operation(root, args.realization_id, Path(args.draft).resolve())
+    elif args.command in {"collect-batch", "prepare-document-realizations"}:
         paths = batch_rollout_paths(
             [Path(path) for path in args.raw_rollout] if args.raw_rollout else None,
             Path(args.rollout_directory) if args.rollout_directory else None,
         )
-        value = collect_batch(root, paths)
+        value = (document_realization.prepare(root, paths) if args.command == "prepare-document-realizations"
+                 else collect_batch(root, paths))
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-human-review":

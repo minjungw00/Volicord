@@ -696,6 +696,10 @@ class Mcp:
             self.process.kill()
             code = self.process.wait()
         stderr = self.process.stderr.read() if self.process.stderr else ""
+        if self.process.stdout:
+            self.process.stdout.close()
+        if self.process.stderr:
+            self.process.stderr.close()
         return {"exit_code": code, "stderr": stderr}
 
 

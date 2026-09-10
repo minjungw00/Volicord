@@ -1342,7 +1342,39 @@ task, exact workspace/revision, work/resume role, `source=vscode`, `originator=c
 session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
 
-Mapping 뒤 campaign-local staging에서 raw byte와 mapped capture SHA-256를 재확인하고
+Cross-locale document의 active-host route는 preparation 때 candidate-local `volicord-mcp`
+executable/hash에 bind한다. Fixed locale와 같은 `en`/`en-*` 또는 `ko`/`ko-*` 요청만 기존 CLI
+export를 사용한다. 그 밖의 요청은 sixteen raw rollout이 모두 존재하고 cycle이 아직 sealed인
+상태에서 `prepare-document-realizations`를 먼저 실행한다. 이 non-qualifying operation은 같은
+global read-only mapping으로 exact cycle Project를 구하고 maintained stdio MCP client로 각
+문서의 `document_preview` NarrativePlan을 읽는다. Markdown/HTML의 plan bytes가 동일함을
+확인하며 Product fingerprint가 format과 generation time에 의존하지 않는 계약에서만 realization을
+공유한다. Raw input, session과 campaign hash binding은 private `realization-bindings.json`에,
+opaque document identity의 plan/index와 null-text draft는 `realizer/`에 둔다. Realizer plane에는
+evaluator assignment, behavior class, expected qualification 또는 raw rollout을 투영하지 않는다.
+
+Active host/model만 draft의 requested-language title, section title, claim text와 generator/agent/model
+identity를 채운다. `validate-document-realization`은 exact preparation hash, closed draft shape,
+requested-language attestation, fingerprint, ordered section/claim identity, field bound와 protected
+code/path term을 non-mutating preflight로 확인한다. 이 preflight는 evaluator descriptor/profile을
+읽지 않는다. `record-document-realization`은 candidate guard와 inventory를 확인하고 현재 Product에
+두 format의 exact realization을 제출해 검증한 뒤 accepted draft의 exact bytes/hash를 immutable하게
+고정한다. 실패한 draft는 수정해서 다시 preflight할 수 있지만 recorded artifact는 덮어쓸 수 없다.
+Preview/realization은 canonical Project mutation이 아니며 Python helper는 prose를 실현하거나
+background semantic provider를 호출하지 않는다. Product의 structural/provenance validation은
+arbitrary natural language의 semantic quality classifier가 아니므로 active-host language confirmation과
+기존 requested-language human review를 유지한다.
+
+`collect-batch`는 staging과 terminal mutation 전에 모든 required realization의 fixed bytes/hash,
+Project/candidate와 exact sixteen raw input binding을 요구한다. Missing route/preparation/record는
+preparation blocker이며 Product crash가 아니다. Collection은 current plan을 다시 읽고 fixed realization을
+Product `document_preview`에 제출하며 Product-returned Markdown/HTML bytes와 SHA-256만 document
+evidence로 보존한다. Realizer plan/draft/record와 private source representation은 review archive에서
+제외한다. Cross-locale의 개별 `collect-work`/`collect-resume`은 이 pre-batch 경계를 우회할 수 없다.
+Campaign self-test는 private preparation, preflight, immutable fixation, before-terminal blocking,
+Product topology/protected-term rejection과 canonical purity를 포함한다.
+
+Mapping과 required realization preflight 뒤 campaign-local staging에서 raw byte와 mapped capture SHA-256를 재확인하고
 모든 eight cycle을 평가한다. 이 동안 authoritative campaign metadata, descriptor와 inventory는
 변경하지 않는다. Supported work lifecycle/binding failure는 `WorkCaptureContractError`의 finite
 basis/check로 `evidence_failed` intake가 되고, `NoWorkBlocker`는 정상 full-qualification 경로다.
@@ -1371,7 +1403,7 @@ activation evidence는 evidence_failed로 구분한다. Cycle별
 intake acceptance를 full qualification passage와 구분한다. 다른 capture는
 bounded diagnostic과 안전하게 식별 가능한 evidence extraction을 위해 계속 parse한다. Extraction은
 Project identity, canonical bundle, bounded Runtime/activation summary, descriptor evidence reference,
-supported product document-export path로 네 initial kind 각각의 Markdown과
+supported product CLI export 또는 active-host MCP realization path로 네 initial kind 각각의 Markdown과
 self-contained HTML을 deterministic private evidence path에 생성한다. Summary는 모든
 kind/format의 status, bounded failure basis 또는 relative path, bytes와 SHA-256를 보존하고,
 operator document-review index는 produced path만 노출한다. 한 kind라도 usable evidence가
