@@ -36,5 +36,9 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     context = output["additionalContext"]
-    assert len(context.encode("utf-8")) < 1536
+    assert len(context.encode("utf-8")) < 1792
+    assert "Checkpoint verification that was not actually observed" in context
+    assert "actual numeric exit/termination observable in host-visible results" in context
+    assert "long-running/polled commands, retain the execution identity and actual terminal outcome" in context
+    assert "prose success is not execution evidence" in context
     return context

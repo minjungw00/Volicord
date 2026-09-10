@@ -314,7 +314,10 @@ SessionStart identity is owned by
 the production `codex::activation_context` renderer and Dogfood `codex_events`.
 The marker binds SHA-256 of canonical cwd UTF-8, NUL, and host session ID UTF-8.
 It contains no source content and is correlation evidence, not authentication.
-The hook emits protocol JSON; total additional context remains below 768 bytes.
+The hook emits protocol JSON; total additional context remains below 1,792 bytes. Checkpoint verification guidance
+requires actual numeric exit/termination in host-visible results and preserves execution
+identity through the terminal result of polled commands. It does not guarantee capture
+by every external host tool implementation or permit claims of unobserved verification.
 Detection requires an exact bound marker line in developer context before the
 first user task. Campaign intake separately checks candidate, workspace,
 revision, fresh session and sealed role identity. MCP use only corroborates it.

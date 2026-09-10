@@ -32,7 +32,7 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
     let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
-    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. {continuation} Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
+    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. {continuation} Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Commands used as Checkpoint verification must keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -913,6 +913,10 @@ mod tests {
             assert!(context.contains("Do not infer user authority from an agent recommendation"));
             assert!(context.contains("separate exact provider authorization"));
             assert!(context.contains("Checkpoint verification that was not actually observed"));
+            assert!(context
+                .contains("actual numeric exit/termination observable in host-visible results"));
+            assert!(context.contains("long-running/polled commands, retain the execution identity and actual terminal outcome"));
+            assert!(context.contains("prose success is not execution evidence"));
             assert!(context.contains("no repository writes or rebasing blocked work"));
             assert!(context.contains("compatibility surfaces linked to focused verification"));
             assert!(context.contains(
@@ -928,7 +932,7 @@ mod tests {
             ));
             assert!(!context.contains("submit a Question Candidate"));
             assert!(
-                context.len() < 1536,
+                context.len() < 1792,
                 "activation context should stay compact"
             );
         }
