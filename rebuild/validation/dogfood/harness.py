@@ -4241,7 +4241,95 @@ def material_question_decision_current(
     return True
 
 
+def decision_interaction_origin(
+    capture: CodexCapture, current: ToolCall, decision_id: str, dimension_id: str,
+    before_sequence: int,
+) -> tuple[ToolCall, ToolCall, ToolCall] | None:
+    """Locate exact named resolution history, independently of current authority."""
+    matches = []
+    for origin in capture.successful_calls("materiality_review"):
+        if (origin.arguments.get("action") != "record"
+            or origin.arguments.get("project_id") != current.arguments.get("project_id")
+            or origin.result.get("goal_context_id") != current.result.get("goal_context_id")
+            or origin.completion_sequence >= before_sequence
+            or not any(j.get("choice_id") == dimension_id
+                and j.get("disposition") == "unresolved_user_owned_outcome"
+                for j in origin.arguments.get("judgments", []))):
+            continue
+        review_id = origin.result.get("review_candidate_id")
+        if not any(c.arguments.get("action") == "submit_question_from_materiality"
+            and c.arguments.get("review_candidate_id") == review_id
+            for c in capture.successful_calls("candidate_manage")):
+            continue
+        revisions = [c for c in capture.successful_calls("materiality_review")
+            if c.arguments.get("action") == "revise"
+            and c.arguments.get("review_candidate_id") == review_id
+            and origin.completion_sequence < c.sequence and c.completion_sequence < before_sequence
+            and any(j.get("choice_id") == dimension_id
+                and decision_id in judgment_resolution_decision_ids(j)
+                for j in c.arguments.get("judgments", []))]
+        baseline = [c for c in capture.successful_calls("repository_analyze")
+            if c.result.get("analysis_snapshot_id") == origin.result.get("baseline_analysis_snapshot_id")
+            and c.arguments.get("project_id") == current.arguments.get("project_id")
+            and c.result.get("project_id") == current.arguments.get("project_id")
+            and c.completion_sequence < origin.sequence]
+        if revisions and len(baseline) == 1:
+            matches.append((origin, max(revisions, key=lambda c: c.sequence), baseline[0]))
+    return matches[0] if len(matches) == 1 else None
+
+
+def applicable_decision_lineages(
+    capture: CodexCapture, record: ToolCall, current: ToolCall, before_sequence: int,
+    *, bundle: CanonicalBundle | None = None,
+    decision_evidence: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    for judgment in current.arguments.get("judgments", []):
+        for identity in judgment_resolution_decision_ids(judgment):
+            origin = decision_interaction_origin(capture, record, identity, judgment.get("choice_id"), before_sequence)
+            if origin is None:
+                return False
+            origin_record, revision, baseline = origin
+            if not all(origin_material_question_lifecycles(capture, "explicit_user_owned_decision",
+                baseline, origin_record, revision, before_sequence,
+                bundle=bundle, decision_evidence=decision_evidence)):
+                return False
+            # Reuse is prospective at the first current judgment naming D.
+            first_claim = min(c.sequence for c in capture.successful_calls("materiality_review")
+                if c.result.get("review_candidate_id") == record.result.get("review_candidate_id")
+                and c.arguments.get("action") in {"record", "revise"}
+                and c.completion_sequence < before_sequence
+                and any(j.get("choice_id") == judgment.get("choice_id")
+                    and identity in judgment_resolution_decision_ids(j) for j in c.arguments.get("judgments", [])))
+            if origin_record is not record and revision.completion_sequence >= first_claim:
+                return False
+            if bundle is not None and (identity not in (decision_evidence or {})
+                or decision_evidence[identity]["completion_sequence"] >= first_claim
+                or f"work-authority:{judgment.get('choice_id')}" not in decision_evidence[identity]["material_scope"]
+                or not material_question_decision_current(bundle, identity, capture,
+                    record.result.get("review_candidate_id"), before_sequence)):
+                return False
+    return True
+
+
 def work_blocker_material_question_lifecycles(
+    capture: CodexCapture, behavior_class: str, baseline_call: ToolCall,
+    record: ToolCall, revision: ToolCall | None, first_work_change: int,
+    *, bundle: CanonicalBundle | None = None,
+    decision_evidence: dict[str, dict[str, Any]] | None = None,
+) -> tuple[bool, bool]:
+    current = revision or record
+    if not any(c.arguments.get("action") == "submit_question_from_materiality"
+        and c.arguments.get("review_candidate_id") == record.result.get("review_candidate_id")
+        for c in capture.successful_calls("candidate_manage")):
+        named = any(judgment_resolution_decision_ids(j) for j in current.arguments.get("judgments", []))
+        valid = named and applicable_decision_lineages(capture, record, current, first_work_change,
+            bundle=bundle, decision_evidence=decision_evidence)
+        return valid, valid
+    return origin_material_question_lifecycles(capture, behavior_class, baseline_call, record,
+        revision, first_work_change, bundle=bundle, decision_evidence=decision_evidence)
+
+
+def origin_material_question_lifecycles(
     capture: CodexCapture,
     behavior_class: str,
     baseline_call: ToolCall,
@@ -4762,6 +4850,8 @@ def work_blocker_behavior_observations(
     workflow = record.result.get("workflow")
     review_id = record.result.get("review_candidate_id")
     final_review = revisions[-1] if revisions else record
+    if not applicable_decision_lineages(capture, record, final_review, behavior_frontier):
+        return False, False, False
     prior_revision = record.result.get("review_revision")
     choice_ids = {j.get("choice_id") for j in judgments or [] if isinstance(j, dict)}
     for current in [record, *revisions]:
@@ -7299,6 +7389,9 @@ def materiality_review_facts(
     if not current_user_owned_ids:
         valid = valid and historical_questions_resolved_before_frontier(
             work, record, evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence)
+    if not resumed:
+        valid = valid and applicable_decision_lineages(work, record, final_revision or record,
+            evaluation_frontier, bundle=bundle, decision_evidence=decision_evidence)
     exploration_semantics_valid = bool(valid) if exploration else None
     if exploration:
         valid = valid and exploration["qualified"]
@@ -7997,9 +8090,17 @@ def material_question_lifecycle_facts(
     primary: tuple[str | None, int | None, str | None] = (None, None, None)
     for decision_id, group_dimensions in sorted(dimensions_by_decision.items()):
         evidence = decision_evidence.get(decision_id)
+        current_record = next((c for c in work.successful_calls("materiality_review")
+            if c.arguments.get("action") == "record" and c.result.get("review_candidate_id") == review_candidate_id), None)
+        origin = decision_interaction_origin(work, current_record, decision_id, min(group_dimensions),
+            materiality_basis.get("evaluation_frontier", {}).get("sequence", 0)) if current_record else None
+        origin_review_id = origin[0].result.get("review_candidate_id") if origin else review_candidate_id
+        origin_baseline = origin[2] if origin else baseline_call
         group_submit_calls = [
             call
-            for call in submit_calls
+            for call in work.successful_calls("candidate_manage")
+            if call.arguments.get("action") == "submit_question_from_materiality"
+            and call.arguments.get("review_candidate_id") == origin_review_id
             if call.arguments.get("dimension_id") in group_dimensions
         ]
         submit_call = group_submit_calls[0] if len(group_submit_calls) == 1 else None
@@ -8031,8 +8132,8 @@ def material_question_lifecycle_facts(
             str(question_id) if nonempty_string(question_id) else None,
             question_revision if isinstance(question_revision, int) else None,
             evaluation_basis,
-            baseline_call,
-            review_candidate_id,
+            origin_baseline,
+            origin_review_id,
             anchor_dimension_id,
             evidence,
         )
@@ -8072,6 +8173,8 @@ def material_question_lifecycle_facts(
         valid &= group_ok
         if submit_call is not None:
             used_submit_sequences.add(submit_call.sequence)
+            if submit_call not in submit_calls:
+                submit_calls.append(submit_call)
         if nonempty_string(question_id):
             question_ids.add(str(question_id))
         if primary == (None, None, None) and nonempty_string(question_id):
@@ -8299,15 +8402,38 @@ def hidden_investigation_evidence(
     checkpoint = terminal_checkpoint_call(capture)
     if capture is None or baseline is None or frontier is None or checkpoint is None:
         return result
-    discovery, _, _ = current_authority_frontier(capture,
+    discovery, record, revisions = current_authority_frontier(capture,
         project_id=baseline.result.get("project_id"),
         goal_context_id=checkpoint.arguments.get("goal_context_id"),
         baseline_analysis_snapshot_id=baseline.result.get("analysis_snapshot_id"),
         before_sequence=frontier)
-    if discovery is None:
+    if discovery is None or record is None:
         return result
-    return repository_investigation_evidence(capture,
-        after_sequence=baseline.completion_sequence, before_sequence=discovery.sequence)
+    current = revisions[-1] if revisions else record
+    boundaries = set()
+    for judgment in current.arguments.get("judgments", []):
+        identities = judgment_resolution_decision_ids(judgment)
+        if not identities:
+            boundaries.add((baseline.completion_sequence, discovery.sequence))
+        for identity in identities:
+            origin = decision_interaction_origin(capture, record, identity, judgment.get("choice_id"), frontier)
+            if origin is None:
+                return result
+            origin_record, _, origin_baseline = origin
+            origins = [c for c in capture.successful_calls("engineering_choice_discovery")
+                if c.result.get("discovery_candidate_id") == origin_record.arguments.get("engineering_choice_discovery_candidate_id")
+                and c.arguments.get("project_id") == record.arguments.get("project_id")
+                and origin_baseline.completion_sequence < c.sequence
+                and c.completion_sequence < origin_record.sequence]
+            if len(origins) != 1:
+                return result
+            boundaries.add((origin_baseline.completion_sequence, origins[0].sequence))
+    observations = [repository_investigation_evidence(capture, after_sequence=start, before_sequence=end)
+                    for start, end in sorted(boundaries)]
+    return {"state": "missing" if not observations or any(o["state"] == "missing" for o in observations)
+            else "indeterminate" if any(o["state"] == "indeterminate" for o in observations) else "complete",
+            "sequences": sorted({s for o in observations for s in o["sequences"]}),
+            "issues": tuple(i for o in observations for i in o["issues"])}
 
 
 def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
@@ -8723,9 +8849,10 @@ def real_session_evidence(
         else []
     )
     hidden_evidence = hidden_investigation_evidence(work_capture, baseline_call, first_work_change)
+    hidden_repository_investigation = hidden_evidence["sequences"]
     hidden_material_discovery_order_ok = (
         behavior_class != "hidden_user_owned_decision"
-        or bool(hidden_repository_investigation)
+        or hidden_evidence["state"] == "complete"
         and (
             not declared_user_owned
             or question_ok

@@ -497,6 +497,86 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(self.facts(descriptor, capture, bundle)[0])
 
+    def applicable_successor(self):
+        descriptor, capture, bundle, baseline = self.refreshed_rediscovery()
+        origin_revision = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "revise")
+        current = next(c for c in capture.tool_calls if c.call_id == "settled-review")
+        arguments = {**current.arguments, "judgments": self.settle_from_decision(origin_revision.arguments)["judgments"]}
+        origin_choices = capture.successful_calls("engineering_choice_discovery")[0].arguments["choices"]
+        calls = []
+        for c in capture.tool_calls:
+            if c is current:
+                c = replace(c, arguments=arguments)
+            if c.call_id == "rediscovery":
+                choices = deepcopy(c.arguments["choices"])
+                for choice in choices:
+                    choice["relationship"] = next(x["relationship"] for x in origin_choices if x["choice_id"] == choice["choice_id"])
+                c = replace(c, arguments={**c.arguments, "choices": choices}, result={**c.result, "choices": choices})
+            calls.append(c)
+        capture = replace(capture, tool_calls=tuple(calls))
+        return descriptor, capture, bundle, baseline
+
+    def test_exact_successor_authority_traces_origin(self):
+        descriptor, capture, bundle, baseline = self.applicable_successor()
+        self.assertTrue(self.observe(descriptor, capture, baseline))
+        self.assertTrue(self.facts(descriptor, capture, bundle, baseline)[0])
+        # Current applicability must be checked at B's executable scope, even
+        # though no executable binding was needed on the historical Review A.
+        for table, rows in (
+            ("review_due", ({"project_id": bundle.project_id, "decision_id": "07" * 16},)),
+            ("decisions", tuple({**r, "applicability_paths": (bytes.fromhex("00000000000000010000000000000009") + b"unrelated").hex()} for r in bundle.rows("decisions"))),
+        ):
+            changed = replace(bundle, tables={**bundle.tables, table: rows})
+            self.assertFalse(self.facts(descriptor, capture, changed, baseline)[0], table)
+
+    def test_hidden_successor_investigation_belongs_to_origin(self):
+        descriptor, capture, bundle, baseline = self.applicable_successor()
+        original_baseline = capture.successful_calls("repository_analyze")[0]
+        origin = capture.successful_calls("engineering_choice_discovery")[0]
+        investigation = replace(capture.commands[0], sequence=original_baseline.completion_sequence + 1,
+            completion_sequence=origin.sequence - 1, parsed_command={"cmd": "cat src/lib.rs"},
+            exit_code=0, evidence_state="completed", termination="exited")
+        capture = replace(capture, commands=(investigation,))
+        first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
+        self.assertEqual(h.hidden_investigation_evidence(capture, baseline, first_write)["state"], "complete")
+        # A new outcome cannot borrow the old Question's investigation.
+        current = next(c for c in capture.tool_calls if c.call_id == "settled-review")
+        arguments = deepcopy(current.arguments)
+        arguments["judgments"][0]["decision_ids"] = ["ff" * 16]
+        changed = replace(capture, tool_calls=tuple(replace(c, arguments=arguments) if c is current else c for c in capture.tool_calls))
+        self.assertNotEqual(h.hidden_investigation_evidence(changed, baseline, first_write)["state"], "complete")
+        self.assertFalse(self.observe(descriptor, changed, baseline))
+
+    def test_successor_resolution_uses_exact_historical_question(self):
+        descriptor, capture, bundle, baseline = self.applicable_successor()
+        origin = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "record")
+        resolution = next(c for c in capture.calls("materiality_review") if c.arguments.get("action") == "revise")
+        current = next(c for c in capture.tool_calls if c.call_id == "settled-review")
+        revised = replace(resolution, call_id="successor-resolution", sequence=current.completion_sequence + 1,
+            completion_sequence=current.completion_sequence + 2,
+            arguments={**resolution.arguments, "review_candidate_id": current.result["review_candidate_id"]},
+            result={**resolution.result, "review_candidate_id": current.result["review_candidate_id"],
+                "baseline_analysis_snapshot_id": baseline.result["analysis_snapshot_id"]})
+        pending = replace(current, arguments={**current.arguments, "judgments": origin.arguments["judgments"]},
+            result={**current.result, "workflow": origin.result["workflow"]})
+        calls = []
+        for call in capture.tool_calls:
+            if call is current:
+                call = pending
+            if call.operation == "materiality_review" and call.arguments.get("action") == "inspect":
+                output = deepcopy(call.result)
+                output["review_revision"] = 2
+                output["executable_work_scope"]["authority_basis"]["review_revision"] = 2
+                call = replace(call, result=output)
+            calls.append(call)
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, revised), key=lambda c: c.sequence)))
+        self.assertTrue(self.observe(descriptor, capture, baseline))
+        facts = self.facts(descriptor, capture, bundle, baseline)
+        self.assertTrue(facts[0])
+        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["behavior_class"], {},
+            baseline, facts[1], facts[3], h.decision_facts(capture, bundle)[-1])
+        self.assertTrue(lifecycle[0])
+
     def refreshed_rediscovery(self):
         descriptor, capture, bundle = self.settled_rediscovery()
         baseline = capture.successful_calls("repository_analyze")[0]
