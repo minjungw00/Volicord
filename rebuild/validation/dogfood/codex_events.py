@@ -10,6 +10,7 @@ and booleans rather than source bodies or arbitrary tool output.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -1514,7 +1515,81 @@ def command_is_clean_git_status(value: Any) -> bool:
     )
 
 
+def bounded_find_source_report(value: Any) -> bool:
+    raw = value.get("cmd") if isinstance(value, dict) else value
+    return isinstance(raw, str) and re.fullmatch(
+        r"find [A-Za-z0-9_./-]+ -maxdepth [1-9][0-9]? -type f -print "
+        r"-exec sed -n '[0-9]+,[0-9]+p' \{\} \\;", raw
+    ) is not None
+
+
+def bounded_python_assertion_validation(value: Any) -> bool:
+    """Recognize a closed assertion script transport, without executing Python.
+
+    This is validation intent, not a read-only claim or inferred test outcome.
+    Shell tails, dynamic execution, swallowed assertions and empty loops are
+    excluded. The captured command must still prove numeric successful exit.
+    """
+    raw = value.get("cmd") if isinstance(value, dict) else value
+    if not isinstance(raw, str) or len(raw) > 16_384:
+        return False
+    match = re.fullmatch(
+        r"(?:command -v python3; )?(?:PYTHONPATH=[A-Za-z0-9_./:-]+ )?"
+        r"python3 - <<'([A-Za-z_][A-Za-z0-9_]*)'\n(.+)\n\1\n?", raw, re.DOTALL)
+    if match is None:
+        return False
+    try:
+        tree = ast.parse(match[2])
+    except (SyntaxError, ValueError, RecursionError):
+        return False
+    nodes = list(ast.walk(tree))
+    if len(nodes) > 512 or not any(isinstance(n, ast.Assert) and isinstance(n.test, ast.Compare)
+        and any(isinstance(v, (ast.Name, ast.Call)) for v in ast.walk(n.test)) for n in nodes):
+        return False
+    allowed_statements = (ast.Import, ast.ImportFrom, ast.Assign, ast.For, ast.Assert, ast.Expr)
+    forbidden_names = {"eval", "exec", "compile", "open", "exit", "quit", "getattr", "setattr", "globals", "locals",
+        "os", "sys", "subprocess", "shutil", "socket", "pathlib", "importlib", "builtins"}
+    for node in nodes:
+        if isinstance(node, ast.stmt) and not isinstance(node, allowed_statements):
+            return False
+        if isinstance(node, ast.Assign) and not all(isinstance(target, ast.Name) for target in node.targets):
+            return False
+        if isinstance(node, ast.Expr) and not (isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name) and node.value.func.id == "print"):
+            return False
+        if isinstance(node, (ast.Lambda, ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom)):
+            return False
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            name = node.id if isinstance(node, ast.Name) else node.attr
+            if name.startswith("_") or name in forbidden_names:
+                return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            modules = [a.name for a in node.names]
+            if isinstance(node, ast.ImportFrom):
+                modules.append(node.module or "")
+            if any(m.split(".")[0] in forbidden_names or m.startswith("_") for m in modules):
+                return False
+    assigned_names = [target.id for node in nodes if isinstance(node, ast.Assign)
+        for target in node.targets if isinstance(target, ast.Name)]
+    nonempty_literals = {target.id for statement in tree.body if isinstance(statement, ast.Assign)
+        and isinstance(statement.value, (ast.Dict, ast.List, ast.Tuple))
+        and bool(statement.value.keys if isinstance(statement.value, ast.Dict) else statement.value.elts)
+        for target in statement.targets if isinstance(target, ast.Name) and assigned_names.count(target.id) == 1}
+    for node in nodes:
+        if not isinstance(node, ast.For):
+            continue
+        iterable = node.iter
+        if isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Attribute) and iterable.func.attr == "items" and not iterable.args and not iterable.keywords:
+            iterable = iterable.func.value
+        if not (isinstance(iterable, (ast.List, ast.Tuple)) and bool(iterable.elts)
+            or isinstance(iterable, ast.Name) and iterable.id in nonempty_literals):
+            return False
+    return True
+
+
 def command_is_repository_inspection(value: Any) -> bool:
+    if bounded_find_source_report(value):
+        return True
     inspection_programs = {
         "cat",
         "fd",
@@ -1589,6 +1664,8 @@ def command_role(value: Any, depth: int = 0) -> str:
     """Bounded roles; an unknown command cannot supply successful validation."""
     if depth > 3:
         return "unknown"
+    if bounded_python_assertion_validation(value):
+        return "validation"
     if command_is_repository_inspection(value):
         return "inspection"
     argvs = command_argvs(value)

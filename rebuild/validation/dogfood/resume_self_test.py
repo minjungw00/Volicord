@@ -125,6 +125,35 @@ class ResumeTests(unittest.TestCase):
                 commands=(replace(self.verification, **changes),)), 0)
             self.assertFalse(result["qualified"])
 
+    def test_assertion_heredoc_and_bounded_find_report_controls(self):
+        assertion = "command -v python3; PYTHONPATH=src python3 - <<'PY'\nfrom package import Signer\n" \
+            "signer = Signer(b'key')\nfor mode in ('concat', 'hmac'):\n" \
+            "    signed = signer.sign(mode.encode())\n    assert signer.unsign(signed) == mode.encode()\nPY\n"
+        validation = replace(self.verification, parsed_command={"cmd": assertion})
+        result = h.meaningful_resume_validation(replace(self.capture, commands=(validation,)), 0)
+        self.assertTrue(result["qualified"])
+        for exit_code, state in ((101, "completed"), (None, "indeterminate")):
+            failed = replace(validation, exit_code=exit_code, evidence_state=state,
+                termination="exited" if exit_code is not None else None)
+            self.assertFalse(h.meaningful_resume_validation(replace(self.capture, commands=(failed,)), 0)["qualified"])
+        report = replace(validation, sequence=validation.completion_sequence + 1,
+            completion_sequence=validation.completion_sequence + 2,
+            parsed_command={"cmd": "find rebuild/.local/validation/checks -maxdepth 1 -type f -print -exec sed -n '1,220p' {} \\;"})
+        result = h.meaningful_resume_validation(replace(self.capture, commands=(validation, report)), 0)
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["terminal_sequence"], validation.sequence)
+
+    def test_assertion_script_and_find_execution_fail_closed(self):
+        for body in ("print('tests passed')", "assert True", "import os\nos.system('touch changed')\nassert actual == expected",
+            "try:\n    assert actual == expected\nexcept:\n    pass", "for item in []:\n    assert item == expected",
+            "items = [1]\nitems = []\nfor item in items:\n    assert item == expected"):
+            command = "python3 - <<'PY'\n" + body + "\nPY\n"
+            self.assertEqual(h.command_role({"cmd": command}), "unknown")
+        for command in ("find logs -maxdepth 1 -type f -print -exec sed -i '1,220p' {} \\;",
+            "find logs -maxdepth 1 -type f -print -exec sh -c 'echo success' {} \\;",
+            "find logs -maxdepth 1 -type f -print -exec sed -n '1,220p' {} \\; ; touch changed"):
+            self.assertEqual(h.command_role({"cmd": command}), "unknown")
+
     def test_recall_transport_and_identity_are_evidence_failures(self):
         recall = self.capture.successful_calls("recall")[0]
         issue = EvidenceTransportIssue(recall.sequence, recall.turn_id, recall.call_id, "volicord", "recall", "malformed_mcp_completion")

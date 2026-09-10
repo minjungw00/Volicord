@@ -1575,6 +1575,11 @@ entry points and bounded shell/env/focused wrappers are selected; arbitrary comm
 Later `nl -ba ... | sed -n 'range;range'` listings (including newline-separated listings) remain
 inspection. Unsafe/ambiguous compounds cannot certify success or recover a prior failure. A later
 unknown command blocks a success claim without replacing the last genuine validation outcome.
+Read-only reporting includes the closed `find PATH -maxdepth N -type f -print -exec sed -n
+'RANGEp' {} \;` form. A bounded Python assertion heredoc is validation only when its complete shell
+transport and parsed assertion/loop structure match the supported subset; prints, constant assertions,
+empty loops, swallowed assertions, dynamic execution and shell tails do not qualify. This classification
+never infers the numeric outcome from script text or stdout.
 Only a later genuine numeric successful validation can recover an earlier failure. Unknown numeric
 outcome remains indeterminate even when stdout or an assistant claims that tests passed.
 
