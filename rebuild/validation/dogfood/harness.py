@@ -150,6 +150,7 @@ REAL_SESSION_CHECKS = (
     "learning_interruption_precision",
     "behavior_classification",
     "appropriate_inquiry_outcome",
+    "unnecessary_question_repetition",
     "hidden_material_discovery_order",
     "recorded_user_owned_authority",
     "meaningful_ordinary_changes",
@@ -4046,6 +4047,7 @@ WORK_BLOCKER_CHECKS = (
     "source_grounded_checkpoint_operation",
 )
 HIDDEN_INVESTIGATION_CHECKS = ("hidden_pre_discovery_repository_investigation",)
+QUESTION_REPEAT_CHECKS = ("unnecessary_question_repetition",)
 USER_DECISION_BLOCKER_CHECKS = (
     "material_question_candidate_lifecycle",
     "explicit_current_host_user_decision_operation",
@@ -4428,7 +4430,13 @@ def origin_material_question_lifecycles(
                 for question in call.result.get("questions", [])
             )
         ]
-        frontier = frontier_calls[0] if len(frontier_calls) == 1 else None
+        # Repeated presentation does not erase a valid response lifecycle. The
+        # consumed receipt selects its presentation; interruption quality is separate.
+        receipts = {c.arguments.get("presentation_receipt_id") for c in capture.successful_calls("decision_record")
+            if c.arguments.get("question_id") == question_id}
+        selected_frontiers = [c for c in frontier_calls if any(q.get("identity") == question_id
+            and q.get("presentation_receipt_id") in receipts for q in c.result.get("questions", []))]
+        frontier = selected_frontiers[-1] if selected_frontiers else None
         question_revision = next(
             (
                 question["revision"]
@@ -4454,7 +4462,9 @@ def origin_material_question_lifecycles(
                 decision.arguments.get("user_turn"), turn.text
             )["equivalent"]
             and turn.sequence < decision.sequence
-            and frontier is not None and frontier.completion_sequence < turn.sequence
+            and frontier is not None and any(c.completion_sequence < turn.sequence
+                and any(q.get("identity") == question_id and q.get("revision") == question_revision
+                    for q in c.result.get("questions", [])) for c in frontier_calls)
             and turn.turn_id == decision.turn_id
         ]
         research_calls = [
@@ -5142,10 +5152,12 @@ def build_work_blocker_result(
     )
     hidden_basis = hidden_investigation_evidence(capture, baseline_call, first_work_change)
     observed[HIDDEN_INVESTIGATION_CHECKS[0]] = hidden_basis["state"] == "complete"
+    observed[QUESTION_REPEAT_CHECKS[0]] = not unnecessary_question_repetitions(capture)
     required_checks = (
         *WORK_BLOCKER_CHECKS,
         *(USER_DECISION_BLOCKER_CHECKS if declared_user_owned else ()),
         *(HIDDEN_INVESTIGATION_CHECKS if descriptor.get("behavior_class") == "hidden_user_owned_decision" else ()),
+        *QUESTION_REPEAT_CHECKS,
     )
     failed_checks = (
         [SETUP_ACTIVATION_CHECK]
@@ -5287,7 +5299,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     if (
         not isinstance(failed_checks, list)
         or not failed_checks
-        or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
+        or any(check not in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS, *QUESTION_REPEAT_CHECKS, SETUP_ACTIVATION_CHECK) for check in failed_checks)
         or (
             classification in {failure.classification for failure in ACTIVATION_FAILURES.values()}
             and failed_checks != [SETUP_ACTIVATION_CHECK]
@@ -5298,7 +5310,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
             and failed_checks
             != [
                 name
-                for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS)
+                for name in (*WORK_BLOCKER_CHECKS, *USER_DECISION_BLOCKER_CHECKS, *HIDDEN_INVESTIGATION_CHECKS, *QUESTION_REPEAT_CHECKS)
                 if name in failed_checks
             ]
         )
@@ -5511,7 +5523,8 @@ def decision_facts(
             # Missing presentation transport is diagnosed by question_review_facts;
             # retain independently proven canonical response/Decision witnesses.
             # An observed conflicting receipt must never qualify.
-            and (not work.successful_calls("inquiry_frontier") or len(presentations) == 1)
+            and (not work.successful_calls("inquiry_frontier") or bool(presentations)
+                 and all(p == presentations[0] for p in presentations))
             and nonempty_string(question_id)
             and isinstance(revision, int)
             and revision >= 1
@@ -7757,6 +7770,57 @@ def learning_recall_facts(
     }
 
 
+def unnecessary_question_repetitions(work: CodexCapture) -> list[dict[str, Any]]:
+    """Only prove repeats from a response Product eventually accepted verbatim.
+
+    No semantic selection parser: explanation/ambiguous text is not a response
+    unless the exact maintained transport comparison binds it to that Decision.
+    Multiple concurrently presented Questions and failed attempts are conservative
+    exclusions because the captured evidence cannot prove needless interruption.
+    """
+    repeated = []
+    presentations = [(call, call.result["questions"][0])
+        for call in work.successful_calls("inquiry_frontier")
+        if len(call.result.get("questions", [])) == 1
+        and nonempty_string(call.result["questions"][0].get("presentation_receipt_id"))]
+    for later, question in presentations:
+        identity, revision = question.get("identity"), question.get("revision")
+        earlier = [(call, q) for call, q in presentations if call.completion_sequence < later.sequence
+            and q.get("identity") == identity and q.get("revision") == revision
+            and call.arguments.get("project_id") == later.arguments.get("project_id")]
+        if not earlier:
+            continue
+        first, original = earlier[-1]
+        attempts = [c for c in work.calls("decision_record") if c.arguments.get("question_id") == identity]
+        decisions = [c for c in attempts if c.outcome == "succeeded" and c.result.get("all_succeeded") is True
+            and nonempty_string(c.result.get("user_response_source_id"))
+            and c.arguments.get("project_id") == later.arguments.get("project_id")
+            and c.arguments.get("question_revision") == revision
+            and c.sequence > later.completion_sequence]
+        if len(decisions) != 1 or any(first.sequence < c.sequence < later.sequence for c in attempts):
+            continue
+        decision = decisions[0]
+        if not any(q.get("presentation_receipt_id") == decision.arguments.get("presentation_receipt_id")
+            and q.get("identity") == identity and q.get("revision") == revision
+            and c.completion_sequence < decision.sequence for c, q in presentations):
+            continue
+        if any(c.operation in {"question_revise", "question_update"}
+            and first.sequence < c.sequence < later.sequence for c in work.tool_calls):
+            continue
+        responses = [turn for turn in work.user_turns
+            if first.completion_sequence < turn.sequence < later.sequence
+            and compare_current_host_response_transport(decision.arguments.get("user_turn"), turn.text)["equivalent"]]
+        # A revision transition or any changed displayed basis invalidates reuse.
+        basis = lambda q: {k: v for k, v in q.items() if k != "presentation_receipt_id"}
+        if len(responses) == 1 and basis(original) == basis(question) and not any(
+            first.sequence < c.sequence < later.sequence and q.get("identity") == identity
+            and q.get("revision") != revision for c, q in presentations):
+            repeated.append({"question_id": identity, "question_revision": revision,
+                "presentation_sequence": first.sequence, "response_sequence": responses[0].sequence,
+                "repeat_sequence": later.sequence, "decision_sequence": decision.sequence})
+    return repeated
+
+
 def question_review_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
@@ -7816,7 +7880,11 @@ def question_review_facts(
             for question in call.result.get("questions", [])
         )
     ]
-    frontier_call = frontier_calls[0] if len(frontier_calls) == 1 else None
+    matched_frontiers = [c for c in frontier_calls if decision_call is not None
+        and any(q.get("identity") == question_id and q.get("revision") == question_revision
+            and q.get("presentation_receipt_id") == decision_call.arguments.get("presentation_receipt_id")
+            for q in c.result.get("questions", []))]
+    frontier_call = matched_frontiers[-1] if matched_frontiers else None
     presented_question = (
         next(
             (
@@ -9297,6 +9365,8 @@ def real_session_evidence(
         ),
         "behavior_classification": evidence_check(references_present, behavior_classification_ok),
         "appropriate_inquiry_outcome": evidence_check(references_present, appropriate_inquiry_outcome),
+        "unnecessary_question_repetition": evidence_check(references_present,
+            work_capture is not None and not unnecessary_question_repetitions(work_capture)),
         "hidden_material_discovery_order": evidence_check(
             references_present and not (behavior_class == "hidden_user_owned_decision" and hidden_evidence["state"] == "indeterminate"), hidden_material_discovery_order_ok
         ),

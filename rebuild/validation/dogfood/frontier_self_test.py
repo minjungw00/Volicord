@@ -647,6 +647,37 @@ class FrontierTests(unittest.TestCase):
                 self.assertTrue(self.observe(descriptor, capture))
                 self.assertTrue(self.facts(descriptor, capture, bundle)[0])
 
+    def test_answered_question_repeat_is_distinct_from_lifecycle(self):
+        descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
+        frontier = capture.calls("inquiry_frontier")[0]
+        decision = capture.calls("decision_record")[0]
+        user = capture.turn_for_call(decision)
+        repeat = replace(frontier, call_id="repeat-question", sequence=user.sequence + 1,
+            completion_sequence=user.sequence + 2, turn_id=user.turn_id,
+            result=deepcopy(frontier.result))
+        repeat.result["questions"][0]["presentation_receipt_id"] = "fresh-receipt"
+        decision = replace(decision, arguments={**decision.arguments, "presentation_receipt_id": "fresh-receipt"})
+        capture = replace(capture, tool_calls=tuple(sorted((*(decision if c.operation == "decision_record" else c
+            for c in capture.tool_calls), repeat), key=lambda c: c.sequence)))
+        self.assertTrue(self.observe(descriptor, capture))
+        self.assertTrue(h.decision_facts(capture, bundle)[0])
+        self.assertEqual(len(h.unnecessary_question_repetitions(capture)), 1)
+        with patch.object(h, "cycle_descriptor_errors", return_value=[]):
+            blocked = h.build_work_blocker_result("0" * 40, descriptor, "0" * 64, capture)
+        self.assertEqual(blocked["failed_checks"], ["unnecessary_question_repetition"])
+        self.assertEqual(blocked["failure_attribution"]["domain"], "behavior_contract")
+        for text in ("Please explain the alternatives first.", "Either option might work."):
+            changed = replace(capture, user_turns=tuple(replace(t, text=text) if t is user else t for t in capture.user_turns))
+            self.assertEqual(h.unnecessary_question_repetitions(changed), [])
+        changed_result = deepcopy(repeat.result)
+        changed_result["questions"][0]["revision"] += 1
+        changed = replace(capture, tool_calls=tuple(replace(c, result=changed_result) if c is repeat else c for c in capture.tool_calls))
+        self.assertEqual(h.unnecessary_question_repetitions(changed), [])
+        failed = replace(decision, call_id="stale-receipt-attempt", sequence=user.sequence,
+            completion_sequence=repeat.sequence - 1, outcome="failed", result={"error": "stale_presentation"})
+        self.assertEqual(h.unnecessary_question_repetitions(replace(capture,
+            tool_calls=tuple(sorted((*capture.tool_calls, failed), key=lambda c: c.sequence)))), [])
+
     def test_same_review_settlement_in_full_session_evaluation(self):
         descriptor, _, _ = self.fixture("explicit_user_owned_decision")
         path = self.root / descriptor["evidence"]["captures"]["work"]["file"]
