@@ -176,6 +176,37 @@ class CurrentExecutionTests(unittest.TestCase):
                 self.assertEqual(capture.commands[0].evidence_state, "indeterminate")
                 self.assertEqual(capture.evidence_transport_issues[0].reason, "command_completion_indeterminate")
 
+    def test_observed_repository_output_does_not_invent_numeric_exit(self):
+        import harness as h
+        from codex_events import bounded_repository_observation, command_role
+        output = "src/main.rs:12:struct Tags { output_json: bool }\nsrc/tags.rs:32:fn generate_tags(source: &str) -> Tags {"
+        command = "rg -n 'Tags|generate_tags' src/main.rs src/tags.rs | head -120"
+        capture = self.command('const r=await tools.exec_command(' + json.dumps({"cmd": command}) + ');text(r.output);', [output])
+        observed = capture.commands[0]
+        self.assertIsNone(observed.exit_code)
+        self.assertEqual(observed.evidence_state, "indeterminate")
+        self.assertTrue(bounded_repository_observation(observed, capture.cwd))
+        evidence = h.repository_investigation_evidence(capture, after_sequence=0, before_sequence=1000)
+        self.assertEqual(evidence["state"], "complete")
+        validation = replace(observed, parsed_command={"cmd": "cargo test"}, output="test result: ok. 100 passed")
+        self.assertFalse(h.meaningful_resume_validation(replace(capture, commands=(validation,)), 0)["qualified"])
+        for cmd in ("echo '" + output + "'", "cat /tmp/report", "cat ../report", "cat rebuild/.local/report",
+            "rg -n Tags /tmp/report", "rg -n Tags src --pre script", "rg -n Tags src | python3 script.py"):
+            self.assertFalse(bounded_repository_observation(replace(observed, parsed_command={"cmd": cmd}), capture.cwd), cmd)
+        for text in ("", "I inspected the repository.", "other/file.rs:12:struct Tags { output_json: bool }\nother/file.rs:32:fn generate_tags(source: &str) -> Tags {"):
+            self.assertFalse(bounded_repository_observation(replace(observed, output=text), capture.cwd))
+        for cmd in ("cat src/main.rs", "sed -n '1,20p' src/main.rs", "nl -ba src/main.rs"):
+            self.assertTrue(bounded_repository_observation(replace(observed, parsed_command={"cmd": cmd},
+                output="struct Tags { output_json: bool, errors: Vec<String> }\nfn generate_tags(source: &str) -> Tags {"), capture.cwd))
+        for cmd in ("cargo test || true", "cargo test; true", "cargo test | cat", "cargo test\necho success",
+            "sed -n '1,20p' src/a.rs -e 'w changed'", "find . -delete", "fd -x touch output", "sort -o output input"):
+            self.assertEqual(command_role({"cmd": cmd}), "unknown", cmd)
+        for cmd in ("cargo test", "env XDG_CACHE_HOME=/tmp/cache cargo test --lib", "python3 -m unittest",
+            "rebuild/scripts/validate focused checks -- cargo clippy", "bash -lc 'cargo test && cargo clippy'"):
+            self.assertEqual(command_role({"cmd": cmd}), "validation", cmd)
+        for cmd in ("nl -ba src/main.rs | sed -n '1,20p;40,50p'", "nl -ba src/a.rs | sed -n '1,20p'\nnl -ba src/b.rs | sed -n '1,20p'\n"):
+            self.assertEqual(command_role({"cmd": cmd}), "inspection", cmd)
+
     def test_dynamic_calls_remain_unsupported(self):
         for source in ('const wd=load("wd");const r=await tools.exec_command({cmd:"rg --files",workdir:wd});text(r);',
                        'const r=await tools.exec_command({cmd:makeCommand()});text(r);',

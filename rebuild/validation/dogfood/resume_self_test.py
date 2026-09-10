@@ -84,6 +84,47 @@ class ResumeTests(unittest.TestCase):
         ):
             self.failure(replace(self.capture, commands=tuple(command if c is self.verification else c for c in self.capture.commands)), basis, domain)
 
+    def test_nonzero_validation_followed_by_campaign_source_listing(self):
+        validation = replace(self.verification,
+            parsed_command={"cmd": "env XDG_CACHE_HOME=/tmp/test-cache cargo test -p cli tags --lib"}, exit_code=101)
+        listing = replace(validation, sequence=validation.completion_sequence + 1,
+            completion_sequence=validation.completion_sequence + 2,
+            parsed_command={"cmd": "nl -ba src/main.rs | sed -n '560,585p;1870,2020p'; "
+                "nl -ba src/tags.rs | sed -n '13,220p'\n"
+                "nl -ba docs/tags.md | sed -n '20,90p'"},
+            exit_code=None, termination=None, evidence_state="indeterminate")
+        changed = replace(self.capture, commands=tuple(validation if c is self.verification else c
+            for c in self.capture.commands) + (listing,))
+        result = h.meaningful_resume_validation(changed, 0)
+        self.assertEqual(result["terminal_exit_code"], 101)
+        self.failure(changed, "terminal_validation_failed", "product_integration")
+        recovered = replace(validation, sequence=listing.completion_sequence + 1,
+            completion_sequence=listing.completion_sequence + 2, exit_code=0)
+        result = h.meaningful_resume_validation(replace(changed, commands=(*changed.commands, recovered)), 0)
+        self.assertTrue(result["qualified"])
+        self.assertTrue(result["recovered_intermediate_failure"])
+
+    def test_arbitrary_command_cannot_be_validation(self):
+        for cmd in ("echo tests passed", "python3 scripts/edit.py", "touch src/a.rs", "unknown-validator"):
+            command = replace(self.verification, parsed_command={"cmd": cmd})
+            self.assertFalse(h.meaningful_resume_validation(replace(self.capture, commands=(command,)), 0)["qualified"])
+
+    def test_unknown_compound_cannot_recover_failure_or_certify_success(self):
+        for exit_code in (0, 101):
+            validation = replace(self.verification, exit_code=exit_code)
+            ambiguous = replace(validation, sequence=validation.completion_sequence + 1,
+                completion_sequence=validation.completion_sequence + 2,
+                parsed_command={"cmd": "cargo test || true"}, exit_code=0)
+            result = h.meaningful_resume_validation(replace(self.capture, commands=(validation, ambiguous)), 0)
+            self.assertFalse(result["qualified"])
+            self.assertEqual(result["terminal_exit_code"], exit_code)
+            self.assertEqual(result["unresolved_terminal_failure"], exit_code != 0)
+        for changes in ({"exit_code": None}, {"exit_code": True}, {"termination": None},
+            {"termination": "signaled"}, {"evidence_state": "indeterminate"}):
+            result = h.meaningful_resume_validation(replace(self.capture,
+                commands=(replace(self.verification, **changes),)), 0)
+            self.assertFalse(result["qualified"])
+
     def test_recall_transport_and_identity_are_evidence_failures(self):
         recall = self.capture.successful_calls("recall")[0]
         issue = EvidenceTransportIssue(recall.sequence, recall.turn_id, recall.call_id, "volicord", "recall", "malformed_mcp_completion")

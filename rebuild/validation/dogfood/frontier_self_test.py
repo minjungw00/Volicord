@@ -75,7 +75,7 @@ class FrontierTests(unittest.TestCase):
         for state in ("complete", "indeterminate", "missing", "failed", "late"):
             with self.subTest(state=state):
                 commands = tuple(c if c not in prior or state == "complete" else
-                    replace(c, exit_code=None, termination=None, evidence_state="indeterminate") if state == "indeterminate" else
+                    replace(c, exit_code=None, termination=None, evidence_state="indeterminate", output="") if state == "indeterminate" else
                     replace(c, exit_code=1) if state == "failed" else
                     replace(c, completion_sequence=discovery.completion_sequence + 1) if state == "late" else None
                     for c in capture.commands)
@@ -87,9 +87,9 @@ class FrontierTests(unittest.TestCase):
                     result = h.build_work_blocker_result(head, descriptor, "0" * 64, changed)
                     self.assertEqual(result["failed_checks"], list(h.HIDDEN_INVESTIGATION_CHECKS))
                     self.assertEqual(result["failure_attribution"]["domain"],
-                        "evidence" if state == "indeterminate" else "behavior_contract")
+                        "behavior_contract" if state == "missing" else "evidence")
                     self.assertEqual(result["product_failed_checks"],
-                        [] if state == "indeterminate" else list(h.HIDDEN_INVESTIGATION_CHECKS))
+                        list(h.HIDDEN_INVESTIGATION_CHECKS) if state == "missing" else [])
                     original_loader = h.load_codex_capture
                     work_file = descriptor["evidence"]["captures"]["work"]["file"]
                     with patch.object(h, "load_codex_capture", side_effect=lambda path:
@@ -98,7 +98,41 @@ class FrontierTests(unittest.TestCase):
                             repository_revision=head)
                     self.assertEqual(full["checks"]["appropriate_inquiry_outcome"], "passed")
                     self.assertEqual(full["checks"]["hidden_material_discovery_order"],
-                        "partial" if state == "indeterminate" else "failed")
+                        "failed" if state == "missing" else "partial")
+
+    def test_bounded_repository_observation_without_numeric_exit(self):
+        _, capture, _ = self.fixture("hidden_user_owned_decision")
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        frontier = min(c.sequence for c in h.meaningful_work_path_observations(capture))
+        command = replace(capture.commands[0], sequence=baseline.completion_sequence + 1,
+            completion_sequence=discovery.sequence - 1,
+            parsed_command={"cmd": "rg -n 'Tags|generate_tags' src/main.rs src/tags.rs | head -120",
+                "workdir": str(capture.cwd)}, exit_code=None, termination=None, evidence_state="indeterminate",
+            output="src/main.rs:12:struct Tags { output_json: bool }\nsrc/tags.rs:32:fn generate_tags(source: &str) -> Tags {", output_was_empty=False)
+        for output, exit_code, evidence_state, expected in (
+            (command.output, None, "indeterminate", "complete"),
+            ("", 0, "completed", "complete"),
+            ("", None, "indeterminate", "indeterminate"),
+            ("The repository was investigated successfully.", None, "indeterminate", "indeterminate"),
+        ):
+            changed = replace(capture, commands=(replace(command, output=output, exit_code=exit_code,
+                evidence_state=evidence_state, termination="exited" if exit_code is not None else None),))
+            self.assertEqual(h.hidden_investigation_evidence(changed, baseline, frontier)["state"], expected)
+        self.assertEqual(h.hidden_investigation_evidence(replace(capture, commands=()), baseline, frontier)["state"], "missing")
+
+    def test_structured_repository_understanding_remains_investigation(self):
+        _, capture, _ = self.fixture("hidden_user_owned_decision")
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        call = replace(baseline, operation="repository_understanding", call_id="understanding",
+            sequence=baseline.completion_sequence + 1, completion_sequence=discovery.sequence - 1,
+            result={"health": "available", "overview": {}, "repository_map": {}, "read_only": True})
+        capture = replace(capture, commands=(), tool_calls=(*capture.tool_calls, call))
+        result = h.repository_investigation_evidence(capture,
+            after_sequence=baseline.completion_sequence, before_sequence=discovery.sequence)
+        self.assertEqual(result["state"], "complete")
+        self.assertEqual(result["sequences"], [call.sequence])
 
     def no_write_exploration(self, prototype=True):
         descriptor, capture, bundle = self.fixture("exploratory_uncertainty")

@@ -1444,7 +1444,8 @@ def split_command(value: str) -> tuple[str, ...] | None:
 def split_static_compound_command(value: str) -> list[tuple[str, ...]]:
     """Split only bounded static shell control forms for read-only classification."""
     try:
-        lexer = shlex.shlex(value, posix=True, punctuation_chars=";&|<>")
+        lexer = shlex.shlex(value, posix=True, punctuation_chars=";&|<>\n")
+        lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         tokens = list(lexer)
     except ValueError:
@@ -1457,6 +1458,11 @@ def split_static_compound_command(value: str) -> list[tuple[str, ...]]:
     segments: list[tuple[str, ...]] = []
     current: list[str] = []
     for token in tokens:
+        if token and set(token) == {"\n"}:
+            if current:
+                segments.append(tuple(current))
+                current = []
+            continue
         if token in {"&&", "||", ";", "|"}:
             if not current:
                 return []
@@ -1464,9 +1470,10 @@ def split_static_compound_command(value: str) -> list[tuple[str, ...]]:
             current = []
         else:
             current.append(token)
-    if not current:
+    if current:
+        segments.append(tuple(current))
+    elif not tokens[-1].endswith("\n"):
         return []
-    segments.append(tuple(current))
     return segments if len(segments) <= 16 else []
 
 
@@ -1515,6 +1522,8 @@ def command_is_repository_inspection(value: Any) -> bool:
         "grep",
         "head",
         "ls",
+        "nl",
+        "sort",
         "rg",
         "sed",
         "stat",
@@ -1557,14 +1566,146 @@ def command_is_repository_inspection(value: Any) -> bool:
         if program == "find":
             return not any(arg.startswith(("-exec", "-ok", "-delete", "-fprint", "-fls")) for arg in argv[1:])
         if program == "sed":
-            # Only the maintained line-range read form is demonstrably inspection.
-            return len(argv) >= 4 and argv[1] == "-n" and re.fullmatch(r"[0-9]+(?:,[0-9]+|,\$)?p", argv[2]) is not None
+            # Closed line-range scripts, including stdin after nl. No -e/-f,
+            # writes, execution scripts or trailing options can enter this path.
+            return (len(argv) >= 3 and argv[1] == "-n"
+                and re.fullmatch(r"[0-9]+(?:,[0-9]+|,\$)?p(?:;[0-9]+(?:,[0-9]+|,\$)?p)*", argv[2]) is not None
+                and all(not arg.startswith("-") for arg in argv[3:]))
+        if program == "nl":
+            return len(argv) == 3 and argv[1] == "-ba" and not argv[2].startswith("-")
+        if program == "sort":
+            return not any(arg.startswith(("-o", "--output", "--compress-program", "--files0-from")) for arg in argv[1:])
+        if program == "fd":
+            return not any(arg in {"-x", "-X"} or arg.startswith("--exec") for arg in argv[1:])
         if program in {"rg", "grep"} and any(arg.startswith(("--pre", "--hostname-bin")) for arg in argv[1:]):
             return False
         return program in inspection_programs
 
     argvs = command_argvs(value)
     return bool(argvs) and all(read_only(argv) for argv in argvs)
+
+
+def command_role(value: Any, depth: int = 0) -> str:
+    """Bounded roles; an unknown command cannot supply successful validation."""
+    if depth > 3:
+        return "unknown"
+    if command_is_repository_inspection(value):
+        return "inspection"
+    argvs = command_argvs(value)
+    if not argvs:
+        return "unknown"
+    if all(argv and Path(argv[0]).name in {"echo", "printf", "true"} for argv in argvs):
+        return "report"
+    if len(argvs) != 1:
+        # Only && propagates every validation failure. Pipelines, ; and || can
+        # hide it behind another command's status, even with numeric exit 0.
+        raw = value.get("cmd") if isinstance(value, dict) else value
+        if not isinstance(raw, str) or any(c in raw for c in (";", "|", "\n")):
+            return "unknown"
+        roles = [command_role(list(argv), depth + 1) for argv in argvs]
+        return "validation" if "validation" in roles and all(r in {"validation", "inspection"} for r in roles) else "unknown"
+    argv = argvs[0]
+    program = Path(argv[0]).name
+    args = list(argv[1:])
+    if program in {"sh", "bash", "zsh"}:
+        return command_role(args[1], depth + 1) if len(args) == 2 and args[0] in {"-c", "-lc"} else "unknown"
+    if program == "env":
+        while args and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=[^\n]*", args[0]):
+            args.pop(0)
+        return command_role(args, depth + 1) if args and not args[0].startswith("-") else "unknown"
+    if str(argv[0]).endswith("rebuild/scripts/validate"):
+        return command_role(args[3:], depth + 1) if len(args) > 3 and args[0] == "focused" and args[2] == "--" else "unknown"
+    if program == "cargo":
+        if args and args[0].startswith("+"):
+            args.pop(0)
+        valid = bool(args) and (args[0] in {"test", "check", "clippy", "build"}
+            or args[0] == "fmt" and "--check" in args)
+    elif program in {"python", "python3"}:
+        if args and args[0] == "-B":
+            args.pop(0)
+        valid = (len(args) >= 2 and args[0] == "-m" and args[1] in {"unittest", "pytest", "compileall"}
+            or bool(args) and Path(args[0]).name.endswith("_self_test.py")
+            or len(args) == 2 and Path(args[0]).name == "harness.py" and args[1] == "self-test")
+    elif program in {"pytest", "cargo-clippy"}:
+        valid = True
+    elif program in {"npm", "pnpm", "yarn"}:
+        valid = bool(args) and (args[0] in {"test", "check", "lint", "build"}
+            or len(args) >= 2 and args[0] == "run" and args[1] in {"test", "check", "lint", "build"})
+    elif program == "go":
+        valid = bool(args) and args[0] in {"test", "vet", "build"}
+    elif program in {"make", "cmake", "ctest", "mvn", "gradle", "gradlew"}:
+        valid = (program == "ctest" or any(a in {"test", "check", "verify", "--build"} for a in args))
+    else:
+        valid = False
+    return "validation" if valid else "unknown"
+
+
+def bounded_repository_observation(command: CommandObservation, cwd: Path) -> bool:
+    """Prove observation, never execution success, from a closed source-read form.
+
+    Only one reader, optionally piped through bounded head/sed, and explicit
+    in-repository paths qualify. No shell wrappers, arbitrary producers, compound
+    commands, stdin/files-from indirection or external/runtime paths are inferred.
+    """
+    value = command.parsed_command
+    raw = value.get("cmd") if isinstance(value, dict) else None
+    if not isinstance(raw, str) or not command_is_repository_inspection(value):
+        return False
+    argvs = command_argvs(value)
+    if not argvs or len(argvs) > 2 or any(c in raw for c in (";", "&", "\n")):
+        return False
+    if len(argvs) == 2:
+        filter_argv = argvs[1]
+        if not (len(filter_argv) == 2 and filter_argv[0] == "head" and re.fullmatch(r"-[1-9][0-9]{0,3}", filter_argv[1])
+            or len(filter_argv) == 3 and filter_argv[:2] == ("sed", "-n")
+            and re.fullmatch(r"[0-9]+,[0-9]+p", filter_argv[2])):
+            return False
+    argv = argvs[0]
+    program = argv[0]
+    if program in {"cat", "nl"}:
+        paths = list(argv[2:] if program == "nl" else argv[1:])
+    elif program == "sed" and len(argv) >= 4:
+        paths = list(argv[3:])
+    elif program == "rg" and len(argv) >= 4 and argv[1] == "-n":
+        paths = list(argv[3:])
+        # A small explicit glob option is supported; every remaining argument
+        # must be an actual path scope, not another option or stdin sentinel.
+        if "-g" in paths:
+            i = paths.index("-g")
+            if i + 1 >= len(paths):
+                return False
+            del paths[i:i + 2]
+    else:
+        return False
+    workdir_value = value.get("workdir", str(cwd))
+    if not isinstance(workdir_value, str):
+        return False
+    workdir = Path(workdir_value)
+    if not workdir.is_absolute() or ".." in workdir.parts or not workdir.is_relative_to(cwd):
+        return False
+    def repository_path(path: str) -> Path | None:
+        candidate = Path(path)
+        if not path or path.startswith("-") or any(part in {"..", ".git", ".local", "target", "__pycache__"} for part in candidate.parts):
+            return None
+        candidate = candidate if candidate.is_absolute() else workdir / candidate
+        return candidate if candidate.is_relative_to(cwd) else None
+    scopes = [repository_path(path) for path in paths]
+    if not scopes or any(path is None for path in scopes):
+        return False
+    lines = [line for line in command.output.splitlines() if line.strip()]
+    if program == "rg":
+        matched = []
+        for line in lines:
+            match = re.fullmatch(r"(.+?):([1-9][0-9]*):(.+)", line)
+            if not match:
+                continue
+            path = repository_path(match[1])
+            if path is not None and any(path == scope or path.is_relative_to(scope) for scope in scopes):
+                matched.append(match[3])
+        lines = matched
+    elif any(re.match(r"(?:cat|sed|nl):|Warning:|.*No such file or directory", line) for line in lines):
+        return False
+    return len(lines) >= 2 and sum(len(line.strip()) for line in lines) >= 64
 
 
 def repository_operation_is_inspection(call: ToolCall) -> bool:

@@ -1559,6 +1559,25 @@ exit and termination; actual nonzero verification fails and incomplete execution
 Session 1's 256 KiB MCP Recall budget remains unchanged. Sanitized bounded Recall and chronology
 regressions live in `resume_self_test.py` and run in the maintained campaign self-test.
 
+Hidden pre-Discovery investigation has explicit `complete`, `indeterminate` and `missing`
+evidence states. Successful numeric execution of a supported inspection or successful structured
+`repository_understanding` is complete. When numeric execution evidence is unavailable, a closed
+source-read command may prove observation only: explicit in-repository paths, one `cat`, bounded
+`sed -n`, `nl -ba` or `rg -n` reader, optionally followed by bounded head/sed, with at least two
+non-empty output lines totalling 64 non-whitespace-edge characters. Ripgrep output must carry path
+and numeric line references within the requested scopes. External/runtime paths, arbitrary producers,
+compound shell output, malformed completion and uncorrelated prose cannot qualify this path. Observed
+inspection without usable timely completion or bounded content is indeterminate; no qualifying
+inspection is missing. Numeric exit and termination fields are never synthesized.
+
+Terminal verification uses explicit inspection/report/validation/unknown roles. Supported validation
+entry points and bounded shell/env/focused wrappers are selected; arbitrary commands are not validation.
+Later `nl -ba ... | sed -n 'range;range'` listings (including newline-separated listings) remain
+inspection. Unsafe/ambiguous compounds cannot certify success or recover a prior failure. A later
+unknown command blocks a success claim without replacing the last genuine validation outcome.
+Only a later genuine numeric successful validation can recover an earlier failure. Unknown numeric
+outcome remains indeterminate even when stdout or an assistant claims that tests passed.
+
 ### Current-host Decision transport provenance
 
 Decision caller text is compared directionally to the actual captured response with the existing

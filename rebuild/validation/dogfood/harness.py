@@ -36,6 +36,8 @@ from codex_events import (
     ToolCall,
     VOLICORD_OPERATIONS,
     command_argvs,
+    command_role,
+    bounded_repository_observation,
     command_is_clean_git_status,
     command_is_repository_inspection,
     decode_established_fact_statements,
@@ -3123,19 +3125,30 @@ def meaningful_resume_validation(
         command
         for command in capture.commands
         if command.sequence > after_sequence
-        and not command_is_repository_inspection(command.parsed_command)
-        and not command_is_read_only_report(command.parsed_command)
+        and command_role(command.parsed_command) == "validation"
     ]
     terminal = (
         max(commands, key=lambda command: (command.sequence, command.group_index))
         if commands
         else None
     )
+    unknown_after_validation = [
+        command for command in capture.commands
+        if command.sequence > after_sequence
+        and (terminal is None or (command.sequence, command.group_index)
+            > (terminal.sequence, terminal.group_index))
+        and command_role(command.parsed_command) == "unknown"
+    ]
+    def completed(command: Any) -> bool:
+        return (command.evidence_state == "completed"
+            and type(command.exit_code) is int
+            and command.termination is not None)
     qualified = bool(
         terminal is not None
-        and terminal.evidence_state == "completed"
+        and completed(terminal)
         and terminal.termination == "exited"
         and terminal.exit_code == 0
+        and not unknown_after_validation
     )
     intermediate_failures = [
         command
@@ -3143,11 +3156,11 @@ def meaningful_resume_validation(
         if terminal is not None
         and (command.sequence, command.group_index)
         < (terminal.sequence, terminal.group_index)
-        and command.evidence_state == "completed"
+        and completed(command)
         and not (command.termination == "exited" and command.exit_code == 0)
     ]
     indeterminate = [
-        command for command in commands if command.evidence_state != "completed"
+        command for command in commands if not completed(command)
     ]
     return {
         "qualified": qualified,
@@ -3160,14 +3173,15 @@ def meaningful_resume_validation(
         "terminal_execution_identity": terminal.execution_identity if terminal else None,
         "terminal_group_index": terminal.group_index if terminal else None,
         "intermediate_failure_count": len(intermediate_failures),
-        "indeterminate_execution_count": len(indeterminate),
+        "indeterminate_execution_count": len(indeterminate) + len(unknown_after_validation),
+        "unclassified_after_validation_count": len(unknown_after_validation),
         "recovered_intermediate_failure": bool(intermediate_failures) and qualified,
         "unresolved_terminal_failure": bool(
             terminal is not None
-            and terminal.evidence_state == "completed"
-            and not qualified
+            and completed(terminal)
+            and not (terminal.termination == "exited" and terminal.exit_code == 0)
         ),
-        "incomplete_evidence": terminal is None or terminal.evidence_state != "completed",
+        "incomplete_evidence": terminal is None or not completed(terminal) or bool(unknown_after_validation),
     }
 
 
@@ -5404,7 +5418,10 @@ def decision_facts(
         call_valid = (
             turn is not None
             and turn.sequence < call.sequence
-            and len(presentations) == 1
+            # Missing presentation transport is diagnosed by question_review_facts;
+            # retain independently proven canonical response/Decision witnesses.
+            # An observed conflicting receipt must never qualify.
+            and (not work.successful_calls("inquiry_frontier") or len(presentations) == 1)
             and nonempty_string(question_id)
             and isinstance(revision, int)
             and revision >= 1
@@ -8230,30 +8247,49 @@ def meaningful_work_path_observations(work: CodexCapture | None) -> list[Any]:
     ]
 
 
-def repository_investigation_sequences(
-    work: CodexCapture | None,
-    *,
-    after_sequence: int,
-    before_sequence: int,
-) -> list[int]:
+def repository_investigation_evidence(
+    work: CodexCapture | None, *, after_sequence: int, before_sequence: int,
+) -> dict[str, Any]:
+    """Separate observed repository investigation from numeric verification."""
     if work is None:
-        return []
-    sequences = [
-        command.sequence
-        for command in work.commands
-        if after_sequence < command.sequence < before_sequence
-        and command_is_repository_inspection(command.parsed_command)
-        and command.exit_code == 0
-        and command.evidence_state == "completed"
-        and command.termination == "exited"
-        and command.completion_sequence < before_sequence
-    ]
-    sequences.extend(
-        call.sequence
-        for call in work.successful_calls("repository_understanding")
+        return {"state": "missing", "sequences": [], "issues": ()}
+    commands = [c for c in work.commands
+        if after_sequence < c.sequence < before_sequence
+        and command_is_repository_inspection(c.parsed_command)]
+    complete = []
+    for command in commands:
+        issues = [i for i in work.evidence_transport_issues if i.sequence == command.sequence and i.server == "codex"]
+        numeric_success = (command.evidence_state == "completed"
+            and type(command.exit_code) is int and command.exit_code == 0
+            and command.termination == "exited")
+        bounded_observation = (command.exit_code is None and command.termination is None
+            and all(i.reason == "command_completion_indeterminate" for i in issues)
+            and bounded_repository_observation(command, work.cwd))
+        if command.completion_sequence < before_sequence and (numeric_success or bounded_observation):
+            complete.append(command.sequence)
+    complete.extend(call.sequence for call in work.successful_calls("repository_understanding")
         if after_sequence < call.sequence and call.completion_sequence < before_sequence
-    )
-    return sorted(set(sequences))
+        and repository_operation_is_inspection(call))
+    if complete:
+        return {"state": "complete", "sequences": sorted(set(complete)), "issues": ()}
+    if not commands:
+        return {"state": "missing", "sequences": [], "issues": ()}
+    issues = []
+    for command in commands:
+        existing = [issue for issue in work.evidence_transport_issues
+                    if issue.sequence == command.sequence and issue.server == "codex"]
+        issues.extend(existing or [EvidenceTransportIssue(command.sequence, command.turn_id,
+            command.execution_identity or f"command:{command.sequence}:{command.group_index}",
+            "codex", None, "command_completion_indeterminate")])
+    return {"state": "indeterminate", "sequences": [c.sequence for c in commands], "issues": tuple(issues)}
+
+
+def repository_investigation_sequences(
+    work: CodexCapture | None, *, after_sequence: int, before_sequence: int,
+) -> list[int]:
+    evidence = repository_investigation_evidence(work,
+        after_sequence=after_sequence, before_sequence=before_sequence)
+    return evidence["sequences"] if evidence["state"] == "complete" else []
 
 
 def hidden_investigation_evidence(
@@ -8270,24 +8306,8 @@ def hidden_investigation_evidence(
         before_sequence=frontier)
     if discovery is None:
         return result
-    sequences = repository_investigation_sequences(capture,
+    return repository_investigation_evidence(capture,
         after_sequence=baseline.completion_sequence, before_sequence=discovery.sequence)
-    if sequences:
-        return {"state": "complete", "sequences": sequences, "issues": ()}
-    commands = [c for c in capture.commands
-        if baseline.completion_sequence < c.sequence < discovery.sequence
-        and command_is_repository_inspection(c.parsed_command)
-        and c.evidence_state == "indeterminate"]
-    if not commands:
-        return result
-    issues = []
-    for command in commands:
-        existing = [issue for issue in capture.evidence_transport_issues
-                    if issue.sequence == command.sequence and issue.server == "codex"]
-        issues.extend(existing or [EvidenceTransportIssue(command.sequence, command.turn_id,
-            command.execution_identity or f"command:{command.sequence}:{command.group_index}",
-            "codex", None, "command_completion_indeterminate")])
-    return {"state": "indeterminate", "sequences": [c.sequence for c in commands], "issues": tuple(issues)}
 
 
 def terminal_checkpoint_call(work: CodexCapture | None) -> ToolCall | None:
@@ -17726,7 +17746,7 @@ def self_test() -> int:
     )["checks"]["decision_provenance_when_required"] != "failed":
         raise AssertionError("a materially different Decision response qualified")
 
-    wrong_decision_session = real_session_fixture(
+    internal_decision_session = real_session_fixture(
         "volicord", 1, revision, evidence_directory
     )
 
@@ -17743,14 +17763,14 @@ def self_test() -> int:
                         "value": "different-session",
                     }
 
-    mutate_bundle(wrong_decision_session, replace_decision_source_session)
+    mutate_bundle(internal_decision_session, replace_decision_source_session)
     if real_session_evidence(
-        wrong_decision_session,
+        internal_decision_session,
         kind="volicord",
         cycle=1,
         repository_revision=revision,
-    )["checks"]["decision_provenance_when_required"] != "failed":
-        raise AssertionError("Decision Source from a different session qualified")
+    )["checks"]["decision_provenance_when_required"] != "passed":
+        raise AssertionError("exact Decision Source under an internal HostAdapter session did not qualify")
 
     wrong_decision_revision = real_session_fixture(
         "volicord", 1, revision, evidence_directory
@@ -22502,7 +22522,7 @@ def self_test() -> int:
         "user_turn_deduplication_and_conflict_rejection": "passed",
         "current_host_transport_identity_reused_by_dogfood": "passed",
         "canonical_goal_learning_constraint_decomposition": "passed",
-        "decision_wrong_revision_and_session_rejected": "passed",
+        "decision_internal_session_and_exact_revision": "passed",
         "sanitized_behavior_truth_table_six_pass_two_hidden_fail": (
             "passed"
             if len(sanitized_passing_behavior_shapes) == 6
