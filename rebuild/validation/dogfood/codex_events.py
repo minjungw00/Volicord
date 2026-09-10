@@ -1692,6 +1692,11 @@ def command_role(value: Any, depth: int = 0) -> str:
         return command_role(args, depth + 1) if args and not args[0].startswith("-") else "unknown"
     if str(argv[0]).endswith("rebuild/scripts/validate"):
         return command_role(args[3:], depth + 1) if len(args) > 3 and args[0] == "focused" and args[2] == "--" else "unknown"
+    # Help/version output is reporting, even when it names a test command.
+    if program in {"cargo", "python", "python3", "pytest", "cargo-clippy",
+        "npm", "pnpm", "yarn", "go", "make", "cmake", "ctest", "mvn", "gradle", "gradlew"} \
+        and any(arg in {"--help", "--version", "-h"} for arg in args):
+        return "report"
     if program == "cargo":
         if args and args[0].startswith("+"):
             args.pop(0)

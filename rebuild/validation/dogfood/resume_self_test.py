@@ -154,6 +154,16 @@ class ResumeTests(unittest.TestCase):
             "find logs -maxdepth 1 -type f -print -exec sed -n '1,220p' {} \\; ; touch changed"):
             self.assertEqual(h.command_role({"cmd": command}), "unknown")
 
+    def test_validation_help_is_reporting_and_cannot_recover_failure(self):
+        validation = replace(self.verification, exit_code=101)
+        for cmd in ("cargo test --help", "python3 -m unittest --help", "pytest --version",
+            "rebuild/scripts/validate focused help -- cargo test --help"):
+            report = replace(validation, sequence=validation.completion_sequence + 1,
+                completion_sequence=validation.completion_sequence + 2, parsed_command={"cmd": cmd}, exit_code=0)
+            result = h.meaningful_resume_validation(replace(self.capture, commands=(validation, report)), 0)
+            self.assertTrue(result["unresolved_terminal_failure"])
+            self.assertEqual(result["terminal_exit_code"], 101)
+
     def test_recall_transport_and_identity_are_evidence_failures(self):
         recall = self.capture.successful_calls("recall")[0]
         issue = EvidenceTransportIssue(recall.sequence, recall.turn_id, recall.call_id, "volicord", "recall", "malformed_mcp_completion")
