@@ -592,27 +592,27 @@ ownership, or the capsule lifecycle described below.
 
 The maintained Phase 8 candidate-authority summary is
 `phase-8-summary.md`. The current sealed Product/test candidate is
-`70ee9119e0357a2deed49291a0e5cfdb04fb014f`: admission, exact final, separately
-authorized production-provider qualification (`openai-codex` / `gpt-5.6-sol`), all 54 official V11 steps,
-credential audit, and evidence archive creation/independent verification passed.
-`phase_8_ready = true` applies only to that exact HEAD; the later documentation-only
-conclusion does not inherit qualification. Historical sealed candidates, including
-`ba4df7e4afcf6b44c30bf938aac41e2acc121c5d` and
-`6031641c46cf014a754442dcee3137caf265882e`, remain distinct.
+`1227448ebbd8c59606c003cfbf1188c149ee52a6`: admission, exact final, separately authorized
+production-provider qualification (`openai-codex` / `gpt-5.6-sol`), all 54 official
+V11 steps, credential audit, and archive creation/independent verification passed.
+`phase_8_ready = true` applies only to that exact HEAD. The later documentation-only
+conclusion does not inherit qualification and must not be used as the campaign HEAD.
 
-This candidate completes the bounded evaluator remediation for historical Question
-resolution across baseline refresh, relevant Learning Deliberation identity among
-multiple session deliberations, and exact current-candidate matching in flat Recall
-learning context. Incomplete historical branches, ambiguous or mixed learning
-identities, unavailable required Recall evidence, and late/uncovered/stale work
-authority remain rejected. The prior remediation conclusion did not cover these
-remaining mismatches. Product contracts are unchanged by these evaluator fixes.
+The sealed candidate retains current Codex exec/command-role evidence normalization,
+exact successor-Review Decision lineage, separate redundant-Question detection,
+and active-host cross-locale realization preparation/record/collection. Active
+Codex guidance now consumes a clear answer using its existing valid presentation
+receipt and current user turn, and executes explicitly requested resume verification
+instead of stopping at Recall or inspection. Legitimate clarification, inspection-only
+requests and numeric failure/indeterminate outcomes retain their existing boundaries.
 
-No fresh naturalistic campaign has run for the new candidate. The prior terminal
-campaign remains failed, diagnostic-only, and non-reusable; read-only diagnostics
-are not campaign intake or qualification. Human review is `not_provided`, replacement
-qualification remains pending, `replacement_pass_candidate = false`, and
-`phase_9_ready = false`.
+The latest terminal campaign, `phase8-naturalistic-20260910-60ffad042346`, used
+`de4c6d1bea16947616ed6fb78baa8f8c321ef4ff` and remains failed, diagnostic-only,
+and non-reusable. Its five bounded findings and committed remediation are recorded
+in `dogfood/report.md`. Historical learning-continuity and older campaigns remain
+separate diagnostics. No fresh naturalistic campaign has run for the new candidate;
+human review is `not_provided`, replacement qualification remains pending,
+`replacement_pass_candidate = false`, and `phase_9_ready = false`.
 
 Automated Dogfood has not run for the redesigned campaign and campaign-level human
 review is `not_provided`. The operator workflow is batch-first: after hidden
