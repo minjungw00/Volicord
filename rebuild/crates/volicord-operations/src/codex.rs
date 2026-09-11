@@ -32,7 +32,7 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
     let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
-    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall restores prior Project state; it does not complete the current request. If the current request explicitly asks to run, rerun or execute verification, tests, build, lint or another bounded check, execute the requested check and observe its terminal outcome before reporting completion. If execution is impossible, report the blocker; inspection or a prior Checkpoint is not a substitute. Requests only to inspect, explain or summarize prior verification do not require execution. {continuation} After inquiry_frontier presents a Question revision, a clear valid answer means call decision_record promptly with its existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use only a caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Commands used as Checkpoint verification must keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
+    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall restores prior Project state; it does not complete the current request. When the user asks to run/rerun verification, tests, build, lint or a bounded check, execute it and observe its terminal outcome before reporting completion. If execution is impossible, report the blocker; inspection or a prior Checkpoint is not a substitute. Requests only to inspect, explain or summarize prior verification do not require execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier, for a clear valid answer call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use a caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -910,6 +910,14 @@ mod tests {
             assert!(context.contains("Start project-scoped repository work with project_resolve"));
             assert!(context.contains("workflow.required_next_action"));
             assert!(context.contains("blocks_ordinary_work is false"));
+            assert!(context.contains(
+                "Explicit learning/explanation participation in this bounded Goal stays active"
+            ));
+            assert!(context.contains(
+                "exact current-host Source/verbatim statement even if all dimensions are routine"
+            ));
+            assert!(context.contains("Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision"));
+            assert!(context.contains("default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation"));
             assert!(context.contains("call decision_record promptly"));
             assert!(context.contains("existing valid presentation_receipt_id"));
             assert!(context.contains("exact current user_turn"));
@@ -936,8 +944,10 @@ mod tests {
             assert!(context.contains(
                 "Recall restores prior Project state; it does not complete the current request"
             ));
-            assert!(context.contains("explicitly asks to run, rerun or execute verification, tests, build, lint or another bounded check"));
-            assert!(context.contains("execute the requested check and observe its terminal outcome before reporting completion"));
+            assert!(context.contains("When the user asks to run/rerun verification, tests, build, lint or a bounded check"));
+            assert!(context.contains(
+                "execute it and observe its terminal outcome before reporting completion"
+            ));
             assert!(context.contains("If execution is impossible, report the blocker"));
             assert!(context.contains("inspection or a prior Checkpoint is not a substitute"));
             assert!(context.contains("Requests only to inspect, explain or summarize prior verification do not require execution"));

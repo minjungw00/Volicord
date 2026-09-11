@@ -1665,6 +1665,32 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
                 expected_stage,
                 "{label}: {bound}"
             );
+            if label == "agent-owned" {
+                let inspected = structured(&call(
+                    &mut adapter,
+                    "candidate_inspect",
+                    json!({"project_id":project}),
+                ))
+                .clone();
+                let candidates = inspected["candidates"].as_array().expect("Candidates");
+                let review = candidates
+                    .iter()
+                    .find(|candidate| candidate["materiality_review"].is_object())
+                    .expect("Review");
+                assert_eq!(
+                    review["materiality_review"]["learning_participation"],
+                    json!({"state":"inactive"})
+                );
+                assert!(candidates
+                    .iter()
+                    .all(|candidate| !candidate["learning_deliberation"].is_object()));
+                let canonical = adapter
+                    .operations()
+                    .canonical_basis(parse_project(&project))
+                    .expect("canonical basis");
+                assert!(canonical.active_questions.is_empty());
+                assert!(canonical.active_decisions.is_empty());
+            }
         } else {
             assert_eq!(
                 structured(&recorded)["workflow"]["stage"],
@@ -2869,19 +2895,55 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
         }),
     ))
     .clone();
-    let review = structured(&call(
+    let draft = structured(&call(
         &mut adapter,
         "materiality_review",
+        json!({"action":"draft","project_id":project,
+            "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"]}),
+    ))
+    .clone();
+    let listed = adapter
+        .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
+        .expect("tools/list");
+    let tool = listed["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|tool| tool["name"] == "materiality_review")
+        .expect("Materiality tool");
+    assert!(tool["description"]
+        .as_str()
+        .expect("description")
+        .contains("even when all dimensions have routine learning value"));
+    let guidance = draft["learning_participation"]["description"]
+        .as_str()
+        .expect("participation guidance");
+    assert!(guidance.contains("even when every current dimension is routine"));
+    assert!(guidance.contains("requires no Learning Deliberation, Question, or canonical Decision"));
+    assert!(guidance.contains("inactive is the default"));
+    assert!(guidance.contains("generic coding, agent-generated explanation, or keywords without current-host user provenance do not activate it"));
+    assert!(tool["inputSchema"].to_string().contains(guidance));
+    assert_eq!(
+        discovery["workflow"]["input_guidance"]["authority_learning_routing"]["participation_rule"],
+        guidance
+    );
+    let participation = draft_learning_participation(
+        &draft,
+        "active",
         json!({
-            "action":"record",
-            "project_id":project,
-            "engineering_choice_discovery_candidate_id":discovery["discovery_candidate_id"],
-            "rationale":"The wording and test synchronization detail is agent-owned and routine within the user's explicit non-interruption boundary.",
-            "behavioral_context_basis":{"context_item_ids":[learning["context_item_id"],constraint["context_item_id"]],"completeness_rationale":"The bounded Learning and non-interruption Constraint are the only non-Goal statements that affect this review."},
-            "learning_participation":{"state":"active","user_turn_source_id":learning["source_id"],"verbatim_statement":"Teach me meaningful architecture and flow choices"},
-            "judgments":[{
-                "choice_id":"diagnostic-test-wording",
-                "disposition":"agent_owned_implementation_choice",
+            "user_turn_source_id":learning["source_id"],
+            "verbatim_statement":"Teach me meaningful architecture and flow choices"
+        }),
+    );
+    let mut request = draft_request(
+        &draft,
+        "Routine value does not erase explicit participation",
+        participation.clone(),
+        vec![draft_judgment(
+            &draft,
+            "diagnostic-test-wording",
+            "agent_owned_implementation_choice",
+            json!({
                 "basis_summary":"This is internal agent-owned discretion.",
                 "authority_counterfactual":"The synchronized edit order changes no material product outcome, so the detail remains agent-owned.",
                 "materially_varying_outcomes":["the order of a private synchronized maintenance edit"],
@@ -2893,10 +2955,11 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
                 "alternative_accounting":unresolved_alternative_accounting("diagnostic-test-wording", &["wording-first","test-first"], &analyzed["repository_source_id"]),
                 "discretion_counterfactuals":discretion_counterfactuals("diagnostic-test-wording", &["wording-first","test-first"], &analyzed["repository_source_id"]),
                 "learning_value":{"state":"routine","rationale":"No meaningful transferable understanding would be lost, and the user explicitly excluded routine wording and test synchronization from interruptions."}
-            }]
-        }),
-    ))
-    .clone();
+            }),
+        )],
+    );
+    request["behavioral_context_basis"] = json!({"context_item_ids":[learning["context_item_id"],constraint["context_item_id"]],"completeness_rationale":"The bounded Learning and non-interruption Constraint affect this review."});
+    let review = structured(&call(&mut adapter, "materiality_review", request)).clone();
     assert_eq!(review["workflow"]["stage"], "materiality_review");
     let bound = structured(&bind_recorded_scope(&mut adapter, &review, &["src"])).clone();
     assert_eq!(bound["workflow"]["stage"], "ready_for_work");
@@ -2917,6 +2980,17 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
         materiality["behavioral_context_basis"]["context_item_ids"],
         json!([learning["context_item_id"], constraint["context_item_id"]])
     );
+    assert_eq!(materiality["learning_participation"], participation);
+    assert_eq!(
+        materiality["dimensions"][0]["learning_value"]["state"],
+        "routine"
+    );
+    let canonical = adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .expect("canonical basis");
+    assert!(canonical.active_questions.is_empty());
+    assert!(canonical.active_decisions.is_empty());
     assert!(!inspected["candidates"]
         .as_array()
         .expect("Candidate array")
