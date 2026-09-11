@@ -62,6 +62,76 @@ class FrontierTests(unittest.TestCase):
             self.assertTrue(facts[0])
             self.assertEqual(facts[1], "18" * 16)
 
+    def equivalent_hidden_rebase(self):
+        _, capture, _ = self.fixture("hidden_user_owned_decision")
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        old = replace(discovery, sequence=1700, completion_sequence=1710, call_id="origin-discovery",
+            result={**discovery.result, "discovery_candidate_id": "ad" * 16})
+        new_id = "cd" * 32
+        def rebase(value):
+            if isinstance(value, dict):
+                return {k: rebase(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [rebase(v) for v in value]
+            return new_id if value == baseline.result["analysis_snapshot_id"] else value
+        new_baseline = replace(baseline, sequence=1750, completion_sequence=1760, call_id="rebase-analysis",
+            result={**baseline.result, "analysis_snapshot_id": new_id})
+        calls = tuple(replace(c, arguments=rebase(c.arguments), result=rebase(c.result))
+                      if c.sequence >= discovery.sequence else c for c in capture.tool_calls)
+        capture = replace(capture, tool_calls=tuple(sorted((*calls, old, new_baseline), key=lambda c: c.sequence)))
+        return capture, new_baseline, old
+
+    def test_hidden_origin_survives_only_equivalent_rebase(self):
+        capture, baseline, origin = self.equivalent_hidden_rebase()
+        frontier = min(c.sequence for c in h.meaningful_work_path_observations(capture))
+        evidence = h.hidden_investigation_evidence(capture, baseline, frontier)
+        self.assertEqual(evidence["state"], "complete")
+        self.assertEqual(evidence["sequences"], [1500])
+        current = capture.successful_calls("engineering_choice_discovery")[-1]
+        for change in ("new_choice", "new_dimension", "new_alternative", "consequence", "source", "snapshot", "ambiguous", "mutation"):
+            args = deepcopy(current.arguments)
+            changed_baseline = baseline
+            extra = ()
+            if change == "new_choice":
+                args["choices"][0]["choice_id"] = "new-material-choice"
+            elif change == "new_dimension":
+                args["choices"][0]["effect_categories"].append("security")
+            elif change == "new_alternative":
+                args["choices"][0]["alternatives"][0]["alternative_id"] = "new-outcome"
+            elif change == "consequence":
+                args["choices"][0]["alternatives"][0]["technical_consequences"] = ["A materially different result."]
+            elif change in {"source", "snapshot"}:
+                key = "repository_source_id" if change == "source" else "repository_snapshot_id"
+                changed_baseline = replace(baseline, result={**baseline.result, key: "ef" * (16 if change == "source" else 32)})
+            elif change == "ambiguous":
+                extra = (replace(origin, call_id="ambiguous-origin", sequence=1701),)
+            changed = replace(capture, tool_calls=tuple(replace(c, arguments=args) if c is current
+                else changed_baseline if c is baseline else c for c in capture.tool_calls) + extra,
+                path_observations=(*capture.path_observations,
+                    replace(capture.path_observations[0], sequence=1730)) if change == "mutation" else capture.path_observations)
+            self.assertFalse(h.equivalent_discovery_basis(changed, origin,
+                next(c for c in changed.tool_calls if c.call_id == current.call_id)) if change != "ambiguous"
+                else h.originating_discovery_boundary(changed, current, baseline), change)
+            # Same prose cannot rescue missing current investigation on a changed basis.
+            if change != "new_choice":
+                self.assertEqual(h.hidden_investigation_evidence(changed, changed_baseline, frontier)["state"], "missing", change)
+        changed_baseline = replace(baseline, result={**baseline.result, "repository_snapshot_id": "ef" * 32})
+        renewed = replace(capture.commands[1], sequence=1770, completion_sequence=1780)
+        changed = replace(capture, commands=(*capture.commands, renewed),
+            tool_calls=tuple(changed_baseline if c is baseline else c for c in capture.tool_calls))
+        self.assertEqual(h.hidden_investigation_evidence(changed, changed_baseline, frontier)["state"], "complete")
+
+    def test_equivalent_rebase_cannot_launder_uninvestigated_origin(self):
+        capture, baseline, origin = self.equivalent_hidden_rebase()
+        too_early = replace(origin, sequence=1400, completion_sequence=1410)
+        # Even a later inspection cannot retroactively repair first discovery.
+        later = replace(capture.commands[1], sequence=1770, completion_sequence=1780)
+        capture = replace(capture, commands=(*capture.commands, later),
+            tool_calls=tuple(sorted((too_early if c is origin else c for c in capture.tool_calls), key=lambda c: c.sequence)))
+        frontier = min(c.sequence for c in h.meaningful_work_path_observations(capture))
+        self.assertEqual(h.hidden_investigation_evidence(capture, baseline, frontier)["state"], "missing")
+
     def test_hidden_investigation_uncertainty_does_not_erase_lifecycle(self):
         head = h.git_head(h.ROOT)
         descriptor = h.real_session_fixture("volicord", 1, head, self.root,

@@ -1614,6 +1614,18 @@ compound shell output, malformed completion and uncorrelated prose cannot qualif
 inspection without usable timely completion or bounded content is indeterminate; no qualifying
 inspection is missing. Numeric exit and termination fields are never synthesized.
 
+Hidden investigation belongs to the originating material choice. A later serialized re-materialization
+may retain it only across an exact typed choice graph (choice/alternative identities, dimensions,
+consequences, relations, scope and Source links) on the same non-empty repository snapshot and
+repository Source identity. Analysis identity and evidence readiness may advance independently.
+No intervening material mutation or ambiguous discovery/baseline correlation is permitted. A new
+choice, dimension, alternative, consequence or changed repository/source basis requires timely
+investigation on the new basis. Similar prose and absence of recorded writes alone do not prove
+source equivalence; a fresh Source/snapshot with no correlated content-equivalence evidence cannot
+inherit investigation. The earliest equivalent discovery still fails if it preceded investigation,
+even when later discovery was preceded by redundant research. This evidence rule does not change
+canonical Inquiry or Decision applicability.
+
 Terminal verification uses explicit inspection/report/validation/unknown roles. Supported validation
 entry points and bounded shell/env/focused wrappers are selected; arbitrary commands are not validation.
 Later `nl -ba ... | sed -n 'range;range'` listings (including newline-separated listings) remain

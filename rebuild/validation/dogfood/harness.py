@@ -8606,6 +8606,77 @@ def repository_investigation_sequences(
     return evidence["sequences"] if evidence["state"] == "complete" else []
 
 
+def equivalent_discovery_basis(capture: CodexCapture, earlier: ToolCall, later: ToolCall) -> bool:
+    """Reuse investigation only for an exact typed choice graph on the same observed source state."""
+    if earlier.completion_sequence >= later.sequence:
+        return False
+    if any(earlier.sequence < item.sequence < later.completion_sequence
+           for item in meaningful_work_path_observations(capture)) or any(
+        earlier.sequence < issue.sequence < later.completion_sequence and issue.reason == "malformed_file_change"
+        for issue in capture.evidence_transport_issues):
+        return False
+    project = later.arguments.get("project_id")
+    goal = later.arguments.get("goal_context_id")
+    if not all(nonempty_string(v) for v in (project, goal)) or any(
+        call.arguments.get("project_id") != project or call.arguments.get("goal_context_id") != goal
+        for call in (earlier, later)):
+        return False
+    bases = []
+    for discovery in (earlier, later):
+        candidates = [c for c in capture.successful_calls("repository_analyze")
+            if c.result.get("analysis_snapshot_id") == discovery.arguments.get("baseline_analysis_snapshot_id")
+            and c.arguments.get("project_id") == project and c.result.get("project_id") == project
+            and c.completion_sequence < discovery.sequence]
+        if len(candidates) != 1:
+            return False
+        bases.append(candidates[0])
+    # An analysis identity may change while its exact repository/source basis stays fixed.
+    # A fresh Source or snapshot alone does not prove content equivalence.
+    for field in ("repository_snapshot_id", "repository_source_id"):
+        if not nonempty_string(bases[0].result.get(field)) or bases[0].result[field] != bases[1].result.get(field):
+            return False
+    graphs = []
+    for discovery, baseline in zip((earlier, later), bases):
+        choices = indexed_engineering_choices(discovery.arguments.get("choices"))
+        if choices is None or any(c.get("source_ids") != [baseline.result["repository_source_id"]]
+                                  for c in choices.values()):
+            return False
+        # Exact typed IDs, alternatives, dimensions, relations and Source links are mandatory.
+        # Evidence readiness can advance; similar prose never establishes identity.
+        graphs.append({"choices": {key: {k: v for k, v in value.items() if k != "evidence_state"}
+                                    for key, value in choices.items()},
+                       "material_boundary_review": discovery.arguments.get("material_boundary_review"),
+                       "interaction_review": discovery.arguments.get("interaction_review")})
+    return graphs[0] == graphs[1]
+
+
+def originating_discovery_boundary(capture: CodexCapture, discovery: ToolCall,
+                                    baseline: ToolCall) -> tuple[int, int] | None:
+    candidates = sorted([c for c in capture.successful_calls("engineering_choice_discovery")
+        if c.arguments.get("project_id") == discovery.arguments.get("project_id")
+        and c.arguments.get("goal_context_id") == discovery.arguments.get("goal_context_id")
+        and c.sequence <= discovery.sequence], key=lambda c: c.sequence)
+    if not candidates or candidates[-1].call_id != discovery.call_id:
+        return None
+    ids = [c.result.get("discovery_candidate_id") for c in candidates]
+    if len(ids) != len(set(ids)) or any(a.completion_sequence >= b.sequence
+                                      for a, b in zip(candidates, candidates[1:])):
+        return None
+    origin = discovery
+    for previous in reversed(candidates[:-1]):
+        if not equivalent_discovery_basis(capture, previous, origin):
+            break
+        origin = previous
+    if origin is discovery:
+        return baseline.completion_sequence, discovery.sequence
+    bases = [c for c in capture.successful_calls("repository_analyze")
+        if c.result.get("analysis_snapshot_id") == origin.arguments.get("baseline_analysis_snapshot_id")
+        and c.arguments.get("project_id") == origin.arguments.get("project_id")
+        and c.result.get("project_id") == origin.arguments.get("project_id")
+        and c.completion_sequence < origin.sequence]
+    return (bases[0].completion_sequence, origin.sequence) if len(bases) == 1 else None
+
+
 def hidden_investigation_evidence(
     capture: CodexCapture | None, baseline: ToolCall | None, frontier: int | None,
 ) -> dict[str, Any]:
@@ -8625,7 +8696,10 @@ def hidden_investigation_evidence(
     for judgment in current.arguments.get("judgments", []):
         identities = judgment_resolution_decision_ids(judgment)
         if not identities:
-            boundaries.add((baseline.completion_sequence, discovery.sequence))
+            boundary = originating_discovery_boundary(capture, discovery, baseline)
+            if boundary is None:
+                return result
+            boundaries.add(boundary)
         for identity in identities:
             origin = decision_interaction_origin(capture, record, identity, judgment.get("choice_id"), frontier)
             if origin is None:
@@ -8638,7 +8712,13 @@ def hidden_investigation_evidence(
                 and c.completion_sequence < origin_record.sequence]
             if len(origins) != 1:
                 return result
-            boundaries.add((origin_baseline.completion_sequence, origins[0].sequence))
+            boundary = originating_discovery_boundary(capture, origins[0], origin_baseline)
+            if boundary is None:
+                return result
+            boundaries.add(boundary)
+            if origins[0].call_id != discovery.call_id and not equivalent_discovery_basis(capture, origins[0], discovery):
+                # Historical authority does not carry investigation across a changed source/choice basis.
+                boundaries.add((baseline.completion_sequence, discovery.sequence))
     observations = [repository_investigation_evidence(capture, after_sequence=start, before_sequence=end)
                     for start, end in sorted(boundaries)]
     return {"state": "missing" if not observations or any(o["state"] == "missing" for o in observations)
