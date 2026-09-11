@@ -32,7 +32,7 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
     let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
-    format!("{identity}\nStart project-scoped repository work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall restores prior Project state; it does not complete the current request. When the user asks to run/rerun verification, tests, build, lint or a bounded check, execute it and observe its terminal outcome before reporting completion. If execution is impossible, report the blocker; inspection or a prior Checkpoint is not a substitute. Requests only to inspect, explain or summarize prior verification do not require execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier, for a clear valid answer call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use a caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Do not infer user authority from an agent recommendation, use a post-work baseline, transmit sources without separate exact provider authorization, or report Checkpoint verification that was not actually observed. Keep actual numeric exit/termination observable in host-visible results. For long-running/polled commands, retain the execution identity and actual terminal outcome; prose success is not execution evidence. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. Non-project requests need no ceremony.")
+    format!("{identity}\nStart project work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall is not completion. Run explicitly requested tests/build/lint/verification to termination before completion; report blockers. Prior Checkpoint or inspection cannot substitute. Inspect/explain-only requests need no execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier clear answers, call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. No repeat confirmation of unchanged Questions. Explanation is not a Decision; clarify ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Never infer user authority from agent recommendation or transmit sources without separate exact provider authorization. For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation. Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes. Use standalone bounded verification for unambiguous terminal evidence; compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence. Keep exact transient invocation and numeric exit/termination observable for the same execution through polling. Record only observed outcomes; retain no raw arguments. No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. No ceremony off-project.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -907,7 +907,7 @@ mod tests {
             let context = output["hookSpecificOutput"]["additionalContext"]
                 .as_str()
                 .expect("activation context text");
-            assert!(context.contains("Start project-scoped repository work with project_resolve"));
+            assert!(context.contains("Start project work with project_resolve"));
             assert!(context.contains("workflow.required_next_action"));
             assert!(context.contains("blocks_ordinary_work is false"));
             assert!(context.contains(
@@ -920,12 +920,9 @@ mod tests {
             assert!(context.contains("default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation"));
             assert!(context.contains("call decision_record promptly"));
             assert!(context.contains("existing valid presentation_receipt_id"));
-            assert!(context.contains("exact current user_turn"));
-            assert!(
-                context.contains("Do not re-present an unchanged Question merely for confirmation")
-            );
-            assert!(context.contains("Explanation requests before selection are not Decisions"));
-            assert!(context.contains("clarify genuinely ambiguous answers"));
+            assert!(context.contains("exact revision, exact current user_turn"));
+            assert!(context.contains("No repeat confirmation of unchanged Questions"));
+            assert!(context.contains("Explanation is not a Decision; clarify ambiguous answers"));
             assert!(context.contains(
                 "Changed revisions or stale/invalid receipts require current presentation"
             ));
@@ -934,24 +931,21 @@ mod tests {
             assert!(
                 context.contains("Stronger confirmation is only for existing high-risk effects")
             );
-            assert!(context.contains("Do not infer user authority from an agent recommendation"));
+            assert!(context.contains("Never infer user authority from agent recommendation"));
             assert!(context.contains("separate exact provider authorization"));
-            assert!(context.contains("Checkpoint verification that was not actually observed"));
-            assert!(context
-                .contains("actual numeric exit/termination observable in host-visible results"));
-            assert!(context.contains("long-running/polled commands, retain the execution identity and actual terminal outcome"));
-            assert!(context.contains("prose success is not execution evidence"));
-            assert!(context.contains(
-                "Recall restores prior Project state; it does not complete the current request"
-            ));
-            assert!(context.contains("When the user asks to run/rerun verification, tests, build, lint or a bounded check"));
-            assert!(context.contains(
-                "execute it and observe its terminal outcome before reporting completion"
-            ));
-            assert!(context.contains("If execution is impossible, report the blocker"));
-            assert!(context.contains("inspection or a prior Checkpoint is not a substitute"));
-            assert!(context.contains("Requests only to inspect, explain or summarize prior verification do not require execution"));
+            assert!(context.contains("Recall is not completion"));
+            assert!(context.contains("Run explicitly requested tests/build/lint/verification to termination before completion; report blockers"));
+            assert!(context.contains("Prior Checkpoint or inspection cannot substitute"));
+            assert!(context.contains("Inspect/explain-only requests need no execution"));
             assert!(context.contains("no repository writes or rebasing blocked work"));
+            assert!(context.contains("For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation"));
+            assert!(context.contains("Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes"));
+            assert!(context
+                .contains("Use standalone bounded verification for unambiguous terminal evidence"));
+            assert!(context.contains("compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence"));
+            assert!(context.contains("exact transient invocation and numeric exit/termination observable for the same execution through polling"));
+            assert!(context.contains("Record only observed outcomes; retain no raw arguments"));
+            assert!(context.contains("No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation"));
             assert!(context.contains("compatibility surfaces linked to focused verification"));
             assert!(context.contains(
                 "ready_for_work covers only current authority and bound executable scope"

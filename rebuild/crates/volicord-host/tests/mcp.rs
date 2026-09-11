@@ -3887,6 +3887,24 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["checkpoint_record"].contains("without retaining raw arguments"));
     assert!(descriptions["checkpoint_record"].contains("output-only text is insufficient"));
     assert!(descriptions["checkpoint_record"]
+        .contains("verification after the final meaningful mutation"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("a later mutation invalidates earlier verification"));
+    assert!(descriptions["checkpoint_record"].contains("Pre-mutation success, inspection, a prior Checkpoint, or prose success cannot certify later changes"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("standalone bounded verifier as the unambiguous terminal evidence path"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("Compound commands remain useful for ordinary diagnostics"));
+    assert!(descriptions["checkpoint_record"].contains("must not be the only terminal evidence"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("same execution identity through terminal completion"));
+    assert!(descriptions["checkpoint_record"]
+        .contains("actual numeric exit/termination outcome together"));
+    assert!(descriptions["checkpoint_record"].contains(
+        "no-write exploratory continuation have no artificial post-mutation validation requirement"
+    ));
+
+    assert!(descriptions["checkpoint_record"]
         .contains("first captured after the bounded work is conceptually invalid"));
 }
 
@@ -5514,6 +5532,23 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     fs::write(repository.join("implemented.rs"), "pub fn grounded() {}\n")
         .expect("ordinary work change");
 
+    // Run standalone bounded checks after the final meaningful mutation, and pass
+    // the exact invocation and observed numeric outcomes through the public tool.
+    let passed_invocation = r#"python3 -c 'from pathlib import Path; assert Path("implemented.rs").read_text() == "pub fn grounded() {}\n"'"#;
+    let failed_invocation = r#"python3 -c 'from pathlib import Path; assert "privacy_secret_7f9d" in Path("implemented.rs").read_text()'"#;
+    let passed_execution = Command::new("sh")
+        .args(["-c", passed_invocation])
+        .current_dir(&repository)
+        .output()
+        .expect("run bounded content verification");
+    let failed_execution = Command::new("sh")
+        .args(["-c", failed_invocation])
+        .current_dir(&repository)
+        .output()
+        .expect("run bounded failure reproduction");
+    assert_eq!(passed_execution.status.code(), Some(0));
+    assert_eq!(failed_execution.status.code(), Some(1));
+
     let checkpoint = structured(&call(
         &mut adapter,
         "checkpoint_record",
@@ -5527,8 +5562,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "applied_decision_ids":[decision_id],
             "verification_basis":{"state":"ordinary_change"},
             "verification":[
-                {"state":"passed","command_label":"focused test suite","command_invocation":"cargo test -p focused -- --exact privacy_secret_7f9d","exit_code":0,"termination":"exited","outcome":"focused test passed"},
-                {"state":"failed","command_label":"known failure reproduction","command_invocation":"cargo test -p known-failure -- --exact fixture","exit_code":1,"termination":"exited","outcome":"known failure reproduced"},
+                {"state":"passed","command_label":"focused test suite","command_invocation":passed_invocation,"exit_code":passed_execution.status.code(),"termination":"exited","outcome":"focused test passed"},
+                {"state":"failed","command_label":"known failure reproduction","command_invocation":failed_invocation,"exit_code":failed_execution.status.code(),"termination":"exited","outcome":"known failure reproduced"},
                 {"state":"not_run"}
             ],
             "next_step": "Run maintained V08 assertions",
@@ -5600,8 +5635,8 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     );
     assert_eq!(saved.verification[2].source_id, None);
     let expected_fingerprints = [
-        "sha256:bdbbfdc61bceaf88be737630d86472d17fc0b3d9dbf29ed79c5149b08bf45ac5",
-        "sha256:fec2f891e196435819bb2ff7a83f6f1be031fe46099a0abe35d4e872d7cea653",
+        "sha256:84d9dcd861574a6068cf6a65f922329192dfb6bdd3d0d365fa299ee8e7bfd9b5",
+        "sha256:4454da656951869d5a80a568c53d6d845402e0f1b6698bebcf7f8fcebac55a6f",
     ];
     for ((fact, exit_code), expected_fingerprint) in saved
         .verification
@@ -5631,10 +5666,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             Some(PrincipalKind::Agent)
         );
     }
-    let raw_invocations = [
-        "cargo test -p focused -- --exact privacy_secret_7f9d",
-        "cargo test -p known-failure -- --exact fixture",
-    ];
+    let raw_invocations = [passed_invocation, failed_invocation];
     let canonical_bytes =
         fs::read(adapter.operations().layout().canonical_store()).expect("canonical store bytes");
     for invocation in raw_invocations {
