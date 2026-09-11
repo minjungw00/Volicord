@@ -3106,6 +3106,41 @@ def command_is_read_only_report(value: Any) -> bool:
     )
 
 
+def interpreter_scratch_experiment(value: Any, cwd: Path) -> bool:
+    """A literal Python script in external /tmp storage has exploration authority only."""
+    raw = value.get("cmd") if isinstance(value, dict) else value
+    if isinstance(raw, str) and any(c in raw for c in ";&|<>\n$`*?[]{}()"):
+        return False
+    argvs = command_argvs(value)
+    if len(argvs) != 1:
+        return False
+    argv = list(argvs[0])
+    if len(argv) > 18 or any(any(c in a for c in "\n$`*?[]{}()") for a in argv):
+        return False
+    assignment = r"[A-Za-z_][A-Za-z0-9_]*=[^\n]*"
+    while argv and re.fullmatch(assignment, argv[0]):
+        argv.pop(0)
+    if argv and argv[0] in {"env", "/usr/bin/env", "/bin/env"}:
+        argv.pop(0)
+        while argv and re.fullmatch(assignment, argv[0]):
+            argv.pop(0)
+    if len(argv) != 2:
+        return False
+    if argv[0] not in {prefix + name for prefix in ("", "/bin/", "/usr/bin/", "/usr/local/bin/")
+                       for name in ("python", "python3")}:
+        return False
+    script = Path(argv[1])
+    return (script.is_absolute() and script.parts[:2] == ("/", "tmp")
+        and ".." not in script.parts and script.suffix == ".py"
+        and not script.is_relative_to(cwd))
+
+
+def dogfood_command_role(value: Any, cwd: Path) -> str:
+    if interpreter_scratch_experiment(value, cwd):
+        return "exploration"
+    return command_role(value)
+
+
 def meaningful_resume_validation(
     capture: CodexCapture | None, after_sequence: int | None
 ) -> dict[str, Any]:
@@ -3126,7 +3161,7 @@ def meaningful_resume_validation(
         command
         for command in capture.commands
         if command.sequence > after_sequence
-        and command_role(command.parsed_command) == "validation"
+        and dogfood_command_role(command.parsed_command, capture.cwd) == "validation"
     ]
     terminal = (
         max(commands, key=lambda command: (command.sequence, command.group_index))
@@ -3138,7 +3173,7 @@ def meaningful_resume_validation(
         if command.sequence > after_sequence
         and (terminal is None or (command.sequence, command.group_index)
             > (terminal.sequence, terminal.group_index))
-        and command_role(command.parsed_command) == "unknown"
+        and dogfood_command_role(command.parsed_command, capture.cwd) in {"unknown", "exploration"}
     ]
     def completed(command: Any) -> bool:
         return (command.evidence_state == "completed"
@@ -4778,6 +4813,8 @@ def exploratory_no_write_evidence(
 
     def exploratory_command(command: Any) -> bool:
         value = command.parsed_command
+        if interpreter_scratch_experiment(value, capture.cwd):
+            return True
         if command_is_repository_inspection(value) and not command_is_clean_git_status(value):
             return True
         argvs = command_argvs(value)
@@ -4798,7 +4835,7 @@ def exploratory_no_write_evidence(
         and exploratory_command(command)]
     succeeded = [command for command in experiments
         if command.completion_sequence < final.sequence and command.evidence_state == "completed"
-        and command.exit_code == 0 and command.termination == "exited"]
+        and type(command.exit_code) is int and command.exit_code == 0 and command.termination == "exited"]
     unknown = [c for c in experiments if c.evidence_state == "indeterminate"]
     prototype_required = any(j.get("exploratory_disposition") == "prototype_required" for j in judgments)
     if prototype_required:

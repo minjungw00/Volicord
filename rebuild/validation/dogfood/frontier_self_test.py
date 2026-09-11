@@ -218,6 +218,32 @@ class FrontierTests(unittest.TestCase):
                     self.assertFalse(h.work_blocker_behavior_observations(changed, descriptor["behavior_class"],
                         None if missing == "baseline" else baseline, None)[0])
 
+    def test_literal_interpreter_scratch_has_only_exploration_authority(self):
+        _, capture, _ = self.no_write_exploration()
+        baseline = capture.successful_calls("repository_analyze")[0]
+        experiment = next(c for c in capture.commands if c.execution_identity == "scratch-experiment")
+        for cmd in ("python /tmp/x.py", "python3 /tmp/x.py", "/usr/bin/python3 /tmp/x.py",
+                    "env NAME=VALUE PYTHONPATH=src python3 /tmp/x.py",
+                    "PYTHONPATH=src python3 /tmp/x.py", "python3 /tmp/probe_self_test.py"):
+            command = replace(experiment, parsed_command={"cmd": cmd, "workdir": str(capture.cwd)})
+            changed = replace(capture, commands=tuple(command if c is experiment else c for c in capture.commands))
+            self.assertEqual(h.dogfood_command_role(command.parsed_command, capture.cwd), "exploration")
+            self.assertTrue(h.exploratory_no_write_evidence(changed, baseline)["qualified"], cmd)
+            self.assertFalse(h.command_is_repository_inspection(command.parsed_command))
+            self.assertFalse(h.meaningful_resume_validation(replace(changed, commands=(command,)), 0)["qualified"])
+            for fields in ({"exit_code": 1}, {"exit_code": True}, {"exit_code": None},
+                           {"termination": None}, {"evidence_state": "indeterminate"}):
+                broken = replace(changed, commands=tuple(replace(c, **fields) if c is command else c
+                                                        for c in changed.commands))
+                self.assertFalse(h.exploratory_no_write_evidence(broken, baseline)["qualified"])
+        for cmd in ("python3 scripts/x.py", "python3 /tmp/../etc/x.py", "python3 /var/x.py",
+                    "python3 /tmp/x.py && true", "python3 /tmp/x.py;", "python3 /tmp/*.py",
+                    "python3 -c 'print(1)'", "python3 -m arbitrary", "env -S 'python3 /tmp/x.py'",
+                    "env NAME=$(echo value) python3 /tmp/x.py", "/custom/python3 /tmp/x.py",
+                    "unknown /tmp/x.py", "python3 /tmp/x.py > /tmp/result"):
+            self.assertFalse(h.interpreter_scratch_experiment({"cmd": cmd}, capture.cwd), cmd)
+        self.assertFalse(h.interpreter_scratch_experiment({"cmd": "python3 /tmp/repo/x.py"}, Path("/tmp/repo")))
+
     def test_absent_write_is_not_an_exploratory_pass(self):
         descriptor, capture, _ = self.fixture("research_or_no_question")
         capture = replace(capture, path_observations=())
