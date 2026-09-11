@@ -1,6 +1,7 @@
-use serde_json::Value;
-use std::{fs, path::Path, process::Command};
-use volicord_operations::{run_cli, CliExit};
+use rusqlite::Connection;
+use serde_json::{json, Value};
+use std::{collections::BTreeSet, fs, path::Path, process::Command, sync::Barrier, thread};
+use volicord_operations::{run_cli, CliExit, RuntimeLayout};
 
 #[test]
 fn help_is_hierarchical_and_obsolete_public_forms_are_rejected() {
@@ -252,6 +253,165 @@ fn korean_fixed_output_and_actionable_unbound_error_are_available(
     assert!(error.contains("no Project is bound"));
     assert!(error.contains("volicord init"));
     assert!(error.contains("--project PROJECT_ID"));
+    Ok(())
+}
+
+#[test]
+fn repository_selected_candidate_cli_distinguishes_healthy_empty_from_dependency_failures(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for state in [
+        "healthy",
+        "older_schema",
+        "newer_schema",
+        "corrupt",
+        "unavailable",
+    ] {
+        let temporary = tempfile::tempdir()?;
+        let runtime = temporary.path().join("runtime");
+        let repository = temporary.path().join("repository");
+        fs::create_dir(&repository)?;
+        let project = initialize(&runtime, &repository)?;
+        let candidate_path = RuntimeLayout::new(runtime.clone())?.candidate_store();
+        match state {
+            "older_schema" | "newer_schema" => {
+                Connection::open(&candidate_path)?.execute(
+                    "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
+                    [if state == "older_schema" { "0" } else { "999" }],
+                )?;
+            }
+            "corrupt" => {
+                Connection::open(&candidate_path)?.execute("DROP TABLE candidates", [])?;
+            }
+            "unavailable" => {
+                fs::remove_file(&candidate_path)?;
+                fs::create_dir(&candidate_path)?;
+            }
+            _ => {}
+        }
+
+        // The current CLI exposes projection degradation, including when the
+        // Candidate array is empty, through both structured and human output.
+        let result = binary(&runtime, &repository, ["--json", "advanced", "candidates"])?;
+        assert!(result.status.success(), "{state}: {result:?}");
+        let inspected: Value = serde_json::from_slice(&result.stdout)?;
+        assert_eq!(inspected["operation"], "candidate_inspection");
+        assert_eq!(inspected["project_id"], project["project_id"]);
+        assert_eq!(inspected["candidates"], json!([]));
+        let health = if state == "healthy" {
+            "complete"
+        } else {
+            "degraded"
+        };
+        assert_eq!(inspected["health"], health, "{state}: {inspected}");
+
+        let human = binary(&runtime, &repository, ["advanced", "candidates"])?;
+        assert!(human.status.success(), "{state}: {human:?}");
+        let human = String::from_utf8(human.stdout)?;
+        assert!(
+            human.contains(&format!("health: {health}")),
+            "{state}: {human}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn concurrent_repository_selected_cli_writers_preserve_committed_sources(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository)?;
+    let project = initialize(&runtime, &repository)?;
+    const WRITERS: usize = 12;
+    let barrier = Barrier::new(WRITERS);
+    let results = thread::scope(|scope| {
+        let handles = (0..WRITERS)
+            .map(|index| {
+                let (runtime, repository, barrier) = (&runtime, &repository, &barrier);
+                scope.spawn(move || {
+                    let session = format!("concurrent-session-{index}");
+                    let text = format!("Concurrent CLI Source {index}");
+                    barrier.wait();
+                    let result = binary(
+                        runtime,
+                        repository,
+                        [
+                            "--json",
+                            "advanced",
+                            "records",
+                            "source",
+                            "--host",
+                            "cli-test",
+                            "--session",
+                            &session,
+                            "--text",
+                            &text,
+                        ],
+                    );
+                    (text, result)
+                })
+            })
+            .collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .map(|handle| handle.join())
+            .collect::<Vec<_>>()
+    });
+    let mut committed = Vec::new();
+    for result in results {
+        let (text, result) = result.map_err(|_| "CLI writer thread panicked")?;
+        let result = result?;
+        assert!(result.status.success(), "{text}: {result:?}");
+        let recorded: Value = serde_json::from_slice(&result.stdout)?;
+        assert_eq!(recorded["operation"], "canonical_user_source");
+        assert_eq!(recorded["record_kind"], "source");
+        assert_eq!(recorded["revision"], 1);
+        assert_eq!(recorded["replayed"], false);
+        let identity = recorded["identity"]
+            .as_str()
+            .ok_or("missing Source identity")?;
+        committed.push((identity.to_owned(), text));
+    }
+    assert_eq!(
+        committed
+            .iter()
+            .map(|(id, _)| id)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        WRITERS
+    );
+
+    // A fresh product process reads canonical records after all writers exit.
+    let result = binary(
+        &runtime,
+        &repository,
+        ["--json", "advanced", "records", "list"],
+    )?;
+    assert!(result.status.success(), "{result:?}");
+    let inspected: Value = serde_json::from_slice(&result.stdout)?;
+    assert_eq!(inspected["operation"], "canonical_inspect");
+    assert_eq!(inspected["project_id"], project["project_id"]);
+    assert_eq!(inspected["health"], "complete");
+    let records = inspected["records"]
+        .as_array()
+        .ok_or("missing canonical records")?;
+    for (identity, text) in committed {
+        let matches = records
+            .iter()
+            .filter(|record| record["identity"] == identity)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            matches.len(),
+            1,
+            "committed Source {identity} missing or duplicated"
+        );
+        assert_eq!(matches[0]["kind"], "source");
+        assert_eq!(matches[0]["revision"], 1);
+        assert!(matches[0]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains(&text)));
+    }
     Ok(())
 }
 

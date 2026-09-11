@@ -20,7 +20,7 @@
       "required_entrypoints": ["local_operations", "cli", "mcp", "viewer"],
       "evidence": [
         ["local_operations", "rebuild/crates/volicord-operations/tests/local_operations.rs", "candidate_store_states_remain_typed_in_partial_project_projections"],
-        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "candidate_cli_rejects_dependency_failures_as_empty_success"],
+        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "repository_selected_candidate_cli_distinguishes_healthy_empty_from_dependency_failures"],
         ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "candidate_inspection_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies"],
         ["viewer", "rebuild/crates/volicord-viewer/tests/viewer.rs", "candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies"]
       ]
@@ -41,7 +41,7 @@
       "requires_product_entrypoint": true,
       "required_entrypoints": ["cli", "mcp", "viewer"],
       "evidence": [
-        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "concurrent_cli_writers_preserve_every_committed_source"],
+        ["cli", "rebuild/crates/volicord-operations/tests/cli.rs", "concurrent_repository_selected_cli_writers_preserve_committed_sources"],
         ["mcp", "rebuild/crates/volicord-host/tests/mcp.rs", "concurrent_mcp_writers_preserve_every_committed_context"],
         ["viewer", "rebuild/crates/volicord-viewer/tests/http.rs", "concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls"]
       ]
