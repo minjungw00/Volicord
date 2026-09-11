@@ -57,6 +57,8 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
         **{
             name: passed(name)
             for name in (
+                "contract_coverage",
+                "contract_coverage_self_test",
                 "architecture_contracts",
                 "architecture_contracts_self_test",
                 "repository_intelligence_realistic_qualification",
@@ -377,9 +379,65 @@ def gate_consumed_result_contract(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def assert_contract_coverage_admission(root: Path) -> None:
+    commands = {
+        "contract_coverage": (sys.executable, str(ROOT / "rebuild/validation/shared/contract_coverage.py")),
+        "contract_coverage_self_test": (
+            sys.executable, str(ROOT / "rebuild/validation/shared/contract_coverage.py"), "--self-test",
+        ),
+    }
+    # Exercise the maintained command dispatch and result classification, with
+    # all operator/environment prerequisites satisfied in this synthetic case.
+    for failed_check in commands:
+        overrides = admission_overrides()
+        for name in commands:
+            del overrides[name]
+        invoked = []
+
+        def runner(directory: Path, argv: Sequence[str]) -> dict[str, Any]:
+            name = next(name for name, expected in commands.items() if tuple(argv) == expected)
+            invoked.append(name)
+            assert directory.name == name.replace("_", "-")
+            return {
+                "exit_code": 1 if name == failed_check else 0,
+                "wrapper_exit_code": 1 if name == failed_check else 0,
+                "outcome": "failed" if name == failed_check else "succeeded",
+                "termination": None,
+            }
+
+        rejected = gate.evaluate_admission(
+            authorization_assertion=gate.AUTHORIZATION_ASSERTION,
+            provider_authorization_assertion=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            provider_model="synthetic-model",
+            external_network="available",
+            artifact_root=root / failed_check,
+            command_runner=runner,
+            runner_path=ROOT / "rebuild/scripts/validate",
+            overrides=overrides,
+            environment_evidence=synthetic_environment_evidence(),
+            dependency_evidence=synthetic_dependency_evidence(),
+        )
+        assert invoked == list(commands), invoked
+        assert rejected["eligible"] is False
+        assert rejected["blocking_classification"] == "validation_failed"
+        assert [value["name"] for value in rejected["checks"] if value["status"] != "passed"] == [failed_check]
+        failure = next(value for value in rejected["checks"] if value["name"] == failed_check)
+        assert failure["status"] == "failed" and failure["details"]["exit_code"] == 1
+        assert rejected["final_command_count"] == 0
+        assert rejected["provider_live_qualification_command_count"] == 0
+        assert rejected["official_v11_command_count"] == 0
+        owners = Owners(root / f"{failed_check}-owners")
+        capsule, counts = run_orchestration(root / f"{failed_check}-gate", rejected, owners)
+        assert capsule["blocking_classification"] == "validation_failed"
+        assert capsule["phase_8_ready"] is False
+        assert all(count == 0 for count in counts.values())
+        assert owners.counts == {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
+        assert_contract_coverage_admission(root / "contract-coverage")
 
         loopback_blocked = admission(
             root / "loopback",
@@ -629,7 +687,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 16,
+        "scenarios": 18,
         "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

@@ -27,6 +27,7 @@ assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
 _performance_spec.loader.exec_module(performance_module)
 ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
+CONTRACT_COVERAGE = REBUILD_ROOT / "validation/shared/contract_coverage.py"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
 DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
 DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
@@ -482,6 +483,8 @@ def evaluate_admission(
     checks.append(v11)
 
     maintained_self_checks = (
+        ("contract_coverage", (sys.executable, str(CONTRACT_COVERAGE))),
+        ("contract_coverage_self_test", (sys.executable, str(CONTRACT_COVERAGE), "--self-test")),
         ("architecture_contracts", (str(ARCHITECTURE_CHECKER),)),
         ("architecture_contracts_self_test", (str(ARCHITECTURE_CHECKER), "--self-test")),
         ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),

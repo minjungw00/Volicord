@@ -10,7 +10,8 @@ surface, not a Volicord product command or production architecture.
   status preservation, signal reporting, and non-fail-fast aggregation with
   fake commands.
 - `rebuild/scripts/validate gate-self-test` checks admission blocking,
-  authorization separation, exact-once synthetic final/V11 orchestration,
+  including independent failure of either contract-coverage mode, authorization
+  separation, exact-once synthetic final/V11 orchestration,
   same-session artifact selection, credential-safe capsule projection, and
   no-retry behavior. It never invokes the real exact final or official V11.
 - `rebuild/scripts/validate gate-entrypoint-self-test` copies the maintained
@@ -55,12 +56,15 @@ surface, not a Volicord product command or production architecture.
   maintained repository-selected command ordering and fails every unexpected
   option, command, or subcommand.
 - `rebuild/scripts/validate admission` evaluates the current clean candidate,
-  runner/V11, architecture, realistic RI, Dogfood campaign/harness, and
-  provider self-checks, required fixture identity/integrity, executables, writable disposable
+  runner/V11, both cross-owner contract-coverage modes, architecture, realistic
+  RI, Dogfood campaign/harness, and provider self-checks, required fixture
+  identity/integrity, executables, writable disposable
   homes, the maintained resource estimate, loopback, Codex authentication,
   technical external-network state, and the exact bounded transmission
   authorization. It prints a structured result and retains `admission.json`
-  below ignored validation state; a blocked result runs neither final nor V11.
+  below ignored validation state. Both contract-coverage checks are mandatory
+  low-cost prechecks; a failure is a validation admission failure. A blocked
+  result runs none of exact final, production provider qualification, or V11.
 - `rebuild/scripts/validate gate` repeats admission in its own session, invokes
   an immediate live clean-worktree/HEAD recheck, invokes the existing ordered
   four-command final owner exactly once, invokes the separately authorized

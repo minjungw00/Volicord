@@ -105,6 +105,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "exit 0\n",
     )
     for relative in (
+        "rebuild/validation/shared/contract_coverage.py",
         "rebuild/scripts/check-architecture-contracts",
         "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
         "rebuild/validation/dogfood/harness.py",
