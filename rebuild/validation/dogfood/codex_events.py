@@ -1663,6 +1663,47 @@ def command_is_repository_inspection(value: Any) -> bool:
     return bool(argvs) and all(read_only(argv) for argv in argvs)
 
 
+def nonexecuting_validation_mode(program: str, args: list[str]) -> bool:
+    """Recognize explicit reporting modes of known validators, not script intent.
+
+    This disqualifies execution evidence; it does not promise absence of import,
+    configuration or build side effects. Compile/static checks remain validation.
+    Only Cargo's explicit test-harness arguments are inspected past `--`.
+    """
+    if program in {"python", "python3"}:
+        if args[:1] == ["-B"]:
+            args = args[1:]
+        if args[:2] == ["-m", "pytest"]:
+            program, args = "pytest", args[2:]
+    if program == "cargo":
+        if args and args[0].startswith("+"):
+            args = args[1:]
+        return bool(args) and args[0] == "test" and "--" in args \
+            and "--list" in args[args.index("--") + 1:]
+    options = args[:args.index("--")] if "--" in args else args
+    if program == "pytest":
+        return any(arg in {"--collect-only", "--collectonly", "--co", "--setup-plan",
+            "--fixtures", "--funcargs", "--fixtures-per-test"} for arg in options)
+    if program == "ctest":
+        return any(arg in {"-N", "--show-only", "--list-presets"}
+            or arg.startswith("--show-only=") for arg in options)
+    if program == "ruff" and options[:1] == ["check"]:
+        return any(arg in {"--show-files", "--show-settings"} for arg in options)
+    if program == "go" and options[:1] in (["test"], ["vet"], ["build"]):
+        # -args hands the remaining words to the test binary, not the Go driver.
+        driver = options[:options.index("-args")] if "-args" in options else options
+        return any(arg in {"-n", "-n=true"} for arg in driver) or (
+            options[0] == "test" and any(
+                arg.startswith(("-list=", "-test.list=")) and bool(arg.split("=", 1)[1])
+                or arg in {"-list", "-test.list"} and i + 1 < len(options) and bool(options[i + 1])
+                for i, arg in enumerate(options)))
+    if program == "make":
+        return any(arg in {"-n", "--just-print", "--dry-run", "--recon"} for arg in options)
+    if program in {"gradle", "gradlew"}:
+        return any(arg in {"-m", "--dry-run", "--task-graph"} for arg in options)
+    return False
+
+
 def command_role(value: Any, depth: int = 0) -> str:
     """Bounded roles; an unknown command cannot supply successful validation."""
     if depth > 3:
@@ -1704,6 +1745,8 @@ def command_role(value: Any, depth: int = 0) -> str:
     if program in {"cargo", "python", "python3", "pytest", "cargo-clippy",
         "npm", "pnpm", "yarn", "go", "make", "cmake", "ctest", "mvn", "gradle", "gradlew", "ruff", "sphinx-build"} \
         and any(arg in {"--help", "--version", "-h"} for arg in args):
+        return "report"
+    if nonexecuting_validation_mode(program, args):
         return "report"
     if program == "cargo":
         if args and args[0].startswith("+"):

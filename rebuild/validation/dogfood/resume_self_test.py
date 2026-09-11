@@ -2,6 +2,7 @@
 from dataclasses import replace
 import json
 from pathlib import Path
+import shlex
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -163,6 +164,105 @@ class ResumeTests(unittest.TestCase):
             result = h.meaningful_resume_validation(replace(self.capture, commands=(validation, report)), 0)
             self.assertTrue(result["unresolved_terminal_failure"])
             self.assertEqual(result["terminal_exit_code"], 101)
+
+    def assert_nonexecuting_verification(self, cmd):
+        report = replace(self.verification, parsed_command={"cmd": cmd}, exit_code=0)
+        only = replace(self.capture, commands=(report,))
+        result = h.meaningful_resume_validation(only, 0)
+        self.assertFalse(result["qualified"])
+        self.assertIsNone(result["terminal_sequence"])
+        self.failure(only, "post_change_validation_missing", "behavior_contract")
+
+        failed = replace(self.verification, parsed_command={"cmd": "pytest"}, exit_code=1)
+        report = replace(report, sequence=failed.completion_sequence + 1,
+            completion_sequence=failed.completion_sequence + 2)
+        changed = replace(self.capture, commands=(failed, report))
+        result = h.meaningful_resume_validation(changed, 0)
+        self.assertFalse(result["qualified"])
+        self.assertFalse(result["recovered_intermediate_failure"])
+        self.assertTrue(result["unresolved_terminal_failure"])
+        self.assertEqual(result["terminal_sequence"], failed.sequence)
+        self.assertEqual(result["terminal_exit_code"], 1)
+        self.failure(changed, "terminal_validation_failed", "product_integration")
+
+        # Reporting also leaves an existing genuine success intact.
+        successful = replace(changed, commands=(replace(failed, exit_code=0), report))
+        self.assertTrue(h.meaningful_resume_validation(successful, 0)["qualified"])
+        self.assertEqual(self.inspect(successful), "01" * 16)
+
+        succeeded = replace(failed, sequence=report.completion_sequence + 1,
+            completion_sequence=report.completion_sequence + 2, exit_code=0)
+        recovered = replace(changed, commands=(*changed.commands, succeeded))
+        result = h.meaningful_resume_validation(recovered, 0)
+        self.assertTrue(result["qualified"])
+        self.assertTrue(result["recovered_intermediate_failure"])
+        self.assertFalse(result["unresolved_terminal_failure"])
+        self.assertEqual(result["intermediate_failure_count"], 1)
+        self.assertEqual(result["terminal_sequence"], succeeded.sequence)
+        self.assertEqual(self.inspect(recovered), "01" * 16)
+
+    def test_nonexecuting_modes_cannot_verify_or_recover_through_intake(self):
+        for cmd in (
+            "pytest --collect-only", "pytest --co", "pytest --collectonly",
+            "pytest --setup-plan", "pytest --fixtures", "pytest --funcargs", "pytest --fixtures-per-test",
+            "ctest -N", "ctest --show-only", "ctest --show-only=human",
+            "ctest --show-only=json-v1", "ctest --list-presets",
+            "cargo test -- --list", "cargo +stable test -- --list",
+            "ruff check --show-files", "ruff check --show-settings",
+            "go test -list .", "go test -list=.", "go test -args -test.list=.",
+            "go test -test.list .", "go test -n", "go build -n=true", "go vet -n",
+            "make -n test", "make check --just-print", "make check --dry-run", "make check --recon",
+            "gradle test -m", "gradle check --dry-run", "./gradlew test --task-graph",
+        ):
+            with self.subTest(cmd=cmd):
+                self.assert_nonexecuting_verification(cmd)
+
+    def test_nonexecuting_modes_keep_existing_wrapper_semantics(self):
+        for cmd in ("pytest --collect-only", "ctest --show-only=json-v1", "ruff check --show-files"):
+            wrapped = [cmd, "env TEST_MODE=1 " + cmd,
+                "bash -lc " + shlex.quote(cmd), "sh -c " + shlex.quote(cmd),
+                "zsh -lc " + shlex.quote(cmd),
+                "rebuild/scripts/validate focused collection -- " + cmd]
+            if cmd.startswith(("pytest ", "ruff ")):
+                wrapped += [python + " -m " + cmd for python in ("python", "python3", "python3 -B")]
+                wrapped += ["rebuild/scripts/validate focused collection -- env TEST_MODE=1 python3 -m " + cmd]
+            for command in wrapped:
+                with self.subTest(cmd=command):
+                    self.assert_nonexecuting_verification(command)
+            argv = shlex.split(cmd)
+            for parsed in (cmd, argv, {"argv": argv}, {"command": cmd},
+                {"program": argv[0], "args": argv[1:]}):
+                with self.subTest(parsed=parsed):
+                    command = replace(self.verification, parsed_command=parsed)
+                    self.failure(replace(self.capture, commands=(command,)),
+                        "post_change_validation_missing", "behavior_contract")
+
+    def test_legitimate_validation_and_recovery_remain_accepted(self):
+        for cmd in (
+            "pytest -q", "pytest --setup-show", "pytest -- tests/--collect-only",
+            "python -m pytest", "python3 -B -m pytest -q", "python3 -m unittest discover",
+            "python3 -m compileall src", "python3 -m sphinx docs build", "sphinx-build docs build",
+            "python3 check_self_test.py", "python3 harness.py self-test",
+            "cargo test", "cargo +stable test --no-run", "cargo test -- --nocapture",
+            "cargo check", "cargo build", "cargo clippy", "cargo-clippy", "cargo fmt -- --check",
+            "ruff check .", "ruff format --check .", "python3 -m ruff check .",
+            "npm test", "pnpm run check", "yarn lint", "npm run build",
+            "go test ./...", "go test -list=", "go test -n=false", "go build ./...", "go vet ./...",
+            "make test", "cmake --build build", "ctest --output-on-failure", "ctest -R selected",
+            "mvn verify", "gradle test", "./gradlew check",
+            "env TEST_MODE=1 cargo check", "bash -lc 'cargo build'",
+            "rebuild/scripts/validate focused tests -- python3 -m pytest",
+        ):
+            with self.subTest(cmd=cmd):
+                failed = replace(self.verification, parsed_command={"cmd": cmd}, exit_code=1)
+                succeeded = replace(failed, sequence=failed.completion_sequence + 1,
+                    completion_sequence=failed.completion_sequence + 2, exit_code=0)
+                for commands in ((succeeded,), (failed, succeeded)):
+                    capture = replace(self.capture, commands=commands)
+                    result = h.meaningful_resume_validation(capture, 0)
+                    self.assertTrue(result["qualified"])
+                    self.assertEqual(result["recovered_intermediate_failure"], len(commands) == 2)
+                    self.assertEqual(self.inspect(capture), "01" * 16)
 
     def test_recall_transport_and_identity_are_evidence_failures(self):
         recall = self.capture.successful_calls("recall")[0]
