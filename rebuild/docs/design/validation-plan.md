@@ -1149,15 +1149,26 @@ successful analysis evidence를 선택해 required Goal/Recall boundary 뒤와 f
 전 completion을 검증한다. Unknown identity, wrong-Project analysis, pre-Recall resume analysis와
 post-write baseline substitution은 실패한다.
 
-Resume continuation은 두 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
+Resume continuation은 세 mode를 허용한다. `change_continuation`은 Recall과 inspection 뒤
 pre-write baseline, current Materiality work authority, relevant repository change, 그 뒤의 별도
 numeric-exit validation과 grounded Checkpoint를 요구한다.
 `verified_state_continuation`은 recalled terminal Checkpoint가 `completed`이고 inspection이
 그 state가 current임을 확인하며 post-inspection numeric-exit validation이 있고 final behavior가
 completed state와 충돌하지 않을 때 source mutation, 새 Discovery, 새 Materiality Review 또는 새
 Checkpoint 없이 통과할 수 있다. Paused/in-progress Checkpoint나 meaningful unfinished next step이
-있는 state는 no-change mode를 사용할 수 없고, Recall 뒤 inspection/validation 없이 끝난
-session도 통과하지 않는다.
+있는 state는 verified-state mode를 사용할 수 없고, Recall 뒤 inspection/validation 없이 끝난
+session도 이 mode로 통과하지 않는다.
+
+`exploratory_continuation`은 repository mutation 없는 research/prototype 재개다. Successful Recall,
+identity/freshness와 ordering, 그 뒤 exact local baseline과 meaningful repository investigation,
+외부 `/tmp`의 literal Python scratch script의 numeric successful completion을 요구한다.
+Bounded literal assignment/env prefix와 known Python interpreter만 scratch role로 인정하며
+PYTHONPATH는 repository inspection 또는 validation authority를 부여하지 않는다. Current
+Materiality readiness와 truthful terminal Checkpoint의 empty changed paths, exact experiment
+invocation/exit/termination 및 next step이 필요하다. 마지막 experiment의 failure/indeterminate
+completion, unresolved repository-validation failure와 이후 unknown execution은 통과하지 않는다.
+Meaningful mutation이 하나라도 있으면 이 mode를 사용할 수 없으며 기존 post-change validation
+요구를 적용한다. Scratch execution은 repository verification으로 계산하지 않는다.
 
 Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
 evidence를 확인한다. Supported evidence로 activation 부재 또는 늦은 activation이 확인되면

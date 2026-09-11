@@ -3745,6 +3745,87 @@ def executable_scope_chronology(
     }
 
 
+def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall | None) -> dict[str, Any]:
+    """No-write continuation backed by a fresh baseline, scratch execution and terminal authority."""
+    result = {"qualified": False, "failure_basis": None, "experiment_sequences": [],
+              "terminal_experiment_sequence": None, "checkpoint_sequence": None}
+    checkpoint = terminal_checkpoint_call(capture)
+    if capture is None or recall is None or checkpoint is None or meaningful_work_path_observations(capture):
+        return result
+    baseline = selected_checkpoint_baseline_call(capture, checkpoint)
+    if (baseline is None or checkpoint.outcome != "succeeded"
+        or not checkpoint_baseline_is_pre_work(capture, checkpoint,
+            project_id=recall.result.get("project_id"),
+            boundary_completion_sequence=recall.completion_sequence, first_write_sequence=None)):
+        return result
+    experiments = [c for c in capture.commands
+        if baseline.completion_sequence < c.sequence
+        and interpreter_scratch_experiment(c.parsed_command, capture.cwd)]
+    if not experiments:
+        return result
+    terminal = max(experiments, key=lambda c: (c.sequence, c.group_index))
+    result.update(failure_basis="scope_or_authority_missing",
+        experiment_sequences=[c.sequence for c in experiments],
+        terminal_experiment_sequence=terminal.sequence, checkpoint_sequence=checkpoint.sequence)
+    complete = (terminal.evidence_state == "completed" and type(terminal.exit_code) is int
+                and terminal.termination == "exited")
+    if not complete:
+        result["failure_basis"] = "terminal_validation_indeterminate"
+        return result
+    if terminal.exit_code != 0:
+        result["failure_basis"] = "terminal_validation_failed"
+        return result
+    # Scratch success cannot erase a repository validator's failure or an unknown later execution.
+    validation = meaningful_resume_validation(capture, baseline.completion_sequence)
+    if validation["unresolved_terminal_failure"]:
+        result["failure_basis"] = "terminal_validation_failed"
+        return result
+    later_unknown = [c for c in capture.commands if (c.sequence, c.group_index) > (terminal.sequence, terminal.group_index)
+        and dogfood_command_role(c.parsed_command, capture.cwd) == "unknown"]
+    if (later_unknown or validation["terminal_sequence"] is not None
+        and (validation["terminal_evidence_state"] != "completed"
+             or type(validation["terminal_exit_code"]) is not int
+             or validation["terminal_termination"] != "exited")
+        or any(i.reason == "malformed_file_change" for i in capture.evidence_transport_issues)):
+        result["failure_basis"] = "terminal_validation_indeterminate"
+        return result
+    inspection = repository_investigation_evidence(capture,
+        after_sequence=baseline.completion_sequence, before_sequence=terminal.sequence)
+    if (inspection["state"] != "complete" or terminal.completion_sequence >= checkpoint.sequence
+        or checkpoint.arguments.get("work_state") not in {"completed", "paused", "in_progress"}
+        or not nonempty_string(checkpoint.arguments.get("next_step"))
+        or checkpoint.result.get("changed_paths") != []
+        or not all(nonempty_string(checkpoint.result.get(k)) for k in (
+            "baseline_repository_snapshot_id", "current_repository_snapshot_id"))
+        or any(c.sequence > checkpoint.sequence and dogfood_command_role(c.parsed_command, capture.cwd)
+               not in {"inspection", "report"} for c in capture.commands)):
+        return result
+    project = recall.result.get("project_id")
+    goal = checkpoint.arguments.get("goal_context_id")
+    identity = baseline.result.get("analysis_snapshot_id")
+    discovery, record, revisions = current_authority_frontier(capture, project_id=project,
+        goal_context_id=goal, baseline_analysis_snapshot_id=identity, before_sequence=checkpoint.sequence)
+    if discovery is None or record is None:
+        return result
+    inspects = [c for c in capture.successful_calls("materiality_review")
+        if c.arguments.get("action") == "inspect" and c.completion_sequence < checkpoint.sequence
+        and (revisions[-1] if revisions else record).completion_sequence < c.sequence]
+    bindings = [executable_scope_binding_observation(capture, c, project_id=project,
+        review_candidate_id=record.result.get("review_candidate_id"), goal_context_id=goal,
+        baseline_analysis_snapshot_id=identity) for c in inspects]
+    claims = checkpoint.arguments.get("verification")
+    invocation = terminal.parsed_command.get("cmd")
+    truthful_experiment = isinstance(claims, list) and any(isinstance(claim, dict)
+        and claim.get("command_invocation") == invocation and claim.get("state") == "passed"
+        and type(claim.get("exit_code")) is int and claim["exit_code"] == 0
+        and claim.get("termination") == "exited" for claim in claims)
+    result["qualified"] = bool(truthful_experiment and any(b.valid for b in bindings)
+        and historical_questions_resolved_before_frontier(capture, record, checkpoint.sequence))
+    if result["qualified"]:
+        result["failure_basis"] = None
+    return result
+
+
 def resume_continuation_facts(
     capture: CodexCapture | None,
     recall_call: ToolCall | None,
@@ -3756,7 +3837,7 @@ def resume_continuation_facts(
     executable_work_scope: Any,
     descriptor_scope_paths: Any,
 ) -> dict[str, Any]:
-    """Evaluate the two maintained resume modes from observed session facts."""
+    """Evaluate the maintained resume modes from observed session facts."""
 
     first_inspection = (
         capture.first_inspection_after(recall_call.completion_sequence)
@@ -3878,11 +3959,15 @@ def resume_continuation_facts(
         and inspection_validation["qualified"]
         and not contradictory_behavior
     )
+    exploration = exploratory_resume_evidence(capture, recall_call)
+    exploratory_ok = bool(common and not continuation_paths and exploration["qualified"])
     mode = (
         "change_continuation"
         if change_ok
         else "verified_state_continuation"
         if verified_ok
+        else "exploratory_continuation"
+        if exploratory_ok
         else None
     )
     validation = change_validation if last_change_sequence is not None else inspection_validation
@@ -3891,6 +3976,7 @@ def resume_continuation_facts(
         else "pre_recall_repository_access_or_order_violation" if not ordering_ok
         else "baseline_invalid" if not common_identity_and_freshness_ok
         else "baseline_invalid" if last_change_sequence is not None and not change_baseline_ok
+        else exploration["failure_basis"] if last_change_sequence is None and exploration["failure_basis"]
         else "terminal_validation_failed" if validation["unresolved_terminal_failure"]
         else "post_change_validation_missing" if validation["terminal_sequence"] is None
         else "terminal_validation_indeterminate" if not validation["qualified"]
@@ -3914,6 +4000,8 @@ def resume_continuation_facts(
         "contradictory_behavior": contradictory_behavior,
         "change_continuation_qualified": change_ok,
         "verified_state_continuation_qualified": verified_ok,
+        "exploratory_continuation_qualified": exploratory_ok,
+        "exploratory_evidence": exploration,
         "mode": mode,
     }
 
@@ -9372,6 +9460,7 @@ def real_session_evidence(
     resume_baseline_requirement_ok = resume_baseline_ok or verified_state_continuation_ok
     resume_materiality_requirement_ok = (
         resume_materiality_ok or verified_state_continuation_ok
+        or continuation_facts["exploratory_continuation_qualified"]
     )
     resolved_material_question_not_reasked = (
         not is_user_owned_behavior(behavior_class)
@@ -9481,7 +9570,7 @@ def real_session_evidence(
             "recall_before_inspection_and_continuation": ordering_ok,
             "pre_work_repository_baseline": resume_baseline_ok,
             "pre_work_repository_baseline_required": continuation_mode
-            == "change_continuation",
+            in {"change_continuation", "exploratory_continuation"},
             "pre_work_analysis_snapshot_id": resume_baseline_analysis_id,
             "materiality_work_authority": resume_materiality_basis,
             "checkpoint_supplied_next_meaningful_step": nonempty_string(next_step),
@@ -9498,6 +9587,8 @@ def real_session_evidence(
             "continuation_mode": continuation_mode,
             "change_continuation_qualified": change_continuation_ok,
             "verified_state_continuation_qualified": verified_state_continuation_ok,
+            "exploratory_continuation_qualified": continuation_facts["exploratory_continuation_qualified"],
+            "exploratory_evidence": continuation_facts["exploratory_evidence"],
             "final_behavior_contradicts_completed_state": contradictory_resume_behavior,
             "terminal_validation": continuation_facts[
                 "post_inspection_validation"

@@ -62,6 +62,66 @@ class ResumeTests(unittest.TestCase):
                 parsed_command={"cmd": command}, exit_code=None, termination=None, evidence_state="indeterminate")
             self.assertEqual(self.inspect(replace(self.capture, commands=(*self.capture.commands, inspection))), "01" * 16)
 
+    def exploratory_capture(self):
+        command = replace(self.verification, parsed_command={"cmd": "env PYTHONPATH=src python3 /tmp/probe.py"})
+        checkpoint = h.terminal_checkpoint_call(self.capture)
+        claim = {**checkpoint.arguments["verification"][0], "command_invocation": command.parsed_command["cmd"]}
+        checkpoint = replace(checkpoint, arguments={**checkpoint.arguments, "verification": [claim]},
+            result={**checkpoint.result, "changed_paths": []})
+        inspection = replace(self.capture.successful_calls("repository_understanding")[0],
+            call_id="fresh-experiment-inspection", sequence=26, completion_sequence=27)
+        return replace(self.capture, path_observations=(), commands=(command,),
+            tool_calls=tuple(checkpoint if c.call_id == checkpoint.call_id else c for c in self.capture.tool_calls)
+                + (inspection,))
+
+    def test_no_write_exploratory_resume_uses_explicit_mode(self):
+        capture = self.exploratory_capture()
+        self.assertEqual(self.inspect(capture), "01" * 16)
+        facts = h.resume_continuation_facts(capture, capture.successful_calls("recall")[0],
+            checkpoint_work_state="paused", recalled_work_state="paused", common_identity_and_freshness_ok=True,
+            change_baseline_ok=False, executable_work_scope=None, descriptor_scope_paths=[])
+        self.assertEqual(facts["mode"], "exploratory_continuation")
+        self.assertFalse(facts["post_inspection_numeric_exit_validation"])
+        self.assertTrue(facts["exploratory_continuation_qualified"])
+
+    def test_exploratory_resume_rejects_missing_or_contradictory_evidence(self):
+        capture = self.exploratory_capture()
+        for operation in ("repository_analyze", "checkpoint_record", "materiality_review", "repository_understanding"):
+            changed = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != operation))
+            self.assertFalse(h.exploratory_resume_evidence(changed, changed.successful_calls("recall")[0])["qualified"], operation)
+        for fields in ({"exit_code": 1}, {"exit_code": None}, {"exit_code": True},
+                       {"termination": None}, {"evidence_state": "indeterminate"}):
+            changed = replace(capture, commands=(replace(capture.commands[0], **fields),))
+            self.assertFalse(h.exploratory_resume_evidence(changed, changed.successful_calls("recall")[0])["qualified"])
+        for changes in ({"parsed_command": {"cmd": "python3 scripts/probe.py"}},
+                        {"sequence": 12, "completion_sequence": 13}):
+            changed = replace(capture, commands=(replace(capture.commands[0], **changes),))
+            self.assertFalse(h.exploratory_resume_evidence(changed, changed.successful_calls("recall")[0])["qualified"])
+        checkpoint = h.terminal_checkpoint_call(capture)
+        for fields in ({"verification": [{"state": "passed", "command_invocation": "invented"}]},
+                       {"next_step": ""}, {"work_state": "unknown"}):
+            changed = replace(capture, tool_calls=tuple(replace(c, arguments={**c.arguments, **fields})
+                if c is checkpoint else c for c in capture.tool_calls))
+            self.assertFalse(h.exploratory_resume_evidence(changed, changed.successful_calls("recall")[0])["qualified"])
+        for cmd in ("unknown-validator", "cargo test || true"):
+            unknown = replace(capture.commands[0], sequence=33, completion_sequence=33, parsed_command={"cmd": cmd})
+            self.failure(replace(capture, commands=(*capture.commands, unknown)),
+                         "terminal_validation_indeterminate", "evidence")
+        for code, state, basis, domain in ((1, "completed", "terminal_validation_failed", "product_integration"),
+                (None, "indeterminate", "terminal_validation_indeterminate", "evidence")):
+            validator = replace(self.verification, sequence=28, completion_sequence=29, exit_code=code,
+                evidence_state=state, termination="exited" if code is not None else None)
+            self.failure(replace(capture, commands=(validator, *capture.commands)), basis, domain)
+        # An experiment never verifies a repository mutation, even in an unrelated path.
+        for paths in (("src/resume.rs",), ("requirements.txt",)):
+            mutation = replace(self.capture.path_observations[0], paths=paths)
+            changed = replace(capture, path_observations=(mutation,))
+            facts = h.resume_continuation_facts(changed, changed.successful_calls("recall")[0],
+                checkpoint_work_state="paused", recalled_work_state="paused", common_identity_and_freshness_ok=True,
+                change_baseline_ok=True, executable_work_scope={"paths": list(paths)}, descriptor_scope_paths=[])
+            self.assertIsNone(facts["mode"])
+            self.assertEqual(facts["failure_basis"], "post_change_validation_missing")
+
     def test_second_edit_requires_retest(self):
         mutation = replace(self.capture.path_observations[-1], sequence=self.verification.completion_sequence + 1)
         changed = replace(self.capture, path_observations=(*self.capture.path_observations, mutation))
