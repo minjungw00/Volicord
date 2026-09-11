@@ -314,6 +314,66 @@ class FrontierTests(unittest.TestCase):
             self.assertFalse(h.interpreter_scratch_experiment({"cmd": cmd}, capture.cwd), cmd)
         self.assertFalse(h.interpreter_scratch_experiment({"cmd": "python3 /tmp/repo/x.py"}, Path("/tmp/repo")))
 
+    def test_rematerialized_exploration_retains_executed_research(self):
+        _, capture, _ = self.no_write_exploration()
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        record = next(c for c in capture.successful_calls("materiality_review") if c.arguments.get("action") == "record")
+        revision = next(c for c in capture.successful_calls("materiality_review") if c.arguments.get("action") == "revise")
+        inspect = next(c for c in capture.successful_calls("materiality_review") if c.arguments.get("action") == "inspect")
+        checkpoint = h.terminal_checkpoint_call(capture)
+        experiment = next(c for c in capture.commands if c.execution_identity == "scratch-experiment")
+        experiment = replace(experiment, parsed_command={"cmd": "python3 /tmp/probe.py"})
+        def bind(value):
+            if isinstance(value, dict):
+                return {k: bind(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [bind(v) for v in value]
+            if value == record.result["review_candidate_id"]:
+                return "ef" * 16
+            if value == discovery.result["discovery_candidate_id"]:
+                return "ed" * 16
+            return value
+        choices = deepcopy(discovery.arguments["choices"])
+        for choice in choices:
+            choice["evidence_state"] = "sufficient"
+        rebound_discovery = replace(discovery, call_id="resolved-discovery", sequence=checkpoint.sequence - 80,
+            completion_sequence=checkpoint.sequence - 75,
+            arguments={**discovery.arguments, "choices": choices}, result=bind({**discovery.result, "choices": choices}))
+        rebound_record = replace(record, call_id="resolved-record", sequence=checkpoint.sequence - 60,
+            completion_sequence=checkpoint.sequence - 55,
+            arguments=bind({**record.arguments, "judgments": revision.arguments["judgments"]}),
+            result=bind({**revision.result, "action": "record", "review_revision": 2}))
+        rebound_inspect = replace(inspect, call_id="resolved-inspect", sequence=checkpoint.sequence - 40,
+            completion_sequence=checkpoint.sequence - 35, arguments=bind(inspect.arguments), result=bind(inspect.result))
+        claim = {"state": "passed", "command_invocation": "python3 /tmp/probe.py", "exit_code": 0, "termination": "exited"}
+        checkpoint = replace(checkpoint, arguments={**checkpoint.arguments, "verification": [claim]})
+        capture = replace(capture, commands=tuple(experiment if c.execution_identity == "scratch-experiment" else c for c in capture.commands),
+            tool_calls=tuple(sorted((*[checkpoint if c.call_id == checkpoint.call_id else c for c in capture.tool_calls],
+                rebound_discovery, rebound_record, rebound_inspect), key=lambda c: c.sequence)))
+        repository_read = replace(experiment, sequence=baseline.completion_sequence + 10,
+            completion_sequence=baseline.completion_sequence + 20, execution_identity="repository-read",
+            parsed_command={"cmd": "cat src/lib.rs"})
+        capture = replace(capture, commands=(repository_read, *capture.commands))
+        evidence = h.exploratory_no_write_evidence(capture, baseline)
+        self.assertTrue(evidence["qualified"], evidence)
+        self.assertEqual(evidence["origin_discovery_sequence"], discovery.sequence)
+        for missing in ("experiment", "resolution", "binding", "origin", "new_dimension", "new_source"):
+            changed_discovery = rebound_discovery
+            if missing in {"new_dimension", "new_source"}:
+                changed_choices = deepcopy(choices)
+                if missing == "new_dimension":
+                    changed_choices[0]["effect_categories"].append("security")
+                else:
+                    changed_choices[0]["source_ids"] = ["ac" * 16]
+                changed_discovery = replace(rebound_discovery, arguments={**rebound_discovery.arguments, "choices": changed_choices})
+            changed = replace(capture,
+                commands=tuple(c for c in capture.commands if missing != "experiment" or c is not experiment),
+                tool_calls=tuple(changed_discovery if c is rebound_discovery else c for c in capture.tool_calls if not (
+                    missing == "resolution" and c is revision or missing == "binding" and c is rebound_inspect
+                    or missing == "origin" and c is discovery)))
+            self.assertFalse(h.exploratory_no_write_evidence(changed, baseline)["qualified"], missing)
+
     def test_absent_write_is_not_an_exploratory_pass(self):
         descriptor, capture, _ = self.fixture("research_or_no_question")
         capture = replace(capture, path_observations=())

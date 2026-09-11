@@ -3745,18 +3745,20 @@ def executable_scope_chronology(
     }
 
 
-def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall | None) -> dict[str, Any]:
-    """No-write continuation backed by a fresh baseline, scratch execution and terminal authority."""
+def completed_scratch_exploration(capture: CodexCapture | None, boundary: ToolCall | None) -> dict[str, Any]:
+    """No-write work after a Goal/Recall, with scratch execution and current terminal authority."""
     result = {"qualified": False, "failure_basis": None, "experiment_sequences": [],
-              "terminal_experiment_sequence": None, "checkpoint_sequence": None}
+              "terminal_experiment_sequence": None, "terminal_experiment_completion_sequence": None, "checkpoint_sequence": None}
     checkpoint = terminal_checkpoint_call(capture)
-    if capture is None or recall is None or checkpoint is None or meaningful_work_path_observations(capture):
+    if capture is None or boundary is None or checkpoint is None or meaningful_work_path_observations(capture):
+        return result
+    if boundary.outcome != "succeeded" or boundary.operation not in {"recall", "context_record"}:
         return result
     baseline = selected_checkpoint_baseline_call(capture, checkpoint)
     if (baseline is None or checkpoint.outcome != "succeeded"
         or not checkpoint_baseline_is_pre_work(capture, checkpoint,
-            project_id=recall.result.get("project_id"),
-            boundary_completion_sequence=recall.completion_sequence, first_write_sequence=None)):
+            project_id=boundary.result.get("project_id"),
+            boundary_completion_sequence=boundary.completion_sequence, first_write_sequence=None)):
         return result
     experiments = [c for c in capture.commands
         if baseline.completion_sequence < c.sequence
@@ -3766,7 +3768,8 @@ def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall |
     terminal = max(experiments, key=lambda c: (c.sequence, c.group_index))
     result.update(failure_basis="scope_or_authority_missing",
         experiment_sequences=[c.sequence for c in experiments],
-        terminal_experiment_sequence=terminal.sequence, checkpoint_sequence=checkpoint.sequence)
+        terminal_experiment_sequence=terminal.sequence, terminal_experiment_completion_sequence=terminal.completion_sequence,
+        checkpoint_sequence=checkpoint.sequence)
     complete = (terminal.evidence_state == "completed" and type(terminal.exit_code) is int
                 and terminal.termination == "exited")
     if not complete:
@@ -3800,7 +3803,7 @@ def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall |
         or any(c.sequence > checkpoint.sequence and dogfood_command_role(c.parsed_command, capture.cwd)
                not in {"inspection", "report"} for c in capture.commands)):
         return result
-    project = recall.result.get("project_id")
+    project = boundary.result.get("project_id")
     goal = checkpoint.arguments.get("goal_context_id")
     identity = baseline.result.get("analysis_snapshot_id")
     discovery, record, revisions = current_authority_frontier(capture, project_id=project,
@@ -3819,11 +3822,79 @@ def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall |
         and claim.get("command_invocation") == invocation and claim.get("state") == "passed"
         and type(claim.get("exit_code")) is int and claim["exit_code"] == 0
         and claim.get("termination") == "exited" for claim in claims)
-    result["qualified"] = bool(truthful_experiment and any(b.valid for b in bindings)
+    result["qualified"] = bool(truthful_experiment and bindings and max(bindings, key=lambda b: b.sequence).valid
         and historical_questions_resolved_before_frontier(capture, record, checkpoint.sequence))
     if result["qualified"]:
         result["failure_basis"] = None
     return result
+
+
+def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall | None) -> dict[str, Any]:
+    return completed_scratch_exploration(capture, recall)
+
+
+def rematerialized_exploration_evidence(capture: CodexCapture, baseline: ToolCall,
+                                      checkpoint: ToolCall, discovery: ToolCall, record: ToolCall) -> dict[str, Any] | None:
+    """A completed research result may be bound to a new ready review on its exact baseline."""
+    goals = [c for c in capture.successful_calls("context_record")
+        if c.arguments.get("role") == "goal" and c.result.get("context_item_id") == checkpoint.arguments.get("goal_context_id")
+        and c.arguments.get("project_id") == baseline.result.get("project_id")
+        and c.completion_sequence < baseline.sequence]
+    if len(goals) != 1:
+        return None
+    evidence = completed_scratch_exploration(capture, goals[0])
+    if not evidence["qualified"]:
+        return None
+    current = indexed_engineering_choices(discovery.arguments.get("choices"))
+    if current is None or any(c.get("evidence_state") != "sufficient" for c in current.values()):
+        return None
+    experiments = evidence["experiment_sequences"]
+    histories = [c for c in capture.successful_calls("engineering_choice_discovery")
+        if baseline.completion_sequence < c.sequence and c.completion_sequence < min(experiments)
+        and c.arguments.get("project_id") == discovery.arguments.get("project_id")
+        and c.arguments.get("goal_context_id") == discovery.arguments.get("goal_context_id")
+        and c.arguments.get("baseline_analysis_snapshot_id") == baseline.result.get("analysis_snapshot_id")]
+    for origin in histories:
+        choices = indexed_engineering_choices(origin.arguments.get("choices"))
+        if choices is None or set(choices) != set(current) or not any(
+            c.get("evidence_state") in {"research_required", "prototype_required"} for c in choices.values()):
+            continue
+        # Research may settle observed consequences, but cannot acquire a new choice/dimension/source.
+        if any(choices[key].get("source_ids") != [baseline.result.get("repository_source_id")]
+            or current[key].get("source_ids") != choices[key].get("source_ids")
+            or set(current[key].get("effect_categories", [])) != set(choices[key].get("effect_categories", []))
+            or {a["alternative_id"] for a in current[key]["alternatives"]}
+               != {a["alternative_id"] for a in choices[key]["alternatives"]}
+            or current[key].get("relationship") != choices[key].get("relationship") for key in current):
+            continue
+        records = [c for c in capture.successful_calls("materiality_review")
+            if c.arguments.get("action") == "record"
+            and c.arguments.get("engineering_choice_discovery_candidate_id") == origin.result.get("discovery_candidate_id")
+            and origin.completion_sequence < c.sequence and c.completion_sequence < min(experiments)]
+        if len(records) != 1:
+            continue
+        for prior in records:
+            revisions = [c for c in capture.successful_calls("materiality_review")
+                if c.arguments.get("action") == "revise"
+                and c.arguments.get("review_candidate_id") == prior.result.get("review_candidate_id")
+                and evidence["terminal_experiment_completion_sequence"] < c.sequence
+                and c.completion_sequence < discovery.sequence]
+            if not revisions:
+                continue
+            resolved = revisions[-1].arguments.get("judgments", [])
+            pending_ids = {key for key, choice in choices.items()
+                           if choice.get("evidence_state") in {"research_required", "prototype_required"}}
+            if ({j.get("choice_id") for j in resolved} != set(current)
+                or any(j.get("disposition") == "unresolved_user_owned_outcome"
+                       or j.get("choice_id") in pending_ids and not j.get("evidence_completion_basis")
+                       for j in resolved)):
+                continue
+            return {"qualified": True, "state": "complete", "issues": (),
+                "frontier_sequence": checkpoint.sequence, "experiment_sequence": min(experiments),
+                "binding_sequence": max(c.completion_sequence for c in capture.successful_calls("materiality_review")
+                    if c.arguments.get("action") == "inspect" and c.completion_sequence < checkpoint.sequence),
+                "origin_discovery_sequence": origin.sequence, "resolution_sequence": revisions[-1].sequence}
+    return None
 
 
 def resume_continuation_facts(
@@ -4854,6 +4925,10 @@ def exploratory_no_write_evidence(
     discovery, record, revisions = current_authority_frontier(capture,
         project_id=project_id, goal_context_id=goal_id,
         baseline_analysis_snapshot_id=baseline_id, before_sequence=checkpoint.sequence)
+    if discovery is not None and record is not None and not revisions:
+        rematerialized = rematerialized_exploration_evidence(capture, baseline, checkpoint, discovery, record)
+        if rematerialized is not None:
+            return rematerialized
     if (discovery is None or record is None or not revisions
         or not baseline.completion_sequence < discovery.sequence
         or not nonempty_string(baseline.result.get("repository_source_id"))

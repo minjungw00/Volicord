@@ -1170,6 +1170,14 @@ completion, unresolved repository-validation failure와 이후 unknown execution
 Meaningful mutation이 하나라도 있으면 이 mode를 사용할 수 없으며 기존 post-change validation
 요구를 적용한다. Scratch execution은 repository verification으로 계산하지 않는다.
 
+No-write exploratory work may preserve a completed experiment across a later ready Discovery/Review
+that represents its researched outcome. The earlier research/prototype discovery, explicit completion
+revision, successful scratch execution, current valid scope binding and truthful terminal Checkpoint
+must all correlate in order on the same exact Goal/baseline/Source. Choice and alternative identities,
+effect dimensions and relationships must remain fixed; research may update observed consequences.
+A missing experiment or completion revision, a new dimension or Source, or repository mutation cannot
+qualify this path. This is exploration evidence, not hidden-choice investigation reuse or validation.
+
 Work-capture intake는 product inquiry behavior보다 먼저 repository-scoped SessionStart activation
 evidence를 확인한다. Supported evidence로 activation 부재 또는 늦은 activation이 확인되면
 operator/environment setup failure로 분류하고 그 campaign path를 중단하며 Question/Decision
