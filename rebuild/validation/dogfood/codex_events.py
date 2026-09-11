@@ -691,7 +691,7 @@ def parse_static_exec_command_list(value: str, bindings: dict[str, str] | None =
     result: list[dict[str, Any]] = []
     call_prefix = re.compile(r"tools\.exec_command\s*\(")
     while True:
-        while offset < len(value) and value[offset] in " \t\r\n,":
+        while offset < len(value) and value[offset] in " \t\r\n":
             offset += 1
         if offset == len(value):
             return tuple(result) if 2 <= len(result) <= 16 else None
@@ -728,13 +728,28 @@ def parse_static_exec_command_list(value: str, bindings: dict[str, str] | None =
         offset = cursor + 1
         while offset < len(value) and value[offset] in " \t\r\n":
             offset += 1
-        if offset < len(value) and value[offset] != ",":
-            return None
+        if offset < len(value):
+            if value[offset] != ",":
+                return None
+            offset += 1
 
 
 def indexed_promise_output_mode(forward: str, variable: str) -> str | None:
     identifier = r"[A-Za-z_$][A-Za-z0-9_$]*"
     escaped_variable = re.escape(variable)
+    # Observed current host: literal Promise results enumerated in input order.
+    entries = re.fullmatch(
+        rf"for\s*\(\s*const\s*\[\s*(?P<index>{identifier})\s*,\s*"
+        rf"(?P<result>{identifier})\s*\]\s+of\s+{escaped_variable}\.entries\(\)\s*\)"
+        rf"\s*\{{\s*text\s*\(\s*`---(?:FILE)?\$\{{(?P=index)\}} exit="
+        rf"\$\{{(?P=result)\.exit_code\}}\\n\$\{{(?P=result)\.output\}}`\s*\)\s*;?\s*\}}\s*;?",
+        forward, re.DOTALL,
+    )
+    if entries is not None:
+        names = (variable, entries["index"], entries["result"])
+        if len(set(names)) != 3 or any(n in {"text", "tools", "JSON", "Promise"} for n in names):
+            return None
+        return "indexed_entries_zero"
     suffix_zero = re.fullmatch(
         rf"{escaped_variable}\.forEach\s*\(\s*\(\s*(?P<result>{identifier})\s*,\s*"
         rf"(?P<index>{identifier})\s*\)\s*=>\s*text\s*\(\s*`"
@@ -895,7 +910,7 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
             correlated_fields = set(parsed_fields)
     template_exit_forward = re.fullmatch(
         rf"(?:text\s*\(\s*{variable}\.output\s*\)\s*;\s*)?"
-        rf"text\s*\(\s*`(?:\\n)?(?:exit=|exit:|EXIT:|EXIT |EXIT_CODE=)\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
+        rf"text\s*\(\s*`(?:\\n)?(?:exit=|exit_code=|exit:|EXIT:|EXIT |EXIT_CODE=)\$\{{{variable}\.exit_code\}}`\s*\)\s*;",
         forward,
         re.DOTALL,
     )
@@ -1212,7 +1227,7 @@ def custom_template_command_result(value: Any) -> tuple[str, int] | None:
     if parts is None or len(parts) not in {2, 3}:
         return None
     header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
-    status = re.fullmatch(r"\n?(?:exit=|exit:|EXIT:|EXIT |EXIT_CODE=)([0-9]+)", parts[-1])
+    status = re.fullmatch(r"\n?(?:exit=|exit_code=|exit:|EXIT:|EXIT |EXIT_CODE=)([0-9]+)", parts[-1])
     if header is None or header.group("body") or status is None:
         return None
     exit_code = int(status.group(1))
@@ -1229,6 +1244,10 @@ def custom_indexed_command_results(
     if header is None or header.group("body"):
         return None
     patterns = {
+        "indexed_entries_zero": re.compile(
+            r"---(?:FILE)?(?P<index>[0-9]+) exit=(?P<exit>[0-9]+)\n(?P<output>.*)\Z",
+            re.DOTALL,
+        ),
         "indexed_suffix_zero": re.compile(
             r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\n"
             r"(?P<output>.*)\nexit=(?P<exit>[0-9]+)\Z",
@@ -1248,7 +1267,7 @@ def custom_indexed_command_results(
     pattern = patterns.get(mode)
     if pattern is None:
         return None
-    expected_base = 0 if mode == "indexed_suffix_zero" else 1
+    expected_base = 0 if mode in {"indexed_suffix_zero", "indexed_entries_zero"} else 1
     results: list[tuple[str, int]] = []
     for position, part in enumerate(parts[1:]):
         match = pattern.fullmatch(part)

@@ -120,13 +120,52 @@ class CurrentExecutionTests(unittest.TestCase):
             self.assertEqual(capture.evidence_transport_issues[0].reason, "malformed_file_change")
 
     def test_current_exit_templates_and_literal_workdir(self):
-        for marker in ("exit=", "EXIT:", "EXIT ", "exit:", "\\nEXIT:", "EXIT_CODE="):
+        for marker in ("exit=", "exit_code=", "EXIT:", "EXIT ", "exit:", "\\nEXIT:", "EXIT_CODE="):
             with self.subTest(marker=marker):
                 capture = self.command('const wd="/phase8/repository"; const r=await tools.exec_command({cmd:"rg --files",workdir:wd});'
                     + 'text(r.output); text(`' + marker + '${r.exit_code}`);', ["src/lib.rs", marker.replace("\\n", "\n") + "0"])
                 self.assertEqual(len(capture.commands), 1)
                 self.assertEqual(capture.commands[0].exit_code, 0)
                 self.assertEqual(capture.commands[0].parsed_command["workdir"], "/phase8/repository")
+
+    def test_historical_entries_preserve_order_and_completion(self):
+        calls = 'tools.exec_command({cmd:"sed -n \'1,40p\' src/a.py"}),tools.exec_command({cmd:"python3 /tmp/x.py"})'
+        prefix = 'const rs=await Promise.all([' + calls + ']);'
+        for label in ("", "FILE"):
+            forward = 'for (const [i,r] of rs.entries()){text(`---' + label + '${i} exit=${r.exit_code}\\n${r.output}`)}'
+            outputs = ["source\nexit_code=99\n", "experiment\n"]
+            capture = self.command(prefix + forward, [f"---{label}{i} exit={code}\n{output}"
+                for i, (code, output) in enumerate(zip((0, 3), outputs))])
+            self.assertEqual([c.parsed_command["cmd"] for c in capture.commands],
+                             ["sed -n '1,40p' src/a.py", "python3 /tmp/x.py"])
+            self.assertEqual([c.output for c in capture.commands], outputs)
+            self.assertEqual([c.exit_code for c in capture.commands], [0, 3])
+            self.assertEqual([c.group_index for c in capture.commands], [0, 1])
+            self.assertTrue(all(c.termination == "exited" and c.evidence_state == "completed"
+                                and c.sequence < c.completion_sequence and c.execution_identity
+                                for c in capture.commands))
+            for parts in (["---0 exit=0\nsource"], ["---1 exit=0\na", "---0 exit=0\nb"],
+                          ["---0 exit=0\na", "---0 exit=0\nb"],
+                          ["---0 exit=undefined\na", "---1 exit=0\nb"],
+                          ["---0 exit=true\na", "---1 exit=0\nb"],
+                          ["---0 exit=0\na", "---1 exit=0\nb", "extra"]):
+                rejected = self.command(prefix + forward, parts)
+                self.assertTrue(all(c.exit_code is None for c in rejected.commands))
+        forward = 'for (const [i,r] of rs.entries()){text(`---${i} exit=${r.exit_code}\\n${r.output}`)}'
+        for source in (prefix + forward.replace('r.exit_code', 'rs[0].exit_code'),
+                       prefix + forward.replace('r.output', 'rs[1].output'),
+                       prefix + forward.replace('rs.entries()', 'rs.reverse().entries()'),
+                       prefix + forward.replace('[i,r]', '[i,i]'),
+                       prefix + forward.replace('r.exit_code', 'r.exit_code || 0'),
+                       prefix + forward + 'arbitrary();',
+                       prefix.replace('"python3 /tmp/x.py"', 'makeCommand()') + forward,
+                       prefix.replace('),tools', '),,tools') + forward,
+                       prefix.replace('[tools', '[,tools') + forward):
+            self.assertIsNone(parse_custom_call(source), source)
+        output_only = self.command('const r=await tools.exec_command({cmd:"python3 /tmp/x.py"});text(r.output);',
+                                   ["exit_code=0"])
+        self.assertIsNone(output_only.commands[0].exit_code)
+        self.assertEqual(output_only.commands[0].evidence_state, "indeterminate")
 
     def test_direct_and_split_numeric_projections(self):
         prefix = 'const r=await tools.exec_command({cmd:"pytest"});'
