@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from typing import Any
 
 
@@ -425,6 +426,21 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
             f"server instructions duplicate tool choreography: {choreography}",
         )
     descriptions = {entry["name"]: entry.get("description", "") for entry in catalog}
+    for rule in (
+        "first complete the bounded scratch experiment actually supporting the conclusion",
+        "Ad-hoc diagnostics may precede that terminal experiment",
+        "only read-only inspection/reporting that does not supersede or obscure its execution basis",
+        "If later substantive executable diagnostics occur, establish a later bounded exploratory execution with observed numeric completion",
+        "do not reuse an earlier superseded experiment",
+        "Truthfully record no repository changed paths",
+        "include the terminal bounded experiment in verification facts",
+        "actual numeric exit/termination from the same execution",
+        "Never claim success from prose or output alone",
+        "preserve failed or indeterminate experiments as such",
+        "never promote arbitrary successful commands to repository validation or use exploration to certify repository mutations",
+        "Do not run meaningless extra repository validation merely to create a Checkpoint",
+    ):
+        require(rule in descriptions["checkpoint_record"], f"installed exploratory guidance missing: {rule}")
     require(
         "typed pre-work Materiality Review" in descriptions["materiality_review"]
         and "changelog/release-note" in descriptions["materiality_review"]
@@ -1160,6 +1176,49 @@ def exercise_analysis_recovery(
     }
 
 
+def exercise_installed_exploration(
+    host: subprocess.Popen[str], env: dict[str, str], repository: Path,
+    project_id: str, goal_id: str, baseline_id: str,
+) -> list[dict[str, Any]]:
+    """Follow the installed guidance using actual bounded executions and public Checkpoints."""
+    evidence = []
+    with tempfile.TemporaryDirectory(prefix="volicord-exploration-") as directory:
+        scratch = Path(directory)
+        first = scratch / "probe.py"
+        later = scratch / "final-probe.py"
+        for path in (first, later):
+            path.write_text("values = [1, 2, 3]\nassert sum(values) == 6\nprint('bounded experiment complete')\n")
+        run(["git", "-C", str(repository), "diff", "--stat"], env)
+        run(["python3", "-c", "print(2 ** 10)"], env)
+        for index, path in enumerate((first, later)):
+            if index:
+                # Further executable investigation makes the previous experiment nonterminal.
+                run(["python3", "-c", "print(sum(range(10)))"], env)
+            invocation = shlex.join(["python3", str(path)])
+            execution = run(shlex.split(invocation), env)
+            # Inspection/reporting can follow; it does not become validation evidence.
+            run(["git", "-C", str(repository), "diff", "--stat"], env)
+            checkpoint = tool(host, 800 + index, "checkpoint_record", {
+                "project_id": project_id, "goal_context_id": goal_id,
+                "baseline_analysis_snapshot_id": baseline_id,
+                "kind": "pause", "work_state": "paused",
+                "state_change": "Completed bounded scratch exploration before repository implementation",
+                "applied_decision_ids": [], "verification_basis": {"state": "ordinary_change"},
+                "verification": [{"state": "passed", "command_label": "bounded scratch experiment",
+                    "command_invocation": invocation, "exit_code": execution.returncode,
+                    "termination": "exited", "outcome": "Observed scratch arithmetic assertions completed"}],
+                "next_step": "Apply the maintained repository fixture after this exploration",
+                "known_limits": ["Scratch evidence does not validate repository implementation"],
+            })
+            require(checkpoint["changed_paths"] == [], "scratch exploration claimed repository changes")
+            require(len(checkpoint["verification_source_ids"]) == 1, "terminal experiment Source missing")
+            evidence.append({"checkpoint_id": checkpoint["checkpoint_id"],
+                "source_id": checkpoint["verification_source_ids"][0],
+                "fingerprint": "sha256:" + hashlib.sha256(invocation.encode()).hexdigest(),
+                "exit_code": execution.returncode})
+    return evidence
+
+
 def main() -> int:
     codex = shutil.which("codex")
     if codex is None:
@@ -1245,6 +1304,28 @@ def main() -> int:
         require("required = true" in project_config, "project MCP server is not required")
         require("[[hooks.SessionStart]]" in project_config, "SessionStart hook missing")
         require("startup|resume|clear|compact" in project_config, "SessionStart matcher incomplete")
+        # Execute the exact installed hook command for every supported event, without
+        # trusting a source-code literal or asking Codex to run an authenticated turn.
+        handler = tomllib.loads(project_config)["hooks"]["SessionStart"][0]["hooks"][0]
+        for source in ("startup", "resume", "clear", "compact"):
+            hook = subprocess.run(shlex.split(handler["command"]), env=env, cwd=repository,
+                input=json.dumps({"hook_event_name": "SessionStart", "session_id": "v08-exploration",
+                    "cwd": str(repository), "source": source, "model": "fixture",
+                    "permission_mode": "default", "transcript_path": None}),
+                text=True, capture_output=True, timeout=handler["timeout"], check=True)
+            context = json.loads(hook.stdout)["hookSpecificOutput"]["additionalContext"]
+            require(len(context.encode()) < 4096, "installed SessionStart context exceeded its bound")
+            for rule in (
+                "No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation",
+                "No-write research/prototype conclusions using execution need a completed bounded scratch experiment",
+                "exact invocation and actual numeric exit/termination from that execution",
+                "Diagnostics may precede it",
+                "afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint",
+                "After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion",
+                "Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run",
+                "Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation",
+            ):
+                require(rule in context, f"installed SessionStart exploratory guidance missing: {rule}")
         require(
             not (unauthorized_repository / ".codex").exists(),
             "unauthorized repository received project-local Codex state",
@@ -1367,7 +1448,7 @@ def main() -> int:
             },
         )
         require(
-            review_draft["record_request"]["judgments_assembly"]["choice_order"]
+            [judgment["choice_id"] for judgment in review_draft["record_request"]["skeleton"]["judgments"]]
             == ["checkpoint-fixture-path"],
             "Materiality draft did not prefill the discovered choice identity",
         )
@@ -1381,6 +1462,8 @@ def main() -> int:
             and review["workflow"]["required_next_action"]["tool"] == "checkpoint_record",
             f"settled no-question review did not reach ready-for-work: {review}",
         )
+        exploration = exercise_installed_exploration(host, env, repository, project_id,
+            goal["context_item_id"], baseline["analysis_snapshot_id"])
         (repository / "grounded-checkpoint.txt").write_text(
             "ordinary work after the baseline\n", encoding="utf-8"
         )
@@ -1531,9 +1614,18 @@ def main() -> int:
         require(recall_after["project_id"] == project_id, "reinstall resolved another Project")
         tables, _ = portable_tables(canonical_after)
         require(len(tables["projects"]) == 1 and len(tables["context_items"]) == 1
-                and len(tables["checkpoints"]) == 2 and tables["context_item_revisions"]
+                and len(tables["checkpoints"]) == 2 + len(exploration) and tables["context_item_revisions"]
                 and tables["checkpoint_source_relations"] and tables["sources"],
                 "reinstall fixture lost its canonical continuity subjects")
+        for evidence in exploration:
+            source = next(row for row in tables["sources"] if row["id"] == evidence["source_id"])
+            require(source["detail_one"] == evidence["fingerprint"]
+                    and source["exit_code"] == evidence["exit_code"] and source["termination"] == "exited",
+                    "installed Checkpoint lost the terminal experiment fingerprint or numeric outcome")
+            facts = [row for row in tables["checkpoint_verifications"]
+                     if row["checkpoint_id"] == evidence["checkpoint_id"]]
+            require(len(facts) == 1 and facts[0]["source_id"] == evidence["source_id"],
+                    "installed Checkpoint reused an earlier experiment Source")
         require(recall_after["goal_basis"][0]["identity"] == goal["context_item_id"]
                 and recall_after["checkpoint"]["identity"] in {row["id"] for row in tables["checkpoints"]},
                 "Recall lost canonical Goal or Checkpoint identity")

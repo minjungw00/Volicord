@@ -3904,6 +3904,23 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         "no-write exploratory continuation have no artificial post-mutation validation requirement"
     ));
 
+    for rule in [
+        "first complete the bounded scratch experiment actually supporting the conclusion",
+        "Ad-hoc diagnostics may precede that terminal experiment",
+        "only read-only inspection/reporting that does not supersede or obscure its execution basis",
+        "If later substantive executable diagnostics occur, establish a later bounded exploratory execution with observed numeric completion",
+        "do not reuse an earlier superseded experiment",
+        "Truthfully record no repository changed paths",
+        "include the terminal bounded experiment in verification facts",
+        "actual numeric exit/termination from the same execution",
+        "Never claim success from prose or output alone",
+        "preserve failed or indeterminate experiments as such",
+        "never promote arbitrary successful commands to repository validation or use exploration to certify repository mutations",
+        "Do not run meaningless extra repository validation merely to create a Checkpoint",
+    ] {
+        assert!(descriptions["checkpoint_record"].contains(rule), "missing exploratory guidance: {rule}");
+    }
+
     assert!(descriptions["checkpoint_record"]
         .contains("first captured after the bounded work is conceptually invalid"));
 }

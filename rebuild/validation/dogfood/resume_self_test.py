@@ -84,6 +84,56 @@ class ResumeTests(unittest.TestCase):
         self.assertFalse(facts["post_inspection_numeric_exit_validation"])
         self.assertTrue(facts["exploratory_continuation_qualified"])
 
+    def test_terminal_exploration_allows_prior_diagnostics_and_later_inspection(self):
+        capture = self.exploratory_capture()
+        terminal = capture.commands[0]
+        diagnostic = replace(terminal, sequence=28, completion_sequence=29,
+            parsed_command={"cmd": "python3 -c 'print(2 ** 10)'"})
+        self.assertEqual(h.dogfood_command_role(diagnostic.parsed_command, capture.cwd), "unknown")
+        for command in ("git diff --stat", "cat README.md", "printf 'Exploration complete\\n'"):
+            with self.subTest(command=command):
+                inspection = replace(terminal, sequence=33, completion_sequence=34,
+                    parsed_command={"cmd": command})
+                changed = replace(capture, commands=(diagnostic, terminal, inspection))
+                self.assertEqual(self.inspect(changed), "01" * 16)
+                evidence = h.exploratory_resume_evidence(changed, changed.successful_calls("recall")[0])
+                self.assertEqual(evidence["terminal_experiment_sequence"], terminal.sequence)
+                self.assertFalse(h.meaningful_resume_validation(changed, 0)["qualified"])
+
+    def test_later_diagnostic_requires_later_experiment_and_its_checkpoint_evidence(self):
+        capture = self.exploratory_capture()
+        first = capture.commands[0]
+        diagnostic = replace(first, sequence=33, completion_sequence=34,
+            parsed_command={"cmd": "python3 -c 'print(2 ** 10)'"})
+        changed = replace(capture, commands=(first, diagnostic))
+        self.failure(changed, "terminal_validation_indeterminate", "evidence")
+        # Leave room for a later bounded run before the concluding Checkpoint.
+        checkpoint = h.terminal_checkpoint_call(changed)
+        changed = replace(changed, tool_calls=tuple(replace(c, sequence=c.sequence + 10,
+            completion_sequence=c.completion_sequence + 10) if c.sequence >= checkpoint.sequence else c
+            for c in changed.tool_calls))
+        later = replace(first, sequence=35, completion_sequence=36,
+            parsed_command={"cmd": "env PYTHONPATH=src python3 /tmp/final-probe.py"})
+        changed = replace(changed, commands=(*changed.commands, later))
+        recall = changed.successful_calls("recall")[0]
+        self.assertFalse(h.exploratory_resume_evidence(changed, recall)["qualified"],
+            "the earlier experiment claim cannot certify the later execution")
+        checkpoint = h.terminal_checkpoint_call(changed)
+        claim = {**checkpoint.arguments["verification"][0], "command_invocation": later.parsed_command["cmd"]}
+        changed = replace(changed, tool_calls=tuple(replace(c,
+            arguments={**c.arguments, "verification": [claim]}) if c is checkpoint else c
+            for c in changed.tool_calls))
+        self.assertEqual(self.inspect(changed), "01" * 16)
+        self.assertEqual(h.exploratory_resume_evidence(changed, recall)["terminal_experiment_sequence"], 35)
+        self.assertFalse(h.meaningful_resume_validation(changed, 0)["qualified"])
+        for fields, basis, domain in (
+            ({"exit_code": 1}, "terminal_validation_failed", "product_integration"),
+            ({"exit_code": None, "termination": None, "evidence_state": "indeterminate"},
+             "terminal_validation_indeterminate", "evidence"),
+        ):
+            self.failure(replace(changed, commands=(*changed.commands[:-1], replace(later, **fields))),
+                basis, domain)
+
     def test_exploratory_resume_rejects_missing_or_contradictory_evidence(self):
         capture = self.exploratory_capture()
         for operation in ("repository_analyze", "checkpoint_record", "materiality_review", "repository_understanding"):

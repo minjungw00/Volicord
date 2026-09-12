@@ -36,7 +36,7 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     context = output["additionalContext"]
-    assert len(context.encode("utf-8")) < 3072
+    assert len(context.encode("utf-8")) < 4096
     assert "Record only observed outcomes; retain no raw arguments" in context
     assert "exact transient invocation and numeric exit/termination observable for the same execution through polling" in context
     assert "For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation" in context
@@ -44,6 +44,13 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert "Use standalone bounded verification for unambiguous terminal evidence" in context
     assert "compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence" in context
     assert "No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation" in context
+    assert "No-write research/prototype conclusions using execution need a completed bounded scratch experiment" in context
+    assert "exact invocation and actual numeric exit/termination from that execution" in context
+    assert "Diagnostics may precede it" in context
+    assert "afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint" in context
+    assert "After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion" in context
+    assert "Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run" in context
+    assert "Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation" in context
     assert "call decision_record promptly" in context
     assert "existing valid presentation_receipt_id" in context
     assert "exact current user_turn" in context
