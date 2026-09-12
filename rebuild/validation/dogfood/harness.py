@@ -8682,13 +8682,9 @@ def repository_investigation_sequences(
 
 
 def equivalent_discovery_basis(capture: CodexCapture, earlier: ToolCall, later: ToolCall) -> bool:
-    """Reuse investigation only for an exact typed choice graph on the same observed source state."""
-    if earlier.completion_sequence >= later.sequence:
-        return False
-    if any(earlier.sequence < item.sequence < later.completion_sequence
-           for item in meaningful_work_path_observations(capture)) or any(
-        earlier.sequence < issue.sequence < later.completion_sequence and issue.reason == "malformed_file_change"
-        for issue in capture.evidence_transport_issues):
+    """Reuse investigation only with production observation equality and exact typed semantics."""
+    if (earlier.outcome != "succeeded" or later.outcome != "succeeded"
+        or earlier.completion_sequence >= later.sequence):
         return False
     project = later.arguments.get("project_id")
     goal = later.arguments.get("goal_context_id")
@@ -8698,30 +8694,72 @@ def equivalent_discovery_basis(capture: CodexCapture, earlier: ToolCall, later: 
         return False
     bases = []
     for discovery in (earlier, later):
+        analysis_id = discovery.arguments.get("baseline_analysis_snapshot_id")
+        if not isinstance(analysis_id, str) or not re.fullmatch(r"[0-9a-f]{64}", analysis_id):
+            return False
         candidates = [c for c in capture.successful_calls("repository_analyze")
-            if c.result.get("analysis_snapshot_id") == discovery.arguments.get("baseline_analysis_snapshot_id")
+            if c.result.get("analysis_snapshot_id") == analysis_id
             and c.arguments.get("project_id") == project and c.result.get("project_id") == project
             and c.completion_sequence < discovery.sequence]
         if len(candidates) != 1:
             return False
-        bases.append(candidates[0])
-    # An analysis identity may change while its exact repository/source basis stays fixed.
-    # A fresh Source or snapshot alone does not prove content equivalence.
-    for field in ("repository_snapshot_id", "repository_source_id"):
-        if not nonempty_string(bases[0].result.get(field)) or bases[0].result[field] != bases[1].result.get(field):
-            return False
+        baseline = candidates[0]
+        for field, pattern in (("repository_source_id", r"[0-9a-f]{32}"),
+                               ("repository_snapshot_id", r"[0-9a-f]{64}"),
+                               ("repository_observation_basis", r"sha256:[0-9a-f]{64}")):
+            value = baseline.result.get(field)
+            if not isinstance(value, str) or not re.fullmatch(pattern, value):
+                return False
+        bases.append(baseline)
+    # Fresh observation identities neither establish nor invalidate state equivalence.
+    if bases[0].result["repository_observation_basis"] != bases[1].result["repository_observation_basis"]:
+        return False
+    if bases[0].call_id != bases[1].call_id and earlier.completion_sequence >= bases[1].sequence:
+        return False
+    # Include the original observation/investigation interval, not only rediscovery.
+    start = bases[0].sequence
+    if any(start < item.sequence < later.completion_sequence
+           for item in meaningful_work_path_observations(capture)) or any(
+        start <= issue.sequence <= later.completion_sequence
+        and issue.reason != "command_completion_indeterminate"
+        for issue in capture.evidence_transport_issues):
+        return False
+
+    def normalize_repository_source(value, source):
+        if isinstance(value, dict):
+            return {key: [({"repository_observation_source": True} if item == source else item)
+                          for item in item_value]
+                    if key in {"source_ids", "source_basis"} and isinstance(item_value, list)
+                    else normalize_repository_source(item_value, source)
+                    for key, item_value in value.items()}
+        if isinstance(value, list):
+            return [normalize_repository_source(item, source) for item in value]
+        return value
+
     graphs = []
     for discovery, baseline in zip((earlier, later), bases):
-        choices = indexed_engineering_choices(discovery.arguments.get("choices"))
-        if choices is None or any(c.get("source_ids") != [baseline.result["repository_source_id"]]
-                                  for c in choices.values()):
+        source = baseline.result["repository_source_id"]
+        try:
+            choices = indexed_engineering_choices(discovery.arguments.get("choices"))
+            if choices is None or any(source not in c["source_ids"]
+                or not all(isinstance(item, str) and re.fullmatch(r"[0-9a-f]{32}", item)
+                           for item in c["source_ids"])
+                or len(set(c["source_ids"])) != len(c["source_ids"])
+                for c in choices.values()):
+                return False
+            if not material_boundary_review_facts(discovery.arguments.get("material_boundary_review"), choices, source)[0]:
+                return False
+            if not interaction_review_facts(discovery.arguments.get("interaction_review"), choices, source)[0]:
+                return False
+            # Normalize only typed repository Source links after grounding in this exact analysis.
+            # All unrelated Sources, typed IDs and material semantics remain exact. Readiness may advance.
+            graph = {"choices": {key: {k: v for k, v in value.items() if k != "evidence_state"}
+                                 for key, value in choices.items()},
+                     "material_boundary_review": discovery.arguments["material_boundary_review"],
+                     "interaction_review": discovery.arguments["interaction_review"]}
+            graphs.append(json.dumps(normalize_repository_source(graph, source), sort_keys=True, allow_nan=False))
+        except (KeyError, TypeError, ValueError):
             return False
-        # Exact typed IDs, alternatives, dimensions, relations and Source links are mandatory.
-        # Evidence readiness can advance; similar prose never establishes identity.
-        graphs.append({"choices": {key: {k: v for k, v in value.items() if k != "evidence_state"}
-                                    for key, value in choices.items()},
-                       "material_boundary_review": discovery.arguments.get("material_boundary_review"),
-                       "interaction_review": discovery.arguments.get("interaction_review")})
     return graphs[0] == graphs[1]
 
 
@@ -8734,7 +8772,8 @@ def originating_discovery_boundary(capture: CodexCapture, discovery: ToolCall,
     if not candidates or candidates[-1].call_id != discovery.call_id:
         return None
     ids = [c.result.get("discovery_candidate_id") for c in candidates]
-    if len(ids) != len(set(ids)) or any(a.completion_sequence >= b.sequence
+    if (not all(isinstance(identity, str) and re.fullmatch(r"[0-9a-f]{32}", identity) for identity in ids)
+        or len(ids) != len(set(ids))) or any(a.completion_sequence >= b.sequence
                                       for a, b in zip(candidates, candidates[1:])):
         return None
     origin = discovery
@@ -11596,6 +11635,7 @@ def real_session_fixture(
     resume_repository_source = "14" * 16
     resume_current_analysis = "15" * 32
     resume_current_repository = "16" * 32
+    resume_current_repository_source = "c3" * 16
     resume_checkpoint = "17" * 16
     review_candidate = "18" * 16
     resume_review_candidate = "19" * 16
@@ -12213,6 +12253,7 @@ def real_session_fixture(
                 "analysis_snapshot_id": baseline_analysis,
                 "repository_snapshot_id": baseline_repository,
                 "repository_source_id": repository_source,
+                "repository_observation_basis": "sha256:" + "a1" * 32,
             },
         ),
         mcp_call(
@@ -12946,6 +12987,7 @@ def real_session_fixture(
                 "analysis_snapshot_id": resume_baseline_analysis,
                 "repository_snapshot_id": resume_baseline_repository,
                 "repository_source_id": resume_repository_source,
+                "repository_observation_basis": "sha256:" + "b2" * 32,
             },
         ),
         mcp_call(
@@ -13117,7 +13159,8 @@ def real_session_fixture(
                 "project_id": project,
                 "analysis_snapshot_id": resume_current_analysis,
                 "repository_snapshot_id": resume_current_repository,
-                "repository_source_id": resume_repository_source,
+                "repository_source_id": resume_current_repository_source,
+                "repository_observation_basis": "sha256:" + "c3" * 32,
             },
         ),
         command_call(resume_turn, resume_verification_call, resume_verification_command),

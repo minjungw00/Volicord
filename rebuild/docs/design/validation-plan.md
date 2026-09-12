@@ -1623,16 +1623,25 @@ inspection without usable timely completion or bounded content is indeterminate;
 inspection is missing. Numeric exit and termination fields are never synthesized.
 
 Hidden investigation belongs to the originating material choice. A later serialized re-materialization
-may retain it only across an exact typed choice graph (choice/alternative identities, dimensions,
-consequences, relations, scope and Source links) on the same non-empty repository snapshot and
-repository Source identity. Analysis identity and evidence readiness may advance independently.
-No intervening material mutation or ambiguous discovery/baseline correlation is permitted. A new
-choice, dimension, alternative, consequence or changed repository/source basis requires timely
-investigation on the new basis. Similar prose and absence of recorded writes alone do not prove
-source equivalence; a fresh Source/snapshot with no correlated content-equivalence evidence cannot
-inherit investigation. The earliest equivalent discovery still fails if it preceded investigation,
-even when later discovery was preceded by redundant research. This evidence rule does not change
-canonical Inquiry or Decision applicability.
+may retain it only when both exact Project/Goal-correlated `repository_analyze` calls return equal,
+valid `repository_observation_basis` values under the Repository Intelligence owner contract. Fresh
+repository Source, Repository Snapshot and Analysis Snapshot identities neither establish nor refute
+observation equivalence. Each Discovery must be grounded in its own analysis's repository Source.
+Only that proven Source reference in typed `source_ids`/`source_basis` links is normalized before exact
+comparison of the choice graph, stable choice/alternative identities, dimensions, consequences,
+relationships, material boundary and interaction meaning. Unrelated Source identities remain exact;
+prose similarity never establishes equivalence. Evidence readiness may advance independently.
+No intervening material mutation (including the originating observation/investigation interval),
+malformed evidence or ambiguous discovery/baseline correlation is permitted. A missing, malformed or
+different basis, new choice/dimension/alternative/consequence or unrelated Source substitution requires
+timely investigation on the new basis. Absence of recorded writes alone cannot prove equivalence.
+The earliest equivalent discovery still fails if it preceded investigation, even when later discovery
+was preceded by redundant research. Maintained frontier fixtures use fresh Sources and Source-bound
+snapshots with equal production-format observation bases, and cover these negative controls.
+Historical rollout evidence without this field remains fail-closed and must never be supplemented
+with a synthesized basis. Production integration tests and sanitized fresh-Source regressions own
+this proof; old campaign replay is diagnostic only. This evidence rule does not change canonical
+Inquiry or Decision applicability.
 
 Terminal verification uses explicit inspection/report/validation/unknown roles. Supported validation
 entry points and bounded shell/env/focused wrappers are selected; arbitrary commands are not validation.
