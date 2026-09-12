@@ -663,6 +663,7 @@ impl LocalOperations {
                 omitted_scopes,
             },
             value: Some(AnalysisOutcome {
+                repository_observation_basis: repository.observation_equivalence_basis(&analysis),
                 repository,
                 analysis,
                 stored_at,
@@ -4613,16 +4614,23 @@ mod performance_tests {
             .initialize_project("Reuse", Some(&root))?
             .project
             .id;
-        let baseline = operations
+        let baseline_outcome = operations
             .analyze(project, Vec::new())?
             .value
-            .ok_or("baseline")?
-            .analysis;
-        let current = operations
-            .analyze_with_previous(project, Vec::new(), Some(&baseline))?
+            .ok_or("baseline")?;
+        let baseline = &baseline_outcome.analysis;
+        let current_outcome = operations
+            .analyze_with_previous(project, Vec::new(), Some(baseline))?
             .value
-            .ok_or("current")?
-            .analysis;
+            .ok_or("current")?;
+        let current = &current_outcome.analysis;
+        assert!(baseline_outcome.repository_observation_basis.is_some());
+        assert_eq!(
+            baseline_outcome.repository_observation_basis,
+            current_outcome.repository_observation_basis
+        );
+        assert_ne!(baseline.repository_snapshot, current.repository_snapshot);
+        assert_ne!(baseline.identity, current.identity);
         assert_eq!(current.refresh.parsed_file_count, 0);
         assert_eq!(current.refresh.reused_file_count, 2);
         assert_ne!(baseline.repository_source, current.repository_source);
@@ -4631,11 +4639,16 @@ mod performance_tests {
             .iter()
             .all(|fact| fact.entity.source == current.repository_source));
         fs::write(root.join("b.rs"), "pub fn changed_b() -> i32 { 3 }\n")?;
-        let changed = operations
-            .analyze_with_previous(project, Vec::new(), Some(&current))?
+        let changed_outcome = operations
+            .analyze_with_previous(project, Vec::new(), Some(current))?
             .value
-            .ok_or("changed")?
-            .analysis;
+            .ok_or("changed")?;
+        let changed = &changed_outcome.analysis;
+        assert!(changed_outcome.repository_observation_basis.is_some());
+        assert_ne!(
+            current_outcome.repository_observation_basis,
+            changed_outcome.repository_observation_basis
+        );
         assert_eq!(changed.refresh.parsed_file_count, 1);
         assert_eq!(changed.refresh.reused_file_count, 1);
         assert!(changed

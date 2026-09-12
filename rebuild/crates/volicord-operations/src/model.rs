@@ -234,6 +234,8 @@ pub enum ProjectResolution {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AnalysisOutcome {
+    /// Source-independent equality evidence; absent when observation is incomplete.
+    pub repository_observation_basis: Option<String>,
     pub repository: RepositorySnapshot,
     pub analysis: AnalysisSnapshot,
     pub stored_at: PathBuf,

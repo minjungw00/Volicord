@@ -63,6 +63,29 @@ fresh repository observation `Source`를 먼저 canonical로 기록하고, 성�
 Snapshot과 Analysis Snapshot은 모두 그 exact Source를 참조한다. Source 기록이
 실패하면 해당 scan을 current Derived State로 publish하지 않는다.
 
+### Repository observation equivalence
+
+Repository Intelligence owns `repository_observation_basis`, an optional bounded local
+Derived fingerprint exposed by the production `repository_analyze` result. Its wire value is
+`sha256:` followed by 64 lowercase hexadecimal digits. Equal values prove equality only within
+the maintained observation boundary: Project identity, portable source boundary, inventory content
+fingerprint and included/excluded areas, Git HEAD/reference, typed worktree status fingerprint and
+dirty paths, and analysis format/capability/language/area/coverage/adapter/analyzer boundaries.
+The fingerprint is domain-separated and derived from those already observed typed values; it
+contains no absolute path, source body or credentials. Source identity, Source-bound Repository/
+Analysis Snapshot identities, observation time, and refresh-versus-reuse bookkeeping are excluded.
+Fresh canonical repository Sources and Source-bound snapshot identities remain unchanged.
+
+Incomplete inventory or missing Git observation for a Git worktree yields no equivalence basis
+(`null`), even if the same incomplete result is repeated. Analyzer limitations remain explicit in
+the capability boundary and do not turn unsupported languages into failed inventory. Equality
+covers observed included content and maintained metadata, not excluded/unavailable contents,
+unobserved external state, exclusive actor attribution or an atomic filesystem snapshot. A
+consumer must still check its own Project/Goal, Source grounding, typed semantics and intervening
+mutation evidence. Missing/invalid/different values cannot establish equivalence; absence of
+observed writes never substitutes for this basis. This is equality evidence, not canonical Source
+identity, Decision applicability, or a second analysis path.
+
 ### 2.2 Analysis Snapshot
 
 `Analysis Snapshot`은 정확히 하나의 Repository Snapshot에 대해 수행한 capability

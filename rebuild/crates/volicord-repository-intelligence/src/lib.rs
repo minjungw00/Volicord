@@ -10,6 +10,7 @@ mod grounding;
 mod identity;
 mod inventory;
 mod model;
+mod observation;
 mod search;
 mod semantic;
 mod structural;

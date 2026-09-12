@@ -231,6 +231,78 @@ fn snapshot_identity_and_serialization_are_path_independent_and_repeatable(
 }
 
 #[test]
+fn observation_equivalence_preserves_scope_across_fresh_sources() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let other_root = tempfile::tempdir()?;
+    copy_tree(&fixture("polyglot"), root.path())?;
+    copy_tree(&fixture("polyglot"), other_root.path())?;
+    let (repository, analysis) = inventory_repository(request(root.path())?)?;
+    let basis = repository
+        .observation_equivalence_basis(&analysis)
+        .ok_or("basis missing")?;
+    let fresh = support::repository_grounding(0x11, 0x33)?;
+    let fresh_request = InventoryRequest::new(
+        other_root.path(),
+        &fresh.grounding,
+        fresh.source_id,
+        OBSERVED_AT + 1,
+    )?;
+    let (fresh_repository, fresh_analysis) = inventory_repository(fresh_request)?;
+    assert_ne!(
+        repository.repository_source,
+        fresh_repository.repository_source
+    );
+    assert_ne!(repository.identity, fresh_repository.identity);
+    assert_ne!(analysis.identity, fresh_analysis.identity);
+    assert_eq!(
+        Some(basis.clone()),
+        fresh_repository.observation_equivalence_basis(&fresh_analysis)
+    );
+    assert!(
+        repository
+            .observation_equivalence_basis(&fresh_analysis)
+            .is_none(),
+        "mismatched Source-bound snapshots"
+    );
+
+    let mut excluded = request(root.path())?;
+    excluded.excluded_paths = vec!["python".into()];
+    let (excluded_repository, excluded_analysis) = inventory_repository(excluded)?;
+    assert_ne!(
+        Some(basis.clone()),
+        excluded_repository.observation_equivalence_basis(&excluded_analysis)
+    );
+    let mut changed = analysis.clone();
+    changed.capabilities[0]
+        .adapter
+        .as_mut()
+        .ok_or("inventory adapter")?
+        .version
+        .push_str("-changed");
+    assert_ne!(
+        Some(basis.clone()),
+        repository.observation_equivalence_basis(&changed)
+    );
+    changed = analysis.clone();
+    changed.repository_worktree =
+        volicord_repository_intelligence::RepositoryWorktreeObservation::Git {
+            status_fingerprint: format!("sha256:{}", "0".repeat(64)),
+            dirty_paths: vec![],
+        };
+    assert!(
+        repository.observation_equivalence_basis(&changed).is_none(),
+        "missing Git observation"
+    );
+    fs::write(root.path().join("python/formatter.py"), "VALUE = 2\n")?;
+    let (changed_repository, changed_analysis) = inventory_repository(request(root.path())?)?;
+    assert_ne!(
+        Some(basis),
+        changed_repository.observation_equivalence_basis(&changed_analysis)
+    );
+    Ok(())
+}
+
+#[test]
 fn exclusions_binary_vendor_generated_and_ignored_scopes_remain_visible(
 ) -> Result<(), Box<dyn Error>> {
     let repository = tempfile::tempdir()?;
@@ -360,6 +432,7 @@ fn unavailable_entry_does_not_erase_successful_inventory() -> Result<(), Box<dyn
     symlink("missing-target", repository.path().join("broken-link"))?;
 
     let (snapshot, analysis) = inventory_repository(request(repository.path())?)?;
+    assert!(snapshot.observation_equivalence_basis(&analysis).is_none());
     assert!(analysis
         .inventory
         .entries

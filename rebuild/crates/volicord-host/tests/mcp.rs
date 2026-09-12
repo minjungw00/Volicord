@@ -3992,6 +3992,100 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
 }
 
 #[test]
+fn repository_analysis_observation_basis_tracks_content_git_and_worktree_state() {
+    let (temporary, mut adapter, project) = setup();
+    let repository = temporary.path().join("repository");
+    fs::write(repository.join("main.py"), "VALUE = 1\n").expect("fixture");
+    let analyze = |adapter: &mut HostAdapter| {
+        let response = call(adapter, "repository_analyze", json!({"project_id":project}));
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        let result = structured(&response);
+        let basis = result["repository_observation_basis"]
+            .as_str()
+            .expect("complete observation basis");
+        assert_eq!(basis.len(), 71);
+        assert!(basis.starts_with("sha256:"));
+        assert!(basis[7..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+        result.clone()
+    };
+    let first = analyze(&mut adapter);
+    let repeated = analyze(&mut adapter);
+    for identity in [
+        "repository_source_id",
+        "repository_snapshot_id",
+        "analysis_snapshot_id",
+    ] {
+        assert_ne!(first[identity], repeated[identity]);
+    }
+    assert_eq!(
+        first["repository_observation_basis"],
+        repeated["repository_observation_basis"]
+    );
+    fs::write(repository.join("main.py"), "VALUE = 2\n").expect("same-size content change");
+    let changed = analyze(&mut adapter);
+    assert_ne!(
+        first["repository_observation_basis"],
+        changed["repository_observation_basis"]
+    );
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .current_dir(&repository)
+            .args(args)
+            .output()
+            .expect("Git");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    ]);
+    let clean = analyze(&mut adapter);
+    assert_ne!(
+        changed["repository_observation_basis"],
+        clean["repository_observation_basis"]
+    );
+    assert_eq!(
+        clean["repository_observation_basis"],
+        analyze(&mut adapter)["repository_observation_basis"]
+    );
+    git(&["checkout", "-qb", "another-reference"]);
+    let branch = analyze(&mut adapter);
+    assert_ne!(
+        clean["repository_observation_basis"],
+        branch["repository_observation_basis"]
+    );
+    fs::write(repository.join("main.py"), "VALUE = 3\n").expect("dirty content");
+    let unstaged = analyze(&mut adapter);
+    assert_ne!(
+        branch["repository_observation_basis"],
+        unstaged["repository_observation_basis"]
+    );
+    git(&["add", "main.py"]);
+    let staged = analyze(&mut adapter);
+    assert_ne!(
+        unstaged["repository_observation_basis"], staged["repository_observation_basis"],
+        "index status changes without a content change"
+    );
+    assert_eq!(
+        staged["repository_observation_basis"],
+        analyze(&mut adapter)["repository_observation_basis"]
+    );
+}
+
+#[test]
 fn repository_analysis_preserves_typed_degradation_and_bounded_diagnostics() {
     let (temporary, mut adapter, project) = setup();
     let repository = temporary.path().join("repository");

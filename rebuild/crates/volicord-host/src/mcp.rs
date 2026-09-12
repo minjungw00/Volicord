@@ -416,6 +416,10 @@ impl HostAdapter {
             .value
             .as_ref()
             .map(|value| value.analysis.repository_source.identity().to_string());
+        let repository_observation_basis = result
+            .value
+            .as_ref()
+            .and_then(|value| value.repository_observation_basis.as_deref());
         let analysis_summary = result
             .value
             .as_ref()
@@ -434,7 +438,7 @@ impl HostAdapter {
                 .map_err(operation_error)?,
         };
         Ok(with_workflow(
-            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"completed_scopes":result.partial.completed_scopes,"partial_scopes":result.partial.partial_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"capability_reports":analysis_summary["capability_reports"],"diagnostics":analysis_summary["diagnostics"],"diagnostics_omitted_count":analysis_summary["diagnostics_omitted_count"],"diagnostic":result.diagnostic}),
+            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"repository_observation_basis":repository_observation_basis,"completed_scopes":result.partial.completed_scopes,"partial_scopes":result.partial.partial_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"capability_reports":analysis_summary["capability_reports"],"diagnostics":analysis_summary["diagnostics"],"diagnostics_omitted_count":analysis_summary["diagnostics_omitted_count"],"diagnostic":result.diagnostic}),
             workflow,
         ))
     }
@@ -1945,7 +1949,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (
-            "Run authorized local repository inventory, structural, ecosystem, and source-semantic analysis. In every fresh initialized or resumed meaningful work session, call this after initialization or successful Recall and before the first ordinary repository write; retain the returned analysis_snapshot_id as that bounded session's pre-work Checkpoint baseline. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. Its source-semantic analyzer is local and performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
+            "Run authorized local repository inventory, structural, ecosystem, and source-semantic analysis. In every fresh initialized or resumed meaningful work session, call this after initialization or successful Recall and before the first ordinary repository write; retain the returned analysis_snapshot_id as that bounded session's pre-work Checkpoint baseline. This operation creates local repository-observation Sources and publishes analysis state only in the local Runtime Home; use the returned repository_source_id as the canonical source_ids basis for source-grounded repository research. The optional repository_observation_basis is bounded equality evidence for observed repository state and analysis scope across fresh Sources; null cannot establish equivalence. Its source-semantic analyzer is local and performs no background-provider or network transmission. background_semantic_operation is the separate explicit provider boundary.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
