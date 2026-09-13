@@ -12,9 +12,7 @@ import argparse
 from collections import Counter
 import copy
 from dataclasses import dataclass
-import gzip
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -30,6 +28,7 @@ from typing import Any, Callable
 import harness
 import document_realization
 import machine_findings
+import review_operations
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -3453,110 +3452,6 @@ def tar_info(name: str, size: int) -> tarfile.TarInfo:
     return info
 
 
-def build_review_package(root: Path, output: Path, *, include_raw: bool = False) -> Path:
-    campaign = load_campaign_for_mutation(root)
-    verify_inventory(root)
-    manifest = root / "repositories.json"
-    if not manifest.is_file():
-        raise CampaignError("finalize the repository manifest before review packaging")
-    campaign_projection = {
-        "kind": campaign["kind"],
-        "schema_version": campaign["schema_version"],
-        "campaign_id": campaign["campaign_id"],
-        "candidate_head": campaign["candidate_head"],
-        "document_language": campaign.get("document_language", "en"),
-        "viewer_locale": campaign.get("viewer_locale", "en"),
-        "terminal_outcome": campaign["terminal_outcome"],
-        "cycles": {
-            key: {
-                field: value[field]
-                for field in (
-                    "repository_class",
-                    "cycle",
-                    "behavior_class",
-                    "repository_revision",
-                    "state",
-                    "project_id",
-                    "bundle_sha256",
-                )
-                if field in value
-            }
-            for key, value in sorted(campaign["cycles"].items())
-        },
-        "repository_and_hook_trust": "user_controlled_not_automated",
-    }
-    preparation = read_json(root / "preparation.json")
-    preparation["candidate_local_install"] = "campaign_private_install_completed"
-    files: dict[str, bytes] = {
-        "campaign.json": (json.dumps(campaign_projection, indent=2, sort_keys=True) + "\n").encode(),
-        "preparation.json": (json.dumps(preparation, indent=2, sort_keys=True) + "\n").encode(),
-        "repositories.json": manifest.read_bytes(),
-        "evidence-inventory.json": inventory_path(root).read_bytes(),
-        "operator/RUN-SHEET.md": (root / "operator/RUN-SHEET.md").read_bytes(),
-    }
-    inventory = load_inventory(root)
-    review_index: list[dict[str, Any]] = []
-    for name in sorted(inventory["artifacts"]):
-        if name in files or name == "repository-input.json":
-            continue
-        if not safe_archive_artifact(name, include_raw=include_raw):
-            continue
-        path = root / name
-        files[name] = path.read_bytes()
-        if name.startswith("evaluator/descriptors/") and name.endswith(".json"):
-            descriptor = read_json(path)
-            state = campaign["cycles"][cycle_key(
-                descriptor["repository_class"], descriptor["cycle"]
-            )]
-            review_slot_id = state["review_slot_id"]
-            review_name = f"behavior-reviews/{review_slot_id}.json"
-            review_bytes = (json.dumps(descriptor["behavior_review"], indent=2, sort_keys=True) + "\n").encode()
-            files[review_name] = review_bytes
-            review_index.append({
-                "review_slot_id": review_slot_id,
-                "repository_class": descriptor["repository_class"],
-                "logical_cycle": descriptor["cycle"],
-                "expected_behavior_class": descriptor["behavior_class"],
-                "derived_archive_entry": review_name,
-                "authoritative_descriptor": name,
-                "sha256": hashlib.sha256(review_bytes).hexdigest(),
-                "blind_review_preparation": (
-                    f"reviewer/preparations/{review_slot_id}.json"
-                ),
-                "provisional_review": (
-                    f"reviewer/provisional/{review_slot_id}.json"
-                ),
-            })
-    if len(review_index) != QUALIFICATION_CYCLE_COUNT:
-        raise CampaignError(
-            f"review package requires {QUALIFICATION_CYCLE_COUNT} completed descriptors "
-            "and behavior reviews"
-        )
-    files["behavior-reviews/index.json"] = (
-        json.dumps({"kind": "phase8_behavior_review_index", "reviews": review_index,
-            "authority_obligation_contract": harness.authority_obligations.assessment_contract(),
-            "authority_review_evidence": "Resolve each private descriptor field/hash from authoritative_descriptor; inspect exact work/resume captures in the separate private raw archive and canonical bundle in this package. Complete every obligation, additional outcome and coverage basis after execution."}, indent=2, sort_keys=True) + "\n"
-    ).encode()
-    for name, content in files.items():
-        lowered = content.lower()
-        if any(marker.encode() in lowered for marker in harness.SECRET_MARKERS):
-            raise CampaignError(f"review artifact contains a prohibited secret marker: {name}")
-    for name in files:
-        if not safe_archive_artifact(name, include_raw=include_raw):
-            raise CampaignError(f"prohibited review artifact selected: {name}")
-    output = output.resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists():
-        raise CampaignError("review archive destination already exists")
-    with output.open("xb") as raw:
-        with gzip.GzipFile(fileobj=raw, mode="wb", filename="", mtime=0) as compressed:
-            with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
-                for name, content in sorted(files.items()):
-                    archive.addfile(tar_info(name, len(content)), io.BytesIO(content))
-    output.chmod(0o600)
-    return output
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     sub = result.add_subparsers(dest="command", required=True)
@@ -3582,6 +3477,19 @@ def parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--campaign-root", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
+    prepare_qualitative = sub.add_parser("prepare-qualitative-review")
+    validate_qualitative = sub.add_parser("validate-qualitative-review")
+    record_qualitative = sub.add_parser("record-qualitative-review")
+    prepare_qualitative.add_argument("--campaign-root", required=True)
+    prepare_qualitative.add_argument("--output", required=True)
+    prepare_qualitative.add_argument("--reviewer-kind", choices=("agent", "human"), required=True)
+    prepare_qualitative.add_argument("--review-session-id")
+    prepare_qualitative.add_argument("--reviewer-identity", help="JSON file with explicit unverified identity claims")
+    prepare_qualitative.add_argument("--machine-evaluation")
+    prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
+    for operation in (validate_qualitative, record_qualitative):
+        operation.add_argument("--review-root", required=True)
+        operation.add_argument("--draft", required=True)
     for command in (prepare_reviewer, seal, activate, collect_w, collect_r):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
@@ -3616,15 +3524,14 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--realization-id", required=True)
         command.add_argument("--draft", required=True)
     finalize.add_argument("--campaign-root", required=True)
-    package.add_argument("--campaign-root", required=True)
+    package.add_argument("--review-root", required=True)
     package.add_argument("--output", required=True)
-    package.add_argument("--include-raw-rollouts", action="store_true")
     return result
 
 
 def main() -> int:
     args = parser().parse_args()
-    root = Path(args.campaign_root).resolve()
+    root = Path(getattr(args, "campaign_root", None) or args.review_root).resolve()
     if args.command == "prepare":
         value = prepare_campaign(root, args.campaign_id, args.candidate_head, Path(args.repositories).resolve())
     elif args.command == "prepare-review":
@@ -3679,8 +3586,17 @@ def main() -> int:
         value = evaluate_campaign(root)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
+    elif args.command == "prepare-qualitative-review":
+        value = review_operations.prepare(root, Path(args.output), reviewer_kind=args.reviewer_kind,
+            session_id=args.review_session_id,
+            identity=read_json(Path(args.reviewer_identity)) if args.reviewer_identity else None,
+            evaluation_path=Path(args.machine_evaluation) if args.machine_evaluation else None,
+            include_raw=args.include_raw_rollouts)
+    elif args.command in {"validate-qualitative-review", "record-qualitative-review"}:
+        operation = review_operations.validate if args.command == "validate-qualitative-review" else review_operations.record
+        value = operation(root, Path(args.draft))
     else:
-        value = {"archive": str(build_review_package(root, Path(args.output), include_raw=args.include_raw_rollouts))}
+        value = review_operations.package_review(root, Path(args.output))
     print(json.dumps(value, indent=2, sort_keys=True))
     return 0
 

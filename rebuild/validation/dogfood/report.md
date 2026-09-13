@@ -657,3 +657,23 @@ result.
 
 No private campaign path, Runtime Home, raw rollout, prompt, credential,
 source body, or provider payload is maintained in this report.
+
+
+## Evidence-bound qualitative review operations
+
+Use `prepare-qualitative-review --campaign-root ... --output ... --reviewer-kind agent
+--review-session-id ...` (or kind `human`) on an intact immutable evidence set.
+The output must be outside the Campaign. Optional `--machine-evaluation` binds a
+published run without requiring passage; explicit `--include-raw-rollouts` adds
+private exact work/resume bytes. Only bounded concern projections, pinned authority,
+bundles, documents, Viewer snapshots and selected observations enter the package.
+Evaluator-private expected answers and full descriptors are excluded.
+
+The reviewer edits `draft.json`, calls `validate-qualitative-review --review-root ...
+--draft ...` for read-only preflight, and uses `record-qualitative-review` with the
+same arguments to publish exact immutable review bytes and their receipt.
+`package-review --review-root ... --output ...` archives that reviewer package,
+including a verified recorded review when present. These operations share the
+common rubric and validator. Insufficient/unreviewed criteria remain explicit;
+no review result grants Phase 9 approval. See the full maintained workflow and
+limits in [`qualitative-review.md`](../../docs/design/qualitative-review.md).

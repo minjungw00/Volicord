@@ -700,13 +700,8 @@ def main() -> int:
             path.read_text(encoding="utf-8"), str(path), public_campaign_contract
         )
     assert_public_campaign_contract_regressions(public_campaign_contract)
-    if (
-        "review package requires six completed descriptors and behavior reviews"
-        in campaign_source
-        or "review package requires {QUALIFICATION_CYCLE_COUNT} completed descriptors"
-        not in campaign_source
-    ):
-        raise AssertionError("Dogfood review-package diagnostic embeds a stale cycle count")
+    if "def build_review_package(" in campaign_source or "prepare-human-review" in campaign_source:
+        raise AssertionError("superseded campaign/human-only review publication path remains")
     small_rules = definition_value["repository_classes"]["small-python"]
     polyglot_rules = definition_value["repository_classes"]["polyglot-medium"]
     if (
@@ -1212,7 +1207,6 @@ def main() -> int:
                 "collect-batch",
                 "evaluate",
                 "finalize-manifest",
-                "package-review",
             ],
             "rejection_precedes_mutation": True,
             "superseded_recovery_exception": False,
@@ -1222,10 +1216,15 @@ def main() -> int:
         not in batch_contract.get("automatic_cycle_evidence", [])
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
-    human_review = definition_value.get("qualitative_review_contract", {})
+    qualitative_contract = definition_value.get("qualitative_review_contract", {})
+    import review_operations
+    if qualitative_contract.get("workflow") != review_operations.workflow_contract():
+        raise AssertionError("qualitative reviewer workflow/privacy bounds drifted")
+    from review_operations_self_test import run_workflow_tests
+    run_workflow_tests()
     import authority_obligations
     from authority_obligations_self_test import self_test as authority_obligation_self_test
-    if human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract():
+    if qualitative_contract.get("authority_obligation_contract") != authority_obligations.assessment_contract():
         raise AssertionError("maintained authority obligation schema drifted from the human-review consumer")
     required_authority_regressions = {
         "different_wording_same_authority_obligation", "stronger_repository_contract_disproves_concern",
@@ -1233,18 +1232,18 @@ def main() -> int:
         "interaction_unrelated_decisions", "interaction_silent_durability", "interaction_explicit_contract",
         "interaction_accepted_prior_outcome", "interaction_exact_durability_delegation", "interaction_different_question_decomposition",
         "interaction_late_resolution", "interaction_avoided", "interaction_deferred", "interaction_scratch_prototype",
-        "human_review_exposes_interaction_and_planned_commitment_identities",
+        "qualitative_review_exposes_interaction_and_planned_commitment_identities",
     }
     if not required_authority_regressions <= authority_obligation_self_test().keys():
         raise AssertionError("required authority obligation regression scenarios are missing")
-    behavior_criteria = human_review.get("interaction_behavior_criterion_contracts", {})
-    material_grounding = human_review.get("material_completeness_grounding", {})
+    behavior_criteria = qualitative_contract.get("interaction_behavior_criterion_contracts", {})
+    material_grounding = qualitative_contract.get("material_completeness_grounding", {})
     if (
-        human_review.get("artifact_kind") != "dogfood_qualitative_review"
-        or human_review.get("machine_accessibility_may_be_overridden") is not False
-        or human_review.get("sampling_algorithm")
+        qualitative_contract.get("artifact_kind") != "dogfood_qualitative_review"
+        or qualitative_contract.get("machine_accessibility_may_be_overridden") is not False
+        or qualitative_contract.get("sampling_algorithm")
         != "every_collected_cycle"
-        or human_review.get("every_cycle_review_surfaces")
+        or qualitative_contract.get("every_cycle_review_surfaces")
         != [
             "interaction",
             "generated_documents",
@@ -1252,8 +1251,8 @@ def main() -> int:
             "repository_intelligence",
             "cli_usability",
         ]
-        or set(human_review.get("live_viewer_locales", [])) != {"en", "ko"}
-        or set(human_review.get("interaction_behavior_criteria", []))
+        or set(qualitative_contract.get("live_viewer_locales", [])) != {"en", "ko"}
+        or set(qualitative_contract.get("interaction_behavior_criteria", []))
         != {
             "explicit_material_handling_quality",
             "hidden_material_discovery_quality",
@@ -1266,7 +1265,7 @@ def main() -> int:
             "routine_detail_omission",
             "proportional_learning_cost",
         }
-        or set(behavior_criteria) != set(human_review.get("interaction_behavior_criteria", []))
+        or set(behavior_criteria) != set(qualitative_contract.get("interaction_behavior_criteria", []))
         or behavior_criteria.get("explicit_material_handling_quality", {}).get("applies_to")
         != ["explicit_user_owned_decision"]
         or behavior_criteria.get("hidden_material_discovery_quality", {}).get("applies_to")

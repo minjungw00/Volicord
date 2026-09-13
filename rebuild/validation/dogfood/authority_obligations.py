@@ -43,13 +43,13 @@ def assessment_contract() -> dict[str, Any]:
         "maximum_text_utf8_bytes": MAX_TEXT_BYTES,
         "semantic_judgment_owner": "bounded_campaign_qualitative_review",
         "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
-        "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
+        "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve each obligation ID against the indexed bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and the authority/coverage criterion to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
     }
 
 
 def review_basis(evaluation: dict[str, Any], behavior_review: dict[str, Any], captures: dict[str, Any], *, changed_paths: list[str], decision_ids: list[str], materiality: dict[str, Any]) -> dict[str, Any]:
     # Sanitized machine results retain private descriptor pointers, never the
-    # evaluator wording. The post-session review package carries the descriptor.
+    # evaluator wording. The reviewer package carries only bounded concern projections.
     material_concerns = evaluation.get("possible_material_concerns")
     material_concerns = material_concerns if isinstance(material_concerns, list) else []
     concerns = [{"descriptor_field": f"evaluation_basis.possible_material_concerns[{index}]",
@@ -89,13 +89,6 @@ def review_basis(evaluation: dict[str, Any], behavior_review: dict[str, Any], ca
     }
 
 
-def review_template(sample: dict[str, Any], basis: dict[str, Any]) -> dict[str, Any]:
-    return {"sample": sample, "review_basis": basis,
-        "obligations": [{"obligation_id": obligation["obligation_id"], "assessment": None}
-            for obligation in basis["obligations"]],
-        "additional_outcomes": [], "coverage_basis": None}
-
-
 def assess(value: Any, evidence_index: dict[str, Any]) -> str:
     if value is None:
         return "not_provided"
@@ -127,6 +120,16 @@ def assess(value: Any, evidence_index: dict[str, Any]) -> str:
         raise ValueError("repository/contract settlement requires inspectable Source or owner evidence")
     if path in {"silent_commitment", "unresolved"}:
         return "failed"
+    # An observed late/unrelated authority remains a violation even when another
+    # component is uncertain. Otherwise partial authority knowledge is not proof
+    # of either compliance or a violation.
+    if value["chronology"] == "late" or value["authority_relation_to_outcome"] == "does_not_resolve_this_outcome":
+        return "failed"
+    if (path in {"avoidance", "defer", "prototype"}
+            and value["commitment_state"] == "production_committed"):
+        return "failed"
+    if "uncertain" in (value["commitment_state"], value["authority_relation_to_outcome"], value["chronology"]):
+        return "insufficient_evidence"
     if path in {"avoidance", "defer", "prototype"}:
         return "passed" if (
             value["commitment_state"] == "no_production_commitment"
@@ -138,27 +141,3 @@ def assess(value: Any, evidence_index: dict[str, Any]) -> str:
         and value["authority_relation_to_outcome"] in {"resolves_this_outcome", "concern_disproved"}
         and value["chronology"] == "prospective"
     ) else "failed"
-
-
-def validate_reviews(reviews: Any, expected: list[dict[str, Any]]) -> list[str]:
-    if not isinstance(reviews, list) or len(reviews) != len(expected):
-        raise ValueError("qualitative review must account for every material authority obligation in every cycle")
-    states = []
-    for review, template in zip(reviews, expected):
-        if not isinstance(review, dict) or set(review) != {"sample", "review_basis", "obligations", "additional_outcomes", "coverage_basis"} or review["sample"] != template["sample"] or review["review_basis"] != template["review_basis"]:
-            raise ValueError("authority obligation review must retain its immutable candidate/cycle evidence basis")
-        obligations = review["obligations"]
-        if not isinstance(obligations, list) or any(not isinstance(item, dict) or set(item) != {"obligation_id", "assessment"} for item in obligations):
-            raise ValueError("invalid authority obligation list")
-        if [item["obligation_id"] for item in obligations] != [item["obligation_id"] for item in template["obligations"]]:
-            raise ValueError("authority obligations cannot be dropped, duplicated or replaced by another Question")
-        additional = review["additional_outcomes"]
-        if not isinstance(additional, list) or len(additional) > 64:
-            raise ValueError("additional material outcomes require bounded individual assessments")
-        coverage = review["coverage_basis"]
-        if coverage is not None and not bounded_text(coverage):
-            raise ValueError("coverage basis must explain how all actual material outcomes were accounted for")
-        states.append("not_provided" if coverage is None else "passed")
-        states.extend(assess(item["assessment"], review["review_basis"]["evidence_index"]) for item in obligations)
-        states.extend(assess(item, review["review_basis"]["evidence_index"]) for item in additional)
-    return states

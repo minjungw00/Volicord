@@ -2,7 +2,6 @@
 """Sanitized counterfactual review dispositions, not automated semantic truth."""
 from __future__ import annotations
 
-import copy
 import json
 from typing import Any
 from pathlib import Path
@@ -24,16 +23,6 @@ def assessment(path: str = "user_decision", *, expression: str = "Select the pat
         "evidence": [{"evidence_id": "work_capture", "locator": "write event and preceding displayed turn"},
                      {"evidence_id": "canonical_bundle", "locator": "Decision and Source revision for the same path outcome"}],
     }
-
-
-def complete_synthetic_reviews(reviews: list[dict[str, Any]]) -> None:
-    """Explicit fixture review; never called by production campaign helpers."""
-    for review in reviews:
-        review["coverage_basis"] = "Synthetic fixture review covered every actual production outcome and coupled artifact."
-        for obligation in review["obligations"]:
-            value = assessment()
-            value["material_outcome"] = "Sanitized synthetic material outcome " + obligation["obligation_id"]
-            obligation["assessment"] = value
 
 
 def interaction_fixture() -> dict[str, Any]:
@@ -94,40 +83,21 @@ def self_test() -> dict[str, str]:
         pass
     else:
         raise AssertionError("fabricated evidence identity accepted")
-    basis = {"obligations":[{"obligation_id":"path-authority", "initial_concern":"relative-path anchor"}], "evidence_index":index}
-    expected = [authority.review_template({"cycle":1}, basis)]
-    completed = copy.deepcopy(expected)
-    completed[0]["obligations"][0]["assessment"] = assessment()
-    completed[0]["coverage_basis"] = "Inspected complete synthetic change and all coupled artifacts."
-    assert authority.validate_reviews(completed, expected) == ["passed", "passed"]
-    completed[0]["obligations"] = []
-    try:
-        authority.validate_reviews(completed, expected)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("unreviewed material obligation omitted")
     observation = authority.review_basis({}, {}, {"work_capture":"a" * 64}, changed_paths=["executor.py", "test_executor.py"], decision_ids=["rejection-decision"], materiality={
         "engineering_choice_discovery":{"interaction_review":{"outcome_ids":["durable-prefix"]}},
         "pre_work_readiness":{"latest_executable_work_scope":{"paths":["executor.py", "test_executor.py"], "coupled_artifact_review":{"materiality_closure":{"commitments":[{"commitment_id":"whole-input-prevalidation"}]}}}},
     })["implementation_observations"]
     assert observation["interaction_review"]["outcome_ids"] == ["durable-prefix"]
     assert observation["planned_commitment_scope"]["coupled_artifact_review"]["materiality_closure"]["commitments"][0]["commitment_id"] == "whole-input-prevalidation"
-    results["human_review_exposes_interaction_and_planned_commitment_identities"] = "passed"
+    results["qualitative_review_exposes_interaction_and_planned_commitment_identities"] = "passed"
     fixture = interaction_fixture()
-    initial = {"obligations":[{"obligation_id": f"other-{i}", "initial_concern": outcome} for i, outcome in enumerate(fixture["resolved_other_outcomes"])], "evidence_index":index}
-    expected = [authority.review_template({"cycle":1}, initial)]
     for case in fixture["cases"]:
-        completed = copy.deepcopy(expected)
-        completed[0]["coverage_basis"] = "Inspected all implementation and test changes, including safe-then-unsafe input durability beyond the initially named choices"
-        for obligation, outcome in zip(completed[0]["obligations"], fixture["resolved_other_outcomes"]):
+        # Other valid Decisions cannot settle this independent outcome.
+        for outcome in fixture["resolved_other_outcomes"]:
             value = assessment()
             value["material_outcome"] = outcome
-            obligation["assessment"] = value
-        completed[0]["additional_outcomes"] = [interaction_assessment(case)]
-        states = authority.validate_reviews(completed, expected)
-        assert states[:-1] == ["passed"] * (len(fixture["resolved_other_outcomes"]) + 1)
-        assert states[-1] == case["expected"], case["id"]
+            assert authority.assess(value, index) == "passed"
+        assert authority.assess(interaction_assessment(case), index) == case["expected"], case["id"]
         results["interaction_" + case["id"]] = "passed"
     return results
 

@@ -235,7 +235,7 @@
       "maximum_text_utf8_bytes": 8192,
       "semantic_judgment_owner": "bounded_campaign_qualitative_review",
       "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
-      "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
+      "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve each obligation ID against the indexed bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and the authority/coverage criterion to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
     },
     "artifact_kind": "dogfood_qualitative_review",
     "states": [
@@ -459,6 +459,31 @@
       "context_recovery": [
         "goal_decision_rationale_state_and_open_questions"
       ]
+    },
+    "workflow": {
+      "operations": [
+        "prepare-qualitative-review",
+        "validate-qualitative-review",
+        "record-qualitative-review",
+        "package-review"
+      ],
+      "input": "immutable_evidence_set_and_optional_machine_run",
+      "campaign_mutation": false,
+      "review_root": "separate_from_campaign",
+      "draft": "draft.json",
+      "recorded": "recorded/review.json",
+      "preflight_mutation": "none",
+      "publication": "exclusive_atomic_directory",
+      "raw_rollouts": "explicit_opt_in_private_surface",
+      "evaluator_private_answers": "excluded",
+      "artifact_limits": {
+        "files": 512,
+        "file_bytes": 33554432,
+        "raw_file_bytes": 134217728,
+        "package_bytes": 536870912,
+        "draft_bytes": 8388608
+      },
+      "qualification_authority": false
     }
   },
   "fixture_regression_command": [
@@ -1079,8 +1104,7 @@
           "collect-resume",
           "collect-batch",
           "evaluate",
-          "finalize-manifest",
-          "package-review"
+          "finalize-manifest"
         ],
         "rejection_precedes_mutation": true,
         "superseded_recovery_exception": false,

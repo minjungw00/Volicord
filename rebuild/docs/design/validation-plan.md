@@ -1349,8 +1349,9 @@ isolation이며 evaluator file을 의도적으로 여는 user에 대한 OS secur
 Prepared campaign state에 의존하는 모든 mutating helper transition은 shared candidate guard를
 먼저 적용한다. Campaign에 bind된 candidate가 actual current `HEAD`와 다르거나 qualifying
 worktree가 clean하지 않으면 review preparation/record/reveal/seal, activation, work/resume/batch
-collection, manifest/review package와 human-review publication을 어떤 artifact mutation보다 먼저
-거부한다. Superseded campaign을 다른 candidate에서 reprocess하는 예외는 없다. Immutable predecessor
+collection, machine evaluation과 manifest publication을 어떤 Campaign artifact mutation보다 먼저
+거부한다. Separate qualitative review preparation/package/record는 Campaign을 mutate하지 않으므로
+이 guard 대상이 아니며 historical evidence-set identity와 current review policy를 별도로 보존한다. Superseded campaign을 다른 candidate에서 reprocess하는 예외는 없다. Immutable predecessor
 evidence의 load, mapping과 reviewer-visible non-mutating validation은 diagnostic 목적으로 계속
 허용하지만 qualification state를 바꾸지 않는다.
 8개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
@@ -1509,14 +1510,14 @@ semantic proof가 아니다. Semantic ask-user invariants는 `requires_bounded_q
 Question wording, count, keyword 또는 similarity로 자동 판정하지 않는다. Hidden repository
 investigation은 필요하지만 multiple choices 또는 coupling이라는 고정 형태를 요구하지 않는다.
 
-Mandatory `authority_obligation_reviews`는 every collected cycle에서 initial concern마다
+Mandatory common `authority/<obligation_id>` criterion은 every collected cycle에서 initial concern마다
 `material_outcome`, `observable_implementation_commitment`, `commitment_state`, `resolution_path`,
 `authority_kind`, bounded `authority_basis`, `authority_relation_to_outcome`, `chronology`와
 `evidence`를 기록한다. Evidence는 immutable capture/bundle hash 또는 pinned owner provenance의
 `evidence_id`와 exact call/turn, Decision revision, file/line 또는 diff hunk `locator`를 인용한다.
 Sanitized automated result는 initial concern text 대신 private descriptor field와 SHA-256만
 보존한다. Reviewer-safe bounded concern projection과 별도 private raw-rollout surface에서
-이를 resolve한다. Full evaluator descriptor와 expected answers는 reviewer instructions가 아니다. 모든 실제 변경과 coupled artifact를 검토한 `coverage_basis`가 필요하고,
+이를 resolve한다. Full evaluator descriptor와 expected answers는 reviewer instructions가 아니다. 모든 실제 변경과 coupled artifact를 검토한 `authority/coverage` criterion의 reasoning이 필요하고,
 initial challenge에 없던 independent outcome은 `additional_outcomes`에 각각 평가한다.
 Qualitative review는 current Discovery의 interaction outcome identities와 pre-write planned commitment
 binding/scope를 같은 implementation observation에서 inspect한다. Reference/context basis,
@@ -1530,7 +1531,10 @@ cycle qualification을 fail한다. Exact current contract/prior authority/delega
 pass할 수 있다. 이 fixture는 raw naturalistic rollout을 복사하지 않으며 새로운 HEAD의 qualification
 evidence가 아니다. Human pass는 machine/evidence failure를 override하지 못한다.
 
-Draft의 null assessment/coverage는 미완료이며 generic interaction pass로 대체할 수 없다.
+Draft의 `not_reviewed` outcome/coverage criterion은 미완료이며 generic interaction satisfaction으로
+대체할 수 없다. Known silent/unresolved commitment 또는 late/unrelated authority는 violation이고,
+그와 같은 known violation 없이 authority relation/chronology 관찰만 불확실하면
+`insufficient_evidence`로 남긴다.
 Silent/unresolved, late, unrelated authority 또는 production commitment를 가진 prototype/defer
 주장은 실패한다. Typed schema와 immutable evidence linkage는 판단을 재현 가능하게 만들지만,
 인용한 authority가 실제 outcome을 resolve하는지는 명시된 reviewer의 bounded judgment가 소유한다.

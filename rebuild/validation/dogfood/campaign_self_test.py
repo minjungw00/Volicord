@@ -2764,33 +2764,8 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         assert (cycle_path / "evidence/work.rollout.jsonl").read_bytes() == raw_source.read_bytes()
 
     campaign.finalize_manifest(root)
-    archive = campaign.build_review_package(root, parent / "batch-review.tar.gz")
-    with tarfile.open(archive, "r:gz") as opened:
-        names = opened.getnames()
-        assert "evaluator/slot-mapping.json" in names
-        assert "batch-intake-summary.json" in names
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
-        assert not any(
-            any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts)
-            for name in names
-        )
-        body = b"".join(
-            file.read()
-            for member in opened.getmembers()
-            if member.isfile() and (file := opened.extractfile(member)) is not None
-        )
-        assert b"BATCH-PRIVATE-STORE" not in body
-        assert b"BATCH-PRIVATE-DERIVED" not in body
-
-    tampered = campaign.cycle_root(root, "small-python", 2) / "evidence/viewer-snapshot.html"
-    tampered.write_bytes(tampered.read_bytes() + b"tamper")
-    try:
-        campaign.build_review_package(root, parent / "batch-tampered.tar.gz")
-    except campaign.CampaignError as error:
-        assert "hash mismatch" in str(error)
-    else:
-        raise AssertionError("tampered batch Viewer evidence was not detected")
+    from review_operations_self_test import assert_review_workflow
+    assert_review_workflow(root, parent)
 
 
 def assert_successful_campaign(parent: Path, binary: Path) -> None:
@@ -2899,84 +2874,6 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     first = manifest.read_bytes()
     campaign.finalize_manifest(root)
     assert manifest.read_bytes() == first
-
-    tampered = campaign.cycle_root(root, "small-python", 2) / "context.bundle.json"
-    original = tampered.read_bytes()
-    tampered.write_bytes(original + b"tamper")
-    try:
-        campaign.build_review_package(root, parent / "must-not-exist.tar.gz")
-    except campaign.CampaignError as error:
-        assert "hash mismatch" in str(error)
-    else:
-        raise AssertionError("tampered bundle was not detected")
-    tampered.write_bytes(original)
-
-    review_path = root / "operator/human-review.json"
-    campaign.write_json(review_path, {
-        "kind": "phase8_dogfood_human_review",
-        "automated_result_sha256": "cd" * 32,
-        "state": "passed",
-    })
-    campaign.register_artifact(root, review_path)
-    qualified_path = root / "qualified-result.json"
-    campaign.write_json(qualified_path, {
-        "kind": "phase8_dogfood_result",
-        "human_review": {"state": "passed"},
-        "replacement_qualification": {"status": "passed"},
-    })
-    campaign.register_artifact(root, qualified_path)
-
-    archive = campaign.build_review_package(root, parent / "review.tar.gz")
-    with tarfile.open(archive, "r:gz") as opened:
-        names = opened.getnames()
-        assert "evaluator/slot-mapping.json" in names
-        assert len([name for name in names if name.startswith("evaluator/descriptors/")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if name.startswith("behavior-reviews/") and name.endswith(".json")]) == campaign.QUALIFICATION_CYCLE_COUNT + 1
-        assert len([name for name in names if name.startswith("reviewer/preparations/")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if name.startswith("reviewer/provisional/")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if "/evidence/generated-documents/" in name]) == campaign.QUALIFICATION_CYCLE_COUNT * len(campaign.DOCUMENT_KINDS) * len(campaign.DOCUMENT_FORMATS)
-        assert len([name for name in names if name.endswith("/evidence/viewer-snapshot.html")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if name.endswith("/viewer-snapshot-summary.json")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if name.endswith("/documents-summary.json")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert len([name for name in names if name.startswith("operator/document-review/")]) == campaign.QUALIFICATION_CYCLE_COUNT
-        for prefix in (
-            "reviewer/preparations/",
-            "reviewer/provisional/",
-            "operator/document-review/",
-        ):
-            for name in (item for item in names if item.startswith(prefix)):
-                assert campaign.REVIEW_SLOT_ID.fullmatch(Path(name).stem)
-        review_index_file = opened.extractfile("behavior-reviews/index.json")
-        assert review_index_file is not None
-        review_index = json.loads(review_index_file.read())
-        assert review_index["authority_obligation_contract"] == harness.authority_obligations.assessment_contract()
-        assert "authoritative_descriptor" in review_index["authority_review_evidence"]
-        assert len(review_index["reviews"]) == campaign.QUALIFICATION_CYCLE_COUNT
-        assert all(
-            campaign.REVIEW_SLOT_ID.fullmatch(item["review_slot_id"])
-            and item["logical_cycle"] in campaign.cycle_numbers(item["repository_class"])
-            and item["expected_behavior_class"] in campaign.BEHAVIOR_CLASSES
-            for item in review_index["reviews"]
-        )
-        assert "operator/human-review.json" in names
-        assert "qualified-result.json" in names
-        assert not any(Path(name).name in campaign.RAW_NAMES for name in names)
-        assert not any(any(part in {"runtime", "install", "bootstrap-runtime", "derived"} for part in Path(name).parts) for name in names)
-        assert not any("document-export-processes" in Path(name).parts for name in names)
-        assert not any(name.casefold().endswith(campaign.PROHIBITED_ARCHIVE_SUFFIXES) for name in names)
-        body = b"".join(
-            file.read()
-            for member in opened.getmembers()
-            if member.isfile() and (file := opened.extractfile(member)) is not None
-        )
-        assert b"PRIVATE-STORE-CONTENT" not in body
-        assert b"PRIVATE-DERIVED-CONTENT" not in body
-
-    raw_archive = campaign.build_review_package(
-        root, parent / "review-with-raw.tar.gz", include_raw=True
-    )
-    with tarfile.open(raw_archive, "r:gz") as opened:
-        assert len([name for name in opened.getnames() if Path(name).name in campaign.RAW_NAMES]) == campaign.BATCH_CAPTURE_COUNT
 
 
 def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
@@ -3240,7 +3137,6 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "collect-batch": lambda: campaign.collect_batch(root, []),
         "evaluate": lambda: campaign.evaluate_campaign(root),
         "finalize-manifest": lambda: campaign.finalize_manifest(root),
-        "package-review": lambda: campaign.build_review_package(root, archive),
 
     }
     original_head = harness.git_head
@@ -3412,7 +3308,7 @@ def main() -> int:
             "bounded_runtime_summary",
             "deterministic_manifest",
             "bounded_default_review_archive",
-            "campaign_level_human_review_packaging",
+            "reviewer_safe_qualitative_review_packaging",
             "explicit_raw_rollout_archive_option",
             "evidence_hash_tamper_detection",
         ],

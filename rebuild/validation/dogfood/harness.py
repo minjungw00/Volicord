@@ -1236,20 +1236,20 @@ def load_definition() -> dict[str, Any]:
         "document_html_language",
     ):
         raise ValueError("the Phase 8 automated accessibility qualification changed")
-    human_review = value.get("qualitative_review_contract", {})
+    qualitative_contract = value.get("qualitative_review_contract", {})
     if (
-        human_review.get("artifact_kind") != "dogfood_qualitative_review"
-        or human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract()
-        or human_review.get("states") != qualitative_review.STATES
-        or human_review.get("qualification_authority") is not False
-        or human_review.get("common_criteria") != qualitative_review.CRITERIA
-        or tuple(human_review.get("interaction_repository_classes", [])) != CLASSES
-        or tuple(human_review.get("document_repository_classes", [])) != CLASSES
-        or human_review.get("live_viewer_locales") != ["en", "ko"]
-        or human_review.get("machine_accessibility_may_be_overridden") is not False
-        or human_review.get("sampling_algorithm")
+        qualitative_contract.get("artifact_kind") != "dogfood_qualitative_review"
+        or qualitative_contract.get("authority_obligation_contract") != authority_obligations.assessment_contract()
+        or qualitative_contract.get("states") != qualitative_review.STATES
+        or qualitative_contract.get("qualification_authority") is not False
+        or qualitative_contract.get("common_criteria") != qualitative_review.CRITERIA
+        or tuple(qualitative_contract.get("interaction_repository_classes", [])) != CLASSES
+        or tuple(qualitative_contract.get("document_repository_classes", [])) != CLASSES
+        or qualitative_contract.get("live_viewer_locales") != ["en", "ko"]
+        or qualitative_contract.get("machine_accessibility_may_be_overridden") is not False
+        or qualitative_contract.get("sampling_algorithm")
         != "every_collected_cycle"
-        or tuple(human_review.get("every_cycle_review_surfaces", []))
+        or tuple(qualitative_contract.get("every_cycle_review_surfaces", []))
         != (
             "interaction",
             "generated_documents",
@@ -1257,7 +1257,7 @@ def load_definition() -> dict[str, Any]:
             "repository_intelligence",
             "cli_usability",
         )
-        or tuple(human_review.get("interaction_behavior_criteria", []))
+        or tuple(qualitative_contract.get("interaction_behavior_criteria", []))
         != (
             "explicit_material_handling_quality",
             "hidden_material_discovery_quality",
@@ -1789,7 +1789,6 @@ def load_definition() -> dict[str, Any]:
                 "collect-batch",
                 "evaluate",
                 "finalize-manifest",
-                "package-review",
             ],
             "rejection_precedes_mutation": True,
             "superseded_recovery_exception": False,

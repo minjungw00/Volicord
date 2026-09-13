@@ -23,6 +23,8 @@ def preparation(kind="agent"):
             index["evidence"][name] = {"sample_id": sample["sample_id"], "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
+    for document_kind in sorted(q.DOCUMENT_KINDS):
+        index["evidence"]["document-" + document_kind] = {**index["evidence"]["documents"], "document_kind": document_kind}
     return {"binding": {"state": "verified", "source": "immutable_campaign_evidence",
                 "candidate_head": "a" * 40, "evidence_set": {"sha256": "b" * 64}, "rubric_sha256": m.digest(policy)},
         "reviewer": q.reviewer(kind, "c" * 32, "independent-review-session" if kind == "agent" else None),
@@ -101,6 +103,11 @@ class ContractTests(unittest.TestCase):
         value["assessments"].pop()
         with self.assertRaisesRegex(ValueError, "omitted"):
             q.validate_value(p, "d" * 64, value)
+        value = completed(p)
+        authority_index = next(i for i, a in enumerate(value["assessments"]) if a["authority"] is not None)
+        value["assessments"][authority_index] = copy.deepcopy(value["assessments"][0])
+        with self.assertRaisesRegex(ValueError, "criterion identity"):
+            q.validate_value(p, "d" * 64, value)
 
     def test_references_counterevidence_and_observation_limits(self):
         p = preparation()
@@ -120,6 +127,11 @@ class ContractTests(unittest.TestCase):
         value = completed(p)
         value["assessments"][0]["evidence"] = [r for r in value["assessments"][0]["evidence"] if r["evidence_id"] != "work_capture"]
         with self.assertRaisesRegex(ValueError, "surface"):
+            q.validate_value(p, "d" * 64, value)
+        value = completed(p)
+        finding = next(a for a in value["assessments"] if "/documents/" in a["criterion_id"])
+        finding["evidence"] = [r for r in finding["evidence"] if r["evidence_id"] != "document-handoff-resume"]
+        with self.assertRaisesRegex(ValueError, "all four"):
             q.validate_value(p, "d" * 64, value)
 
     def test_applicability_is_bounded_by_criterion(self):
@@ -171,6 +183,20 @@ class ContractTests(unittest.TestCase):
                 extra["assessment"] = "satisfied"
                 with self.assertRaisesRegex(ValueError, "authority disposition"):
                     q.validate_value(p, "d" * 64, value)
+
+    def test_partial_authority_observation_is_insufficient(self):
+        p = preparation()
+        value = completed(p)
+        finding = next(a for a in value["assessments"] if a["authority"] is not None)
+        finding["authority"]["authority_relation_to_outcome"] = "uncertain"
+        finding["assessment"] = "insufficient_evidence"
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "insufficient_evidence")
+        finding["assessment"] = "satisfied"
+        with self.assertRaisesRegex(ValueError, "authority disposition"):
+            q.validate_value(p, "d" * 64, value)
+        finding["authority"]["chronology"] = "late"
+        finding["assessment"] = "violated"
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "violated")
 
     def test_all_behavior_rubric_criteria_preserved(self):
         p = preparation()

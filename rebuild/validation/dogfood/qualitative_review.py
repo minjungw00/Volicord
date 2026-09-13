@@ -17,6 +17,7 @@ SCHEMA_VERSION = 1
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
+DOCUMENT_KINDS = {"project-architecture-guide", "decision-report", "implementation-plan", "handoff-resume"}
 # Explicit migration of every former human-review field. Behavior-specific
 # criteria/prompts remain owned by evaluation.json; there is only one rubric.
 CRITERIA = {
@@ -41,6 +42,15 @@ SURFACES = {
     "context_recovery": ["work_capture", "resume_capture", "canonical_bundle"],
     "authority": ["work_capture"],
 }
+GROUP_PROMPTS = {
+    "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
+    "documents": "Inspect all four documents: architecture guide, Decision report, implementation plan and handoff/resume. Compare each with current Sources and Decisions; assess practical understanding/handoff value, accurate remaining work and gaps, and actual requested-language prose rather than metadata-only language claims.",
+    "viewer_snapshot": "Assess whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
+    "repository_intelligence": "Assess useful navigation and analysis for actual work, honest source snapshot/coverage/freshness/uncertainty, semantic value beyond structure, and language/component boundaries and flows in polyglot work. Unsupported or unavailable capabilities must remain visible.",
+    "cli": "Inspect observed help discovery and representative repository-relative tasks without opaque Project IDs. Assess readable outcomes and next actions. Captured invocation is evidence of a surface, not proof that every CLI task was usable.",
+    "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning and narrow/zoom presentation in both en and ko. Static markup cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
+    "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
+}
 FIELDS = {"criterion_id", "assessment", "reasoning", "evidence", "uncertainty",
           "counterevidence", "applicability_reason", "machine_relationships", "authority"}
 
@@ -53,7 +63,7 @@ def require(condition, message):
 def rubric(definition):
     contract = definition["qualitative_review_contract"]
     return {"schema_version": SCHEMA_VERSION, "policy_revision": contract["policy_revision"],
-        "criteria": CRITERIA, "required_surfaces": SURFACES,
+        "criteria": CRITERIA, "group_prompts": GROUP_PROMPTS, "required_surfaces": SURFACES,
         "behavior_criteria": contract["interaction_behavior_criterion_contracts"],
         "authority_obligation_contract": authority.assessment_contract(),
         "assessment_states": STATES, "machine_relationships": RELATIONSHIPS,
@@ -92,6 +102,8 @@ def validate_reviewer(value, evaluated_sessions):
     else:
         require(identity["person"] == identity_provenance.unknown(), "agent review cannot claim human authorship")
         require(identity["session"]["state"] == "self_reported", "agent review requires explicit session correlation")
+        require(identity["session"]["value"] == identity["session"]["value"].strip()
+            and len(identity["session"]["value"].encode()) <= 512, "agent session identity must be exact and bounded")
         require(identity["session"]["value"] not in evaluated_sessions, "agent reviewer is an evaluated work/resume session")
     relation = value["relationship"]
     require(isinstance(relation, dict) and set(relation) == {"evaluated_session", "statistical_independence_claimed", "basis"}
@@ -103,12 +115,13 @@ def criterion_specs(index, policy):
     specs = []
     for sample in index["samples"]:
         sample_id = sample["sample_id"]
-        for group, names in policy["criteria"].items():
+        for group in CRITERIA:
+            names = policy["criteria"][group]
             if group == "live_viewer" and sample_id != index["live_viewer_sample"]:
                 continue
             names = list(names)
             if group == "interaction":
-                names += [name for name, rule in policy["behavior_criteria"].items()
+                names += [name for name, rule in sorted(policy["behavior_criteria"].items())
                           if sample["behavior_class"] in rule["applies_to"]]
             for locale in (["en", "ko"] if group == "live_viewer" else [None]):
                 for name in names:
@@ -149,7 +162,10 @@ def validate_references(references, index, inspected, sample_id, *, allow_empty=
             and ref["evidence_id"] in inspected, "evidence reference is missing, uninspected or belongs to another cycle")
         locator = ref["locator"]
         require(isinstance(locator, dict) and set(locator) == {"kind", "value"}
-            and locator in entry["locators"], "evidence locator does not resolve in the bound review index")
+            and (locator in entry["locators"] or (
+                locator["kind"] == "line" and type(locator["value"]) is int
+                and 1 <= locator["value"] <= entry.get("line_count", 0))),
+            "evidence locator does not resolve in the bound review index")
 
 
 def validate_assessment(value, spec, preparation, inspected):
@@ -186,6 +202,9 @@ def validate_assessment(value, spec, preparation, inspected):
         surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]
             if spec["locale"] is None or index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]}
         require(set(SURFACES[spec["group"]]) <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
+        if state == "satisfied" and spec["group"] == "documents":
+            document_kinds = {index["evidence"][r["evidence_id"]].get("document_kind") for r in value["evidence"]}
+            require(DOCUMENT_KINDS <= document_kinds, "document satisfaction must inspect all four required documents")
     detail = value["authority"]
     if spec["group"] == "authority" and spec["name"] != "coverage":
         if state in {"satisfied", "violated"}:
@@ -234,6 +253,13 @@ def validate_assessment(value, spec, preparation, inspected):
 
 
 def validate_value(preparation, preparation_sha256, value):
+    try:
+        return _validate_value(preparation, preparation_sha256, value)
+    except (KeyError, TypeError, AttributeError, IndexError) as error:
+        raise ValueError("malformed qualitative review field or nested assessment") from error
+
+
+def _validate_value(preparation, preparation_sha256, value):
     expected = template(preparation, preparation_sha256)
     require(isinstance(value, dict) and set(value) == set(expected), "invalid qualitative review shape")
     for field in ("kind", "schema_version", "preparation_sha256", "binding", "reviewer"):
@@ -249,6 +275,7 @@ def validate_value(preparation, preparation_sha256, value):
     require(isinstance(scope["limits"], list) and 1 <= len(scope["limits"]) <= 64
         and all(authority.bounded_text(limit) for limit in scope["limits"]), "explicit bounded observation limits are required")
     specs = criterion_specs(preparation["index"], preparation["rubric"])
+    require(specs and len({s["criterion_id"] for s in specs}) == len(specs), "review requires distinct, nonempty criterion identities")
     require(isinstance(value["assessments"], list) and len(value["assessments"]) == len(specs), "required criteria cannot be omitted")
     states = [validate_assessment(a, s, preparation, inspected) for a, s in zip(value["assessments"], specs)]
     additional = value["additional_outcomes"]
