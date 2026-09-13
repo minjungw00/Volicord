@@ -1183,6 +1183,7 @@ def main() -> int:
     if (batch_contract.get("semantic_evaluation_during_collection") is not False
         or batch_contract.get("evidence_set_manifest") != "evidence-set.json"
         or machine.get("operation") != "evaluate"
+        or machine.get("technical_aggregate_input") != "required_immutable_machine_evaluation_no_semantic_rerun"
         or machine.get("qualification_state") != "not_run"
         or machine.get("hard_integrity_review_override") is not False
         or set(machine.get("statuses", [])) != set(Status)

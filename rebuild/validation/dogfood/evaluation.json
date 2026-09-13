@@ -960,6 +960,7 @@
       "semantic_evaluation_during_collection": false,
       "machine_evaluation": {
         "operation": "evaluate",
+        "technical_aggregate_input": "required_immutable_machine_evaluation_no_semantic_rerun",
         "result_kind": "dogfood_machine_evaluation",
         "input": "immutable_candidate_bound_evidence_set",
         "publication": "append_only_evaluations",

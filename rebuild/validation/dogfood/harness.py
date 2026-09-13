@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from collections import Counter
 from dataclasses import dataclass
 import datetime as dt
@@ -10208,7 +10209,7 @@ def sanitized_cycle(
     repository_revision: str | None,
     candidate_revision: str,
     target_repository: Path,
-    real_session_raw: dict[str, Any] | None,
+    evaluated_real_session: dict[str, Any],
     peak_memory: dict[str, Any],
     repeated_resources: dict[str, Any],
 ) -> dict[str, Any]:
@@ -10249,14 +10250,7 @@ def sanitized_cycle(
     )
     accessibility["status"] = status_from_steps(accessibility["checks"])
     quality = quality_observations(step_statuses)
-    actual = real_session_evidence(
-        real_session_raw,
-        kind=kind,
-        cycle=cycle,
-        repository_revision=repository_revision,
-        candidate_revision=candidate_revision,
-        target_repository=target_repository,
-    )
+    actual = copy.deepcopy(evaluated_real_session)
     deterministic_status = status_from_steps(step_statuses)
     resource_qualification = {
         "status": status_from_steps({
@@ -10486,6 +10480,11 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 or not actual["material_authority_review"].get("obligations")
             ):
                 raise ValueError("machine passage requires pending bounded semantic authority obligations")
+            if actual.get("machine_evaluation_run_id") is not None:
+                if actual.get("machine_findings") != machine_findings.from_observation(actual):
+                    raise ValueError("technical aggregate changed immutable machine findings")
+                if automated["passed"] and machine_findings.evaluation_state(actual["machine_findings"]) != "observations_complete":
+                    raise ValueError("technical aggregate cannot qualify unresolved machine findings")
             if set(actual.get("checks", {})) != set(REAL_SESSION_CHECKS):
                 raise ValueError("real-session dogfood evidence checks are incomplete")
             if not set(actual["checks"].values()) <= ALLOWED_STATUS:
@@ -11071,6 +11070,29 @@ def run_fixture_regression(v11: Any, raw_root: Path, base_env: dict[str, str], d
     }
 
 
+def load_machine_evaluation(repository_manifest: Path, evaluation_path: Path, candidate_head: str) -> dict[tuple[str, int], dict[str, Any]]:
+    """Technical aggregation consumes the single immutable semantic evaluation path."""
+    import campaign
+    root = repository_manifest.parent
+    evidence = campaign.load_evidence_set(root)
+    state = campaign.load_campaign(root)
+    name = campaign.relative(root, evaluation_path)
+    if (repository_manifest != root / "repositories.json"
+        or "repositories.json" not in campaign.load_inventory(root)["artifacts"]
+        or evidence["candidate_head"] != candidate_head):
+        raise ValueError("technical aggregate requires the finalized immutable campaign manifest")
+    result = campaign.read_json(evaluation_path)
+    machine_findings.validate_run(result)
+    if (result["candidate_head"] != candidate_head or result["evidence_set"] != state["evidence_set"]
+        or {"path": name, "sha256": sha256(evaluation_path), "run_id": result["run_id"]}
+        not in state.get("evaluation_runs", [])):
+        raise ValueError("technical aggregate machine run does not bind this exact evidence set")
+    return {(item["repository_class"], item["cycle"]): {
+        **item["observation"], "machine_findings": item["findings"],
+        "machine_evaluation_run_id": result["run_id"], "evidence_set": result["evidence_set"]}
+        for item in result["cycles"]}
+
+
 def run_evaluation(args: argparse.Namespace) -> int:
     definition = load_definition()
     candidate_head = git_head(ROOT)
@@ -11078,6 +11100,11 @@ def run_evaluation(args: argparse.Namespace) -> int:
         raise RuntimeError("candidate HEAD does not match --candidate-head")
     clean_before = git_clean(ROOT)
     repository_manifest = Path(args.repositories).resolve()
+    machine_results = load_machine_evaluation(repository_manifest,
+        Path(args.machine_evaluation).resolve(), candidate_head)
+    if any(machine_findings.evaluation_state(item["machine_findings"]) != "observations_complete"
+           for item in machine_results.values()):
+        raise RuntimeError("machine findings remain unresolved or hard-blocked; this aggregate cannot qualify them")
     specs, identities = load_repository_specs(repository_manifest, candidate_head, definition)
     output = Path(args.output_dir).resolve()
     if output.exists() and any(output.iterdir()):
@@ -11169,27 +11196,14 @@ def run_evaluation(args: argparse.Namespace) -> int:
                         identity["revision"],
                         candidate_head,
                         source_by_class[kind],
-                        load_real_session_cycle(
-                            specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
-                            repository_manifest.parent,
-                        ),
+                        machine_results[(kind, cycle_number)],
                         peak_memory,
                         repeated_resources,
                     ))
             else:
                 for cycle_number in cycle_numbers(kind):
                     skipped = {name: "environment_blocked" for name in definition["required_product_steps"]}
-                    actual = real_session_evidence(
-                        load_real_session_cycle(
-                            specs[kind].get("real_session_evidence", {}).get(str(cycle_number)),
-                            repository_manifest.parent,
-                        ),
-                        kind=kind,
-                        cycle=cycle_number,
-                        repository_revision=identity["revision"],
-                        candidate_revision=candidate_head,
-                        target_repository=source_by_class[kind],
-                    )
+                    actual = copy.deepcopy(machine_results[(kind, cycle_number)])
                     cycles.append({
                         "cycle": cycle_number,
                         "status": "environment_blocked",
@@ -23277,6 +23291,7 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--candidate-head", required=True)
     run.add_argument("--repositories", required=True)
     run.add_argument("--output-dir", required=True)
+    run.add_argument("--machine-evaluation", required=True)
     return parser.parse_args()
 
 

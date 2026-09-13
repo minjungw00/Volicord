@@ -1438,6 +1438,13 @@ valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_
 어느 값도 final qualification verdict가 아니다. Existing technical aggregate와 human rubric을
 대체하지 않으며 새 run의 qualitative-review/adoption interface는 후속 세션이 소유한다.
 
+기존 technical aggregate의 `harness.py run`은 required `--machine-evaluation`으로 해당
+campaign의 inventory-bound immutable run을 받아 동일 observation/findings를 사용한다.
+Aggregate는 naturalistic capture를 별도로 재평가하지 않는다. Candidate, finalized repository
+manifest와 exact evidence-set/run binding이 다르면 technical execution 전에 거부한다.
+Unresolved 또는 hard-blocked machine run은 기존 aggregate의 qualification으로 진입할 수 없다.
+이를 Product rejection/pass로 변환하지 않고 후속 review/qualification policy를 기다린다.
+
 Technical candidate gate와 maintained final admission/gate/V11 owner는 별도 경계로 유지한다.
 이 분리는 technical gate를 실행하거나 통과했다고 주장하지 않는다.
 

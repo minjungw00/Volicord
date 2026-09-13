@@ -567,7 +567,11 @@ It consumes the exact evidence-set hash and appends `evaluations/<run_id>.json`.
 Finding certainty and disposition are separate; review-required findings remain unresolved.
 Campaign collection stays `collected`, evaluation becomes `produced`, and qualification stays
 `not_run`. Earlier evaluation runs and raw bytes are never overwritten. The maintained
-technical aggregate remains a separate candidate boundary. The following existing human
+technical aggregate remains a separate candidate boundary. Its `harness.py run` command
+requires `--machine-evaluation /absolute/private/campaign/evaluations/<run_id>.json`
+and consumes those exact findings instead of evaluating the naturalistic captures again.
+Unresolved or hard-blocked findings stop qualification admission; this does not rewrite the
+machine run as a Product pass or rejection. The separate technical gate remains available. The following existing human
 rubric operations consume technical aggregate results; a qualitative workflow for the new
 machine runs will be defined separately. If replacement qualification is needed, create one campaign-level
 review artifact from the immutable automated result:
