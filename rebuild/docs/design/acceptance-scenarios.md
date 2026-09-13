@@ -395,6 +395,11 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   함께 제시하고, 독립 dimension은 다른 선택 안에 숨기지 않는다.
 - current Goal과 exact retained pre-work Analysis Snapshot에 bind된 typed Materiality Review에서
   각 dimension의 evidence/disposition과 satisfied/unresolved requirement를 inspect할 수 있다.
+- “Clear project history”처럼 destructive scope가 canonical records, Candidate, derived/local,
+  provider-retained state 또는 Project identity/clone binding 중 무엇을 포함하는지 정하지 않으면
+  unresolved user-owned Question으로 남는다. 반대로 current Goal이 삭제할 canonical class와 보존할
+  Project identity/binding을 exact하게 이름 붙이면 그 current-host user specification을 적용하고
+  같은 범위를 다시 묻지 않는다.
 - Learning participation은 absent/inactive가 default이며 current-host user Source와 verbatim opt-in이
   있을 때만 active다. `overview`/`working`/`deep` 설명 깊이나 inferred proficiency는 이를 대신하지 않는다.
 - Authority와 독립적으로 routine/deliberation-worthy를 분류하고, active learning에서 agent-owned
@@ -608,6 +613,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - post-work review backfill로 이미 invalid한 sequence를 valid하게 변경
 - already-changed path를 late executable-scope expansion으로 retroactively authorize
 - broad Goal 또는 feature label을 subordinate discovered choice의 authority로 사용
+- guarded execution confirmation을 destructive Product scope 선택이나 Question/Decision 대체로 사용
 - related owner, architecture constraint, repository pattern 또는 convention이 relevant하다는
   이유만으로 candidate cleanup trigger나 token-file contract의 exact outcome을 uniquely settled로 표시
 - independent choice를 coupling evidence 없이 한 Materiality dimension으로 collapse

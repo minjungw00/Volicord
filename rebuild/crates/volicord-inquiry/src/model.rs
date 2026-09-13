@@ -410,6 +410,7 @@ pub enum WorkAuthorityBasisKind {
     RepositoryOrEnvironmentFact,
     AcceptedContract,
     ApplicableDecision,
+    CurrentGoalUserSpecification,
     ExplicitDelegation,
     ResearchEvidence,
     PrototypeEvidence,
@@ -439,6 +440,7 @@ pub struct ExplicitDelegationEvidence {
 pub enum AuthoritySourceRole {
     AcceptedContract { contract_reference: String },
     ApplicableDecision { decision_id: DecisionId },
+    CurrentGoalUserSpecification { verbatim_statement: String },
     UniqueMechanicalFact,
     CompatibilityConstraint,
     RepositoryPrecedent,
@@ -466,6 +468,7 @@ pub enum DiscoveredAlternativeResolution {
     EliminatedByRepositoryOrEnvironmentFact,
     EliminatedByAcceptedContract { contract_reference: String },
     EliminatedByApplicableDecision { decision_id: DecisionId },
+    EliminatedByCurrentGoalUserSpecification,
     Unresolved,
 }
 

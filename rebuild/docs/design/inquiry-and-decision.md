@@ -328,9 +328,15 @@ alternative와 exact fact/contract/Decision에 의해 제거된 나머지를 기
 승격할 수 없다. Repository fact는
 mechanically observed fact basis만 허용하고 contract, Decision, delegation, recommendation,
 convention 또는 preference를 fact로 relabel하지 않는다. Settled authority는 accepted contract
-basis, applicable Decision identity 또는 둘 다를 요구한다.
+basis, applicable Decision identity, 또는 current Goal의 exact user specification을 요구한다.
+Current Goal specification은 exact current-host user-turn Source의 bounded verbatim statement가
+선택할 canonical class, 보존할 Project identity/clone binding과 effect boundary를 유일하게 정할
+때만 authority다. “history를 지워라”처럼 canonical, Candidate, derived/local, provider-retained
+state 또는 Project/binding 중 무엇을 뜻하는지 남아 있으면 specification이 아니며 unresolved
+user-owned outcome이다.
 `WorkAuthorityBasis.exact_authority.source_evidence`는 exact authority를 주장하는 Source마다
-accepted contract(reference), applicable Decision(identity), unique mechanical fact,
+accepted contract(reference), applicable Decision(identity), exact current-Goal user specification,
+unique mechanical fact,
 compatibility constraint, repository precedent/convention, recommendation/preference 역할과
 source-grounded rationale를 보존한다. 기존 basis kind는 disposition의 authority 종류이고
 Source role은 그 주장을 뒷받침하는 개별 Source의 실제 역할이다. 두 번째 authority system이 아니다.
@@ -353,7 +359,7 @@ invalid value, allowed values, bound Goal/baseline identities와 다음 supporte
 
 `draft`는 validator와 같은 closed schema variant owner에서 stable variant identity,
 required/allowed/forbidden field, singleton enum과 caller semantic field를 투영한다.
-13개 legal judgment variant 목록은 한 번만 제공하며 각 choice는 exact choice/alternative
+14개 legal judgment variant 목록은 한 번만 제공하며 각 choice는 exact choice/alternative
 identity, evidence state와 Source identity를 가진 ready-to-fill judgment에 연결된다.
 Current Goal text와 current-host Source provenance도 한 번만 제공한다. Dimension scope,
 consequence, residual-fork proof와 full discovery/interaction graph는 `candidate_inspect`에서
@@ -414,10 +420,17 @@ current ownership Source identity와 그 source가 실제 허용하는 재량 bo
 authority가 없으면 active agent는 unresolved user-owned로 분류하고 affected work 전에 기존
 Question/current-host Decision을 사용한다. Production은 대안/Source linkage와 typed completeness를
 검증하며 observable boolean이나 effect category로 소유권을 자동 결정하지 않는다.
- User-owned outcome이 있으면
+User-owned outcome이 있으면
 exact fact/contract/Decision/delegation/exploration 또는 unresolved Question에 해당하는 기존 disposition을
 사용한다. Effect category는 이 semantic review를 빠뜨리지 않게 하는 prompt일 뿐 자동 ownership
 classifier가 아니다.
+
+Destructive 또는 history-clearing choice는 canonical Question/Decision/Context Item/Checkpoint,
+Session Candidate, rebuildable derived/local state, provider-retained state, Project identity와 clone
+binding을 별도 outcome으로 검토한다. 삭제 뒤 복구 가능성, canonical forgetting과 local residue
+cleanup, provider deletion의 분리도 함께 검토한다. Exact Goal/contract/Decision/delegation이 이 범위를
+정하지 않으면 affected work는 Question-required다. Guarded confirmation은 이미 정해진 action/target/
+effect/scope의 실행 권한일 뿐 이 Product scope를 선택하거나 Question을 terminal로 만들지 않는다.
 
 - repository/environment fact
 - already settled authority

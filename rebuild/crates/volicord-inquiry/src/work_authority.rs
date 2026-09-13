@@ -906,9 +906,16 @@ fn evaluate_dimension(
                 .contains(&WorkAuthorityBasisKind::AcceptedContract)
                 && !dimension.basis.contract_basis.is_empty();
             let decisions = applicable_decisions(canonical, dimension, applicability, false)?;
-            if !contract && decisions.is_empty() {
+            let current_goal_specification = dimension
+                .basis
+                .kinds
+                .contains(&WorkAuthorityBasisKind::CurrentGoalUserSpecification);
+            if current_goal_specification {
+                validate_current_goal_user_specification(canonical, goal, dimension)?;
+            }
+            if !contract && decisions.is_empty() && !current_goal_specification {
                 return Err(DimensionIssue::Invalid(
-                    "settled authority requires a source-grounded accepted contract or applicable Decision"
+                    "settled authority requires a source-grounded accepted contract, applicable Decision, or exact current-Goal user specification"
                         .to_owned(),
                 ));
             }
@@ -1076,6 +1083,9 @@ pub(crate) fn validate_authority_source_roles(
             Role::ApplicableDecision { decision_id } => {
                 dimension.basis.decision_basis.contains(decision_id)
             }
+            Role::CurrentGoalUserSpecification { verbatim_statement } => {
+                !verbatim_statement.trim().is_empty()
+            }
             _ => true,
         };
         if !valid {
@@ -1088,7 +1098,9 @@ pub(crate) fn validate_authority_source_roles(
         }
         MaterialityDisposition::SettledAuthority => matches!(
             role,
-            Role::AcceptedContract { .. } | Role::ApplicableDecision { .. }
+            Role::AcceptedContract { .. }
+                | Role::ApplicableDecision { .. }
+                | Role::CurrentGoalUserSpecification { .. }
         ),
         _ => false,
     };
@@ -1116,12 +1128,87 @@ pub(crate) fn validate_authority_source_roles(
                         },
                         Role::ApplicableDecision { decision_id },
                     ) => expected == decision_id,
+                    (
+                        Resolution::EliminatedByCurrentGoalUserSpecification,
+                        Role::CurrentGoalUserSpecification { .. },
+                    ) => true,
                     _ => false,
                 }
         });
         if !linked {
             return Err("every selected or eliminated alternative must link its exact normative authority Source role; descriptive precedent cannot eliminate a viable alternative".into());
         }
+    }
+    Ok(())
+}
+
+fn validate_current_goal_user_specification(
+    canonical: &CanonicalReadBasis,
+    goal: &ContextItem,
+    dimension: &MaterialityDimension,
+) -> Result<(), DimensionIssue> {
+    if !dimension.basis.contract_basis.is_empty()
+        || !dimension.basis.decision_basis.is_empty()
+        || dimension.basis.explicit_delegation.is_some()
+    {
+        return Err(DimensionIssue::Invalid(
+            "an exact current-Goal user specification must remain distinct from contract, Decision, and delegation authority"
+                .to_owned(),
+        ));
+    }
+    let evidence = dimension
+        .basis
+        .exact_authority
+        .as_ref()
+        .into_iter()
+        .flat_map(|authority| &authority.source_evidence)
+        .filter_map(|evidence| match &evidence.role {
+            crate::AuthoritySourceRole::CurrentGoalUserSpecification { verbatim_statement } => {
+                Some((evidence.source_id, verbatim_statement))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if evidence.len() != 1 {
+        return Err(DimensionIssue::Invalid(
+            "an exact current-Goal outcome requires exactly one current-Goal user specification Source"
+                .to_owned(),
+        ));
+    }
+    let (source_id, statement) = evidence[0];
+    if statement.trim().is_empty()
+        || !goal.statement.contains(statement)
+        || !goal.source_basis.contains(&source_id)
+        || !dimension.basis.source_basis.contains(&source_id)
+    {
+        return Err(DimensionIssue::Invalid(
+            "current-Goal authority must be a verbatim bounded outcome from the exact Goal Source"
+                .to_owned(),
+        ));
+    }
+    let source = canonical
+        .sources
+        .iter()
+        .find(|basis| basis.source.id == source_id)
+        .ok_or_else(|| {
+            DimensionIssue::Invalid("current-Goal user specification Source is missing".to_owned())
+        })?;
+    let SourcePayload::CurrentHostUserTurn { turn, .. } = &source.source.payload else {
+        return Err(DimensionIssue::Invalid(
+            "current-Goal user specification is not grounded in a current-host user turn"
+                .to_owned(),
+        ));
+    };
+    if source.source.project_id != canonical.project.id
+        || source.freshness != SourceFreshness::Current
+        || source.source.actor.kind != PrincipalKind::User
+        || !turn.contains(&goal.statement)
+        || !turn.contains(statement)
+    {
+        return Err(DimensionIssue::Invalid(
+            "current-Goal user specification has unrelated, stale, agent-authored, or non-verbatim provenance"
+                .to_owned(),
+        ));
     }
     Ok(())
 }

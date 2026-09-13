@@ -74,7 +74,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Volicord is active. Project-scoped repository work starts with project_resolve. Follow workflow.required_next_action; do not bypass a blocking workflow transition. Relevant evidence is not exact settling authority: after applying it, materially different credible outcomes require Question/Decision unless a Decision or delegation resolves them. A broad Goal delegates only through an explicit current-host statement covering that exact dimension or a bounded containing scope. A Decision needs an explicit response from the current host. Learning participation does not establish authority. Background transmission requires separate exact authorization. Checkpoints report only actually observed command outcomes. Non-project requests need no ceremony.".into()
+    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocking transition. Relevant evidence is not exact authority: materially different outcomes need an exact current-Goal user specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects product scope. A broad Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Non-project requests need no ceremony.".into()
 }
 
 #[derive(Debug)]
@@ -1960,12 +1960,12 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "engineering_choice_discovery" => (
-            "Record one bounded Engineering Choice Discovery for the current Goal and exact pre-work Analysis Snapshot. Include only consequence-bearing forks with credible alternatives; preserve independent choices separately and declare genuinely coupled peers symmetrically. This is discovery, not authority or a user Decision.",
+            "Record one bounded Engineering Choice Discovery for the current Goal and exact pre-work Analysis Snapshot. Include only consequence-bearing forks with credible alternatives; preserve independent choices separately and declare genuinely coupled peers symmetrically. For destructive or history-clearing work, explicitly compare canonical records, Candidate state, derived/local state, provider-retained state, Project identity, and clone binding, including reversibility and recovery. An execution confirmation cannot settle those product outcomes. This is discovery, not authority or a user Decision.",
             engineering_choice_discovery_schema(),
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
-            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive current Goal/user-turn, discovery/review, choice/alternative and dimension identities, ready-to-fill record/revise and inspect skeletons, and validator-derived closed variant names/required fields. This tool inputSchema from tools/list owns complete nested fields, constraints, interaction outcomes, residual forks, authority, delegation, learning and commitment contracts; draft does not duplicate it. Inspect discovery/review details with candidate_inspect. Never submit null skeleton placeholders or probe schemas with a malformed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, or applicable Decision, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact Decision or delegation resolves it, use unresolved_user_owned_outcome. After authority and any required learning are resolved, inspect explicitly reviews implementation, focused-test, documentation, changelog/release-note, schema/snapshot/generated, and other repository-owned artifact categories and binds only the resulting exact paths, components, and work contexts before ready_for_work. Include predictable coupled artifacts before their first write; add later discoveries prospectively, never by authorizing the repository root. If an artifact introduces a new material product outcome, revise Materiality first rather than treating it as a path-only expansion. Descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Preserve explicit active learning participation and its exact current-host Source even when all dimensions have routine learning value; routine detail requires no Learning Deliberation, Question, or canonical Decision. Without explicit participation, keep inactive. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
+            "Draft, record, revise, or inspect the typed pre-work Materiality Review for one authoritative Goal and exact baseline Analysis Snapshot. Bind every behaviorally relevant Learning, Preference, or Constraint Context identity used by this review; do not duplicate the whole turn as another Goal. Start with draft to receive current Goal/user-turn, discovery/review, choice/alternative and dimension identities, ready-to-fill record/revise and inspect skeletons, and validator-derived closed variant names/required fields. This tool inputSchema from tools/list owns complete nested fields, constraints, interaction outcomes, residual forks, authority, delegation, learning and commitment contracts; draft does not duplicate it. Inspect discovery/review details with candidate_inspect. Never submit null skeleton placeholders or probe schemas with a malformed call. Relevant architecture, repository, library, or convention evidence may constrain alternatives without settling the exact dimension. Repository-fact and settled-authority judgments must state exact coverage, account exactly once for every discovered alternative, ground each elimination in its exact fact, accepted contract, applicable Decision, or exact current-Goal user specification, and explain why one exact outcome is uniquely selected; if a material alternative remains unresolved and no exact current-Goal specification, Decision, or delegation resolves it, use unresolved_user_owned_outcome. Destructive scope must separately assess canonical records, Candidate state, derived/local state, provider-retained state, Project identity, clone binding, reversibility, and recovery; confirmation authorizes only execution of an already-defined effect and never chooses among these outcomes. After authority and any required learning are resolved, inspect explicitly reviews implementation, focused-test, documentation, changelog/release-note, schema/snapshot/generated, and other repository-owned artifact categories and binds only the resulting exact paths, components, and work contexts before ready_for_work. Include predictable coupled artifacts before their first write; add later discoveries prospectively, never by authorizing the repository root. If an artifact introduces a new material product outcome, revise Materiality first rather than treating it as a path-only expansion. Descriptive affected scope is not executable scope, and parent repository paths cover descendants. Authority to perform requested work is not authority to choose every subordinate material product policy: the broad Goal alone is not delegation, and current-task delegation requires an exact verbatim statement plus a semantic rationale showing that it delegates the material outcome itself. Preserve explicit active learning participation and its exact current-host Source even when all dimensions have routine learning value; routine detail requires no Learning Deliberation, Question, or canonical Decision. Without explicit participation, keep inactive. Classify authority and learning value independently; requests to learn, compare, reason, or select an implementation for learning do not establish user-owned product authority. Agent-owned or explicitly delegated active deliberation-worthy learning routes to learning_deliberation, while genuine user-owned material outcomes route to Question/current-host Decision.",
             json!({"oneOf": materiality_review_schemas()}),
             ToolBehavior::AdditiveClosed,
         ),
@@ -2856,12 +2856,13 @@ fn authority_source_evidence_schema() -> Value {
         )
     };
     json!({"type":"array", "minItems":1, "maxItems":64,
-        "description":"Classify sources used to claim exact authority. Precedent, compatible patterns, recommendations and architecture ownership do not uniquely select a new contract. Cite the actual accepted clause adopting any precedent for this exact dimension, or the applicable Decision/unique mechanical fact.",
+        "description":"Classify sources used to claim exact authority. Precedent, compatible patterns, recommendations and architecture ownership do not uniquely select a new contract. Cite the actual accepted clause adopting any precedent for this exact dimension, the applicable Decision/unique mechanical fact, or a bounded verbatim current-Goal user specification that selects the exact outcome.",
         "items": object_schema(vec![
             ("source_id", identity_schema("Current Source in this dimension's authority and alternative-accounting basis")),
             ("role", json!({"description":"Source's actual authority role", "oneOf":[
                 object_schema(vec![("kind",enum_schema("Normative accepted contract", &["accepted_contract"])), ("contract_reference",text_schema("Exact accepted contract reference from contract_basis",1,4096))], &["kind","contract_reference"]),
                 object_schema(vec![("kind",enum_schema("Applicable current Decision", &["applicable_decision"])), ("decision_id",identity_schema("Exact applicable Decision identity"))], &["kind","decision_id"]),
+                object_schema(vec![("kind",enum_schema("Exact outcome explicitly selected in the current Goal", &["current_goal_user_specification"])), ("verbatim_statement",text_schema("Bounded verbatim current-Goal statement that uniquely selects the outcome",1,4096))], &["kind","verbatim_statement"]),
                 role("unique_mechanical_fact"), role("compatibility_constraint"), role("repository_precedent"), role("recommendation_or_preference")
             ]})),
             ("rationale",text_schema("Identify the source passage and explain whether it requires the exact outcome or merely supports/constrains it. For a precedent adopted by an accepted contract, identify the adopting clause and why it eliminates the other material alternatives.",1,4096)),
@@ -3049,6 +3050,7 @@ fn alternative_accounting_schema() -> Value {
                 vec![("decision_id", identity_schema("Exact applicable Decision eliminating this alternative"))],
                 &["decision_id"],
             ),
+            variant("eliminated_by_current_goal_user_specification", Vec::new(), &[]),
         ]}
     })
 }
@@ -3082,7 +3084,7 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
             (
                 "authority_coverage",
                 text_schema(
-                    "Exact portion of this discovery-owned material dimension selected by the cited fact, contract, or Decision",
+                    "Exact portion of this discovery-owned material dimension selected by the cited fact, contract, Decision, or current-Goal user specification",
                     1,
                     4096,
                 ),
@@ -3154,6 +3156,14 @@ fn materiality_judgment_contracts() -> Vec<MaterialityJudgmentContract> {
                     "contract_basis",
                     "decision_ids",
                 ],
+            ),
+        ),
+        contract(
+            "settled_authority_by_current_goal_user_specification",
+            materiality_judgment_schema(
+                "settled_authority",
+                exact_authority_fields(),
+                &["authority_coverage", "unique_outcome_rationale"],
             ),
         ),
         contract(
@@ -5150,6 +5160,16 @@ fn materiality_dimension_from_judgment(
             if !decision_basis.is_empty() {
                 kinds.push(WorkAuthorityBasisKind::ApplicableDecision);
             }
+            if exact_authority.as_ref().is_some_and(|authority| {
+                authority.source_evidence.iter().any(|evidence| {
+                    matches!(
+                        evidence.role,
+                        volicord_inquiry::AuthoritySourceRole::CurrentGoalUserSpecification { .. }
+                    )
+                })
+            }) {
+                kinds.push(WorkAuthorityBasisKind::CurrentGoalUserSpecification);
+            }
             kinds
         }
         MaterialityDisposition::AgentOwnedImplementationChoice => {
@@ -5362,6 +5382,9 @@ fn discovered_alternative_accounting(
                             "decision_id",
                         )?)?),
                     }
+                }
+                "eliminated_by_current_goal_user_specification" => {
+                    DiscoveredAlternativeResolution::EliminatedByCurrentGoalUserSpecification
                 }
                 _ => return Err(HostError::new("unknown alternative-accounting status")),
             };
@@ -6251,6 +6274,11 @@ fn alternative_accounting_json(account: &DiscoveredAlternativeAccounting) -> Val
             "status":"eliminated_by_applicable_decision","decision_id":decision_id.to_string(),
             "rationale":account.rationale,"source_ids":source_ids,
         }),
+        DiscoveredAlternativeResolution::EliminatedByCurrentGoalUserSpecification => json!({
+            "choice_id":account.choice_id,"alternative_id":account.alternative_id,
+            "status":"eliminated_by_current_goal_user_specification",
+            "rationale":account.rationale,"source_ids":source_ids,
+        }),
     }
 }
 
@@ -6503,7 +6531,7 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
             },
             "required_fields":["source_operation","summary","choices","material_boundary_review","interaction_review"],
             "interaction_review_schema":interaction_review_schema(),
-            "interaction_instruction":"Challenge reference/scope/context basis, composition/precedence with existing sources/configuration/authority, ordering/partial success/atomic durable effects across multiple items, failure/retry/recovery observable results, and temporal/lifetime outcomes: preserve versus reset timestamps, retain versus renew or extend expiry, reissue/rotation/replacement age, and retry/recovery validity. Replacement triggers do not settle independent lifetime outcomes. For each axis retain concrete scenarios with stable outcome/result identities, affected choices and source-grounded closure. Independent outcomes need real representing choices; atomic alternatives must compare every applicable interaction against each credible implementation. Broad failure policy does not settle partial durability. These are completeness prompts, never ownership classifiers.",
+            "interaction_instruction":"Challenge reference/scope/context basis, composition/precedence with existing sources/configuration/authority, ordering/partial success/atomic durable effects across multiple items, failure/retry/recovery observable results, and temporal/lifetime outcomes: preserve versus reset timestamps, retain versus renew or extend expiry, reissue/rotation/replacement age, and retry/recovery validity. For destructive or history-clearing work, separately identify canonical records, Candidate state, derived/local state, provider-retained state, Project identity, clone binding, reversibility, and recovery. Ambiguous wording leaves the outcome user-owned; a guarded execution confirmation cannot select product scope. Replacement triggers do not settle independent lifetime outcomes. For each axis retain concrete scenarios with stable outcome/result identities, affected choices and source-grounded closure. Independent outcomes need real representing choices; atomic alternatives must compare every applicable interaction against each credible implementation. Broad failure policy does not settle partial durability. These are completeness prompts, never ownership classifiers.",
             "choice_required_fields":["choice_id","summary","affected_scope","alternatives","technical_consequences","source_ids","effect_categories","relationship","evidence_state"],
             "allowable_values":{
                 "evidence_state":["sufficient","research_required","prototype_required"],

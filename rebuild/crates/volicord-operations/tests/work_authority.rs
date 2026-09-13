@@ -13,20 +13,22 @@ use volicord_inquiry::{
     QuestionCandidate, ResponseMapping, SubmissionOutcome,
 };
 use volicord_operations::{
-    CommandVerificationDraft, CoupledArtifactAssessment, CoupledArtifactCategory,
-    CoupledArtifactDisposition, CoupledArtifactReview, DiscoveredAlternativeAccounting,
-    DiscoveredAlternativeResolution, EngineeringAlternative, EngineeringChoice,
-    EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState, EngineeringChoiceRelationship,
-    EngineeringEffectCategory, ExactAuthoritySufficiency, ExplicitDelegationEvidence,
-    ExploratoryDisposition, GroundedCheckpointDraft, LearningAlternativeSelection,
+    CommandVerificationDraft, ConfirmationDecision, CoupledArtifactAssessment,
+    CoupledArtifactCategory, CoupledArtifactDisposition, CoupledArtifactReview,
+    DiscoveredAlternativeAccounting, DiscoveredAlternativeResolution, EngineeringAlternative,
+    EngineeringChoice, EngineeringChoiceDiscoveryDraft, EngineeringChoiceEvidenceState,
+    EngineeringChoiceRelationship, EngineeringEffectCategory, ExactAuthoritySufficiency,
+    ExplicitDelegationEvidence, ExploratoryDisposition, GroundedCheckpointDraft,
+    GuardedEffectCategory, GuardedEffectDraft, GuardedRisk, LearningAlternativeSelection,
     LearningDeliberationDraft, LearningDeliberationState, LearningFeedbackDraft,
     LearningInitialResponse, LearningParticipation, LearningRecommendation,
     LearningReconsiderationDraft, LearningResponseDraft, LearningValueAssessment,
     LearningValueRevisionBasis, LearningValueRevisionRequest, LocalOperations,
     MaterialBoundaryConclusion, MaterialBoundaryReview, MaterialOutcomeOwnershipAssessment,
     MaterialOutcomeSignal, MaterialityDimension, MaterialityDisposition, MaterialityReviewDraft,
-    MaterialityReviewRevisionDraft, RuntimeLayout, WorkAuthorityBasis, WorkAuthorityBasisKind,
-    WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition, WorkflowStage,
+    MaterialityReviewRevisionDraft, RequestingProvenance, RuntimeLayout, WorkAuthorityBasis,
+    WorkAuthorityBasisKind, WorkAuthorityDisposition, WorkAuthorityStage, WorkflowDisposition,
+    WorkflowStage,
 };
 
 fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
@@ -249,6 +251,46 @@ fn alternative_account(
         rationale: "the fixture accounts for this exact discovered alternative".into(),
         source_basis: vec![source],
     }
+}
+
+fn current_goal_specified_dimension(
+    fixture: &Fixture,
+    dimension_id: &str,
+    verbatim_statement: &str,
+) -> MaterialityDimension {
+    let mut specified = dimension(
+        dimension_id,
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::CurrentGoalUserSpecification],
+        fixture.goal_source_id,
+    );
+    specified.basis.contract_basis.clear();
+    specified.basis.exact_authority = Some(ExactAuthoritySufficiency {
+        source_evidence: vec![volicord_operations::AuthoritySourceEvidence {
+            source_id: fixture.goal_source_id,
+            role: volicord_operations::AuthoritySourceRole::CurrentGoalUserSpecification {
+                verbatim_statement: verbatim_statement.to_owned(),
+            },
+            rationale: "The current Goal explicitly names the exact records to delete and the Project identity and binding to preserve.".into(),
+        }],
+        covered_outcome: "delete only the named canonical classes while preserving Project identity and clone binding".into(),
+        unique_outcome_rationale: "the verbatim user specification selects one complete destructive outcome and excludes broader deletion".into(),
+    });
+    specified.alternative_accounting = vec![
+        alternative_account(
+            dimension_id,
+            "approach-a",
+            DiscoveredAlternativeResolution::Selected,
+            fixture.goal_source_id,
+        ),
+        alternative_account(
+            dimension_id,
+            "approach-b",
+            DiscoveredAlternativeResolution::EliminatedByCurrentGoalUserSpecification,
+            fixture.goal_source_id,
+        ),
+    ];
+    specified
 }
 
 fn unresolved_accounts_for_choices(
@@ -4525,6 +4567,110 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![decision_id]))?;
     assert_eq!(checkpoint.applied_decisions, [decision_id]);
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    Ok(())
+}
+
+#[test]
+fn ambiguous_clear_project_history_requires_a_user_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Clear project history.")?;
+    let unresolved = dimension(
+        "destructive-history-scope",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        fixture.goal_source_id,
+    );
+    let review = review(&fixture, vec![unresolved])?;
+    let state = readiness(&fixture, &review)?;
+    assert_eq!(state.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(
+        state.disposition,
+        WorkAuthorityDisposition::QuestionRequired
+    );
+    assert!(state.blocking);
+    assert!(state.reason.contains("explicit authority"));
+    Ok(())
+}
+
+#[test]
+fn exact_current_goal_destructive_scope_does_not_create_a_redundant_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let statement = "Delete canonical Questions, Decisions, Context Items, and Checkpoints; preserve the Project identity and clone binding.";
+    let fixture = fixture_with_goal(statement)?;
+    let specified =
+        current_goal_specified_dimension(&fixture, "destructive-history-scope", statement);
+    let review = review(&fixture, vec![specified])?;
+    let state = readiness(&fixture, &review)?;
+    assert_eq!(state.stage, WorkAuthorityStage::ReadyForWork);
+    assert_eq!(state.disposition, WorkAuthorityDisposition::ReadyForWork);
+    assert!(!state.blocking);
+    assert!(state.satisfied_requirements[0].decision_basis.is_empty());
+    Ok(())
+}
+
+#[test]
+fn guarded_execution_confirmation_does_not_select_unresolved_product_scope(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Clear project history.")?;
+    let unresolved = dimension(
+        "destructive-history-scope",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        fixture.goal_source_id,
+    );
+    let review = review(&fixture, vec![unresolved])?;
+    let before = readiness(&fixture, &review)?;
+
+    let request = fixture
+        .operations
+        .create_guarded_request(GuardedEffectDraft {
+            project_id: fixture.project_id,
+            exact_action: "clear-project-history".into(),
+            target: fixture.project_id.to_string(),
+            expected_effect: "execute the already-defined destructive operation".into(),
+            risk: GuardedRisk {
+                category: GuardedEffectCategory::DestructiveFileOrDataDeletion,
+                concrete_consequence: "selected records cannot be recovered locally".into(),
+            },
+            scope: vec!["project-history".into()],
+            expires_at: volicord_context::TimestampMicros::from_unix_micros(9_000_000_000_000_000),
+            requesting_provenance: RequestingProvenance {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "codex".into(),
+                },
+                host: Some("codex".into()),
+                session: Some("work-authority-session".into()),
+                basis: vec!["execution confirmation is operational authority only".into()],
+            },
+        })?;
+    fixture.operations.record_confirmation(
+        request.confirmation_request_identity,
+        request.request_revision,
+        &request.effect_fingerprint,
+        ConfirmationDecision::Confirmed,
+        "codex".into(),
+        "work-authority-session".into(),
+        "I confirm execution of that exact operation".into(),
+    )?;
+
+    let after = readiness(&fixture, &review)?;
+    assert_eq!(before.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(after.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(
+        before.unresolved_requirements,
+        after.unresolved_requirements
+    );
+    assert!(after.blocking);
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .is_empty());
     Ok(())
 }
 

@@ -1437,7 +1437,7 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
             && template["caller_owned_judgment"]["prefilled_fields"]["choice_id"].is_string()
             && draft["legal_judgment_variant_ids"]
                 .as_array()
-                .is_some_and(|variants| variants.len() == 13)
+                .is_some_and(|variants| variants.len() == 14)
     }));
     let unresolved = draft["judgment_contracts"]
         .as_array()
@@ -3790,14 +3790,15 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     let instructions = initialized["result"]["instructions"]
         .as_str()
         .expect("server instructions");
-    assert!(instructions.contains("Project-scoped repository work starts with project_resolve"));
+    assert!(instructions.contains("Project work starts with project_resolve"));
     assert!(instructions.contains("workflow.required_next_action"));
-    assert!(instructions.contains("do not bypass a blocking workflow transition"));
-    assert!(instructions.contains("Relevant evidence is not exact settling authority"));
-    assert!(instructions.contains("exact dimension or a bounded containing scope"));
-    assert!(instructions.contains("explicit response from the current host"));
-    assert!(instructions.contains("separate exact authorization"));
-    assert!(instructions.contains("actually observed command outcomes"));
+    assert!(instructions.contains("never bypass a blocking transition"));
+    assert!(instructions.contains("Relevant evidence is not exact authority"));
+    assert!(instructions.contains("exact dimension or containing scope"));
+    assert!(instructions.contains("explicit current-host responses"));
+    assert!(instructions.contains("separate authorization"));
+    assert!(instructions.contains("observed outcomes"));
+    assert!(instructions.contains("execution confirmation never selects product scope"));
     assert!(
         instructions.len() < 768,
         "server instructions should stay compact"
@@ -7882,7 +7883,7 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
                 .as_array()
                 .unwrap()
                 .len(),
-            13
+            14
         );
         assert_eq!(
             draft["learning_value_revision_bases"]

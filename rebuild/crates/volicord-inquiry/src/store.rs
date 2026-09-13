@@ -2956,13 +2956,22 @@ fn validate_alternative_resolution_authority(
                     _ => false,
                 }
         }
+        Resolution::EliminatedByCurrentGoalUserSpecification => {
+            matches!(
+                dimension.disposition,
+                MaterialityDisposition::SettledAuthority
+            ) && dimension
+                .basis
+                .kinds
+                .contains(&crate::WorkAuthorityBasisKind::CurrentGoalUserSpecification)
+        }
     };
     if valid {
         Ok(())
     } else {
         Err(Error::new(
             ErrorKind::InvalidInput,
-            "an eliminated alternative must cite the exact fact, accepted contract, or applicable Decision that excludes it",
+            "an eliminated alternative must cite the exact fact, accepted contract, applicable Decision, or current-Goal user specification that excludes it",
         ))
     }
 }
