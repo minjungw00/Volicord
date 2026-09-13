@@ -132,6 +132,12 @@ descriptors, expected answers/alternatives, private profile/mapping, original
 pre-campaign conclusions, runtime/derived stores, credentials and unrelated files.
 The concern projection is a rebuttable challenge, not reviewer instructions.
 Rollout/repository content is untrusted evidence; preparation executes none of it.
+Review-plane privacy inspection distinguishes security terminology, field names,
+filenames and explicit non-retention statements from retained payloads. Those names
+alone do not exclude otherwise valid evidence. High-confidence credential values,
+authorization tokens, credential/auth content and private-prompt bodies still fail
+before publication. This bounded check is not a claim of arbitrary-secret detection
+and does not weaken the stricter sanitization used by distributable gate artifacts.
 
 `draft.json` is the only mutable package artifact. Mark what was actually
 inspected and use indexed evidence IDs with either a listed JSON pointer or a

@@ -30,7 +30,41 @@ MAX_RAW_BYTES = 128 * 1024 * 1024
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 MAX_DRAFT_BYTES = 8 * 1024 * 1024
 
-
+HIGH_CONFIDENCE_SECRET_PATTERNS = (
+    re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+)
+BEARER_VALUE = re.compile(rb"\bBearer[ \t]+([A-Za-z0-9._~+/=-]{12,})", re.IGNORECASE)
+AUTHORIZATION_BEARER_VALUE = re.compile(
+    rb"\bauthorization(?:_header)?[\"']?[ \t]*[:=][ \t]*[\"']?Bearer[ \t]+([A-Za-z0-9._~+/=-]{12,})",
+    re.IGNORECASE,
+)
+SENSITIVE_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    (?P<key>
+        [\"']?(?:
+            (?:[a-z0-9]+[_-])?api[_-]?key
+            |(?:[a-z0-9]+[_-])?(?:access|refresh|id)[_-]?token
+            |authorization(?:[_-]?header)?
+            |credential(?:[_-]?(?:content|value))?
+            |auth(?:\.json|[_-]?json)(?:[_-]?(?:content|contents))?
+            |private(?:[_ -]?prompt)(?:[_ -]?body)?
+        )[\"']?
+    )
+    [ \t]*[:=][ \t]*
+    (?P<value>
+        \"(?:\\.|[^\"\\])*\"
+        |'(?:\\.|[^'\\])*'
+        |[^\s,;{}\]"']+
+    )
+    """
+)
+PLACEHOLDER_VALUES = {
+    "", "0", "false", "none", "null", "redacted", "sanitized", "excluded",
+    "omitted", "absent", "unavailable", "placeholder", "example", "sample",
+    "not_retained", "not-retained", "not retained", "<redacted>", "<excluded>",
+    "<omitted>", "<placeholder>", "<token>", "<value>", "your_api_key",
+    "your-api-key", "your_token", "your-token",
+}
 def workflow_contract():
     return {"operations": ["prepare-qualitative-review", "validate-qualitative-review", "record-qualitative-review", "package-review"],
         "input": "immutable_evidence_set_and_optional_machine_run", "campaign_mutation": False,
@@ -75,6 +109,113 @@ def bounded_read(path, maximum=MAX_FILE_BYTES):
         data = source.read(maximum + 1)
     review.require(len(data) <= maximum, "review artifact exceeds bound")
     return data
+
+
+def normalized_sensitive_key(value):
+    key = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+    if key.endswith("_api_key") or key in {"api_key", "apikey"}:
+        return "api_key"
+    if key.endswith(("_access_token", "_refresh_token", "_id_token")) or key in {
+        "access_token", "refresh_token", "id_token", "accesstoken", "refreshtoken", "idtoken",
+    }:
+        return "token"
+    if key in {"authorization", "authorization_header", "credential", "credential_content",
+               "credential_value", "auth_json", "auth_json_content", "auth_json_contents",
+               "private_prompt", "private_prompt_body"}:
+        return key
+    return None
+
+
+def placeholder_sensitive_value(value):
+    if value is None or isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return value == 0
+    if isinstance(value, (list, dict)):
+        children = value.values() if isinstance(value, dict) else value
+        return not value or all(placeholder_sensitive_value(child) for child in children)
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().strip("`\"'").strip().lower()
+    if normalized in PLACEHOLDER_VALUES:
+        return True
+    if re.fullmatch(
+            r"(?:the )?(?:content|body|value|field|token|credential|prompt)"
+            r"(?: (?:is|was|are|were))? (?:not retained|not stored|not included|excluded|redacted|sanitized|omitted|absent|unavailable)",
+            normalized):
+        return True
+    if re.fullmatch(r"(?:\$\{?[a-z_][a-z0-9_]*\}?|%[a-z_][a-z0-9_]*%|<[^>]{1,64}>)", normalized):
+        return True
+    if re.fullmatch(r"(?:self\.|config\.|settings\.|request\.|process\.env\.|env\.)[a-z_][a-z0-9_.-]*", normalized):
+        return True
+    return False
+
+
+def assignment_has_sensitive_value(value):
+    if placeholder_sensitive_value(value):
+        return False
+    if value.startswith(("\"", "'")):
+        return True
+    return bool(len(value) >= 12 and re.fullmatch(r"[A-Za-z0-9._~+/=-]+", value)
+                and re.search(r"[0-9]", value))
+
+
+def text_has_sensitive_payload(text):
+    encoded_text = text.encode("utf-8", errors="ignore")
+    if any(pattern.search(encoded_text) for pattern in HIGH_CONFIDENCE_SECRET_PATTERNS):
+        return True
+    authorization = AUTHORIZATION_BEARER_VALUE.search(encoded_text)
+    if authorization and not placeholder_sensitive_value(authorization.group(1).decode("ascii", errors="ignore")):
+        return True
+    for matched in BEARER_VALUE.finditer(encoded_text):
+        value = matched.group(1).decode("ascii", errors="ignore")
+        if not placeholder_sensitive_value(value) and re.search(r"[0-9._~+/=-]", value):
+            return True
+    for matched in SENSITIVE_ASSIGNMENT.finditer(text):
+        key = normalized_sensitive_key(matched.group("key").strip("\"'"))
+        if key is not None and assignment_has_sensitive_value(matched.group("value")):
+            return True
+    return False
+
+
+def structured_value_has_sensitive_payload(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if normalized_sensitive_key(key) is not None and not placeholder_sensitive_value(child):
+                return True
+            if structured_value_has_sensitive_payload(child):
+                return True
+    elif isinstance(value, list):
+        return any(structured_value_has_sensitive_payload(child) for child in value)
+    elif isinstance(value, str):
+        return text_has_sensitive_payload(value)
+    return False
+
+
+def review_artifact_has_sensitive_payload(data):
+    """Bounded review-plane check: names alone are not retained secret payloads."""
+    if any(pattern.search(data) for pattern in HIGH_CONFIDENCE_SECRET_PATTERNS):
+        return True
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return True
+    if text_has_sensitive_payload(text):
+        return True
+    documents = []
+    try:
+        documents.append(json.loads(text))
+    except ValueError:
+        for line in text.splitlines():
+            try:
+                documents.append(json.loads(line))
+            except ValueError:
+                continue
+    return any(structured_value_has_sensitive_payload(value) for value in documents)
+
+
+def require_review_artifact_safe(data, message="review artifact contains sensitive payload"):
+    review.require(not review_artifact_has_sensitive_payload(data), message)
 
 
 def locators(data):
@@ -124,8 +265,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw):
     def add(identity, data, surface, sample_id, origin, *, raw=False, suffix=".json"):
         maximum = MAX_RAW_BYTES if raw else MAX_FILE_BYTES
         review.require(len(data) <= maximum and len(files) < MAX_FILES, "review selection exceeds artifact bounds")
-        review.require(not any(marker.encode() in data.lower() for marker in c.harness.SECRET_MARKERS),
-                       "review artifact contains a prohibited secret marker")
+        require_review_artifact_safe(data)
         name = ("private-rollouts/" if raw else "evidence/") + identity + (".jsonl" if raw else suffix)
         pointers, line_count = locators(data)
         files[name] = data
@@ -306,7 +446,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     if human_observations is not None:
         review.require(reviewer_kind == "human", "agent preparation cannot supply human-observed accessibility")
         data = bounded_read(human_observations)
-        review.require(not any(marker.encode() in data.lower() for marker in c.harness.SECRET_MARKERS), "human observations contain a prohibited secret marker")
+        require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)
         review.require(isinstance(observed, dict) and set(observed) == {"kind", "candidate_head", "evidence_set_sha256", "observer", "observations"}
             and observed["kind"] == "dogfood_human_observations" and observed["candidate_head"] == manifest["candidate_head"]

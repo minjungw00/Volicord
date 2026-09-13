@@ -120,6 +120,69 @@ class WorkflowTests(unittest.TestCase):
             if entry["surface"] == "work_capture":
                 self.assertEqual((target / entry["path"]).read_bytes(), (self.root / entry["origin"]["path"]).read_bytes())
 
+    def test_review_privacy_distinguishes_terminology_from_sensitive_payloads(self):
+        benign = [
+            b"the capsule does not retain auth.json content",
+            b"private prompt bodies are excluded",
+            b"documentation discusses an api_key field and an api-key option",
+            b"source and tests name access_token, refresh_token, and credential_content",
+            b"security guidance refers to a Bearer token concept",
+            ops.encoded({"api_key": "<redacted>", "access_token": None,
+                         "refresh_token": "not retained", "credential_content": False,
+                         "private_prompt": "excluded"}),
+        ]
+        for number, data in enumerate(benign):
+            with self.subTest(kind="benign", number=number):
+                ops.require_review_artifact_safe(data)
+
+        sensitive = [
+            b"Authorization: Bearer retained-review-token-1234567890",
+            ops.encoded({"api_key": "sk-retained-review-key-1234567890"}),
+            ops.encoded({"api-key": "retained-api-key-value-1234567890"}),
+            ops.encoded({"access_token": "retained-access-token-1234567890"}),
+            ops.encoded({"refresh_token": "retained-refresh-token-1234567890"}),
+            ops.encoded({"credential_content": "retained-credential-payload-1234567890"}),
+            ops.encoded({"private_prompt": "PROMPT_SENTINEL_MUST_NOT_SURVIVE_7f91"}),
+            ops.encoded({"file": "auth.json", "content": {"id_token": "retained-id-token-1234567890"}}),
+            ops.encoded({"message": 'captured auth.json: {"access_token": "retained-nested-token-1234567890"}'}),
+            b"api_key=retained-unquoted-key-1234567890",
+            b"-----BEGIN PRIVATE KEY-----\nretained-key-material",
+        ]
+        for number, data in enumerate(sensitive):
+            with self.subTest(kind="sensitive", number=number):
+                with self.assertRaisesRegex(ValueError, "sensitive payload"):
+                    ops.require_review_artifact_safe(data)
+
+    def test_human_observations_use_review_payload_privacy(self):
+        evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
+        observation = {
+            "kind": "dogfood_human_observations",
+            "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
+            "evidence_set_sha256": evidence_hash,
+            "observer": q.reviewer("human", "b" * 32),
+            "observations": [
+                {"sample_id": "volicord-1", "locale": "en",
+                 "observation": "The view states that auth.json content is not retained.",
+                 "limits": "Private prompt bodies were excluded from inspection."},
+                {"sample_id": "volicord-1", "locale": "ko",
+                 "observation": "Bearer token terminology is visible as security guidance.",
+                 "limits": "The api_key field name is documentation, not a retained value."},
+            ],
+        }
+        source = self.parent / (self._testMethodName + "-benign.json")
+        source.write_bytes(ops.encoded(observation))
+        result = ops.prepare(self.root, self.target(), reviewer_kind="human", human_observations=source)
+        self.assertEqual(result["state"], "prepared")
+
+        observation["observations"][0]["observation"] = (
+            "Authorization: Bearer retained-human-observation-token-1234567890")
+        sensitive = self.parent / (self._testMethodName + "-sensitive.json")
+        sensitive.write_bytes(ops.encoded(observation))
+        rejected = self.parent / (self._testMethodName + "-rejected")
+        with self.assertRaisesRegex(ValueError, "human observations contain sensitive payload"):
+            ops.prepare(self.root, rejected, reviewer_kind="human", human_observations=sensitive)
+        self.assertFalse(rejected.exists())
+
     def test_evaluator_private_answers_are_not_selected(self):
         manifest = copy.deepcopy(c.load_evidence_set(self.root))
         slot = next(iter(manifest["cycles"].values()))["review_slot_id"]
