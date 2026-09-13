@@ -1,14 +1,14 @@
 # Phase 8 technical-entry candidate authority
 
-- Sealed Product/test candidate: `1227448ebbd8c59606c003cfbf1188c149ee52a6`
+- Sealed Product/test candidate: `825cc620da7369c5952b004eb29881769daaac64`
 - Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
 - Admission: `eligible`; exact final: `succeeded`, four commands, zero failures
 - Required production-provider qualification: `passed`; `openai-codex`, `gpt-5.6-sol`
 - Official V11: `passed`, 54 of 54 required steps; all three authenticated targets passed
 - Credential-retention audit: `passed`, all counts zero
 - Sanitized evidence archive: creation succeeded; independent verification `passed`
-- Capsule SHA-256: `79f8d074456ee294f81c3c63e2ff9c3c596ccbd14f348b231ef8976a241ef9a7`
-- Archive SHA-256: `f44ed4e8cedfa24ef80fef2d7a713232e6d0fcf3d2d33a92254bedaf5c474d88`
+- Capsule SHA-256: `161deb53f55ce0c7f614c1dafbcbfac2cebe6a29551313f840100346b65eaf2b`
+- Archive SHA-256: `575dd2a3fdab49b8c34977be7ffdb15469dce89bc22fd38c7f11de678ab882a4`
 - Fresh naturalistic Dogfood: `not_run`; automated qualification: `not_run`
 - Human review: `not_provided`; replacement passage: `not_established`
 - `replacement_pass_candidate = false`; `phase_9_ready = false`
@@ -16,11 +16,11 @@
 ## Maintained conclusion
 
 The copied capsule and independently verified archive establish technical entry
-for exactly `1227448ebbd8c59606c003cfbf1188c149ee52a6`. Exact final, required
+for exactly `825cc620da7369c5952b004eb29881769daaac64`. Exact final, required
 live provider qualification, and official V11 each ran once for that candidate
 in the same maintained gate.
 The capsule and archive were copied byte-for-byte to
-`/tmp/volicord-phase8-handoff-20260911/1227448ebbd8c59606c003cfbf1188c149ee52a6/` before reporting.
+`/tmp/volicord-phase8-handoff-20260913/825cc620da7369c5952b004eb29881769daaac64/` before reporting.
 Resource measurements passed and no accepted-Decision revisit trigger was
 reported. The later documentation-only conclusion HEAD is distinct from the
 sealed candidate and receives only the maintained documentation checks.
@@ -208,8 +208,14 @@ Phase 9.
 
 Current campaign collection publishes candidate-bound `evidence-set.json` independently of
 semantic evaluation. `dogfood-campaign evaluate` appends typed machine findings under
-`evaluations/`; status and disposition are independent, uncertainty remains review-required,
-and hard evidence integrity is non-overridable. Collection/evaluation do not qualify Product.
+`evaluations/`; status and disposition are independent, dispositions are explicitly
+`hard_blocking`, `qualitative_review_required`, or `advisory`, uncertainty remains
+review-required, and hard evidence integrity is non-overridable. Re-evaluation appends a
+new identity-bound run without rewriting the evidence set or prior results. Agent and human
+reviews use the same evidence-bound rubric but retain distinct reviewer kinds and session
+identities; agent authorship cannot be submitted as human authorship. Collection, evaluation,
+and review do not qualify Product, and only a separate explicit operator approval can authorize
+Phase 9 after complete qualification.
 Existing historical failed campaigns above remain unchanged. The technical gate is separate;
 common qualitative workflow and final qualification policy are maintained in
 `qualitative-review.md` and `qualification_policy.py`.

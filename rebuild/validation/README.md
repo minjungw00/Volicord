@@ -586,7 +586,7 @@ ownership, or the capsule lifecycle described below.
 
 The maintained Phase 8 candidate-authority summary is
 `phase-8-summary.md`. The current sealed Product/test candidate is
-`1227448ebbd8c59606c003cfbf1188c149ee52a6`: admission, exact final, separately authorized
+`825cc620da7369c5952b004eb29881769daaac64`: admission, exact final, separately authorized
 production-provider qualification (`openai-codex` / `gpt-5.6-sol`), all 54 official
 V11 steps, credential audit, and archive creation/independent verification passed.
 `phase_8_ready = true` applies only to that exact HEAD. The later documentation-only

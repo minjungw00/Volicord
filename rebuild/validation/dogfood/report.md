@@ -3,7 +3,7 @@
 ## Status
 
 Technical entry passed for exact sealed Product/test candidate
-`1227448ebbd8c59606c003cfbf1188c149ee52a6` (2026-09-11, Korea). The copied sanitized
+`825cc620da7369c5952b004eb29881769daaac64` (2026-09-13, Korea). The copied sanitized
 gate capsule records
 `phase_8_ready = true`; exact final, required provider qualification, official
 V11, archive creation, and independent verification all succeeded.
@@ -157,7 +157,7 @@ Decision path.
 ## Commands and configuration
 
 In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `1227448ebbd8c59606c003cfbf1188c149ee52a6`.
+actual `HEAD` is `825cc620da7369c5952b004eb29881769daaac64`.
 Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
 documentation-only conclusion HEAD:
 
@@ -241,9 +241,12 @@ Batch collection publishes an immutable candidate-bound `evidence-set.json` afte
 integrity validation. `collection_state = collected` and `qualification_state = not_run` do
 not imply Product passage. `dogfood-campaign evaluate` consumes that exact set and appends
 an immutable machine run. Findings distinguish certainty from disposition, retain original
-checks/basis, and leave semantic uncertainty unresolved for later review. Confirmed hard
-integrity violations cannot be waived. The technical gate remains separate. Agent and human reviewers share the maintained
-qualitative rubric; `qualification_policy.py` owns the maintained final combination.
+checks/basis, use `hard_blocking`, `qualitative_review_required`, or `advisory`
+authority, and leave semantic uncertainty unresolved for later review. Confirmed hard
+integrity violations cannot be waived. The technical gate remains separate. Agent and human
+reviewers share the maintained qualitative rubric while retaining distinct reviewer kinds and
+session identities; agent authorship cannot be submitted as human authorship.
+`qualification_policy.py` owns the maintained final combination.
 
 New campaigns use cryptographically random opaque slot IDs for qualifying
 workspace, Runtime Home, reviewer preparation/draft/provisional filenames,
@@ -279,7 +282,7 @@ documents and does not share their adoption lifecycle.
 ## Observed results
 
 The new copied capsule and independently verified archive establish technical
-entry for `1227448ebbd8c59606c003cfbf1188c149ee52a6`:
+entry for `825cc620da7369c5952b004eb29881769daaac64`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -502,7 +505,7 @@ reliability of the repaired continuation guidance.
 ## Coverage and failures
 
 Current technical Phase 8 entry is passed/eligible only for
-`1227448ebbd8c59606c003cfbf1188c149ee52a6`.
+`825cc620da7369c5952b004eb29881769daaac64`.
 The latest terminal campaign at `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`
 remains failed and non-reusable. Exec evidence/command-role and successor-Review
 Decision evaluator defects, duplicate Question integration, explicit resume
@@ -545,7 +548,7 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `1227448ebbd8c59606c003cfbf1188c149ee52a6` |
+| Sealed production/test candidate | `825cc620da7369c5952b004eb29881769daaac64` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
@@ -584,7 +587,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`1227448ebbd8c59606c003cfbf1188c149ee52a6`, run all sixteen genuine sessions,
+`825cc620da7369c5952b004eb29881769daaac64`, run all sixteen genuine sessions,
 and obtain the immutable machine evaluation. Common qualitative review is available
 independently of machine outcome when evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -639,14 +642,14 @@ capsule/archive, then obtain explicit operator approval of the qualified state.
 ## Artifacts
 
 - Current technical-entry candidate:
-  `1227448ebbd8c59606c003cfbf1188c149ee52a6`.
+  `825cc620da7369c5952b004eb29881769daaac64`.
 - Current copied sanitized capsule SHA-256:
-  `79f8d074456ee294f81c3c63e2ff9c3c596ccbd14f348b231ef8976a241ef9a7`.
+  `161deb53f55ce0c7f614c1dafbcbfac2cebe6a29551313f840100346b65eaf2b`.
 - Current independently verified evidence archive:
-  `validation-evidence-1227448ebbd8.tar.gz`, 14822 bytes, 9 members, SHA-256
-  `f44ed4e8cedfa24ef80fef2d7a713232e6d0fcf3d2d33a92254bedaf5c474d88`.
+  `validation-evidence-825cc620da73.tar.gz`, 14871 bytes, 9 members, SHA-256
+  `575dd2a3fdab49b8c34977be7ffdb15469dce89bc22fd38c7f11de678ab882a4`.
 - The capsule and archive were copied byte-for-byte before documentation to
-  `/tmp/volicord-phase8-handoff-20260911/1227448ebbd8c59606c003cfbf1188c149ee52a6/`.
+  `/tmp/volicord-phase8-handoff-20260913/825cc620da7369c5952b004eb29881769daaac64/`.
   The documentation-only conclusion HEAD is distinct from the sealed candidate.
 - Historical copied sanitized capsule SHA-256 (not current qualification):
   `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
