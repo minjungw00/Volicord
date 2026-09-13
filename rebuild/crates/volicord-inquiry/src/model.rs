@@ -924,7 +924,6 @@ pub struct QuestionPresentation {
     pub material_scope: Vec<String>,
     pub established_facts: Vec<QuestionEstablishedFact>,
     pub alternatives: Vec<QuestionAlternative>,
-    pub recommendation: AgentRecommendation,
     pub trade_offs: Vec<String>,
     pub uncertainty: Vec<String>,
     pub known_limits: Vec<String>,

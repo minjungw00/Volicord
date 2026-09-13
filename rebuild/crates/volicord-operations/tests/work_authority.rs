@@ -4473,7 +4473,6 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
                     question_id: promoted.question_id,
                     revision: 1,
                     alternative_keys: vec!["strict".to_owned(), "degraded".to_owned()],
-                    recommendation_key: Some("strict".to_owned()),
                 },
                 mapping: ResponseMapping::ExplicitDelegation {
                     delegate_to: "implementation-owner".to_owned(),

@@ -10,7 +10,6 @@ pub struct DisplayedQuestion {
     pub question_id: QuestionId,
     pub revision: u64,
     pub alternative_keys: Vec<String>,
-    pub recommendation_key: Option<String>,
 }
 
 impl From<&QuestionPresentation> for DisplayedQuestion {
@@ -23,7 +22,6 @@ impl From<&QuestionPresentation> for DisplayedQuestion {
                 .iter()
                 .map(|alternative| alternative.key.clone())
                 .collect(),
-            recommendation_key: value.recommendation.alternative_key.clone(),
         }
     }
 }
@@ -129,12 +127,10 @@ pub fn interpret_current_host_response(
         .iter()
         .map(|alternative| alternative.key.clone())
         .collect::<Vec<_>>();
-    if alternative_keys != response.displayed.alternative_keys
-        || question.recommendation.alternative_key != response.displayed.recommendation_key
-    {
+    if alternative_keys != response.displayed.alternative_keys {
         return rejected(
             ResponseRejection::DisplayBasisMismatch,
-            "displayed alternatives or recommendation are not the current revision",
+            "displayed alternatives are not the current revision",
         );
     }
     let source = canonical

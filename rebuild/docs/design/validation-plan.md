@@ -1471,7 +1471,8 @@ usefulness, CLI usability, Viewer Project Understanding, four-document usefulnes
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
 material handling quality, hidden material discovery quality, normal-mode no-question interruption
 precision과 learning-active quality를 구분한다. Learning review는 fork의 실제 학습 가치,
-alternatives/trade-offs completeness, initial reasoning 전 recommendation anchoring 부재,
+alternatives/trade-offs completeness, Learning과 canonical Question 모두에서 initial reasoning 전
+recommendation anchoring 부재,
 response 뒤 educational feedback 정확성, implementation fidelity, routine-detail omission과
 proportional interaction cost를 판정한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
 않는다. 명시된 reviewer는 actual material outcome마다 observable implementation commitment,

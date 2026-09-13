@@ -784,7 +784,6 @@ fn record_host_question_decision(
                             question_id: parse_question_identity(question_id),
                             revision,
                             alternative_keys: vec!["first".into(), "second".into()],
-                            recommendation_key: Some("first".into()),
                         },
                         mapping: ResponseMapping::ExplicitDelegation {
                             delegate_to: "implementation-owner".into(),
@@ -1253,6 +1252,11 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let presentation_receipt_id = frontier["questions"][0]["presentation_receipt_id"]
         .as_str()
         .expect("presentation receipt");
+    assert!(frontier["questions"][0].get("recommendation").is_none());
+    assert_eq!(
+        frontier["questions"][0]["recommendation_state"],
+        "withheld_until_initial_response"
+    );
 
     let decision = call(
         &mut adapter,
@@ -1267,6 +1271,14 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         }),
     );
     let decision = structured(&decision);
+    assert_eq!(
+        decision["post_choice_agent_feedback"]["recommendation"],
+        "structured"
+    );
+    assert_eq!(
+        decision["post_choice_agent_feedback"]["rationale"],
+        "Structured guidance is actionable"
+    );
     assert_eq!(
         decision["workflow"]["disposition"],
         "review_revision_required"

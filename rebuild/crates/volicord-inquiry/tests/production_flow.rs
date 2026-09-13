@@ -160,7 +160,6 @@ fn response(
                 .iter()
                 .map(|alternative| alternative.key.clone())
                 .collect(),
-            recommendation_key: question.recommendation.alternative_key.clone(),
         },
         mapping,
         applicability: ApplicabilityScope {

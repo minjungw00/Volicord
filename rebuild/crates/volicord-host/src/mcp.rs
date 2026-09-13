@@ -905,7 +905,7 @@ impl HostAdapter {
                         displayed,
                     },
                 );
-                Ok(json!({"identity":question.question_id.to_string(),"revision":question.displayed_revision,"presentation_receipt_id":presentation_receipt_id,"prompt":question.prompt_basis,"why_now":question.why_it_matters_now,"alternatives":question.alternatives.into_iter().map(|alternative| json!({"key":alternative.key,"label":alternative.label,"consequence":alternative.consequence})).collect::<Vec<_>>(),"recommendation":question.recommendation.alternative_key,"what_unlocks":question.what_the_answer_unlocks}))
+                Ok(json!({"identity":question.question_id.to_string(),"revision":question.displayed_revision,"presentation_receipt_id":presentation_receipt_id,"prompt":question.prompt_basis,"why_now":question.why_it_matters_now,"alternatives":question.alternatives.into_iter().map(|alternative| json!({"key":alternative.key,"label":alternative.label,"consequence":alternative.consequence})).collect::<Vec<_>>(),"recommendation_state":"withheld_until_initial_response","what_unlocks":question.what_the_answer_unlocks}))
             })
             .collect::<Result<Vec<_>, HostError>>()?;
         let response = json!({"questions":questions,"diagnostics":value.diagnostics.into_iter().map(|diagnostic| diagnostic.detail).collect::<Vec<_>>() });
@@ -938,6 +938,17 @@ impl HostAdapter {
                 HostError::new(
                     "the current host did not present this Question through inquiry_frontier",
                 )
+            })?;
+        let recommendation = self
+            .operations
+            .canonical_basis(project_id)
+            .map_err(operation_error)?
+            .active_questions
+            .into_iter()
+            .find(|question| question.id == question_id)
+            .map(|question| question.recommendation)
+            .ok_or_else(|| {
+                HostError::new("current Question recommendation basis is unavailable")
             })?;
         if presented.project_id != project_id
             || presented.displayed.question_id != question_id
@@ -988,7 +999,8 @@ impl HostAdapter {
                 }],
             )
             .map_err(operation_error)?;
-        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"all_succeeded":result.all_succeeded(),"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>() });
+        let all_succeeded = result.all_succeeded();
+        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"all_succeeded":all_succeeded,"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>(),"post_choice_agent_feedback":all_succeeded.then(|| json!({"recommendation":recommendation.alternative_key,"rationale":recommendation.rationale,"source_ids":recommendation.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })) });
         Ok(
             match self
                 .operations
@@ -1975,7 +1987,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision, alternatives, and recommendation; pass that receipt to decision_record only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. If presentation or another required transition fails, report the blocker and retry the same canonical path; ordinary prose does not resolve the Question. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
+            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision and alternatives. The canonical agent recommendation is withheld until the current user makes an initial choice, then decision_record returns it as post-choice feedback. Pass the receipt only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. If presentation or another required transition fails, report the blocker and retry the same canonical path; ordinary prose does not resolve the Question. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),

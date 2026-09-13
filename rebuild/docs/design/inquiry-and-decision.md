@@ -151,7 +151,7 @@ Canonical `Question`은 다음 meaning을 보존한다.
 - materiality basis와 why it matters now
 - established fact, assumption, known limit와 Source basis
 - dependencies, prerequisite outcome requirement와 dependent branch
-- displayed alternatives, recommendation와 explanation basis
+- displayed alternatives, pre-choice에는 withheld되는 Agent Recommendation과 explanation basis
 - applicability scope와 what the answer unlocks
 - current lifecycle outcome와 supersession relation
 
@@ -698,24 +698,26 @@ Frontier의 각 Question은 최소 다음을 함께 표시한다.
 - why it matters now와 material scope
 - established facts와 Source/capability/freshness
 - displayed alternatives와 각 consequence
-- agent recommendation과 recommendation Source basis
 - trade-offs, uncertainty, known limits와 omitted evidence
 - prerequisite/outcome context와 answer가 여는 다음 branch
 - 선택 외의 가능한 disposition: delegation, research, prototype, deferment 또는
   out-of-scope
 
 Current host adapter는 실제 Frontier 결과를 표시할 때 Question identity/revision, exact alternative
-keys와 recommendation, Project와 host session을 묶은 opaque session-local presentation receipt를
+keys, Project와 host session을 묶은 opaque session-local presentation receipt를
 만든다. 이 receipt는 canonical Question/Decision state가 아니며 Frontier의 read semantics를 바꾸지
 않는다. Current-host response path는 caller가 다시 조립한 displayed basis가 아니라 이 receipt를
 요구한다. Receipt가 없거나 다른 Question/Project/revision에 쓰였거나 canonical Question이 그 뒤
 stale, superseded 또는 terminal이 되면 Decision transition은 실패한다. Frontier batch의 각 Question은
 독립 receipt를 가지며 한 user turn이 여러 Question에 답하는 기존 batch semantics는 유지한다.
 
-`Agent Recommendation`은 Question revision에 연결된 agent-authored basis이며 user
-choice와 별개다. Displayed alternative와 recommendation이 바뀌면 response가 참조할
-revision도 바뀐다. Recommendation batch adoption은 각 Question identity/revision과
-명시적으로 연결된 user response일 때만 개별 Decision transition으로 해석한다.
+`Agent Recommendation`은 Question revision에 연결된 agent-authored basis이며 user choice와
+별개다. Canonical Question은 이 basis를 보존하지만 initial Frontier presentation은 recommendation과
+recommendation rationale를 user의 첫 reasoning/choice 전에는 노출하지 않는다. Exact current-host
+response가 Decision으로 성공한 뒤에만 같은 canonical recommendation을 post-choice feedback으로
+표시할 수 있다. Displayed alternative 또는 stored recommendation이 바뀌면 response가 참조할
+revision도 바뀐다. Recommendation batch adoption은 각 Question identity/revision과 명시적으로
+연결된 user response일 때만 개별 Decision transition으로 해석한다.
 
 ## 6. Current-host User Response Source
 
@@ -745,12 +747,12 @@ User response가 canonical `Decision`을 만들려면 다음을 모두 만족한
 
 - exact current-host User Response Source가 존재함
 - 같은 host session의 maintained Inquiry presentation receipt가 exact Question revision과 displayed
-  alternative/recommendation basis를 증명함
+  alternative basis를 증명함
 - Source가 exact current Question identity와 displayed revision을 가리킴
 - Question이 아직 response를 받을 수 있고 Project/scope가 일치함
 - explicit choice 또는 explicit delegation을 모호하지 않게 mapping할 수 있음
 - user rationale가 있다면 응답과 구분하여 그대로 Source-linked basis로 보존함
-- 당시 displayed alternatives, Agent Recommendation, uncertainty와 Source basis를
+- 당시 displayed alternatives, canonical Agent Recommendation, uncertainty와 Source basis를
   추적할 수 있음
 - resulting Decision applicability와 Question outcome이 일치함
 

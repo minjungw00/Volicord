@@ -240,7 +240,6 @@ fn presentation(question: &Question) -> QuestionPresentation {
         material_scope: question.material_scope.clone(),
         established_facts: question.established_facts.clone(),
         alternatives: question.alternatives.clone(),
-        recommendation: question.recommendation.clone(),
         trade_offs: question.trade_offs.clone(),
         uncertainty: question.uncertainty.clone(),
         known_limits: question.known_limits.clone(),

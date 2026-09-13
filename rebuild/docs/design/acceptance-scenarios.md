@@ -411,7 +411,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   유지하고 routine helper/naming choice는 interruption을 만들지 않는다.
 - 첫 review가 meaningful mutation 뒤 backfill되지 않았고, 모든 blocking requirement가
   해소된 경우에만 explicit `ready_for_work`를 표시한다.
-- 현재 frontier의 질문만 배경, 선택지, 권장안, trade-off와 uncertainty와 함께 제시한다.
+- 현재 frontier의 질문만 배경, 선택지, trade-off와 uncertainty와 함께 제시하고, canonical
+  recommendation은 initial reasoning/choice 전에는 숨긴다. 유효한 current-host response가
+  Decision으로 기록된 뒤에만 recommendation/교육적 feedback을 제시한다.
 - 질문에는 제품, architecture와 implementation 관점이 필요한 만큼 포함된다.
 - 사용자는 선택, 수정안, 위임, 조사, prototype 또는 보류로 답할 수 있다.
 - 답변에 따라 다음 질문이 열리거나 닫힌다.
@@ -439,6 +441,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 모호한 과거의 “좋아요”를 Decision으로 적용
 - failed/unavailable required transition 뒤 ordinary prose를 canonical response/Decision으로 간주
 - agent recommendation을 사용자 choice로 저장
+- initial Question response 전에 agent recommendation 또는 recommendation rationale를 노출
 - agent recommendation, preferred implementation 또는 한 API dimension 선택으로 별도의
   independently material user-owned policy를 조용히 결정
 - coupled choice의 다른 material consequence를 Question alternatives에서 숨김
